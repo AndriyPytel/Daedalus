@@ -1,0 +1,1 @@
+"""FreeCadCopilot AI handlers module."""

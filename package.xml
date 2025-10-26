@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<Package xmlns="http://www.freecadweb.org/wiki">
+    <name value="FreeCadCopilot"/>
+    <description value="AI-powered command execution for FreeCAD"/>
+    <version value="0.1.0"/>
+    <date value="2024-12-01"/>
+    <maintainer value="FreeCadCopilot Team"/>
+    <maintainerlink value="https://github.com/your-repo/FreeCadCopilot"/>
+    <author value="FreeCadCopilot Team"/>
+    <license value="MIT"/>
+    <url value="https://github.com/your-repo/FreeCadCopilot"/>
+    <website value="https://github.com/your-repo/FreeCadCopilot"/>
+    <icon value="Resources/icons/copilot.png"/>
+    <file value="."/>
+</Package>
