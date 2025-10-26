@@ -12,6 +12,6 @@ class FreeCadCopilotWorkbench(CopilotWorkbench):
     
     MenuText = "FreeCad Copilot"
     ToolTip = "AI-powered command execution for FreeCAD"
-    Icon = "Resources/icons/copilot.svg"
+    # Icon = "Resources/icons/copilot.svg"
 
-Gui.addWorkbench(FreeCadCopilotWorkbench)
+Gui.addWorkbench(FreeCadCopilotWorkbench())
