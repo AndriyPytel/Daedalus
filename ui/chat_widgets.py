@@ -1,13 +1,7 @@
 """
 Custom widgets for chat display
 """
-# Import Qt from FreeCAD
-import FreeCADGui as Gui
-
-# FreeCAD provides Qt through FreeCADGui.Qt
-QtWidgets = Gui.Qt.QtWidgets
-QtCore = Gui.Qt.QtCore
-QtGui = Gui.Qt.QtGui
+from PySide import QtCore, QtGui, QtWidgets
 
 
 class TextMessage(QtWidgets.QFrame):

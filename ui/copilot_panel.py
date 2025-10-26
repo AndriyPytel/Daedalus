@@ -1,13 +1,7 @@
 """
 Main copilot panel (QDockWidget)
 """
-# Import Qt from FreeCAD
-import FreeCADGui as Gui
-
-# FreeCAD provides Qt through FreeCADGui.Qt
-QtWidgets = Gui.Qt.QtWidgets
-QtCore = Gui.Qt.QtCore
-QtGui = Gui.Qt.QtGui
+from PySide import QtCore, QtGui, QtWidgets
 
 from .chat_widgets import TextMessage, CodeBlockWidget
 from .settings_dialog import SettingsDialog
