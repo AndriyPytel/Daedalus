@@ -1,15 +1,16 @@
 """
 Settings dialog for FreeCadCopilot
 """
-from PySide2.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-    QLineEdit, QTextEdit, QPushButton, QFormLayout
-)
-from PySide2.QtCore import Qt
-from PySide2.QtGui import QFont
+# Import Qt from FreeCAD
+import FreeCADGui as Gui
+
+# FreeCAD provides Qt through FreeCADGui.Qt
+QtWidgets = Gui.Qt.QtWidgets
+QtCore = Gui.Qt.QtCore
+QtGui = Gui.Qt.QtGui
 
 
-class SettingsDialog(QDialog):
+class SettingsDialog(QtWidgets.QDialog):
     """Dialog for configuring AI model settings and system prompt."""
     
     def __init__(self, parent=None):
@@ -24,40 +25,40 @@ class SettingsDialog(QDialog):
         self.setMinimumHeight(400)
         
         # Main layout
-        layout = QVBoxLayout(self)
+        layout = QtWidgets.QVBoxLayout(self)
         
         # Form layout for settings
-        form_layout = QFormLayout()
+        form_layout = QtWidgets.QFormLayout()
         
         # Model handler combo box
-        self.model_combo = QComboBox()
+        self.model_combo = QtWidgets.QComboBox()
         self.model_combo.addItem("Google Gemini")
         # Add more models here as needed
         self.model_combo.setToolTip("Select the AI model to use")
         form_layout.addRow("Model Handler:", self.model_combo)
         
         # API Key
-        self.api_key_edit = QLineEdit()
-        self.api_key_edit.setEchoMode(QLineEdit.Password)
+        self.api_key_edit = QtWidgets.QLineEdit()
+        self.api_key_edit.setEchoMode(QtWidgets.QLineEdit.Password)
         self.api_key_edit.setPlaceholderText("Enter your API key")
         self.api_key_edit.setToolTip("Your API key (stored securely)")
         form_layout.addRow("API Key:", self.api_key_edit)
         
         # API Endpoint
-        self.api_endpoint_edit = QLineEdit()
+        self.api_endpoint_edit = QtWidgets.QLineEdit()
         self.api_endpoint_edit.setPlaceholderText("https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent")
         self.api_endpoint_edit.setToolTip("API endpoint URL (for local LLMs or custom endpoints)")
         form_layout.addRow("API Endpoint:", self.api_endpoint_edit)
         
         # System Prompt
-        system_prompt_label = QLabel("Global System Prompt:")
-        system_prompt_label.setAlignment(Qt.AlignTop)
+        system_prompt_label = QtWidgets.QLabel("Global System Prompt:")
+        system_prompt_label.setAlignment(QtCore.Qt.AlignTop)
         
-        self.system_prompt_edit = QTextEdit()
+        self.system_prompt_edit = QtWidgets.QTextEdit()
         self.system_prompt_edit.setMinimumHeight(200)
         # Use monospace font for better code readability
-        font = QFont("Courier")
-        font.setStyleHint(QFont.Monospace)
+        font = QtGui.QFont("Courier")
+        font.setStyleHint(QtGui.QFont.Monospace)
         self.system_prompt_edit.setFont(font)
         
         default_prompt = """You are a helpful assistant for FreeCAD, a 3D parametric modeling CAD software.
@@ -78,11 +79,11 @@ Guidelines:
         layout.addLayout(form_layout)
         
         # Button layout
-        button_layout = QHBoxLayout()
+        button_layout = QtWidgets.QHBoxLayout()
         button_layout.addStretch()
         
         # Save button
-        self.save_button = QPushButton("Save")
+        self.save_button = QtWidgets.QPushButton("Save")
         self.save_button.setStyleSheet("""
             QPushButton {
                 background-color: #007bff;
@@ -99,7 +100,7 @@ Guidelines:
         self.save_button.clicked.connect(self.accept)
         
         # Cancel button
-        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button = QtWidgets.QPushButton("Cancel")
         self.cancel_button.setStyleSheet("""
             QPushButton {
                 background-color: #6c757d;

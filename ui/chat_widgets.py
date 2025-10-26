@@ -1,14 +1,16 @@
 """
 Custom widgets for chat display
 """
-from PySide2.QtWidgets import (
-    QFrame, QTextEdit, QPushButton, QVBoxLayout, QHBoxLayout, QLabel
-)
-from PySide2.QtCore import Signal, Qt
-from PySide2.QtGui import QFont
+# Import Qt from FreeCAD
+import FreeCADGui as Gui
+
+# FreeCAD provides Qt through FreeCADGui.Qt
+QtWidgets = Gui.Qt.QtWidgets
+QtCore = Gui.Qt.QtCore
+QtGui = Gui.Qt.QtGui
 
 
-class TextMessage(QFrame):
+class TextMessage(QtWidgets.QFrame):
     """Widget for displaying plain text messages."""
     
     def __init__(self, text, is_user=False, parent=None):
@@ -20,20 +22,20 @@ class TextMessage(QFrame):
             parent: Parent widget
         """
         super().__init__(parent)
-        self.setFrameStyle(QFrame.NoFrame)
+        self.setFrameStyle(QtWidgets.QFrame.NoFrame)
         
         # Create layout
-        layout = QVBoxLayout(self)
+        layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
         
         # Create label for text
-        self.label = QLabel(text)
+        self.label = QtWidgets.QLabel(text)
         self.label.setWordWrap(True)
-        self.label.setTextFormat(Qt.MarkdownText)
+        self.label.setTextFormat(QtCore.Qt.MarkdownText)
         
         # Set alignment based on sender
         if is_user:
-            self.label.setAlignment(Qt.AlignRight)
+            self.label.setAlignment(QtCore.Qt.AlignRight)
             self.label.setStyleSheet("""
                 background-color: #007bff;
                 color: white;
@@ -41,7 +43,7 @@ class TextMessage(QFrame):
                 padding: 8px;
             """)
         else:
-            self.label.setAlignment(Qt.AlignLeft)
+            self.label.setAlignment(QtCore.Qt.AlignLeft)
             self.label.setStyleSheet("""
                 background-color: #f0f0f0;
                 color: black;
@@ -53,13 +55,13 @@ class TextMessage(QFrame):
         self.setLayout(layout)
 
 
-class CodeBlockWidget(QFrame):
+class CodeBlockWidget(QtWidgets.QFrame):
     """Widget for displaying and executing a code block."""
     
     # Signal emitted when execute button is clicked
-    execute_requested = Signal(str)
+    execute_requested = QtCore.Signal(str)
     # Signal emitted when revert button is clicked
-    revert_requested = Signal()
+    revert_requested = QtCore.Signal()
     
     def __init__(self, code_text, parent=None):
         """Initialize code block widget.
@@ -70,7 +72,7 @@ class CodeBlockWidget(QFrame):
         """
         super().__init__(parent)
         self.code_text = code_text
-        self.setFrameStyle(QFrame.Box)
+        self.setFrameStyle(QtWidgets.QFrame.Box)
         self.setStyleSheet("""
             CodeBlockWidget {
                 border: 2px solid #007bff;
@@ -81,25 +83,25 @@ class CodeBlockWidget(QFrame):
         """)
         
         # Create layout
-        layout = QVBoxLayout(self)
+        layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
         
         # Create code display (read-only)
-        self.code_display = QTextEdit()
+        self.code_display = QtWidgets.QTextEdit()
         self.code_display.setPlainText(code_text)
         self.code_display.setReadOnly(True)
         self.code_display.setMaximumHeight(150)
         
         # Use monospace font
-        font = QFont("Courier")
-        font.setStyleHint(QFont.Monospace)
+        font = QtGui.QFont("Courier")
+        font.setStyleHint(QtGui.QFont.Monospace)
         self.code_display.setFont(font)
         
         # Create button container
-        button_layout = QHBoxLayout()
+        button_layout = QtWidgets.QHBoxLayout()
         
         # Execute button (initially visible)
-        self.execute_button = QPushButton("Execute")
+        self.execute_button = QtWidgets.QPushButton("Execute")
         self.execute_button.setStyleSheet("""
             QPushButton {
                 background-color: #28a745;
@@ -116,7 +118,7 @@ class CodeBlockWidget(QFrame):
         self.execute_button.clicked.connect(self._on_execute_clicked)
         
         # Revert button (initially hidden)
-        self.revert_button = QPushButton("Revert")
+        self.revert_button = QtWidgets.QPushButton("Revert")
         self.revert_button.setStyleSheet("""
             QPushButton {
                 background-color: #dc3545;

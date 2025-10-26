@@ -1,18 +1,19 @@
 """
 Main copilot panel (QDockWidget)
 """
-from PySide2.QtWidgets import (
-    QDockWidget, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QTextEdit, QLabel, QListWidget, QListWidgetItem, QDialog
-)
-from PySide2.QtCore import Qt
-from PySide2.QtGui import QFont
+# Import Qt from FreeCAD
+import FreeCADGui as Gui
+
+# FreeCAD provides Qt through FreeCADGui.Qt
+QtWidgets = Gui.Qt.QtWidgets
+QtCore = Gui.Qt.QtCore
+QtGui = Gui.Qt.QtGui
 
 from .chat_widgets import TextMessage, CodeBlockWidget
 from .settings_dialog import SettingsDialog
 
 
-class CopilotPanel(QDockWidget):
+class CopilotPanel(QtWidgets.QDockWidget):
     """Main dockable panel for FreeCadCopilot."""
     
     def __init__(self, parent=None):
@@ -23,18 +24,18 @@ class CopilotPanel(QDockWidget):
         """
         super().__init__(parent)
         self.setWindowTitle("FreeCad Copilot")
-        self.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
         
         # Create main widget
-        main_widget = QWidget(self)
-        layout = QVBoxLayout(main_widget)
+        main_widget = QtWidgets.QWidget(self)
+        layout = QtWidgets.QVBoxLayout(main_widget)
         layout.setContentsMargins(5, 5, 5, 5)
         
         # Status bar at top
-        status_layout = QHBoxLayout()
+        status_layout = QtWidgets.QHBoxLayout()
         status_layout.setContentsMargins(5, 0, 5, 0)
         
-        self.status_label = QLabel("Status: Offline")
+        self.status_label = QtWidgets.QLabel("Status: Offline")
         self.status_label.setStyleSheet("""
             QLabel {
                 background-color: #dc3545;
@@ -46,7 +47,7 @@ class CopilotPanel(QDockWidget):
         """)
         
         # Settings button
-        self.settings_button = QPushButton("⚙ Settings")
+        self.settings_button = QtWidgets.QPushButton("⚙ Settings")
         self.settings_button.setStyleSheet("""
             QPushButton {
                 background-color: #6c757d;
@@ -67,9 +68,9 @@ class CopilotPanel(QDockWidget):
         status_layout.addWidget(self.settings_button)
         
         # Chat history (using QListWidget for dynamic widget insertion)
-        self.chat_list = QListWidget()
+        self.chat_list = QtWidgets.QListWidget()
         self.chat_list.setAlternatingRowColors(False)
-        self.chat_list.setSelectionMode(QListWidget.NoSelection)
+        self.chat_list.setSelectionMode(QtWidgets.QListWidget.NoSelection)
         self.chat_list.setStyleSheet("""
             QListWidget {
                 border: 1px solid #cccccc;
@@ -83,15 +84,15 @@ class CopilotPanel(QDockWidget):
         """)
         
         # Input area
-        input_layout = QHBoxLayout()
+        input_layout = QtWidgets.QHBoxLayout()
         
-        self.user_input = QTextEdit()
+        self.user_input = QtWidgets.QTextEdit()
         self.user_input.setMaximumHeight(60)
         self.user_input.setPlaceholderText("Type your command here... (Press Ctrl+Enter to send)")
         # Handle Ctrl+Enter to send
         self.user_input.keyPressEvent = self._handle_key_press
         
-        self.send_button = QPushButton("Send")
+        self.send_button = QtWidgets.QPushButton("Send")
         self.send_button.setMinimumWidth(80)
         self.send_button.setStyleSheet("""
             QPushButton {
@@ -132,10 +133,10 @@ class CopilotPanel(QDockWidget):
             event: QKeyEvent
         """
         # Call original keyPressEvent
-        QTextEdit.keyPressEvent(self.user_input, event)
+        QtWidgets.QTextEdit.keyPressEvent(self.user_input, event)
         
         # Send on Ctrl+Enter
-        if event.key() == Qt.Key_Return and (event.modifiers() & Qt.ControlModifier):
+        if event.key() == QtCore.Qt.Key_Return and (event.modifiers() & QtCore.Qt.ControlModifier):
             self._on_send_clicked()
     
     def _on_send_clicked(self):
@@ -182,7 +183,7 @@ App.ActiveDocument.recompute()"""
         """
         widget = TextMessage(text, is_user=is_user)
         
-        list_item = QListWidgetItem()
+        list_item = QtWidgets.QListWidgetItem()
         list_item.setSizeHint(widget.sizeHint())
         self.chat_list.addItem(list_item)
         self.chat_list.setItemWidget(list_item, widget)
@@ -202,7 +203,7 @@ App.ActiveDocument.recompute()"""
         widget.execute_requested.connect(lambda c=code: self._on_execute_code(c, widget))
         widget.revert_requested.connect(lambda: self._on_revert_code(widget))
         
-        list_item = QListWidgetItem()
+        list_item = QtWidgets.QListWidgetItem()
         list_item.setSizeHint(widget.sizeHint())
         self.chat_list.addItem(list_item)
         self.chat_list.setItemWidget(list_item, widget)
@@ -238,7 +239,7 @@ App.ActiveDocument.recompute()"""
     def _open_settings(self):
         """Open the settings dialog."""
         dialog = SettingsDialog(self)
-        if dialog.exec_() == QDialog.Accepted:
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
             settings = dialog.get_settings()
             print(f"Settings saved: {settings}")
             # TODO: Save settings and update status
