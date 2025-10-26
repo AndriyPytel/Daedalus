@@ -1,12 +1,4 @@
-"""
-FreeCadCopilot - GUI Initialization
-"""
-
-from ui.copilot_panel import CopilotPanel
-
-
 class CopilotWorkbench(Workbench):
-    """Main workbench for FreeCadCopilot."""
     MenuText = "FreeCad Copilot"
     ToolTip = "AI-powered command execution for FreeCAD"
     # Icon = "Resources/icons/copilot.svg"
@@ -46,6 +38,7 @@ class CopilotWorkbench(Workbench):
     #     # This function is mandatory if this is a full Python workbench
     #     # This is not a template, the returned string should be exactly "Gui::PythonWorkbench"
     #     return "Gui::PythonWorkbench"
+
     def Initialize(self):
 
         commands = ["Start_RPC_Server", "Stop_RPC_Server"]
