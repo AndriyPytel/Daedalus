@@ -12,29 +12,6 @@ class FreeCadCopilotWorkbench(CopilotWorkbench.CopilotWorkbench):
     
     MenuText = "FreeCad Copilot"
     ToolTip = "AI-powered command execution for FreeCAD"
-    Icon = """
-/* XPM */
-static char * copilot_xpm[] = {
-"16 16 2 1",
-" 	c None",
-".	c #000000",
-"........        ",
-".      .        ",
-".  ..  .    ....",
-".  ..  .    .  .",
-".      .    .  .",
-".      .    .  .",
-".  ..  .    .  .",
-".  ..  .    .  .",
-".      .    ....",
-"........        ",
-"    ........    ",
-"    .      .    ",
-"    .  ..  .    ",
-"    .  ..  .    ",
-"    .      .    ",
-"    ........    "};
-"""
-
+    Icon = ""
 
 Gui.addWorkbench(FreeCadCopilotWorkbench())

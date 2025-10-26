@@ -37,5 +37,4 @@ class CopilotWorkbench(Gui.Workbench):
         pass
     
     def GetClassName(self):
-        """Return the workbench class name."""
-        return "FreeCadCopilot::CopilotWorkbench"
+        return "Gui::PythonWorkbench"
