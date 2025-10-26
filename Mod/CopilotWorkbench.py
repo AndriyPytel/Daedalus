@@ -14,7 +14,7 @@ class CopilotWorkbench(Gui.Workbench):
         """Initialize the workbench."""
         self.__class__.MenuText = "FreeCad Copilot"
         self.__class__.ToolTip = "AI-powered command execution for FreeCAD"
-        self.__class__.Icon = ""
+        self.__class__.Icon = "Resources/icons/copilot.svg"
         self.copilot_panel = None
     
     def Activated(self):

@@ -10,6 +10,6 @@
     <license value="MIT"/>
     <url value="https://github.com/your-repo/FreeCadCopilot"/>
     <website value="https://github.com/your-repo/FreeCadCopilot"/>
-    <icon value="Resources/icons/copilot.png"/>
+    <icon value="Resources/icons/copilot.svg"/>
     <file value="."/>
 </Package>

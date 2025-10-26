@@ -3,7 +3,7 @@ Main copilot panel (QDockWidget)
 """
 from PySide2.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
-    QTextEdit, QLabel, QListWidget, QListWidgetItem
+    QTextEdit, QLabel, QListWidget, QListWidgetItem, QDialog
 )
 from PySide2.QtCore import Qt
 from PySide2.QtGui import QFont
