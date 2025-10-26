@@ -46,7 +46,7 @@ class CopilotWorkbench(Workbench):
     #     # This function is mandatory if this is a full Python workbench
     #     # This is not a template, the returned string should be exactly "Gui::PythonWorkbench"
     #     return "Gui::PythonWorkbench"
-     def Initialize(self):
+    def Initialize(self):
 
         commands = ["Start_RPC_Server", "Stop_RPC_Server"]
         self.appendToolbar("FreeCAD MCP", commands)
@@ -64,6 +64,5 @@ class CopilotWorkbench(Workbench):
     def GetClassName(self):
         return "Gui::PythonWorkbench"
 
-       
 
 Gui.addWorkbench(CopilotWorkbench())
