@@ -5,7 +5,6 @@ import FreeCADGui as Gui
 import FreeCAD as App
 
 import traceback
-import FreeCAD # Переконайтесь, що FreeCAD імпортовано, щоб мати доступ до Console
 
 try:
     
@@ -15,8 +14,6 @@ try:
 
 
 except Exception as e:
-    # Цей код виконається, якщо в блоці 'try' станеться помилка
-    FreeCAD.Console.PrintError("="*50 + "\n")
-    FreeCAD.Console.PrintError(f"!!! КРИТИЧНА ПОМИЛКА в InitGui.py: {e}\n")
-    FreeCAD.Console.PrintError(traceback.format_exc()) # Це надрукує повний стектрейс!
-    FreeCAD.Console.PrintError("="*50 + "\n")
+    App.Console.PrintError("="*50 + "\n")
+    App.Console.PrintError(traceback.format_exc()) 
+    App.Console.PrintError("="*50 + "\n")
