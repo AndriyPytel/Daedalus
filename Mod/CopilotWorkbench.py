@@ -3,9 +3,11 @@ FreeCadCopilot Workbench
 """
 import FreeCADGui as Gui
 import FreeCAD as App
+import os
 
 from ui.copilot_panel import CopilotPanel
 
+logo_icon = os.path.join(os.path.dirname(__file__) , '../Resources/icons/copilot.svg')
 
 class CopilotWorkbench(Gui.Workbench):
     """Main workbench for FreeCadCopilot."""
@@ -14,7 +16,7 @@ class CopilotWorkbench(Gui.Workbench):
         """Initialize the workbench."""
         self.__class__.MenuText = "FreeCad Copilot"
         self.__class__.ToolTip = "AI-powered command execution for FreeCAD"
-        self.__class__.Icon = "Resources/icons/copilot.svg"
+        self.__class__.Icon = logo_icon
         self.copilot_panel = None
         self.dock_area = None
     

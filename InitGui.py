@@ -8,18 +8,7 @@ import traceback
 import FreeCAD # Переконайтесь, що FreeCAD імпортовано, щоб мати доступ до Console
 
 try:
-    
-    from Mod.CopilotWorkbench import CopilotWorkbench
-
-
-    class FreeCadCopilotWorkbench(CopilotWorkbench):
-        """Workbench initialization class."""
-        
-        MenuText = "FreeCad Copilot"
-        ToolTip = "AI-powered command execution for FreeCAD"
-        # Icon = "Resources/icons/copilot.svg"
-
-    Gui.addWorkbench(FreeCadCopilotWorkbench)
+    Gui.addWorkbench(CopilotWorkbench())
 
 
 except Exception as e:
