@@ -19,7 +19,7 @@ try:
         ToolTip = "AI-powered command execution for FreeCAD"
         # Icon = "Resources/icons/copilot.svg"
 
-    Gui.addWorkbench(FreeCadCopilotWorkbench())
+    Gui.addWorkbench(FreeCadCopilotWorkbench)
 
 
 except Exception as e:
