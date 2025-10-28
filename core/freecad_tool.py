@@ -1,4 +1,11 @@
-from langchain_core.tools import BaseTool
+try:
+	from langchain_core.tools import BaseTool
+except ImportError as e:
+	print("FreeCadCopilot Error: Failed to import vendored libraries from 'lib'.")
+	print(f"Missing module: {getattr(e, 'name', str(e))}")
+	print("Please ensure all dependencies were correctly installed into the 'lib' folder.")
+	BaseTool = object  # fallback to allow module import; usage will fail meaningfully later
+
 from pydantic import BaseModel, Field
 
 

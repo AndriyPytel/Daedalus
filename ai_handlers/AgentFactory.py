@@ -6,19 +6,25 @@ try:
 except Exception:
 	App = None
 
-from langchain_openai import ChatOpenAI
 try:
+	from langchain.agents import AgentExecutor, create_tool_calling_agent
+	from langchain_core.prompts import ChatPromptTemplate
+	from langchain_core.tools import BaseTool  # ensure vendored core available
+	from langchain_openai import ChatOpenAI
 	from langchain_google_genai import ChatGoogleGenerativeAI
-except Exception:
-	ChatGoogleGenerativeAI = None
-
-try:
 	from langchain_anthropic import ChatAnthropic
-except Exception:
+except ImportError as e:
+	print("FreeCadCopilot Error: Failed to import vendored libraries from 'lib'.")
+	print(f"Missing module: {getattr(e, 'name', str(e))}")
+	print("Please ensure all dependencies were correctly installed into the 'lib' folder.")
+	# Soft fallback: define dummies to raise later on usage
+	AgentExecutor = None
+	create_tool_calling_agent = None
+	ChatPromptTemplate = None
+	BaseTool = None
+	ChatOpenAI = None
+	ChatGoogleGenerativeAI = None
 	ChatAnthropic = None
-
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.agents import create_tool_calling_agent, AgentExecutor
 
 from core.freecad_tool import ExecuteFreeCADPythonTool
 
@@ -82,6 +88,8 @@ def _instantiate_model(provider: str, model_name: str, creds: Dict[str, Optional
 
 def create_agent_executor() -> AgentExecutor:
 	"""Create an AgentExecutor configured from FreeCAD preferences."""
+	if any(v is None for v in [AgentExecutor, create_tool_calling_agent, ChatPromptTemplate, ChatOpenAI]):
+		raise RuntimeError("LangChain dependencies not available. Ensure 'lib' vendored deps are installed.")
 	prefs = _load_preferences()
 	model_name = prefs.get("selected_model")
 	api_keys = prefs.get("api_keys", [])
