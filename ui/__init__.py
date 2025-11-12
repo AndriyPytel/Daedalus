@@ -1,1 +1,0 @@
-"""FreeCadCopilot UI module."""
