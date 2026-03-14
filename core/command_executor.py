@@ -5,20 +5,28 @@ def execute(script):
     """
     Executes a script within a FreeCAD transaction.
     """
+    try:
+        import FreeCADGui
+    except ImportError:
+        FreeCADGui = None
+
     doc = FreeCAD.ActiveDocument
     if not doc:
         FreeCAD.Console.PrintError("No active document to execute script in.\\n")
-        return "No active document."
+        return {"status": "error", "message": "No active document."}
         
-    doc.openTransaction("Copilot Action")
+    doc.openTransaction("AI Generated Feature")
     try:
-        exec(script, {'App': FreeCAD, 'Gui': FreeCADGui})
+        # Provide common aliases in the exec namespace
+        exec_namespace = {'App': FreeCAD, 'Gui': FreeCADGui, 'FreeCAD': FreeCAD, 'FreeCADGui': FreeCADGui}
+        exec(script, exec_namespace)
+        doc.recompute() # Make sure changes show up before committing
         doc.commitTransaction()
-        return True
+        return {"status": "success", "message": "Execution successful"}
     except Exception as e:
         doc.abortTransaction()
         FreeCAD.Console.PrintError(f"Error executing script: {e}\\n")
-        return e
+        raise e
 
 def revert():
     """

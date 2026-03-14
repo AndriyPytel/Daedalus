@@ -46,13 +46,28 @@ class CopilotPreferences(QWidget):
         # Global System Prompt
         system_prompt_label = QLabel("Global System Prompt")
         layout.addWidget(system_prompt_label)
-
         self.system_prompt_text = QTextEdit()
-        self.system_prompt_text.textChanged.connect(self.save_system_prompt)
+        self.system_prompt_text.setMaximumHeight(60)
+        self.system_prompt_text.textChanged.connect(self.save_settings)
         layout.addWidget(self.system_prompt_text)
+
+        # Agent Specific Prompts
+        self.designer_prompt = self._add_prompt_field(layout, "Designer System Prompt (Override)")
+        self.developer_prompt = self._add_prompt_field(layout, "Developer System Prompt (Override)")
+        self.validator_prompt = self._add_prompt_field(layout, "Validator System Prompt (Override)")
+        self.reviewer_prompt = self._add_prompt_field(layout, "Reviewer System Prompt (Override)")
 
         self.setLayout(layout)
         self.load_settings()
+
+    def _add_prompt_field(self, layout, label_text):
+        label = QLabel(label_text)
+        layout.addWidget(label)
+        text_edit = QTextEdit()
+        text_edit.setMaximumHeight(60)
+        text_edit.textChanged.connect(self.save_settings)
+        layout.addWidget(text_edit)
+        return text_edit
 
     def add_key(self):
         dialog = AddKeyDialog(self)
@@ -93,6 +108,12 @@ class CopilotPreferences(QWidget):
             self.table.setItem(row_position, 1, QTableWidgetItem("*" * len(key_info.get("api_key", ""))))
 
         self.system_prompt_text.setPlainText(param_grp.GetString("GlobalSystemPrompt", ""))
+        self.orchestrator_prompt.setPlainText(param_grp.GetString("OrchestratorPrompt", ""))
+        self.designer_prompt.setPlainText(param_grp.GetString("DesignerPrompt", ""))
+        self.developer_prompt.setPlainText(param_grp.GetString("DeveloperPrompt", ""))
+        self.validator_prompt.setPlainText(param_grp.GetString("ValidatorPrompt", ""))
+        self.reviewer_prompt.setPlainText(param_grp.GetString("ReviewerPrompt", ""))
+        
         self.update_model_selection()
 
         selected_model = param_grp.GetString("SelectedModel", "")
@@ -117,6 +138,11 @@ class CopilotPreferences(QWidget):
     def save_system_prompt(self):
         param_grp = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/FreeCadCopilot")
         param_grp.SetString("GlobalSystemPrompt", self.system_prompt_text.toPlainText())
+        param_grp.SetString("OrchestratorPrompt", self.orchestrator_prompt.toPlainText())
+        param_grp.SetString("DesignerPrompt", self.designer_prompt.toPlainText())
+        param_grp.SetString("DeveloperPrompt", self.developer_prompt.toPlainText())
+        param_grp.SetString("ValidatorPrompt", self.validator_prompt.toPlainText())
+        param_grp.SetString("ReviewerPrompt", self.reviewer_prompt.toPlainText())
 
     def update_model_selection(self):
         self.model_combo.clear()

@@ -1,63 +1,71 @@
 # FreeCadCopilot/ui/copilot_panel.py
 import FreeCAD
-import json
 from PySide.QtGui import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
-    QPushButton, QListWidget, QListWidgetItem, QTabWidget
+    QPushButton, QListWidgetItem
 )
 from PySide.QtCore import QThread, Signal, QObject, Slot
-from .chat_widgets import TextMessageWidget, CodeBlockWidget
-from ai_handlers.AgentFactory import create_agent_executor
 
-# The worker that will run in a separate thread
+from .chat_widgets import TextMessageWidget, CodeBlockWidget
+from .multi_tab_manager import MultiTabManager
+from .upload_widget import UploadWidget
+from .task_list_widget import TaskListWidget
+from .accordion_widget import AccordionWidget
+from agents.system_controller import MultiAgentController
+
 class AiWorker(QObject):
     finished = Signal(dict)
     error = Signal(str)
 
-    def __init__(self, agent_executor):
+    def __init__(self, controller):
         super(AiWorker, self).__init__()
-        self.agent_executor = agent_executor
+        self.controller = controller
 
     @Slot(str)
     def do_work(self, user_input):
         try:
-            response = self.agent_executor.invoke({"messages": [{"role": "user", "content": user_input}]})
+            # The MultiAgentController processes the async request
+            response = self.controller.process_request(user_input)
             self.finished.emit(response)
         except Exception as e:
             self.error.emit(str(e))
 
 class CopilotPanel(QDockWidget):
-    # Signal to request work from the worker thread
     request_work = Signal(str)
 
     def __init__(self):
-        super(CopilotPanel, self).__init__("FreeCAD Copilot")
+        super().__init__("FreeCAD Copilot")
         self.setWidget(QWidget())
         self.layout = QVBoxLayout()
         self.widget().setLayout(self.layout)
 
-        # Chat history management
-        self.chat_tabs = QTabWidget()
-        self.chat_tabs.setTabsClosable(True)
-        self.chat_tabs.tabCloseRequested.connect(self.close_chat_tab)
+        # 1. Task List Widget
+        self.task_list = TaskListWidget()
+        self.layout.addWidget(self.task_list)
+
+        # 2. Multi-Tab Manager
+        self.chat_tabs = MultiTabManager()
         self.layout.addWidget(self.chat_tabs)
 
-        # Create and start the worker thread
-        self.agent_executor = create_agent_executor()
+        # Worker Thread Setup
+        self.controller = MultiAgentController()
         self.thread = QThread()
-        self.worker = AiWorker(self.agent_executor)
+        self.worker = AiWorker(self.controller)
         self.worker.moveToThread(self.thread)
 
-        # Connect signals and slots
         self.request_work.connect(self.worker.do_work)
         self.worker.finished.connect(self.on_ai_response_received)
         self.worker.error.connect(self.on_ai_error)
 
         self.thread.start()
 
-        # Input and control buttons
+        # 3. File Upload Widget
+        self.upload_widget = UploadWidget()
+        self.layout.addWidget(self.upload_widget)
+
+        # 4. Input Area
         self.user_input = QTextEdit()
-        self.user_input.setMaximumHeight(100)
+        self.user_input.setMaximumHeight(80)
         self.layout.addWidget(self.user_input)
 
         button_layout = QHBoxLayout()
@@ -70,86 +78,63 @@ class CopilotPanel(QDockWidget):
         button_layout.addWidget(self.new_chat_button)
         self.layout.addLayout(button_layout)
 
-        self.new_chat() # Start with an initial chat
+        self.new_chat()
 
     def new_chat(self):
-        chat_history = QListWidget()
-        tab_index = self.chat_tabs.addTab(chat_history, f"Chat {self.chat_tabs.count() + 1}")
-        self.chat_tabs.setCurrentIndex(tab_index)
-
-    def close_chat_tab(self, index):
-        if self.chat_tabs.count() > 1:
-            widget = self.chat_tabs.widget(index)
-            self.chat_tabs.removeTab(index)
-            widget.deleteLater()
-        else:
-            # Clear the last chat tab instead of closing it
-            self.chat_tabs.widget(index).clear()
-
-    def get_current_chat_history(self):
-        return self.chat_tabs.currentWidget()
+        self.chat_tabs.add_new_chat(f"Chat {self.chat_tabs.count() + 1}")
+        # Reset overall tasks on fresh chat
+        self.task_list.set_tasks([])
 
     def on_send(self):
         user_text = self.user_input.toPlainText().strip()
         if not user_text:
             return
 
-        chat_history = self.get_current_chat_history()
-        if not chat_history:
-            # This should not happen if there is always at least one tab
-            return
+        # Attached files pass context
+        files = self.upload_widget.get_and_clear_files()
+        context_msg = ""
+        if files:
+            context_msg = f" [Attached {len(files)} files]"
 
-        self.add_chat_widget(TextMessageWidget(f"You: {user_text}"))
+        self.add_chat_widget(TextMessageWidget(f"You: {user_text}{context_msg}"))
         self.user_input.clear()
+        
+        # Setup UI for standard execution pipeline steps
+        self.task_list.set_tasks(["Orchestrating", "Designing", "Developing", "Validating", "Reviewing"])
 
-        # Emit signal to start AI processing in worker thread
         self.request_work.emit(user_text)
 
-    def on_ai_response_received(self, response):
-        print("----------RAW RESPONSE----------")
-        print(response)
-        print("---------------------------------")
+    def on_ai_response_received(self, response: dict):
+        if "error" in response:
+            self.on_ai_error(response["error"])
+            self.task_list.update_task_status("Execution", "failed")
+            return
 
-        # The response format has changed. The AI message is now inside a list of messages.
-        # The new structure is like: {'messages': [HumanMessage, AIMessage]}
-        # The AIMessage content can be a string or a list of content blocks.
-
-        ai_message = None
-        if 'messages' in response and response['messages']:
-            # AIMessage is typically the last one in the list
-            message = response['messages'][-1]
-            # Check if it's an AIMessage (or has 'response_metadata' which is typical for AIMessage)
-            if hasattr(message, 'response_metadata'):
-                 ai_message = message
-
-        if ai_message:
-            if isinstance(ai_message.content, str):
-                self.add_chat_widget(TextMessageWidget(f"AI: {ai_message.content}"))
-            elif isinstance(ai_message.content, list):
-                for content_block in ai_message.content:
-                    if content_block.get('type') == 'text':
-                        self.add_chat_widget(TextMessageWidget(f"AI: {content_block.get('text', '')}"))
-                    # Here we could handle other content types like tool calls if they appear in content
-        elif 'output' in response:
-            # Fallback to the old response structure
-            self.add_chat_widget(TextMessageWidget(f"AI: {response['output']}"))
+        # Accordion showing Chain of Thought / Plan
+        accordion = AccordionWidget("View Planner Strategy")
+        accordion.append_text(response.get("strategy", "No specialized strategy output."))
+        self.add_chat_widget(accordion)
+        
+        # Display the Code
+        gen_code = response.get("generated_code")
+        if gen_code:
+            self.add_chat_widget(CodeBlockWidget(gen_code))
         else:
-            self.on_ai_error("Unknown AI response format")
+             self.add_chat_widget(TextMessageWidget(response.get("orchestrator_output", "Finished task.")))
 
-        # Handle tool calls, which might still be in 'intermediate_steps' for agent responses
-        for tool_call in response.get("intermediate_steps", []):
-            # tool_call is a tuple (action, observation)
-            action = tool_call[0]
-            if hasattr(action, 'tool_input') and isinstance(action.tool_input, dict) and 'script' in action.tool_input:
-                script = action.tool_input['script']
-                self.add_chat_widget(CodeBlockWidget(script))
+        # Update success states in UI
+        self.task_list.update_task_status("Orchestrating", "done")
+        self.task_list.update_task_status("Designing", "done")
+        self.task_list.update_task_status("Developing", "done")
+        self.task_list.update_task_status("Validating", "done")
+        self.task_list.update_task_status("Reviewing", "done")
 
     def on_ai_error(self, error_message):
         FreeCAD.Console.PrintMessage(f"FreeCAD Copilot Error: {error_message}\\n")
-        self.add_chat_widget(TextMessageWidget(f"Error: {error_message}"))
+        self.add_chat_widget(TextMessageWidget(f"🚨 Error: {error_message}"))
 
     def add_chat_widget(self, widget):
-        chat_history = self.get_current_chat_history()
+        chat_history = self.chat_tabs.get_current_chat_history()
         if not chat_history:
             return
         item = QListWidgetItem(chat_history)
@@ -159,7 +144,6 @@ class CopilotPanel(QDockWidget):
         chat_history.scrollToBottom()
 
     def closeEvent(self, event):
-        # Clean up the thread when the widget is closed
         self.thread.quit()
         self.thread.wait()
-        super(CopilotPanel, self).closeEvent(event)
+        super().closeEvent(event)

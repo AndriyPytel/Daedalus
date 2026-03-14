@@ -1,7 +1,6 @@
 # FreeCadCopilot/ui/chat_widgets.py
 from PySide.QtGui import QWidget, QVBoxLayout, QTextEdit, QPushButton, QHBoxLayout, QLabel
 from core.command_executor import execute, revert
-from core.undo_manager import undo_manager
 
 class TextMessageWidget(QWidget):
     def __init__(self, text):
@@ -36,13 +35,11 @@ class CodeBlockWidget(QWidget):
         self.setLayout(layout)
 
     def execute_script(self):
-        result = execute(self.script)
-        if result is True:
-            undo_manager.register_execution(self)
-        else:
+        try:
+            execute(self.script)
+        except Exception as e:
             # Handle error
             pass
 
     def revert_script(self):
         revert()
-        undo_manager.pop_last_execution()
