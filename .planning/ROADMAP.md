@@ -4,13 +4,13 @@
 
 | # | Phase | Goal | Requirements | Success Criteria |
 |---|-------|------|--------------|------------------|
-| 1 | Thread Safety & Execution | Run LLM interactions completely off the main thread while executing verified code safely. | EXEC-01, EXEC-02, EXEC-03, UX-01 | 3 |
+| 1 | Thread Safety & Execution | 1/1 | Complete   | 2026-04-09 |
 | 2 | MEDA & Parametric Engine | Introduce the Multi-Expert Design Agent framework for constraint-aware sketch generation. | PARA-01, PARA-02, PARA-03 | 3 |
 
 
 ### Phase Details
 
-**Phase 1: Thread Safety & Execution**
+## Phase 1: Thread Safety & Execution
 **Goal**: Run LLM interactions completely off the main thread while executing strictly verified Native UI code through explicit signal boundaries, giving users real-time stream feedback.
 **Requirements**: EXEC-01, EXEC-02, EXEC-03, UX-01
 **UI hint**: yes
@@ -20,7 +20,7 @@
 2. Token generation is streamed to UI text boxes visibly character-by-character.
 3. Executing python strictly evaluates in a wrapped document transaction.
 
-**Phase 2: MEDA & Parametric Engine**
+## Phase 2: MEDA & Parametric Engine
 **Goal**: Introduce the Multi-Expert Design Agent framework for constraint-aware sketch generation and topology verification.
 **Requirements**: PARA-01, PARA-02, PARA-03
 **UI hint**: no
