@@ -24,12 +24,22 @@ class ContextInjector:
     @staticmethod
     def get_developer_context(state: dict) -> str:
         """
-        Returns FreeCAD API Documentation snippets (Sketcher, PartDesign, App/Gui) 
-        and Current Codebase State.
+        Returns FreeCAD API Documentation snippets retrieved from the RAG store.
         """
-        # Mocking specific doc retrieval
-        api_docs = "FreeCAD API: Use App.ActiveDocument to get the document. Use Part and PartDesign for geometries."
-        return f"API Documentation:\n{api_docs}"
+        try:
+            from core.rag_service import get_rag_service
+            rag_docs = get_rag_service().get_full_context()
+            if not rag_docs:
+                rag_docs = "FreeCAD API: Prefer PartDesign and Sketcher. Always use doc=App.ActiveDocument."
+        except Exception as e:
+            rag_docs = f"FreeCAD API Base Rules (RAG Failed: {e})"
+            
+        ctx = f"RAG API Documentation Snippets:\n{rag_docs}"
+        
+        if state.get("feedback"):
+            ctx += f"\n\nCRITICAL FIX REQUIRED:\nYour previous code generated the following error:\n{state['feedback']}\nPlease fix this error in your response."
+            
+        return ctx
         
     @staticmethod
     def get_validator_context(state: dict) -> str:
