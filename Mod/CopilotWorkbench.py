@@ -28,7 +28,8 @@ class CopilotWorkbench(Gui.Workbench):
 
         mw = Gui.getMainWindow()
         if mw is None:
-            FreeCAD.Console.PrintError("Cannot get main window\n")
+            from utils.logger import logger
+            logger.error("Cannot get main window")
             return
 
         if self.copilot_panel is None:

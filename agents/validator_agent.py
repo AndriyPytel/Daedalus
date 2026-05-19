@@ -35,6 +35,30 @@ class ValidatorAgent(BaseAgent):
                 "next_step": "code" # Send back to Coder
             }
             
+        # FreeCAD 1.0 specific API validations
+        if ".Support =" in generated_code or ".Support" in generated_code:
+            return {
+                "review_status": "failed",
+                "feedback": "CRITICAL ERROR: 'sketch.Support' is DEPRECATED and removed in FreeCAD 1.0! Use 'sketch.Placement' instead.",
+                "next_step": "code"
+            }
+            
+        if ".Plane =" in generated_code or ".Plane" in generated_code:
+            return {
+                "review_status": "failed",
+                "feedback": "CRITICAL ERROR: 'sketch.Plane' is DEPRECATED and removed in FreeCAD 1.0. You MUST assign to 'sketch.Placement' instead! (e.g. sketch.Placement = App.Placement(...))",
+                "next_step": "code"
+            }
+            
+        for line in generated_code.split('\n'):
+            line = line.strip()
+            if line.startswith("doc.") and "=" in line and not line.startswith("doc.Name") and not line.startswith("doc.Label"):
+                return {
+                    "review_status": "failed",
+                    "feedback": f"CRITICAL ERROR: In line '{line}', you illegally assigned a dynamic attribute directly to App.Document! FreeCAD documents do not support arbitrary attributes like doc.Length. Use standard Python variables instead.",
+                    "next_step": "code"
+                }
+
         return {
             "review_status": "passed",
             "next_step": "execute"

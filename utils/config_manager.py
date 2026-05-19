@@ -2,6 +2,9 @@
 import FreeCAD
 import json
 
+# NOTE: MODEL_MAP has moved to config/models.json
+# Access it via utils.provider_manager.ProviderManager.instance().get_models_for_provider()
+
 class ConfigManager:
     @staticmethod
     def get_preferences():
@@ -17,13 +20,12 @@ class ConfigManager:
         selected_model = param_grp.GetString("SelectedModel", "")
         global_system_prompt = param_grp.GetString("GlobalSystemPrompt", "You are a helpful AI Assistant for FreeCAD.")
         
-        # For now, default all agents to the global prompt if they don't have a specific one
-        # In the future, we will have specific prompts
-        orchestrator_prompt = param_grp.GetString("OrchestratorPrompt", global_system_prompt)
-        designer_prompt = param_grp.GetString("DesignerPrompt", global_system_prompt)
-        developer_prompt = param_grp.GetString("DeveloperPrompt", global_system_prompt)
-        validator_prompt = param_grp.GetString("ValidatorPrompt", global_system_prompt)
-        reviewer_prompt = param_grp.GetString("ReviewerPrompt", global_system_prompt)
+        # Specific agent overrides (if any)
+        orchestrator_prompt = param_grp.GetString("OrchestratorPrompt", "")
+        designer_prompt = param_grp.GetString("DesignerPrompt", "")
+        developer_prompt = param_grp.GetString("DeveloperPrompt", "")
+        validator_prompt = param_grp.GetString("ValidatorPrompt", "")
+        reviewer_prompt = param_grp.GetString("ReviewerPrompt", "")
         
         return {
             "api_keys": api_keys,
@@ -38,25 +40,36 @@ class ConfigManager:
 
     @staticmethod
     def get_llm_credentials():
-        prefs = ConfigManager.get_preferences()
-        selected_model = prefs["selected_model"]
-        api_keys = prefs["api_keys"]
-        
-        if not selected_model or not api_keys:
-            raise ValueError("Model or API keys not configured in FreeCAD preferences.")
+        """
+        Backward-compat shim — delegates to SettingsManager.
+        Returns (provider, model_id, api_key).
+        """
+        from utils.settings_manager import SettingsManager
+        return SettingsManager.instance().get_llm_credentials()
 
-        from ai_handlers.AgentFactory import MODEL_MAP
-        
-        provider = ""
-        api_key = ""
-        for key_info in api_keys:
-            provider_name = key_info.get("provider", "")
-            if provider_name in MODEL_MAP and selected_model in MODEL_MAP[provider_name]:
-                provider = provider_name
-                api_key = key_info.get("api_key")
-                break
-                
-        if not provider or not api_key:
-            raise ValueError(f"Could not find a valid API key for the selected model: {selected_model}")
-            
-        return provider, selected_model, api_key
+    @staticmethod
+    def get_monospace_font():
+        """Retrieve the monospace font used in FreeCAD's Python editor/console."""
+        try:
+            p = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Editor")
+            # "Font" is the usual key for the editor font family in FreeCAD
+            font = p.GetString("Font", "")
+            if font:
+                return font
+        except Exception:
+            pass
+        # Fallback stack
+        return '"SF Mono", Monaco, Menlo, Consolas, "Liberation Mono", "Courier New", monospace'
+
+    @staticmethod
+    def get_ui_font():
+        """Retrieve the general UI font used in FreeCAD."""
+        try:
+            p = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/General")
+            font = p.GetString("FontFamily", "")
+            if font:
+                return font
+        except Exception:
+            pass
+        # Fallback stack
+        return "'Inter', 'Segoe UI', Roboto, sans-serif"

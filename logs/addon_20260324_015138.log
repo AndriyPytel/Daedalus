@@ -1,0 +1,10 @@
+2026-03-24 01:51:44  WARNING   FreeCadCopilot  [Orchestrator] LLM not configured: Unknown model 'gemini-1.5-flash'. Check your Preferences.. Please check API & Providers in Preferences.
+2026-03-24 01:51:44  WARNING   FreeCadCopilot  [Designer] LLM not configured: Unknown model 'gemini-1.5-flash'. Check your Preferences.. Please check API & Providers in Preferences.
+2026-03-24 01:51:44  WARNING   FreeCadCopilot  [Developer] LLM not configured: Unknown model 'gemini-1.5-flash'. Check your Preferences.. Please check API & Providers in Preferences.
+2026-03-24 01:51:44  WARNING   FreeCadCopilot  [Validator] LLM not configured: Unknown model 'gemini-1.5-flash'. Check your Preferences.. Please check API & Providers in Preferences.
+2026-03-24 01:51:44  WARNING   FreeCadCopilot  [Reviewer] LLM not configured: Unknown model 'gemini-1.5-flash'. Check your Preferences.. Please check API & Providers in Preferences.
+2026-03-24 01:52:00  INFO      FreeCadCopilot  [Orchestrator] Refreshing LLM instance for gemini-2.5-flash
+2026-03-24 01:52:04  INFO      FreeCadCopilot  [Designer] Refreshing LLM instance for gemini-2.5-flash
+2026-03-24 01:52:11  ERROR     FreeCadCopilot  Failed to embed FreeCAD documentation chunks for RAG: Error embedding content (NOT_FOUND): 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/embedding-001 is not found for API version v1beta, or is not supported for embedContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-03-24 01:52:11  INFO      FreeCadCopilot  [Developer] Refreshing LLM instance for gemini-2.5-flash
+2026-03-24 01:52:47  INFO      FreeCadCopilot  [Validator] Refreshing LLM instance for gemini-2.5-flash

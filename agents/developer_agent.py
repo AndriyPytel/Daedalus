@@ -21,14 +21,27 @@ class DeveloperAgent(BaseAgent):
         context = state.get("context", "")
         
         messages = self.prompt_template.format_messages(strategy=strategy, context=context)
-        response = self.llm.invoke(messages)
+        callbacks = []
+        stream_callback = state.get("stream_callback")
+        if stream_callback:
+            from agents.callbacks import UIStreamCallbackHandler
+            callbacks.append(UIStreamCallbackHandler(stream_callback))
+            
+        response = self.llm.invoke(messages, config={"callbacks": callbacks})
         
-        # Simple extraction assumes the LLM outputs markdown code blocks
-        script = response.content
-        if "```python" in script:
-            script = script.split("```python")[1].split("```")[0].strip()
+        # Extract code and reasoning
+        content = response.content
+        reasoning = content
+        script = ""
+        
+        if "```python" in content:
+            parts = content.split("```python")
+            reasoning = parts[0].strip()
+            if len(parts) > 1:
+                script = parts[1].split("```")[0].strip()
             
         return {
+            "developer_reasoning": reasoning,
             "generated_code": script,
-            "next_step": "review"
+            "next_step": "validate"
         }

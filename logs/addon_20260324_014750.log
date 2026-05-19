@@ -1,0 +1,76 @@
+2026-03-24 01:48:11  ERROR     FreeCadCopilot  Exception in Orchestrator.invoke(): ClientError: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+Traceback (most recent call last):
+  File "/Users/apytel/Library/Application Support/FreeCAD/Mod/FreeCadCopilot/agents/base_agent.py", line 112, in safe_invoke
+    return self.invoke(state)
+           ^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/Mod/FreeCadCopilot/agents/orchestrator.py", line 58, in invoke
+    response = self.llm.invoke(messages, config={"callbacks": callbacks})
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_google_genai/chat_models.py", line 2535, in invoke
+    return super().invoke(input, config, stop=stop, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_core/language_models/chat_models.py", line 402, in invoke
+    self.generate_prompt(
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_core/language_models/chat_models.py", line 1123, in generate_prompt
+    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_core/language_models/chat_models.py", line 933, in generate
+    self._generate_with_cache(
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_core/language_models/chat_models.py", line 1192, in _generate_with_cache
+    for chunk in self._stream(messages, stop=stop, **kwargs):
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_google_genai/chat_models.py", line 3140, in _stream
+    for chunk in response:
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/models.py", line 5886, in generate_content_stream
+    for chunk in response:
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/models.py", line 4464, in _generate_content_stream
+    for response in self._api_client.request_streamed(
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/_api_client.py", line 1418, in request_streamed
+    session_response = self._request(http_request, http_options, stream=True)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/_api_client.py", line 1235, in _request
+    return retry(self._request_once, http_request, stream)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/tenacity/__init__.py", line 470, in __call__
+    do = self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/tenacity/__init__.py", line 371, in iter
+    result = action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/tenacity/__init__.py", line 393, in <lambda>
+    self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+  File "/Applications/FreeCAD.app/Contents/Resources/lib/python3.11/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Applications/FreeCAD.app/Contents/Resources/lib/python3.11/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/tenacity/__init__.py", line 473, in __call__
+    result = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/_api_client.py", line 1202, in _request_once
+    errors.APIError.raise_for_response(response)
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/errors.py", line 134, in raise_for_response
+    cls.raise_error(response.status_code, response_json, response)
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/errors.py", line 159, in raise_error
+    raise ClientError(status_code, response_json, response)
+google.genai.errors.ClientError: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+
+2026-03-24 01:48:11  ERROR     FreeCadCopilot  FreeCAD Copilot Error: 🚨 Crash Report
+────────────────────────────────────────
+Context : Orchestrator.invoke()
+Error   : ClientError: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+OS      : Darwin 24.6.0
+Python  : 3.11.13
+FreeCAD : 1.0.2
+Log     : addon_20260324_014750.log
+────────────────────────────────────────
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/tenacity/__init__.py", line 473, in __call__
+    result = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/_api_client.py", line 1202, in _request_once
+    errors.APIError.raise_for_response(response)
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/errors.py", line 134, in raise_for_response
+    cls.raise_error(response.status_code, response_json, response)
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/errors.py", line 159, in raise_error
+    raise ClientError(status_code, response_json, response)
+google.genai.errors.ClientError: 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}

@@ -1,0 +1,205 @@
+try:
+    from PySide2 import QtCore, QtGui, QtWidgets
+except ImportError:
+    from PySide import QtCore, QtGui
+    QtWidgets = QtGui
+
+class HistoryItem(QtWidgets.QFrame):
+    """A single row in the history list with selectable title and delete button."""
+    selected = QtCore.Signal(int)
+    deleted = QtCore.Signal(int)
+
+    def __init__(self, index, name, created_at: QtCore.QDateTime):
+        super().__init__()
+        self.index = index
+        self.setObjectName("HistoryItem")
+        self.setFixedHeight(48)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(12, 0, 12, 0)
+        layout.setSpacing(8)
+
+        # Title and timestamp container
+        text_layout = QtWidgets.QVBoxLayout()
+        text_layout.setSpacing(2)
+        text_layout.setContentsMargins(0, 8, 0, 8)
+
+        self.title_label = QtWidgets.QLabel(name)
+        self.title_label.setObjectName("HistoryTitle")
+        self.title_label.setStyleSheet("font-weight: 500; font-size: 13px; background: transparent;")
+        
+        self.time_label = QtWidgets.QLabel(self._format_relative_time(created_at))
+        self.time_label.setObjectName("HistoryTime")
+        self.time_label.setStyleSheet("font-size: 11px; opacity: 0.7; background: transparent;")
+        
+        text_layout.addWidget(self.title_label)
+        text_layout.addWidget(self.time_label)
+        layout.addLayout(text_layout, stretch=1)
+
+        # Delete button
+        import os
+        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Resources", "icons", "trash.svg")
+        self.del_btn = QtWidgets.QPushButton()
+        if os.path.exists(icon_path):
+            self.del_btn.setIcon(QtGui.QIcon(icon_path))
+        else:
+            self.del_btn.setText("🗑")
+        
+        self.del_btn.setObjectName("DeleteButton")
+        self.del_btn.setFixedSize(24, 24)
+        self.del_btn.setCursor(QtCore.Qt.PointingHandCursor)
+        self.del_btn.setStyleSheet("""
+            QPushButton#DeleteButton {
+                background: transparent;
+                border: none;
+                border-radius: 4px;
+                font-size: 14px;
+                color: palette(text);
+            }
+            QPushButton#DeleteButton:hover {
+                background-color: palette(midlight);
+                color: #ff4d4d;
+            }
+        """)
+        self.del_btn.clicked.connect(lambda: self.deleted.emit(self.index))
+        layout.addWidget(self.del_btn)
+
+        self.setStyleSheet("""
+            QFrame#HistoryItem {
+                border-radius: 8px;
+                background-color: transparent;
+            }
+            QFrame#HistoryItem:hover {
+                background-color: palette(midlight);
+            }
+        """)
+
+    def _format_relative_time(self, dt: QtCore.QDateTime) -> str:
+        now = QtCore.QDateTime.currentDateTime()
+        secs = dt.secsTo(now)
+        if secs < 60: return "Just now"
+        if secs < 3600: return f"{secs // 60}m ago"
+        if secs < 86400: return f"{secs // 3600}h ago"
+        return dt.toString("MMM d")
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            self.selected.emit(self.index)
+        super().mousePressEvent(event)
+
+class HistoryPopup(QtWidgets.QFrame):
+    """
+    Antigravity-style floating popup with session list.
+    """
+    session_selected = QtCore.Signal(int)
+    session_deleted = QtCore.Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint)
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        self.setObjectName("HistoryPopup")
+        self.setFixedWidth(280)
+        self.setFixedHeight(400)
+
+        # Shadow effect
+        shadow = QtWidgets.QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setOffset(0, 5)
+        shadow.setColor(QtGui.QColor(0, 0, 0, 80))
+        self.setGraphicsEffect(shadow)
+
+        # Main container with border/bg
+        container = QtWidgets.QFrame(self)
+        container.setObjectName("PopupContainer")
+        container.setGeometry(10, 10, 260, 380) # Account for shadow padding
+        container.setStyleSheet("""
+            QFrame#PopupContainer {
+                background-color: palette(window);
+                border: 1px solid palette(mid);
+                border-radius: 12px;
+            }
+        """)
+        
+        vbox = QtWidgets.QVBoxLayout(container)
+        vbox.setContentsMargins(8, 12, 8, 12)
+        vbox.setSpacing(10)
+
+        # Search bar
+        self.search_input = QtWidgets.QLineEdit()
+        self.search_input.setPlaceholderText("Select a conversation")
+        self.search_input.setObjectName("HistorySearch")
+        self.search_input.setStyleSheet("""
+            QLineEdit#HistorySearch {
+                background-color: palette(base);
+                border: 1px solid palette(mid);
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 13px;
+                color: palette(text);
+            }
+        """)
+        self.search_input.textChanged.connect(self.filter_items)
+        vbox.addWidget(self.search_input)
+
+        # Scroll area for items
+        self.scroll = QtWidgets.QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.scroll.setStyleSheet("background: transparent;")
+        
+        self.list_container = QtWidgets.QWidget()
+        self.list_container.setObjectName("ListContainer")
+        self.list_container.setStyleSheet("background: transparent;")
+        self.list_layout = QtWidgets.QVBoxLayout(self.list_container)
+        self.list_layout.setContentsMargins(0, 0, 0, 0)
+        self.list_layout.setSpacing(2)
+        self.list_layout.addStretch()
+        
+        self.scroll.setWidget(self.list_container)
+        vbox.addWidget(self.scroll)
+
+    def populate(self, sessions_info: list):
+        """Rebuild the list from session data."""
+        # Clear existing
+        while self.list_layout.count() > 1:
+            item = self.list_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        for i, info in enumerate(sessions_info):
+            item = HistoryItem(i, info["name"], info["created_at"])
+            item.selected.connect(self._on_selected)
+            item.deleted.connect(self._on_deleted)
+            self.list_layout.insertWidget(self.list_layout.count() - 1, item)
+            
+    def _on_selected(self, index):
+        self.session_selected.emit(index)
+        self.close()
+
+    def _on_deleted(self, index):
+        self.session_deleted.emit(index)
+        # Populate will be called again by panel to refresh
+
+    def filter_items(self, text):
+        text = text.lower()
+        for i in range(self.list_layout.count() - 1):
+            widget = self.list_layout.itemAt(i).widget()
+            if isinstance(widget, HistoryItem):
+                widget.setVisible(text in widget.title_label.text().lower())
+
+    def show_at(self, pos: QtCore.QPoint):
+        self.move(pos - QtCore.QPoint(self.width() // 2, 0))
+        self.show()
+        self.search_input.setFocus()
+
+    def show_center(self):
+        # Center on the primary screen
+        # In PySide, QApplication.desktop() returns QDesktopWidget
+        screen_geo = QtWidgets.QApplication.desktop().screenGeometry()
+        center = screen_geo.center()
+        self.move(center.x() - self.width() // 2, center.y() - self.height() // 2)
+        self.show()
+        self.search_input.setFocus()

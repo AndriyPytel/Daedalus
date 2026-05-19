@@ -1,0 +1,80 @@
+2026-04-08 14:45:42  WARNING   FreeCadCopilot  Failed to embed FreeCAD documentation chunks for RAG (Fallback activated): Error embedding content (NOT_FOUND): 404 NOT_FOUND. {'error': {'code': 404, 'message': 'models/text-embedding-004 is not found for API version v1beta, or is not supported for embedContent. Call ListModels to see the list of available models and their supported methods.', 'status': 'NOT_FOUND'}}
+2026-04-08 14:46:42  ERROR     FreeCadCopilot  Exception in Developer.invoke(): ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+Traceback (most recent call last):
+  File "/Users/apytel/Library/Application Support/FreeCAD/Mod/FreeCadCopilot/agents/base_agent.py", line 129, in safe_invoke
+    return self.invoke(state)
+           ^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/Mod/FreeCadCopilot/agents/developer_agent.py", line 30, in invoke
+    response = self.llm.invoke(messages, config={"callbacks": callbacks})
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_google_genai/chat_models.py", line 2535, in invoke
+    return super().invoke(input, config, stop=stop, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_core/language_models/chat_models.py", line 402, in invoke
+    self.generate_prompt(
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_core/language_models/chat_models.py", line 1123, in generate_prompt
+    return self.generate(prompt_messages, stop=stop, callbacks=callbacks, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_core/language_models/chat_models.py", line 933, in generate
+    self._generate_with_cache(
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_core/language_models/chat_models.py", line 1192, in _generate_with_cache
+    for chunk in self._stream(messages, stop=stop, **kwargs):
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/langchain_google_genai/chat_models.py", line 3140, in _stream
+    for chunk in response:
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/models.py", line 5886, in generate_content_stream
+    for chunk in response:
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/models.py", line 4464, in _generate_content_stream
+    for response in self._api_client.request_streamed(
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/_api_client.py", line 1418, in request_streamed
+    session_response = self._request(http_request, http_options, stream=True)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/_api_client.py", line 1235, in _request
+    return retry(self._request_once, http_request, stream)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/tenacity/__init__.py", line 470, in __call__
+    do = self.iter(retry_state=retry_state)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/tenacity/__init__.py", line 371, in iter
+    result = action(retry_state)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/tenacity/__init__.py", line 413, in exc_check
+    raise retry_exc.reraise()
+          ^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/tenacity/__init__.py", line 184, in reraise
+    raise self.last_attempt.result()
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Applications/FreeCAD.app/Contents/Resources/lib/python3.11/concurrent/futures/_base.py", line 449, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/Applications/FreeCAD.app/Contents/Resources/lib/python3.11/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/tenacity/__init__.py", line 473, in __call__
+    result = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/_api_client.py", line 1202, in _request_once
+    errors.APIError.raise_for_response(response)
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/errors.py", line 134, in raise_for_response
+    cls.raise_error(response.status_code, response_json, response)
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/errors.py", line 161, in raise_error
+    raise ServerError(status_code, response_json, response)
+google.genai.errors.ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+
+2026-04-08 14:46:42  ERROR     FreeCadCopilot  FreeCAD Copilot Error: 🚨 Crash Report
+────────────────────────────────────────
+Context : Developer.invoke()
+Error   : ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}
+OS      : Darwin 24.6.0
+Python  : 3.11.13
+FreeCAD : 1.0.2
+Log     : addon_20260408_144502.log
+────────────────────────────────────────
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/tenacity/__init__.py", line 473, in __call__
+    result = fn(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/_api_client.py", line 1202, in _request_once
+    errors.APIError.raise_for_response(response)
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/errors.py", line 134, in raise_for_response
+    cls.raise_error(response.status_code, response_json, response)
+  File "/Users/apytel/Library/Application Support/FreeCAD/AdditionalPythonPackages/google/genai/errors.py", line 161, in raise_error
+    raise ServerError(status_code, response_json, response)
+google.genai.errors.ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}

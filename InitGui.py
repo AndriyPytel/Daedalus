@@ -15,8 +15,14 @@ def initialize():
     App.Console.PrintMessage("--- [FreeCadCopilot] Initializing GUI ---\n")
     
     try:
-        # 3. Run the dependency check
+        # 1. Register icon path
         from core import dependency_manager
+        addon_path = os.path.dirname(os.path.dirname(os.path.abspath(dependency_manager.__file__)))
+        icon_path = os.path.join(addon_path, "Resources", "icons")
+        Gui.addIconPath(icon_path)
+        App.Console.PrintMessage(f"[DEBUG] Registered icon path: {icon_path}\n")
+
+        # 3. Run the dependency check
         dependency_manager.run_dependency_check()
         App.Console.PrintMessage("[DEBUG] Dependency check process completed.\n")
 

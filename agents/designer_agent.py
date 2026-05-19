@@ -21,7 +21,13 @@ class DesignerAgent(BaseAgent):
         context = state.get("context", "")
         
         messages = self.prompt_template.format_messages(task_details=task_details, context=context)
-        response = self.llm.invoke(messages)
+        callbacks = []
+        stream_callback = state.get("stream_callback")
+        if stream_callback:
+            from agents.callbacks import UIStreamCallbackHandler
+            callbacks.append(UIStreamCallbackHandler(stream_callback))
+            
+        response = self.llm.invoke(messages, config={"callbacks": callbacks})
         
         return {
             "strategy": response.content,
