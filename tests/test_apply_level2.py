@@ -182,3 +182,122 @@ def test_apply_step_returns_the_traceback_for_the_assistant_to_correct_against(d
 
 def test_the_read_only_registry_has_no_apply_step(doc):
     assert "apply_step" not in build_registry(doc)
+
+
+# ── what a Step touches, observed rather than inferred ────────────────────────
+
+
+def test_preflight_reports_what_the_step_actually_created(worker):
+    result = worker.check("doc.addObject('Part::Box', 'Box')")
+
+    assert result.ok, result.traceback
+    assert result.created == ["Box"]
+    assert result.modified == []
+    assert result.deleted == []
+
+
+def test_preflight_reports_a_modified_object_the_step_did_not_create(worker, saved_document):
+    result = worker.check("doc.getObject('ExistingBox').Length = 99",
+                          document=saved_document)
+
+    assert result.ok, result.traceback
+    assert result.modified == ["ExistingBox"]
+    assert result.created == []
+
+
+def test_preflight_reports_a_deleted_object(worker, saved_document):
+    result = worker.check("doc.removeObject('ExistingBox')", document=saved_document)
+
+    assert result.ok, result.traceback
+    assert result.deleted == ["ExistingBox"]
+
+
+def test_a_dependent_recompute_is_not_reported_as_a_modification(worker, document_with_a_cut):
+    """
+    The Step changes ExistingBox and recomputes, which changes Cut's Shape.
+    Only ExistingBox was modified; reporting Cut as well would make the Owned
+    Object rule fire on almost every Step that touches anything upstream.
+    """
+    result = worker.check(
+        "doc.getObject('ExistingBox').Length = 99\ndoc.recompute()",
+        document=document_with_a_cut,
+    )
+
+    assert result.ok, result.traceback
+    assert result.modified == ["ExistingBox"], "a recompute cascade looked like a modification"
+
+
+@pytest.fixture
+def saved_document(tmp_path):
+    import FreeCAD
+
+    from core.preflight import copy_of
+
+    document = FreeCAD.newDocument("OwnedFixture")
+    box = document.addObject("Part::Box", "ExistingBox")
+    box.Length = 12
+    document.recompute()
+    try:
+        yield copy_of(document)
+    finally:
+        FreeCAD.closeDocument(document.Name)
+
+
+@pytest.fixture
+def document_with_a_cut(tmp_path):
+    """ExistingBox with something downstream of it that recomputes cleanly."""
+    import FreeCAD
+
+    from core.preflight import copy_of
+
+    document = FreeCAD.newDocument("CutFixture")
+    box = document.addObject("Part::Box", "ExistingBox")
+    box.Length, box.Width, box.Height = 12, 12, 12
+    cylinder = document.addObject("Part::Cylinder", "Hole")
+    cylinder.Radius, cylinder.Height = 3, 40
+    cut = document.addObject("Part::Cut", "Cut")
+    cut.Base, cut.Tool = box, cylinder
+    document.recompute()
+    try:
+        yield copy_of(document)
+    finally:
+        FreeCAD.closeDocument(document.Name)
+
+
+def test_the_users_own_object_is_protected_end_to_end(doc, worker, tmp_path):
+    """The whole rule, against a real Document: refuse, then allow."""
+    users_box = doc.addObject("Part::Box", "UsersBox")
+    users_box.Length = 12
+    doc.recompute()
+
+    answers = []
+    pipeline = ApplyPipeline(document=doc, worker=worker,
+                            dispatch=lambda func, timeout=None: func(),
+                            render_dir=str(tmp_path),
+                            confirm=lambda kinds: answers.pop(0))
+
+    answers.append(False)
+    refused = pipeline.apply("doc.getObject('UsersBox').Length = 99")
+    assert not refused.ok
+    assert "UsersBox" in refused.traceback
+    assert doc.getObject("UsersBox").Length.Value == 12, "changed it anyway"
+
+    answers.append(True)
+    allowed = pipeline.apply("doc.getObject('UsersBox').Length = 99")
+    assert allowed.ok, allowed.traceback
+    assert doc.getObject("UsersBox").Length.Value == 99
+
+
+def test_what_the_assistant_created_needs_no_permission(doc, worker, tmp_path):
+    asks = []
+    pipeline = ApplyPipeline(document=doc, worker=worker,
+                            dispatch=lambda func, timeout=None: func(),
+                            render_dir=str(tmp_path),
+                            confirm=lambda kinds: asks.append(kinds) or True)
+
+    assert pipeline.apply(BOX).ok
+    assert pipeline.owned == {"Box"}
+
+    assert pipeline.apply("doc.getObject('Box').Length = 25").ok
+    assert asks == [], "asked permission for its own object"
+    assert doc.getObject("Box").Length.Value == 25

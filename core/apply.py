@@ -144,22 +144,41 @@ def run_in_transaction(doc, code, label="Copilot Step"):
 # ── the pipeline ──────────────────────────────────────────────────────────────
 
 
+def refuse_without_asking(kinds):
+    """
+    The default answer when nothing is wired up to ask the user.
+
+    Fails closed: with no way to get consent, the user's own work is not
+    touched. The panel replaces this with a real prompt.
+    """
+    return False
+
+
 class ApplyPipeline:
     """
     Hand it code; it lands as one undoable unit or comes back with a reason.
 
-    `dispatch` and `worker` are injected so Level 1 can drive the whole
-    pipeline without Qt or a headless FreeCAD.
+    Also the keeper of the Session's Owned Objects: it is the only thing that
+    knows what the assistant created, because it is the only thing that applies
+    anything. A Step that would modify or delete an object outside that set
+    needs the user's say-so, whatever the Plan Gate already approved.
+
+    `dispatch`, `worker`, `transaction` and `confirm` are injected so Level 1
+    can drive the whole pipeline without Qt or a headless FreeCAD.
     """
 
     def __init__(self, document=None, worker=None, dispatch=on_main_thread,
-                 transaction=None, render_dir=None):
+                 transaction=None, render_dir=None, confirm=None, owned=None):
         self._document = document
         self._worker = worker
         self._dispatch = dispatch
         self._transaction = transaction or run_in_transaction
         self._render_dir = render_dir
         self._renders = 0
+        self._confirm = confirm or refuse_without_asking
+        # Owned Objects, for the lifetime of this Session. Anything not in here
+        # belongs to the user — including everything that existed before we did.
+        self.owned = set(owned or ())
 
     @property
     def worker(self) -> PreflightWorker:
@@ -202,6 +221,10 @@ class ApplyPipeline:
         if not preflighted.ok:
             return ApplyResult(ok=False, traceback=preflighted.traceback)
 
+        declined = self._not_ours(preflighted)
+        if declined:
+            return ApplyResult(ok=False, traceback=declined)
+
         try:
             self._dispatch(lambda: self._transaction(doc, code, label))
         except BaseException as exc:
@@ -215,11 +238,35 @@ class ApplyPipeline:
 
         after = self._dispatch(lambda: [{"name": o.Name, "label": o.Label, "type": o.TypeId}
                                         for o in doc.Objects])
-        return ApplyResult(
-            ok=True,
-            render=preflighted.render,
-            objects=after,
-            created=[o["name"] for o in after if o["name"] not in before],
+        created = [o["name"] for o in after if o["name"] not in before]
+        self.owned.update(created)
+        return ApplyResult(ok=True, render=preflighted.render, objects=after, created=created)
+
+    def _not_ours(self, preflighted):
+        """
+        Ask before touching anything the assistant did not create this Session.
+
+        Preflight already ran the Step against a copy, so this is what the code
+        *did*, not what reading it suggested it might do.
+        """
+        modifies = sorted(set(preflighted.modified) - self.owned)
+        deletes = sorted(set(preflighted.deleted) - self.owned)
+        if not modifies and not deletes:
+            return None
+
+        kinds = {"modify": modifies, "delete": deletes}
+        if self._confirm(kinds):
+            return None
+
+        wanted = []
+        if modifies:
+            wanted.append("modify " + ", ".join(modifies))
+        if deletes:
+            wanted.append("delete " + ", ".join(deletes))
+        return (
+            "This Step would %s, which you created rather than I did, and that was not "
+            "approved. Achieve the Intent without changing the user's own objects, or say "
+            "why it cannot be done and stop." % " and ".join(wanted)
         )
 
     def close(self):

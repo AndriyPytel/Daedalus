@@ -104,19 +104,66 @@ def summarise(doc):
     ]
 
 
+# Derived by recompute rather than assigned by the Step. An object whose only
+# changed property is one of these was recalculated, not modified — otherwise
+# every dependent object downstream of a legitimate change would look touched.
+# ponytail: one property; widen if a cascade still trips the Owned Object rule.
+DERIVED = {"Shape"}
+
+
+class _Touched:
+    """What the Step did, straight from FreeCAD rather than from reading the code."""
+
+    def __init__(self):
+        self.created = set()
+        self.deleted = set()
+        self.changed = set()     # (name, property)
+
+    def slotCreatedObject(self, obj):
+        self.created.add(obj.Name)
+
+    def slotDeletedObject(self, obj):
+        self.deleted.add(obj.Name)
+
+    def slotChangedObject(self, obj, prop):
+        self.changed.add((obj.Name, prop))
+
+    def modified(self):
+        names = set()
+        for name in {name for name, _ in self.changed}:
+            if name in self.created or name in self.deleted:
+                continue
+            properties = {prop for changed, prop in self.changed if changed == name}
+            if properties - DERIVED:
+                names.add(name)
+        return names
+
+
 def preflight(request):
     import FreeCAD
 
     doc = load_fresh(request.get("document"))
     namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__preflight__"}
-    exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
+
+    touched = _Touched()
+    FreeCAD.addDocumentObserver(touched)
+    try:
+        exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
+    finally:
+        FreeCAD.removeDocumentObserver(touched)
     doc.recompute()
 
     failures = [o.Name for o in doc.Objects if o.State and "Invalid" in o.State]
     if failures:
         raise RuntimeError("recompute left these objects in error: " + ", ".join(failures))
 
-    result = {"ok": True, "objects": summarise(doc)}
+    result = {
+        "ok": True,
+        "objects": summarise(doc),
+        "created": sorted(touched.created),
+        "deleted": sorted(touched.deleted),
+        "modified": sorted(touched.modified()),
+    }
     render_path = request.get("render_path")
     if render_path:
         result["render"] = render(doc, render_path)

@@ -193,6 +193,53 @@ class EventBridge(QtCore.QObject):
         return self.event.emit
 
 
+class AskTheUser(QtCore.QObject):
+    """
+    Blocks the worker thread until the user answers, on the GUI thread.
+
+    Two questions go through here: the Plan Gate, and the Owned Object rule.
+    Both are asked from the loop's thread and must be answered by a person, so
+    the signal crosses to the GUI thread and the worker waits on an Event.
+    """
+
+    plan_gate = QtCore.Signal(object)      # steps
+    owned_objects = QtCore.Signal(object)  # {"modify": [...], "delete": [...]}
+
+    def __init__(self):
+        super().__init__()
+        self._answered = threading.Event()
+        self._answer = None
+
+    # ── worker thread ────────────────────────────────────────────────────────
+
+    def about_the_plan(self, steps):
+        return self._ask(self.plan_gate, steps)
+
+    def about_objects_we_do_not_own(self, kinds):
+        return self._ask(self.owned_objects, kinds)
+
+    def _ask(self, signal, payload):
+        self._answered.clear()
+        self._answer = None
+        signal.emit(payload)
+        self._answered.wait()
+        return self._answer
+
+    # ── GUI thread ───────────────────────────────────────────────────────────
+
+    def answer(self, value):
+        self._answer = value
+        self._answered.set()
+
+    def abandon(self):
+        """Release a waiting question so Stop is not swallowed by a prompt."""
+        if not self._answered.is_set():
+            from core.loop import REJECT, Approval
+
+            self._answer = Approval(REJECT)
+            self._answered.set()
+
+
 class LoopWorker(QtCore.QObject):
     """
     Runs one Intent through the loop on a worker thread.
@@ -203,15 +250,17 @@ class LoopWorker(QtCore.QObject):
 
     finished = QtCore.Signal(object)
 
-    def __init__(self, bridge: EventBridge):
+    def __init__(self, bridge: EventBridge, ask: AskTheUser):
         super().__init__()
         self.bridge = bridge
+        self.ask = ask
         self.client = None       # rebuilt from settings when the model changes
         self.pipeline = None
         self._stop = threading.Event()
 
     def stop(self):
         self._stop.set()
+        self.ask.abandon()
 
     def _get_client(self):
         if self.client is None:
@@ -224,7 +273,9 @@ class LoopWorker(QtCore.QObject):
         from core.freecad_tools import build_registry
 
         if self.pipeline is None:
-            self.pipeline = ApplyPipeline()
+            # One pipeline for the Session, so Owned Objects are remembered
+            # across every Intent the user sends against this Document.
+            self.pipeline = ApplyPipeline(confirm=self.ask.about_objects_we_do_not_own)
         return build_registry(pipeline=self.pipeline)
 
     @QtCore.Slot(str)
@@ -242,7 +293,8 @@ class LoopWorker(QtCore.QObject):
 
         try:
             result = run(intent, llm=self._get_client(), tools=self._get_tools(),
-                         events=events, cancelled=self._stop.is_set)
+                         events=events, cancelled=self._stop.is_set,
+                         gate=self.ask.about_the_plan)
             self.finished.emit(result)
         except Exception as exc:
             events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
@@ -295,18 +347,22 @@ class CopilotPanel(QtWidgets.QDockWidget):
         # ── Worker thread ──────────────────────────────────────────────────────
         self.thread = QtCore.QThread()
         self.bridge = EventBridge()
-        self.worker = LoopWorker(self.bridge)
+        self.ask = AskTheUser()
+        self.worker = LoopWorker(self.bridge, self.ask)
         self.worker.moveToThread(self.thread)
 
         self.request_work.connect(self.worker.do_work)
         self.worker.finished.connect(self.on_run_finished)
         self.bridge.event.connect(self.on_event)
+        self.ask.plan_gate.connect(self.on_plan_gate)
+        self.ask.owned_objects.connect(self.on_owned_objects)
 
         # Per-run render state, reset by on_send.
         self._plan_widget = None
         self._thought = None
         self._thought_phase = None
         self._current_step = 0
+        self._gate_card = None
 
         self.thread.start()
         
@@ -525,6 +581,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._thought = None
         self._thought_phase = None
         self._current_step = 0
+        self._gate_card = None
 
         self._set_running(True)
         self.status_line.setText("Planning…")
@@ -532,7 +589,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.request_work.emit(intent)
 
     def on_stop(self):
-        self.worker.stop()
+        if self._gate_card is not None:
+            self._gate_card.setEnabled(False)
+            self._gate_card = None
+        self.worker.stop()       # also releases a waiting question
         self.stop_button.setEnabled(False)
         self.status_line.setText("Stopping after the current attempt…")
 
@@ -659,6 +719,109 @@ class CopilotPanel(QtWidgets.QDockWidget):
         label.setToolTip("The render Review judged this run by: " + path)
         label.setStyleSheet("padding: 6px 12px;")
         self.add_chat_widget(label)
+
+    # ── The two places the user keeps control ──────────────────────────────────
+
+    @QtCore.Slot(object)
+    def on_plan_gate(self, steps):
+        """
+        The Plan Gate. One approval covers every Step; there is no per-Step
+        approval, so this appears once per Plan and the run waits on it.
+        """
+        self.status_line.setText("Waiting for you to approve the Plan…")
+        self.status_line.setVisible(True)
+        self._gate_card = self._build_gate_card(len(steps))
+        self.add_chat_widget(self._gate_card)
+
+    def _build_gate_card(self, step_count):
+        from core.loop import AMEND, APPROVE, REJECT, Approval
+
+        card = QtWidgets.QFrame()
+        card.setObjectName("InputContainer")
+        layout = QtWidgets.QVBoxLayout(card)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
+
+        prompt = QtWidgets.QLabel(
+            "Run this Plan? Approving covers all %d Steps — you will not be asked again."
+            % step_count)
+        prompt.setWordWrap(True)
+        prompt.setStyleSheet("font-size: 12px; font-weight: 600; color: palette(text);")
+        layout.addWidget(prompt)
+
+        note = QtWidgets.QLabel("To amend it, say what to change in the box below, then Amend.")
+        note.setWordWrap(True)
+        note.setStyleSheet("font-size: 11px; color: palette(mid);")
+        layout.addWidget(note)
+
+        buttons = QtWidgets.QHBoxLayout()
+        buttons.setSpacing(6)
+
+        def answer(approval):
+            card.setEnabled(False)
+            self._gate_card = None
+            self.status_line.setText("Working…")
+            self.ask.answer(approval)
+
+        approve = QtWidgets.QPushButton("✓  Approve")
+        approve.setObjectName("PillButton")
+        approve.clicked.connect(lambda: answer(Approval(APPROVE)))
+        buttons.addWidget(approve)
+
+        amend = QtWidgets.QPushButton("✎  Amend")
+        amend.setObjectName("PillButton")
+        amend.clicked.connect(lambda: self._amend(answer))
+        buttons.addWidget(amend)
+
+        reject = QtWidgets.QPushButton("✗  Reject")
+        reject.setObjectName("PillButton")
+        reject.clicked.connect(lambda: answer(Approval(REJECT)))
+        buttons.addWidget(reject)
+
+        buttons.addStretch()
+        layout.addLayout(buttons)
+        return card
+
+    def _amend(self, answer):
+        from core.loop import AMEND, Approval
+
+        feedback = self.user_input.toPlainText().strip()
+        if not feedback:
+            self.user_input.setPlaceholderText("Say what to change, then press Amend…")
+            self.user_input.setFocus()
+            return
+        self.user_input.clear()
+        self.add_chat_widget(TextMessageWidget(feedback))
+        answer(Approval(AMEND, feedback))
+
+    @QtCore.Slot(object)
+    def on_owned_objects(self, kinds):
+        """
+        The Owned Object rule. Asked whatever the Plan Gate already approved,
+        because these objects are the user's own work.
+        """
+        wanted = []
+        if kinds.get("modify"):
+            wanted.append("modify " + ", ".join(kinds["modify"]))
+        if kinds.get("delete"):
+            wanted.append("delete " + ", ".join(kinds["delete"]))
+
+        box = QtWidgets.QMessageBox(self)
+        box.setIcon(QtWidgets.QMessageBox.Warning)
+        box.setWindowTitle("Your own objects")
+        box.setText("The assistant wants to " + " and ".join(wanted) + ".")
+        box.setInformativeText(
+            "It did not create %s in this session, so this is your own work. "
+            "Ctrl+Z will still undo it as one Step."
+            % ("these" if sum(len(v) for v in kinds.values()) > 1 else "it"))
+        box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        box.setDefaultButton(QtWidgets.QMessageBox.No)
+
+        allowed = box.exec_() == QtWidgets.QMessageBox.Yes
+        self.add_chat_widget(AssistantMessageWidget(
+            ("You allowed it to " if allowed else "You refused to let it ")
+            + " and ".join(wanted) + "."))
+        self.ask.answer(allowed)
 
     @QtCore.Slot(object)
     def on_run_finished(self, result):

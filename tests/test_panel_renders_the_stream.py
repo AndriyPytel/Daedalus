@@ -44,16 +44,29 @@ def test_every_event_kind_is_rendered():
 
 def test_the_panel_only_ever_asks_the_loop_to_start():
     """
-    Rendering means reacting to events. If the panel reached into the loop for
-    anything else, the event stream would have stopped being the contract.
+    Rendering means reacting to events. The panel may name the loop's
+    vocabulary — Approval and its three decisions are the Plan Gate's answer
+    type — but the only loop *function* it may call is `run`. Calling anything
+    else would mean the event stream had stopped being the contract.
     """
     tree = panel_tree()
-    from_loop = set()
+
+    imported = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "core.loop":
-            from_loop.update(alias.name for alias in node.names)
+            imported.update(alias.name for alias in node.names)
 
-    assert from_loop == {"run"}, "the panel reaches into the loop for: %s" % from_loop
+    called = {
+        node.func.id for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+
+    # Data types are fine to name; only `run` may be invoked.
+    vocabulary = {"Approval", "APPROVE", "REJECT", "AMEND"}
+    assert imported <= vocabulary | {"run"}, \
+        "the panel reaches into the loop for: %s" % (imported - vocabulary - {"run"})
+    assert called & imported <= {"run", "Approval"}, \
+        "the panel drives the loop by calling: %s" % (called & imported - {"run", "Approval"})
 
 
 def test_the_panel_never_touches_the_document_or_the_worker_directly():

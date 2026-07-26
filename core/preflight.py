@@ -43,6 +43,10 @@ class PreflightResult:
     render: str = None
     objects: list = field(default_factory=list)
     saved: str = None
+    # What the Step actually did, observed rather than inferred from the code.
+    created: list = field(default_factory=list)
+    deleted: list = field(default_factory=list)
+    modified: list = field(default_factory=list)
 
 
 def find_freecadcmd():
@@ -174,7 +178,10 @@ class PreflightWorker:
         if response.get("ok"):
             return PreflightResult(ok=True, render=response.get("render"),
                                    objects=response.get("objects", []),
-                                   saved=response.get("saved"))
+                                   saved=response.get("saved"),
+                                   created=response.get("created", []),
+                                   deleted=response.get("deleted", []),
+                                   modified=response.get("modified", []))
         return PreflightResult(ok=False, traceback=response.get("traceback", "Preflight failed"))
 
     # ── plumbing ─────────────────────────────────────────────────────────────

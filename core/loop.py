@@ -46,6 +46,33 @@ class Budgets:
     revisions: int = 3
 
 
+APPROVE = "approve"
+REJECT = "reject"
+AMEND = "amend"
+
+
+@dataclass
+class Approval:
+    """
+    The Plan Gate's answer.
+
+    Approval covers every Step in the Plan; there is no per-Step approval.
+    """
+
+    decision: str = APPROVE
+    feedback: str = ""
+
+
+def auto_approve(steps):
+    """
+    The gate when nothing is wired up to ask.
+
+    Level 1, Level 2 and headless runs use this. The panel passes a real gate,
+    and a real gate is the only reason a Step ever runs in front of a user.
+    """
+    return Approval(APPROVE)
+
+
 @dataclass
 class LoopResult:
     ok: bool = False
@@ -210,21 +237,23 @@ class Stopped(Exception):
     """The user stopped the run. Not a failure — a decision."""
 
 
-def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None) -> LoopResult:
+def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None,
+        gate=auto_approve) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
 
     Everything it needs is an argument: the LLM client, the Tool registry, the
-    event stream to narrate into, the budgets, and `cancelled` — a callable the
-    loop asks between Steps and attempts so the user is never a passenger.
-    Nothing is global, so two runs cannot see each other and a sub-agent is a
-    narrower Intent.
+    event stream to narrate into, the budgets, `cancelled` — a callable the loop
+    asks between Steps and attempts so the user is never a passenger — and
+    `gate`, the Plan Gate, which must approve before any Step runs. Nothing is
+    global, so two runs cannot see each other and a sub-agent is a narrower
+    Intent.
     """
     events = events if events is not None else EventStream()
     budgets = budgets or Budgets()
 
     try:
-        return _run(intent, llm, tools, events, budgets, cancelled or (lambda: False))
+        return _run(intent, llm, tools, events, budgets, cancelled or (lambda: False), gate)
     except Stopped:
         return _block(events, "Stopped by you. Everything applied so far is still in the "
                               "Document; undo it Step by Step if you want it gone.", [], 0)
@@ -236,13 +265,31 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None) -> Loo
         return LoopResult(ok=False, reason=str(exc))
 
 
-def _run(intent, llm, tools, events, budgets, cancelled):
+def _run(intent, llm, tools, events, budgets, cancelled, gate):
     snapshot = tools.call("snapshot")
     steps = plan(intent, snapshot, llm, events)
     events.emit(PLAN, steps=list(steps))
 
     rejections = 0
     revisions = 0
+
+    # The Plan Gate. Nothing below this line has run yet, and nothing will until
+    # the user says so. One approval covers the whole Plan.
+    while True:
+        approval = gate(list(steps)) or Approval(APPROVE)
+        if approval.decision == APPROVE:
+            break
+        if approval.decision == REJECT:
+            return _block(events, "You rejected the Plan, so nothing was applied.", [], 0)
+
+        revisions += 1
+        if revisions > budgets.revisions:
+            return _block(events, "The Plan has been amended %d times without being approved."
+                          % (revisions - 1), [], 0)
+        steps = plan(intent, tools.call("snapshot"), llm, events, feedback=approval.feedback)
+        events.emit(PLAN_REVISED, steps=list(steps),
+                    reason="You asked for: " + approval.feedback)
+
     render = None
     applied = 0
     objects = []
