@@ -72,13 +72,16 @@ def _errors(obj):
     return [s for s in (obj.State or []) if s in ("Invalid", "Error", "Touched")]
 
 
-def build_registry(document=None) -> ToolRegistry:
+def build_registry(document=None, pipeline=None) -> ToolRegistry:
     """
     Build the registry against a Document.
 
     `document` may be a Document or a callable returning one; leaving it None
     resolves `FreeCAD.ActiveDocument` at call time, which is what the addon
     wants — the user may close and open files under us.
+
+    `pipeline` is the apply pipeline. Passing None registers the read-only
+    Tools alone, which is what Level 2 introspection tests want.
     """
     def active():
         import FreeCAD
@@ -215,7 +218,39 @@ def build_registry(document=None) -> ToolRegistry:
             "used_by": [o.Name for o in obj.InList],
         }
 
+    if pipeline is not None:
+        _register_apply(registry, pipeline, _selection)
+
     return registry
+
+
+def _register_apply(registry, pipeline, selection):
+    @registry.tool(
+        "apply_step",
+        "Run one Step against the Document. The code is checked, tried against a "
+        "throwaway copy first, and then applied as a single undoable unit. You get "
+        "back either 'applied' or 'failed' with the traceback to correct against.",
+        {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Python for this Step. `doc` and `App` are in scope. "
+                                   "No Gui.*, no live selection, and no literal element "
+                                   "names such as Edge12 — compute references instead.",
+                },
+                "label": {
+                    "type": "string",
+                    "description": "Short name for the undo entry, e.g. 'Pad the base sketch'.",
+                },
+            },
+            "required": ["code"],
+        },
+    )
+    def apply_step(code, label="Copilot Step"):
+        # Preflight lives behind this Tool. From here up, a Step was applied or
+        # it was not — there is no third thing to know about.
+        return pipeline.apply(code, selection=selection(), label=label).as_tool_result()
 
 
 def _readable(value):

@@ -20,8 +20,9 @@ ALLOWED = {
     # Runs inside the Preflight Worker's own process, against a throwaway copy.
     # It never touches the user's Document.
     "core/preflight_worker.py",
-    # Pre-existing old core, replaced by the apply pipeline in #6.
-    "core/command_executor.py",
+    # Resolves the Document to hand to the transaction; reached only through
+    # the apply_step Tool.
+    "core/apply.py",
 }
 
 # Reaching the live Document means one of these.

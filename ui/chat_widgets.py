@@ -3,8 +3,6 @@ try:
 except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
-import FreeCAD
-from core.command_executor import execute, revert
 from utils.config_manager import ConfigManager
 
 
@@ -77,7 +75,12 @@ class AssistantMessageWidget(QtWidgets.QWidget):
 
 
 class CodeBlockWidget(QtWidgets.QWidget):
-    """Displays generated code with Execute / Rollback actions."""
+    """
+    Displays the code a Step ran.
+
+    Read-only: nothing here executes. A Step reaches the Document through the
+    apply pipeline after the Plan Gate, never from a button in the transcript.
+    """
 
     def __init__(self, script: str):
         super().__init__()
@@ -108,60 +111,4 @@ class CodeBlockWidget(QtWidgets.QWidget):
             }}
         """)
         layout.addWidget(self.code_edit)
-
-        # ── Action row ────────────────────────────────────────────────────────
-        button_layout = QtWidgets.QHBoxLayout()
-        button_layout.setSpacing(8)
-
-        self.execute_button = QtWidgets.QPushButton("▶  Execute Code")
-        self.execute_button.setStyleSheet("""
-            QPushButton {
-                background-color: palette(button);
-                color: palette(buttontext);
-                border: 1px solid palette(mid);
-                border-radius: 6px;
-                padding: 5px 14px;
-                font-size: 12px;
-                font-weight: 600;
-            }
-            QPushButton:hover { background-color: palette(midlight); }
-        """)
-        self.execute_button.clicked.connect(self.execute_script)
-        button_layout.addWidget(self.execute_button)
-
-        self.revert_button = QtWidgets.QPushButton("↩  Rollback")
-        self.revert_button.setStyleSheet("""
-            QPushButton {
-                background-color: palette(window);
-                color: palette(text);
-                border: 1px solid palette(mid);
-                border-radius: 6px;
-                padding: 5px 14px;
-                font-size: 12px;
-            }
-            QPushButton:hover { background-color: palette(midlight); }
-        """)
-        self.revert_button.clicked.connect(self.revert_script)
-        self.revert_button.setVisible(False)
-        button_layout.addWidget(self.revert_button)
-
-        button_layout.addStretch()
-        layout.addLayout(button_layout)
         self.setLayout(layout)
-
-    def execute_script(self):
-        try:
-            res = execute(self.script)
-            if res and res.get("status") == "error":
-                err_msg = res.get("message", "Unknown error")
-                QtWidgets.QMessageBox.critical(self, "Execution Error", f"The code failed to execute:\n\n{err_msg}")
-            else:
-                self.revert_button.setVisible(True)
-                # Ensure the 3D view is updated
-                if hasattr(FreeCAD, "Gui") and FreeCAD.Gui:
-                    FreeCAD.Gui.updateGui()
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Execution Error", f"System Error:\n{str(e)}")
-
-    def revert_script(self):
-        revert()
