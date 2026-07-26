@@ -20,7 +20,7 @@ except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
-from .chat_widgets        import TextMessageWidget, AssistantMessageWidget, CodeBlockWidget
+from .chat_widgets        import TextMessageWidget, AssistantMessageWidget
 from .multi_tab_manager   import ChatSessionManager
 from .upload_widget       import UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
@@ -181,11 +181,14 @@ class _PasteAwareTextEdit(QtWidgets.QTextEdit):
 
 class TokenEmitter(QtCore.QObject):
     signal_token_received = QtCore.Signal(str)
+    signal_reasoning_received = QtCore.Signal(str)
 
 class StepEmitter(QtCore.QObject):
     signal_step = QtCore.Signal(str, int, int)   # (name, idx, total)
 
 class AiWorker(QtCore.QObject):
+    """Streams a reply on the worker thread; the panel only ever sees signals."""
+
     finished = QtCore.Signal(dict)
     error    = QtCore.Signal(str)
 
@@ -193,10 +196,31 @@ class AiWorker(QtCore.QObject):
         super().__init__()
         self.token_emitter = token_emitter
         self.step_emitter  = step_emitter
+        self.client = None   # injectable seam; built from settings on first use
+
+    def _get_client(self):
+        if self.client is None:
+            from core.llm import client_from_settings
+            self.client = client_from_settings(SettingsManager.instance().get_last_model())
+        return self.client
 
     @QtCore.Slot(str)
     def do_work(self, user_input: str):
-        self.error.emit("The Copilot core is being rewritten — nothing is wired up yet.")
+        from core.llm import REASONING
+
+        try:
+            reply = {"text": "", "reasoning": ""}
+            for chunk in self._get_client().stream([{"role": "user", "content": user_input}]):
+                if chunk.kind == REASONING:
+                    reply["reasoning"] += chunk.text
+                    self.token_emitter.signal_reasoning_received.emit(chunk.text)
+                else:
+                    reply["text"] += chunk.text
+                    self.token_emitter.signal_token_received.emit(chunk.text)
+            self.finished.emit(reply)
+        except Exception as exc:
+            from utils.logger import generate_crash_report
+            self.error.emit(generate_crash_report(exc, "AiWorker.do_work()"))
 
 
 # ── Main Panel ─────────────────────────────────────────────────────────────────
@@ -253,6 +277,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.worker.finished.connect(self.on_ai_response_received)
         self.worker.error.connect(self.on_ai_error)
         self.token_emitter.signal_token_received.connect(self.on_token_received)
+        self.token_emitter.signal_reasoning_received.connect(self.on_reasoning_received)
         self.step_emitter.signal_step.connect(self.on_step_update)
 
         self.thread.start()
@@ -415,6 +440,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
         mid = self.model_combo.currentData()
         if mid:
             SettingsManager.instance().set_last_model(mid)
+            if getattr(self, "worker", None):
+                self.worker.client = None   # rebuilt from settings on the next send
 
     # ── Public slots ───────────────────────────────────────────────────────────
 
@@ -478,49 +505,16 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if hasattr(self, "current_stream_widget") and self.current_stream_widget:
             self.current_stream_widget.append_text(token)
 
+    def on_reasoning_received(self, token: str):
+        self.status_line.setText(("Thinking: " + token.replace("\n", " "))[-90:])
+        self.status_line.setVisible(True)
+
     def on_ai_response_received(self, response: dict):
         self.send_button.setEnabled(True)
         self.status_line.setVisible(False)
 
-        if "error" in response:
-            self.on_ai_error(response["error"])
-            return
-
-
-
-        gen_code = response.get("generated_code")
-        
-        # Reconstruct the streamed reasoning logically, omitting the code block
-        out_text = response.get("orchestrator_output", "")
-        strategy = response.get("strategy", "")
-        dev_reason = response.get("developer_reasoning", "")
-        
-        parts = []
-        if out_text: 
-            parts.append(out_text)
-        if strategy and strategy != out_text: 
-            parts.append(strategy)
-        if dev_reason: 
-            parts.append(dev_reason)
-            
-        final_text = "\n\n".join(parts).strip() or "Task complete."
-        
-        has_stream = hasattr(self, "current_stream_widget") and self.current_stream_widget
-        stream_empty = has_stream and self.current_stream_widget.text_label.text().strip() == ""
-
-        if gen_code:
-            # Overwrite the stream widget to strip the raw ```python code block that streamed
-            if has_stream:
-                self.current_stream_widget.text_label.setText(final_text)
-            else:
-                self.add_chat_widget(AssistantMessageWidget(final_text))
-                
-            self.add_chat_widget(CodeBlockWidget(gen_code))
-        else:
-            if stream_empty:
-                self.current_stream_widget.text_label.setText(final_text)
-            elif not has_stream:
-                self.add_chat_widget(AssistantMessageWidget(final_text))
+        if not response.get("text") and not response.get("reasoning"):
+            self.current_stream_widget.text_label.setText("(the model returned nothing)")
 
     def on_ai_error(self, error_message: str):
         from utils.logger import logger
