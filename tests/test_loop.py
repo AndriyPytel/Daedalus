@@ -494,6 +494,54 @@ def test_a_provider_failure_is_surfaced_rather_than_swallowed():
     assert "429 rate limited" in events.first(ERROR).data["message"]
 
 
+# ── Stopping mid-run ──────────────────────────────────────────────────────────
+
+
+def test_the_user_can_stop_between_steps():
+    """User story 18: never a passenger."""
+    stop = {"now": False}
+    events = EventStream()
+    tools = FakeTools()
+
+    def cancel_after_the_first_step(event):
+        if event.kind == APPLIED:
+            stop["now"] = True
+
+    events.subscribe(cancel_after_the_first_step)
+
+    result = run("Make a box", llm=ScriptedLLMClient([
+        plan_reply("First", "Second", "Third"),
+        code_reply("first()"),
+        code_reply("second()"),
+    ]), tools=tools.registry, events=events, cancelled=lambda: stop["now"])
+
+    assert result.blocked
+    assert result.awaiting_user
+    assert "Stopped by you" in result.reason
+    assert tools.applied_codes() == ["first()"], "it kept going after being stopped"
+
+
+def test_stopping_says_what_is_already_in_the_document():
+    stop = {"now": False}
+    events = EventStream()
+    events.subscribe(lambda e: stop.update(now=True) if e.kind == PLAN else None)
+
+    run("Make a box", llm=ScriptedLLMClient([plan_reply("First")]),
+        tools=FakeTools().registry, events=events, cancelled=lambda: stop["now"])
+
+    blocked = events.first(BLOCKED)
+    assert "still in the Document" in blocked.data["reason"]
+
+
+def test_a_run_that_is_never_stopped_is_unaffected():
+    result, _, _, tools = drive([
+        plan_reply("Only"), code_reply("box()"), verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert tools.applied_codes() == ["box()"]
+
+
 # ── The loop is a function of (Intent, context) ───────────────────────────────
 
 

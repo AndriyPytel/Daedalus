@@ -104,17 +104,20 @@ Reply with JSON only: {"verdict": "pass" | "fail", "reason": "..."}"""
 
 
 def _ask(llm, events, phase, system, user):
-    """One phase's turn: stream it, surface the reasoning, parse the reply."""
-    text, reasoning = [], []
+    """
+    One phase's turn: stream it, surface the reasoning as it forms, parse the reply.
+
+    Reasoning is emitted chunk by chunk rather than aggregated at the end, so the
+    user can tell early whether the assistant has understood them.
+    """
+    text = []
     for chunk in llm.stream([{"role": "system", "content": system},
                              {"role": "user", "content": user}]):
         if chunk.kind == REASONING:
-            reasoning.append(chunk.text)
+            events.emit(THOUGHT, phase=phase, text=chunk.text)
         else:
             text.append(chunk.text)
 
-    if reasoning:
-        events.emit(THOUGHT, phase=phase, text="".join(reasoning))
     return _as_json("".join(text), phase)
 
 
@@ -203,19 +206,28 @@ def review(intent, render, objects, llm, events):
 # ── the loop ──────────────────────────────────────────────────────────────────
 
 
-def run(intent, *, llm, tools, events=None, budgets=None) -> LoopResult:
+class Stopped(Exception):
+    """The user stopped the run. Not a failure — a decision."""
+
+
+def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
 
     Everything it needs is an argument: the LLM client, the Tool registry, the
-    event stream to narrate into, and the budgets. Nothing is global, so two
-    runs cannot see each other and a sub-agent is a narrower Intent.
+    event stream to narrate into, the budgets, and `cancelled` — a callable the
+    loop asks between Steps and attempts so the user is never a passenger.
+    Nothing is global, so two runs cannot see each other and a sub-agent is a
+    narrower Intent.
     """
     events = events if events is not None else EventStream()
     budgets = budgets or Budgets()
 
     try:
-        return _run(intent, llm, tools, events, budgets)
+        return _run(intent, llm, tools, events, budgets, cancelled or (lambda: False))
+    except Stopped:
+        return _block(events, "Stopped by you. Everything applied so far is still in the "
+                              "Document; undo it Step by Step if you want it gone.", [], 0)
     except PhaseError as exc:
         events.emit(ERROR, message=str(exc))
         return LoopResult(ok=False, reason=str(exc))
@@ -224,7 +236,7 @@ def run(intent, *, llm, tools, events=None, budgets=None) -> LoopResult:
         return LoopResult(ok=False, reason=str(exc))
 
 
-def _run(intent, llm, tools, events, budgets):
+def _run(intent, llm, tools, events, budgets, cancelled):
     snapshot = tools.call("snapshot")
     steps = plan(intent, snapshot, llm, events)
     events.emit(PLAN, steps=list(steps))
@@ -236,7 +248,7 @@ def _run(intent, llm, tools, events, budgets):
     objects = []
 
     while True:
-        outcome = _work_through(steps, intent, tools, llm, events, budgets)
+        outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled)
 
         if outcome["blocked"]:
             return _block(events, outcome["reason"], outcome["tried"], applied)
@@ -283,17 +295,23 @@ def _run(intent, llm, tools, events, budgets):
         events.emit(PLAN_REVISED, steps=list(steps), reason=reason)
 
 
-def _work_through(steps, intent, tools, llm, events, budgets):
+def _work_through(steps, intent, tools, llm, events, budgets, cancelled):
     """One pass over the Plan. Returns why it stopped."""
     applied = 0
     render = None
     objects = []
 
     for index, step in enumerate(steps, start=1):
+        if cancelled():
+            raise Stopped()
         events.emit(STEP_STARTED, index=index, total=len(steps), description=step)
 
         attempts = []
         while True:
+            if cancelled():
+                raise Stopped()
+            # A fresh Snapshot every attempt: the user may have edited the model
+            # by hand since the last one, and the Document is the source of truth.
             outcome = execute(step, tools.call("snapshot"), llm, events, attempts)
 
             if outcome.obsolete:

@@ -1,17 +1,16 @@
 # FreeCadCopilot/ui/copilot_panel.py
 """
-CopilotPanel (Round 2 – Antigravity UI)
+The panel: a renderer of the event stream.
 
-Key changes vs Round 1
-─────────────────────
-- All colours derived from QPalette – adapts to FreeCAD ProDark + Light themes
-- Removed fixed Execution Layer block → single `StatusLine` label (hides when idle)
-- QTabWidget removed → ChatSessionManager + QComboBox header picker
-- "×" (close) header button removed (FreeCAD dock already provides one)
-- FileChipBar lives inside the input card, above QTextEdit
-- Clipboard paste (Ctrl+V with image) handled via PasteAwareTextEdit
-- step_callback wires the pipeline's live progress into the status line
+It does not drive the loop. It sends one Intent, then renders whatever the
+loop emits — `CopilotPanel.on_event` is a switch over event kinds and nothing
+else. That is what lets the same stream be the session log, and what keeps a
+frozen UI impossible: the loop runs on a worker thread and only ever emits.
+
+Colours come from QPalette so the panel follows FreeCAD's active theme.
 """
+import threading
+
 import FreeCAD
 
 try:
@@ -20,10 +19,11 @@ except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
-from .chat_widgets        import TextMessageWidget, AssistantMessageWidget
+from .chat_widgets        import TextMessageWidget, AssistantMessageWidget, CodeBlockWidget
 from .multi_tab_manager   import ChatSessionManager
 from .upload_widget       import UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
+from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
 from utils.config_manager import ConfigManager
 from utils.settings_manager import SettingsManager
 from utils.provider_manager import ProviderManager
@@ -179,24 +179,39 @@ class _PasteAwareTextEdit(QtWidgets.QTextEdit):
 
 # ── Worker objects ─────────────────────────────────────────────────────────────
 
-class TokenEmitter(QtCore.QObject):
-    signal_token_received = QtCore.Signal(str)
-    signal_reasoning_received = QtCore.Signal(str)
+class EventBridge(QtCore.QObject):
+    """
+    Carries loop events from the worker thread to the GUI thread.
 
-class StepEmitter(QtCore.QObject):
-    signal_step = QtCore.Signal(str, int, int)   # (name, idx, total)
+    The loop knows nothing about Qt: it emits into an EventStream, this
+    subscribes, and Qt's queued connection does the thread hop.
+    """
 
-class AiWorker(QtCore.QObject):
-    """Streams a reply on the worker thread; the panel only ever sees signals."""
+    event = QtCore.Signal(object)
 
-    finished = QtCore.Signal(dict)
-    error    = QtCore.Signal(str)
+    def subscriber(self):
+        return self.event.emit
 
-    def __init__(self, token_emitter: TokenEmitter, step_emitter: StepEmitter):
+
+class LoopWorker(QtCore.QObject):
+    """
+    Runs one Intent through the loop on a worker thread.
+
+    It never reports progress itself — the event stream does that. All this
+    signals is that the run is over.
+    """
+
+    finished = QtCore.Signal(object)
+
+    def __init__(self, bridge: EventBridge):
         super().__init__()
-        self.token_emitter = token_emitter
-        self.step_emitter  = step_emitter
-        self.client = None   # injectable seam; built from settings on first use
+        self.bridge = bridge
+        self.client = None       # rebuilt from settings when the model changes
+        self.pipeline = None
+        self._stop = threading.Event()
+
+    def stop(self):
+        self._stop.set()
 
     def _get_client(self):
         if self.client is None:
@@ -204,23 +219,34 @@ class AiWorker(QtCore.QObject):
             self.client = client_from_settings(SettingsManager.instance().get_last_model())
         return self.client
 
+    def _get_tools(self):
+        from core.apply import ApplyPipeline
+        from core.freecad_tools import build_registry
+
+        if self.pipeline is None:
+            self.pipeline = ApplyPipeline()
+        return build_registry(pipeline=self.pipeline)
+
     @QtCore.Slot(str)
-    def do_work(self, user_input: str):
-        from core.llm import REASONING
+    def do_work(self, intent: str):
+        from core.events import EventStream
+        from core.loop import run
+        from utils.logger import generate_crash_report, get_session_log_path
+
+        self._stop.clear()
+        events = EventStream([self.bridge.subscriber()])
+        try:
+            events.log_to(get_session_log_path() + ".events.jsonl")
+        except Exception:
+            pass    # a missing log must not cost the user their run
 
         try:
-            reply = {"text": "", "reasoning": ""}
-            for chunk in self._get_client().stream([{"role": "user", "content": user_input}]):
-                if chunk.kind == REASONING:
-                    reply["reasoning"] += chunk.text
-                    self.token_emitter.signal_reasoning_received.emit(chunk.text)
-                else:
-                    reply["text"] += chunk.text
-                    self.token_emitter.signal_token_received.emit(chunk.text)
-            self.finished.emit(reply)
+            result = run(intent, llm=self._get_client(), tools=self._get_tools(),
+                         events=events, cancelled=self._stop.is_set)
+            self.finished.emit(result)
         except Exception as exc:
-            from utils.logger import generate_crash_report
-            self.error.emit(generate_crash_report(exc, "AiWorker.do_work()"))
+            events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
+            self.finished.emit(None)
 
 
 # ── Main Panel ─────────────────────────────────────────────────────────────────
@@ -267,18 +293,20 @@ class CopilotPanel(QtWidgets.QDockWidget):
         root_layout.addWidget(input_card)
 
         # ── Worker thread ──────────────────────────────────────────────────────
-        self.thread        = QtCore.QThread()
-        self.token_emitter = TokenEmitter()
-        self.step_emitter  = StepEmitter()
-        self.worker        = AiWorker(self.token_emitter, self.step_emitter)
+        self.thread = QtCore.QThread()
+        self.bridge = EventBridge()
+        self.worker = LoopWorker(self.bridge)
         self.worker.moveToThread(self.thread)
 
         self.request_work.connect(self.worker.do_work)
-        self.worker.finished.connect(self.on_ai_response_received)
-        self.worker.error.connect(self.on_ai_error)
-        self.token_emitter.signal_token_received.connect(self.on_token_received)
-        self.token_emitter.signal_reasoning_received.connect(self.on_reasoning_received)
-        self.step_emitter.signal_step.connect(self.on_step_update)
+        self.worker.finished.connect(self.on_run_finished)
+        self.bridge.event.connect(self.on_event)
+
+        # Per-run render state, reset by on_send.
+        self._plan_widget = None
+        self._thought = None
+        self._thought_phase = None
+        self._current_step = 0
 
         self.thread.start()
         
@@ -405,6 +433,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
         ProviderManager.instance().models_changed.connect(self._refresh_model_combo)
         strip.addStretch()
 
+        # ── Stop button — visible only while a run is in flight ────────────────
+        self.stop_button = QtWidgets.QPushButton("■  Stop")
+        self.stop_button.setObjectName("PillButton")
+        self.stop_button.setFixedHeight(24)
+        self.stop_button.setToolTip("Stop after the current attempt")
+        self.stop_button.clicked.connect(self.on_stop)
+        self.stop_button.setVisible(False)
+        strip.addWidget(self.stop_button)
+
         self.send_button = QtWidgets.QPushButton()
         self.send_button.setIcon(UIHelpers.get_icon("arrow_up", size=18, color="palette(highlighted-text)"))
         self.send_button.setObjectName("SendButton")
@@ -471,57 +508,170 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if info:
             self.title_label.setText(info["name"])
 
-    @QtCore.Slot(str, int, int)
-    def on_step_update(self, step_name: str, step_idx: int, total: int):
-        self.status_line.setText(f"Step {step_idx}/{total}: {step_name}…")
-        self.status_line.setVisible(True)
+    # ── Sending an Intent ──────────────────────────────────────────────────────
 
     def on_send(self):
-        user_text = self.user_input.toPlainText().strip()
-        if not user_text:
+        intent = self.user_input.toPlainText().strip()
+        if not intent:
             return
 
-        # Collect attached files (chip bar is source of truth)
-        files = self.chip_bar.get_and_clear()
-        # Also drain any pending from upload_widget's own list (legacy compat)
-        files += self.upload_widget.get_and_clear_files()
+        self.chip_bar.get_and_clear()
+        self.upload_widget.get_and_clear_files()
 
-        context_msg = f" [+{len(files)} file{'s' if len(files) != 1 else ''}]" if files else ""
-
-        self.add_chat_widget(TextMessageWidget(f"You: {user_text}{context_msg}"))
+        self.add_chat_widget(TextMessageWidget(intent))
         self.user_input.clear()
 
+        self._plan_widget = None
+        self._thought = None
+        self._thought_phase = None
+        self._current_step = 0
 
-
-        self.current_stream_widget = AssistantMessageWidget("")
-        self.add_chat_widget(self.current_stream_widget)
-
-        self.send_button.setEnabled(False)
-        self.status_line.setText("Preparing…")
+        self._set_running(True)
+        self.status_line.setText("Planning…")
         self.status_line.setVisible(True)
-        self.request_work.emit(user_text)
+        self.request_work.emit(intent)
 
-    def on_token_received(self, token: str):
-        if hasattr(self, "current_stream_widget") and self.current_stream_widget:
-            self.current_stream_widget.append_text(token)
+    def on_stop(self):
+        self.worker.stop()
+        self.stop_button.setEnabled(False)
+        self.status_line.setText("Stopping after the current attempt…")
 
-    def on_reasoning_received(self, token: str):
-        self.status_line.setText(("Thinking: " + token.replace("\n", " "))[-90:])
+    def _set_running(self, running: bool):
+        self.send_button.setEnabled(not running)
+        self.stop_button.setVisible(running)
+        self.stop_button.setEnabled(running)
+
+    # ── Rendering the event stream ─────────────────────────────────────────────
+
+    @QtCore.Slot(object)
+    def on_event(self, event):
+        """
+        The whole panel is this method.
+
+        One branch per event kind, no calls back into the loop. If a kind is
+        added and not handled here, it is simply not rendered — nothing breaks.
+        """
+        from core import events as ev
+
+        data = event.data
+        if event.kind == ev.THOUGHT:
+            self._render_thought(data["phase"], data["text"])
+
+        elif event.kind == ev.PLAN:
+            self._render_plan(data["steps"], "Plan")
+
+        elif event.kind == ev.PLAN_REVISED:
+            self.add_chat_widget(AssistantMessageWidget("Revised the Plan: " + data["reason"]))
+            self._render_plan(data["steps"], "Revised Plan")
+
+        elif event.kind == ev.STEP_STARTED:
+            self._thought = None
+            self._current_step = data["index"]
+            if self._plan_widget:
+                self._plan_widget.highlight(data["index"])
+            self.status_line.setText("Step %d/%d: %s" % (data["index"], data["total"],
+                                                         data["description"]))
+            self.status_line.setVisible(True)
+
+        elif event.kind == ev.TOOL_CALL:
+            self._render_tool_call(data["name"], data["arguments"])
+
+        elif event.kind == ev.TOOL_RESULT:
+            self.status_line.setText("%s → %s" % (data["name"],
+                                                  data["result"].get("status", "done")))
+
+        elif event.kind == ev.PREFLIGHT_FAILED:
+            self._render_failure(data["attempt"], data["traceback"])
+
+        elif event.kind == ev.APPLIED:
+            created = ", ".join(data.get("created") or []) or "no new objects"
+            self.add_chat_widget(AssistantMessageWidget(
+                "✓ Applied “%s” — %s. Ctrl+Z undoes this Step." % (data["label"], created)))
+            if self._plan_widget:
+                self._plan_widget.mark(data["step"], PLAN_DONE)
+
+        elif event.kind == ev.RENDER:
+            self._render_image(data["path"])
+
+        elif event.kind == ev.REVIEW_VERDICT:
+            mark = "✓" if data["verdict"] == "pass" else "✗"
+            self.add_chat_widget(AssistantMessageWidget(
+                "%s Review: %s — %s" % (mark, data["verdict"], data["reason"])))
+
+        elif event.kind == ev.BLOCKED:
+            if self._plan_widget and self._current_step:
+                self._plan_widget.mark(self._current_step, PLAN_FAILED)
+            self._render_blocked(data["reason"], data.get("tried") or [])
+
+        elif event.kind == ev.ERROR:
+            self.add_chat_widget(AssistantMessageWidget("Something went wrong:\n\n"
+                                                       + data["message"]))
+
+    def _render_thought(self, phase, text):
+        """Reasoning appends to one accordion per phase turn, as it forms."""
+        if self._thought is None or self._thought_phase != phase:
+            self._thought = AccordionWidget("Thinking (%s)…" % phase)
+            self._thought_phase = phase
+            self.add_chat_widget(self._thought)
+            self._thought.start_pulsing()
+        self._thought.append_text(text)
+        self.status_line.setText(("Thinking: " + text.replace("\n", " "))[-90:])
         self.status_line.setVisible(True)
 
-    def on_ai_response_received(self, response: dict):
-        self.send_button.setEnabled(True)
-        self.status_line.setVisible(False)
+    def _render_plan(self, steps, title):
+        if self._thought:
+            self._thought.stop_pulsing()
+            self._thought = None
+        self._plan_widget = PlanWidget(steps, title=title)
+        self.add_chat_widget(self._plan_widget)
 
-        if not response.get("text") and not response.get("reasoning"):
-            self.current_stream_widget.text_label.setText("(the model returned nothing)")
+    def _render_tool_call(self, name, arguments):
+        if self._thought:
+            self._thought.stop_pulsing()
+            self._thought = None
+        if "code" in arguments:
+            self.add_chat_widget(CodeBlockWidget(arguments["code"]))
+        else:
+            self.add_chat_widget(AssistantMessageWidget("%s(%s)" % (name, arguments)))
 
-    def on_ai_error(self, error_message: str):
-        from utils.logger import logger
-        logger.error(f"FreeCAD Copilot Error: {error_message}")
-        self.send_button.setEnabled(True)
-        self.status_line.setVisible(False)
-        self.add_chat_widget(AssistantMessageWidget(error_message))
+    def _render_failure(self, attempt, traceback):
+        panel = AccordionWidget("✗ Preflight failed (attempt %d) — retrying" % attempt)
+        self.add_chat_widget(panel)
+        panel.append_text(traceback)
+
+    def _render_blocked(self, reason, tried):
+        self.add_chat_widget(AssistantMessageWidget("⏸  " + reason))
+        if tried:
+            panel = AccordionWidget("What was tried (%d)" % len(tried))
+            self.add_chat_widget(panel)
+            for entry in tried:
+                panel.append_text(str(entry.get("code") or entry.get("review") or entry))
+                if entry.get("traceback"):
+                    panel.append_text(entry["traceback"])
+                panel.append_text("─" * 40)
+
+    def _render_image(self, path):
+        label = QtWidgets.QLabel()
+        pixmap = QtGui.QPixmap(path)
+        if pixmap.isNull():
+            return
+        label.setPixmap(pixmap.scaledToWidth(360, QtCore.Qt.SmoothTransformation))
+        label.setToolTip("The render Review judged this run by: " + path)
+        label.setStyleSheet("padding: 6px 12px;")
+        self.add_chat_widget(label)
+
+    @QtCore.Slot(object)
+    def on_run_finished(self, result):
+        self._set_running(False)
+        if self._thought:
+            self._thought.stop_pulsing()
+            self._thought = None
+        if result is not None and result.ok:
+            self.status_line.setVisible(False)
+        else:
+            self.status_line.setText("Stopped. Your Document is unchanged beyond the "
+                                     "Steps already applied.")
+            self.status_line.setVisible(True)
 
     def add_chat_widget(self, widget: QtWidgets.QWidget):
         chat_history = self.chat_sessions.get_current_chat_history()

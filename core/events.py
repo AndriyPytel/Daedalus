@@ -100,3 +100,22 @@ class EventStream:
     def as_log(self) -> str:
         """One JSON object per line — the session log."""
         return "\n".join(event.as_json() for event in self._events)
+
+    def log_to(self, path: str):
+        """
+        Append every event to *path* as it happens.
+
+        The stream is the session log, so a bad run can be inspected without
+        reproducing it. Written per event rather than at the end, because the
+        runs worth reading are the ones that did not finish cleanly.
+        """
+        handle = open(path, "a", encoding="utf-8")
+
+        def write(event):
+            handle.write(event.as_json() + "\n")
+            handle.flush()
+
+        for event in self._events:      # anything already emitted
+            write(event)
+        self.subscribe(write)
+        return handle
