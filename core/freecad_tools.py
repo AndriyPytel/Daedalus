@@ -18,6 +18,9 @@ TRAPS = [
     "AttachmentSupport replaces Support.",
     "PartDesign features must be added to a Body via Body.addObject, not to the "
     "Document alone, or they will not appear in the feature tree.",
+    "Body.addObject moves Body.Tip to the feature you just added. Capture the base "
+    "feature before adding, or a dressup such as PartDesign::Fillet will end up "
+    "referencing itself and fail to recompute.",
 ]
 
 _SNAPSHOT_LIMIT = 200
