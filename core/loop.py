@@ -14,7 +14,9 @@ Budgets, not round limits. On exhaustion the loop emits `blocked` with what was
 tried and waits for the user. Silent failure and unbounded looping are both
 defects, so both are bounded and both are reported.
 """
+import base64
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from typing import List
@@ -41,8 +43,7 @@ class PhaseError(Exception):
 class Budgets:
     attempts_per_step: int = 3
     review_cycles: int = 2
-    # Not in the spec's two budgets, but Execute declaring Step after Step
-    # obsolete is otherwise an unbounded loop, and that is a defect too.
+    # Without this, Execute declaring Step after Step obsolete never terminates.
     revisions: int = 3
 
 
@@ -148,6 +149,21 @@ def _ask(llm, events, phase, system, user):
     return _as_json("".join(text), phase)
 
 
+def _as_image(path):
+    """
+    Read the render as an image content block, so Review actually looks at it.
+
+    A path is meaningless to the model — it cannot open files. Returns None if
+    there is nothing to show, which a sketch-only Step produces.
+    """
+    if not path or not os.path.isfile(path):
+        return None
+    with open(path, "rb") as handle:
+        encoded = base64.b64encode(handle.read()).decode("ascii")
+    return {"type": "image_url",
+            "image_url": {"url": "data:image/png;base64," + encoded}}
+
+
 def _as_json(text, phase):
     fenced = _FENCE.search(text)
     candidate = (fenced.group(1) if fenced else text).strip()
@@ -220,9 +236,16 @@ def review(intent, render, objects, llm, events):
     given the Plan, the code, or Execute's reasoning — an independent judgement
     of how it turned out, not of how it was produced.
     """
-    request = {"intent": intent, "render": render, "objects_that_now_exist": objects}
-    reply = _ask(llm, events, REVIEW_PHASE, REVIEW_SYSTEM,
-                 json.dumps(request, indent=2, default=str))
+    request = {"intent": intent, "objects_that_now_exist": objects}
+    content = [{"type": "text", "text": json.dumps(request, indent=2, default=str)}]
+
+    picture = _as_image(render)
+    if picture:
+        content.append(picture)
+    else:
+        content[0]["text"] += "\n\nNo render was produced, so judge on the objects alone."
+
+    reply = _ask(llm, events, REVIEW_PHASE, REVIEW_SYSTEM, content)
 
     verdict = str(reply.get("verdict", "")).lower()
     if verdict not in ("pass", "fail"):

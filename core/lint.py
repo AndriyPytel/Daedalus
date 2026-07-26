@@ -25,7 +25,9 @@ import re
 from dataclasses import dataclass, field
 from typing import List
 
-ELEMENT = re.compile(r"^(Edge|Face|Vertex|Wire|Shell|Solid)\d+$")
+# ADR-0005 names these three and no others. Wire/Shell/Solid were in an earlier
+# version of this pattern and rejected "Solid1" as an object Label.
+ELEMENT = re.compile(r"^(Edge|Face|Vertex)\d+$")
 
 GUI_NAMES = ("Gui", "FreeCADGui")
 
@@ -109,6 +111,11 @@ def lint(code: str, selection=None) -> LintResult:
         elif isinstance(node, ast.Name) and node.id in GUI_NAMES:
             complain(_GUI_REASON % node.id)
 
+        # Also catches App.Gui.Selection..., FreeCAD.Gui..., doc.Gui... — reaching
+        # the GUI through something else is the same problem by a longer route.
+        elif isinstance(node, ast.Attribute) and node.attr in GUI_NAMES:
+            complain(_GUI_REASON % node.attr)
+
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name in GUI_NAMES:
@@ -117,6 +124,9 @@ def lint(code: str, selection=None) -> LintResult:
         elif isinstance(node, ast.ImportFrom):
             if node.module in GUI_NAMES:
                 complain(_GUI_REASON % node.module)
+            for alias in node.names:
+                if alias.name in GUI_NAMES:
+                    complain(_GUI_REASON % alias.name)
 
     return LintResult(problems)
 

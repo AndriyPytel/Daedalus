@@ -54,6 +54,14 @@ def test_a_name_that_merely_looks_like_one_is_not_an_element():
     assert lint("obj.Label = 'Box12'").ok
 
 
+def test_only_the_three_kinds_adr_0005_names_are_rejected():
+    """ADR-0005 names Edge/Face/Vertex. 'Solid1' is a perfectly good Label."""
+    assert lint("obj.Label = 'Solid1'").ok
+    assert lint("name = 'Wire2'").ok
+    assert lint("name = 'Shell3'").ok
+    assert not lint("name = 'Edge1'").ok
+
+
 # ── the user's live selection is explicit input ───────────────────────────────
 
 
@@ -89,6 +97,11 @@ def test_selected_elements_flattens_a_snapshot_selection():
     "from FreeCADGui import Selection",
     "Gui.ActiveDocument.ActiveView.viewAxometric()",
     "sel = FreeCADGui.Selection.getSelectionEx()",
+    # Reaching the GUI through something else is the same problem by a longer route.
+    "sel = App.Gui.Selection.getSelection()",
+    "from FreeCAD import Gui",
+    "from FreeCAD import Gui as g",
+    "App.FreeCADGui.updateGui()",
 ])
 def test_gui_and_live_selection_are_rejected(code):
     result = lint(code)

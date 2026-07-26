@@ -5,7 +5,10 @@ The hardest logic in the project, verified the cheapest way: a scripted LLM and
 a fake Tool registry. The event stream is an output and is asserted on; it is
 never substituted.
 """
+import base64
 import json
+import os
+import tempfile
 
 import pytest
 
@@ -19,6 +22,22 @@ from core.tools import ToolRegistry
 
 SNAPSHOT = {"document": "Unnamed", "objects": [], "object_count": 0,
             "active_body": None, "selection": []}
+
+
+def _a_real_png():
+    """
+    Review is meant to look at the render, so the tests hand it a file that
+    actually decodes rather than a path to nothing.
+    """
+    handle, path = tempfile.mkstemp(prefix="loop_render_", suffix=".png")
+    with os.fdopen(handle, "wb") as png:
+        png.write(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8Dw"
+            "HwAFAAH/q842iQAAAABJRU5ErkJggg=="))
+    return path
+
+
+RENDER_PNG = _a_real_png()
 
 
 # ── scripted phase replies ────────────────────────────────────────────────────
@@ -54,7 +73,7 @@ class FakeTools:
 
     APPLIED = {"status": "applied", "created": ["Box"],
                "objects": [{"name": "Box", "label": "Box", "type": "Part::Box"}],
-               "render": "/tmp/render.png"}
+               "render": RENDER_PNG}
 
     def __init__(self, applies=()):
         self.applies = list(applies)
@@ -236,8 +255,37 @@ def test_review_receives_the_intent_the_render_and_the_document_state():
 
     asked = json.dumps(llm.calls[-1])
     assert "Make a 10mm box" in asked
-    assert "/tmp/render.png" in asked
     assert "Part::Box" in asked, "Review did not see the final Document state"
+
+
+def test_review_is_shown_the_render_as_a_picture_not_as_a_path():
+    """
+    A path is meaningless to a model — it cannot open files. Sending one would
+    mean Review judged on the object list while the panel showed the user an
+    image the model never saw.
+    """
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+
+    content = llm.calls[-1][-1]["content"]
+    images = [block for block in content if block.get("type") == "image_url"]
+
+    assert images, "Review was sent no image"
+    assert images[0]["image_url"]["url"].startswith("data:image/png;base64,")
+    assert RENDER_PNG not in json.dumps(content), "the path was sent instead of the bytes"
+
+
+def test_review_is_told_when_there_is_no_render_to_judge_by():
+    """A sketch-only Step produces no render; Review must not be left guessing."""
+    tools = FakeTools(applies=[{"status": "applied", "created": ["Sketch"],
+                                "objects": [{"name": "Sketch", "label": "Sketch",
+                                             "type": "Sketcher::SketchObject"}]}])
+    llm = ScriptedLLMClient([plan_reply("Only"), code_reply("sketch()"), verdict_reply("pass")])
+
+    run("Sketch a square", llm=llm, tools=tools.registry)
+
+    content = llm.calls[-1][-1]["content"]
+    assert not [b for b in content if b.get("type") == "image_url"]
+    assert "No render was produced" in content[0]["text"]
 
 
 def test_review_never_sees_the_plan_the_code_or_executes_reasoning():
@@ -433,7 +481,7 @@ def test_the_render_review_judged_by_is_in_the_stream():
         plan_reply("Only"), code_reply("box()"), verdict_reply("pass"),
     ])
 
-    assert events.first(RENDER).data["path"] == "/tmp/render.png"
+    assert events.first(RENDER).data["path"] == RENDER_PNG
 
 
 def test_reasoning_is_streamed_tagged_with_the_phase_it_came_from():
@@ -577,4 +625,4 @@ def test_a_run_reports_what_it_did():
     assert result.ok
     assert result.steps_applied == 2
     assert result.verdict == "pass"
-    assert result.render == "/tmp/render.png"
+    assert result.render == RENDER_PNG

@@ -50,6 +50,9 @@ def render(doc, path, size=(800, 600)):
     Coin's offscreen renderer cannot produce a pixel here. Painter's algorithm
     over flat-shaded tessellated triangles is enough for Review to judge by.
     """
+    # ponytail: painter's algorithm, no z-buffer — interpenetrating solids and
+    # curved fillet strips can sort wrong. Per-pixel depth test if Review is
+    # ever misled by a render.
     import numpy as np
     from PIL import Image, ImageDraw
 
