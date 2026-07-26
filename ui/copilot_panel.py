@@ -20,7 +20,6 @@ except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
-from agents.system_controller import MultiAgentController
 from .chat_widgets        import TextMessageWidget, AssistantMessageWidget, CodeBlockWidget
 from .multi_tab_manager   import ChatSessionManager
 from .upload_widget       import UploadWidget, FileChipBar
@@ -190,26 +189,14 @@ class AiWorker(QtCore.QObject):
     finished = QtCore.Signal(dict)
     error    = QtCore.Signal(str)
 
-    def __init__(self, controller: MultiAgentController,
-                 token_emitter: TokenEmitter,
-                 step_emitter:  StepEmitter):
+    def __init__(self, token_emitter: TokenEmitter, step_emitter: StepEmitter):
         super().__init__()
-        self.controller   = controller
         self.token_emitter = token_emitter
         self.step_emitter  = step_emitter
 
     @QtCore.Slot(str)
     def do_work(self, user_input: str):
-        try:
-            response = self.controller.process_request(
-                user_input,
-                stream_callback=self.token_emitter.signal_token_received.emit,
-                step_callback=self.step_emitter.signal_step.emit,
-            )
-            self.finished.emit(response)
-        except Exception as e:
-            from utils.logger import generate_crash_report
-            self.error.emit(generate_crash_report(e, "AiWorker.do_work()"))
+        self.error.emit("The Copilot core is being rewritten — nothing is wired up yet.")
 
 
 # ── Main Panel ─────────────────────────────────────────────────────────────────
@@ -256,11 +243,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         root_layout.addWidget(input_card)
 
         # ── Worker thread ──────────────────────────────────────────────────────
-        self.controller    = MultiAgentController()
         self.thread        = QtCore.QThread()
         self.token_emitter = TokenEmitter()
         self.step_emitter  = StepEmitter()
-        self.worker        = AiWorker(self.controller, self.token_emitter, self.step_emitter)
+        self.worker        = AiWorker(self.token_emitter, self.step_emitter)
         self.worker.moveToThread(self.thread)
 
         self.request_work.connect(self.worker.do_work)

@@ -8,12 +8,8 @@ from PySide.QtGui import QMessageBox
 
 # List of required packages for the addon
 REQUIRED_PACKAGES = [
-    "langchain",
-    "langchain_core",
-    "langchain_openai",
-    "langchain_google_genai",
-    "langchain_anthropic",
-    "pydantic"
+    "litellm",
+    "pydantic",
 ]
 
 def get_target_directory():
