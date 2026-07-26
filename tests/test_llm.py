@@ -15,6 +15,7 @@ from core.llm import (
     TEXT,
     Chunk,
     LiteLLMClient,
+    ProviderRefused,
     ScriptedLLMClient,
     collect,
     litellm_model_name,
@@ -43,12 +44,42 @@ def openai_chunks():
     return [ModelResponseStream(**event) for event in _load("openai_stream.json")]
 
 
+def truncated_chunks():
+    """Recorded OpenAI SSE that stops on the output cap: finish_reason 'length'."""
+    from litellm.types.utils import ModelResponseStream
+
+    return [ModelResponseStream(**event) for event in _load("openai_length_stream.json")]
+
+
 def client_replaying(chunks):
     def completion(**kwargs):
         completion.kwargs = kwargs
         return iter(chunks)
 
     return LiteLLMClient(model="m", api_key="k", completion=completion), completion
+
+
+def client_refused_by(exc, after=()):
+    """A client whose provider raises *exc*, optionally after streaming *after*."""
+    def completion(**kwargs):
+        for chunk in after:
+            yield chunk
+        raise exc
+
+    return LiteLLMClient(model="gemini/gemini-2.5-pro", api_key="k", completion=completion)
+
+
+def mapped(status_code, body, provider="gemini", model="gemini/gemini-2.5-pro"):
+    """A provider payload through LiteLLM's own exception mapping, as in a real call."""
+    from litellm.litellm_core_utils.exception_mapping_utils import exception_type
+    from litellm.llms.gemini.common_utils import GeminiError
+
+    raw = GeminiError(status_code=status_code, message=json.dumps(body))
+    try:
+        exception_type(model=model, original_exception=raw, custom_llm_provider=provider)
+    except Exception as exc:
+        return exc
+    raise AssertionError("LiteLLM did not classify that payload as an error at all")
 
 
 # ── Provider adaptation ───────────────────────────────────────────────────────
@@ -95,6 +126,153 @@ def test_stream_is_lazy_so_the_panel_sees_tokens_as_they_arrive():
     assert seen == []          # nothing consumed before the caller pulls
     next(stream)
     assert len(seen) < len(chunks)
+
+
+# ── A provider that would not answer ──────────────────────────────────────────
+
+
+def test_an_exhausted_google_quota_is_named_as_one_with_the_model_and_the_wait():
+    recorded = _load("google_429_quota.json")
+    client = client_refused_by(mapped(recorded["status_code"], recorded["body"]))
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    said = str(refusal.value)
+    assert "gemini/gemini-2.5-pro" in said
+    assert "quota" in said and "exhausted" in said
+    assert "26s" in said, "the provider said when it resets and the user was not told"
+    assert "JSON" not in said
+
+
+def test_the_provider_s_own_words_are_kept_beside_the_translation():
+    recorded = _load("google_429_quota.json")
+    client = client_refused_by(mapped(recorded["status_code"], recorded["body"]))
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "RESOURCE_EXHAUSTED" in refusal.value.said
+    assert "generate_content_free_tier_requests" in refusal.value.said
+
+
+def test_a_rate_limit_and_an_exhausted_quota_do_not_read_the_same():
+    """
+    Google sends the same RESOURCE_EXHAUSTED body for both; only the violated
+    metric says whether the remedy is waiting seconds or waiting a day.
+    """
+    recorded = _load("google_429_rate_limit.json")
+    limited = client_refused_by(mapped(recorded["status_code"], recorded["body"]))
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(limited.stream([{"role": "user", "content": "hi"}]))
+
+    said = str(refusal.value)
+    assert "rate limited" in said
+    assert "quota" not in said, "waiting seconds and waiting a day must not read alike"
+    assert "20s" in said
+
+
+def test_the_status_the_provider_answered_with_is_kept_too():
+    recorded = _load("google_429_quota.json")
+    client = client_refused_by(mapped(recorded["status_code"], recorded["body"]))
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "429" in refusal.value.said
+
+
+def test_being_out_of_credit_is_named_as_a_billing_problem():
+    import litellm
+
+    broke = client_refused_by(litellm.RateLimitError(
+        message="You exceeded your current quota. Error code: insufficient_quota",
+        llm_provider="openai", model="openai/gpt-4o"))
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(broke.stream([{"role": "user", "content": "hi"}]))
+
+    assert "out of credit" in str(refusal.value)
+    assert "billing" in str(refusal.value)
+
+
+def test_an_oversized_request_says_the_context_window_not_a_bad_reply():
+    client = client_refused_by(mapped(400, {"error": {
+        "code": 400,
+        "message": "The input token count (2000000) exceeds the maximum number of tokens "
+                   "allowed (1048576).",
+    }}))
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "context window" in str(refusal.value)
+    assert "smaller pieces" in str(refusal.value)
+
+
+def test_a_rejected_key_says_so_in_the_same_words_the_providers_page_would():
+    client = client_refused_by(mapped(401, {"error": {
+        "code": 401, "message": "API key not valid. Please pass a valid API key.",
+    }}))
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "key was rejected" in str(refusal.value)
+    assert "Providers page" in str(refusal.value)
+
+
+def test_a_dropped_local_endpoint_is_a_transport_failure_not_an_account_limit():
+    import litellm
+
+    client = client_refused_by(litellm.APIConnectionError(
+        message="Connection error.", llm_provider="openai", model="openai/llama3"))
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "connection failed" in str(refusal.value)
+    assert "not a limit on your account" in str(refusal.value)
+
+
+def test_a_reply_cut_off_by_the_output_cap_raises_instead_of_looking_complete():
+    client, _ = client_replaying(truncated_chunks())
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "ran out of output tokens" in str(refusal.value)
+
+
+def test_the_output_cap_is_named_so_the_user_knows_what_to_raise():
+    client, _ = client_replaying(truncated_chunks())
+    client.thinking_budget = 2048
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "8192-token" in str(refusal.value), "the implicit budget * 4 cap stayed invisible"
+
+
+def test_a_refusal_halfway_through_a_stream_is_still_a_refusal():
+    import litellm
+
+    client = client_refused_by(
+        litellm.RateLimitError(message="quota exceeded", llm_provider="gemini",
+                               model="gemini/gemini-2.5-pro"),
+        after=openai_chunks()[:2],
+    )
+
+    with pytest.raises(ProviderRefused):
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+
+def test_a_failure_that_is_not_the_provider_refusing_is_left_alone():
+    client = client_refused_by(ZeroDivisionError("a bug in our own mapping"))
+
+    with pytest.raises(ZeroDivisionError):
+        collect(client.stream([{"role": "user", "content": "hi"}]))
 
 
 # ── Request shaping ───────────────────────────────────────────────────────────

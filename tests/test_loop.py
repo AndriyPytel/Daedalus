@@ -16,7 +16,7 @@ from core.events import (
     APPLIED, BLOCKED, ERROR, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, RENDER,
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
-from core.llm import ScriptedLLMClient
+from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
 from core.loop import Budgets, run
 from core.tools import ToolRegistry
 
@@ -506,6 +506,81 @@ def test_blocked_waits_for_the_user_rather_than_failing_silently():
     assert not result.ok
     assert result.awaiting_user
     assert events[-1].kind == BLOCKED
+
+
+# ── A provider that would not answer ──────────────────────────────────────────
+
+
+def a_refusal():
+    return ProviderRefused(
+        "gemini/gemini-2.5-pro refused the request: your quota for this model is exhausted. "
+        "The provider says to retry in 26s.",
+        said='{"error": {"status": "RESOURCE_EXHAUSTED", "message": "quota"}}',
+    )
+
+
+def test_a_refused_execute_ends_blocked_with_the_provider_s_reason():
+    result, events, _, _ = drive([
+        plan_reply("First", "Second"), code_reply("first()"), a_refusal(),
+    ])
+
+    assert result.blocked and result.awaiting_user
+    assert "quota" in result.reason and "26s" in result.reason
+    assert events[-1].kind == BLOCKED
+    assert events.of(ERROR) == [], "a refusal was reported as a crash"
+
+
+def test_the_steps_already_applied_are_still_counted_when_the_provider_refuses():
+    result, _, _, tools = drive([
+        plan_reply("First", "Second"), code_reply("first()"), a_refusal(),
+    ])
+
+    assert result.steps_applied == 1
+    assert tools.applied_codes() == ["first()"]
+
+
+def test_the_provider_s_verbatim_words_reach_the_session_log():
+    _, events, _, _ = drive([
+        plan_reply("Only"), a_refusal(),
+    ])
+
+    assert "RESOURCE_EXHAUSTED" in events.first(BLOCKED).data["provider_said"]
+    assert "RESOURCE_EXHAUSTED" in events.as_log()
+
+
+def test_half_a_step_is_never_applied_when_the_stream_dies_partway():
+    result, _, _, tools = drive([
+        plan_reply("Only"),
+        [Chunk(TEXT, '{"code": "doc.addObject('), a_refusal()],
+    ])
+
+    assert result.blocked
+    assert tools.applied_codes() == [], "a half-streamed Step reached the Document"
+
+
+def test_what_was_tried_before_the_refusal_is_still_reported():
+    result, _, _, _ = drive(
+        [plan_reply("Only"), code_reply("bad()"), a_refusal()],
+        applies=[failed("boom")],
+    )
+
+    assert [t["traceback"] for t in result.tried] == ["boom"]
+
+
+def test_a_refusal_during_plan_ends_the_same_way_as_one_during_execute():
+    result, events, _, _ = drive([a_refusal()])
+
+    assert result.blocked
+    assert "quota" in result.reason
+    assert events[-1].kind == BLOCKED
+
+
+def test_a_genuinely_malformed_reply_still_says_it_was_malformed():
+    result, events, _, _ = drive([plan_reply("Only"), "not JSON at all"])
+
+    assert not result.blocked
+    assert "did not reply with JSON" in result.reason
+    assert events.first(ERROR) is not None
 
 
 # ── The event stream ──────────────────────────────────────────────────────────

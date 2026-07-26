@@ -28,7 +28,7 @@ from core.events import (
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import TRAPS
-from core.llm import REASONING
+from core.llm import REASONING, ProviderRefused
 from core.tools import ToolError
 
 PLAN_PHASE = "plan"
@@ -343,12 +343,21 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None,
     """
     events = events if events is not None else EventStream()
     budgets = budgets or Budgets()
+    # Steps live in the Document the moment they apply, so the count has to
+    # survive a phase that dies mid-pass.
+    progress = {"applied": 0, "tried": []}
 
     try:
-        return _run(intent, llm, tools, events, budgets, cancelled or (lambda: False), gate)
+        return _run(intent, llm, tools, events, budgets, cancelled or (lambda: False), gate,
+                    progress)
     except Stopped:
         return _block(events, "Stopped by you. Everything applied so far is still in the "
-                              "Document; undo it Step by Step if you want it gone.", [], 0)
+                              "Document; undo it Step by Step if you want it gone.", [],
+                      progress["applied"])
+    except ProviderRefused as exc:
+        # The provider would not answer. That is a stop, not a reply the loop
+        # failed to understand, and it ends like every other stop.
+        return _block(events, str(exc), progress["tried"], progress["applied"], said=exc.said)
     except PhaseError as exc:
         events.emit(ERROR, message=str(exc))
         return LoopResult(ok=False, reason=str(exc))
@@ -357,7 +366,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None,
         return LoopResult(ok=False, reason=str(exc))
 
 
-def _run(intent, llm, tools, events, budgets, cancelled, gate):
+def _run(intent, llm, tools, events, budgets, cancelled, gate, progress):
     snapshot = tools.call("snapshot")
     steps = plan(intent, snapshot, llm, events)
     events.emit(PLAN, steps=list(steps))
@@ -383,11 +392,11 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate):
                     reason="You asked for: " + approval.feedback)
 
     render = None
-    applied = 0
     objects = []
 
     while True:
-        outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled)
+        outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress)
+        applied = progress["applied"]
 
         if outcome["blocked"]:
             return _block(events, outcome["reason"], outcome["tried"], applied)
@@ -407,7 +416,6 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate):
             events.emit(PLAN_REVISED, steps=list(steps), reason=outcome["obsolete"])
             continue
 
-        applied += outcome["applied"]
         render = outcome["render"] or render
         objects = outcome["objects"] or objects
 
@@ -434,9 +442,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate):
         events.emit(PLAN_REVISED, steps=list(steps), reason=reason)
 
 
-def _work_through(steps, intent, tools, llm, events, budgets, cancelled):
+def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress):
     """One pass over the Plan. Returns why it stopped."""
-    applied = 0
     render = None
     objects = []
 
@@ -452,7 +459,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled):
             outcome = execute(step, tools, llm, events, attempts, budgets)
 
             if outcome.obsolete:
-                return {"blocked": False, "obsolete": outcome.obsolete, "applied": applied,
+                return {"blocked": False, "obsolete": outcome.obsolete,
                         "render": render, "objects": objects,
                         "tried": [_tried(step, a) for a in attempts]}
 
@@ -462,7 +469,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled):
             events.emit(TOOL_RESULT, name="apply_step", result=result)
 
             if result.get("status") == "applied":
-                applied += 1
+                progress["applied"] += 1
                 render = result.get("render") or render
                 objects = result.get("objects") or objects
                 events.emit(APPLIED, step=index, label=outcome.label,
@@ -473,6 +480,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled):
 
             traceback = result.get("traceback", "The Step failed without saying why.")
             attempts.append(Attempt(code=outcome.code, traceback=traceback))
+            progress["tried"] = [_tried(step, a) for a in attempts]
             events.emit(PREFLIGHT_FAILED, step=index, attempt=len(attempts),
                         traceback=traceback)
 
@@ -482,18 +490,19 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled):
                     "reason": "Step %d of %d (%s) failed %d times; the attempt budget for a "
                               "Step is spent." % (index, len(steps), step, len(attempts)),
                     "tried": [_tried(step, a) for a in attempts],
-                    "obsolete": None, "applied": applied, "render": render, "objects": objects,
+                    "obsolete": None, "render": render, "objects": objects,
                 }
 
-    return {"blocked": False, "obsolete": None, "applied": applied,
-            "render": render, "objects": objects, "tried": []}
+    return {"blocked": False, "obsolete": None, "render": render, "objects": objects, "tried": []}
 
 
 def _tried(step, attempt):
     return {"step": step, "code": attempt.code, "traceback": attempt.traceback}
 
 
-def _block(events, reason, tried, applied):
-    events.emit(BLOCKED, reason=reason, tried=list(tried))
+def _block(events, reason, tried, applied, said=""):
+    # `said` is the provider's own words: the stream is the session log, and
+    # without them the only copy lives in the FreeCAD console until it scrolls.
+    events.emit(BLOCKED, reason=reason, tried=list(tried), provider_said=said)
     return LoopResult(ok=False, blocked=True, reason=reason, tried=list(tried),
                       steps_applied=applied)

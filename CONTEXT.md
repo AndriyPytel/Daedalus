@@ -65,3 +65,7 @@ _Avoid_: verification, QA, check
 **Session**:
 One continuous stretch of work on one Document, and the scope over which Owned Objects are remembered.
 _Avoid_: conversation, thread, chat
+
+**Refusal**:
+The provider declining to answer — an exhausted quota, a rate limit, a rejected key, a request past the context window, a reply cut off at the output cap, a dropped connection. Not a bad reply: the model was never allowed to answer, so the run stops blocked with the provider's own reason rather than erroring.
+_Avoid_: API error, exception, malformed reply

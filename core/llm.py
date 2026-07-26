@@ -12,6 +12,7 @@ stream and honours `cache_control`.
 This module must stay importable without FreeCAD; the settings lookup that
 needs it is deferred into `client_from_settings`.
 """
+import re
 from dataclasses import dataclass
 from typing import Callable, Iterable, Iterator, List
 
@@ -26,6 +27,20 @@ _PREFIX = {
     "Anthropic": "anthropic",
     "Custom/Local": "openai",
 }
+
+
+class ProviderRefused(Exception):
+    """
+    The provider would not answer: a limit, a rejected key, a dropped
+    connection, a reply cut off before it finished.
+
+    Carries a sentence written for the user — which model, which limit, what to
+    do about it — and `said`, what the provider itself replied, verbatim.
+    """
+
+    def __init__(self, message: str, said: str = ""):
+        super().__init__(message)
+        self.said = said
 
 
 @dataclass(frozen=True)
@@ -82,9 +97,19 @@ class LiteLLMClient:
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
             kwargs.setdefault("max_tokens", self.thinking_budget * 4)
 
-        for raw in completion(**kwargs):
-            for chunk in _deltas(raw):
-                yield chunk
+        try:
+            for raw in completion(**kwargs):
+                for chunk in _deltas(raw):
+                    yield chunk
+                if _stopped_for_length(raw):
+                    raise _truncated(self.model, kwargs.get("max_tokens"))
+        except ProviderRefused:
+            raise
+        except Exception as exc:
+            refusal = _translate(exc, self.model)
+            if refusal is None:
+                raise
+            raise refusal from exc
 
 
 def _deltas(raw) -> Iterator[Chunk]:
@@ -99,6 +124,87 @@ def _deltas(raw) -> Iterator[Chunk]:
         text = getattr(delta, "content", None)
         if text:
             yield Chunk(TEXT, text)
+
+
+def _stopped_for_length(raw) -> bool:
+    """The provider marking a reply as cut off. Dropped, this looks like a bad answer."""
+    return any(getattr(choice, "finish_reason", None) == "length"
+               for choice in getattr(raw, "choices", None) or [])
+
+
+def _truncated(model, cap) -> ProviderRefused:
+    """The cap is `budget * 4` above and invisible from outside; the message names it."""
+    where = "at the %d-token output cap" % cap if cap else "at the provider's default output cap"
+    return ProviderRefused(
+        "%s ran out of output tokens: the reply was cut off %s before it finished. "
+        "Raise the cap or ask for a smaller Step." % (model, where),
+        "finish_reason: length",
+    )
+
+
+# LiteLLM's taxonomy translated once, here, so no phase has to guess what a
+# provider error means. Google's 429 for an exhausted quota and OpenAI's for
+# too many requests are the same class; only the body tells them apart.
+_RETRY_AFTER = re.compile(
+    r"retry[-_ ]?(?:delay|after)\"?\s*[:=]?\s*\"?(\d+(?:\.\d+)?\s*[smh]?)", re.I)
+_OUT_OF_CREDIT = ("insufficient_quota", "credit balance", "out of credit", "billing_hard_limit")
+_OUT_OF_QUOTA = ("quota", "resource_exhausted", "resource has been exhausted")
+# Google answers a per-minute limit with the same RESOURCE_EXHAUSTED body as a
+# spent daily quota; only the violated metric says whether the wait is seconds
+# or a day.
+_PER_MINUTE = ("perminute", "per minute", "per min")
+
+
+def _translate(exc, model):
+    """A LiteLLM exception as a sentence the user can act on, or None if it is not one."""
+    import litellm
+
+    said = str(getattr(exc, "message", "") or exc)
+    status = getattr(exc, "status_code", None)
+    if status:
+        said = "HTTP %s %s" % (status, said)
+    low = said.lower()
+    refused = "%s refused the request" % model
+
+    if isinstance(exc, litellm.ContextWindowExceededError):
+        return ProviderRefused(
+            refused + ": the request is longer than the model's context window. Break the "
+            "Intent into smaller pieces, or pick a model with more room.", said)
+    if isinstance(exc, litellm.AuthenticationError):
+        return ProviderRefused(
+            refused + ": the API key was rejected. Check the key for this provider on the "
+            "Providers page.", said)
+    if isinstance(exc, (litellm.RateLimitError, litellm.BudgetExceededError)):
+        if any(word in low for word in _OUT_OF_CREDIT):
+            return ProviderRefused(
+                refused + ": the account is out of credit. Top it up in your provider's "
+                "billing dashboard.", said)
+        if any(word in low for word in _OUT_OF_QUOTA) and not any(
+                word in low for word in _PER_MINUTE):
+            return ProviderRefused(
+                refused + ": your quota for this model is exhausted.%s Wait for the quota "
+                "window to reset, raise the quota with your provider, or run this on another "
+                "model." % _retry_hint(said), said)
+        return ProviderRefused(
+            refused + ": you are being rate limited — too many requests too quickly.%s Wait "
+            "and send the Intent again." % _retry_hint(said), said)
+    if isinstance(exc, litellm.Timeout):
+        return ProviderRefused(
+            refused + ": the provider did not answer in time. Try again, or pick a faster "
+            "model.", said)
+    if isinstance(exc, litellm.APIConnectionError):
+        return ProviderRefused(
+            "Could not reach %s: the connection failed. This is a transport failure, not a "
+            "limit on your account — check the endpoint is running and reachable." % model, said)
+    return None
+
+
+def _retry_hint(said):
+    """The reset time, when the provider named one — the difference between waiting and giving up."""
+    found = _RETRY_AFTER.search(said)
+    if not found:
+        return ""
+    return " The provider says to retry in %s." % found.group(1).strip()
 
 
 class ScriptedLLMClient:
@@ -119,7 +225,17 @@ class ScriptedLLMClient:
             raise AssertionError(
                 "ScriptedLLMClient ran out of turns on call %d" % len(self.calls)
             )
-        return iter(_as_chunks(self.turns.pop(0)))
+        return _replay(self.turns.pop(0))
+
+
+def _replay(turn) -> Iterator[Chunk]:
+    """An Exception anywhere in a turn is raised there — a stream can die partway."""
+    if isinstance(turn, Exception):
+        raise turn
+    for chunk in _as_chunks(turn):
+        if isinstance(chunk, Exception):
+            raise chunk
+        yield chunk
 
 
 def _as_chunks(turn) -> List[Chunk]:

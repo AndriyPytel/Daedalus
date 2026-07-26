@@ -260,9 +260,10 @@ class LoopWorker(QtCore.QObject):
 
     @QtCore.Slot(str)
     def do_work(self, intent: str):
+        from core import events as ev
         from core.events import EventStream
         from core.loop import run
-        from utils.logger import generate_crash_report, get_session_log_path
+        from utils.logger import generate_crash_report, get_session_log_path, logger
 
         self._stop.clear()
         events = EventStream([self.bridge.subscriber()])
@@ -270,6 +271,11 @@ class LoopWorker(QtCore.QObject):
             events.log_to(get_session_log_path() + ".events.jsonl")
         except Exception:
             pass    # a missing log must not cost the user their run
+
+        # Why a run stopped belongs in the session log too, not only in the
+        # FreeCAD console where it scrolls away.
+        events.subscribe(lambda event: logger.error("%s: %s" % (event.kind, event.data))
+                         if event.kind in (ev.BLOCKED, ev.ERROR) else None)
 
         try:
             result = run(intent, llm=self._get_client(), tools=self._get_tools(),
