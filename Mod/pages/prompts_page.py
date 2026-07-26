@@ -27,6 +27,8 @@ class PromptsPage(QtWidgets.QWidget):
         self.setWindowTitle("Prompt Management")
         self._current_key = None       # str | None
         self._current_is_factory = True
+        self._tinted = False
+        self._icon_widgets = []        # re-tinted on show, once the theme applies
         self._build_ui()
 
     def getWidget(self):
@@ -37,14 +39,12 @@ class PromptsPage(QtWidgets.QWidget):
     def _btn(self, label: str, icon_name: str = None, tooltip: str = "") -> QtWidgets.QPushButton:
         b = QtWidgets.QPushButton(label)
         if icon_name:
-            b.setIcon(UIHelpers.get_icon(icon_name, size=16))
+            b.setIcon(UIHelpers.get_icon(icon_name, size=16, on=b))
+            self._icon_widgets.append((b, icon_name))
         if tooltip:
             b.setToolTip(tooltip)
         b.setStyleSheet(
-            "QPushButton { background: palette(button); border: 1px solid palette(mid); "
-            "border-radius: 6px; padding: 6px 14px; font-weight: 500; color: palette(buttontext); }"
-            "QPushButton:hover { background: palette(midlight); }"
-            "QPushButton:disabled { color: palette(mid); border-color: palette(mid); }"
+            "QPushButton { border-radius: 6px; padding: 6px 14px; font-weight: 500; }"
         )
         return b
 
@@ -62,13 +62,11 @@ class PromptsPage(QtWidgets.QWidget):
         
         divider = QtWidgets.QFrame()
         divider.setFrameShape(QtWidgets.QFrame.HLine)
-        divider.setStyleSheet("color: palette(mid);")
         outer.addWidget(divider)
 
         # ── Splitter: left list + right editor ───────────────────────────────
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.setHandleWidth(1)
-        splitter.setStyleSheet("QSplitter::handle { background: palette(mid); }")
 
         # — Left: prompt list —
         left = QtWidgets.QWidget()
@@ -78,9 +76,8 @@ class PromptsPage(QtWidgets.QWidget):
 
         self.prompt_list = QtWidgets.QListWidget()
         self.prompt_list.setStyleSheet(
-            "QListWidget { border: 1px solid palette(mid); border-radius: 6px; }"
+            "QListWidget { border-radius: 6px; }"
             "QListWidget::item { padding: 8px 10px; font-weight: 500; }"
-            "QListWidget::item:selected { background: palette(highlight); color: palette(highlightedtext); }"
         )
         self.prompt_list.currentItemChanged.connect(self._on_selection_changed)
         left_layout.addWidget(self.prompt_list)
@@ -130,11 +127,13 @@ class PromptsPage(QtWidgets.QWidget):
         notice_layout.setSpacing(6)
         
         notice_icon = QtWidgets.QLabel()
-        notice_icon.setPixmap(UIHelpers.get_icon("factory", size=16).pixmap(16, 16))
+        self.notice_icon = notice_icon
+        notice_icon.setPixmap(
+            UIHelpers.get_icon("factory", size=16, on=notice_icon).pixmap(16, 16))
         notice_layout.addWidget(notice_icon)
         
         notice_text = QtWidgets.QLabel("Factory default — create a new prompt to customize")
-        notice_text.setStyleSheet("font-size: 11px; color: palette(text); font-style: italic;")
+        notice_text.setStyleSheet("font-size: 11px; font-style: italic;")
         notice_layout.addWidget(notice_text)
         notice_layout.addStretch()
         
@@ -152,10 +151,11 @@ class PromptsPage(QtWidgets.QWidget):
         reset_row.addStretch()
         self.reset_btn = self._btn("Reset to Defaults", icon_name="refresh",
                                     tooltip="Remove all user prompts and restore factory defaults")
+        # Destructive, so it keeps an explicit colour, as failure does (ADR-0011).
         self.reset_btn.setStyleSheet(
-            self.reset_btn.styleSheet().replace("palette(button)", "transparent")
-            + "QPushButton { color: #f44336; border-color: rgba(244, 67, 54, 0.4); }"
-            + "QPushButton:hover { background: rgba(244, 67, 54, 0.1); border-color: #f44336; }"
+            self.reset_btn.styleSheet()
+            + "QPushButton { color: #f44336; }"
+            + "QPushButton:hover { background: rgba(244, 67, 54, 0.1); }"
         )
         self.reset_btn.clicked.connect(self._reset_to_defaults)
         reset_row.addWidget(self.reset_btn)
@@ -163,6 +163,24 @@ class PromptsPage(QtWidgets.QWidget):
 
         # Initial blank state
         self._set_editor_enabled(False)
+
+    def showEvent(self, event):
+        """
+        Re-tint once Qt has polished the page (ADR-0011).
+
+        Only the first show: rebuilding the list is what re-tints its item
+        icons, and doing that on every show would reset the selection and
+        throw away a prompt the user had edited but not saved.
+        """
+        super().showEvent(event)
+        if self._tinted:
+            return
+        self._tinted = True
+        for widget, icon_name in self._icon_widgets:
+            widget.setIcon(UIHelpers.get_icon(icon_name, size=16, on=widget))
+        self.notice_icon.setPixmap(
+            UIHelpers.get_icon("factory", size=16, on=self.notice_icon).pixmap(16, 16))
+        self._populate_list()
 
     # ── List population ───────────────────────────────────────────────────────
 
@@ -180,7 +198,7 @@ class PromptsPage(QtWidgets.QWidget):
             
             # Use SVG icons for factory/user
             icon_name = "factory" if is_factory else "user"
-            item.setIcon(UIHelpers.get_icon(icon_name, size=18))
+            item.setIcon(UIHelpers.get_icon(icon_name, size=18, on=self.prompt_list))
             
             self.prompt_list.addItem(item)
             if key == select_key:

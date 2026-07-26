@@ -98,7 +98,6 @@ class ChatSessionManager(QtWidgets.QWidget):
             QScrollBar::handle:vertical {
                 border-radius: 3px;
                 min-height: 20px;
-                background: palette(mid);
             }
         """)
         container.setObjectName("scrollContainer")

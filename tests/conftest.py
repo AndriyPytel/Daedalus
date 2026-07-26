@@ -39,6 +39,27 @@ def _try_import_freecad():
 HAVE_FREECAD = _try_import_freecad()
 
 
+def _one_qt_application():
+    """
+    Build the suite's single QApplication, offscreen, before any test does.
+
+    A process gets one QCoreApplication and cannot upgrade it: whichever test
+    ran first decided whether widgets could exist at all, and a QDockWidget
+    built under a plain QCoreApplication aborts the interpreter rather than
+    raising. Making it a GUI application here settles that for everyone —
+    QApplication *is* a QCoreApplication, so the event-loop tests are unaffected.
+    """
+    try:
+        from PySide2 import QtWidgets
+    except ImportError:
+        return None
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+
+QT_APP = _one_qt_application()
+
+
 def pytest_collection_modifyitems(config, items):
     if HAVE_FREECAD:
         return

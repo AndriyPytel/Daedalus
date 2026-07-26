@@ -55,11 +55,6 @@ class HistoryItem(QtWidgets.QFrame):
                 border: none;
                 border-radius: 4px;
                 font-size: 14px;
-                color: palette(text);
-            }
-            QPushButton#DeleteButton:hover {
-                background-color: palette(midlight);
-                color: #ff4d4d;
             }
         """)
         self.del_btn.clicked.connect(lambda: self.deleted.emit(self.index))
@@ -71,7 +66,7 @@ class HistoryItem(QtWidgets.QFrame):
                 background-color: transparent;
             }
             QFrame#HistoryItem:hover {
-                background-color: palette(midlight);
+                background-color: rgba(127, 127, 127, 40);
             }
         """)
 
@@ -98,30 +93,15 @@ class HistoryPopup(QtWidgets.QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint)
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
         self.setObjectName("HistoryPopup")
         self.setFixedWidth(280)
         self.setFixedHeight(400)
 
-        # Shadow effect
-        shadow = QtWidgets.QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setOffset(0, 5)
-        shadow.setColor(QtGui.QColor(0, 0, 0, 80))
-        self.setGraphicsEffect(shadow)
-
-        # Main container with border/bg
+        # Opaque, so the theme paints it: translucent needed a colour of its own (ADR-0011).
         container = QtWidgets.QFrame(self)
         container.setObjectName("PopupContainer")
-        container.setGeometry(10, 10, 260, 380) # Account for shadow padding
-        container.setStyleSheet("""
-            QFrame#PopupContainer {
-                background-color: palette(window);
-                border: 1px solid palette(mid);
-                border-radius: 12px;
-            }
-        """)
-        
+        container.setGeometry(0, 0, 280, 400)
+
         vbox = QtWidgets.QVBoxLayout(container)
         vbox.setContentsMargins(8, 12, 8, 12)
         vbox.setSpacing(10)
@@ -132,12 +112,9 @@ class HistoryPopup(QtWidgets.QFrame):
         self.search_input.setObjectName("HistorySearch")
         self.search_input.setStyleSheet("""
             QLineEdit#HistorySearch {
-                background-color: palette(base);
-                border: 1px solid palette(mid);
                 border-radius: 6px;
                 padding: 6px 10px;
                 font-size: 13px;
-                color: palette(text);
             }
         """)
         self.search_input.textChanged.connect(self.filter_items)

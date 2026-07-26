@@ -44,15 +44,15 @@ class _FileChip(QtWidgets.QWidget):
         self.layout.setSpacing(6)
 
         icon_lbl = QtWidgets.QLabel()
-        icon_lbl.setPixmap(UIHelpers.get_icon(icon_name, size=14).pixmap(14, 14))
+        icon_lbl.setPixmap(UIHelpers.get_icon(icon_name, size=14, on=icon_lbl).pixmap(14, 14))
         self.layout.addWidget(icon_lbl)
 
         self.lbl = QtWidgets.QLabel(name)
-        self.lbl.setStyleSheet("font-size: 11px; color: palette(text);")
+        self.lbl.setStyleSheet("font-size: 11px;")
         self.layout.addWidget(self.lbl)
 
         self.btn = QtWidgets.QPushButton()
-        self.btn.setIcon(UIHelpers.get_icon("close", color="#E05252", size=12))
+        self.btn.setIcon(UIHelpers.get_icon("close", size=12, on=self.btn))
         self.btn.setFixedSize(16, 16)
         self.btn.setStyleSheet("""
             QPushButton {
@@ -62,25 +62,18 @@ class _FileChip(QtWidgets.QWidget):
                 font-weight: bold;
                 padding: 0px;
                 margin-top: -2px;
-                color: palette(mid);
             }
-            QPushButton:hover { color: #E05252; }
         """)
         self.btn.clicked.connect(lambda: self.remove_requested.emit(self.filepath))
         self.btn.setVisible(False)  # Hidden until hover
         self.layout.addWidget(self.btn)
 
-        highlight = self.palette().color(QtGui.QPalette.Highlight)
-        bg_rgba = f"rgba({highlight.red()}, {highlight.green()}, {highlight.blue()}, 51)" # 20% opacity
-        self.setStyleSheet(f"""
-            _FileChip {{
-                border: 1px solid palette(mid);
+        # A translucent grey, not a colour: it works over any theme (ADR-0011).
+        self.setStyleSheet("""
+            _FileChip {
                 border-radius: 12px;
-                background: {bg_rgba};
-            }}
-            _FileChip:hover {{
-                border: 1px solid palette(highlight);
-            }}
+                background: rgba(127, 127, 127, 40);
+            }
         """)
         self.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Fixed)
 
@@ -158,7 +151,7 @@ class UploadWidget(QtWidgets.QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.upload_btn = QtWidgets.QPushButton()
-        self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=20))
+        self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=20, on=self.upload_btn))
         self.upload_btn.setFixedSize(28, 28)
         self.upload_btn.setToolTip("Attach file (image / PDF)")
         self.upload_btn.setStyleSheet("""
@@ -167,10 +160,8 @@ class UploadWidget(QtWidgets.QWidget):
                 background: transparent;
                 font-size: 18px;
                 font-weight: bold;
-                color: palette(text);
                 padding: 0px;
             }
-            QPushButton:hover { color: palette(text); }
         """)
         self.upload_btn.clicked.connect(self.open_file_dialog)
         layout.addWidget(self.upload_btn)
@@ -178,6 +169,10 @@ class UploadWidget(QtWidgets.QWidget):
         # Legacy: keep a simple list so get_and_clear_files() still works
         # if called from old copilot_panel code during transition
         self._files: list[str] = []
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=20, on=self.upload_btn))
 
     def open_file_dialog(self):
         files, _ = QtWidgets.QFileDialog.getOpenFileNames(

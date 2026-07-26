@@ -17,6 +17,9 @@ except ImportError:
 
 from ui.ui_helpers import UIHelpers
 
+# Carried alongside the semantic colours, which replace rather than extend a stylesheet.
+_STATUS_STYLE = "font-size: 11px; font-weight: 600;"
+
 
 # ── Connection-test worker ────────────────────────────────────────────────────
 
@@ -47,6 +50,7 @@ class ProvidersPage(QtWidgets.QWidget):
         self._edits = {}  # Tracks all unsaved key changes locally
         self._thread = None
         self._worker = None
+        self._tinted = False
         self._build_ui()
 
         from utils.provider_manager import ProviderManager
@@ -68,13 +72,11 @@ class ProvidersPage(QtWidgets.QWidget):
         
         divider = QtWidgets.QFrame()
         divider.setFrameShape(QtWidgets.QFrame.HLine)
-        divider.setStyleSheet("color: palette(mid);")
         outer.addWidget(divider)
 
         # ── Splitter ─────────────────────────────────────────────────────────
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.setHandleWidth(1)
-        splitter.setStyleSheet("QSplitter::handle { background: palette(mid); }")
 
         # — Left: provider list —
         left = QtWidgets.QWidget()
@@ -84,19 +86,17 @@ class ProvidersPage(QtWidgets.QWidget):
 
         self.provider_list = QtWidgets.QListWidget()
         self.provider_list.setStyleSheet(
-            "QListWidget { border: 1px solid palette(mid); border-radius: 6px; }"
+            "QListWidget { border-radius: 6px; }"
             "QListWidget::item { padding: 8px 12px; font-weight: 500; }"
-            "QListWidget::item:selected { background: palette(highlight); color: palette(highlightedtext); }"
         )
         self.provider_list.currentItemChanged.connect(self._on_selection_changed)
         left_layout.addWidget(self.provider_list)
 
         # Add custom provider button
         self.add_btn = QtWidgets.QPushButton("Add Custom Provider")
-        self.add_btn.setIcon(UIHelpers.get_icon("plus", size=16))
+        self.add_btn.setIcon(UIHelpers.get_icon("plus", size=16, on=self.add_btn))
         self.add_btn.setStyleSheet(
-            "QPushButton { background: palette(button); border: 1px solid palette(mid); border-radius: 6px; padding: 6px; color: palette(buttontext); }"
-            "QPushButton:hover { background: palette(midlight); }"
+            "QPushButton { border-radius: 6px; padding: 6px; }"
         )
         self.add_btn.clicked.connect(self._add_custom_provider)
         left_layout.addWidget(self.add_btn)
@@ -111,7 +111,7 @@ class ProvidersPage(QtWidgets.QWidget):
 
         # Provider Title
         self.title_lbl = QtWidgets.QLabel("Select a provider")
-        self.title_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: palette(windowtext);")
+        self.title_lbl.setStyleSheet("font-size: 16px; font-weight: 700;")
         self.right_layout.addWidget(self.title_lbl)
 
         # API Key Field
@@ -138,8 +138,7 @@ class ProvidersPage(QtWidgets.QWidget):
         self.visibility_btn.setToolTip("Show/Hide Key")
         self._update_visibility_icon(False)
         self.visibility_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: 1px solid palette(mid); border-radius: 6px; }"
-            "QPushButton:hover { background: palette(midlight); }"
+            "QPushButton { background: transparent; border-radius: 6px; }"
         )
         self.visibility_btn.toggled.connect(self._toggle_visibility)
         key_hbox.addWidget(self.visibility_btn)
@@ -150,16 +149,15 @@ class ProvidersPage(QtWidgets.QWidget):
         # Test Connection row
         test_row = QtWidgets.QHBoxLayout()
         self.test_btn = QtWidgets.QPushButton("Test Connection")
-        self.test_btn.setIcon(UIHelpers.get_icon("refresh", size=16))
+        self.test_btn.setIcon(UIHelpers.get_icon("refresh", size=16, on=self.test_btn))
         self.test_btn.setStyleSheet(
-            "QPushButton { background: palette(button); border: 1px solid palette(mid); border-radius: 6px; padding: 6px 16px; color: palette(buttontext); }"
-            "QPushButton:hover { background: palette(midlight); }"
+            "QPushButton { border-radius: 6px; padding: 6px 16px; }"
         )
         self.test_btn.clicked.connect(self._run_test)
         test_row.addWidget(self.test_btn)
 
         self.status_lbl = QtWidgets.QLabel("")
-        self.status_lbl.setStyleSheet("font-size: 11px; font-weight: 600;")
+        self.status_lbl.setStyleSheet(_STATUS_STYLE)
         test_row.addWidget(self.status_lbl, stretch=1)
         
         self.right_layout.addLayout(test_row)
@@ -186,9 +184,26 @@ class ProvidersPage(QtWidgets.QWidget):
         # Initial state
         self._set_editor_enabled(False)
 
+    def showEvent(self, event):
+        """
+        Re-tint once Qt has polished the page (ADR-0011).
+
+        Only the first show: rebuilding the list is what re-tints its item
+        icons, and doing that on every show would reset the selection and
+        throw away a key the user had typed but not saved.
+        """
+        super().showEvent(event)
+        if self._tinted:
+            return
+        self._tinted = True
+        self.add_btn.setIcon(UIHelpers.get_icon("plus", size=16, on=self.add_btn))
+        self.test_btn.setIcon(UIHelpers.get_icon("refresh", size=16, on=self.test_btn))
+        self._update_visibility_icon(self.visibility_btn.isChecked())
+        self._populate_list()
+
     def _update_visibility_icon(self, visible):
         icon_name = "eye_open" if visible else "eye_closed"
-        self.visibility_btn.setIcon(UIHelpers.get_icon(icon_name, size=20))
+        self.visibility_btn.setIcon(UIHelpers.get_icon(icon_name, size=20, on=self.visibility_btn))
 
     def _toggle_visibility(self, checked):
         self.key_edit.setEchoMode(QtWidgets.QLineEdit.Normal if checked else QtWidgets.QLineEdit.Password)
@@ -263,11 +278,11 @@ class ProvidersPage(QtWidgets.QWidget):
         key = self.key_edit.text().strip()
         if not key:
             self.status_lbl.setText("No key")
-            self.status_lbl.setStyleSheet("color: palette(mid);")
+            self.status_lbl.setStyleSheet(_STATUS_STYLE)
             return
 
         self.status_lbl.setText("Testing…")
-        self.status_lbl.setStyleSheet("color: palette(mid);")
+        self.status_lbl.setStyleSheet(_STATUS_STYLE)
         self.test_btn.setEnabled(False)
 
         self._worker = _TestWorker(self._current_provider, key)
@@ -282,10 +297,10 @@ class ProvidersPage(QtWidgets.QWidget):
         self.test_btn.setEnabled(True)
         if ok:
             self.status_lbl.setText("✓ Success")
-            self.status_lbl.setStyleSheet("color: #4caf50;")
+            self.status_lbl.setStyleSheet(_STATUS_STYLE + "color: #4caf50;")
         else:
             self.status_lbl.setText(f"✗ Error: {msg[:40]}…")
-            self.status_lbl.setStyleSheet("color: #f44336;")
+            self.status_lbl.setStyleSheet(_STATUS_STYLE + "color: #f44336;")
 
     def _add_custom_provider(self):
         # For now, just a placeholder or list some known ones not yet added
@@ -293,7 +308,7 @@ class ProvidersPage(QtWidgets.QWidget):
         if ok and name:
             item = QtWidgets.QListWidgetItem(name)
             item.setData(QtCore.Qt.UserRole, name)
-            item.setIcon(UIHelpers.get_icon("user", size=18))
+            item.setIcon(UIHelpers.get_icon("user", size=18, on=self.provider_list))
             self.provider_list.addItem(item)
             self.provider_list.setCurrentItem(item)
 
@@ -314,7 +329,7 @@ class ProvidersPage(QtWidgets.QWidget):
             item = QtWidgets.QListWidgetItem(p)
             item.setData(QtCore.Qt.UserRole, p)
             icon = "factory" if p != "Custom/Local" else "user"
-            item.setIcon(UIHelpers.get_icon(icon, size=18))
+            item.setIcon(UIHelpers.get_icon(icon, size=18, on=self.provider_list))
             self.provider_list.addItem(item)
             
         for key_info in saved_keys:
@@ -323,7 +338,7 @@ class ProvidersPage(QtWidgets.QWidget):
                 seen.add(p)
                 item = QtWidgets.QListWidgetItem(p)
                 item.setData(QtCore.Qt.UserRole, p)
-                item.setIcon(UIHelpers.get_icon("user", size=18))
+                item.setIcon(UIHelpers.get_icon("user", size=18, on=self.provider_list))
                 self.provider_list.addItem(item)
                 
         if self.provider_list.count() > 0:

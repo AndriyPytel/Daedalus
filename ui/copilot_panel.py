@@ -7,7 +7,10 @@ loop emits — `CopilotPanel.on_event` is a switch over event kinds and nothing
 else. That is what lets the same stream be the session log, and what keeps a
 frozen UI impossible: the loop runs on a worker thread and only ever emits.
 
-Colours come from QPalette so the panel follows FreeCAD's active theme.
+The panel has no colours. FreeCAD paints its UI with one global stylesheet and
+leaves QPalette at whatever the OS handed over, so `palette(base)` was a
+light-theme value painted over a dark theme (ADR-0011). What is left in the
+stylesheet is geometry and typography, which no theme has an opinion about.
 """
 import threading
 
@@ -35,10 +38,17 @@ from ui.ui_helpers import UIHelpers
 
 def _build_qss() -> str:
     """
-    Return the panel stylesheet.
-    All colours use Qt's native palette() keyword so the panel inherits
-    the active FreeCAD theme (ProDark, Light, etc.) with zero Python-side
-    palette calls — avoids PySide2 QPalette.color() signature issues.
+    The panel stylesheet: geometry and typography, and nothing else.
+
+    Every colour that used to be here asked `palette(...)` for it, and under
+    FreeCAD's dark theme the palette still holds the OS's light values — so the
+    input card was a white rectangle in a dark panel (ADR-0011). Leaving colour out
+    hands these widgets to FreeCAD's global stylesheet, including themes that
+    did not exist when this was written.
+
+    Where a rule pins a dimension it also resets padding and border: Qt's
+    min/max-width size the content rect, and the theme's padding is added on
+    top of them.
     """
     return f"""
         /* Panel root */
@@ -47,73 +57,43 @@ def _build_qss() -> str:
             font-size: 13px;
         }}
 
-        QDockWidget::title {{
-            background: palette(window);
-            padding: 0px; height: 0px;
-        }}
+        QDockWidget::title {{ padding: 0px; height: 0px; }}
 
-        /* Header bar */
-        QWidget#HeaderBar {{
-            background-color: palette(window);
-            border-bottom: 1px solid palette(mid);
-        }}
-
-        /* Session picker */
-        QComboBox#SessionPicker {{
-            background-color: palette(button);
-            border: 1px solid palette(mid);
-            border-radius: 6px;
-            padding: 2px 8px;
-            font-size: 12px;
-            color: palette(text);
-            min-width: 90px;
-            max-width: 140px;
-        }}
-        QComboBox#SessionPicker::drop-down {{ border: none; width: 16px; }}
-        
-        /* Dropdown popups (applies to all comboboxes in panel) */
-        QComboBox QAbstractItemView {{
-            background-color: palette(window);
-            color: palette(text);
-            border: 1px solid palette(mid);
-            selection-background-color: palette(highlight);
-            selection-color: palette(highlightedtext);
-            outline: none;
-        }}
+        /* setMaxVisibleItems is documented to do nothing once a combo has a
+           stylesheet; this is the rule that unblocks it. */
+        QComboBox {{ combobox-popup: 0; }}
 
         /* Header icon buttons */
         QPushButton#HeaderButton {{
             background: transparent;
             border: none;
-            color: palette(text);
             font-size: 16px;
             padding: 0px;
             border-radius: 4px;
             min-width: 22px; max-width: 22px;
             min-height: 22px; max-height: 22px;
         }}
-        QPushButton#HeaderButton:hover {{
-            background-color: palette(midlight);
-            color: palette(text);
-        }}
 
         /* Status line */
         QLabel#StatusLine {{
             font-size: 11px;
-            color: palette(mid);
             padding: 0px 15px 3px 15px;
         }}
 
-        /* Chat area */
-        QWidget#ChatArea {{
-            background-color: palette(base);
+        /* The empty chat still tells the user where they stand */
+        QLabel#EmptyState {{
+            font-size: 12px;
+            padding: 24px 20px;
         }}
 
         /* Input card */
-        QFrame#InputContainer {{
-            background-color: palette(base);
-            border: 1px solid palette(mid);
+        QFrame#InputContainer {{ border-radius: 12px; }}
+
+        /* The Plan Gate keeps a container: a decision the user has to make
+           must not read as another paragraph of output. */
+        QFrame#GateCard {{
             border-radius: 12px;
+            background-color: rgba(127, 127, 127, 40);
         }}
 
         QTextEdit#ChatInput {{
@@ -121,40 +101,33 @@ def _build_qss() -> str:
             background: transparent;
             font-size: 14px;
             padding: 4px 6px;
-            color: palette(text);
         }}
 
         /* Pill buttons */
-        QPushButton#PillButton {{
-            background-color: palette(button);
-            border: 1px solid palette(mid);
+        QPushButton#PillButton, QComboBox#PillButton {{
             border-radius: 6px;
             padding: 3px 10px;
             font-size: 11px;
-            color: palette(buttontext);
         }}
-        QPushButton#PillButton:hover {{ background-color: palette(midlight); }}
+        QComboBox#PillButton::drop-down {{ border: none; width: 14px; }}
 
         /* Circular send button */
         QPushButton#SendButton {{
-            background-color: palette(highlight);
-            color: palette(highlightedtext);
             border: none;
+            padding: 0px;
             border-radius: 15px;
             font-size: 15px;
             font-weight: bold;
             min-width: 30px; max-width: 30px;
             min-height: 30px; max-height: 30px;
         }}
-        QPushButton#SendButton:hover  {{ background-color: palette(dark); }}
-        QPushButton#SendButton:disabled {{ background-color: palette(mid); }}
 
         /* Scrollbars */
         QScrollBar:vertical {{
             border: none; background: transparent; width: 6px; margin: 0;
         }}
         QScrollBar::handle:vertical {{
-            background: palette(mid); min-height: 20px; border-radius: 3px;
+            min-height: 20px; border-radius: 3px;
         }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     """
@@ -164,9 +137,11 @@ def _build_qss() -> str:
 # ── Paste-aware text edit ──────────────────────────────────────────────────────
 
 class _PasteAwareTextEdit(QtWidgets.QTextEdit):
-    """QTextEdit that hands Ctrl+V images off to the UploadWidget."""
+    """The composer: Enter sends, Shift+Enter inserts a newline, Ctrl+V images
+    go to the UploadWidget."""
 
     paste_image_requested = QtCore.Signal()
+    send_requested = QtCore.Signal()
 
     def keyPressEvent(self, event: QtGui.QKeyEvent):
         if event.key() == QtCore.Qt.Key_V and (event.modifiers() & QtCore.Qt.ControlModifier):
@@ -174,6 +149,11 @@ class _PasteAwareTextEdit(QtWidgets.QTextEdit):
             if mime.hasImage():
                 self.paste_image_requested.emit()
                 return   # consumed – don't paste raw image bytes into text field
+
+        if event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) \
+                and not (event.modifiers() & QtCore.Qt.ShiftModifier):
+            self.send_requested.emit()
+            return
         super().keyPressEvent(event)
 
 
@@ -366,6 +346,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._thought_phase = None
         self._current_step = 0
         self._gate_card = None
+        self._empty_state = None
 
         self.thread.start()
         
@@ -397,7 +378,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         # Chat Title Label
         self.title_label = QtWidgets.QLabel("New Chat")
         self.title_label.setObjectName("HeaderTitle")
-        self.title_label.setStyleSheet("font-weight: 600; font-size: 13px; color: palette(text);")
+        self.title_label.setStyleSheet("font-weight: 600; font-size: 13px;")
         layout.addWidget(self.title_label)
 
         layout.addStretch()
@@ -407,7 +388,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.new_btn.setObjectName("HeaderButton")
         self.new_btn.setFixedSize(22, 22)
         self.new_btn.setToolTip("New chat session")
-        self.new_btn.setIcon(UIHelpers.get_icon("plus", size=18))
+        self.new_btn.setIcon(UIHelpers.get_icon("plus", size=18, on=self.new_btn))
         self.new_btn.clicked.connect(self.new_chat)
         layout.addWidget(self.new_btn)
 
@@ -416,7 +397,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.history_btn.setObjectName("HeaderButton")
         self.history_btn.setFixedSize(22, 22)
         self.history_btn.setToolTip("Chat history")
-        self.history_btn.setIcon(UIHelpers.get_icon("refresh", size=18)) # Using refresh as a clock/history sub
+        self.history_btn.setIcon(UIHelpers.get_icon("history", size=18, on=self.history_btn))
         self.history_btn.clicked.connect(self.toggle_history)
         layout.addWidget(self.history_btn)
 
@@ -425,15 +406,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
     def _build_input_card(self) -> QtWidgets.QFrame:
         card = QtWidgets.QFrame()
         card.setObjectName("InputContainer")
-
-        shadow = QtWidgets.QGraphicsDropShadowEffect(card)
-        shadow.setBlurRadius(18)
-        shadow.setOffset(0, 3)
-        shadow.setColor(QtGui.QColor(0, 0, 0, 30))
-        card.setGraphicsEffect(shadow)
-
-        card_layout = QtWidgets.QHBoxLayout()
-        card_layout.setContentsMargins(15, 0, 15, 0)
 
         inner = QtWidgets.QVBoxLayout(card)
         inner.setContentsMargins(0, 6, 0, 8)
@@ -447,17 +419,19 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.user_input = _PasteAwareTextEdit()
         self.user_input.setObjectName("ChatInput")
         self.user_input.setPlaceholderText("Ask FreeCAD Copilot…")
-        self.user_input.setFixedHeight(68)
         self.user_input.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.user_input.paste_image_requested.connect(
             lambda: self.upload_widget.handle_clipboard_paste()
         )
+        self.user_input.send_requested.connect(self.on_send)
+        self.user_input.textChanged.connect(self._fit_composer_to_text)
         inner.addWidget(self.user_input)
+        self._fit_composer_to_text()
 
         # Divider
         div = QtWidgets.QFrame()
         div.setFrameShape(QtWidgets.QFrame.HLine)
-        div.setStyleSheet("QFrame { color: palette(mid); margin: 0 12px; }")
+        div.setStyleSheet("QFrame { margin: 0 12px; }")
         inner.addWidget(div)
 
         # ── Action strip ──
@@ -474,16 +448,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.model_combo.setObjectName("PillButton")
         self.model_combo.setFixedHeight(24)
         self.model_combo.setToolTip("Active LLM model")
-        self.model_combo.setStyleSheet("""
-            QComboBox#PillButton {
-                background-color: palette(button);
-                border: 1px solid palette(mid);
-                border-radius: 6px;
-                padding: 2px 8px;
-                font-size: 11px;
-            }
-            QComboBox#PillButton::drop-down { border: none; width: 14px; }
-        """)
+        self.model_combo.setMaxVisibleItems(12)
         self._refresh_model_combo(ProviderManager.instance().get_available_models())
         self.model_combo.currentIndexChanged.connect(self._on_model_changed)
         strip.addWidget(self.model_combo)
@@ -492,46 +457,111 @@ class CopilotPanel(QtWidgets.QDockWidget):
         ProviderManager.instance().models_changed.connect(self._refresh_model_combo)
         strip.addStretch()
 
-        # ── Stop button — visible only while a run is in flight ────────────────
-        self.stop_button = QtWidgets.QPushButton("■  Stop")
-        self.stop_button.setObjectName("PillButton")
-        self.stop_button.setFixedHeight(24)
-        self.stop_button.setToolTip("Stop after the current attempt")
-        self.stop_button.clicked.connect(self.on_stop)
-        self.stop_button.setVisible(False)
-        strip.addWidget(self.stop_button)
-
+        # ── Send and Stop share one slot ──────────────────────────────────────
+        # Only one is ever visible, so the strip does not shift as a run starts.
         self.send_button = QtWidgets.QPushButton()
-        self.send_button.setIcon(UIHelpers.get_icon("arrow_up", size=18, color="palette(highlighted-text)"))
         self.send_button.setObjectName("SendButton")
         self.send_button.setToolTip("Send message (Enter)")
         self.send_button.clicked.connect(self.on_send)
         strip.addWidget(self.send_button)
 
+        self.stop_button = QtWidgets.QPushButton("■")
+        self.stop_button.setObjectName("SendButton")
+        self.stop_button.setToolTip("Stop after the current attempt")
+        self.stop_button.clicked.connect(self.on_stop)
+        self.stop_button.setVisible(False)
+        strip.addWidget(self.stop_button)
+
         inner.addLayout(strip)
         return card
+
+    def _fit_composer_to_text(self):
+        """
+        The composer is one row when empty and grows with what is typed, up to
+        ~40% of the panel, after which it scrolls.
+
+        A percentage rather than a row count: the panel is narrow and dockable,
+        so a height that is comfortable at one width wraps to nonsense at
+        another. Frozen at three rows, as it was, anything past the third row
+        was unreachable — it neither grew nor scrolled (ADR-0011).
+        """
+        document = self.user_input.document()
+        document.setTextWidth(self.user_input.viewport().width())
+        one_row = QtGui.QFontMetrics(self.user_input.font()).lineSpacing() + 16
+        ceiling = max(one_row, int(self.height() * 0.4))
+        wanted = int(document.size().height()) + 16
+
+        self.user_input.setFixedHeight(min(max(wanted, one_row), ceiling))
+        self.user_input.setVerticalScrollBarPolicy(
+            QtCore.Qt.ScrollBarAsNeeded if wanted > ceiling
+            else QtCore.Qt.ScrollBarAlwaysOff)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # Qt resizes the dock while __init__ is still building it.
+        if getattr(self, "user_input", None):
+            self._fit_composer_to_text()   # the 40% ceiling moved with the panel
+
+    def showEvent(self, event):
+        """
+        Icons are tinted once the panel is on screen.
+
+        A widget carries the global stylesheet's colour only after Qt has
+        polished it; asked in __init__ it still answers with the OS palette,
+        which is black under every FreeCAD dark theme (ADR-0011).
+        """
+        super().showEvent(event)
+        for button, icon in ((self.new_btn, "plus"),
+                             (self.history_btn, "history"),
+                             (self.send_button, "arrow_up")):
+            button.setIcon(UIHelpers.get_icon(icon, size=18, on=button))
 
     # ── Model / Mode helpers ───────────────────────────────────────────────────
 
     def _refresh_model_combo(self, models=None):
-        """Rebuild model combo from ProviderManager; restore last-used selection."""
+        """
+        Rebuild the model combo, grouped under provider headings.
+
+        A heading is a row with its selectable and enabled flags cleared, so
+        grouping costs a QStandardItemModel and no custom popup widget — and
+        QComboBox's own type-to-jump keeps working over the whole list.
+        """
         if models is None:
             models = ProviderManager.instance().get_available_models()
         last_id = SettingsManager.instance().get_last_model()
+
         self.model_combo.blockSignals(True)
-        self.model_combo.clear()
+        items = QtGui.QStandardItemModel(self.model_combo)
         if not models:
-            self.model_combo.addItem("No models — add API key", userData=None)
+            items.appendRow(QtGui.QStandardItem("No models — add API key"))
         else:
-            for m in models:
-                self.model_combo.addItem(m["display"], userData=m["id"])
+            by_provider = {}
+            for model in models:
+                by_provider.setdefault(model["provider"], []).append(model)
+            bold = QtGui.QFont()
+            bold.setBold(True)
+            for provider, entries in by_provider.items():
+                heading = QtGui.QStandardItem(provider)
+                heading.setFlags(QtCore.Qt.NoItemFlags)
+                # Weight, not an indent: type-to-jump matches from the string's start.
+                heading.setFont(bold)
+                items.appendRow(heading)
+                for model in entries:
+                    row = QtGui.QStandardItem(model["display"])
+                    row.setData(model["id"], QtCore.Qt.UserRole)
+                    items.appendRow(row)
+        self.model_combo.setModel(items)
+
         # Restore selection — the default model catches a last-used one that a
-        # refreshed list no longer offers.
+        # refreshed list no longer offers; index 1 catches both missing, since
+        # index 0 is a provider heading and cannot be chosen.
         for wanted in (last_id, SettingsManager.instance().get_default_model()):
             index = self.model_combo.findData(wanted)
             if index >= 0:
-                self.model_combo.setCurrentIndex(index)
                 break
+        else:
+            index = 1 if models else 0
+        self.model_combo.setCurrentIndex(index)
         self.model_combo.blockSignals(False)
 
     def _on_model_changed(self, _idx: int):
@@ -562,6 +592,19 @@ class CopilotPanel(QtWidgets.QDockWidget):
         n = self.chat_sessions.count() + 1
         idx, _ = self.chat_sessions.add_new_chat(f"Chat {n}")
         self.update_header_title(idx)
+        self._empty_state = self._build_empty_state()
+        self.add_chat_widget(self._empty_state)
+
+    def _build_empty_state(self):
+        """One muted line, so an empty panel still says where the user stands."""
+        model = self.model_combo.currentText().strip() or "no model"
+        label = QtWidgets.QLabel(
+            "%s. The Plan Gate asks before anything is written to your Document."
+            % model)
+        label.setObjectName("EmptyState")
+        label.setWordWrap(True)
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        return label
 
     @QtCore.Slot(int)
     def update_header_title(self, index: int):
@@ -579,6 +622,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.chip_bar.get_and_clear()
         self.upload_widget.get_and_clear_files()
 
+        if self._empty_state is not None:
+            self._empty_state.setParent(None)
+            self._empty_state = None
         self.add_chat_widget(TextMessageWidget(intent))
         self.user_input.clear()
 
@@ -602,7 +648,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.status_line.setText("Stopping after the current attempt…")
 
     def _set_running(self, running: bool):
-        self.send_button.setEnabled(not running)
+        self.send_button.setVisible(not running)
         self.stop_button.setVisible(running)
         self.stop_button.setEnabled(running)
 
@@ -669,8 +715,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._render_blocked(data["reason"], data.get("tried") or [])
 
         elif event.kind == ev.ERROR:
-            self.add_chat_widget(AssistantMessageWidget("Something went wrong:\n\n"
-                                                       + data["message"]))
+            row = AccordionWidget("✗ Something went wrong")
+            self.add_chat_widget(row)
+            row.append_text(data["message"])
 
     def _render_thought(self, phase, text):
         """Reasoning appends to one accordion per phase turn, as it forms."""
@@ -697,7 +744,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if "code" in arguments:
             self.add_chat_widget(CodeBlockWidget(arguments["code"]))
         else:
-            self.add_chat_widget(AssistantMessageWidget("%s(%s)" % (name, arguments)))
+            # One collapsible shape in the stream, not three (ADR-0011).
+            row = AccordionWidget(name)
+            self.add_chat_widget(row)
+            row.append_text(str(arguments))
 
     def _render_failure(self, attempt, traceback):
         panel = AccordionWidget("✗ Preflight failed (attempt %d) — retrying" % attempt)
@@ -712,8 +762,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
             for entry in tried:
                 panel.append_text(str(entry.get("code") or entry.get("review") or entry))
                 if entry.get("traceback"):
-                    panel.append_text(entry["traceback"])
-                panel.append_text("─" * 40)
+                    panel.append_text("\n" + entry["traceback"])
+                panel.append_text("\n" + "─" * 40 + "\n")
 
     def _render_image(self, path):
         label = QtWidgets.QLabel()
@@ -742,7 +792,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         from core.loop import AMEND, APPROVE, REJECT, Approval
 
         card = QtWidgets.QFrame()
-        card.setObjectName("InputContainer")
+        card.setObjectName("GateCard")
         layout = QtWidgets.QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
@@ -751,12 +801,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
             "Run this Plan? Approving covers all %d Steps — you will not be asked again."
             % step_count)
         prompt.setWordWrap(True)
-        prompt.setStyleSheet("font-size: 12px; font-weight: 600; color: palette(text);")
+        prompt.setStyleSheet("font-size: 12px; font-weight: 600;")
         layout.addWidget(prompt)
 
         note = QtWidgets.QLabel("To amend it, say what to change in the box below, then Amend.")
         note.setWordWrap(True)
-        note.setStyleSheet("font-size: 11px; color: palette(mid);")
+        note.setStyleSheet("font-size: 11px;")
         layout.addWidget(note)
 
         buttons = QtWidgets.QHBoxLayout()

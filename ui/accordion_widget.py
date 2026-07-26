@@ -1,5 +1,13 @@
 # FreeCadCopilot/ui/accordion_widget.py
 # type: ignore  # PySide2 imported via FreeCAD shim – static analyser can't resolve it
+"""
+One collapsible row in the transcript.
+
+Not a card. Thinking, tool calls and errors all take this shape: a toggle line
+and, under it, wrapped text laid out in the column itself. What it used to be —
+a QTextEdit inside the chat's own scroll area, animated to a magic 1000 — is
+what truncated long thinking and what stole the mouse wheel from the chat (ADR-0011).
+"""
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
 except ImportError:
@@ -9,99 +17,50 @@ from utils.config_manager import ConfigManager
 
 
 class AccordionWidget(QtWidgets.QWidget):
-    """
-    Collapsible accordion for thinking chains / verbose logs.
-    Antigravity aesthetic: beige toggle, blue left-accent, muted content area.
-    """
-
-    def _update_styles(self):
-        """Re-resolve colors and apply to sub-widgets."""
-        pal = self.palette()
-        bg     = pal.color(QtGui.QPalette.Window).name()
-        fg     = pal.color(QtGui.QPalette.Text).name()
-        mid    = pal.color(QtGui.QPalette.Mid).name()
-        high   = pal.color(QtGui.QPalette.Highlight).name()
-        
-        # Toggle button QSS
-        current_border = high if self._anim or self._is_expanded else mid
-        current_fg     = high if self._anim or self._is_expanded else fg
-        
-        self.toggle_button.setStyleSheet(f"""
-            QPushButton {{
-                text-align: left;
-                padding: 8px 12px;
-                font-size: 12px;
-                font-weight: 600;
-                color: {current_fg};
-                background-color: {bg};
-                border: none;
-                border-left: 3px solid {current_border};
-                border-radius: 0px;
-            }}
-            QPushButton:hover {{ background-color: palette(midlight); }}
-        """)
-
-        self.content_area.setStyleSheet(f"""
-            QTextEdit {{
-                background-color: {bg};
-                color: {fg};
-                border: 1px solid {mid};
-                border-top: none;
-                border-radius: 0px 0px 4px 4px;
-                padding: 8px 12px;
-                font-family: {ConfigManager.get_monospace_font()};
-                font-size: 11px;
-            }}
-        """)
+    """A toggle row with text that shows and hides beneath it."""
 
     def __init__(self, title: str = "Thinking..."):
         super().__init__()
-        self._main_layout = QtWidgets.QVBoxLayout()
-        self._main_layout.setContentsMargins(12, 4, 12, 4)
-        self._main_layout.setSpacing(0)
-        self.setLayout(self._main_layout)
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(12, 2, 24, 2)
+        layout.setSpacing(0)
 
         self.toggle_button = QtWidgets.QPushButton("▶  " + title)
+        self.toggle_button.setStyleSheet(
+            "QPushButton { text-align: left; padding: 4px 0px; border: none; "
+            "background: transparent; font-size: 12px; font-weight: 600; }")
+        self.toggle_button.setCursor(QtCore.Qt.PointingHandCursor)
         self.toggle_button.clicked.connect(self.toggle_content)
-        self._main_layout.addWidget(self.toggle_button)
+        layout.addWidget(self.toggle_button)
 
-        self.content_area = QtWidgets.QTextEdit()
-        self.content_area.setReadOnly(True)
-        # We start fully collapsed via maximumHeight = 0 and fluid size policy
-        self.content_area.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.MinimumExpanding)
-        self.content_area.setMinimumHeight(0)
-        self.content_area.setMaximumHeight(0)
-        self.content_area.setVisible(True) # Keep visible to let layout calculate, but constrained
-        self._main_layout.addWidget(self.content_area)
+        self.content_area = QtWidgets.QLabel()
+        self.content_area.setWordWrap(True)
+        # A traceback says `<module>`, and QLabel guesses rich text by default.
+        self.content_area.setTextFormat(QtCore.Qt.PlainText)
+        self.content_area.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.content_area.setStyleSheet(
+            "QLabel { font-family: %s; font-size: 11px; padding: 2px 0px 6px 14px; }"
+            % ConfigManager.get_monospace_font())
+        self.content_area.setVisible(False)
+        layout.addWidget(self.content_area)
 
         self._is_expanded = False
-        self._target_height = 150
-        self._anim   = None
+        self._anim = None
         self._effect = None
-
-        self._update_styles()
-
-        # Height expansion animation
-        self._height_anim = QtCore.QPropertyAnimation(self.content_area, b"maximumHeight")
-        self._height_anim.setDuration(250)
-        self._height_anim.setEasingCurve(QtCore.QEasingCurve.OutQuart)
-        self._height_anim.finished.connect(self._on_anim_finished)
-
-    def _on_anim_finished(self):
-        if not self._is_expanded:
-            self.content_area.setVisible(False)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
     def append_text(self, text: str):
-        self.content_area.append(text)
+        # Straight concatenation: reasoning arrives as fragments and carries
+        # its own newlines. A paragraph per call, as the old QTextEdit did,
+        # broke a streamed sentence across a dozen lines.
+        self.content_area.setText(self.content_area.text() + text)
 
     def set_title(self, title: str):
-        prefix = "▼  " if self._is_expanded else "▶  "
-        self.toggle_button.setText(prefix + title)
+        self.toggle_button.setText(("▼  " if self._is_expanded else "▶  ") + title)
 
     def start_pulsing(self):
-        self._update_styles()
+        """The 'still working' signal — the one animation worth keeping."""
         self._effect = QtWidgets.QGraphicsOpacityEffect(self.toggle_button)
         self.toggle_button.setGraphicsEffect(self._effect)
         self._anim = QtCore.QPropertyAnimation(self._effect, b"opacity")
@@ -121,30 +80,10 @@ class AccordionWidget(QtWidgets.QWidget):
             self._effect.setOpacity(1.0)
             self.toggle_button.setGraphicsEffect(None)
             self._effect = None
-        self._update_styles()
 
     def toggle_content(self):
         self._is_expanded = not self._is_expanded
-        
-        # Animate height
-        self._height_anim.stop()
-        if self._is_expanded:
-            self.content_area.setVisible(True)
-            self._height_anim.setStartValue(self.content_area.height())
-            self._height_anim.setEndValue(1000)  # Large enough to fit content
-        else:
-            self._height_anim.setStartValue(self.content_area.height())
-            self._height_anim.setEndValue(0)
-        self._height_anim.start()
-        self._update_styles()
-
-        if self.parentWidget() and self.parentWidget().layout():
-            self.parentWidget().layout().activate()
-        self.layout().activate()
-
-        # Update text chevron
+        self.content_area.setVisible(self._is_expanded)
         raw = self.toggle_button.text()
-        if self._is_expanded:
-            self.toggle_button.setText(raw.replace("▶  ", "▼  ", 1))
-        else:
-            self.toggle_button.setText(raw.replace("▼  ", "▶  ", 1))
+        self.toggle_button.setText(raw.replace("▶  ", "▼  ", 1) if self._is_expanded
+                                   else raw.replace("▼  ", "▶  ", 1))

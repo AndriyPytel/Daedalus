@@ -23,21 +23,13 @@ class PlanWidget(QtWidgets.QFrame):
     def __init__(self, steps=(), title="Plan"):
         super().__init__()
         self.setObjectName("PlanCard")
-        self.setStyleSheet("""
-            QFrame#PlanCard {
-                background-color: palette(window);
-                border: 1px solid palette(mid);
-                border-left: 3px solid palette(highlight);
-                border-radius: 6px;
-            }
-        """)
 
         outer = QtWidgets.QVBoxLayout(self)
-        outer.setContentsMargins(12, 8, 12, 8)
+        outer.setContentsMargins(12, 8, 24, 8)
         outer.setSpacing(4)
 
         self._title = QtWidgets.QLabel(title)
-        self._title.setStyleSheet("font-weight: 600; font-size: 12px; color: palette(text);")
+        self._title.setStyleSheet("font-weight: 600; font-size: 12px;")
         outer.addWidget(self._title)
 
         self._rows_layout = QtWidgets.QVBoxLayout()
@@ -88,16 +80,19 @@ class PlanWidget(QtWidgets.QFrame):
         self._paint(position)
 
     def _paint(self, position):
+        """
+        Pending and done carry no colour — the ○ / ✓ marker already says which,
+        and a colour of our own is a light-theme value under a dark theme (ADR-0011).
+        Running and failed do: those two must read the same in every theme.
+        """
         state = self._states[position]
-        colour = {
-            PENDING: "palette(mid)",
-            RUNNING: "palette(highlight)",
-            DONE: "palette(text)",
-            FAILED: "#f44336",
-        }[state]
-        weight = "600" if state == RUNNING else "400"
+        # palette(highlight) is the one role FreeCAD's themes keep meaningful.
+        colour = {RUNNING: "palette(highlight)", FAILED: "#f44336"}.get(state, "")
+        style = "font-weight:%s;" % ("600" if state == RUNNING else "400")
+        if colour:
+            style = "color:%s; %s" % (colour, style)
         self._rows[position].setText(
-            '<span style="color:%s; font-weight:%s;">%d. %s &nbsp;%s</span>'
-            % (colour, weight, position + 1, _MARK[state], self._steps[position])
+            '<span style="%s">%d. %s &nbsp;%s</span>'
+            % (style, position + 1, _MARK[state], self._steps[position])
         )
         self._rows[position].setStyleSheet("font-size: 12px; padding: 1px 0px;")

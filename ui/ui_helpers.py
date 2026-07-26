@@ -86,22 +86,38 @@ class UIHelpers:
                 <line x1="12" y1="19" x2="12" y2="5"></line>
                 <polyline points="5 12 12 5 19 12"></polyline>
             </svg>
+        """,
+        "history": """
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3v5h5"></path>
+                <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"></path>
+                <polyline points="12 7 12 12 15 14"></polyline>
+            </svg>
         """
     }
 
     @staticmethod
-    def get_icon(name, color=None, size=24):
-        """Returns a QIcon from the predefined SVG map, optionally re-colored."""
+    def get_icon(name, size=24, on=None):
+        """
+        Returns a QIcon from the SVG map, tinted to match the widget *on*.
+
+        An SVG has to be handed a literal colour before it is rasterised, so
+        this is the addon's one remaining palette read (ADR-0011) — and it asks
+        the widget the icon will sit on, not QApplication, whose palette is the
+        OS's and is light under every FreeCAD theme. A widget only carries the
+        global stylesheet's colour once Qt has polished it, which is why the
+        callers re-tint on show rather than trusting construction time.
+        """
         svg_text = UIHelpers.ICONS.get(name)
         if not svg_text:
             return QtGui.QIcon()
-        
-        if color is None:
-            # Fallback to standard text color if none provided
-            palette = QtWidgets.QApplication.palette()
-            color = palette.color(QtGui.QPalette.WindowText).name()
-        
-        # Replace currentColor with the desired color hex
+
+        # foregroundRole, not a fixed role: a button's stylesheet colour lands
+        # in ButtonText and a list's in Text.
+        source = QtWidgets.QApplication if on is None else on
+        role = QtGui.QPalette.WindowText if on is None else on.foregroundRole()
+        color = source.palette().color(role).name()
+
         styled_svg = svg_text.replace("currentColor", color)
         
         byte_array = QtCore.QByteArray(styled_svg.encode('utf-8'))
@@ -118,21 +134,13 @@ class UIHelpers:
 
     @staticmethod
     def get_header_style():
-        """Returns a standardized high-contrast header style."""
+        """A section heading: weight and spacing, no colour of its own (ADR-0011)."""
         return (
-            "font-size: 13px; font-weight: 800; color: palette(highlight); "
+            "font-size: 13px; font-weight: 800; "
             "text-transform: uppercase; letter-spacing: 1.5px; padding: 4px 0 2px 0;"
         )
 
     @staticmethod
     def get_input_style():
-        """Premium input styling."""
-        return (
-            "QLineEdit, QTextEdit, QComboBox { "
-            "  border: 1px solid palette(mid); border-radius: 6px; padding: 6px 10px; "
-            "  background: palette(alternate-base); "
-            "} "
-            "QLineEdit:focus, QTextEdit:focus, QComboBox:focus { "
-            "  border: 1px solid palette(highlight); "
-            "}"
-        )
+        """Input geometry. The theme paints it."""
+        return "QLineEdit, QTextEdit, QComboBox { border-radius: 6px; padding: 6px 10px; }"
