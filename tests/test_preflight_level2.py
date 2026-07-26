@@ -1,0 +1,173 @@
+"""
+Level 2 — the Preflight Worker against a real headless FreeCAD.
+
+This is where a fake would lie. A mocked worker never segfaults, never hangs,
+and always agrees that the API exists — certifying the exact mistakes Preflight
+is built to catch (ADR-0007).
+
+The harness is the Preflight Worker itself: part of the product, not
+scaffolding around it.
+"""
+import os
+
+import pytest
+
+from core.preflight import PreflightWorker, copy_of, find_freecadcmd
+
+pytestmark = pytest.mark.freecad
+
+# Reliably takes the process down at the C level, the way a bad call into
+# FreeCAD's C++ core does. Python cannot catch it; only process isolation can.
+CRASHING_CODE = "import ctypes; ctypes.string_at(0)"
+
+
+@pytest.fixture(scope="module")
+def freecadcmd():
+    try:
+        return find_freecadcmd()
+    except RuntimeError as exc:
+        pytest.skip(str(exc))
+
+
+@pytest.fixture(scope="module")
+def warm(freecadcmd):
+    """One worker shared by the tests that do not kill it."""
+    with PreflightWorker(freecadcmd) as worker:
+        yield worker
+
+
+@pytest.fixture
+def fresh(freecadcmd):
+    """A worker of its own, for the tests that end its life."""
+    with PreflightWorker(freecadcmd) as worker:
+        yield worker
+
+
+@pytest.fixture
+def saved_document(tmp_path):
+    """A real Document on disk with one object in it."""
+    import FreeCAD
+
+    doc = FreeCAD.newDocument("Fixture")
+    box = doc.addObject("Part::Box", "ExistingBox")
+    box.Length = 12
+    doc.recompute()
+    try:
+        yield copy_of(doc)
+    finally:
+        FreeCAD.closeDocument(doc.Name)
+
+
+# ── the happy path ────────────────────────────────────────────────────────────
+
+
+def test_a_clean_step_comes_back_ok_with_a_render(warm, tmp_path):
+    png = str(tmp_path / "render.png")
+
+    result = warm.check(
+        "box = doc.addObject('Part::Box', 'Box')\nbox.Length = 10",
+        render_path=png,
+    )
+
+    assert result.ok, result.traceback
+    assert [o["name"] for o in result.objects] == ["Box"]
+    assert os.path.getsize(png) > 1000, "the render is empty"
+
+
+def test_the_worker_stays_warm_between_requests(warm):
+    first = warm.check("doc.addObject('Part::Box', 'A')")
+    second = warm.check("doc.addObject('Part::Box', 'B')")
+
+    assert first.ok and second.ok
+    assert warm.restarts == 0
+    assert warm.alive
+
+
+def test_the_document_copy_is_opened_and_seen(warm, saved_document):
+    result = warm.check(
+        "assert doc.getObject('ExistingBox').Length.Value == 12",
+        document=saved_document,
+    )
+
+    assert result.ok, result.traceback
+    assert [o["name"] for o in result.objects] == ["ExistingBox"]
+
+
+def test_the_document_is_reloaded_for_every_preflight(warm, saved_document):
+    """ADR-0002 — no state may survive from one Preflight to the next."""
+    first = warm.check("doc.addObject('Part::Box', 'Leaked')", document=saved_document)
+    assert first.ok, first.traceback
+    assert sorted(o["name"] for o in first.objects) == ["ExistingBox", "Leaked"]
+
+    second = warm.check("pass", document=saved_document)
+
+    assert second.ok, second.traceback
+    assert [o["name"] for o in second.objects] == ["ExistingBox"]
+
+
+# ── the failures the assistant learns from ────────────────────────────────────
+
+
+def test_api_that_does_not_exist_comes_back_as_a_traceback(warm):
+    """The removed-in-1.0 API this project exists to stop guessing about."""
+    result = warm.check("sketch = doc.addObject('Sketcher::SketchObject', 'S')\nsketch.Support = None")
+
+    assert not result.ok
+    assert "Support" in result.traceback
+    assert warm.alive, "a Python error must not cost us the worker"
+
+
+def test_a_recompute_that_leaves_an_object_in_error_is_a_failure(warm):
+    result = warm.check(
+        "box = doc.addObject('Part::Box', 'Box')\n"
+        "box.Length = 10\n"
+        "cut = doc.addObject('Part::Cut', 'Cut')"   # no Base/Tool — recompute fails
+    )
+
+    assert not result.ok
+    assert "Cut" in result.traceback
+
+
+# ── the failures the whole design rests on ────────────────────────────────────
+
+
+def test_code_that_crashes_the_core_kills_the_worker_not_us(fresh):
+    doomed = fresh.pid
+
+    result = fresh.check(CRASHING_CODE)
+
+    assert not result.ok
+    assert "died" in result.traceback
+    assert fresh.pid != doomed, "the worker was not replaced"
+    assert fresh.alive
+    # And we are still here to assert it — which is the point.
+
+
+def test_an_infinite_loop_is_killed_on_timeout(fresh):
+    hung = fresh.pid
+
+    result = fresh.check("while True:\n    pass", timeout=3)
+
+    assert not result.ok
+    assert "timed out" in result.traceback
+    assert fresh.pid != hung
+    assert fresh.alive
+
+
+def test_the_worker_still_works_after_it_died(fresh):
+    fresh.check(CRASHING_CODE)
+
+    result = fresh.check("doc.addObject('Part::Box', 'Box')")
+
+    assert result.ok, result.traceback
+    assert fresh.restarts == 1
+
+
+def test_worker_death_is_never_raised_at_the_caller(fresh):
+    """It restarts silently; the caller sees a result, not an incident."""
+    for _ in range(2):
+        result = fresh.check(CRASHING_CODE)
+        assert not result.ok
+
+    assert fresh.restarts == 2
+    assert fresh.check("pass").ok
