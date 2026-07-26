@@ -3,12 +3,16 @@
 ProviderManager – Singleton that derives the live model list from the API keys
 currently stored in SettingsManager.
 
-Emits ``models_changed`` whenever the key list changes so the Chat UI can
-refresh its model combo without a restart.
+The list each key really entitles you to is fetched from the provider by
+``core.model_catalog`` on a worker thread; ``config/models.json`` is the
+offline fallback and the registry of which providers exist at all.
+
+Emits ``models_changed`` whenever the key list or a fetched list changes so the
+Chat UI can refresh its model combo without a restart.
 """
 import os
 import json
-from PySide.QtCore import QObject, Signal
+from PySide.QtCore import QObject, QThread, Signal
 
 
 def _load_model_map() -> dict:
@@ -25,6 +29,27 @@ def _load_model_map() -> dict:
         return {}
 
 
+class _FetchThread(QThread):
+    """Asks one provider for its model list, off the UI thread."""
+
+    fetched = Signal(str, list)   # provider, [{id, display}]
+    failed = Signal(str, str)     # provider, error
+
+    def __init__(self, provider: str, api_key: str, parent=None):
+        super().__init__(parent)
+        self._provider = provider
+        self._api_key = api_key
+
+    def run(self):
+        from core import model_catalog
+        try:
+            models = model_catalog.fetch(self._provider, self._api_key)
+        except Exception as exc:
+            self.failed.emit(self._provider, str(exc))
+            return
+        self.fetched.emit(self._provider, models)
+
+
 class _ProviderManager(QObject):
     """Internal singleton implementation."""
 
@@ -33,14 +58,56 @@ class _ProviderManager(QObject):
     def __init__(self):
         super().__init__()
         self._model_map: dict = _load_model_map()
+        # ponytail: session-lifetime cache; a disk cache with a TTL is the
+        # upgrade path if one fetch per provider per session becomes noticeable.
+        self._fetched: dict = {}   # provider -> [{id, display}]
+        self._threads: dict = {}   # provider -> _FetchThread (also the "asked already" mark)
 
         # Subscribe to key changes so the model list stays in sync
         from utils.settings_manager import SettingsManager
         SettingsManager.instance().api_keys_changed.connect(self._on_keys_changed)
 
+    # ── Fetching ──────────────────────────────────────────────────────────────
+
+    def _ensure_fetched(self, provider: str):
+        """Start a background fetch the first time a provider is asked for."""
+        if provider in self._fetched or provider in self._threads or provider not in self._model_map:
+            return
+        from utils.settings_manager import SettingsManager
+        key = SettingsManager.instance().get_api_key_for_provider(provider)
+        if not key:
+            return
+        thread = _FetchThread(provider, key, self)
+        thread.fetched.connect(self._on_fetched)
+        thread.failed.connect(self._on_fetch_failed)
+        self._threads[provider] = thread
+        thread.start()
+
+    def _on_fetched(self, provider: str, models: list):
+        if self.sender() is not self._threads.get(provider):
+            return  # a fetch outlived the key it was started for
+        self._fetched[provider] = models
+        self.models_changed.emit(self.get_available_models())
+
+    def _on_fetch_failed(self, provider: str, error: str):
+        import FreeCAD
+        FreeCAD.Console.PrintWarning(
+            f"[FreeCadCopilot] Could not fetch models for {provider}: {error}\n"
+        )
+
+    def _known(self, provider: str) -> list:
+        """Fetched entries when they have landed, models.json otherwise."""
+        return self._fetched.get(provider) or self._model_map.get(provider, [])
+
+    def _entries_for(self, provider: str) -> list:
+        self._ensure_fetched(provider)
+        return self._known(provider)
+
     # ── Slots ─────────────────────────────────────────────────────────────────
 
     def _on_keys_changed(self, _keys: list):
+        self._fetched.clear()
+        self._threads.clear()
         self.models_changed.emit(self.get_available_models())
 
     # ── Public API ─────────────────────────────────────────────────────────────
@@ -53,24 +120,18 @@ class _ProviderManager(QObject):
         from utils.settings_manager import SettingsManager
         sm = SettingsManager.instance()
         result = []
-        for provider, entries in self._model_map.items():
-            if provider == "Custom/Local":
-                key = sm.get_api_key_for_provider(provider)
-                # Include custom even with empty key if explicitly added
-                if key is not None and sm.get_api_key_for_provider(provider) != "":
-                    for m in entries:
-                        result.append({"id": m["id"], "display": m["display"], "provider": provider})
-            else:
-                key = sm.get_api_key_for_provider(provider)
-                if key:
-                    for m in entries:
-                        result.append({"id": m["id"], "display": m["display"], "provider": provider})
+        for provider in self._model_map:
+            if not sm.get_api_key_for_provider(provider):
+                continue
+            for m in self._entries_for(provider):
+                result.append({"id": m["id"], "display": m["display"], "provider": provider})
         return result
 
     def get_model_entry(self, model_id: str) -> dict | None:
         """Find a model entry by its ``id`` across all providers."""
-        for provider, entries in self._model_map.items():
-            for m in entries:
+        for provider in self._model_map:
+            # Deliberately does not trigger a fetch: this runs on the Step thread.
+            for m in self._known(provider):
                 if m["id"] == model_id:
                     return {"id": m["id"], "display": m["display"], "provider": provider}
         return None
@@ -81,43 +142,21 @@ class _ProviderManager(QObject):
 
     def get_models_for_provider(self, provider: str) -> list:
         """Return [{id, display}] for a given provider."""
-        return list(self._model_map.get(provider, []))
+        return list(self._entries_for(provider))
 
     def test_connection(self, provider: str, api_key: str) -> tuple:
         """
-        Synchronous connection test.  Returns (success: bool, message: str).
-        Call from a QThread to avoid blocking the UI.
+        Synchronous connection test — the same request that fetches the model
+        list, so a passing test guarantees a populated combo.  Returns
+        (success: bool, message: str).  Call from a QThread to avoid blocking
+        the UI.
         """
+        from core import model_catalog
         try:
-            if provider == "OpenAI":
-                from openai import OpenAI
-                client = OpenAI(api_key=api_key)
-                client.models.list()
-                return True, "Connection successful"
-
-            elif provider == "Google":
-                import google.generativeai as genai
-                genai.configure(api_key=api_key)
-                list(genai.list_models())
-                return True, "Connection successful"
-
-            elif provider == "Anthropic":
-                from anthropic import Anthropic
-                client = Anthropic(api_key=api_key)
-                client.models.list()
-                return True, "Connection successful"
-
-            elif provider == "Custom/Local":
-                # For local, just check if the endpoint responds (key is base URL)
-                import urllib.request
-                req = urllib.request.urlopen(api_key.rstrip("/") + "/models", timeout=5)
-                return req.status == 200, "Connection successful"
-
-            else:
-                return False, f"Unknown provider: {provider}"
-
+            models = model_catalog.fetch(provider, api_key)
         except Exception as exc:
             return False, str(exc)
+        return True, f"Connection successful — {len(models)} models"
 
 
 # ── Singleton accessor ────────────────────────────────────────────────────────

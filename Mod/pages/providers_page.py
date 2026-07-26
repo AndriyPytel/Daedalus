@@ -49,6 +49,10 @@ class ProvidersPage(QtWidgets.QWidget):
         self._worker = None
         self._build_ui()
 
+        from utils.provider_manager import ProviderManager
+        # Bound method, not a lambda: Qt drops it when this page is destroyed.
+        ProviderManager.instance().models_changed.connect(self._on_models_changed)
+
     def getWidget(self):
         return self
 
@@ -230,6 +234,9 @@ class ProvidersPage(QtWidgets.QWidget):
     def _on_key_changed(self):
         # We don't save immediately, saveSettings() handles it
         pass
+
+    def _on_models_changed(self, _models):
+        self._refresh_models()
 
     def _refresh_models(self):
         if not self._current_provider:

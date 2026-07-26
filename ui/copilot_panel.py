@@ -308,6 +308,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def __init__(self):
         super().__init__("FreeCAD Copilot")
+        # QMainWindow::saveState() drops unnamed docks — without this the panel's
+        # position is never restored across restarts.
+        self.setObjectName("FreeCadCopilotPanel")
         self.setStyleSheet(_build_qss())
 
         root = QtWidgets.QWidget()
@@ -522,10 +525,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
         else:
             for m in models:
                 self.model_combo.addItem(m["display"], userData=m["id"])
-        # Restore selection
-        for i in range(self.model_combo.count()):
-            if self.model_combo.itemData(i) == last_id:
-                self.model_combo.setCurrentIndex(i)
+        # Restore selection — the default model catches a last-used one that a
+        # refreshed list no longer offers.
+        for wanted in (last_id, SettingsManager.instance().get_default_model()):
+            index = self.model_combo.findData(wanted)
+            if index >= 0:
+                self.model_combo.setCurrentIndex(index)
                 break
         self.model_combo.blockSignals(False)
 
