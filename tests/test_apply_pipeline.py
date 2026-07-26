@@ -33,7 +33,10 @@ class FakeWorker:
     """Records what it was asked to Preflight, answers however the test says."""
 
     def __init__(self, result=None):
-        self.result = result or PreflightResult(ok=True, render="/tmp/step.png")
+        # A real worker reports what the Step touched, and a Step that touched
+        # nothing is not a success — so the default here has to say it made one.
+        self.result = result or PreflightResult(ok=True, render="/tmp/step.png",
+                                                created=["Box"])
         self.checked = []
 
     def check(self, code, document=None, render_path=None, save_to=None, timeout=None):
@@ -82,6 +85,21 @@ def test_lint_runs_before_preflight_so_a_bad_step_costs_nothing(pipeline):
     assert "literal element name" in result.traceback
     assert pipeline.fake_worker.checked == [], "Preflight ran on code lint had already rejected"
     assert pipeline.trace == []
+
+
+def test_a_step_that_changes_nothing_is_not_a_success(pipeline):
+    """
+    Seen in the wild: a Step that defined a function to build the sketch and
+    never called it. It raised nothing, so it scored as applied, and the Plan
+    moved on to a sketch that did not exist.
+    """
+    pipeline.fake_worker.result = PreflightResult(ok=True, render="/tmp/step.png")
+
+    result = pipeline.apply("def build(doc):\n    doc.addObject('Part::Box', 'Box')\n")
+
+    assert not result.ok
+    assert "changed nothing" in result.traceback
+    assert pipeline.trace == [], "a Step that does nothing still opened a transaction"
 
 
 def test_preflight_runs_before_the_document_sees_anything(pipeline):

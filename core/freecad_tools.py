@@ -18,6 +18,13 @@ TRAPS = [
     "AttachmentSupport replaces Support.",
     "PartDesign features must be added to a Body via Body.addObject, not to the "
     "Document alone, or they will not appear in the feature tree.",
+    "There is no active Body outside the GUI. ActiveObject, setActiveObject and "
+    "activeView do not exist on App.Document; nothing needs activating, Body.addObject "
+    "is what puts a feature in a Body.",
+    "A sketch is a 'Sketcher::SketchObject'; there is no 'PartDesign::Sketch'. Its "
+    "geometry comes from the Part module — Part.Circle, Part.LineSegment, Part.ArcOfCircle "
+    "— which is why sketch.addGeometry takes a Part object. The Sketcher module holds "
+    "constraints, not geometry.",
     "Body.addObject moves Body.Tip to the feature you just added. Capture the base "
     "feature before adding, or a dressup such as PartDesign::Fillet will end up "
     "referencing itself and fail to recompute.",
@@ -238,7 +245,8 @@ def _register_apply(registry, pipeline, selection):
             "properties": {
                 "code": {
                     "type": "string",
-                    "description": "Python for this Step. `doc` and `App` are in scope. "
+                    "description": "Python for this Step. `doc`, `App`, `Part`, `Sketcher` "
+                                   "and `PartDesign` are in scope. "
                                    "No Gui.*, no live selection, and no literal element "
                                    "names such as Edge12 — compute references instead.",
                 },

@@ -10,6 +10,7 @@ Death is a normal outcome here. If the code under test takes the C++ core
 down, this process goes with it and the parent restarts a new one — which is
 the entire point of the arrangement (ADR-0002).
 """
+import difflib
 import json
 import math
 import os
@@ -142,11 +143,83 @@ class _Touched:
         return names
 
 
+_HINT_LIMIT = 60
+
+# Sketch geometry is spelled Part.Circle / Part.LineSegment in every version of
+# FreeCAD; the Sketcher module holds none of it. Leaving these out of the
+# namespace turned correct code into a NameError, which the assistant read as
+# "Part does not exist here" and answered by inventing Sketcher.Circle.
+STEP_MODULES = ("Part", "Sketcher", "PartDesign")
+
+
+def step_namespace(doc):
+    """
+    What a Step's code runs with.
+
+    Preflight and Apply must build this identically or they are running
+    different programs and Preflight stops meaning anything (ADR-0002), so both
+    call this rather than each spelling it out.
+    """
+    import FreeCAD
+
+    namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__"}
+    for module in STEP_MODULES:
+        try:
+            namespace[module] = __import__(module)
+        except ImportError:
+            pass
+    return namespace
+
+
+def _name_of(obj):
+    """
+    What to call the thing in the hint.
+
+    TypeId is the useful name for a DocumentObject, but on a class it is an
+    unbound descriptor whose repr — <attribute 'TypeId' of 'Base.BaseClass'
+    objects> — named nothing the assistant could act on.
+    """
+    type_id = getattr(obj, "TypeId", None)
+    if isinstance(type_id, str):
+        return type_id
+    return getattr(obj, "__name__", None) or type(obj).__name__
+
+
+def introspect(exc):
+    """
+    Answer an AttributeError with what the object actually has.
+
+    FreeCAD names the attribute that is missing and nothing else, so the
+    assistant guesses a second spelling of the same wrong idea and the Step
+    budget goes on one dead end. Introspection is the answer to API knowledge
+    here as everywhere (ADR-0006) — this just applies it at the moment the
+    guess fails, rather than hoping the assistant asks first (ADR-0008).
+    """
+    obj, name = getattr(exc, "obj", None), getattr(exc, "name", None)
+    if obj is None or not name:
+        return ""
+    try:
+        public = sorted(a for a in dir(obj) if not a.startswith("_"))
+        # PropertiesList is the sharp answer for a DocumentObject; dir() is 80
+        # names of mostly plumbing. On a module or a class it is the unbound
+        # descriptor, which is neither — hence the isinstance, not a truth test.
+        declared = getattr(obj, "PropertiesList", None)
+        properties = sorted(declared) if isinstance(declared, (list, tuple)) else public
+        hint = "\n%s has no %r." % (_name_of(obj), name)
+        close = difflib.get_close_matches(name, public, n=3)
+        if close:
+            hint += " Closest existing: %s." % ", ".join(close)
+        return hint + "\nIt has: %s" % ", ".join(properties[:_HINT_LIMIT])
+    except BaseException:
+        # A hint is never worth losing the traceback it was meant to explain.
+        return ""
+
+
 def preflight(request):
     import FreeCAD
 
     doc = load_fresh(request.get("document"))
-    namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__preflight__"}
+    namespace = step_namespace(doc)
 
     touched = _Touched()
     FreeCAD.addDocumentObserver(touched)
@@ -193,10 +266,10 @@ def serve(stdin=None, respond=respond):
             return
         try:
             respond(preflight(request))
-        except BaseException:
+        except BaseException as exc:
             # Anything Python can still catch comes back as a correction.
             # Anything it cannot takes this process down instead of FreeCAD.
-            respond({"ok": False, "traceback": traceback.format_exc()})
+            respond({"ok": False, "traceback": traceback.format_exc() + introspect(exc)})
 
 
 # freecadcmd runs a script with __name__ set to its basename, not "__main__".

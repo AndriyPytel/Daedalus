@@ -57,6 +57,10 @@ def obsolete_reply(reason):
     return json.dumps({"obsolete": reason})
 
 
+def look_reply(tool, **arguments):
+    return json.dumps({"look": {"tool": tool, "arguments": arguments}})
+
+
 def verdict_reply(verdict, reason="", thinking=None):
     body = json.dumps({"verdict": verdict, "reason": reason})
     return {"reasoning": thinking, "text": body} if thinking else body
@@ -87,6 +91,13 @@ class FakeTools:
         def snapshot():
             self.calls.append(("snapshot", {}))
             return dict(SNAPSHOT)
+
+        @registry.tool("supported_types", "Types this build can create.", {
+            "type": "object", "properties": {"prefix": {"type": "string"}},
+        })
+        def supported_types(prefix=None):
+            self.calls.append(("supported_types", {"prefix": prefix}))
+            return {"types": ["Sketcher::SketchObject"], "count": 1}
 
         @registry.tool("apply_step", "Apply one Step.", {
             "type": "object",
@@ -159,6 +170,83 @@ def test_the_steps_run_in_the_order_the_plan_gave_them():
 
     assert tools.applied_codes() == ["first()", "second()", "third()"]
     assert [e.data["description"] for e in events.of(STEP_STARTED)] == ["First", "Second", "Third"]
+
+
+# ── Execute looks before it writes ────────────────────────────────────────────
+
+
+def test_execute_can_ask_the_document_before_committing_to_code():
+    """
+    The phase that hallucinates API was the one phase that could not ask:
+    `supported_types` had no caller anywhere outside the tests (ADR-0009).
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Add a sketch"),
+        look_reply("supported_types", prefix="Sketcher::"),
+        code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert ("supported_types", {"prefix": "Sketcher::"}) in tools.calls
+
+    asked_with = json.loads(llm.calls[2][-1]["content"])
+    assert asked_with["what_you_looked_at"][0]["result"]["types"] == ["Sketcher::SketchObject"]
+
+
+def test_a_look_is_visible_on_the_event_stream():
+    _, events, _, _ = drive([
+        plan_reply("Add a sketch"),
+        look_reply("supported_types", prefix="Sketcher::"),
+        code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
+        verdict_reply("pass"),
+    ])
+
+    assert "supported_types" in [e.data["name"] for e in events.of(TOOL_CALL)]
+    assert "supported_types" in [e.data["name"] for e in events.of(TOOL_RESULT)]
+
+
+def test_looking_is_budgeted_and_the_last_turn_offers_nothing_to_look_with():
+    """Looks are for answering a question, not for stalling instead of coding."""
+    result, _, llm, tools = drive([
+        plan_reply("Add a sketch"),
+        look_reply("supported_types"),
+        look_reply("supported_types"),
+        code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
+        verdict_reply("pass"),
+    ], budgets=Budgets(looks_per_step=2))
+
+    assert result.ok
+    assert len([c for c in tools.calls if c[0] == "supported_types"]) == 2
+
+    final = json.loads(llm.calls[3][-1]["content"])
+    assert final["tools_you_may_look_with"] == [], "the last turn still invited a look"
+
+
+def test_execute_cannot_apply_its_own_code_through_a_look():
+    """Execute proposes; the loop decides when a Step runs."""
+    result, _, _, tools = drive([
+        plan_reply("Add a box"),
+        look_reply("apply_step", code="doc.addObject('Part::Box', 'Sneaky')"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert tools.applied_codes() == ["doc.addObject('Part::Box', 'Box')"]
+
+
+def test_a_look_at_a_tool_that_does_not_exist_is_answered_not_fatal():
+    result, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        look_reply("read_the_manual"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    answered = json.loads(llm.calls[2][-1]["content"])
+    assert "error" in answered["what_you_looked_at"][0]["result"]
 
 
 # ── Execute ───────────────────────────────────────────────────────────────────

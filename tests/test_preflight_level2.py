@@ -117,6 +117,52 @@ def test_api_that_does_not_exist_comes_back_as_a_traceback(warm):
     assert warm.alive, "a Python error must not cost us the worker"
 
 
+def test_a_missing_attribute_comes_back_with_what_the_object_does_have(warm):
+    """
+    The Origin planes: three attempts went on `body.Origin.XY_Plane`, which
+    does not exist, because the AttributeError never mentioned OriginFeatures.
+    """
+    result = warm.check(
+        "body = doc.addObject('PartDesign::Body', 'Body')\n"
+        "doc.recompute()\n"
+        "plane = body.Origin.XY_Plane\n"
+    )
+
+    assert not result.ok
+    assert "has no 'XY_Plane'" in result.traceback
+    assert "OriginFeatures" in result.traceback, "the way to the planes is not in the failure"
+
+
+def test_the_geometry_modules_are_in_scope_without_an_import(warm):
+    """
+    `Part.Circle` is how every version of FreeCAD spells sketch geometry. Left
+    out of the namespace it raised NameError, which read as "Part does not
+    exist here" and sent the assistant off inventing Sketcher.Circle.
+    """
+    result = warm.check(
+        "sketch = doc.addObject('Sketcher::SketchObject', 'Sketch')\n"
+        "sketch.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 10), False)\n"
+    )
+
+    assert result.ok, result.traceback
+
+
+def test_the_hint_names_a_class_by_its_name_not_a_descriptor_repr(warm):
+    """TypeId on a class is an unbound descriptor; its repr named nothing usable."""
+    result = warm.check("Sketcher.GeometryFacade.addCircle(1)")
+
+    assert not result.ok
+    assert "GeometryFacade has no 'addCircle'" in result.traceback
+    assert "Base.BaseClass" not in result.traceback
+
+
+def test_a_hint_is_not_offered_when_there_is_no_object_to_introspect(warm):
+    result = warm.check("raise ValueError('nothing to introspect here')")
+
+    assert not result.ok
+    assert "It has:" not in result.traceback
+
+
 def test_a_recompute_that_leaves_an_object_in_error_is_a_failure(warm):
     result = warm.check(
         "box = doc.addObject('Part::Box', 'Box')\n"

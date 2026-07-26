@@ -4,7 +4,9 @@ The Plan -> Execute -> Review loop.
 Three phases, fixed order, deterministic routing (ADR-0003). No LLM-chosen
 speaker selection: Plan produces Steps, Execute works through them one at a
 time, Review judges the outcome, and Review's verdict returns to Plan — never
-to Execute.
+to Execute. Within its turn Execute may spend a bounded number of read-only
+looks at the Document before it writes code (ADR-0009); that is one phase
+reading its input, not a negotiation between phases.
 
 The loop is a function of `(intent, context)` over injected dependencies, so a
 narrower Intent is all a future sub-agent needs. Nothing here imports FreeCAD;
@@ -27,6 +29,7 @@ from core.events import (
 )
 from core.freecad_tools import TRAPS
 from core.llm import REASONING
+from core.tools import ToolError
 
 PLAN_PHASE = "plan"
 EXECUTE_PHASE = "execute"
@@ -45,6 +48,9 @@ class Budgets:
     review_cycles: int = 2
     # Without this, Execute declaring Step after Step obsolete never terminates.
     revisions: int = 3
+    # Questions Execute may ask the Document before it has to write the code.
+    # Two is enough to check a type and a property list; more is stalling.
+    looks_per_step: int = 2
 
 
 APPROVE = "approve"
@@ -96,9 +102,15 @@ _TRAPS = "\n".join("- " + trap for trap in TRAPS)
 
 PLAN_SYSTEM = """You plan changes to a FreeCAD 1.0 Document.
 
-Break the Intent into the smallest ordered list of Steps that achieves it. Each
-Step is one unit of change, small enough to be attempted, judged and undone on
-its own. Describe what the Step should achieve, not the code for it.
+Break the Intent into the shortest ordered list of Steps that achieves it. A
+Step is one whole modelling operation — small enough to be judged and undone on
+its own, and no smaller. Describe what the Step should achieve, not the code.
+
+Creating a sketch, attaching it to a plane and drawing its geometry is **one**
+Step, not three: the parts are written in one breath and are useless apart.
+Same for a feature and its parameters. Every Step must change the Document —
+there is no editing mode here, so "open the sketch" and "close the sketch" are
+not Steps at all.
 
 Reply with JSON only: {"steps": ["...", "..."]}
 
@@ -107,11 +119,19 @@ Traps in this build:
 
 EXECUTE_SYSTEM = """You write the Python for one Step against a FreeCAD 1.0 Document.
 
-`doc` and `App` are in scope. The code must be a pure function of the Document:
+`doc`, `App`, `Part`, `Sketcher` and `PartDesign` are already in scope; you do
+not need to import them. The code must be a pure function of the Document:
 no Gui.*, no reading the live selection, and no literal element names such as
 Edge12 — compute references from the geometry at execution time instead.
 
-Reply with JSON only, either:
+Do not guess at the API. Anything you are unsure of — whether a type exists,
+what a property is called, what an object is built from — ask the running
+FreeCAD with a look before you write code. It answers about this exact build.
+The Step's code must still change the Document; defining a function you never
+call changes nothing and counts as a failed Step.
+
+Reply with JSON only, one of:
+  {"look": {"tool": "...", "arguments": {...}}}   to ask, before committing to code
   {"code": "...", "label": "short name for the undo entry"}
 or, if this Step no longer makes sense against the Document you were given:
   {"obsolete": "why"}
@@ -204,28 +224,77 @@ class ExecuteOutcome:
     obsolete: str = None
 
 
-def execute(step, snapshot, llm, events, attempts):
+def execute(step, tools, llm, events, attempts, budgets=None):
     """
-    Write the code for one Step.
+    Write the code for one Step, after asking the Document whatever it needs.
+
+    Execute is the phase that hallucinates API, and it was the one phase that
+    could not ask: it replied with code in one shot while `describe_object` and
+    `supported_types` sat in the registry with no caller. It may now spend a
+    bounded number of *looks* on the read-only Tools first (ADR-0009).
 
     `attempts` are the failures **for this Step only**. A Step is not told what
     went wrong elsewhere in the Plan; that is noise it cannot act on.
     """
-    request = {"step": step, "document": snapshot}
+    budgets = budgets or Budgets()
+    # A fresh Snapshot per attempt: the user may have edited the model by hand.
+    request = {"step": step, "document": tools.call("snapshot")}
     if attempts:
         request["your_failed_attempts_at_this_step"] = [
             {"code": a.code, "traceback": a.traceback} for a in attempts
         ]
 
-    reply = _ask(llm, events, EXECUTE_PHASE, EXECUTE_SYSTEM,
-                 json.dumps(request, indent=2, default=str))
+    looked = []
+    for remaining in range(budgets.looks_per_step, -1, -1):
+        # Offering nothing on the last turn is how "you must answer now" is said
+        # in a protocol whose only vocabulary is the request.
+        request["tools_you_may_look_with"] = _lookable(tools) if remaining else []
+        if looked:
+            request["what_you_looked_at"] = looked
 
-    if reply.get("obsolete"):
-        return ExecuteOutcome(obsolete=str(reply["obsolete"]))
-    code = reply.get("code")
-    if not code:
-        raise PhaseError("Execute replied with neither code nor an obsolete reason.")
-    return ExecuteOutcome(code=str(code), label=str(reply.get("label") or "Copilot Step"))
+        reply = _ask(llm, events, EXECUTE_PHASE, EXECUTE_SYSTEM,
+                     json.dumps(request, indent=2, default=str))
+
+        if reply.get("obsolete"):
+            return ExecuteOutcome(obsolete=str(reply["obsolete"]))
+        if reply.get("code"):
+            return ExecuteOutcome(code=str(reply["code"]),
+                                  label=str(reply.get("label") or "Copilot Step"))
+        if not reply.get("look") or not remaining:
+            break
+        looked.append(_look(tools, reply["look"], events))
+
+    raise PhaseError("Execute replied with neither code nor an obsolete reason.")
+
+
+def _lookable(tools):
+    """
+    The Tools Execute may ask with: everything that only reads.
+
+    `apply_step` is not among them — Execute proposes a Step, the loop decides
+    when it runs, and a phase that could apply its own code would be a second,
+    unbudgeted route to the Document.
+    """
+    return [described for described in tools.describe() if described["name"] != "apply_step"]
+
+
+def _look(tools, look, events):
+    """Run one read-only Tool for Execute and hand back what it said."""
+    name = str(look.get("tool") or "")
+    arguments = look.get("arguments") or {}
+
+    events.emit(TOOL_CALL, name=name, arguments=dict(arguments))
+    if name == "apply_step" or name not in tools:
+        result = {"error": "%r is not a Tool you can look with. Reply with code instead." % name}
+    else:
+        try:
+            result = tools.call(name, arguments)
+        except ToolError as exc:
+            # A bad look is a thing to correct, not a reason to lose the Step.
+            result = {"error": str(exc)}
+    events.emit(TOOL_RESULT, name=name, result=result)
+
+    return {"tool": name, "arguments": arguments, "result": result}
 
 
 def review(intent, render, objects, llm, events):
@@ -380,9 +449,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled):
         while True:
             if cancelled():
                 raise Stopped()
-            # A fresh Snapshot every attempt: the user may have edited the model
-            # by hand since the last one, and the Document is the source of truth.
-            outcome = execute(step, tools.call("snapshot"), llm, events, attempts)
+            outcome = execute(step, tools, llm, events, attempts, budgets)
 
             if outcome.obsolete:
                 return {"blocked": False, "obsolete": outcome.obsolete, "applied": applied,

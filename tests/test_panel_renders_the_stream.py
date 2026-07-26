@@ -96,6 +96,24 @@ def test_the_loop_runs_off_the_gui_thread():
     }
 
 
+def test_the_dock_names_itself():
+    """
+    QMainWindow::saveState() warns about and then drops an unnamed dock, so
+    without an objectName the panel's position never survives a restart.
+    """
+    panel = next(node for node in ast.walk(panel_tree())
+                 if isinstance(node, ast.ClassDef) and node.name == "CopilotPanel")
+    init = function(panel, "__init__")
+    named = [
+        node for node in ast.walk(init)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "setObjectName"
+        and isinstance(node.func.value, ast.Name) and node.func.value.id == "self"
+    ]
+
+    assert named, "CopilotPanel.__init__ never calls self.setObjectName()"
+
+
 def test_the_run_is_stoppable():
     tree = panel_tree()
     names = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}

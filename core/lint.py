@@ -1,7 +1,8 @@
 """
 The AST lint that runs before Preflight.
 
-Two rules, both from ADRs, both about failures nothing downstream can catch:
+Three rules, each from an ADR, each about a failure a Preflight traceback
+cannot teach the way out of (ADR-0008):
 
 - **No literal `Edge12` / `Face3` / `Vertex7`** (ADR-0005). FreeCAD 1.0's
   topological naming mitigation made these less fragile, not stable. A
@@ -12,6 +13,9 @@ Two rules, both from ADRs, both about failures nothing downstream can catch:
   pure function of the Document, or Preflight and Apply can disagree — the
   worker has no GUI and no selection, so anything reading them means the two
   processes are running different programs.
+- **Nothing may be made active** (ADR-0008). Activation is GUI-only, so no
+  spelling of it works headless and the traceback has no right answer to
+  point at — introspection would only confirm the absence, once per guess.
 
 Element names the *user* selected are explicit input, not a guess, so they are
 allowed through when they match the live selection.
@@ -31,6 +35,13 @@ ELEMENT = re.compile(r"^(Edge|Face|Vertex)\d+$")
 
 GUI_NAMES = ("Gui", "FreeCADGui")
 
+# The active Body lives in the GUI. App.Document has no active-object API in
+# any spelling, so each attempt is a bare AttributeError the assistant answers
+# by trying the next spelling — three of them spend the whole Step budget.
+ACTIVATION_NAMES = (
+    "ActiveObject", "setActiveObject", "getActiveObject", "activeView", "ActiveView",
+)
+
 _ELEMENT_REASON = (
     "%r is a literal element name. It points somewhere else as soon as a "
     "parameter upstream in the history changes, and nothing downstream can "
@@ -45,6 +56,14 @@ _GUI_REASON = (
     "with no GUI and no selection, so code that reads them runs differently "
     "there than it will here, and Preflight stops meaning anything. Make the "
     "Step a pure function of the Document."
+)
+
+
+_ACTIVATION_REASON = (
+    "%s makes an object active, which only the GUI can do. The Preflight "
+    "Document has no active object and no active view, so there is no spelling "
+    "of this that works. Nothing needs to be active: put a PartDesign feature "
+    "in its Body with Body.addObject(feature) instead."
 )
 
 
@@ -115,6 +134,9 @@ def lint(code: str, selection=None) -> LintResult:
         # the GUI through something else is the same problem by a longer route.
         elif isinstance(node, ast.Attribute) and node.attr in GUI_NAMES:
             complain(_GUI_REASON % node.attr)
+
+        elif isinstance(node, ast.Attribute) and node.attr in ACTIVATION_NAMES:
+            complain(_ACTIVATION_REASON % node.attr)
 
         elif isinstance(node, ast.Import):
             for alias in node.names:

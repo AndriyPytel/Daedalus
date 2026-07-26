@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 from core.lint import lint
 from core.preflight import PreflightWorker, copy_of
+from core.preflight_worker import step_namespace
 
 DISPATCH_TIMEOUT = 60.0
 
@@ -121,6 +122,20 @@ def on_main_thread(func, timeout=DISPATCH_TIMEOUT):
 # ── the transaction ───────────────────────────────────────────────────────────
 
 
+# A Step that raises is a failure the assistant corrects against; a Step that
+# quietly does nothing was scored as a success, and the Plan moved on assuming
+# an object that was never created (ADR-0010). Seen once already: code that
+# defined a function to build the sketch and never called it — the two removed
+# APIs inside it never even ran.
+_CHANGED_NOTHING = (
+    "The code ran without error but changed nothing: no object was created, "
+    "deleted or modified. A Step that leaves the Document as it found it has "
+    "not been done. Check that the code actually calls what it defines and "
+    "assigns to the Document's objects — or, if this Step genuinely has nothing "
+    "left to do, say so with {\"obsolete\": \"why\"} instead."
+)
+
+
 def run_in_transaction(doc, code, label="Copilot Step"):
     """
     Execute *code* against *doc* as one undoable unit. Main thread only.
@@ -128,12 +143,9 @@ def run_in_transaction(doc, code, label="Copilot Step"):
     Everything the Step does — including the recompute — is inside the
     transaction, so one undo takes the whole Step back.
     """
-    import FreeCAD
-
     doc.openTransaction(label)
     try:
-        namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__"}
-        exec(compile(code, "<step>", "exec"), namespace)  # noqa: S102
+        exec(compile(code, "<step>", "exec"), step_namespace(doc))  # noqa: S102
         doc.recompute()
     except BaseException:
         doc.abortTransaction()
@@ -224,6 +236,9 @@ class ApplyPipeline:
         declined = self._not_ours(preflighted)
         if declined:
             return ApplyResult(ok=False, traceback=declined)
+
+        if not (preflighted.created or preflighted.deleted or preflighted.modified):
+            return ApplyResult(ok=False, traceback=_CHANGED_NOTHING)
 
         try:
             self._dispatch(lambda: self._transaction(doc, code, label))

@@ -117,6 +117,34 @@ def test_the_reason_explains_why_preflight_would_stop_meaning_anything():
     assert "headless" in reason
 
 
+# ── activating a Body (GUI-only, by a longer route) ───────────────────────────
+
+
+@pytest.mark.parametrize("code", [
+    "App.ActiveDocument.ActiveObject = body",
+    "App.ActiveDocument.setActiveObject('pdbody', body)",
+    "App.activeDocument().activeView().setActiveObject('pdbody', body)",
+    "body = App.ActiveDocument.getActiveObject('pdbody')",
+])
+def test_making_a_body_active_is_rejected(code):
+    """The spellings that spent a whole Step budget on AttributeErrors."""
+    result = lint(code)
+
+    assert not result.ok
+    assert "Body.addObject" in result.report()
+
+
+def test_adding_a_feature_to_a_body_passes():
+    code = (
+        "body = doc.addObject('PartDesign::Body', 'Body')\n"
+        "pad = doc.addObject('PartDesign::Pad', 'Pad')\n"
+        "body.addObject(pad)\n"
+        "doc.recompute()\n"
+    )
+
+    assert lint(code).ok, lint(code).report()
+
+
 def test_document_only_code_passes():
     code = (
         "box = doc.addObject('Part::Box', 'Box')\n"
