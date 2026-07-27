@@ -75,9 +75,6 @@ class LintResult:
     def ok(self) -> bool:
         return not self.problems
 
-    def __bool__(self):
-        return self.ok
-
     def report(self) -> str:
         if self.ok:
             return ""

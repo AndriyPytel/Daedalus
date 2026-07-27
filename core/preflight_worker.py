@@ -243,9 +243,6 @@ def preflight(request):
     render_path = request.get("render_path")
     if render_path:
         result["render"] = render(doc, render_path)
-    if request.get("save_to"):
-        doc.saveAs(request["save_to"])
-        result["saved"] = request["save_to"]
     return result
 
 

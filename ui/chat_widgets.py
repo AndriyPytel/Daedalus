@@ -32,15 +32,6 @@ class TextMessageWidget(QtWidgets.QWidget):
         layout.addWidget(self.text_label)
         self.setLayout(layout)
 
-    def get_text(self):
-        return self.text_label.text()
-
-    def set_text(self, text: str):
-        self.text_label.setText(text)
-
-    def append_text(self, text: str):
-        self.text_label.setText(self.text_label.text() + text)
-
 
 class AssistantMessageWidget(QtWidgets.QWidget):
     """Plain text layout for assistant responses (no bubble)."""

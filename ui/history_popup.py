@@ -167,11 +167,6 @@ class HistoryPopup(QtWidgets.QFrame):
             if isinstance(widget, HistoryItem):
                 widget.setVisible(text in widget.title_label.text().lower())
 
-    def show_at(self, pos: QtCore.QPoint):
-        self.move(pos - QtCore.QPoint(self.width() // 2, 0))
-        self.show()
-        self.search_input.setFocus()
-
     def show_center(self):
         # Center on the primary screen
         # In PySide, QApplication.desktop() returns QDesktopWidget

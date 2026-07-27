@@ -284,11 +284,6 @@ class ApplyPipeline:
             "why it cannot be done and stop." % " and ".join(wanted)
         )
 
-    def close(self):
-        if self._worker is not None:
-            self._worker.kill()
-            self._worker = None
-
 
 def _discard(path):
     try:

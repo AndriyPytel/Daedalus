@@ -42,7 +42,6 @@ class PreflightResult:
     traceback: str = ""
     render: str = None
     objects: list = field(default_factory=list)
-    saved: str = None
     # What the Step actually did, observed rather than inferred from the code.
     created: list = field(default_factory=list)
     deleted: list = field(default_factory=list)
@@ -141,7 +140,7 @@ class PreflightWorker:
 
     # ── the one thing this class is for ──────────────────────────────────────
 
-    def check(self, code, document=None, render_path=None, save_to=None, timeout=None):
+    def check(self, code, document=None, render_path=None, timeout=None):
         """
         Run *code* against a fresh copy of *document* in the worker.
 
@@ -151,8 +150,7 @@ class PreflightWorker:
         if not self.alive:
             self.start()
 
-        request = {"code": code, "document": document,
-                   "render_path": render_path, "save_to": save_to}
+        request = {"code": code, "document": document, "render_path": render_path}
         try:
             self._process.stdin.write(json.dumps(request) + "\n")
             self._process.stdin.flush()
@@ -178,7 +176,6 @@ class PreflightWorker:
         if response.get("ok"):
             return PreflightResult(ok=True, render=response.get("render"),
                                    objects=response.get("objects", []),
-                                   saved=response.get("saved"),
                                    created=response.get("created", []),
                                    deleted=response.get("deleted", []),
                                    modified=response.get("modified", []))

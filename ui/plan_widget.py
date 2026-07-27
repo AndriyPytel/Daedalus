@@ -58,9 +58,6 @@ class PlanWidget(QtWidgets.QFrame):
             self._states.append(PENDING)
             self._paint(position)
 
-    def set_title(self, title):
-        self._title.setText(title)
-
     def highlight(self, index):
         """1-based, matching the Step numbering in the event stream."""
         for position in range(len(self._rows)):

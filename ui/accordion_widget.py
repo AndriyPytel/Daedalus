@@ -56,9 +56,6 @@ class AccordionWidget(QtWidgets.QWidget):
         # broke a streamed sentence across a dozen lines.
         self.content_area.setText(self.content_area.text() + text)
 
-    def set_title(self, title: str):
-        self.toggle_button.setText(("▼  " if self._is_expanded else "▶  ") + title)
-
     def start_pulsing(self):
         """The 'still working' signal — the one animation worth keeping."""
         self._effect = QtWidgets.QGraphicsOpacityEffect(self.toggle_button)
