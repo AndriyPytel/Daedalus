@@ -221,6 +221,28 @@ def test_looking_is_budgeted_and_the_last_turn_offers_nothing_to_look_with():
 
     final = json.loads(llm.calls[3][-1]["content"])
     assert final["tools_you_may_look_with"] == [], "the last turn still invited a look"
+    assert "code" in final["this_is_your_last_turn"]
+    assert "obsolete" in final["this_is_your_last_turn"]
+    assert "this_is_your_last_turn" not in json.loads(llm.calls[1][-1]["content"])
+
+
+def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run():
+    """
+    A model that spends its looks and then asks for another has failed an
+    attempt, not broken the loop. FCC-8.
+    """
+    result, events, _, _ = drive(
+        [plan_reply("Add a sketch")] + [look_reply("supported_types")] * 9,
+        budgets=Budgets(looks_per_step=2, attempts_per_step=3),
+    )
+
+    assert not result.ok
+    assert events.first(ERROR) is None
+    blocked = events.first(BLOCKED)
+    assert blocked is not None
+    assert "Step 1 of 1" in blocked.data["reason"]
+    assert len(blocked.data["tried"]) == 3
+    assert all("no looks left" in t["traceback"] for t in blocked.data["tried"])
 
 
 def test_execute_cannot_apply_its_own_code_through_a_look():

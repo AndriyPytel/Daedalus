@@ -211,6 +211,10 @@ def plan(intent, snapshot, llm, events, feedback=None):
     return steps
 
 
+NO_ANSWER = ("You had no looks left and replied with neither code nor an obsolete reason. "
+             "Write the code for this Step.")
+
+
 @dataclass
 class Attempt:
     code: str
@@ -246,9 +250,14 @@ def execute(step, tools, llm, events, attempts, budgets=None):
 
     looked = []
     for remaining in range(budgets.looks_per_step, -1, -1):
-        # Offering nothing on the last turn is how "you must answer now" is said
-        # in a protocol whose only vocabulary is the request.
+        # An empty list is not read as an instruction by every model, so the
+        # last turn also says it in words.
         request["tools_you_may_look_with"] = _lookable(tools) if remaining else []
+        if not remaining:
+            request["this_is_your_last_turn"] = (
+                "You have no looks left. Reply with code, or with an obsolete reason if the "
+                "Step can no longer be done. A look now is a failed attempt."
+            )
         if looked:
             request["what_you_looked_at"] = looked
 
@@ -264,7 +273,8 @@ def execute(step, tools, llm, events, attempts, budgets=None):
             break
         looked.append(_look(tools, reply["look"], events))
 
-    raise PhaseError("Execute replied with neither code nor an obsolete reason.")
+    # Not a broken loop — a Step that failed this attempt, like any other.
+    return ExecuteOutcome()
 
 
 def _lookable(tools):
@@ -463,10 +473,13 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                         "render": render, "objects": objects,
                         "tried": [_tried(step, a) for a in attempts]}
 
-            arguments = {"code": outcome.code, "label": outcome.label}
-            events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
-            result = tools.call("apply_step", arguments)
-            events.emit(TOOL_RESULT, name="apply_step", result=result)
+            if outcome.code:
+                arguments = {"code": outcome.code, "label": outcome.label}
+                events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
+                result = tools.call("apply_step", arguments)
+                events.emit(TOOL_RESULT, name="apply_step", result=result)
+            else:
+                result = {"status": "failed", "traceback": NO_ANSWER}
 
             if result.get("status") == "applied":
                 progress["applied"] += 1
@@ -479,7 +492,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                 break
 
             traceback = result.get("traceback", "The Step failed without saying why.")
-            attempts.append(Attempt(code=outcome.code, traceback=traceback))
+            attempts.append(Attempt(code=outcome.code or "", traceback=traceback))
             progress["tried"] = [_tried(step, a) for a in attempts]
             events.emit(PREFLIGHT_FAILED, step=index, attempt=len(attempts),
                         traceback=traceback)
