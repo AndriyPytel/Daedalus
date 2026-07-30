@@ -307,6 +307,29 @@ def test_execute_sees_only_that_steps_own_failed_attempts():
     assert "first_bad()" not in first_of_second
 
 
+def test_the_reason_a_recompute_failed_reaches_the_next_attempts_request():
+    """
+    The reason has to be in the request, not merely on the event stream — a
+    causeless message is what made every attempt a re-spelling. FCC-11.
+    """
+    _, _, llm, _ = drive(
+        [
+            plan_reply("Add a pad"),
+            code_reply("pad_one()"),
+            code_reply("pad_two()"),
+            verdict_reply("pass"),
+        ],
+        applies=[failed("Pad (PartDesign::Pad): Linked shape object is empty"), None],
+    )
+
+    retry = json.loads(llm.calls[2][-1]["content"])
+
+    assert retry["your_failed_attempts_at_this_step"] == [
+        {"code": "pad_one()",
+         "traceback": "Pad (PartDesign::Pad): Linked shape object is empty"},
+    ]
+
+
 def test_a_failed_attempt_is_surfaced_before_the_retry():
     _, events, _, _ = drive(
         [
