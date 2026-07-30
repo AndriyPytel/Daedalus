@@ -1,24 +1,55 @@
 # FreeCadCopilot/ui/multi_tab_manager.py
 """
-ChatSessionManager
+ChatSessionManager — the Sessions, and the stack of chat areas that show them.
 
-Replaces the QTabWidget-based MultiTabManager with a headless stacked widget.
-The header QComboBox (injected from copilot_panel) drives session switching.
-API surface is kept compatible with the old MultiTabManager so copilot_panel
-only needs minor wiring changes.
+A Session is durable: a name, when it was created, the Document it worked on,
+and the path of its event log. The index lives in the settings manager, the
+transcript stays in the log the event stream already writes per event. Nothing
+about a Session's content is held in a second place.
+
+The stack holds one chat area per Session. A restored Session's chat area is
+built empty and filled the first time it is shown, so opening the panel with a
+hundred Sessions in history costs nothing until one is read.
 """
+import os
+import time
+import uuid
+
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
 except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
+# Sessions are pruned the way the addon's log files already are: oldest first,
+# on a bounded count, rather than growing until the user notices.
+KEEP = 50
+
+
+def _discard(path):
+    """Delete means gone, not hidden — but a log already missing is fine."""
+    if not path:
+        return
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def _log_dir() -> str:
+    import FreeCAD
+
+    directory = os.path.join(FreeCAD.getUserAppDataDir(), "Mod", "FreeCadCopilot",
+                             "logs", "sessions")
+    os.makedirs(directory, exist_ok=True)
+    return directory
+
 
 class ChatSessionManager(QtWidgets.QWidget):
     """
     Manages independent chat sessions.
-    - QStackedWidget holds one QListWidget per session (the chat history)
-    - An external QComboBox (self.session_picker) is wired to the stack
+    - QStackedWidget holds one chat area per Session
+    - The header title label shows the active Session's name
     """
 
     session_changed = QtCore.Signal(int)   # emitted when the active session switches
@@ -35,11 +66,7 @@ class ChatSessionManager(QtWidgets.QWidget):
         self.stack  = QtWidgets.QStackedWidget()
         layout.addWidget(self.stack)
 
-        # Will be assigned externally by copilot_panel after the picker is
-        # created in the header bar
-        self.session_picker: QtWidgets.QComboBox | None = None
-
-        self._sessions: list[dict] = [] # list of {"name": str, "widget": QWidget, "history_idx": int}
+        self._sessions: list[dict] = []
 
     # ── QScrollArea style helper ──────────────────────────────────────────────
 
@@ -103,78 +130,104 @@ class ChatSessionManager(QtWidgets.QWidget):
         container.setObjectName("scrollContainer")
         return scroll
 
-    # ── Public API (compatible with old MultiTabManager) ──────────────────────
+    # ── Persistence ──────────────────────────────────────────────────────────
 
-    def add_new_chat(self, tab_name: str = "New Chat"):
-        lw  = self._make_list()
+    def _store(self):
+        from utils.settings_manager import SettingsManager
+
+        return SettingsManager.instance()
+
+    def _save(self):
+        """Write the index. The widget is this process's; the rest is durable."""
+        self._store().set_sessions([
+            {key: session[key] for key in ("name", "created_at", "document", "log")}
+            for session in self._sessions
+        ])
+
+    def load(self):
+        """
+        Rebuild the Sessions from the index, newest last, and prune the tail.
+
+        Each gets an empty chat area. Filling it is the panel's job, done on
+        first show — a Session with hundreds of Steps must not be replayed
+        because the panel opened.
+        """
+        stored = sorted(self._store().get_sessions(), key=lambda s: s.get("created_at") or 0)
+        for stale in stored[:-KEEP]:
+            _discard(stale.get("log"))
+        for record in stored[-KEEP:]:
+            self._add(record)
+        if self._sessions:
+            self._save()
+        return self.count()
+
+    # ── Public API ───────────────────────────────────────────────────────────
+
+    def add_new_chat(self, tab_name: str = "New Chat", document: str = ""):
+        idx, area = self._add({
+            "name": tab_name,
+            "created_at": time.time(),
+            "document": document,
+            "log": os.path.join(_log_dir(), "%s.jsonl" % uuid.uuid4().hex),
+        })
+        self.stack.setCurrentIndex(idx)
+        self._save()
+        self.session_added.emit(idx, tab_name)
+        return idx, area
+
+    def _add(self, record):
+        """One Session: its record, its chat area, and the stack page holding it."""
+        area = self._make_list()
 
         # Wrap in a plain container so QStackedWidget is happy
         container = QtWidgets.QWidget()
         vl = QtWidgets.QVBoxLayout(container)
         vl.setContentsMargins(0, 0, 0, 0)
-        vl.addWidget(lw)
+        vl.addWidget(area)
 
         idx = self.stack.addWidget(container)
-        self.stack.setCurrentIndex(idx)
-        
-        session_data = {
-            "name": tab_name,
-            "widget": container,
-            "state": {"history": []},
-            "created_at": QtCore.QDateTime.currentDateTime()
-        }
-        self._sessions.append(session_data)
-        
-        if self.session_picker is not None:
-            self.session_picker.addItem(tab_name)
-            self.session_picker.setCurrentIndex(idx)
-
-        self.session_added.emit(idx, tab_name)
-        return idx, lw
+        session = dict(record)
+        session["widget"] = container
+        session["restored"] = False
+        self._sessions.append(session)
+        return idx, area
 
     def remove_session(self, index: int):
-        if 0 <= index < len(self._sessions):
-            # Remove from data
-            session = self._sessions.pop(index)
-            widget = session["widget"]
-            
-            # Remove from stack
-            self.stack.removeWidget(widget)
-            widget.deleteLater()
-            
-            # Update picker if it exists
-            if self.session_picker is not None:
-                self.session_picker.removeItem(index)
-            
-            self.session_removed.emit(index)
-            
-            # If we deleted the last one, create a fresh one
-            if self.stack.count() == 0:
-                self.add_new_chat("New Chat")
+        if not 0 <= index < len(self._sessions):
+            return
+        session = self._sessions.pop(index)
+        _discard(session.get("log"))
+
+        widget = session["widget"]
+        self.stack.removeWidget(widget)
+        widget.deleteLater()
+
+        self._save()
+        self.session_removed.emit(index)
+
+        if self.stack.count() == 0:
+            self.add_new_chat("Chat 1")
 
     def rename_session(self, index: int, new_name: str):
-        if 0 <= index < len(self._sessions):
-            self._sessions[index]["name"] = new_name
-            if self.session_picker is not None:
-                self.session_picker.setItemText(index, new_name)
-            self.session_renamed.emit(index, new_name)
+        """The log's path does not follow the name, so a rename cannot orphan it."""
+        if not 0 <= index < len(self._sessions) or not new_name.strip():
+            return
+        self._sessions[index]["name"] = new_name.strip()
+        self._save()
+        self.session_renamed.emit(index, new_name.strip())
+
+    def name_document(self, log: str, document: str):
+        for session in self._sessions:
+            if session["log"] == log and session["document"] != document:
+                session["document"] = document
+                self._save()
+                return
 
     def get_current_chat_history(self) -> QtWidgets.QScrollArea | None:
         container = self.stack.currentWidget()
         if container is None:
             return None
         return container.layout().itemAt(0).widget()
-
-    def get_current_state(self) -> dict:
-        idx = self.stack.currentIndex()
-        if 0 <= idx < len(self._sessions):
-            return self._sessions[idx]["state"]
-        return {}
-
-    def update_current_state(self, state: dict):
-        idx = self.stack.currentIndex()
-        if 0 <= idx < len(self._sessions):
-            self._sessions[idx]["state"] = state
 
     def count(self) -> int:
         return len(self._sessions)
@@ -183,6 +236,14 @@ class ChatSessionManager(QtWidgets.QWidget):
         if 0 <= index < len(self._sessions):
             return self._sessions[index]
         return None
+
+    def mark_restored(self, index: int) -> bool:
+        """True the first time a Session is asked for; its transcript is due."""
+        session = self.get_session_info(index)
+        if session is None or session["restored"]:
+            return False
+        session["restored"] = True
+        return True
 
     # ── Session switching ─────────────────────────────────────────────────────
 

@@ -9,7 +9,9 @@ import json
 
 import pytest
 
-from core.events import APPLIED, BLOCKED, KINDS, PLAN, THOUGHT, EventStream
+from core.events import (
+    APPLIED, BLOCKED, KINDS, PLAN, THOUGHT, Event, EventStream, replay, was_truncated,
+)
 
 
 def test_every_specced_event_kind_exists():
@@ -106,6 +108,71 @@ def test_unserialisable_data_does_not_break_the_log(tmp_path):
     events.emit(APPLIED, step=1, label="a", created=[object()])
 
     assert len(open(path).read().strip().splitlines()) == 1
+
+
+# ── replaying a Session ───────────────────────────────────────────────────────
+
+
+def _written(path, events):
+    stream = EventStream()
+    stream.log_to(str(path))
+    for kind, data in events:
+        stream.emit(kind, **data)
+    return stream
+
+
+def test_a_session_replays_as_the_events_that_wrote_it(tmp_path):
+    """A restored Session is the same stream, so it renders the same way. FCC-5."""
+    path = tmp_path / "session.jsonl"
+    written = _written(path, [
+        (THOUGHT, {"phase": "plan", "text": "hmm"}),
+        (PLAN, {"steps": ["Make a box", "Fillet it"]}),
+        (APPLIED, {"step": 1, "label": "Box", "created": ["Box"]}),
+    ])
+
+    restored = replay(str(path))
+
+    assert [e.kind for e in restored] == [e.kind for e in written]
+    assert [e.data for e in restored] == [e.data for e in written]
+    assert [e.at for e in restored] == [e.at for e in written]
+    assert all(isinstance(e, Event) for e in restored)
+
+
+def test_a_log_cut_off_mid_line_restores_everything_before_it(tmp_path):
+    """The crash the per-event flush exists for must not cost the transcript."""
+    path = tmp_path / "session.jsonl"
+    _written(path, [(PLAN, {"steps": ["a"]}),
+                    (APPLIED, {"step": 1, "label": "a", "created": []})])
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write('{"kind": "blocked", "at": 1.0, "da')
+
+    restored = replay(str(path))
+
+    assert [e.kind for e in restored] == [PLAN, APPLIED]
+    assert was_truncated(str(path)), "the user was not told the transcript is incomplete"
+
+
+def test_a_whole_log_is_not_reported_as_truncated(tmp_path):
+    path = tmp_path / "session.jsonl"
+    _written(path, [(PLAN, {"steps": ["a"]})])
+
+    assert not was_truncated(str(path))
+
+
+def test_an_event_kind_this_build_does_not_know_survives_the_read(tmp_path):
+    """An older log must not stop a Session opening; the renderer skips it."""
+    path = tmp_path / "session.jsonl"
+    _written(path, [(PLAN, {"steps": ["a"]})])
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write('{"kind": "almost_applied", "at": 1.0, "data": {"step": 1}}\n')
+
+    restored = replay(str(path))
+
+    assert [e.kind for e in restored] == [PLAN, "almost_applied"]
+
+
+def test_a_session_with_no_log_yet_replays_as_nothing(tmp_path):
+    assert replay(str(tmp_path / "never_written.jsonl")) == []
 
 
 # ── reading it back in memory ─────────────────────────────────────────────────

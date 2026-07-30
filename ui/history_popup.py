@@ -9,7 +9,7 @@ class HistoryItem(QtWidgets.QFrame):
     selected = QtCore.Signal(int)
     deleted = QtCore.Signal(int)
 
-    def __init__(self, index, name, created_at: QtCore.QDateTime):
+    def __init__(self, index, name, created_at: float, document: str = ""):
         super().__init__()
         self.index = index
         self.setObjectName("HistoryItem")
@@ -29,7 +29,10 @@ class HistoryItem(QtWidgets.QFrame):
         self.title_label.setObjectName("HistoryTitle")
         self.title_label.setStyleSheet("font-weight: 500; font-size: 13px; background: transparent;")
         
-        self.time_label = QtWidgets.QLabel(self._format_relative_time(created_at))
+        subtitle = self._format_relative_time(created_at)
+        if document:
+            subtitle += " · " + document
+        self.time_label = QtWidgets.QLabel(subtitle)
         self.time_label.setObjectName("HistoryTime")
         self.time_label.setStyleSheet("font-size: 11px; opacity: 0.7; background: transparent;")
         
@@ -70,7 +73,8 @@ class HistoryItem(QtWidgets.QFrame):
             }
         """)
 
-    def _format_relative_time(self, dt: QtCore.QDateTime) -> str:
+    def _format_relative_time(self, created_at: float) -> str:
+        dt = QtCore.QDateTime.fromSecsSinceEpoch(int(created_at or 0))
         now = QtCore.QDateTime.currentDateTime()
         secs = dt.secsTo(now)
         if secs < 60: return "Just now"
@@ -147,7 +151,10 @@ class HistoryPopup(QtWidgets.QFrame):
                 item.widget().deleteLater()
         
         for i, info in enumerate(sessions_info):
-            item = HistoryItem(i, info["name"], info["created_at"])
+            if info is None:
+                continue
+            item = HistoryItem(i, info["name"], info.get("created_at"),
+                               info.get("document") or "")
             item.selected.connect(self._on_selected)
             item.deleted.connect(self._on_deleted)
             self.list_layout.insertWidget(self.list_layout.count() - 1, item)

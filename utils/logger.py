@@ -168,6 +168,3 @@ def is_transient_api_error(exc: Exception) -> bool:
     return any(k in msg for k in keywords)
 
 
-def get_session_log_path() -> str:
-    """Return the path of the active session log file."""
-    return _session_log_file

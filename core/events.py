@@ -119,3 +119,47 @@ class EventStream:
             write(event)
         self.subscribe(write)
         return handle
+
+
+def replay(path) -> List[Event]:
+    """
+    Read a session log back as the events that wrote it.
+
+    A crash cuts the last line in half — that is the case the per-event flush
+    exists for, so a partial line is dropped and everything before it survives.
+    A Session is never refused because its last event did not finish writing,
+    and a kind this build does not know is carried through for the renderer to
+    skip, the same way it skips one live.
+    """
+    try:
+        with open(path, encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+    except OSError:
+        return []
+
+    events = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entry, dict) and entry.get("kind"):
+            events.append(Event(kind=entry["kind"], data=entry.get("data") or {},
+                                at=entry.get("at") or 0.0))
+    return events
+
+
+def was_truncated(path) -> bool:
+    """Whether the log's last line was cut off — the transcript is incomplete."""
+    try:
+        with open(path, encoding="utf-8") as handle:
+            lines = handle.read().splitlines()
+    except OSError:
+        return False
+    if not lines:
+        return False
+    try:
+        json.loads(lines[-1])
+    except ValueError:
+        return True
+    return False
