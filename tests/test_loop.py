@@ -16,8 +16,9 @@ from core.events import (
     APPLIED, BLOCKED, ERROR, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, RENDER,
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
+from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
-from core.loop import Budgets, run
+from core.loop import PROMPTS, Budgets, prompt, run
 from core.tools import ToolRegistry
 
 SNAPSHOT = {"document": "Unnamed", "objects": [], "object_count": 0,
@@ -128,6 +129,53 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box"):
     result = run(intent, llm=llm, tools=tools.registry, events=events,
                  budgets=budgets or Budgets())
     return result, events, llm, tools
+
+
+# ── the prompts each phase sends ──────────────────────────────────────────────
+
+
+def _system_messages(llm):
+    """The system message of every turn, in order, as the provider saw it."""
+    return [call[0]["content"] for call in llm.calls]
+
+
+@pytest.mark.parametrize("turn, phase", [(0, "plan"), (1, "execute"), (2, "review")])
+def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
+    """
+    The file reached the provider — not that the loader returned a string. The
+    prompts are config, so this reads the config. FCC-3.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+
+    with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
+        expected = handle.read().strip().replace(
+            "{{traps}}", "\n".join("- " + trap for trap in TRAPS))
+
+    assert _system_messages(llm)[turn] == expected
+
+
+def test_the_traps_land_in_the_prompts_that_ask_for_them():
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    plan_system, execute_system, review_system = _system_messages(llm)
+
+    assert "{{traps}}" not in plan_system
+    for text in (plan_system, execute_system):
+        assert all(trap in text for trap in TRAPS)
+    # Review judges the outcome, not the API, and its file asks for no traps.
+    assert TRAPS[0] not in review_system
+
+
+def test_a_missing_prompt_file_raises_rather_than_sending_an_empty_prompt():
+    with pytest.raises(IOError):
+        prompt("no_such_phase")
 
 
 # ── Plan ──────────────────────────────────────────────────────────────────────

@@ -29,7 +29,6 @@ from .accordion_widget    import AccordionWidget
 from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
 from utils import settings_manager
 from utils import provider_manager
-from utils import prompt_manager
 from ui.ui_helpers import UIHelpers
 
 
