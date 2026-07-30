@@ -291,6 +291,11 @@ class LoopWorker(QtCore.QObject):
 
 # ── Main Panel ─────────────────────────────────────────────────────────────────
 
+# Events replayed per event-loop turn when a Session is opened. Small enough
+# that no single turn is felt, large enough that a short Session lands in one.
+RESTORE_CHUNK = 25
+
+
 class CopilotPanel(QtWidgets.QDockWidget):
     request_work = QtCore.Signal(str, object, str)
 
@@ -653,8 +658,31 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.add_chat_widget(self._empty_state)
             return
 
-        for event in events:
+        self._replay_chunk(index, events, 0, truncated)
+
+    def _replay_chunk(self, index: int, events: list, start: int, truncated: bool):
+        """
+        Replay a batch, then hand the event loop a turn before the next one.
+
+        Replaying hundreds of Steps in one pass on the GUI thread froze the
+        panel for as long as it took. The first batch is still synchronous, so
+        a short Session is on screen by the time this returns.
+
+        A Session the user has already switched away from is abandoned rather
+        than rendered into whatever is on the stack now.
+        """
+        if self.chat_sessions.stack.currentIndex() != index:
+            return
+
+        for event in events[start:start + RESTORE_CHUNK]:
             self.on_event(event)
+
+        done = start + RESTORE_CHUNK
+        if done < len(events):
+            QtCore.QTimer.singleShot(
+                0, lambda: self._replay_chunk(index, events, done, truncated))
+            return
+
         if truncated:
             self.add_chat_widget(AssistantMessageWidget(
                 "This transcript ends mid-event — FreeCAD closed while the run was writing. "
