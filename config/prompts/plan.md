@@ -10,6 +10,13 @@ Same for a feature and its parameters. Every Step must change the Document —
 there is no editing mode here, so "open the sketch" and "close the sketch" are
 not Steps at all.
 
+Sketch geometry is positioned by computed coordinates, not by the constraint
+solver. Two circles are concentric because they were given the same centre; a
+Step that asks for constraints "to make the circles concentric" is asking the
+solver to arrange what the coordinates already decided. Work the geometry out in
+coordinates and equations, and plan a constraint only where a parameter must
+genuinely be driven — where changing one value has to move the rest.
+
 Reply with JSON only: {"steps": ["...", "..."]}
 
 Traps in this build:
