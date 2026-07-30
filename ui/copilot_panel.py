@@ -227,6 +227,9 @@ class LoopWorker(QtCore.QObject):
     """
 
     finished = QtCore.Signal(object)
+    # Which Document a Session worked on. Asked through the Tool registry, on
+    # this thread — the panel never reaches the Document itself (ADR-0001).
+    document_named = QtCore.Signal(str, str)   # transcript path, Document name
 
     def __init__(self, bridge: EventBridge, ask: AskTheUser):
         super().__init__()
@@ -256,17 +259,19 @@ class LoopWorker(QtCore.QObject):
             self.pipeline = ApplyPipeline(confirm=self.ask.about_objects_we_do_not_own)
         return build_registry(pipeline=self.pipeline)
 
-    @QtCore.Slot(str, object)
-    def do_work(self, intent: str, attachments: list):
+    @QtCore.Slot(str, object, str)
+    def do_work(self, intent: str, attachments: list, transcript: str):
         from core import events as ev
         from core.events import EventStream
         from core.loop import run
-        from utils.logger import generate_crash_report, get_session_log_path, logger
+        from utils.logger import generate_crash_report, logger
 
         self._stop.clear()
         events = EventStream([self.bridge.subscriber()])
+        # The Session's own log: one Session, one transcript, which is what
+        # makes it restorable rather than merely inspectable.
         try:
-            events.log_to(get_session_log_path() + ".events.jsonl")
+            events.log_to(transcript)
         except Exception:
             pass    # a missing log must not cost the user their run
 
@@ -275,8 +280,15 @@ class LoopWorker(QtCore.QObject):
         events.subscribe(lambda event: logger.error("%s: %s" % (event.kind, event.data))
                          if event.kind in (ev.BLOCKED, ev.ERROR) else None)
 
+        tools = self._get_tools()
         try:
-            result = run(intent, llm=self._get_client(), tools=self._get_tools(),
+            self.document_named.emit(transcript,
+                                     str(tools.call("snapshot").get("document") or ""))
+        except Exception:
+            pass    # a nameless Session in history is not worth losing a run over
+
+        try:
+            result = run(intent, llm=self._get_client(), tools=tools,
                          events=events, cancelled=self._stop.is_set,
                          attachments=attachments, gate=self.ask.about_the_plan)
             self.finished.emit(result)
@@ -288,7 +300,8 @@ class LoopWorker(QtCore.QObject):
 # ── Main Panel ─────────────────────────────────────────────────────────────────
 
 class CopilotPanel(QtWidgets.QDockWidget):
-    request_work = QtCore.Signal(str, object)   # the Intent, and what was attached to it
+    # The Intent, what was attached to it, and the Session log to narrate into.
+    request_work = QtCore.Signal(str, object, str)
 
     def __init__(self):
         super().__init__("FreeCAD Copilot")
@@ -318,8 +331,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
         # ── History Popup ──
         from .history_popup import HistoryPopup
         self.history_popup = HistoryPopup(self)
-        self.history_popup.session_selected.connect(self.chat_sessions.switch_to)
-        self.history_popup.session_deleted.connect(self.chat_sessions.remove_session)
+        self.history_popup.session_selected.connect(self.switch_session)
+        self.history_popup.session_deleted.connect(self.delete_session)
 
         # ── 3. Status line ────────────────────────────────────────────────────
         self.status_line = QtWidgets.QLabel("")
@@ -340,6 +353,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self.request_work.connect(self.worker.do_work)
         self.worker.finished.connect(self.on_run_finished)
+        self.worker.document_named.connect(self.on_document_named)
         self.bridge.event.connect(self.on_event)
         self.ask.plan_gate.connect(self.on_plan_gate)
         self.ask.owned_objects.connect(self.on_owned_objects)
@@ -363,7 +377,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.chat_sessions.session_changed.connect(self.update_header_title)
         self.chat_sessions.session_removed.connect(lambda _: self.update_header_title(self.chat_sessions.stack.currentIndex()))
 
-        self.new_chat()
+        # Sessions outlive FreeCAD. What is on disk comes back; only a first
+        # run with nothing stored starts with a fresh one.
+        if self.chat_sessions.load():
+            last = self.chat_sessions.count() - 1
+            self.chat_sessions.switch_to(last)
+            self.restore_session(last)
+            self.update_header_title(last)
+        else:
+            self.new_chat()
 
     # ── Builder helpers ────────────────────────────────────────────────────────
 
@@ -379,10 +401,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(6)
 
-        # Chat Title Label
+        # Chat Title Label — double-click renames the Session.
         self.title_label = QtWidgets.QLabel("New Chat")
         self.title_label.setObjectName("HeaderTitle")
         self.title_label.setStyleSheet("font-weight: 600; font-size: 13px;")
+        self.title_label.setToolTip("Double-click to rename this session")
+        self.title_label.setCursor(QtCore.Qt.IBeamCursor)
+        self.title_label.mouseDoubleClickEvent = lambda event: self.rename_current_session()
         layout.addWidget(self.title_label)
 
         layout.addStretch()
@@ -581,23 +606,91 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if self.history_popup.isVisible():
             self.history_popup.close()
         else:
-            # Refresh list
-            sessions = []
-            for i in range(self.chat_sessions.count()):
-                info = self.chat_sessions.get_session_info(i)
-                if info:
-                    sessions.append(info)
-            self.history_popup.populate(sessions)
-            
-            # Position in the center of the screen
+            self.history_popup.populate(
+                [self.chat_sessions.get_session_info(i)
+                 for i in range(self.chat_sessions.count())])
             self.history_popup.show_center()
 
     def new_chat(self):
         n = self.chat_sessions.count() + 1
-        idx, _ = self.chat_sessions.add_new_chat(f"Chat {n}")
+        idx, _ = self.chat_sessions.add_new_chat("Chat %d" % n)
+        self.chat_sessions.mark_restored(idx)   # nothing to replay into a new one
         self.update_header_title(idx)
         self._empty_state = self._build_empty_state()
         self.add_chat_widget(self._empty_state)
+
+    def rename_current_session(self):
+        index = self.chat_sessions.stack.currentIndex()
+        info = self.chat_sessions.get_session_info(index)
+        if info is None:
+            return
+        name, chosen = QtWidgets.QInputDialog.getText(
+            self, "Rename session", "Name:", QtWidgets.QLineEdit.Normal, info["name"])
+        if chosen and name.strip():
+            self.chat_sessions.rename_session(index, name)
+            self.update_header_title(index)
+
+    def switch_session(self, index: int):
+        """
+        Open a Session, restoring its transcript the first time it is asked for.
+
+        Refused mid-run: a run narrates into the Session it was started from,
+        and moving out from under it loses track of which that was.
+        """
+        if self.stop_button.isVisible():
+            self.status_line.setText("Finish or stop this run before switching sessions.")
+            self.status_line.setVisible(True)
+            return
+        self.chat_sessions.switch_to(index)
+        self.restore_session(index)
+
+    def restore_session(self, index: int):
+        """Replay the Session's log through the switch that rendered it live."""
+        from core.events import replay, was_truncated
+
+        info = self.chat_sessions.get_session_info(index)
+        if info is None or not self.chat_sessions.mark_restored(index):
+            return
+
+        self._plan_widget = None
+        self._thought = None
+        self._thought_phase = None
+        self._current_step = 0
+        self._gate_card = None
+        self._empty_state = None
+
+        events = replay(info["log"])
+        if not events:
+            self._empty_state = self._build_empty_state()
+            self.add_chat_widget(self._empty_state)
+            return
+
+        for event in events:
+            self.on_event(event)
+        if was_truncated(info["log"]):
+            self.add_chat_widget(AssistantMessageWidget(
+                "This transcript ends mid-event — FreeCAD closed while the run was writing. "
+                "Everything above it survived."))
+        self.status_line.setVisible(False)
+
+    @QtCore.Slot(str, str)
+    def on_document_named(self, transcript: str, document: str):
+        """Record which Document a Session worked on, so history can say so."""
+        self.chat_sessions.name_document(transcript, document)
+
+    def delete_session(self, index: int):
+        info = self.chat_sessions.get_session_info(index)
+        if info is None:
+            return
+        confirmed = QtWidgets.QMessageBox.question(
+            self, "Delete session",
+            "Delete “%s” and its whole transcript?" % info["name"],
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No)
+        if confirmed != QtWidgets.QMessageBox.Yes:
+            return
+        self.chat_sessions.remove_session(index)
+        self.update_header_title(self.chat_sessions.stack.currentIndex())
 
     def _build_empty_state(self):
         """One muted line, so an empty panel still says where the user stands."""
@@ -623,6 +716,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if not intent:
             return
 
+        session = self.chat_sessions.get_session_info(self.chat_sessions.stack.currentIndex())
+        if session is None:
+            return
+
         attachments = self.chip_bar.get_and_clear()
 
         if self._empty_state is not None:
@@ -640,7 +737,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._set_running(True)
         self.status_line.setText("Planning…")
         self.status_line.setVisible(True)
-        self.request_work.emit(intent, attachments)
+        self.request_work.emit(intent, attachments, session["log"])
 
     def on_stop(self):
         if self._gate_card is not None:

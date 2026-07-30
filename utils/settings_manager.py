@@ -67,6 +67,25 @@ class _SettingsManager(QObject):
         keys.append({"provider": provider, "api_key": key})
         self.set_api_keys(keys)
 
+    # ── Sessions ─────────────────────────────────────────────────────────────
+
+    def get_sessions(self) -> list:
+        """
+        The Session index: name, created_at, document, and the log's path.
+
+        Only the index lives here. The transcript stays where the event stream
+        already writes it — one JSON object per line, appended per event.
+        """
+        raw = self._grp().GetString("Sessions", "[]")
+        try:
+            sessions = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return []
+        return sessions if isinstance(sessions, list) else []
+
+    def set_sessions(self, sessions: list):
+        self._grp().SetString("Sessions", json.dumps(sessions))
+
     # ── Default model (set in Preferences) ──────────────────────────────────
 
     def get_default_model(self) -> str:

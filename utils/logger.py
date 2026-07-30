@@ -139,6 +139,3 @@ def generate_crash_report(exc: Exception, context: str = "") -> str:
     return report
 
 
-def get_session_log_path() -> str:
-    """Return the path of the active session log file."""
-    return _session_log_file

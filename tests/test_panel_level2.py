@@ -7,6 +7,8 @@ What is checked here is the arithmetic and the state machine that #12 asked
 for and that would otherwise be verified by opening the panel and squinting:
 the composer's height, and Send and Stop sharing one slot.
 """
+import os
+
 import pytest
 
 from conftest import QT_APP
@@ -15,7 +17,29 @@ pytestmark = pytest.mark.freecad
 
 
 @pytest.fixture(scope="module")
-def panel():
+def sessions_are_the_tests_own():
+    """
+    Sessions are durable now, so building a panel writes to the real settings.
+    The developer's own history is not the suite's to spend.
+    """
+    if QT_APP is None:
+        pytest.skip("PySide2 is not available")
+    from utils import settings_manager
+
+    settings = settings_manager.instance()
+    theirs = settings.get_sessions()
+    settings.set_sessions([])
+    yield
+    for made in settings.get_sessions():
+        try:
+            os.remove(made["log"])
+        except OSError:
+            pass
+    settings.set_sessions(theirs)
+
+
+@pytest.fixture(scope="module")
+def panel(sessions_are_the_tests_own):
     app = QT_APP
     if app is None:
         pytest.skip("PySide2 is not available")
@@ -111,7 +135,7 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     picture.write_bytes(b"a file; whether it decodes is the loop's problem")
 
     sent = []
-    panel.request_work.connect(lambda intent, files: sent.append((intent, files)))
+    panel.request_work.connect(lambda intent, files, log: sent.append((intent, files)))
     try:
         panel.chip_bar.add_file(str(picture))
         panel.user_input.setPlainText("Build this bracket")
@@ -123,3 +147,156 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
 
     assert sent == [("Build this bracket", [str(picture)])]
     assert not panel.chip_bar.isVisible(), "the next Intent would reuse this one's files"
+
+# ── Sessions that survive a restart (FCC-5) ───────────────────────────────────
+
+
+def _widgets_in(panel):
+    """What the active Session's chat area is currently showing, in order."""
+    area = panel.chat_sessions.get_current_chat_history()
+    layout = area.widget().layout()
+    return [layout.itemAt(i).widget() for i in range(layout.count())
+            if layout.itemAt(i).widget() is not None]
+
+
+def _said_in(panel):
+    """Every label the Session's chat area is showing, as one string."""
+    from PySide2 import QtWidgets
+
+    return " ".join(label.text()
+                    for widget in _widgets_in(panel)
+                    for label in widget.findChildren(QtWidgets.QLabel))
+
+
+def _a_transcript(path):
+    from core.events import APPLIED, PLAN, REVIEW_VERDICT, THOUGHT, EventStream
+
+    stream = EventStream()
+    stream.log_to(path)
+    stream.emit(THOUGHT, phase="plan", text="a box, then a fillet")
+    stream.emit(PLAN, steps=["Make a box", "Fillet it"])
+    stream.emit(APPLIED, step=1, label="Box", created=["Box"])
+    stream.emit(REVIEW_VERDICT, verdict="pass", reason="Looks like a box.")
+
+
+def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
+    """
+    Restoring replays the log through the switch that rendered it live, so a
+    restored Session cannot drift from a live one. FCC-5.
+    """
+    from ui.accordion_widget import AccordionWidget
+    from ui.plan_widget import PlanWidget
+
+    log = str(tmp_path / "yesterday.jsonl")
+    _a_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("yesterday")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    kinds = [type(w).__name__ for w in _widgets_in(panel)]
+    assert any(isinstance(w, PlanWidget) for w in _widgets_in(panel)), kinds
+    assert any(isinstance(w, AccordionWidget) for w in _widgets_in(panel)), kinds
+    said = _said_in(panel)
+    assert "Applied" in said and "Box" in said
+    assert "Review: pass" in said
+
+
+def test_a_session_is_replayed_once_however_often_it_is_opened(panel, tmp_path):
+    log = str(tmp_path / "twice.jsonl")
+    _a_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("twice")
+    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+
+    panel.switch_session(index)
+    first = len(_widgets_in(panel))
+    panel.switch_session(index)
+
+    assert len(_widgets_in(panel)) == first, "the transcript was rendered twice"
+
+
+def test_a_truncated_transcript_shows_what_survived_and_says_so(panel, tmp_path):
+    log = str(tmp_path / "crashed.jsonl")
+    _a_transcript(log)
+    with open(log, "a", encoding="utf-8") as handle:
+        handle.write('{"kind": "blocked", "at": 1.0, "da')
+    index, _ = panel.chat_sessions.add_new_chat("crashed")
+    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+
+    panel.switch_session(index)
+
+    said = _said_in(panel)
+    assert "Applied" in said, "the surviving transcript was thrown away"
+    assert "ends mid-event" in said
+
+
+def test_an_event_kind_the_panel_does_not_know_is_skipped_not_fatal(panel, tmp_path):
+    log = str(tmp_path / "from_the_future.jsonl")
+    _a_transcript(log)
+    with open(log, "a", encoding="utf-8") as handle:
+        handle.write('{"kind": "almost_applied", "at": 1.0, "data": {"step": 1}}\n')
+    index, _ = panel.chat_sessions.add_new_chat("future")
+    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+
+    panel.switch_session(index)
+
+    said = _said_in(panel)
+    assert "Review: pass" in said
+
+
+def test_a_rename_persists_and_reaches_the_header(panel):
+    from utils import settings_manager
+
+    index, _ = panel.chat_sessions.add_new_chat("Chat 9")
+    panel.chat_sessions.switch_to(index)
+
+    panel.chat_sessions.rename_session(index, "bracket revision")
+    panel.update_header_title(index)
+
+    assert panel.title_label.text() == "bracket revision"
+    assert settings_manager.instance().get_sessions()[index]["name"] == "bracket revision"
+
+
+def test_deleting_a_session_takes_its_transcript_with_it(panel, tmp_path):
+    from utils import settings_manager
+
+    log = str(tmp_path / "doomed.jsonl")
+    _a_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("doomed")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+
+    panel.chat_sessions.remove_session(index)
+
+    assert not os.path.exists(log), "delete hid the Session and kept the transcript"
+    assert "doomed" not in [s["name"] for s in settings_manager.instance().get_sessions()]
+
+
+def test_a_restored_session_owns_nothing(panel, tmp_path):
+    """
+    Owned Objects are the live Session's. Reopening yesterday's must not grant
+    the assistant rights over objects it no longer owns.
+    """
+    log = str(tmp_path / "old.jsonl")
+    _a_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("old")
+    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+
+    panel.switch_session(index)
+
+    pipeline = panel.worker.pipeline
+    assert pipeline is None or pipeline.owned == set()
+
+
+def test_switching_is_refused_while_a_run_is_in_flight(panel):
+    """A run narrates into the Session it started from; moving loses track of which."""
+    first, _ = panel.chat_sessions.add_new_chat("running")
+    second, _ = panel.chat_sessions.add_new_chat("elsewhere")
+    panel.chat_sessions.switch_to(first)
+    panel._set_running(True)
+    try:
+        panel.switch_session(second)
+        assert panel.chat_sessions.stack.currentIndex() == first
+        assert "switching sessions" in panel.status_line.text()
+    finally:
+        panel._set_running(False)
