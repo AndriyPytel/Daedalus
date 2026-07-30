@@ -273,6 +273,29 @@ def test_deleting_a_session_takes_its_transcript_with_it(panel, tmp_path):
     assert "doomed" not in [s["name"] for s in settings_manager.instance().get_sessions()]
 
 
+def test_the_session_bound_holds_without_a_restart(sessions_are_the_tests_own, monkeypatch, tmp_path):
+    """Creating a Session prunes too, so a FreeCAD left open stays bounded. FCC-17."""
+    from utils import settings_manager
+    from ui import multi_tab_manager
+
+    monkeypatch.setattr(multi_tab_manager, "KEEP", 3)
+    manager = multi_tab_manager.ChatSessionManager()
+    logs = []
+    for n in range(5):
+        index, _ = manager.add_new_chat("Chat %d" % n)
+        log = str(tmp_path / ("chat%d.jsonl" % n))
+        open(log, "w").close()
+        manager.get_session_info(index)["log"] = log
+        logs.append(log)
+
+    assert manager.count() == 3
+    assert [s["name"] for s in manager._sessions] == ["Chat 2", "Chat 3", "Chat 4"]
+    assert manager.get_session_info(index)["name"] == "Chat 4", "the returned index is stale"
+    assert not os.path.exists(logs[0]), "the pruned Session kept its transcript"
+    assert os.path.exists(logs[4])
+    assert len(settings_manager.instance().get_sessions()) == 3
+
+
 def test_a_restored_session_owns_nothing(panel, tmp_path):
     """
     Owned Objects are the live Session's. Reopening yesterday's must not grant
