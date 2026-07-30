@@ -174,6 +174,37 @@ def test_a_recompute_that_leaves_an_object_in_error_is_a_failure(warm):
     assert "Cut" in result.traceback
 
 
+def test_a_failed_recompute_names_the_reason_freecad_already_knows(warm):
+    """
+    A bare list of names tells the next attempt nothing, so it re-spells the
+    same code. FreeCAD keeps the reason on the object. FCC-11.
+    """
+    result = warm.check(
+        "body = doc.addObject('PartDesign::Body', 'Body')\n"
+        "sketch = doc.addObject('Sketcher::SketchObject', 'Sketch')\n"
+        "body.addObject(sketch)\n"
+        "pad = doc.addObject('PartDesign::Pad', 'Pad')\n"
+        "pad.Profile = sketch\n"          # the sketch is empty — nothing to pad
+        "body.addObject(pad)\n"
+    )
+
+    assert not result.ok
+    assert "Pad (PartDesign::Pad): Linked shape object is empty" in result.traceback
+
+
+def test_every_object_left_in_error_gets_its_own_line(warm):
+    result = warm.check(
+        "a = doc.addObject('Part::Cut', 'CutA')\n"
+        "b = doc.addObject('Part::Cut', 'CutB')\n"
+    )
+
+    assert not result.ok
+    reasons = [line for line in result.traceback.splitlines() if "(Part::Cut): " in line]
+    assert len(reasons) == 2, result.traceback
+    assert reasons[0].startswith("CutA (Part::Cut): ")
+    assert reasons[1].startswith("CutB (Part::Cut): ")
+
+
 # ── the failures the whole design rests on ────────────────────────────────────
 
 

@@ -229,9 +229,12 @@ def preflight(request):
         FreeCAD.removeDocumentObserver(touched)
     doc.recompute()
 
-    failures = [o.Name for o in doc.Objects if o.State and "Invalid" in o.State]
+    # getStatusString() is the reason the Document already knows. Without it the
+    # next attempt is told a name and nothing else, so it re-spells the same code.
+    failures = ["%s (%s): %s" % (o.Name, o.TypeId, o.getStatusString())
+                for o in doc.Objects if o.State and "Invalid" in o.State]
     if failures:
-        raise RuntimeError("recompute left these objects in error: " + ", ".join(failures))
+        raise RuntimeError("recompute left these objects in error:\n" + "\n".join(failures))
 
     result = {
         "ok": True,
