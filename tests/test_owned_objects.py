@@ -3,8 +3,8 @@ Level 1 — the Owned Object rule, in both directions.
 
 An Owned Object is one the assistant created during this Session. Anything else
 is the user's, including everything that existed before the assistant did, and
-may not be modified or deleted without asking — regardless of what the Plan Gate
-already approved.
+may not be deleted without asking. Modifying it is covered by the Plan Gate: the
+user read and approved the Step that says so.
 
 What a Step touches is taken from Preflight, which actually ran it, rather than
 from reading the code.
@@ -107,13 +107,17 @@ def test_recompute_of_a_dependent_object_is_not_a_modification():
 # ── the direction where the user is asked ─────────────────────────────────────
 
 
-def test_modifying_an_object_the_user_made_asks_first():
+def test_modifying_an_object_the_user_made_is_covered_by_the_plan_gate():
+    """
+    The Plan the user approved named the change in prose. A second question per
+    Step is asking twice for the same consent.
+    """
     asked = Asked(answer=True)
 
     result = pipeline(touching(modified=["UserBox"]), confirm=asked).apply("user_box()")
 
     assert result.ok
-    assert asked.asks == [{"modify": ["UserBox"], "delete": []}]
+    assert asked.asks == []
 
 
 def test_deleting_an_object_the_user_made_asks_first():
@@ -122,34 +126,36 @@ def test_deleting_an_object_the_user_made_asks_first():
     result = pipeline(touching(deleted=["UserBox"]), confirm=asked).apply("remove()")
 
     assert result.ok
-    assert asked.asks == [{"modify": [], "delete": ["UserBox"]}]
+    assert asked.asks == [{"delete": ["UserBox"]}]
 
 
 def test_saying_no_stops_the_step_and_says_why_to_the_assistant():
     asked = Asked(answer=False)
-    built = pipeline(touching(modified=["UserBox"]), confirm=asked)
+    built = pipeline(touching(deleted=["UserBox"]), confirm=asked)
 
-    result = built.apply("user_box.Length = 5")
+    result = built.apply("doc.removeObject('UserBox')")
 
     assert not result.ok
     assert "you created rather than I did" in result.traceback
-    assert "modify UserBox" in result.traceback
+    assert "delete UserBox" in result.traceback
     assert built.document.Objects == [], "the Step ran anyway"
 
 
 def test_the_refusal_tells_the_assistant_what_to_do_instead():
     result = pipeline(touching(deleted=["UserBox"]), confirm=Asked(answer=False)).apply("rm()")
 
-    assert "without changing the user's own objects" in result.traceback
+    assert "without deleting the user's own objects" in result.traceback
     assert "say why it cannot be done and stop" in result.traceback
 
 
-def test_both_kinds_are_reported_in_one_question():
-    asked = Asked(answer=True)
+def test_a_step_that_modifies_and_deletes_asks_about_the_deletion_only():
+    asked = Asked(answer=False)
 
-    pipeline(touching(modified=["A"], deleted=["B"]), confirm=asked).apply("x()")
+    result = pipeline(touching(modified=["A"], deleted=["B"]), confirm=asked).apply("x()")
 
-    assert asked.asks == [{"modify": ["A"], "delete": ["B"]}]
+    assert asked.asks == [{"delete": ["B"]}]
+    assert "delete B" in result.traceback
+    assert "modify" not in result.traceback
 
 
 def test_only_the_objects_that_are_not_ours_are_named():
@@ -157,10 +163,10 @@ def test_only_the_objects_that_are_not_ours_are_named():
     built = pipeline(touching(created=["Ours"]), confirm=asked, created=("Ours",))
     built.apply("make_ours()")
 
-    built._worker = touching(modified=["Ours", "Theirs"])
-    built.apply("touch_both()")
+    built._worker = touching(deleted=["Ours", "Theirs"])
+    built.apply("remove_both()")
 
-    assert asked.asks == [{"modify": ["Theirs"], "delete": []}]
+    assert asked.asks == [{"delete": ["Theirs"]}]
 
 
 # ── the rule beats the Plan Gate ──────────────────────────────────────────────
@@ -203,13 +209,13 @@ def test_a_failed_preflight_never_reaches_the_question():
 
 
 def test_with_no_way_to_ask_the_users_work_is_left_alone():
-    result = pipeline(touching(modified=["UserBox"])).apply("x()")
+    result = pipeline(touching(deleted=["UserBox"])).apply("x()")
 
-    assert not result.ok, "modified the user's object with nobody to ask"
+    assert not result.ok, "deleted the user's object with nobody to ask"
 
 
 def test_the_default_answer_is_no():
-    assert refuse_without_asking({"modify": ["UserBox"], "delete": []}) is False
+    assert refuse_without_asking({"delete": ["UserBox"]}) is False
 
 
 def test_with_no_way_to_ask_our_own_objects_are_still_fine():

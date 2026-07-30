@@ -172,8 +172,9 @@ class ApplyPipeline:
 
     Also the keeper of the Session's Owned Objects: it is the only thing that
     knows what the assistant created, because it is the only thing that applies
-    anything. A Step that would modify or delete an object outside that set
-    needs the user's say-so, whatever the Plan Gate already approved.
+    anything. A Step that would delete an object outside that set needs the
+    user's say-so; modifying one does not, because the Plan Gate already
+    approved the Step that said so.
 
     `dispatch`, `worker`, `transaction` and `confirm` are injected so Level 1
     can drive the whole pipeline without Qt or a headless FreeCAD.
@@ -259,29 +260,24 @@ class ApplyPipeline:
 
     def _not_ours(self, preflighted):
         """
-        Ask before touching anything the assistant did not create this Session.
+        Ask before deleting anything the assistant did not create this Session.
+
+        Modification is not asked about: the Plan Gate approved a Step whose
+        prose said the object changes, and asking again per Step is asking twice
+        for the same consent. Deletion is never in that prose — Execute decides
+        it on its own — so it keeps the question.
 
         Preflight already ran the Step against a copy, so this is what the code
         *did*, not what reading it suggested it might do.
         """
-        modifies = sorted(set(preflighted.modified) - self.owned)
         deletes = sorted(set(preflighted.deleted) - self.owned)
-        if not modifies and not deletes:
+        if not deletes or self._confirm({"delete": deletes}):
             return None
 
-        kinds = {"modify": modifies, "delete": deletes}
-        if self._confirm(kinds):
-            return None
-
-        wanted = []
-        if modifies:
-            wanted.append("modify " + ", ".join(modifies))
-        if deletes:
-            wanted.append("delete " + ", ".join(deletes))
         return (
-            "This Step would %s, which you created rather than I did, and that was not "
-            "approved. Achieve the Intent without changing the user's own objects, or say "
-            "why it cannot be done and stop." % " and ".join(wanted)
+            "This Step would delete %s, which you created rather than I did, and that was "
+            "not approved. Achieve the Intent without deleting the user's own objects, or "
+            "say why it cannot be done and stop." % ", ".join(deletes)
         )
 
 

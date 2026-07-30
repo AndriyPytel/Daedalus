@@ -265,7 +265,7 @@ def document_with_a_cut(tmp_path):
 
 
 def test_the_users_own_object_is_protected_end_to_end(doc, worker, tmp_path):
-    """The whole rule, against a real Document: refuse, then allow."""
+    """The whole rule, against a real Document: refuse a deletion, then allow it."""
     users_box = doc.addObject("Part::Box", "UsersBox")
     users_box.Length = 12
     doc.recompute()
@@ -277,14 +277,33 @@ def test_the_users_own_object_is_protected_end_to_end(doc, worker, tmp_path):
                             confirm=lambda kinds: answers.pop(0))
 
     answers.append(False)
-    refused = pipeline.apply("doc.getObject('UsersBox').Length = 99")
+    refused = pipeline.apply("doc.removeObject('UsersBox')")
     assert not refused.ok
     assert "UsersBox" in refused.traceback
-    assert doc.getObject("UsersBox").Length.Value == 12, "changed it anyway"
+    assert doc.getObject("UsersBox") is not None, "removed it anyway"
 
     answers.append(True)
-    allowed = pipeline.apply("doc.getObject('UsersBox').Length = 99")
+    allowed = pipeline.apply("doc.removeObject('UsersBox')")
     assert allowed.ok, allowed.traceback
+    assert doc.getObject("UsersBox") is None
+
+
+def test_modifying_the_users_own_object_needs_no_permission(doc, worker, tmp_path):
+    """The Plan Gate approved the Step that says the object changes. FCC-10."""
+    users_box = doc.addObject("Part::Box", "UsersBox")
+    users_box.Length = 12
+    doc.recompute()
+
+    asks = []
+    pipeline = ApplyPipeline(document=doc, worker=worker,
+                            dispatch=lambda func, timeout=None: func(),
+                            render_dir=str(tmp_path),
+                            confirm=lambda kinds: asks.append(kinds) or True)
+
+    result = pipeline.apply("doc.getObject('UsersBox').Length = 99")
+
+    assert result.ok, result.traceback
+    assert asks == []
     assert doc.getObject("UsersBox").Length.Value == 99
 
 

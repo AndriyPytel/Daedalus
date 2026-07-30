@@ -183,7 +183,7 @@ class AskTheUser(QtCore.QObject):
     """
 
     plan_gate = QtCore.Signal(object)      # steps
-    owned_objects = QtCore.Signal(object)  # {"modify": [...], "delete": [...]}
+    owned_objects = QtCore.Signal(object)  # {"delete": [...]}
 
     def __init__(self):
         super().__init__()
@@ -858,30 +858,26 @@ class CopilotPanel(QtWidgets.QDockWidget):
     @QtCore.Slot(object)
     def on_owned_objects(self, kinds):
         """
-        The Owned Object rule. Asked whatever the Plan Gate already approved,
-        because these objects are the user's own work.
+        The Owned Object rule. Deletion only — a modification is covered by the
+        Plan Gate, which approved a Step that said the object changes.
         """
-        wanted = []
-        if kinds.get("modify"):
-            wanted.append("modify " + ", ".join(kinds["modify"]))
-        if kinds.get("delete"):
-            wanted.append("delete " + ", ".join(kinds["delete"]))
+        deletes = list(kinds.get("delete") or ())
+        wanted = "delete " + ", ".join(deletes)
 
         box = QtWidgets.QMessageBox(self)
         box.setIcon(QtWidgets.QMessageBox.Warning)
         box.setWindowTitle("Your own objects")
-        box.setText("The assistant wants to " + " and ".join(wanted) + ".")
+        box.setText("The assistant wants to " + wanted + ".")
         box.setInformativeText(
             "It did not create %s in this session, so this is your own work. "
             "Ctrl+Z will still undo it as one Step."
-            % ("these" if sum(len(v) for v in kinds.values()) > 1 else "it"))
+            % ("these" if len(deletes) > 1 else "it"))
         box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         box.setDefaultButton(QtWidgets.QMessageBox.No)
 
         allowed = box.exec_() == QtWidgets.QMessageBox.Yes
         self.add_chat_widget(AssistantMessageWidget(
-            ("You allowed it to " if allowed else "You refused to let it ")
-            + " and ".join(wanted) + "."))
+            ("You allowed it to " if allowed else "You refused to let it ") + wanted + "."))
         self.ask.answer(allowed)
 
     @QtCore.Slot(object)
