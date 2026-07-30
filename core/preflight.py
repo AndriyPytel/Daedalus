@@ -80,6 +80,7 @@ class PreflightWorker:
         self._lines = None
         self._reader = None
         self._stderr = None
+        self._draining = None
         self.restarts = 0
 
     # ── process lifecycle ────────────────────────────────────────────────────
@@ -108,7 +109,8 @@ class PreflightWorker:
         self._stderr = []
         self._reader = threading.Thread(target=self._pump, daemon=True)
         self._reader.start()
-        threading.Thread(target=self._drain_stderr, daemon=True).start()
+        self._draining = threading.Thread(target=self._drain_stderr, daemon=True)
+        self._draining.start()
 
         ready = self._await_response(STARTUP_TIMEOUT)
         if ready is None or not ready.get("ready"):
@@ -155,14 +157,17 @@ class PreflightWorker:
             self._process.stdin.write(json.dumps(request) + "\n")
             self._process.stdin.flush()
         except (BrokenPipeError, ValueError):
-            # It died between the liveness check and the write.
+            # It died between the liveness check and the write. Read its last
+            # words before restart() replaces them with a live worker's silence.
+            died = self._died_message("before it could start")
             self.restart()
-            return PreflightResult(ok=False, traceback=self._died_message("before it could start"))
+            return PreflightResult(ok=False, traceback=died)
 
         response = self._await_response(timeout or self.timeout)
 
         if response is None:
             timed_out = self.alive
+            died = None if timed_out else self._died_message("while running the Step")
             self.restart()
             if timed_out:
                 return PreflightResult(
@@ -171,7 +176,7 @@ class PreflightWorker:
                               "an unbounded loop or a runaway recompute is the usual cause."
                               % (timeout or self.timeout),
                 )
-            return PreflightResult(ok=False, traceback=self._died_message("while running the Step"))
+            return PreflightResult(ok=False, traceback=died)
 
         if response.get("ok"):
             return PreflightResult(ok=True, render=response.get("render"),
@@ -209,8 +214,20 @@ class PreflightWorker:
     def _stderr_text(self):
         return "".join(self._stderr or [])[-4000:]
 
+    def _last_words(self):
+        """
+        What the worker said on the way out.
+
+        The drain thread bound this worker's stderr when it started and only
+        returns at EOF, which death is; without the join the last line is lost
+        to a race instead of to the reset it used to be lost to.
+        """
+        if not self.alive and self._draining is not None:
+            self._draining.join(timeout=1.0)
+        return self._stderr_text()
+
     def _died_message(self, when):
-        detail = self._stderr_text().strip()
+        detail = self._last_words().strip()
         return (
             "The Preflight Worker died %s, so this code would have taken FreeCAD "
             "down with it. Rewrite the Step to avoid whatever crashed the core.%s"

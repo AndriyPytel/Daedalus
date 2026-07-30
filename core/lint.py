@@ -42,6 +42,62 @@ ACTIVATION_NAMES = (
     "ActiveObject", "setActiveObject", "getActiveObject", "activeView", "ActiveView",
 )
 
+# Sketcher.Constraint's C++ constructor segfaults on a name it does not know
+# and on a known name at the wrong arity — no traceback, nothing to correct
+# against. Arities are the argument counts *after* the name, read off the
+# PyArg_ParseTuple ladder in FreeCAD 1.0's src/Mod/Sketcher/App/ConstraintPyImp.cpp.
+# Sketcher exposes no introspection for signatures, and this module is tested
+# without FreeCAD, so the table is hardcoded on purpose.
+_CONSTRAINT_ARITIES = {
+    "Horizontal":    {1, 4},
+    "Vertical":      {1, 4},
+    "Block":         {1},
+    "Parallel":      {2},
+    "Equal":         {2},
+    "Radius":        {2},
+    "Diameter":      {2},
+    "Weight":        {2},
+    "Tangent":       {2, 3, 4},
+    "Perpendicular": {2, 3, 4},
+    "PointOnObject": {3},
+    "Coincident":    {4},
+    "TangentViaPoint": {4},
+    "Distance":      {2, 3, 4, 5},
+    "Angle":         {2, 3, 5},
+    "DistanceX":     {2, 3, 5},
+    "DistanceY":     {2, 3, 5},
+    "Symmetric":     {5, 6},
+    "SnellsLaw":     {6},
+    # Matched by substring in the C++, and spelled "InternalAlignment:Foo".
+    "InternalAlignment": {2, 3},
+}
+
+# Every signature also takes an optional trailing `activated`, and a dimensional
+# one an optional `driving` after it. Whether an argument is a bool is not
+# something the AST can tell, so the two extra positions are simply allowed.
+_CONSTRAINT_SIGNATURES = {
+    name: {arity + extra for arity in arities for extra in (0, 1, 2)}
+    for name, arities in _CONSTRAINT_ARITIES.items()
+}
+
+_UNKNOWN_CONSTRAINT_REASON = (
+    "%r is not a Sketcher constraint type. The C++ constructor does not raise "
+    "for a name it does not know — it takes FreeCAD down, so there is no "
+    "traceback to correct against. The types are: %s. Concentricity in "
+    "particular is not one of them: two circles are concentric because they "
+    "were given the same centre, and where it must genuinely be a driven "
+    "parameter it is Coincident between the two centres — "
+    "Constraint('Coincident', a, 3, b, 3), where 3 is the centre PosId."
+)
+
+_CONSTRAINT_ARITY_REASON = (
+    "Constraint(%r, ...) was given %d arguments after the name, which is not a "
+    "signature this constructor has — and a wrong arity crashes the core rather "
+    "than raising. %r takes %s arguments after the name. For concentricity "
+    "between two circles that is Constraint('Coincident', a, 3, b, 3), where 3 "
+    "is the centre PosId."
+)
+
 _ELEMENT_REASON = (
     "%r is a literal element name. It points somewhere else as soon as a "
     "parameter upstream in the history changes, and nothing downstream can "
@@ -135,6 +191,11 @@ def lint(code: str, selection=None) -> LintResult:
         elif isinstance(node, ast.Attribute) and node.attr in ACTIVATION_NAMES:
             complain(_ACTIVATION_REASON % node.attr)
 
+        elif isinstance(node, ast.Call) and _is_sketcher_constraint(node):
+            problem = _constraint_problem(node)
+            if problem:
+                complain(problem)
+
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name in GUI_NAMES:
@@ -148,6 +209,40 @@ def lint(code: str, selection=None) -> LintResult:
                     complain(_GUI_REASON % alias.name)
 
     return LintResult(problems)
+
+
+def _is_sketcher_constraint(node: ast.Call) -> bool:
+    return isinstance(node.func, ast.Attribute) and node.func.attr == "Constraint"
+
+
+def _constraint_problem(node: ast.Call):
+    """
+    The reason this Constraint call would crash the core, or None.
+
+    Only a call that can be read statically is judged: a literal name, no
+    starred argument, no keyword. Anything else is not this rule's business.
+    """
+    if node.keywords or not node.args:
+        return None
+    if any(isinstance(argument, ast.Starred) for argument in node.args):
+        return None
+
+    name = node.args[0]
+    if not (isinstance(name, ast.Constant) and isinstance(name.value, str)):
+        return None
+
+    known = _CONSTRAINT_SIGNATURES.get(name.value.split(":")[0])
+    if known is None:
+        return _UNKNOWN_CONSTRAINT_REASON % (
+            name.value, ", ".join(sorted(_CONSTRAINT_ARITIES)))
+
+    arity = len(node.args) - 1
+    if arity in known:
+        return None
+    allowed = sorted(_CONSTRAINT_ARITIES[name.value.split(":")[0]])
+    return _CONSTRAINT_ARITY_REASON % (
+        name.value, arity, name.value,
+        " or ".join(str(count) for count in allowed))
 
 
 def _element_names(text: str):

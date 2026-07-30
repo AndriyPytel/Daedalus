@@ -158,6 +158,66 @@ def test_document_only_code_passes():
 # ── shape of the result ───────────────────────────────────────────────────────
 
 
+# ── Sketcher constraint signatures (FCC-19) ───────────────────────────────────
+
+
+@pytest.mark.parametrize("code", [
+    "Sketcher.Constraint('Concentric', 0, 1)",
+    "Sketcher.Constraint('Concentric', 0, 3, 1, 3)",
+    "sketch.addConstraint(Sketcher.Constraint('Colinear', 0, 1))",
+])
+def test_a_constraint_type_that_does_not_exist_is_rejected(code):
+    """
+    Not a wrong answer — a SIGSEGV inside the C++ constructor, with no
+    traceback for the next attempt to correct against. FCC-19.
+    """
+    result = lint(code)
+
+    assert not result.ok
+    assert "is not a Sketcher constraint type" in result.report()
+
+
+def test_a_known_constraint_at_the_wrong_arity_is_rejected():
+    result = lint("Sketcher.Constraint('Coincident', 0, 1)")
+
+    assert not result.ok
+    assert "'Coincident' takes" in result.report()
+    assert "2 arguments after the name" in result.report()
+
+
+def test_concentricity_is_named_as_coincident_between_the_centres():
+    reason = lint("Sketcher.Constraint('Concentric', 0, 1)").report()
+
+    assert "Coincident" in reason
+    assert "Constraint('Coincident', a, 3, b, 3)" in reason
+
+
+@pytest.mark.parametrize("code", [
+    "Sketcher.Constraint('Parallel', 0, 1)",
+    "Sketcher.Constraint('Coincident', 0, 3, 1, 3)",
+    "Sketcher.Constraint('Horizontal', 0)",
+    "Sketcher.Constraint('Distance', 0, 1, 25.0)",
+    "Sketcher.Constraint('Radius', 0, 5.0)",
+    "Sketcher.Constraint('Symmetric', 0, 1, 2, 1, 3)",
+    "Sketcher.Constraint('InternalAlignment:EllipseMajorDiameter', 0, 1)",
+    "Sketcher.Constraint('Horizontal', 0, True)",
+    "Sketcher.Constraint('Distance', 0, 1, 25.0, True, False)",
+])
+def test_a_real_constraint_signature_passes(code):
+    assert lint(code).ok, lint(code).report()
+
+
+@pytest.mark.parametrize("code", [
+    "Sketcher.Constraint(kind, 0, 1)",
+    "Sketcher.Constraint(*args)",
+    "Sketcher.Constraint('Coincident', *indices)",
+    "Sketcher.Constraint('Distance', 0, 1, **options)",
+])
+def test_a_call_lint_cannot_read_passes(code):
+    """The rule never rejects code it has not actually read. FCC-19."""
+    assert lint(code).ok, lint(code).report()
+
+
 def test_code_that_does_not_parse_is_rejected_with_the_line():
     result = lint("box = doc.addObject(\n")
 

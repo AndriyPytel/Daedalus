@@ -9,6 +9,7 @@ The harness is the Preflight Worker itself: part of the product, not
 scaffolding around it.
 """
 import os
+import time
 
 import pytest
 
@@ -19,6 +20,10 @@ pytestmark = pytest.mark.freecad
 # Reliably takes the process down at the C level, the way a bad call into
 # FreeCAD's C++ core does. Python cannot catch it; only process isolation can.
 CRASHING_CODE = "import ctypes; ctypes.string_at(0)"
+
+# The last sentence of the generic death message; anything the worker said
+# follows it.
+GENERIC_DEATH_ENDS = "Rewrite the Step to avoid whatever crashed the core."
 
 
 @pytest.fixture(scope="module")
@@ -218,6 +223,52 @@ def test_code_that_crashes_the_core_kills_the_worker_not_us(fresh):
     assert fresh.pid != doomed, "the worker was not replaced"
     assert fresh.alive
     # And we are still here to assert it — which is the point.
+
+
+def test_a_dead_worker_says_what_it_said_on_the_way_out(fresh):
+    """
+    The production crash: an unknown constraint type name segfaults inside the
+    C++ constructor of Sketcher.Constraint, before any Python-level anything.
+    The one line FreeCAD leaves on stderr is all the next attempt has to go on,
+    and the message used to be built after restart() had already swapped that
+    stderr for the new worker's empty one. FCC-19.
+    """
+    doomed = fresh.pid
+
+    result = fresh.check("Sketcher.Constraint('Concentric', 0, 1)")
+
+    assert not result.ok
+    assert GENERIC_DEATH_ENDS in result.traceback
+    assert "Unknown exception while processing file" in result.traceback, \
+        "the death message carries nothing the worker actually said"
+    assert fresh.pid != doomed, "the worker was not replaced"
+    assert fresh.alive
+
+
+def test_a_death_on_the_write_reports_the_dead_workers_stderr(fresh):
+    """
+    The BrokenPipeError branch reads the stderr of the worker it lost, not of
+    the one restart() puts in its place.
+
+    The real race — dying between the liveness check and the write — cannot be
+    staged, so the write is what fails here. What is under test is the ordering.
+    """
+    class _Dead:
+        def write(self, _):
+            raise BrokenPipeError("the worker went while we were talking")
+
+        def flush(self):
+            pass
+
+    fresh.check("import sys; sys.stderr.write('the worker had something to say\\n')")
+    time.sleep(0.5)                     # let the drain thread catch up
+    fresh._process.stdin = _Dead()
+
+    result = fresh.check("doc.addObject('Part::Box', 'Box')")
+
+    assert not result.ok
+    assert "before it could start" in result.traceback
+    assert "the worker had something to say" in result.traceback
 
 
 def test_an_infinite_loop_is_killed_on_timeout(fresh):
