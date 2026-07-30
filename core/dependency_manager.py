@@ -9,7 +9,6 @@ from PySide.QtGui import QMessageBox
 # List of required packages for the addon
 REQUIRED_PACKAGES = [
     "litellm",
-    "pydantic",
 ]
 
 def get_target_directory():

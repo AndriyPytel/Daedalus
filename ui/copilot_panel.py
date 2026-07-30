@@ -27,10 +27,9 @@ from .multi_tab_manager   import ChatSessionManager
 from .upload_widget       import UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
 from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
-from utils.config_manager import ConfigManager
-from utils.settings_manager import SettingsManager
-from utils.provider_manager import ProviderManager
-from utils.prompt_manager   import PromptManager
+from utils import settings_manager
+from utils import provider_manager
+from utils import prompt_manager
 from ui.ui_helpers import UIHelpers
 
 
@@ -53,7 +52,7 @@ def _build_qss() -> str:
     return f"""
         /* Panel root */
         QWidget {{
-            font-family: {ConfigManager.get_ui_font()};
+            font-family: {UIHelpers.get_ui_font()};
             font-size: 13px;
         }}
 
@@ -245,7 +244,7 @@ class LoopWorker(QtCore.QObject):
     def _get_client(self):
         if self.client is None:
             from core.llm import client_from_settings
-            self.client = client_from_settings(SettingsManager.instance().get_last_model())
+            self.client = client_from_settings(settings_manager.instance().get_last_model())
         return self.client
 
     def _get_tools(self):
@@ -455,12 +454,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.model_combo.setFixedHeight(24)
         self.model_combo.setToolTip("Active LLM model")
         self.model_combo.setMaxVisibleItems(12)
-        self._refresh_model_combo(ProviderManager.instance().get_available_models())
+        self._refresh_model_combo(provider_manager.instance().get_available_models())
         self.model_combo.currentIndexChanged.connect(self._on_model_changed)
         strip.addWidget(self.model_combo)
 
         # Wire live updates from ProviderManager
-        ProviderManager.instance().models_changed.connect(self._refresh_model_combo)
+        provider_manager.instance().models_changed.connect(self._refresh_model_combo)
         strip.addStretch()
 
         # ── Send and Stop share one slot ──────────────────────────────────────
@@ -533,8 +532,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
         QComboBox's own type-to-jump keeps working over the whole list.
         """
         if models is None:
-            models = ProviderManager.instance().get_available_models()
-        last_id = SettingsManager.instance().get_last_model()
+            models = provider_manager.instance().get_available_models()
+        last_id = settings_manager.instance().get_last_model()
 
         self.model_combo.blockSignals(True)
         items = QtGui.QStandardItemModel(self.model_combo)
@@ -561,7 +560,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         # Restore selection — the default model catches a last-used one that a
         # refreshed list no longer offers; index 1 catches both missing, since
         # index 0 is a provider heading and cannot be chosen.
-        for wanted in (last_id, SettingsManager.instance().get_default_model()):
+        for wanted in (last_id, settings_manager.instance().get_default_model()):
             index = self.model_combo.findData(wanted)
             if index >= 0:
                 break
@@ -573,7 +572,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
     def _on_model_changed(self, _idx: int):
         mid = self.model_combo.currentData()
         if mid:
-            SettingsManager.instance().set_last_model(mid)
+            settings_manager.instance().set_last_model(mid)
             if getattr(self, "worker", None):
                 self.worker.client = None   # rebuilt from settings on the next send
 

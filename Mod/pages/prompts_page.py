@@ -185,10 +185,10 @@ class PromptsPage(QtWidgets.QWidget):
     # ── List population ───────────────────────────────────────────────────────
 
     def _populate_list(self, select_key: str = None):
-        from utils.prompt_manager import PromptManager
+        from utils import prompt_manager
         self.prompt_list.blockSignals(True)
         self.prompt_list.clear()
-        prompts = PromptManager.instance().get_all_prompts()
+        prompts = prompt_manager.instance().get_all_prompts()
         target_item = None
         for key, info in prompts.items():
             is_factory = info.get("is_factory", False)
@@ -220,8 +220,8 @@ class PromptsPage(QtWidgets.QWidget):
         self._current_key = key
         self._current_is_factory = is_factory
 
-        from utils.prompt_manager import PromptManager
-        prompt = PromptManager.instance().get_prompt(key)
+        from utils import prompt_manager
+        prompt = prompt_manager.instance().get_prompt(key)
         if prompt:
             self.name_edit.setText(prompt.get("name", ""))
             self.text_edit.setPlainText(prompt.get("text", ""))
@@ -256,8 +256,8 @@ class PromptsPage(QtWidgets.QWidget):
         if not name:
             QtWidgets.QMessageBox.warning(self, "Missing Name", "Please enter a name for the prompt.")
             return
-        from utils.prompt_manager import PromptManager
-        PromptManager.instance().save_user_prompt(self._current_key or "", name, text)
+        from utils import prompt_manager
+        prompt_manager.instance().save_user_prompt(self._current_key or "", name, text)
         new_key = self._current_key or name.lower().replace(" ", "_")[:40]
         self._populate_list(select_key=new_key)
 
@@ -270,8 +270,8 @@ class PromptsPage(QtWidgets.QWidget):
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
         )
         if reply == QtWidgets.QMessageBox.Yes:
-            from utils.prompt_manager import PromptManager
-            PromptManager.instance().delete_user_prompt(self._current_key)
+            from utils import prompt_manager
+            prompt_manager.instance().delete_user_prompt(self._current_key)
             self._populate_list()
             self._set_editor_enabled(False)
 
@@ -282,8 +282,8 @@ class PromptsPage(QtWidgets.QWidget):
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
         )
         if reply == QtWidgets.QMessageBox.Yes:
-            from utils.prompt_manager import PromptManager
-            PromptManager.instance().reset_to_defaults()
+            from utils import prompt_manager
+            prompt_manager.instance().reset_to_defaults()
             self._populate_list()
             self._set_editor_enabled(False)
 

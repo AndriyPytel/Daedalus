@@ -9,6 +9,8 @@ The effective prompt list is factory prompts merged with user prompts
 """
 import os
 import json
+from functools import lru_cache
+
 from PySide.QtCore import QObject, Signal
 
 
@@ -36,8 +38,8 @@ class _PromptManager(QObject):
         self._factory: dict = _load_factory_prompts()
 
         # React to external user-prompt saves
-        from utils.settings_manager import SettingsManager
-        SettingsManager.instance().user_prompts_changed.connect(self.prompts_changed)
+        from utils import settings_manager
+        settings_manager.instance().user_prompts_changed.connect(self.prompts_changed)
 
     # ── Read ─────────────────────────────────────────────────────────────────
 
@@ -46,8 +48,8 @@ class _PromptManager(QObject):
         return dict(self._factory)
 
     def get_user_prompts(self) -> dict:
-        from utils.settings_manager import SettingsManager
-        return SettingsManager.instance().get_user_prompts()
+        from utils import settings_manager
+        return settings_manager.instance().get_user_prompts()
 
     def get_all_prompts(self) -> dict:
         """
@@ -81,8 +83,8 @@ class _PromptManager(QObject):
             key = name.lower().replace(" ", "_").replace("-", "_")[:40]
         user = self.get_user_prompts()
         user[key] = {"name": name, "text": text}
-        from utils.settings_manager import SettingsManager
-        SettingsManager.instance().set_user_prompts(user)
+        from utils import settings_manager
+        settings_manager.instance().set_user_prompts(user)
         # prompts_changed will be emitted automatically via signal chain
 
     # ── Delete ────────────────────────────────────────────────────────────────
@@ -92,28 +94,19 @@ class _PromptManager(QObject):
         user = self.get_user_prompts()
         if key in user:
             del user[key]
-            from utils.settings_manager import SettingsManager
-            SettingsManager.instance().set_user_prompts(user)
+            from utils import settings_manager
+            settings_manager.instance().set_user_prompts(user)
 
     # ── Reset ─────────────────────────────────────────────────────────────────
 
     def reset_to_defaults(self):
         """Remove all user prompts; factory prompts are always present."""
-        from utils.settings_manager import SettingsManager
-        SettingsManager.instance().set_user_prompts({})
+        from utils import settings_manager
+        settings_manager.instance().set_user_prompts({})
 
 
 # ── Singleton accessor ────────────────────────────────────────────────────────
 
-_instance: _PromptManager = None
-
-
-class PromptManager:
-    """Public singleton facade — use ``PromptManager.instance()``."""
-
-    @staticmethod
-    def instance() -> _PromptManager:
-        global _instance
-        if _instance is None:
-            _instance = _PromptManager()
-        return _instance
+@lru_cache(maxsize=None)
+def instance() -> _PromptManager:
+    return _PromptManager()

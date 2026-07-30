@@ -7,6 +7,8 @@ of calling FreeCAD.ParamGet directly.  Qt signals let the Chat UI react to
 preference changes in real-time without restarting FreeCAD.
 """
 import json
+from functools import lru_cache
+
 import FreeCAD
 from PySide.QtCore import QObject, Signal
 
@@ -15,7 +17,7 @@ _PARAM_PATH = "User parameter:BaseApp/Preferences/FreeCadCopilot"
 
 class _SettingsManager(QObject):
     """
-    Internal singleton implementation.  Access via ``SettingsManager.instance()``.
+    Internal singleton implementation.  Access via ``settings_manager.instance()``.
     """
 
     # ── Signals ──────────────────────────────────────────────────────────────
@@ -137,12 +139,12 @@ class _SettingsManager(QObject):
         or for the last-/default-model if model_id is None.
         Raises ValueError if not configured.
         """
-        from utils.provider_manager import ProviderManager
+        from utils import provider_manager
         mid = model_id or self.get_last_model()
         if not mid:
             raise ValueError("No model selected. Configure API keys in Preferences.")
 
-        entry = ProviderManager.instance().get_model_entry(mid)
+        entry = provider_manager.instance().get_model_entry(mid)
         if not entry:
             raise ValueError(f"Unknown model '{mid}'. Check your Preferences.")
 
@@ -157,15 +159,6 @@ class _SettingsManager(QObject):
 
 # ── Singleton accessor ────────────────────────────────────────────────────────
 
-_instance: _SettingsManager = None
-
-
-class SettingsManager:
-    """Public singleton facade — use ``SettingsManager.instance()``."""
-
-    @staticmethod
-    def instance() -> _SettingsManager:
-        global _instance
-        if _instance is None:
-            _instance = _SettingsManager()
-        return _instance
+@lru_cache(maxsize=None)
+def instance() -> _SettingsManager:
+    return _SettingsManager()

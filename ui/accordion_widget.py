@@ -13,7 +13,7 @@ try:
 except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
-from utils.config_manager import ConfigManager
+from ui.ui_helpers import UIHelpers
 
 
 class AccordionWidget(QtWidgets.QWidget):
@@ -40,7 +40,7 @@ class AccordionWidget(QtWidgets.QWidget):
         self.content_area.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         self.content_area.setStyleSheet(
             "QLabel { font-family: %s; font-size: 11px; padding: 2px 0px 6px 14px; }"
-            % ConfigManager.get_monospace_font())
+            % UIHelpers.get_monospace_font())
         self.content_area.setVisible(False)
         layout.addWidget(self.content_area)
 

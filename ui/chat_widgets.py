@@ -3,7 +3,7 @@ try:
 except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
-from utils.config_manager import ConfigManager
+from ui.ui_helpers import UIHelpers
 
 
 class TextMessageWidget(QtWidgets.QWidget):
@@ -85,7 +85,7 @@ class CodeBlockWidget(QtWidgets.QWidget):
         # Code must never be mistaken for prose, so this keeps its container (ADR-0011).
         self.code_edit.setStyleSheet(f"""
             QTextEdit {{
-                font-family: {ConfigManager.get_monospace_font()};
+                font-family: {UIHelpers.get_monospace_font()};
                 font-size: 12px;
                 background-color: rgba(127, 127, 127, 40);
                 border-radius: 6px;

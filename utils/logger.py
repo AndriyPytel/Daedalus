@@ -139,35 +139,6 @@ def generate_crash_report(exc: Exception, context: str = "") -> str:
     return report
 
 
-def is_transient_api_error(exc: Exception) -> bool:
-    """
-    Check if the exception is an LLM quota, rate limit, or transient server error.
-    Works for Google, OpenAI, and Anthropic via type name and message checking.
-    """
-    name = type(exc).__name__
-    msg  = str(exc).lower()
-
-    # Known type names from langchain/provider libs
-    if name in ["ResourceExhausted", "RateLimitError", "ServerError", "ServiceUnavailable", "InternalServerError", "GatewayTimeout"]:
-        return True
-
-    # Common substrings in quota/rate limit error messages
-    keywords = [
-        "quota exceeded",
-        "rate limit",
-        "resource has been exhausted",
-        "insufficient_quota",
-        "excessive_request_rate",
-        "429",
-        "503",
-        "500",
-        "502",
-        "504",
-        "unavailable"
-    ]
-    return any(k in msg for k in keywords)
-
-
 def get_session_log_path() -> str:
     """Return the path of the active session log file."""
     return _session_log_file
