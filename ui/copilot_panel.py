@@ -30,7 +30,6 @@ from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_F
 from utils.config_manager import ConfigManager
 from utils.settings_manager import SettingsManager
 from utils.provider_manager import ProviderManager
-from utils.prompt_manager   import PromptManager
 from ui.ui_helpers import UIHelpers
 
 

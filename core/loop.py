@@ -98,54 +98,27 @@ class LoopResult:
 
 # ── prompts ───────────────────────────────────────────────────────────────────
 
-_TRAPS = "\n".join("- " + trap for trap in TRAPS)
+PROMPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "config", "prompts")
 
-PLAN_SYSTEM = """You plan changes to a FreeCAD 1.0 Document.
+_TRAPS_PLACEHOLDER = "{{traps}}"
 
-Break the Intent into the shortest ordered list of Steps that achieves it. A
-Step is one whole modelling operation — small enough to be judged and undone on
-its own, and no smaller. Describe what the Step should achieve, not the code.
 
-Creating a sketch, attaching it to a plane and drawing its geometry is **one**
-Step, not three: the parts are written in one breath and are useless apart.
-Same for a feature and its parameters. Every Step must change the Document —
-there is no editing mode here, so "open the sketch" and "close the sketch" are
-not Steps at all.
+def prompt(phase):
+    """
+    A phase's system prompt, read from `config/prompts/<phase>.md`.
 
-Reply with JSON only: {"steps": ["...", "..."]}
+    Read per turn rather than at import: the addon installs as a plain source
+    tree, so editing a prompt file takes effect on the next run. A missing file
+    raises — a silently empty system prompt is the worse failure.
 
-Traps in this build:
-""" + _TRAPS
-
-EXECUTE_SYSTEM = """You write the Python for one Step against a FreeCAD 1.0 Document.
-
-`doc`, `App`, `Part`, `Sketcher` and `PartDesign` are already in scope; you do
-not need to import them. The code must be a pure function of the Document:
-no Gui.*, no reading the live selection, and no literal element names such as
-Edge12 — compute references from the geometry at execution time instead.
-
-Do not guess at the API. Anything you are unsure of — whether a type exists,
-what a property is called, what an object is built from — ask the running
-FreeCAD with a look before you write code. It answers about this exact build.
-The Step's code must still change the Document; defining a function you never
-call changes nothing and counts as a failed Step.
-
-Reply with JSON only, one of:
-  {"look": {"tool": "...", "arguments": {...}}}   to ask, before committing to code
-  {"code": "...", "label": "short name for the undo entry"}
-or, if this Step no longer makes sense against the Document you were given:
-  {"obsolete": "why"}
-
-Traps in this build:
-""" + _TRAPS
-
-REVIEW_SYSTEM = """You judge whether a finished FreeCAD Document matches what the user asked for.
-
-You are given the Intent, a render of the result, and the objects that now
-exist. You are deliberately not told how it was produced — no plan, no code, no
-reasoning. Judge the outcome alone.
-
-Reply with JSON only: {"verdict": "pass" | "fail", "reason": "..."}"""
+    The traps are the one thing not in the file. They are knowledge about a
+    specific FreeCAD build, not copy to tune, so they stay in code and land at
+    the placeholder the file chooses.
+    """
+    with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
+        body = handle.read().strip()
+    return body.replace(_TRAPS_PLACEHOLDER, "\n".join("- " + trap for trap in TRAPS))
 
 
 # ── the phases ────────────────────────────────────────────────────────────────
@@ -204,7 +177,7 @@ def plan(intent, snapshot, llm, events, feedback=None):
     if feedback:
         request["what_went_wrong_last_time"] = feedback
 
-    reply = _ask(llm, events, PLAN_PHASE, PLAN_SYSTEM, json.dumps(request, indent=2, default=str))
+    reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE), json.dumps(request, indent=2, default=str))
     steps = [str(step) for step in reply.get("steps", []) if str(step).strip()]
     if not steps:
         raise PhaseError("Plan produced no Steps for this Intent.")
@@ -252,7 +225,7 @@ def execute(step, tools, llm, events, attempts, budgets=None):
         if looked:
             request["what_you_looked_at"] = looked
 
-        reply = _ask(llm, events, EXECUTE_PHASE, EXECUTE_SYSTEM,
+        reply = _ask(llm, events, EXECUTE_PHASE, prompt(EXECUTE_PHASE),
                      json.dumps(request, indent=2, default=str))
 
         if reply.get("obsolete"):
@@ -314,7 +287,7 @@ def review(intent, render, objects, llm, events):
     else:
         content[0]["text"] += "\n\nNo render was produced, so judge on the objects alone."
 
-    reply = _ask(llm, events, REVIEW_PHASE, REVIEW_SYSTEM, content)
+    reply = _ask(llm, events, REVIEW_PHASE, prompt(REVIEW_PHASE), content)
 
     verdict = str(reply.get("verdict", "")).lower()
     if verdict not in ("pass", "fail"):

@@ -22,7 +22,6 @@ class _SettingsManager(QObject):
     api_keys_changed    = Signal(list)   # emitted after any key add/remove/edit
     default_model_changed = Signal(str)  # emitted when the default model pref changes
     last_model_changed  = Signal(str)    # emitted when the chat-UI last-used model changes
-    user_prompts_changed = Signal()      # emitted when user prompts are saved
 
     def __init__(self):
         super().__init__()
@@ -92,42 +91,6 @@ class _SettingsManager(QObject):
         self.last_model_changed.emit(model_id)
 
 
-
-    # ── User-defined prompts (CRUD via PromptManager) ─────────────────────────
-
-    def get_user_prompts(self) -> dict:
-        raw = self._grp().GetString("UserPrompts", "{}")
-        try:
-            return json.loads(raw)
-        except (json.JSONDecodeError, ValueError):
-            return {}
-
-    def set_user_prompts(self, prompts: dict):
-        self._grp().SetString("UserPrompts", json.dumps(prompts))
-        self.user_prompts_changed.emit()
-
-    # ── Legacy agent system prompts (kept for backward compat) ──────────────
-
-    def get_agent_prompts(self) -> dict:
-        """Returns per-agent override prompts dict."""
-        grp = self._grp()
-        return {
-            "global":       grp.GetString("GlobalSystemPrompt", "You are a helpful AI Assistant for FreeCAD."),
-            "orchestrator": grp.GetString("OrchestratorPrompt", ""),
-            "designer":     grp.GetString("DesignerPrompt", ""),
-            "developer":    grp.GetString("DeveloperPrompt", ""),
-            "validator":    grp.GetString("ValidatorPrompt", ""),
-            "reviewer":     grp.GetString("ReviewerPrompt", ""),
-        }
-
-    def set_agent_prompts(self, prompts: dict):
-        grp = self._grp()
-        grp.SetString("GlobalSystemPrompt", prompts.get("global", ""))
-        grp.SetString("OrchestratorPrompt", prompts.get("orchestrator", ""))
-        grp.SetString("DesignerPrompt",     prompts.get("designer", ""))
-        grp.SetString("DeveloperPrompt",    prompts.get("developer", ""))
-        grp.SetString("ValidatorPrompt",    prompts.get("validator", ""))
-        grp.SetString("ReviewerPrompt",     prompts.get("reviewer", ""))
 
     # ── Convenience: credentials for LLM ────────────────────────────────────
 
