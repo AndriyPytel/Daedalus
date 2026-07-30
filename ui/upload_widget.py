@@ -94,6 +94,8 @@ class FileChipBar(QtWidgets.QWidget):
     Hides itself when no files are attached.
     """
 
+    file_removed = QtCore.Signal(str)  # the user took a chip off the bar
+
     def __init__(self):
         super().__init__()
         self._layout = QtWidgets.QHBoxLayout(self)
@@ -114,8 +116,20 @@ class FileChipBar(QtWidgets.QWidget):
         self.setVisible(True)
 
     def remove_file(self, filepath: str):
+        """The user's own removal — the file is not wanted, so its owner may drop it."""
+        if self._take(filepath):
+            self.file_removed.emit(filepath)
+
+    def get_and_clear(self) -> list[str]:
+        """Handing the files to a run is not removing them; the run still needs them."""
+        files = list(self._files)
+        for filepath in files:
+            self._take(filepath)
+        return files
+
+    def _take(self, filepath: str) -> bool:
         if filepath not in self._files:
-            return
+            return False
         self._files.remove(filepath)
         for i in range(self._layout.count() - 1):
             item = self._layout.itemAt(i)
@@ -125,12 +139,7 @@ class FileChipBar(QtWidgets.QWidget):
                 break
         if not self._files:
             self.setVisible(False)
-
-    def get_and_clear(self) -> list[str]:
-        files = list(self._files)
-        for filepath in list(self._files):
-            self.remove_file(filepath)
-        return files
+        return True
 
 
 # ── Upload trigger button ─────────────────────────────────────────────────────
@@ -200,11 +209,17 @@ class UploadWidget(QtWidgets.QWidget):
             return True
         return False
 
-    def discard_temporary(self):
-        """Delete the clipboard images we wrote; repeated pasting must not pile up."""
-        for path in self.temporary:
+    def discard(self, *paths: str):
+        """Delete those of these we wrote. A file the user attached is theirs, not ours."""
+        for path in paths:
+            if path not in self.temporary:
+                continue
+            self.temporary.remove(path)
             try:
                 os.remove(path)
             except OSError:
                 pass
-        self.temporary.clear()
+
+    def discard_temporary(self):
+        """Every clipboard image still unaccounted for — the panel is closing."""
+        self.discard(*self.temporary)
