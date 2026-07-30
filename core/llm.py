@@ -12,6 +12,7 @@ stream and honours `cache_control`.
 This module must stay importable without FreeCAD; the settings lookup that
 needs it is deferred into `client_from_settings`.
 """
+import os
 import re
 from dataclasses import dataclass
 from typing import Callable, Iterable, Iterator, List
@@ -242,6 +243,58 @@ def litellm_model_name(provider: str, model_id: str) -> str:
     if model_id.startswith(prefix + "/"):
         return model_id
     return prefix + "/" + model_id
+
+
+# What the providers take as an image, and what the attach dialog offers.
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+
+
+def accepts_images(model: str):
+    """
+    Whether *model* takes images: True, False, or None when LiteLLM has never
+    heard of it — which a Custom/Local model is, and which is not a no.
+    """
+    import litellm
+
+    try:
+        litellm.get_model_info(model)
+    except Exception:
+        return None
+    return bool(litellm.supports_vision(model))
+
+
+def unusable_attachments(paths, model: str) -> list:
+    """
+    One sentence per attachment this run would not be able to use, before it
+    starts. Empty means send it.
+
+    The provider's own complaint arrives after Plan has already been called,
+    which is too late to be told the picture was ignored (FCC-14).
+    """
+    reasons = []
+    for path in paths:
+        name = os.path.basename(path)
+        if not os.path.isfile(path):
+            reasons.append(
+                "%s is not there any more, so there would be nothing to send." % name)
+        elif os.path.splitext(path)[1].lower() not in IMAGE_SUFFIXES:
+            reasons.append(
+                "%s is not an image the provider will take. Attach a PNG, JPEG, GIF or "
+                "WebP instead." % name)
+
+    if paths and accepts_images(model) is False:
+        reasons.append(
+            "%s cannot accept images. Send the Intent without the attachment, or pick a "
+            "model with image support." % model)
+    return reasons
+
+
+def selected_model_name(model_id: str = None) -> str:
+    """The model the panel is set to, spelled the way LiteLLM spells it."""
+    from utils import settings_manager
+
+    provider, mid, _ = settings_manager.instance().get_llm_credentials(model_id)
+    return litellm_model_name(provider, mid)
 
 
 def client_from_settings(model_id: str = None) -> LiteLLMClient:

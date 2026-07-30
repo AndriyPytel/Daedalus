@@ -126,6 +126,10 @@ class FileChipBar(QtWidgets.QWidget):
         if not self._files:
             self.setVisible(False)
 
+    def files(self) -> list[str]:
+        """What is on the bar, without taking it off."""
+        return list(self._files)
+
     def get_and_clear(self) -> list[str]:
         files = list(self._files)
         for filepath in list(self._files):

@@ -149,6 +149,38 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     assert sent == [("Build this bracket", [str(picture)])]
     assert not panel.chip_bar.isVisible(), "the next Intent would reuse this one's files"
 
+
+def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, monkeypatch):
+    """
+    Told before the run, not after Plan already ignored it — and the chips stay
+    on the bar, so the offending one can be taken off and the Intent sent
+    again. FCC-14.
+    """
+    from core import llm
+
+    monkeypatch.setattr(llm, "selected_model_name", lambda _=None: "openai/gpt-3.5-turbo")
+    drawing = tmp_path / "bracket.step"
+    drawing.write_text("ISO-10303-21;")
+    panel.chip_bar.add_file(str(drawing))
+
+    sent = []
+    panel.request_work.connect(lambda intent, files, log: sent.append(intent))
+    try:
+        panel.user_input.setPlainText("Build this bracket")
+        panel.on_send()
+    finally:
+        panel.request_work.disconnect()
+
+    assert sent == [], "the run started with an attachment it could not use"
+    assert panel.chip_bar.files() == [str(drawing)], "the user cannot take the chip off"
+    assert panel.user_input.toPlainText() == "Build this bracket"
+    said = _said_in(panel)
+    assert "bracket.step" in said and "PNG" in said
+    assert "cannot accept images" in said, "the model's own limit went unmentioned"
+
+    panel.chip_bar.remove_file(str(drawing))
+
+
 # ── Sessions that survive a restart (FCC-5) ───────────────────────────────────
 
 
