@@ -153,6 +153,10 @@ _OUT_OF_QUOTA = ("quota", "resource_exhausted", "resource has been exhausted")
 # spent daily quota; only the violated metric says whether the wait is seconds
 # or a day.
 _PER_MINUTE = ("perminute", "per minute", "per min")
+# A text-only model handed an attachment. Narrow on purpose: every other
+# BadRequestError is a bug in what we sent, and hiding it as a Refusal would
+# tell the user to switch models over our own mistake.
+_NO_IMAGES = ("image_url", "image input", "does not support image", "image content")
 
 
 def _translate(exc, model):
@@ -196,6 +200,10 @@ def _translate(exc, model):
         return ProviderRefused(
             "Could not reach %s: the connection failed. This is a transport failure, not a "
             "limit on your account — check the endpoint is running and reachable." % model, said)
+    if isinstance(exc, litellm.BadRequestError) and any(word in low for word in _NO_IMAGES):
+        return ProviderRefused(
+            refused + ": this model cannot accept images. Send the Intent without the "
+            "attachment, or pick a model with image support.", said)
     return None
 
 

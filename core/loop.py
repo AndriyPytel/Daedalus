@@ -198,13 +198,23 @@ def _as_json(text, phase):
     return parsed
 
 
-def plan(intent, snapshot, llm, events, feedback=None):
-    """Produce an ordered list of Steps from the Intent and a Snapshot."""
+def plan(intent, snapshot, llm, events, feedback=None, attachments=()):
+    """
+    Produce an ordered list of Steps from the Intent and a Snapshot.
+
+    `attachments` are the files the user showed with the Intent. They ride as
+    image blocks beside the request, the same shape Review gets its render in;
+    with none, the request is the plain string it always was.
+    """
     request = {"intent": intent, "document": snapshot}
     if feedback:
         request["what_went_wrong_last_time"] = feedback
 
-    reply = _ask(llm, events, PLAN_PHASE, PLAN_SYSTEM, json.dumps(request, indent=2, default=str))
+    body = json.dumps(request, indent=2, default=str)
+    pictures = [picture for picture in map(_as_image, attachments) if picture]
+    content = [{"type": "text", "text": body}] + pictures if pictures else body
+
+    reply = _ask(llm, events, PLAN_PHASE, PLAN_SYSTEM, content)
     steps = [str(step) for step in reply.get("steps", []) if str(step).strip()]
     if not steps:
         raise PhaseError("Plan produced no Steps for this Intent.")
@@ -329,7 +339,7 @@ class Stopped(Exception):
     """The user stopped the run. Not a failure — a decision."""
 
 
-def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None,
+def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
         gate=auto_approve) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
@@ -340,6 +350,8 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None,
     `gate`, the Plan Gate, which must approve before any Step runs. Nothing is
     global, so two runs cannot see each other and a sub-agent is a narrower
     Intent.
+
+    `attachments` are files the user showed with the Intent; Plan sees them.
     """
     events = events if events is not None else EventStream()
     budgets = budgets or Budgets()
@@ -349,7 +361,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None,
 
     try:
         return _run(intent, llm, tools, events, budgets, cancelled or (lambda: False), gate,
-                    progress)
+                    progress, attachments)
     except Stopped:
         return _block(events, "Stopped by you. Everything applied so far is still in the "
                               "Document; undo it Step by Step if you want it gone.", [],
@@ -366,9 +378,9 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None,
         return LoopResult(ok=False, reason=str(exc))
 
 
-def _run(intent, llm, tools, events, budgets, cancelled, gate, progress):
+def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments):
     snapshot = tools.call("snapshot")
-    steps = plan(intent, snapshot, llm, events)
+    steps = plan(intent, snapshot, llm, events, attachments=attachments)
     events.emit(PLAN, steps=list(steps))
 
     rejections = 0
@@ -387,7 +399,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress):
         if revisions > budgets.revisions:
             return _block(events, "The Plan has been amended %d times without being approved."
                           % (revisions - 1), [], 0)
-        steps = plan(intent, tools.call("snapshot"), llm, events, feedback=approval.feedback)
+        steps = plan(intent, tools.call("snapshot"), llm, events,
+                     feedback=approval.feedback, attachments=attachments)
         events.emit(PLAN_REVISED, steps=list(steps),
                     reason="You asked for: " + approval.feedback)
 
@@ -412,7 +425,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress):
                     outcome["tried"], applied,
                 )
             steps = plan(intent, tools.call("snapshot"), llm, events,
-                         feedback=outcome["obsolete"])
+                         feedback=outcome["obsolete"], attachments=attachments)
             events.emit(PLAN_REVISED, steps=list(steps), reason=outcome["obsolete"])
             continue
 
@@ -438,7 +451,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress):
             )
 
         revisions += 1
-        steps = plan(intent, tools.call("snapshot"), llm, events, feedback=reason)
+        steps = plan(intent, tools.call("snapshot"), llm, events,
+                     feedback=reason, attachments=attachments)
         events.emit(PLAN_REVISED, steps=list(steps), reason=reason)
 
 
