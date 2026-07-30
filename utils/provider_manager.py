@@ -12,6 +12,8 @@ Chat UI can refresh its model combo without a restart.
 """
 import os
 import json
+from functools import lru_cache
+
 from PySide.QtCore import QObject, QThread, Signal
 
 
@@ -64,8 +66,8 @@ class _ProviderManager(QObject):
         self._threads: dict = {}   # provider -> _FetchThread (also the "asked already" mark)
 
         # Subscribe to key changes so the model list stays in sync
-        from utils.settings_manager import SettingsManager
-        SettingsManager.instance().api_keys_changed.connect(self._on_keys_changed)
+        from utils import settings_manager
+        settings_manager.instance().api_keys_changed.connect(self._on_keys_changed)
 
     # ── Fetching ──────────────────────────────────────────────────────────────
 
@@ -73,8 +75,8 @@ class _ProviderManager(QObject):
         """Start a background fetch the first time a provider is asked for."""
         if provider in self._fetched or provider in self._threads or provider not in self._model_map:
             return
-        from utils.settings_manager import SettingsManager
-        key = SettingsManager.instance().get_api_key_for_provider(provider)
+        from utils import settings_manager
+        key = settings_manager.instance().get_api_key_for_provider(provider)
         if not key:
             return
         thread = _FetchThread(provider, key, self)
@@ -117,8 +119,8 @@ class _ProviderManager(QObject):
         Return a list of model dicts for every provider that has a non-empty
         API key stored.  Each dict has keys: ``id``, ``display``, ``provider``.
         """
-        from utils.settings_manager import SettingsManager
-        sm = SettingsManager.instance()
+        from utils import settings_manager
+        sm = settings_manager.instance()
         result = []
         for provider in self._model_map:
             if not sm.get_api_key_for_provider(provider):
@@ -161,15 +163,6 @@ class _ProviderManager(QObject):
 
 # ── Singleton accessor ────────────────────────────────────────────────────────
 
-_instance: _ProviderManager = None
-
-
-class ProviderManager:
-    """Public singleton facade — use ``ProviderManager.instance()``."""
-
-    @staticmethod
-    def instance() -> _ProviderManager:
-        global _instance
-        if _instance is None:
-            _instance = _ProviderManager()
-        return _instance
+@lru_cache(maxsize=None)
+def instance() -> _ProviderManager:
+    return _ProviderManager()

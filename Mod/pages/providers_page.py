@@ -32,8 +32,8 @@ class _TestWorker(QtCore.QObject):
         self._api_key  = api_key
 
     def run(self):
-        from utils.provider_manager import ProviderManager
-        ok, msg = ProviderManager.instance().test_connection(self._provider, self._api_key)
+        from utils import provider_manager
+        ok, msg = provider_manager.instance().test_connection(self._provider, self._api_key)
         self.result.emit(ok, msg)
 
 
@@ -53,9 +53,9 @@ class ProvidersPage(QtWidgets.QWidget):
         self._tinted = False
         self._build_ui()
 
-        from utils.provider_manager import ProviderManager
+        from utils import provider_manager
         # Bound method, not a lambda: Qt drops it when this page is destroyed.
-        ProviderManager.instance().models_changed.connect(self._on_models_changed)
+        provider_manager.instance().models_changed.connect(self._on_models_changed)
 
     def getWidget(self):
         return self
@@ -129,7 +129,6 @@ class ProvidersPage(QtWidgets.QWidget):
         self.key_edit.setPlaceholderText("Enter API key…")
         self.key_edit.setEchoMode(QtWidgets.QLineEdit.Password)
         self.key_edit.setStyleSheet(UIHelpers.get_input_style())
-        self.key_edit.textChanged.connect(self._on_key_changed)
         key_hbox.addWidget(self.key_edit, stretch=1)
 
         self.visibility_btn = QtWidgets.QPushButton()
@@ -237,8 +236,8 @@ class ProvidersPage(QtWidgets.QWidget):
         if provider in self._edits:
             key = self._edits[provider]
         else:
-            from utils.settings_manager import SettingsManager
-            key = SettingsManager.instance().get_api_key_for_provider(provider)
+            from utils import settings_manager
+            key = settings_manager.instance().get_api_key_for_provider(provider)
         
         self.key_edit.setText(key)
         self.status_lbl.setText("")
@@ -257,18 +256,18 @@ class ProvidersPage(QtWidgets.QWidget):
         if not self._current_provider:
             return
         
-        from utils.provider_manager import ProviderManager
-        from utils.settings_manager import SettingsManager
+        from utils import provider_manager
+        from utils import settings_manager
         
         self.default_model_combo.clear()
         # Filter models for this provider
-        models = ProviderManager.instance().get_models_for_provider(self._current_provider)
+        models = provider_manager.instance().get_models_for_provider(self._current_provider)
         for m in models:
             # m is {'id': ..., 'display': ..., 'provider': ...}
             self.default_model_combo.addItem(m['display'], userData=m['id'])
             
         # Restore selection
-        current_default = SettingsManager.instance().get_default_model()
+        current_default = settings_manager.instance().get_default_model()
         for i in range(self.default_model_combo.count()):
             if self.default_model_combo.itemData(i) == current_default:
                 self.default_model_combo.setCurrentIndex(i)
@@ -313,15 +312,15 @@ class ProvidersPage(QtWidgets.QWidget):
             self.provider_list.setCurrentItem(item)
 
     def _populate_list(self):
-        from utils.provider_manager import ProviderManager
-        from utils.settings_manager import SettingsManager
+        from utils import provider_manager
+        from utils import settings_manager
         
         self.provider_list.clear()
         
         # Get all supported providers
-        all_supported = ProviderManager.instance().get_all_providers()
+        all_supported = provider_manager.instance().get_all_providers()
         # Also check if user has any others in settings
-        saved_keys = SettingsManager.instance().get_api_keys()
+        saved_keys = settings_manager.instance().get_api_keys()
         
         seen = set()
         for p in all_supported:
@@ -350,8 +349,8 @@ class ProvidersPage(QtWidgets.QWidget):
         self._populate_list()
 
     def saveSettings(self):
-        from utils.settings_manager import SettingsManager
-        sm = SettingsManager.instance()
+        from utils import settings_manager
+        sm = settings_manager.instance()
         
         # Final current edit
         if self._current_provider:

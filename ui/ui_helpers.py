@@ -1,3 +1,4 @@
+import FreeCAD
 import FreeCADGui
 try:
     from PySide2 import QtCore, QtGui, QtWidgets, QtSvg
@@ -144,3 +145,27 @@ class UIHelpers:
     def get_input_style():
         """Input geometry. The theme paints it."""
         return "QLineEdit, QTextEdit, QComboBox { border-radius: 6px; padding: 6px 10px; }"
+
+    @staticmethod
+    def get_monospace_font():
+        """The monospace font FreeCAD's Python editor and console use."""
+        try:
+            p = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Editor")
+            font = p.GetString("Font", "")
+            if font:
+                return font
+        except Exception:
+            pass
+        return '"SF Mono", Monaco, Menlo, Consolas, "Liberation Mono", "Courier New", monospace'
+
+    @staticmethod
+    def get_ui_font():
+        """The general UI font FreeCAD uses."""
+        try:
+            p = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/General")
+            font = p.GetString("FontFamily", "")
+            if font:
+                return font
+        except Exception:
+            pass
+        return "'Inter', 'Segoe UI', Roboto, sans-serif"

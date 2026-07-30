@@ -50,23 +50,6 @@ class Chunk:
     text: str
 
 
-@dataclass
-class Reply:
-    """A whole streamed reply, accumulated."""
-    text: str = ""
-    reasoning: str = ""
-
-
-def collect(chunks: Iterable[Chunk]) -> Reply:
-    reply = Reply()
-    for chunk in chunks:
-        if chunk.kind == REASONING:
-            reply.reasoning += chunk.text
-        else:
-            reply.text += chunk.text
-    return reply
-
-
 class LiteLLMClient:
     """Streams from any provider LiteLLM supports."""
 
@@ -265,9 +248,9 @@ def litellm_model_name(provider: str, model_id: str) -> str:
 
 def client_from_settings(model_id: str = None) -> LiteLLMClient:
     """Build a client from the provider settings page and stored keys."""
-    from utils.settings_manager import SettingsManager
+    from utils import settings_manager
 
-    provider, mid, secret = SettingsManager.instance().get_llm_credentials(model_id)
+    provider, mid, secret = settings_manager.instance().get_llm_credentials(model_id)
 
     api_base = None
     api_key = secret

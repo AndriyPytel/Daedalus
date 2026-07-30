@@ -7,6 +7,7 @@ not a mock of LiteLLM.
 """
 import json
 import os
+from dataclasses import dataclass
 
 import pytest
 
@@ -17,11 +18,27 @@ from core.llm import (
     LiteLLMClient,
     ProviderRefused,
     ScriptedLLMClient,
-    collect,
     litellm_model_name,
 )
 
 RECORDED = os.path.join(os.path.dirname(__file__), "recorded")
+
+
+@dataclass
+class Reply:
+    """A whole streamed reply, accumulated. Only the tests ever need one."""
+    text: str = ""
+    reasoning: str = ""
+
+
+def collect(chunks) -> Reply:
+    reply = Reply()
+    for chunk in chunks:
+        if chunk.kind == REASONING:
+            reply.reasoning += chunk.text
+        else:
+            reply.text += chunk.text
+    return reply
 
 
 def _load(name):

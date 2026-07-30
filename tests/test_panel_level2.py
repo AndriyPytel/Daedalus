@@ -88,9 +88,9 @@ def test_the_model_picker_groups_under_provider_headings(panel):
     """A heading is a row that cannot be chosen — that is the whole mechanism."""
     from PySide2 import QtCore
 
-    from utils.provider_manager import ProviderManager
+    from utils import provider_manager
 
-    if not ProviderManager.instance().get_available_models():
+    if not provider_manager.instance().get_available_models():
         pytest.skip("no API key on this machine, so there is nothing to group")
 
     items = panel.model_combo.model()
