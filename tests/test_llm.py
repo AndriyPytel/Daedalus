@@ -214,6 +214,37 @@ def test_being_out_of_credit_is_named_as_a_billing_problem():
     assert "billing" in str(refusal.value)
 
 
+def test_a_model_that_cannot_accept_images_says_so_and_names_itself():
+    """
+    An attachment on a text-only model must read as "switch models", not as a
+    crash. FCC-4.
+    """
+    import litellm
+
+    blind = client_refused_by(litellm.BadRequestError(
+        message="Invalid content type. image_url is only supported by certain models.",
+        llm_provider="openai", model="openai/gpt-3.5-turbo"))
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(blind.stream([{"role": "user", "content": "hi"}]))
+
+    assert blind.model in str(refusal.value), "the refusal did not name the model"
+    assert "cannot accept images" in str(refusal.value)
+    assert "image support" in str(refusal.value)
+
+
+def test_an_ordinary_bad_request_is_still_not_a_refusal():
+    """Only the image case is translated; a malformed request stays a bug."""
+    import litellm
+
+    client = client_refused_by(litellm.BadRequestError(
+        message="Unknown parameter: 'temperture'.",
+        llm_provider="openai", model="openai/gpt-4o"))
+
+    with pytest.raises(litellm.BadRequestError):
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+
 def test_an_oversized_request_says_the_context_window_not_a_bad_reply():
     client = client_refused_by(mapped(400, {"error": {
         "code": 400,

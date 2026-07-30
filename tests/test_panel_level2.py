@@ -100,3 +100,26 @@ def test_the_model_picker_groups_under_provider_headings(panel):
     assert headings, "the model list is flat"
     assert panel.model_combo.currentIndex() not in [items.indexFromItem(h).row()
                                                     for h in headings]
+
+
+def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
+    """
+    The panel used to collect the attached paths and drop them on the floor.
+    What it emits is what the run is given. FCC-4.
+    """
+    picture = tmp_path / "bracket.png"
+    picture.write_bytes(b"a file; whether it decodes is the loop's problem")
+
+    sent = []
+    panel.request_work.connect(lambda intent, files: sent.append((intent, files)))
+    try:
+        panel.chip_bar.add_file(str(picture))
+        panel.user_input.setPlainText("Build this bracket")
+        panel.on_send()
+    finally:
+        panel.request_work.disconnect()
+        panel.worker.stop()
+        panel._set_running(False)
+
+    assert sent == [("Build this bracket", [str(picture)])]
+    assert not panel.chip_bar.isVisible(), "the next Intent would reuse this one's files"

@@ -469,6 +469,72 @@ def test_review_is_told_when_there_is_no_render_to_judge_by():
     assert "No render was produced" in content[0]["text"]
 
 
+# ── attachments ───────────────────────────────────────────────────────────────
+
+
+def test_an_attachment_reaches_plan_as_a_picture():
+    """
+    The panel used to collect the attached paths and throw them away, so the
+    user showed the assistant a photo it never saw. FCC-4.
+    """
+    llm = ScriptedLLMClient([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+
+    run("Build this bracket", llm=llm, tools=FakeTools().registry, attachments=[RENDER_PNG])
+
+    content = llm.calls[0][-1]["content"]
+    images = [block for block in content if block.get("type") == "image_url"]
+
+    assert "Build this bracket" in content[0]["text"]
+    assert len(images) == 1
+    assert images[0]["image_url"]["url"].startswith("data:image/png;base64,")
+    assert RENDER_PNG not in json.dumps(content), "the path was sent instead of the bytes"
+
+
+def test_several_attachments_all_reach_plan():
+    llm = ScriptedLLMClient([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+    second = _a_real_png()
+
+    run("From both angles", llm=llm, tools=FakeTools().registry,
+        attachments=[RENDER_PNG, second])
+
+    content = llm.calls[0][-1]["content"]
+    assert len([b for b in content if b.get("type") == "image_url"]) == 2
+
+
+def test_an_intent_with_no_attachments_sends_what_it_always_did():
+    """Attaching nothing costs nothing: the text-only request keeps its shape."""
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+
+    content = llm.calls[0][-1]["content"]
+
+    assert isinstance(content, str)
+    assert json.loads(content)["intent"] == "Make a 10mm box"
+
+
+def test_an_attachment_that_has_been_moved_is_dropped_not_fatal():
+    llm = ScriptedLLMClient([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+
+    result = run("Build this", llm=llm, tools=FakeTools().registry,
+                 attachments=["/nowhere/gone.png", RENDER_PNG])
+
+    assert result.ok
+    content = llm.calls[0][-1]["content"]
+    assert len([b for b in content if b.get("type") == "image_url"]) == 1
+
+
+def test_a_replan_still_carries_the_attachments():
+    """The reference the user showed is as relevant to the second Plan as the first."""
+    llm = ScriptedLLMClient([
+        plan_reply("v1"), code_reply("v1()"), verdict_reply("fail", "not right"),
+        plan_reply("v2"), code_reply("v2()"), verdict_reply("pass"),
+    ])
+
+    run("Build this", llm=llm, tools=FakeTools().registry, attachments=[RENDER_PNG])
+
+    replan = llm.calls[3][-1]["content"]
+    assert [b for b in replan if b.get("type") == "image_url"]
+
+
 def test_review_never_sees_the_plan_the_code_or_executes_reasoning():
     _, _, llm, _ = drive([
         plan_reply("Create a 10mm box using Part::Box"),

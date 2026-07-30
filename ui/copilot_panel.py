@@ -256,8 +256,8 @@ class LoopWorker(QtCore.QObject):
             self.pipeline = ApplyPipeline(confirm=self.ask.about_objects_we_do_not_own)
         return build_registry(pipeline=self.pipeline)
 
-    @QtCore.Slot(str)
-    def do_work(self, intent: str):
+    @QtCore.Slot(str, object)
+    def do_work(self, intent: str, attachments: list):
         from core import events as ev
         from core.events import EventStream
         from core.loop import run
@@ -278,7 +278,7 @@ class LoopWorker(QtCore.QObject):
         try:
             result = run(intent, llm=self._get_client(), tools=self._get_tools(),
                          events=events, cancelled=self._stop.is_set,
-                         gate=self.ask.about_the_plan)
+                         attachments=attachments, gate=self.ask.about_the_plan)
             self.finished.emit(result)
         except Exception as exc:
             events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
@@ -288,7 +288,7 @@ class LoopWorker(QtCore.QObject):
 # ── Main Panel ─────────────────────────────────────────────────────────────────
 
 class CopilotPanel(QtWidgets.QDockWidget):
-    request_work = QtCore.Signal(str)
+    request_work = QtCore.Signal(str, object)   # the Intent, and what was attached to it
 
     def __init__(self):
         super().__init__("FreeCAD Copilot")
@@ -623,8 +623,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if not intent:
             return
 
-        self.chip_bar.get_and_clear()
-        self.upload_widget.get_and_clear_files()
+        attachments = self.chip_bar.get_and_clear()
 
         if self._empty_state is not None:
             self._empty_state.setParent(None)
@@ -641,7 +640,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._set_running(True)
         self.status_line.setText("Planning…")
         self.status_line.setVisible(True)
-        self.request_work.emit(intent)
+        self.request_work.emit(intent, attachments)
 
     def on_stop(self):
         if self._gate_card is not None:
@@ -881,6 +880,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
     @QtCore.Slot(object)
     def on_run_finished(self, result):
         self._set_running(False)
+        self.upload_widget.discard_temporary()
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None

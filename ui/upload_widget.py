@@ -153,7 +153,7 @@ class UploadWidget(QtWidgets.QWidget):
         self.upload_btn = QtWidgets.QPushButton()
         self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=20, on=self.upload_btn))
         self.upload_btn.setFixedSize(28, 28)
-        self.upload_btn.setToolTip("Attach file (image / PDF)")
+        self.upload_btn.setToolTip("Attach an image")
         self.upload_btn.setStyleSheet("""
             QPushButton {
                 border: none;
@@ -166,21 +166,22 @@ class UploadWidget(QtWidgets.QWidget):
         self.upload_btn.clicked.connect(self.open_file_dialog)
         layout.addWidget(self.upload_btn)
 
-        # Legacy: keep a simple list so get_and_clear_files() still works
-        # if called from old copilot_panel code during transition
-        self._files: list[str] = []
+        # Only the temp files this widget wrote, so the run can delete them once
+        # it is done with them. What is attached is the chip bar's to know.
+        self.temporary: list[str] = []
 
     def showEvent(self, event):
         super().showEvent(event)
         self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=20, on=self.upload_btn))
 
     def open_file_dialog(self):
+        # Images only: an attachment reaches Plan as an image block, and
+        # offering a PDF the loop will not carry is the silent discard again.
         files, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "Attach Context Files", "",
-            "Supported (*.pdf *.png *.jpg *.jpeg);;All (*)"
+            self, "Attach an image", "",
+            "Images (*.png *.jpg *.jpeg *.gif *.webp);;All (*)"
         )
         for f in files:
-            self._files.append(f)
             self.file_attached.emit(f)
             from utils.logger import logger
             logger.info(f"[Copilot] Attached file: {f}")
@@ -198,15 +199,18 @@ class UploadWidget(QtWidgets.QWidget):
             tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
             pix.save(tmp.name, "PNG")
             tmp.close()
-            self._files.append(tmp.name)
+            self.temporary.append(tmp.name)
             self.file_attached.emit(tmp.name)
             from utils.logger import logger
             logger.info(f"[Copilot] Clipboard image saved to: {tmp.name}")
             return True
         return False
 
-    # Legacy compat
-    def get_and_clear_files(self) -> list[str]:
-        files = list(self._files)
-        self._files.clear()
-        return files
+    def discard_temporary(self):
+        """Delete the clipboard images we wrote; repeated pasting must not pile up."""
+        for path in self.temporary:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+        self.temporary.clear()
