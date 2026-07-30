@@ -227,8 +227,6 @@ class LoopWorker(QtCore.QObject):
     """
 
     finished = QtCore.Signal(object)
-    # Which Document a Session worked on. Asked through the Tool registry, on
-    # this thread — the panel never reaches the Document itself (ADR-0001).
     document_named = QtCore.Signal(str, str)   # transcript path, Document name
 
     def __init__(self, bridge: EventBridge, ask: AskTheUser):
@@ -254,8 +252,6 @@ class LoopWorker(QtCore.QObject):
         from core.freecad_tools import build_registry
 
         if self.pipeline is None:
-            # One pipeline for the Session, so Owned Objects are remembered
-            # across every Intent the user sends against this Document.
             self.pipeline = ApplyPipeline(confirm=self.ask.about_objects_we_do_not_own)
         return build_registry(pipeline=self.pipeline)
 
@@ -268,15 +264,11 @@ class LoopWorker(QtCore.QObject):
 
         self._stop.clear()
         events = EventStream([self.bridge.subscriber()])
-        # The Session's own log: one Session, one transcript, which is what
-        # makes it restorable rather than merely inspectable.
         try:
             events.log_to(transcript)
         except Exception:
             pass    # a missing log must not cost the user their run
 
-        # Why a run stopped belongs in the session log too, not only in the
-        # FreeCAD console where it scrolls away.
         events.subscribe(lambda event: logger.error("%s: %s" % (event.kind, event.data))
                          if event.kind in (ev.BLOCKED, ev.ERROR) else None)
 
@@ -300,7 +292,6 @@ class LoopWorker(QtCore.QObject):
 # ── Main Panel ─────────────────────────────────────────────────────────────────
 
 class CopilotPanel(QtWidgets.QDockWidget):
-    # The Intent, what was attached to it, and the Session log to narrate into.
     request_work = QtCore.Signal(str, object, str)
 
     def __init__(self):
@@ -358,27 +349,19 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.ask.plan_gate.connect(self.on_plan_gate)
         self.ask.owned_objects.connect(self.on_owned_objects)
 
-        # Per-run render state, reset by on_send.
-        self._plan_widget = None
-        self._thought = None
-        self._thought_phase = None
-        self._current_step = 0
-        self._gate_card = None
+        self._running = False
         self._empty_state = None
+        self._reset_render_state()
 
         self.thread.start()
         
-        # Ensure thread is cleaned up when application quits
         app = QtWidgets.QApplication.instance()
         if app:
             app.aboutToQuit.connect(self._cleanup_thread)
 
-        # Wire events
         self.chat_sessions.session_changed.connect(self.update_header_title)
         self.chat_sessions.session_removed.connect(lambda _: self.update_header_title(self.chat_sessions.stack.currentIndex()))
 
-        # Sessions outlive FreeCAD. What is on disk comes back; only a first
-        # run with nothing stored starts with a fresh one.
         if self.chat_sessions.load():
             last = self.chat_sessions.count() - 1
             self.chat_sessions.switch_to(last)
@@ -401,7 +384,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(6)
 
-        # Chat Title Label — double-click renames the Session.
         self.title_label = QtWidgets.QLabel("New Chat")
         self.title_label.setObjectName("HeaderTitle")
         self.title_label.setStyleSheet("font-weight: 600; font-size: 13px;")
@@ -412,7 +394,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         layout.addStretch()
 
-        # "New chat" icon
         self.new_btn = QtWidgets.QPushButton()
         self.new_btn.setObjectName("HeaderButton")
         self.new_btn.setFixedSize(22, 22)
@@ -421,7 +402,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.new_btn.clicked.connect(self.new_chat)
         layout.addWidget(self.new_btn)
 
-        # History button
         self.history_btn = QtWidgets.QPushButton()
         self.history_btn.setObjectName("HeaderButton")
         self.history_btn.setFixedSize(22, 22)
@@ -457,7 +437,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         inner.addWidget(self.user_input)
         self._fit_composer_to_text()
 
-        # Divider
         div = QtWidgets.QFrame()
         div.setFrameShape(QtWidgets.QFrame.HLine)
         div.setStyleSheet("QFrame { margin: 0 12px; }")
@@ -482,12 +461,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.model_combo.currentIndexChanged.connect(self._on_model_changed)
         strip.addWidget(self.model_combo)
 
-        # Wire live updates from ProviderManager
         provider_manager.instance().models_changed.connect(self._refresh_model_combo)
         strip.addStretch()
 
         # ── Send and Stop share one slot ──────────────────────────────────────
-        # Only one is ever visible, so the strip does not shift as a run starts.
         self.send_button = QtWidgets.QPushButton()
         self.send_button.setObjectName("SendButton")
         self.send_button.setToolTip("Send message (Enter)")
@@ -581,9 +558,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
                     items.appendRow(row)
         self.model_combo.setModel(items)
 
-        # Restore selection — the default model catches a last-used one that a
-        # refreshed list no longer offers; index 1 catches both missing, since
-        # index 0 is a provider heading and cannot be chosen.
         for wanted in (last_id, settings_manager.instance().get_default_model()):
             index = self.model_combo.findData(wanted)
             if index >= 0:
@@ -614,10 +588,30 @@ class CopilotPanel(QtWidgets.QDockWidget):
     def new_chat(self):
         n = self.chat_sessions.count() + 1
         idx, _ = self.chat_sessions.add_new_chat("Chat %d" % n)
-        self.chat_sessions.mark_restored(idx)   # nothing to replay into a new one
+        self._became_the_live_session()
         self.update_header_title(idx)
         self._empty_state = self._build_empty_state()
         self.add_chat_widget(self._empty_state)
+
+    def _reset_render_state(self):
+        """What one run builds and the next must not draw into."""
+        self._plan_widget = None
+        self._thought = None
+        self._thought_phase = None
+        self._current_step = 0
+        self._gate_card = None
+
+    def _became_the_live_session(self):
+        """
+        Let go of the Session being left.
+
+        Owned Objects are the live Session's alone — carried over, they would
+        let a Step delete an object the assistant created somewhere else
+        without ever asking.
+        """
+        self._reset_render_state()
+        self._empty_state = None
+        self.worker.pipeline = None
 
     def rename_current_session(self):
         index = self.chat_sessions.stack.currentIndex()
@@ -637,29 +631,23 @@ class CopilotPanel(QtWidgets.QDockWidget):
         Refused mid-run: a run narrates into the Session it was started from,
         and moving out from under it loses track of which that was.
         """
-        if self.stop_button.isVisible():
+        if self._running:
             self.status_line.setText("Finish or stop this run before switching sessions.")
             self.status_line.setVisible(True)
             return
         self.chat_sessions.switch_to(index)
+        self._became_the_live_session()
         self.restore_session(index)
 
     def restore_session(self, index: int):
         """Replay the Session's log through the switch that rendered it live."""
-        from core.events import replay, was_truncated
+        from core.events import replay
 
         info = self.chat_sessions.get_session_info(index)
         if info is None or not self.chat_sessions.mark_restored(index):
             return
 
-        self._plan_widget = None
-        self._thought = None
-        self._thought_phase = None
-        self._current_step = 0
-        self._gate_card = None
-        self._empty_state = None
-
-        events = replay(info["log"])
+        events, truncated = replay(info["log"])
         if not events:
             self._empty_state = self._build_empty_state()
             self.add_chat_widget(self._empty_state)
@@ -667,7 +655,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         for event in events:
             self.on_event(event)
-        if was_truncated(info["log"]):
+        if truncated:
             self.add_chat_widget(AssistantMessageWidget(
                 "This transcript ends mid-event — FreeCAD closed while the run was writing. "
                 "Everything above it survived."))
@@ -728,11 +716,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.add_chat_widget(TextMessageWidget(intent))
         self.user_input.clear()
 
-        self._plan_widget = None
-        self._thought = None
-        self._thought_phase = None
-        self._current_step = 0
-        self._gate_card = None
+        self._reset_render_state()
 
         self._set_running(True)
         self.status_line.setText("Planning…")
@@ -748,6 +732,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.status_line.setText("Stopping after the current attempt…")
 
     def _set_running(self, running: bool):
+        self._running = running
         self.send_button.setVisible(not running)
         self.stop_button.setVisible(running)
         self.stop_button.setEnabled(running)
@@ -997,7 +982,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if container and container.layout():
             container.layout().addWidget(widget)
             
-        # Give Qt a tiny moment to process layout before scrolling
         QtCore.QTimer.singleShot(10, lambda: chat_history.verticalScrollBar().setValue(
             chat_history.verticalScrollBar().maximum()
         ))

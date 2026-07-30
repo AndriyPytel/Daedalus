@@ -15,14 +15,14 @@ import os
 import time
 import uuid
 
+from utils import settings_manager
+
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
 except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
-# Sessions are pruned the way the addon's log files already are: oldest first,
-# on a bounded count, rather than growing until the user notices.
 KEEP = 50
 
 
@@ -84,7 +84,6 @@ class ChatSessionManager(QtWidgets.QWidget):
         vl.setContentsMargins(0, 0, 0, 0)
         scroll.setWidget(container)
 
-        # Smooth scroll to max on range expansion (new content)
         vbar = scroll.verticalScrollBar()
         anim = QtCore.QPropertyAnimation(vbar, b"value")
         anim.setDuration(250)
@@ -100,10 +99,8 @@ class ChatSessionManager(QtWidgets.QWidget):
 
         vbar.rangeChanged.connect(_on_range_changed)
 
-        # Smooth Kinetic Scrolling setup
         scroller = QtWidgets.QScroller.scroller(scroll.viewport())
         props = scroller.scrollerProperties()
-        # Disable rubber-banding (overshoot) on desktop
         props.setScrollMetric(QtWidgets.QScrollerProperties.VerticalOvershootPolicy, QtWidgets.QScrollerProperties.OvershootAlwaysOff)
         props.setScrollMetric(QtWidgets.QScrollerProperties.OvershootDragResistanceFactor, 1.0)
         scroller.setScrollerProperties(props)
@@ -132,14 +129,9 @@ class ChatSessionManager(QtWidgets.QWidget):
 
     # ── Persistence ──────────────────────────────────────────────────────────
 
-    def _store(self):
-        from utils import settings_manager
-
-        return settings_manager.instance()
-
     def _save(self):
         """Write the index. The widget is this process's; the rest is durable."""
-        self._store().set_sessions([
+        settings_manager.instance().set_sessions([
             {key: session[key] for key in ("name", "created_at", "document", "log")}
             for session in self._sessions
         ])
@@ -152,7 +144,8 @@ class ChatSessionManager(QtWidgets.QWidget):
         first show — a Session with hundreds of Steps must not be replayed
         because the panel opened.
         """
-        stored = sorted(self._store().get_sessions(), key=lambda s: s.get("created_at") or 0)
+        stored = sorted(settings_manager.instance().get_sessions(),
+                        key=lambda s: s.get("created_at") or 0)
         for stale in stored[:-KEEP]:
             _discard(stale.get("log"))
         for record in stored[-KEEP:]:
@@ -163,23 +156,23 @@ class ChatSessionManager(QtWidgets.QWidget):
 
     # ── Public API ───────────────────────────────────────────────────────────
 
-    def add_new_chat(self, tab_name: str = "New Chat", document: str = ""):
+    def add_new_chat(self, name: str = "New Chat", document: str = ""):
         idx, area = self._add({
-            "name": tab_name,
+            "name": name,
             "created_at": time.time(),
             "document": document,
             "log": os.path.join(_log_dir(), "%s.jsonl" % uuid.uuid4().hex),
+            "restored": True,
         })
         self.stack.setCurrentIndex(idx)
         self._save()
-        self.session_added.emit(idx, tab_name)
+        self.session_added.emit(idx, name)
         return idx, area
 
     def _add(self, record):
         """One Session: its record, its chat area, and the stack page holding it."""
         area = self._make_list()
 
-        # Wrap in a plain container so QStackedWidget is happy
         container = QtWidgets.QWidget()
         vl = QtWidgets.QVBoxLayout(container)
         vl.setContentsMargins(0, 0, 0, 0)
@@ -188,7 +181,7 @@ class ChatSessionManager(QtWidgets.QWidget):
         idx = self.stack.addWidget(container)
         session = dict(record)
         session["widget"] = container
-        session["restored"] = False
+        session.setdefault("restored", False)
         self._sessions.append(session)
         return idx, area
 

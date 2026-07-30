@@ -19,8 +19,6 @@ from typing import Callable, Iterable, Iterator, List
 REASONING = "reasoning"
 TEXT = "text"
 
-# LiteLLM addresses a model as "<prefix>/<id>". These are the providers
-# config/models.json knows about.
 _PREFIX = {
     "OpenAI": "openai",
     "Google": "gemini",
@@ -125,9 +123,6 @@ def _truncated(model, cap) -> ProviderRefused:
     )
 
 
-# LiteLLM's taxonomy translated once, here, so no phase has to guess what a
-# provider error means. Google's 429 for an exhausted quota and OpenAI's for
-# too many requests are the same class; only the body tells them apart.
 _RETRY_AFTER = re.compile(
     r"retry[-_ ]?(?:delay|after)\"?\s*[:=]?\s*\"?(\d+(?:\.\d+)?\s*[smh]?)", re.I)
 _OUT_OF_CREDIT = ("insufficient_quota", "credit balance", "out of credit", "billing_hard_limit")
@@ -136,9 +131,6 @@ _OUT_OF_QUOTA = ("quota", "resource_exhausted", "resource has been exhausted")
 # spent daily quota; only the violated metric says whether the wait is seconds
 # or a day.
 _PER_MINUTE = ("perminute", "per minute", "per min")
-# A text-only model handed an attachment. Narrow on purpose: every other
-# BadRequestError is a bug in what we sent, and hiding it as a Refusal would
-# tell the user to switch models over our own mistake.
 _NO_IMAGES = ("image_url", "image input", "does not support image", "image content")
 
 
@@ -246,8 +238,6 @@ def litellm_model_name(provider: str, model_id: str) -> str:
     """'Anthropic', 'claude-3-7-sonnet-20250219' -> 'anthropic/claude-3-7-...'."""
     prefix = _PREFIX.get(provider)
     if prefix is None:
-        # An unknown provider the user typed in themselves; assume it is already
-        # a name LiteLLM understands.
         return model_id
     if model_id.startswith(prefix + "/"):
         return model_id

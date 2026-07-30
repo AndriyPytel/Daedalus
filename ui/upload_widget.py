@@ -108,7 +108,6 @@ class FileChipBar(QtWidgets.QWidget):
             return
         chip = _FileChip(filepath)
         chip.remove_requested.connect(self.remove_file)
-        # Insert before the trailing stretch
         insert_pos = self._layout.count() - 1
         self._layout.insertWidget(insert_pos, chip)
         self._files.append(filepath)
@@ -118,7 +117,6 @@ class FileChipBar(QtWidgets.QWidget):
         if filepath not in self._files:
             return
         self._files.remove(filepath)
-        # Find and delete the chip widget
         for i in range(self._layout.count() - 1):
             item = self._layout.itemAt(i)
             if item and item.widget() and getattr(item.widget(), "filepath", None) == filepath:
@@ -166,8 +164,6 @@ class UploadWidget(QtWidgets.QWidget):
         self.upload_btn.clicked.connect(self.open_file_dialog)
         layout.addWidget(self.upload_btn)
 
-        # Only the temp files this widget wrote, so the run can delete them once
-        # it is done with them. What is attached is the chip bar's to know.
         self.temporary: list[str] = []
 
     def showEvent(self, event):
@@ -175,8 +171,6 @@ class UploadWidget(QtWidgets.QWidget):
         self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=20, on=self.upload_btn))
 
     def open_file_dialog(self):
-        # Images only: an attachment reaches Plan as an image block, and
-        # offering a PDF the loop will not carry is the silent discard again.
         files, _ = QtWidgets.QFileDialog.getOpenFileNames(
             self, "Attach an image", "",
             "Images (*.png *.jpg *.jpeg *.gif *.webp);;All (*)"

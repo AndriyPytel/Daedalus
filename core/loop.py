@@ -48,8 +48,6 @@ class Budgets:
     review_cycles: int = 2
     # Without this, Execute declaring Step after Step obsolete never terminates.
     revisions: int = 3
-    # Questions Execute may ask the Document before it has to write the code.
-    # Two is enough to check a type and a property list; more is stalling.
     looks_per_step: int = 2
 
 
@@ -194,10 +192,6 @@ def plan(intent, snapshot, llm, events, feedback=None, attachments=()):
     return steps
 
 
-NO_ANSWER = ("You had no looks left and replied with neither code nor an obsolete reason. "
-             "Write the code for this Step.")
-
-
 @dataclass
 class Attempt:
     code: str
@@ -224,7 +218,6 @@ def execute(step, tools, llm, events, attempts, budgets=None):
     went wrong elsewhere in the Plan; that is noise it cannot act on.
     """
     budgets = budgets or Budgets()
-    # A fresh Snapshot per attempt: the user may have edited the model by hand.
     request = {"step": step, "document": tools.call("snapshot")}
     if attempts:
         request["your_failed_attempts_at_this_step"] = [
@@ -233,8 +226,6 @@ def execute(step, tools, llm, events, attempts, budgets=None):
 
     looked = []
     for remaining in range(budgets.looks_per_step, -1, -1):
-        # An empty list is not read as an instruction by every model, so the
-        # last turn also says it in words.
         request["tools_you_may_look_with"] = _lookable(tools) if remaining else []
         if not remaining:
             request["this_is_your_last_turn"] = (
@@ -256,7 +247,6 @@ def execute(step, tools, llm, events, attempts, budgets=None):
             break
         looked.append(_look(tools, reply["look"], events))
 
-    # Not a broken loop — a Step that failed this attempt, like any other.
     return ExecuteOutcome()
 
 
@@ -338,8 +328,6 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     """
     events = events if events is not None else EventStream()
     budgets = budgets or Budgets()
-    # Steps live in the Document the moment they apply, so the count has to
-    # survive a phase that dies mid-pass.
     progress = {"applied": 0, "tried": []}
 
     try:
@@ -350,8 +338,6 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
                               "Document; undo it Step by Step if you want it gone.", [],
                       progress["applied"])
     except ProviderRefused as exc:
-        # The provider would not answer. That is a stop, not a reply the loop
-        # failed to understand, and it ends like every other stop.
         return _block(events, str(exc), progress["tried"], progress["applied"], said=exc.said)
     except PhaseError as exc:
         events.emit(ERROR, message=str(exc))
@@ -369,8 +355,6 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     rejections = 0
     revisions = 0
 
-    # The Plan Gate. Nothing below this line has run yet, and nothing will until
-    # the user says so. One approval covers the whole Plan.
     while True:
         approval = gate(list(steps)) or Approval(APPROVE)
         if approval.decision == APPROVE:
@@ -422,8 +406,6 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             return LoopResult(ok=True, verdict=verdict, reason=reason,
                               steps_applied=applied, render=render)
 
-        # A Review cycle is a rejection that sent work back to Plan. Spending
-        # the budget means the next rejection has nowhere left to go.
         rejections += 1
         if rejections > budgets.review_cycles:
             return _block(
@@ -466,7 +448,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                 result = tools.call("apply_step", arguments)
                 events.emit(TOOL_RESULT, name="apply_step", result=result)
             else:
-                result = {"status": "failed", "traceback": NO_ANSWER}
+                result = {"status": "failed", "traceback":
+                          "You had no looks left and replied with neither code nor an "
+                          "obsolete reason. Write the code for this Step."}
 
             if result.get("status") == "applied":
                 progress["applied"] += 1
@@ -501,8 +485,6 @@ def _tried(step, attempt):
 
 
 def _block(events, reason, tried, applied, said=""):
-    # `said` is the provider's own words: the stream is the session log, and
-    # without them the only copy lives in the FreeCAD console until it scrolls.
     events.emit(BLOCKED, reason=reason, tried=list(tried), provider_said=said)
     return LoopResult(ok=False, blocked=True, reason=reason, tried=list(tried),
                       steps_applied=applied)

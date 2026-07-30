@@ -65,7 +65,6 @@ class ProvidersPage(QtWidgets.QWidget):
         outer.setContentsMargins(16, 16, 16, 16)
         outer.setSpacing(8)
 
-        # Header
         header = QtWidgets.QLabel("LLM Providers & API Keys")
         header.setStyleSheet(UIHelpers.get_header_style())
         outer.addWidget(header)
@@ -78,7 +77,6 @@ class ProvidersPage(QtWidgets.QWidget):
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.setHandleWidth(1)
 
-        # — Left: provider list —
         left = QtWidgets.QWidget()
         left_layout = QtWidgets.QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 8, 0)
@@ -92,7 +90,6 @@ class ProvidersPage(QtWidgets.QWidget):
         self.provider_list.currentItemChanged.connect(self._on_selection_changed)
         left_layout.addWidget(self.provider_list)
 
-        # Add custom provider button
         self.add_btn = QtWidgets.QPushButton("Add Custom Provider")
         self.add_btn.setIcon(UIHelpers.get_icon("plus", size=16, on=self.add_btn))
         self.add_btn.setStyleSheet(
@@ -103,18 +100,15 @@ class ProvidersPage(QtWidgets.QWidget):
 
         splitter.addWidget(left)
 
-        # — Right: editor form —
         right = QtWidgets.QWidget()
         self.right_layout = QtWidgets.QVBoxLayout(right)
         self.right_layout.setContentsMargins(12, 0, 0, 0)
         self.right_layout.setSpacing(12)
 
-        # Provider Title
         self.title_lbl = QtWidgets.QLabel("Select a provider")
         self.title_lbl.setStyleSheet("font-size: 16px; font-weight: 700;")
         self.right_layout.addWidget(self.title_lbl)
 
-        # API Key Field
         self.key_container = QtWidgets.QWidget()
         key_vbox = QtWidgets.QVBoxLayout(self.key_container)
         key_vbox.setContentsMargins(0, 0, 0, 0)
@@ -145,7 +139,6 @@ class ProvidersPage(QtWidgets.QWidget):
         key_vbox.addLayout(key_hbox)
         self.right_layout.addWidget(self.key_container)
 
-        # Test Connection row
         test_row = QtWidgets.QHBoxLayout()
         self.test_btn = QtWidgets.QPushButton("Test Connection")
         self.test_btn.setIcon(UIHelpers.get_icon("refresh", size=16, on=self.test_btn))
@@ -161,7 +154,6 @@ class ProvidersPage(QtWidgets.QWidget):
         
         self.right_layout.addLayout(test_row)
 
-        # Default Model row (for this provider)
         self.model_container = QtWidgets.QWidget()
         model_vbox = QtWidgets.QVBoxLayout(self.model_container)
         model_vbox.setContentsMargins(0, 0, 0, 0)
@@ -180,7 +172,6 @@ class ProvidersPage(QtWidgets.QWidget):
         splitter.setSizes([200, 400])
         outer.addWidget(splitter, stretch=1)
 
-        # Initial state
         self._set_editor_enabled(False)
 
     def showEvent(self, event):
@@ -224,7 +215,6 @@ class ProvidersPage(QtWidgets.QWidget):
             self._set_editor_enabled(False)
             return
 
-        # Save previous edit if needed (local only)
         if self._current_provider:
             self._edits[self._current_provider] = self.key_edit.text().strip()
         
@@ -232,7 +222,6 @@ class ProvidersPage(QtWidgets.QWidget):
         self._current_provider = provider
         self.title_lbl.setText(provider)
         
-        # Load from edits or settings
         if provider in self._edits:
             key = self._edits[provider]
         else:
@@ -246,7 +235,6 @@ class ProvidersPage(QtWidgets.QWidget):
         self._refresh_models()
 
     def _on_key_changed(self):
-        # We don't save immediately, saveSettings() handles it
         pass
 
     def _on_models_changed(self, _models):
@@ -260,13 +248,10 @@ class ProvidersPage(QtWidgets.QWidget):
         from utils import settings_manager
         
         self.default_model_combo.clear()
-        # Filter models for this provider
         models = provider_manager.instance().get_models_for_provider(self._current_provider)
         for m in models:
-            # m is {'id': ..., 'display': ..., 'provider': ...}
             self.default_model_combo.addItem(m['display'], userData=m['id'])
             
-        # Restore selection
         current_default = settings_manager.instance().get_default_model()
         for i in range(self.default_model_combo.count()):
             if self.default_model_combo.itemData(i) == current_default:
@@ -302,7 +287,6 @@ class ProvidersPage(QtWidgets.QWidget):
             self.status_lbl.setStyleSheet(_STATUS_STYLE + "color: #f44336;")
 
     def _add_custom_provider(self):
-        # For now, just a placeholder or list some known ones not yet added
         name, ok = QtWidgets.QInputDialog.getText(self, "Add Provider", "Provider Name:")
         if ok and name:
             item = QtWidgets.QListWidgetItem(name)
@@ -317,9 +301,7 @@ class ProvidersPage(QtWidgets.QWidget):
         
         self.provider_list.clear()
         
-        # Get all supported providers
         all_supported = provider_manager.instance().get_all_providers()
-        # Also check if user has any others in settings
         saved_keys = settings_manager.instance().get_api_keys()
         
         seen = set()
@@ -352,12 +334,10 @@ class ProvidersPage(QtWidgets.QWidget):
         from utils import settings_manager
         sm = settings_manager.instance()
         
-        # Final current edit
         if self._current_provider:
             self._edits[self._current_provider] = self.key_edit.text().strip()
 
         if not self._edits:
-            # We still might want to save the default model even if no keys changed
             mid = self.default_model_combo.currentData()
             if mid:
                 sm.set_default_model(mid)
@@ -378,7 +358,6 @@ class ProvidersPage(QtWidgets.QWidget):
         sm.set_api_keys(current_keys)
         self._edits.clear()
         
-        # Save default model
         mid = self.default_model_combo.currentData()
         if mid:
             sm.set_default_model(mid)

@@ -20,7 +20,6 @@ class HistoryItem(QtWidgets.QFrame):
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(8)
 
-        # Title and timestamp container
         text_layout = QtWidgets.QVBoxLayout()
         text_layout.setSpacing(2)
         text_layout.setContentsMargins(0, 8, 0, 8)
@@ -40,7 +39,6 @@ class HistoryItem(QtWidgets.QFrame):
         text_layout.addWidget(self.time_label)
         layout.addLayout(text_layout, stretch=1)
 
-        # Delete button
         import os
         icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Resources", "icons", "trash.svg")
         self.del_btn = QtWidgets.QPushButton()
@@ -110,7 +108,6 @@ class HistoryPopup(QtWidgets.QFrame):
         vbox.setContentsMargins(8, 12, 8, 12)
         vbox.setSpacing(10)
 
-        # Search bar
         self.search_input = QtWidgets.QLineEdit()
         self.search_input.setPlaceholderText("Select a conversation")
         self.search_input.setObjectName("HistorySearch")
@@ -124,7 +121,6 @@ class HistoryPopup(QtWidgets.QFrame):
         self.search_input.textChanged.connect(self.filter_items)
         vbox.addWidget(self.search_input)
 
-        # Scroll area for items
         self.scroll = QtWidgets.QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
@@ -144,15 +140,12 @@ class HistoryPopup(QtWidgets.QFrame):
 
     def populate(self, sessions_info: list):
         """Rebuild the list from session data."""
-        # Clear existing
         while self.list_layout.count() > 1:
             item = self.list_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
         
         for i, info in enumerate(sessions_info):
-            if info is None:
-                continue
             item = HistoryItem(i, info["name"], info.get("created_at"),
                                info.get("document") or "")
             item.selected.connect(self._on_selected)
@@ -165,7 +158,6 @@ class HistoryPopup(QtWidgets.QFrame):
 
     def _on_deleted(self, index):
         self.session_deleted.emit(index)
-        # Populate will be called again by panel to refresh
 
     def filter_items(self, text):
         text = text.lower()
@@ -175,8 +167,6 @@ class HistoryPopup(QtWidgets.QFrame):
                 widget.setVisible(text in widget.title_label.text().lower())
 
     def show_center(self):
-        # Center on the primary screen
-        # In PySide, QApplication.desktop() returns QDesktopWidget
         screen_geo = QtWidgets.QApplication.desktop().screenGeometry()
         center = screen_geo.center()
         self.move(center.x() - self.width() // 2, center.y() - self.height() // 2)

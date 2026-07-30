@@ -104,7 +104,6 @@ class _SettingsManager(QObject):
         default = self.get_default_model()
         if default:
             return default
-        # Legacy fallback
         return self._grp().GetString("SelectedModel", "")
 
     def set_last_model(self, model_id: str):

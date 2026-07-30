@@ -189,8 +189,6 @@ class ApplyPipeline:
         self._render_dir = render_dir
         self._renders = 0
         self._confirm = confirm or refuse_without_asking
-        # Owned Objects, for the lifetime of this Session. Anything not in here
-        # belongs to the user — including everything that existed before we did.
         self.owned = set(owned or ())
 
     @property

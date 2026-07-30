@@ -34,7 +34,6 @@ def _setup_session_log() -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file  = os.path.join(log_dir, f"addon_{timestamp}.log")
 
-        # Rotate – delete oldest files beyond the limit
         existing = sorted(
             [f for f in os.listdir(log_dir) if f.startswith("addon_") and f.endswith(".log")]
         )
@@ -70,12 +69,10 @@ def get_logger(name: str = "FreeCadCopilot") -> logging.Logger:
 
     lg.setLevel(logging.DEBUG)
 
-    # Console handler
     ch = _FreeCADHandler()
     ch.setFormatter(logging.Formatter("[Copilot %(levelname)s] %(message)s"))
     lg.addHandler(ch)
 
-    # File handler (session file)
     if _session_log_file:
         try:
             fh = logging.FileHandler(_session_log_file, encoding="utf-8")
@@ -112,7 +109,6 @@ def generate_crash_report(exc: Exception, context: str = "") -> str:
     Includes OS, Python version, FreeCAD version, and a short traceback.
     """
     tb_lines = traceback.format_exc().strip().splitlines()
-    # keep last 10 lines to stay concise
     short_tb = "\n".join(tb_lines[-10:])
 
     try:
@@ -134,7 +130,6 @@ def generate_crash_report(exc: Exception, context: str = "") -> str:
         f"{short_tb}"
     )
 
-    # Also write full trace to session file
     log_exception(exc, context)
     return report
 

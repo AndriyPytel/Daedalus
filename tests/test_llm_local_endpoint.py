@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 
 from core.llm import LiteLLMClient
-from tests.test_llm import collect
+from conftest import collect
 
 DELTAS = ["A ", "10mm ", "box."]
 

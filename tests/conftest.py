@@ -1,5 +1,6 @@
 import os
 import sys
+from dataclasses import dataclass
 
 import pytest
 
@@ -67,3 +68,23 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "freecad" in item.keywords:
             item.add_marker(skip)
+
+
+@dataclass
+class Reply:
+    """A whole streamed reply, accumulated. Only the tests ever need one."""
+    text: str = ""
+    reasoning: str = ""
+
+
+def collect(chunks) -> Reply:
+    """Drain a Chunk stream into the reply it spells out."""
+    from core.llm import REASONING
+
+    reply = Reply()
+    for chunk in chunks:
+        if chunk.kind == REASONING:
+            reply.reasoning += chunk.text
+        else:
+            reply.text += chunk.text
+    return reply

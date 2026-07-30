@@ -10,7 +10,7 @@ The stream is an output. It is asserted on and never substituted.
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Tuple
 
 THOUGHT = "thought"
 PLAN = "plan"
@@ -121,9 +121,9 @@ class EventStream:
         return handle
 
 
-def replay(path) -> List[Event]:
+def replay(path) -> Tuple[List[Event], bool]:
     """
-    Read a session log back as the events that wrote it.
+    Read a session log back as the events that wrote it, and whether it was cut off.
 
     A crash cuts the last line in half — that is the case the per-event flush
     exists for, so a partial line is dropped and everything before it survives.
@@ -135,31 +135,17 @@ def replay(path) -> List[Event]:
         with open(path, encoding="utf-8") as handle:
             lines = handle.read().splitlines()
     except OSError:
-        return []
+        return [], False
 
-    events = []
+    events, truncated = [], False
     for line in lines:
         try:
             entry = json.loads(line)
         except ValueError:
+            truncated = True
             continue
+        truncated = False
         if isinstance(entry, dict) and entry.get("kind"):
             events.append(Event(kind=entry["kind"], data=entry.get("data") or {},
                                 at=entry.get("at") or 0.0))
-    return events
-
-
-def was_truncated(path) -> bool:
-    """Whether the log's last line was cut off — the transcript is incomplete."""
-    try:
-        with open(path, encoding="utf-8") as handle:
-            lines = handle.read().splitlines()
-    except OSError:
-        return False
-    if not lines:
-        return False
-    try:
-        json.loads(lines[-1])
-    except ValueError:
-        return True
-    return False
+    return events, truncated

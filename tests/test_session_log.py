@@ -10,7 +10,7 @@ import json
 import pytest
 
 from core.events import (
-    APPLIED, BLOCKED, KINDS, PLAN, THOUGHT, Event, EventStream, replay, was_truncated,
+    APPLIED, BLOCKED, KINDS, PLAN, THOUGHT, Event, EventStream, replay,
 )
 
 
@@ -130,7 +130,7 @@ def test_a_session_replays_as_the_events_that_wrote_it(tmp_path):
         (APPLIED, {"step": 1, "label": "Box", "created": ["Box"]}),
     ])
 
-    restored = replay(str(path))
+    restored, truncated = replay(str(path))
 
     assert [e.kind for e in restored] == [e.kind for e in written]
     assert [e.data for e in restored] == [e.data for e in written]
@@ -146,17 +146,17 @@ def test_a_log_cut_off_mid_line_restores_everything_before_it(tmp_path):
     with open(path, "a", encoding="utf-8") as handle:
         handle.write('{"kind": "blocked", "at": 1.0, "da')
 
-    restored = replay(str(path))
+    restored, truncated = replay(str(path))
 
     assert [e.kind for e in restored] == [PLAN, APPLIED]
-    assert was_truncated(str(path)), "the user was not told the transcript is incomplete"
+    assert truncated, "the user was not told the transcript is incomplete"
 
 
 def test_a_whole_log_is_not_reported_as_truncated(tmp_path):
     path = tmp_path / "session.jsonl"
     _written(path, [(PLAN, {"steps": ["a"]})])
 
-    assert not was_truncated(str(path))
+    assert replay(str(path))[1] is False
 
 
 def test_an_event_kind_this_build_does_not_know_survives_the_read(tmp_path):
@@ -166,13 +166,13 @@ def test_an_event_kind_this_build_does_not_know_survives_the_read(tmp_path):
     with open(path, "a", encoding="utf-8") as handle:
         handle.write('{"kind": "almost_applied", "at": 1.0, "data": {"step": 1}}\n')
 
-    restored = replay(str(path))
+    restored, truncated = replay(str(path))
 
     assert [e.kind for e in restored] == [PLAN, "almost_applied"]
 
 
 def test_a_session_with_no_log_yet_replays_as_nothing(tmp_path):
-    assert replay(str(tmp_path / "never_written.jsonl")) == []
+    assert replay(str(tmp_path / "never_written.jsonl")) == ([], False)
 
 
 # ── reading it back in memory ─────────────────────────────────────────────────

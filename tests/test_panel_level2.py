@@ -3,9 +3,10 @@ The panel, built for real against FreeCAD's own PySide2, offscreen.
 
 Most of the panel stays Level 3 — how a widget *looks* under a theme is not
 something a test can tell you, which is exactly the finding behind ADR-0011.
-What is checked here is the arithmetic and the state machine that #12 asked
-for and that would otherwise be verified by opening the panel and squinting:
-the composer's height, and Send and Stop sharing one slot.
+What is checked here is the arithmetic and the state machine that would
+otherwise be verified by opening the panel and squinting: the composer's
+height, Send and Stop sharing one slot, and Sessions surviving a restart —
+restored, renamed, deleted, and let go of when the user switches away.
 """
 import os
 
@@ -277,15 +278,54 @@ def test_a_restored_session_owns_nothing(panel, tmp_path):
     Owned Objects are the live Session's. Reopening yesterday's must not grant
     the assistant rights over objects it no longer owns.
     """
+    from core.apply import ApplyPipeline
+
     log = str(tmp_path / "old.jsonl")
     _a_transcript(log)
     index, _ = panel.chat_sessions.add_new_chat("old")
     panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+    panel.worker.pipeline = ApplyPipeline(owned={"BoxFromAnotherSession"})
 
     panel.switch_session(index)
 
-    pipeline = panel.worker.pipeline
-    assert pipeline is None or pipeline.owned == set()
+    panel.worker._get_tools()
+    assert panel.worker.pipeline.owned == set(), \
+        "the next Step would apply against another Session's Owned Objects"
+
+
+def test_a_new_session_owns_nothing(panel):
+    from core.apply import ApplyPipeline
+
+    panel.worker.pipeline = ApplyPipeline(owned={"BoxFromAnotherSession"})
+
+    panel.new_chat()
+
+    panel.worker._get_tools()
+    assert panel.worker.pipeline.owned == set()
+
+
+def test_returning_to_a_session_does_not_keep_another_ones_widgets(panel, tmp_path):
+    """
+    Restoring is skipped the second time a Session is opened, but the render
+    state still has to let go of the Session being left.
+    """
+    log = str(tmp_path / "first.jsonl")
+    _a_transcript(log)
+    first, _ = panel.chat_sessions.add_new_chat("first")
+    panel.chat_sessions.get_session_info(first).update({"log": log, "restored": False})
+    panel.new_chat()
+    second = panel.chat_sessions.stack.currentIndex()
+
+    panel.switch_session(first)
+    plan_of_first = panel._plan_widget
+    assert plan_of_first is not None, "the fixture transcript rendered no Plan"
+
+    panel.switch_session(second)
+
+    assert panel._plan_widget is not plan_of_first, \
+        "a Step would mark the Plan of the Session the user left"
+    assert panel._empty_state is None or \
+        panel._empty_state.parent() is not None, "empty state points at a dead widget"
 
 
 def test_switching_is_refused_while_a_run_is_in_flight(panel):
