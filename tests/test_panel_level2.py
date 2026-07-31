@@ -103,6 +103,31 @@ def test_send_and_stop_share_one_slot(panel):
     assert (panel.stop_button.isVisible(), panel.send_button.isVisible()) == (False, True)
 
 
+@pytest.mark.parametrize("status", [
+    "Step 1/9: Create a sketch on the XY plane and draw the two circles at the computed centre",
+    "Thinking: " + "the plan looks reasonable so I will start from the base sketch " * 2,
+    "Applied → " + "A" * 300,
+])
+def test_a_long_status_line_does_not_widen_the_panel(panel, status):
+    """
+    The status line is outside the transcript's QScrollArea, so its minimum
+    width is the panel's. Unwrapped, a Step description made the dock wider —
+    and Qt does not give the width back when the text goes short again, so the
+    user lost the dock width they had set. FCC-21.
+    """
+    # The dock's own minimumSizeHint only follows its child once shown, which
+    # the fixture's panel is not. The child is where the width is decided.
+    contents = panel.widget()
+    panel.status_line.setVisible(True)
+    panel.status_line.setText("Working…")
+    narrow = contents.minimumSizeHint().width()
+
+    panel.status_line.setText(status)
+
+    assert contents.minimumSizeHint().width() == narrow, \
+        "the panel's minimum width follows the status line's text"
+
+
 def test_the_empty_chat_says_where_the_user_stands(panel):
     text = panel._empty_state.text()
     assert "Plan Gate" in text
