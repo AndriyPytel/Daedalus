@@ -329,6 +329,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.status_line = QtWidgets.QLabel("")
         self.status_line.setObjectName("StatusLine")
         self.status_line.setVisible(False)
+        self.status_line.setWordWrap(True)
+        # This label is outside the transcript's scroll area, so its minimum
+        # width is the panel's. A Step description it cannot break — one long
+        # token, or wrapping off entirely — widens the dock, and Qt does not
+        # give the width back when the text goes short again.
+        self.status_line.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
+                                       QtWidgets.QSizePolicy.Preferred)
         root_layout.addWidget(self.status_line)
 
         # ── 4. Floating input card ─────────────────────────────────────────────
