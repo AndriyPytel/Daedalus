@@ -152,6 +152,77 @@ def test_the_model_picker_groups_under_provider_headings(panel):
                                                     for h in headings]
 
 
+def test_the_combo_opens_on_a_stored_model_no_static_list_knows(panel, monkeypatch):
+    """
+    The stored id lives only in the provider's fetched list, which has not
+    landed when the panel is built. Falling through to the first selectable
+    row — GPT-4o — is FCC-41.
+    """
+    from utils import provider_manager, settings_manager
+
+    monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: True)
+    monkeypatch.setattr(settings_manager.instance(), "get_last_model", lambda: "gpt-5.6-sol")
+
+    panel._refresh_model_combo([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
+
+    assert panel.model_combo.currentData() == "gpt-5.6-sol"
+
+
+def test_a_failed_fetch_leaves_its_provider_still_awaited(monkeypatch):
+    """
+    A provider that could not be reached has not said the stored model is gone.
+    Treating a failure as an answer drops the user's model on a flaky network.
+    """
+    from utils import provider_manager, settings_manager
+
+    manager = provider_manager.instance()
+    monkeypatch.setattr(settings_manager.instance(), "get_api_key_for_provider",
+                        lambda provider: "sk-test")
+    monkeypatch.setattr(manager, "_fetched", {})
+
+    manager._on_fetch_failed(manager.get_all_providers()[0], "no network")
+
+    assert manager.awaiting_model_lists()
+
+
+def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, monkeypatch):
+    """
+    Only a real list that has arrived can retire a model — and when it does the
+    user is told, because the model they picked is not the one they get.
+    """
+    from utils import provider_manager, settings_manager
+
+    settings = settings_manager.instance()
+    written = []
+    monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
+    monkeypatch.setattr(settings, "get_last_model", lambda: "gpt-5.6-sol")
+    monkeypatch.setattr(settings, "get_default_model", lambda: "gpt-4o")
+    monkeypatch.setattr(settings, "set_last_model", written.append)
+
+    panel._refresh_model_combo([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
+
+    assert panel.model_combo.currentData() == "gpt-4o"
+    assert written == ["gpt-4o"]
+    assert panel.status_line.isVisible()
+    assert "gpt-5.6-sol" in panel.status_line.text()
+
+
+def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, monkeypatch):
+    """The default model is a preference, and it may never have been set."""
+    from utils import provider_manager, settings_manager
+
+    settings = settings_manager.instance()
+    monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
+    monkeypatch.setattr(settings, "get_last_model", lambda: "gpt-5.6-sol")
+    monkeypatch.setattr(settings, "get_default_model", lambda: "")
+    monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
+
+    panel._refresh_model_combo([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
+
+    assert panel.model_combo.currentData() == "gpt-4o"
+    assert "switched to gpt-4o" in panel.status_line.text()
+
+
 def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     """
     The panel used to collect the attached paths and drop them on the floor.
