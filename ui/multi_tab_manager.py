@@ -36,6 +36,12 @@ def _discard(path):
         pass
 
 
+def _wants_a_title(session) -> bool:
+    """In the picker under a fallback name, and nobody has overruled it."""
+    return bool(session and session["indexed"]
+                and not session.get("named") and not session.get("manual"))
+
+
 def _log_dir() -> str:
     import FreeCAD
 
@@ -130,10 +136,17 @@ class ChatSessionManager(QtWidgets.QWidget):
     # ── Persistence ──────────────────────────────────────────────────────────
 
     def _save(self):
-        """Write the index. The widget is this process's; the rest is durable."""
+        """
+        Write the index. The widget is this process's; the rest is durable.
+
+        A Session that has had no Intent is not in it. It has nothing to show
+        in the picker and nothing to be named after, and every launch would
+        otherwise add one — fifty promptless launches would push out fifty real
+        Sessions and delete their logs (FCC-42).
+        """
         settings_manager.instance().set_sessions([
             {key: session[key] for key in ("name", "created_at", "document", "log")}
-            for session in self._sessions
+            for session in self._sessions if session.get("indexed")
         ])
 
     def load(self):
@@ -149,7 +162,7 @@ class ChatSessionManager(QtWidgets.QWidget):
         for stale in stored[:-KEEP]:
             _discard(stale.get("log"))
         for record in stored[-KEEP:]:
-            self._add(record)
+            self._add(dict(record, indexed=True))
         if self._sessions:
             self._save()
         return self.count()
@@ -163,11 +176,47 @@ class ChatSessionManager(QtWidgets.QWidget):
             "document": document,
             "log": os.path.join(_log_dir(), "%s.jsonl" % uuid.uuid4().hex),
             "restored": True,
+            "indexed": False,
         })
         self.stack.setCurrentIndex(idx)
-        self._save()
         self.session_added.emit(idx, name)
         return idx, area
+
+    def begin(self, index: int, name: str) -> bool:
+        """
+        The Session's first Intent: it takes a name and enters the picker.
+
+        False once it already has, so a second Intent changes nothing.
+        """
+        session = self.get_session_info(index)
+        if session is None or session["indexed"]:
+            return False
+        if not session.get("manual"):
+            session["name"] = name
+        session["indexed"] = True
+        self._save()
+        self.session_renamed.emit(index, session["name"])
+        return True
+
+    def wants_a_title(self, index: int) -> bool:
+        """Still on its fallback name, so the generated title is worth asking for."""
+        return _wants_a_title(self.get_session_info(index))
+
+    def title_arrived(self, log: str, title: str) -> bool:
+        """
+        The generated title, taken once and then frozen. A rename outranks it.
+
+        Keyed by the log, not the index: the call outlives the position, and a
+        Session deleted while one was in flight must not rename its neighbour.
+        """
+        session = next((s for s in self._sessions if s["log"] == log), None)
+        if not _wants_a_title(session) or not title.strip():
+            return False
+        session["name"] = title.strip()
+        session["named"] = True
+        self._save()
+        self.session_renamed.emit(self._sessions.index(session), session["name"])
+        return True
 
     def _add(self, record):
         """One Session: its record, its chat area, and the stack page holding it."""
@@ -199,13 +248,15 @@ class ChatSessionManager(QtWidgets.QWidget):
         self.session_removed.emit(index)
 
         if self.stack.count() == 0:
-            self.add_new_chat("Chat 1")
+            self.add_new_chat("New Chat")
 
     def rename_session(self, index: int, new_name: str):
         """The log's path does not follow the name, so a rename cannot orphan it."""
         if not 0 <= index < len(self._sessions) or not new_name.strip():
             return
         self._sessions[index]["name"] = new_name.strip()
+        # A name the user chose is never replaced by a generated one, now or later.
+        self._sessions[index]["manual"] = True
         self._save()
         self.session_renamed.emit(index, new_name.strip())
 
