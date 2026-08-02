@@ -174,6 +174,87 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     assert sent == [("Build this bracket", [str(picture)])]
     assert not panel.chip_bar.isVisible(), "the next Intent would reuse this one's files"
 
+# ── The Session picker (FCC-43) ───────────────────────────────────────────────
+
+
+def _a_row(name="Bracket with two bores", document="Parts.FCStd", created_at=0.0):
+    from ui.history_popup import HistoryItem
+
+    return HistoryItem(0, name, created_at, document)
+
+
+def test_the_picker_drops_from_the_top_of_the_dock_at_its_width(panel):
+    """It used to open in the middle of the screen, 280px wide, detached."""
+    from PySide2 import QtCore
+
+    contents = panel.widget()
+    for width in (360, 520):
+        panel.resize(width, 700)
+        QT_APP.processEvents()
+        panel.history_popup.close()
+        panel.toggle_history()
+        QT_APP.processEvents()
+
+        assert panel.history_popup.width() == contents.width()
+        assert panel.history_popup.pos() == contents.mapToGlobal(QtCore.QPoint(0, 0))
+    panel.history_popup.close()
+
+
+def test_opening_the_picker_never_widens_the_dock(panel):
+    """The picker is a window of its own; the dock must not pay for its width."""
+    contents = panel.widget()
+    narrow = contents.minimumSizeHint().width()
+
+    panel.toggle_history()
+    QT_APP.processEvents()
+    panel.history_popup.close()
+
+    assert contents.minimumSizeHint().width() == narrow
+
+
+def test_a_session_is_one_line_with_the_time_beside_the_name(panel):
+    """Two stacked lines in a 48px row is what made the list unscannable."""
+    row = _a_row()
+
+    assert row.height() <= 32
+    assert row.title_label.geometry().center().y() == \
+        row.time_label.geometry().center().y()
+    assert row.time_label.graphicsEffect().opacity() < 1.0
+
+
+def test_a_narrow_row_gives_up_the_time_before_the_name(panel):
+    """The list is scanned by name, so the name is what survives."""
+    row = _a_row(name="A bracket with two bores and a chamfered edge")
+    row.show()
+    row.resize(400, row.height())
+    QT_APP.processEvents()
+    assert row.time_label.isVisible()
+
+    row.resize(120, row.height())
+    QT_APP.processEvents()
+
+    assert not row.time_label.isVisible()
+    assert row.del_btn.width() == 24, "the delete button is still on the row"
+
+
+def test_the_document_a_session_worked_on_is_in_the_row_tooltip(panel):
+    assert _a_row(document="Parts.FCStd").toolTip() == "Parts.FCStd"
+
+
+def test_a_row_never_changes_height_under_the_cursor(panel):
+    from PySide2 import QtCore
+
+    row = _a_row()
+    row.show()
+    QT_APP.processEvents()
+    resting = row.height()
+
+    QT_APP.sendEvent(row, QtCore.QEvent(QtCore.QEvent.Enter))
+    QT_APP.processEvents()
+
+    assert row.height() == resting
+
+
 # ── Sessions that survive a restart (FCC-5) ───────────────────────────────────
 
 

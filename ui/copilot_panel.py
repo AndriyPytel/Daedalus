@@ -590,7 +590,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.history_popup.populate(
                 [self.chat_sessions.get_session_info(i)
                  for i in range(self.chat_sessions.count())])
-            self.history_popup.show_center()
+            self.history_popup.drop_from_the_dock()
 
     def new_chat(self):
         n = self.chat_sessions.count() + 1
