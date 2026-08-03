@@ -706,6 +706,25 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     # ── Sending an Intent ──────────────────────────────────────────────────────
 
+    def _unusable_attachments(self) -> list:
+        """
+        Why the attached files would not reach the model, before the run starts.
+
+        The chips stay on the bar, so the offending one can be taken off — or
+        the model changed — and the same Intent sent again. A settings lookup
+        that fails is not the user's problem here; the run reports it.
+        """
+        from core.llm import selected_model_name, unusable_attachments
+
+        attached = self.chip_bar.files()
+        if not attached:
+            return []
+        try:
+            model = selected_model_name(self.model_combo.currentData())
+        except Exception:
+            return []
+        return unusable_attachments(attached, model)
+
     def on_send(self):
         intent = self.user_input.toPlainText().strip()
         if not intent:
@@ -713,6 +732,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         session = self.chat_sessions.get_session_info(self.chat_sessions.stack.currentIndex())
         if session is None:
+            return
+
+        unusable = self._unusable_attachments()
+        if unusable:
+            self.add_chat_widget(AssistantMessageWidget(
+                "This would not have reached the model:\n\n"
+                + "\n".join("• " + reason for reason in unusable)))
             return
 
         attachments = self.chip_bar.get_and_clear()

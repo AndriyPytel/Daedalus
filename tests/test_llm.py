@@ -20,6 +20,7 @@ from core.llm import (
     ProviderRefused,
     ScriptedLLMClient,
     litellm_model_name,
+    unusable_attachments,
 )
 
 RECORDED = os.path.join(os.path.dirname(__file__), "recorded")
@@ -391,3 +392,67 @@ def test_scripted_client_running_dry_is_a_loud_test_failure():
 
     with pytest.raises(AssertionError, match="ran out of turns"):
         client.stream([])
+
+
+# ── An attachment the run could not use, named before it starts (FCC-14) ──────
+
+
+def _an_image(tmp_path, name="bracket.png"):
+    picture = tmp_path / name
+    picture.write_bytes(b"a file; whether it decodes is the provider's problem")
+    return str(picture)
+
+
+def test_an_image_on_a_model_that_takes_images_is_usable(tmp_path):
+    assert unusable_attachments([_an_image(tmp_path)], "openai/gpt-4o") == []
+
+
+def test_a_model_that_cannot_see_is_named_before_the_run(tmp_path):
+    reasons = unusable_attachments([_an_image(tmp_path)], "openai/gpt-3.5-turbo")
+
+    assert len(reasons) == 1
+    assert "openai/gpt-3.5-turbo" in reasons[0]
+    assert "cannot accept images" in reasons[0]
+
+
+def test_a_model_litellm_does_not_know_is_given_the_benefit_of_the_doubt(tmp_path):
+    """
+    A Custom/Local model is absent from LiteLLM's table, and absent is not the
+    same as cannot. Guessing 'no' here would refuse to send a picture to a
+    local vision model that would have taken it; the post-hoc Refusal covers
+    the case we get wrong.
+    """
+    assert unusable_attachments([_an_image(tmp_path)], "openai/some-local-build") == []
+
+
+def test_a_file_that_is_not_an_image_is_named(tmp_path):
+    drawing = tmp_path / "bracket.step"
+    drawing.write_text("ISO-10303-21;")
+
+    reasons = unusable_attachments([str(drawing)], "openai/gpt-4o")
+
+    assert len(reasons) == 1
+    assert "bracket.step" in reasons[0]
+    assert "PNG" in reasons[0]
+
+
+def test_a_file_that_is_gone_is_named_rather_than_silently_dropped(tmp_path):
+    reasons = unusable_attachments([str(tmp_path / "vanished.png")], "openai/gpt-4o")
+
+    assert len(reasons) == 1
+    assert "vanished.png" in reasons[0]
+
+
+def test_every_unusable_attachment_gets_its_own_reason(tmp_path):
+    drawing = tmp_path / "bracket.step"
+    drawing.write_text("ISO-10303-21;")
+
+    reasons = unusable_attachments(
+        [_an_image(tmp_path), str(drawing), str(tmp_path / "gone.png")],
+        "openai/gpt-3.5-turbo")
+
+    assert len(reasons) == 3, reasons
+
+
+def test_no_attachment_never_complains_about_the_model():
+    assert unusable_attachments([], "openai/gpt-3.5-turbo") == []
