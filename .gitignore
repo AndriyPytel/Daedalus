@@ -1,26 +1,7 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-*.egg-info/
-dist/
-build/
-
-# FreeCAD
-*.FCStd
-*.FCStd1
-
-# IDE
-.vscode/
+logs/
 .idea/
-*.swp
-*.swo
-*~
-
-# OS
 .DS_Store
-Thumbs.db
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/

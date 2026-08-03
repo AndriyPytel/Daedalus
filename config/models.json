@@ -1,0 +1,23 @@
+{
+  "OpenAI": [
+    {"id": "gpt-4o",          "display": "GPT-4o"},
+    {"id": "gpt-4o-mini",     "display": "GPT-4o-mini"},
+    {"id": "gpt-4-turbo",     "display": "GPT-4 Turbo"},
+    {"id": "gpt-3.5-turbo",   "display": "GPT-3.5 Turbo"}
+  ],
+  "Google": [
+    {"id": "gemini-2.5-pro",          "display": "Gemini 2.5 Pro"},
+    {"id": "gemini-2.5-flash",        "display": "Gemini 2.5 Flash"},
+    {"id": "gemini-2.0-pro-exp-02-05","display": "Gemini 2.0 Pro Exp"},
+    {"id": "gemini-2.0-flash",        "display": "Gemini 2.0 Flash"},
+    {"id": "gemini-1.5-pro",          "display": "Gemini 1.5 Pro"}
+  ],
+  "Anthropic": [
+    {"id": "claude-3-7-sonnet-20250219",  "display": "Claude 3.7 Sonnet"},
+    {"id": "claude-3-5-sonnet-20241022",  "display": "Claude 3.5 Sonnet"},
+    {"id": "claude-3-opus-20240229",      "display": "Claude 3 Opus"}
+  ],
+  "Custom/Local": [
+    {"id": "custom", "display": "Custom / Local Model"}
+  ]
+}

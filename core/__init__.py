@@ -1,1 +1,0 @@
-"""FreeCadCopilot core module."""
