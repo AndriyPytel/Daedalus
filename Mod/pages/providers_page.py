@@ -17,6 +17,9 @@ except ImportError:
 
 from ui.ui_helpers import UIHelpers
 
+# Carried alongside the semantic colours, which replace rather than extend a stylesheet.
+_STATUS_STYLE = "font-size: 11px; font-weight: 600;"
+
 
 # ── Connection-test worker ────────────────────────────────────────────────────
 
@@ -29,8 +32,8 @@ class _TestWorker(QtCore.QObject):
         self._api_key  = api_key
 
     def run(self):
-        from utils.provider_manager import ProviderManager
-        ok, msg = ProviderManager.instance().test_connection(self._provider, self._api_key)
+        from utils import provider_manager
+        ok, msg = provider_manager.instance().test_connection(self._provider, self._api_key)
         self.result.emit(ok, msg)
 
 
@@ -47,7 +50,12 @@ class ProvidersPage(QtWidgets.QWidget):
         self._edits = {}  # Tracks all unsaved key changes locally
         self._thread = None
         self._worker = None
+        self._tinted = False
         self._build_ui()
+
+        from utils import provider_manager
+        # Bound method, not a lambda: Qt drops it when this page is destroyed.
+        provider_manager.instance().models_changed.connect(self._on_models_changed)
 
     def getWidget(self):
         return self
@@ -57,22 +65,18 @@ class ProvidersPage(QtWidgets.QWidget):
         outer.setContentsMargins(16, 16, 16, 16)
         outer.setSpacing(8)
 
-        # Header
         header = QtWidgets.QLabel("LLM Providers & API Keys")
         header.setStyleSheet(UIHelpers.get_header_style())
         outer.addWidget(header)
         
         divider = QtWidgets.QFrame()
         divider.setFrameShape(QtWidgets.QFrame.HLine)
-        divider.setStyleSheet("color: palette(mid);")
         outer.addWidget(divider)
 
         # ── Splitter ─────────────────────────────────────────────────────────
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.setHandleWidth(1)
-        splitter.setStyleSheet("QSplitter::handle { background: palette(mid); }")
 
-        # — Left: provider list —
         left = QtWidgets.QWidget()
         left_layout = QtWidgets.QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 8, 0)
@@ -80,37 +84,31 @@ class ProvidersPage(QtWidgets.QWidget):
 
         self.provider_list = QtWidgets.QListWidget()
         self.provider_list.setStyleSheet(
-            "QListWidget { border: 1px solid palette(mid); border-radius: 6px; }"
+            "QListWidget { border-radius: 6px; }"
             "QListWidget::item { padding: 8px 12px; font-weight: 500; }"
-            "QListWidget::item:selected { background: palette(highlight); color: palette(highlightedtext); }"
         )
         self.provider_list.currentItemChanged.connect(self._on_selection_changed)
         left_layout.addWidget(self.provider_list)
 
-        # Add custom provider button
         self.add_btn = QtWidgets.QPushButton("Add Custom Provider")
-        self.add_btn.setIcon(UIHelpers.get_icon("plus", size=16))
+        self.add_btn.setIcon(UIHelpers.get_icon("plus", size=16, on=self.add_btn))
         self.add_btn.setStyleSheet(
-            "QPushButton { background: palette(button); border: 1px solid palette(mid); border-radius: 6px; padding: 6px; color: palette(buttontext); }"
-            "QPushButton:hover { background: palette(midlight); }"
+            "QPushButton { border-radius: 6px; padding: 6px; }"
         )
         self.add_btn.clicked.connect(self._add_custom_provider)
         left_layout.addWidget(self.add_btn)
 
         splitter.addWidget(left)
 
-        # — Right: editor form —
         right = QtWidgets.QWidget()
         self.right_layout = QtWidgets.QVBoxLayout(right)
         self.right_layout.setContentsMargins(12, 0, 0, 0)
         self.right_layout.setSpacing(12)
 
-        # Provider Title
         self.title_lbl = QtWidgets.QLabel("Select a provider")
-        self.title_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: palette(windowtext);")
+        self.title_lbl.setStyleSheet("font-size: 16px; font-weight: 700;")
         self.right_layout.addWidget(self.title_lbl)
 
-        # API Key Field
         self.key_container = QtWidgets.QWidget()
         key_vbox = QtWidgets.QVBoxLayout(self.key_container)
         key_vbox.setContentsMargins(0, 0, 0, 0)
@@ -125,7 +123,6 @@ class ProvidersPage(QtWidgets.QWidget):
         self.key_edit.setPlaceholderText("Enter API key…")
         self.key_edit.setEchoMode(QtWidgets.QLineEdit.Password)
         self.key_edit.setStyleSheet(UIHelpers.get_input_style())
-        self.key_edit.textChanged.connect(self._on_key_changed)
         key_hbox.addWidget(self.key_edit, stretch=1)
 
         self.visibility_btn = QtWidgets.QPushButton()
@@ -134,8 +131,7 @@ class ProvidersPage(QtWidgets.QWidget):
         self.visibility_btn.setToolTip("Show/Hide Key")
         self._update_visibility_icon(False)
         self.visibility_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: 1px solid palette(mid); border-radius: 6px; }"
-            "QPushButton:hover { background: palette(midlight); }"
+            "QPushButton { background: transparent; border-radius: 6px; }"
         )
         self.visibility_btn.toggled.connect(self._toggle_visibility)
         key_hbox.addWidget(self.visibility_btn)
@@ -143,24 +139,21 @@ class ProvidersPage(QtWidgets.QWidget):
         key_vbox.addLayout(key_hbox)
         self.right_layout.addWidget(self.key_container)
 
-        # Test Connection row
         test_row = QtWidgets.QHBoxLayout()
         self.test_btn = QtWidgets.QPushButton("Test Connection")
-        self.test_btn.setIcon(UIHelpers.get_icon("refresh", size=16))
+        self.test_btn.setIcon(UIHelpers.get_icon("refresh", size=16, on=self.test_btn))
         self.test_btn.setStyleSheet(
-            "QPushButton { background: palette(button); border: 1px solid palette(mid); border-radius: 6px; padding: 6px 16px; color: palette(buttontext); }"
-            "QPushButton:hover { background: palette(midlight); }"
+            "QPushButton { border-radius: 6px; padding: 6px 16px; }"
         )
         self.test_btn.clicked.connect(self._run_test)
         test_row.addWidget(self.test_btn)
 
         self.status_lbl = QtWidgets.QLabel("")
-        self.status_lbl.setStyleSheet("font-size: 11px; font-weight: 600;")
+        self.status_lbl.setStyleSheet(_STATUS_STYLE)
         test_row.addWidget(self.status_lbl, stretch=1)
         
         self.right_layout.addLayout(test_row)
 
-        # Default Model row (for this provider)
         self.model_container = QtWidgets.QWidget()
         model_vbox = QtWidgets.QVBoxLayout(self.model_container)
         model_vbox.setContentsMargins(0, 0, 0, 0)
@@ -170,7 +163,14 @@ class ProvidersPage(QtWidgets.QWidget):
         self.default_model_combo = QtWidgets.QComboBox()
         self.default_model_combo.setStyleSheet(UIHelpers.get_input_style())
         model_vbox.addWidget(self.default_model_combo)
-        
+
+        model_vbox.addWidget(QtWidgets.QLabel("Session Naming Model"))
+        self.naming_model_combo = QtWidgets.QComboBox()
+        self.naming_model_combo.setStyleSheet(UIHelpers.get_input_style())
+        self.naming_model_combo.setToolTip(
+            "Names a Session from its first message. Unset uses the chat model.")
+        model_vbox.addWidget(self.naming_model_combo)
+
         self.right_layout.addWidget(self.model_container)
 
         self.right_layout.addStretch()
@@ -179,12 +179,28 @@ class ProvidersPage(QtWidgets.QWidget):
         splitter.setSizes([200, 400])
         outer.addWidget(splitter, stretch=1)
 
-        # Initial state
         self._set_editor_enabled(False)
+
+    def showEvent(self, event):
+        """
+        Re-tint once Qt has polished the page (ADR-0011).
+
+        Only the first show: rebuilding the list is what re-tints its item
+        icons, and doing that on every show would reset the selection and
+        throw away a key the user had typed but not saved.
+        """
+        super().showEvent(event)
+        if self._tinted:
+            return
+        self._tinted = True
+        self.add_btn.setIcon(UIHelpers.get_icon("plus", size=16, on=self.add_btn))
+        self.test_btn.setIcon(UIHelpers.get_icon("refresh", size=16, on=self.test_btn))
+        self._update_visibility_icon(self.visibility_btn.isChecked())
+        self._populate_list()
 
     def _update_visibility_icon(self, visible):
         icon_name = "eye_open" if visible else "eye_closed"
-        self.visibility_btn.setIcon(UIHelpers.get_icon(icon_name, size=20))
+        self.visibility_btn.setIcon(UIHelpers.get_icon(icon_name, size=20, on=self.visibility_btn))
 
     def _toggle_visibility(self, checked):
         self.key_edit.setEchoMode(QtWidgets.QLineEdit.Normal if checked else QtWidgets.QLineEdit.Password)
@@ -206,7 +222,6 @@ class ProvidersPage(QtWidgets.QWidget):
             self._set_editor_enabled(False)
             return
 
-        # Save previous edit if needed (local only)
         if self._current_provider:
             self._edits[self._current_provider] = self.key_edit.text().strip()
         
@@ -214,12 +229,11 @@ class ProvidersPage(QtWidgets.QWidget):
         self._current_provider = provider
         self.title_lbl.setText(provider)
         
-        # Load from edits or settings
         if provider in self._edits:
             key = self._edits[provider]
         else:
-            from utils.settings_manager import SettingsManager
-            key = SettingsManager.instance().get_api_key_for_provider(provider)
+            from utils import settings_manager
+            key = settings_manager.instance().get_api_key_for_provider(provider)
         
         self.key_edit.setText(key)
         self.status_lbl.setText("")
@@ -228,39 +242,48 @@ class ProvidersPage(QtWidgets.QWidget):
         self._refresh_models()
 
     def _on_key_changed(self):
-        # We don't save immediately, saveSettings() handles it
         pass
+
+    def _on_models_changed(self, _models):
+        self._refresh_models()
 
     def _refresh_models(self):
         if not self._current_provider:
             return
         
-        from utils.provider_manager import ProviderManager
-        from utils.settings_manager import SettingsManager
+        from utils import provider_manager
+        from utils import settings_manager
         
         self.default_model_combo.clear()
-        # Filter models for this provider
-        models = ProviderManager.instance().get_models_for_provider(self._current_provider)
+        models = provider_manager.instance().get_models_for_provider(self._current_provider)
         for m in models:
-            # m is {'id': ..., 'display': ..., 'provider': ...}
             self.default_model_combo.addItem(m['display'], userData=m['id'])
             
-        # Restore selection
-        current_default = SettingsManager.instance().get_default_model()
+        current_default = settings_manager.instance().get_default_model()
         for i in range(self.default_model_combo.count()):
             if self.default_model_combo.itemData(i) == current_default:
                 self.default_model_combo.setCurrentIndex(i)
+                break
+
+        self.naming_model_combo.clear()
+        self.naming_model_combo.addItem("Same as the chat model", userData="")
+        for m in models:
+            self.naming_model_combo.addItem(m['display'], userData=m['id'])
+        current_naming = settings_manager.instance().get_naming_model()
+        for i in range(self.naming_model_combo.count()):
+            if self.naming_model_combo.itemData(i) == current_naming:
+                self.naming_model_combo.setCurrentIndex(i)
                 break
 
     def _run_test(self):
         key = self.key_edit.text().strip()
         if not key:
             self.status_lbl.setText("No key")
-            self.status_lbl.setStyleSheet("color: palette(mid);")
+            self.status_lbl.setStyleSheet(_STATUS_STYLE)
             return
 
         self.status_lbl.setText("Testing…")
-        self.status_lbl.setStyleSheet("color: palette(mid);")
+        self.status_lbl.setStyleSheet(_STATUS_STYLE)
         self.test_btn.setEnabled(False)
 
         self._worker = _TestWorker(self._current_provider, key)
@@ -275,31 +298,28 @@ class ProvidersPage(QtWidgets.QWidget):
         self.test_btn.setEnabled(True)
         if ok:
             self.status_lbl.setText("✓ Success")
-            self.status_lbl.setStyleSheet("color: #4caf50;")
+            self.status_lbl.setStyleSheet(_STATUS_STYLE + "color: #4caf50;")
         else:
             self.status_lbl.setText(f"✗ Error: {msg[:40]}…")
-            self.status_lbl.setStyleSheet("color: #f44336;")
+            self.status_lbl.setStyleSheet(_STATUS_STYLE + "color: #f44336;")
 
     def _add_custom_provider(self):
-        # For now, just a placeholder or list some known ones not yet added
         name, ok = QtWidgets.QInputDialog.getText(self, "Add Provider", "Provider Name:")
         if ok and name:
             item = QtWidgets.QListWidgetItem(name)
             item.setData(QtCore.Qt.UserRole, name)
-            item.setIcon(UIHelpers.get_icon("user", size=18))
+            item.setIcon(UIHelpers.get_icon("user", size=18, on=self.provider_list))
             self.provider_list.addItem(item)
             self.provider_list.setCurrentItem(item)
 
     def _populate_list(self):
-        from utils.provider_manager import ProviderManager
-        from utils.settings_manager import SettingsManager
+        from utils import provider_manager
+        from utils import settings_manager
         
         self.provider_list.clear()
         
-        # Get all supported providers
-        all_supported = ProviderManager.instance().get_all_providers()
-        # Also check if user has any others in settings
-        saved_keys = SettingsManager.instance().get_api_keys()
+        all_supported = provider_manager.instance().get_all_providers()
+        saved_keys = settings_manager.instance().get_api_keys()
         
         seen = set()
         for p in all_supported:
@@ -307,7 +327,7 @@ class ProvidersPage(QtWidgets.QWidget):
             item = QtWidgets.QListWidgetItem(p)
             item.setData(QtCore.Qt.UserRole, p)
             icon = "factory" if p != "Custom/Local" else "user"
-            item.setIcon(UIHelpers.get_icon(icon, size=18))
+            item.setIcon(UIHelpers.get_icon(icon, size=18, on=self.provider_list))
             self.provider_list.addItem(item)
             
         for key_info in saved_keys:
@@ -316,7 +336,7 @@ class ProvidersPage(QtWidgets.QWidget):
                 seen.add(p)
                 item = QtWidgets.QListWidgetItem(p)
                 item.setData(QtCore.Qt.UserRole, p)
-                item.setIcon(UIHelpers.get_icon("user", size=18))
+                item.setIcon(UIHelpers.get_icon("user", size=18, on=self.provider_list))
                 self.provider_list.addItem(item)
                 
         if self.provider_list.count() > 0:
@@ -328,18 +348,14 @@ class ProvidersPage(QtWidgets.QWidget):
         self._populate_list()
 
     def saveSettings(self):
-        from utils.settings_manager import SettingsManager
-        sm = SettingsManager.instance()
+        from utils import settings_manager
+        sm = settings_manager.instance()
         
-        # Final current edit
         if self._current_provider:
             self._edits[self._current_provider] = self.key_edit.text().strip()
 
         if not self._edits:
-            # We still might want to save the default model even if no keys changed
-            mid = self.default_model_combo.currentData()
-            if mid:
-                sm.set_default_model(mid)
+            self._save_models(sm)
             return
 
         current_keys = sm.get_api_keys()
@@ -356,8 +372,15 @@ class ProvidersPage(QtWidgets.QWidget):
         
         sm.set_api_keys(current_keys)
         self._edits.clear()
-        
-        # Save default model
+
+        self._save_models(sm)
+
+    def _save_models(self, sm):
         mid = self.default_model_combo.currentData()
         if mid:
             sm.set_default_model(mid)
+        # "" is the "Same as the chat model" row, which is a choice and has to be
+        # writable; None only means the combo has nothing selected at all.
+        naming = self.naming_model_combo.currentData()
+        if naming is not None:
+            sm.set_naming_model(naming)

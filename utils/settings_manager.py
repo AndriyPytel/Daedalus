@@ -7,6 +7,8 @@ of calling FreeCAD.ParamGet directly.  Qt signals let the Chat UI react to
 preference changes in real-time without restarting FreeCAD.
 """
 import json
+from functools import lru_cache
+
 import FreeCAD
 from PySide.QtCore import QObject, Signal
 
@@ -15,14 +17,13 @@ _PARAM_PATH = "User parameter:BaseApp/Preferences/FreeCadCopilot"
 
 class _SettingsManager(QObject):
     """
-    Internal singleton implementation.  Access via ``SettingsManager.instance()``.
+    Internal singleton implementation.  Access via ``settings_manager.instance()``.
     """
 
     # ── Signals ──────────────────────────────────────────────────────────────
     api_keys_changed    = Signal(list)   # emitted after any key add/remove/edit
     default_model_changed = Signal(str)  # emitted when the default model pref changes
     last_model_changed  = Signal(str)    # emitted when the chat-UI last-used model changes
-    user_prompts_changed = Signal()      # emitted when user prompts are saved
 
     def __init__(self):
         super().__init__()
@@ -66,6 +67,25 @@ class _SettingsManager(QObject):
         keys.append({"provider": provider, "api_key": key})
         self.set_api_keys(keys)
 
+    # ── Sessions ─────────────────────────────────────────────────────────────
+
+    def get_sessions(self) -> list:
+        """
+        The Session index: name, created_at, document, and the log's path.
+
+        Only the index lives here. The transcript stays where the event stream
+        already writes it — one JSON object per line, appended per event.
+        """
+        raw = self._grp().GetString("Sessions", "[]")
+        try:
+            sessions = json.loads(raw)
+        except (json.JSONDecodeError, ValueError):
+            return []
+        return sessions if isinstance(sessions, list) else []
+
+    def set_sessions(self, sessions: list):
+        self._grp().SetString("Sessions", json.dumps(sessions))
+
     # ── Default model (set in Preferences) ──────────────────────────────────
 
     def get_default_model(self) -> str:
@@ -74,6 +94,20 @@ class _SettingsManager(QObject):
     def set_default_model(self, model_id: str):
         self._grp().SetString("DefaultModel", model_id)
         self.default_model_changed.emit(model_id)
+
+    # ── Naming model (set in Preferences) ───────────────────────────────────
+
+    def get_naming_model(self) -> str:
+        """
+        Which model names a Session. Empty means whichever the combo is on.
+
+        Not a hardcoded cheap model: that assumes a key for one provider, so on
+        a local-only or single-provider setup naming would silently never fire.
+        """
+        return self._grp().GetString("NamingModel", "")
+
+    def set_naming_model(self, model_id: str):
+        self._grp().SetString("NamingModel", model_id)
 
     # ── Last-used model (set by Chat UI, persists across sessions) ────────────
 
@@ -84,7 +118,6 @@ class _SettingsManager(QObject):
         default = self.get_default_model()
         if default:
             return default
-        # Legacy fallback
         return self._grp().GetString("SelectedModel", "")
 
     def set_last_model(self, model_id: str):
@@ -92,42 +125,6 @@ class _SettingsManager(QObject):
         self.last_model_changed.emit(model_id)
 
 
-
-    # ── User-defined prompts (CRUD via PromptManager) ─────────────────────────
-
-    def get_user_prompts(self) -> dict:
-        raw = self._grp().GetString("UserPrompts", "{}")
-        try:
-            return json.loads(raw)
-        except (json.JSONDecodeError, ValueError):
-            return {}
-
-    def set_user_prompts(self, prompts: dict):
-        self._grp().SetString("UserPrompts", json.dumps(prompts))
-        self.user_prompts_changed.emit()
-
-    # ── Legacy agent system prompts (kept for backward compat) ──────────────
-
-    def get_agent_prompts(self) -> dict:
-        """Returns per-agent override prompts dict."""
-        grp = self._grp()
-        return {
-            "global":       grp.GetString("GlobalSystemPrompt", "You are a helpful AI Assistant for FreeCAD."),
-            "orchestrator": grp.GetString("OrchestratorPrompt", ""),
-            "designer":     grp.GetString("DesignerPrompt", ""),
-            "developer":    grp.GetString("DeveloperPrompt", ""),
-            "validator":    grp.GetString("ValidatorPrompt", ""),
-            "reviewer":     grp.GetString("ReviewerPrompt", ""),
-        }
-
-    def set_agent_prompts(self, prompts: dict):
-        grp = self._grp()
-        grp.SetString("GlobalSystemPrompt", prompts.get("global", ""))
-        grp.SetString("OrchestratorPrompt", prompts.get("orchestrator", ""))
-        grp.SetString("DesignerPrompt",     prompts.get("designer", ""))
-        grp.SetString("DeveloperPrompt",    prompts.get("developer", ""))
-        grp.SetString("ValidatorPrompt",    prompts.get("validator", ""))
-        grp.SetString("ReviewerPrompt",     prompts.get("reviewer", ""))
 
     # ── Convenience: credentials for LLM ────────────────────────────────────
 
@@ -137,12 +134,12 @@ class _SettingsManager(QObject):
         or for the last-/default-model if model_id is None.
         Raises ValueError if not configured.
         """
-        from utils.provider_manager import ProviderManager
+        from utils import provider_manager
         mid = model_id or self.get_last_model()
         if not mid:
             raise ValueError("No model selected. Configure API keys in Preferences.")
 
-        entry = ProviderManager.instance().get_model_entry(mid)
+        entry = provider_manager.instance().get_model_entry(mid)
         if not entry:
             raise ValueError(f"Unknown model '{mid}'. Check your Preferences.")
 
@@ -157,15 +154,6 @@ class _SettingsManager(QObject):
 
 # ── Singleton accessor ────────────────────────────────────────────────────────
 
-_instance: _SettingsManager = None
-
-
-class SettingsManager:
-    """Public singleton facade — use ``SettingsManager.instance()``."""
-
-    @staticmethod
-    def instance() -> _SettingsManager:
-        global _instance
-        if _instance is None:
-            _instance = _SettingsManager()
-        return _instance
+@lru_cache(maxsize=None)
+def instance() -> _SettingsManager:
+    return _SettingsManager()

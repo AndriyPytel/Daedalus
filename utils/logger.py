@@ -34,7 +34,6 @@ def _setup_session_log() -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_file  = os.path.join(log_dir, f"addon_{timestamp}.log")
 
-        # Rotate – delete oldest files beyond the limit
         existing = sorted(
             [f for f in os.listdir(log_dir) if f.startswith("addon_") and f.endswith(".log")]
         )
@@ -70,12 +69,10 @@ def get_logger(name: str = "FreeCadCopilot") -> logging.Logger:
 
     lg.setLevel(logging.DEBUG)
 
-    # Console handler
     ch = _FreeCADHandler()
     ch.setFormatter(logging.Formatter("[Copilot %(levelname)s] %(message)s"))
     lg.addHandler(ch)
 
-    # File handler (session file)
     if _session_log_file:
         try:
             fh = logging.FileHandler(_session_log_file, encoding="utf-8")
@@ -112,7 +109,6 @@ def generate_crash_report(exc: Exception, context: str = "") -> str:
     Includes OS, Python version, FreeCAD version, and a short traceback.
     """
     tb_lines = traceback.format_exc().strip().splitlines()
-    # keep last 10 lines to stay concise
     short_tb = "\n".join(tb_lines[-10:])
 
     try:
@@ -134,40 +130,7 @@ def generate_crash_report(exc: Exception, context: str = "") -> str:
         f"{short_tb}"
     )
 
-    # Also write full trace to session file
     log_exception(exc, context)
     return report
 
 
-def is_transient_api_error(exc: Exception) -> bool:
-    """
-    Check if the exception is an LLM quota, rate limit, or transient server error.
-    Works for Google, OpenAI, and Anthropic via type name and message checking.
-    """
-    name = type(exc).__name__
-    msg  = str(exc).lower()
-
-    # Known type names from langchain/provider libs
-    if name in ["ResourceExhausted", "RateLimitError", "ServerError", "ServiceUnavailable", "InternalServerError", "GatewayTimeout"]:
-        return True
-
-    # Common substrings in quota/rate limit error messages
-    keywords = [
-        "quota exceeded",
-        "rate limit",
-        "resource has been exhausted",
-        "insufficient_quota",
-        "excessive_request_rate",
-        "429",
-        "503",
-        "500",
-        "502",
-        "504",
-        "unavailable"
-    ]
-    return any(k in msg for k in keywords)
-
-
-def get_session_log_path() -> str:
-    """Return the path of the active session log file."""
-    return _session_log_file

@@ -6,15 +6,12 @@ import subprocess
 import importlib.util
 from PySide.QtGui import QMessageBox
 
-# List of required packages for the addon
-REQUIRED_PACKAGES = [
-    "langchain",
-    "langchain_core",
-    "langchain_openai",
-    "langchain_google_genai",
-    "langchain_anthropic",
-    "pydantic"
-]
+# pip name -> import name for the addon's required packages; the two differ for Pillow
+REQUIRED_PACKAGES = {
+    "litellm": "litellm",
+    "numpy": "numpy",
+    "Pillow": "PIL",
+}
 
 def get_target_directory():
     """
@@ -26,17 +23,21 @@ def get_target_directory():
         os.makedirs(path)
     return path
 
-def check_package(package_name):
+def check_package(module_name):
     """
-    Checks if a specific Python package is installed and available.
+    Checks if a specific Python module is importable.
     It temporarily adds the target directory to the path to ensure detection.
     """
     target_dir = get_target_directory()
     if target_dir not in sys.path:
         sys.path.insert(0, target_dir)
-    
-    spec = importlib.util.find_spec(package_name)
+
+    spec = importlib.util.find_spec(module_name)
     return spec is not None
+
+def missing_packages():
+    """The pip names of the required packages whose module does not import."""
+    return [pip_name for pip_name, module in REQUIRED_PACKAGES.items() if not check_package(module)]
 
 def install_package(package_name, target_directory):
     """
@@ -94,9 +95,9 @@ def run_dependency_check():
     if target_dir not in sys.path:
         sys.path.insert(0, target_dir)
 
-    missing_packages = [pkg for pkg in REQUIRED_PACKAGES if not check_package(pkg)]
+    missing = missing_packages()
 
-    if not missing_packages:
+    if not missing:
         FreeCAD.Console.PrintMessage("[FreeCadCopilot] All required packages are installed.\n")
         return
 
@@ -106,7 +107,7 @@ def run_dependency_check():
     msg_box.setText("FreeCadCopilot - Additional Dependencies Required")
     msg_box.setInformativeText(
         "The following Python packages are missing and need to be installed:\n\n"
-        f"  - {', '.join(missing_packages)}\n\n"
+        f"  - {', '.join(missing)}\n\n"
         "Do you want to install them now? This may take a few moments.\n"
         "The installation progress will be shown in the FreeCAD Report view."
     )
@@ -120,7 +121,7 @@ def run_dependency_check():
     # Install missing packages
     FreeCAD.Console.PrintMessage("--- [FreeCadCopilot] Starting dependency installation ---\n")
     all_successful = True
-    for package in missing_packages:
+    for package in missing:
         FreeCAD.Console.PrintMessage(f"Installing '{package}'...\n")
         success, error_msg = install_package(package, target_dir)
         if success:

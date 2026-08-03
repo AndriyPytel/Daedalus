@@ -9,35 +9,39 @@ class HistoryItem(QtWidgets.QFrame):
     selected = QtCore.Signal(int)
     deleted = QtCore.Signal(int)
 
-    def __init__(self, index, name, created_at: QtCore.QDateTime):
+    def __init__(self, index, name, created_at: float, document: str = ""):
         super().__init__()
         self.index = index
         self.setObjectName("HistoryItem")
-        self.setFixedHeight(48)
+        self.setFixedHeight(28)
         self.setCursor(QtCore.Qt.PointingHandCursor)
-        
+        self.setToolTip(document)
+
         layout = QtWidgets.QHBoxLayout(self)
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(8)
 
-        # Title and timestamp container
-        text_layout = QtWidgets.QVBoxLayout()
-        text_layout.setSpacing(2)
-        text_layout.setContentsMargins(0, 8, 0, 8)
-
         self.title_label = QtWidgets.QLabel(name)
         self.title_label.setObjectName("HistoryTitle")
         self.title_label.setStyleSheet("font-weight: 500; font-size: 13px; background: transparent;")
-        
+        # The list is scanned by name, so the name takes the room and the time
+        # is what gives way — see resizeEvent.
+        self.title_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
+                                       QtWidgets.QSizePolicy.Preferred)
+
         self.time_label = QtWidgets.QLabel(self._format_relative_time(created_at))
         self.time_label.setObjectName("HistoryTime")
-        self.time_label.setStyleSheet("font-size: 11px; opacity: 0.7; background: transparent;")
-        
-        text_layout.addWidget(self.title_label)
-        text_layout.addWidget(self.time_label)
-        layout.addLayout(text_layout, stretch=1)
+        self.time_label.setStyleSheet("font-size: 11px; background: transparent;")
+        self.time_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        # An effect, not a colour: the theme decides what the text is, this only
+        # says the time is worth less than the name (ADR-0011).
+        dim = QtWidgets.QGraphicsOpacityEffect(self.time_label)
+        dim.setOpacity(0.6)
+        self.time_label.setGraphicsEffect(dim)
 
-        # Delete button
+        layout.addWidget(self.title_label, stretch=1)
+        layout.addWidget(self.time_label)
+
         import os
         icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Resources", "icons", "trash.svg")
         self.del_btn = QtWidgets.QPushButton()
@@ -55,11 +59,6 @@ class HistoryItem(QtWidgets.QFrame):
                 border: none;
                 border-radius: 4px;
                 font-size: 14px;
-                color: palette(text);
-            }
-            QPushButton#DeleteButton:hover {
-                background-color: palette(midlight);
-                color: #ff4d4d;
             }
         """)
         self.del_btn.clicked.connect(lambda: self.deleted.emit(self.index))
@@ -71,17 +70,26 @@ class HistoryItem(QtWidgets.QFrame):
                 background-color: transparent;
             }
             QFrame#HistoryItem:hover {
-                background-color: palette(midlight);
+                background-color: rgba(127, 127, 127, 40);
             }
         """)
 
-    def _format_relative_time(self, dt: QtCore.QDateTime) -> str:
+    def _format_relative_time(self, created_at: float) -> str:
+        dt = QtCore.QDateTime.fromSecsSinceEpoch(int(created_at or 0))
         now = QtCore.QDateTime.currentDateTime()
         secs = dt.secsTo(now)
         if secs < 60: return "Just now"
         if secs < 3600: return f"{secs // 60}m ago"
         if secs < 86400: return f"{secs // 3600}h ago"
         return dt.toString("MMM d")
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        margins = self.layout().contentsMargins()
+        room = (self.width() - margins.left() - margins.right()
+                - self.del_btn.width() - 2 * self.layout().spacing()
+                - self.title_label.sizeHint().width())
+        self.time_label.setVisible(room >= self.time_label.sizeHint().width())
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
@@ -98,52 +106,33 @@ class HistoryPopup(QtWidgets.QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint)
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
         self.setObjectName("HistoryPopup")
-        self.setFixedWidth(280)
         self.setFixedHeight(400)
 
-        # Shadow effect
-        shadow = QtWidgets.QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setOffset(0, 5)
-        shadow.setColor(QtGui.QColor(0, 0, 0, 80))
-        self.setGraphicsEffect(shadow)
-
-        # Main container with border/bg
+        # Opaque, so the theme paints it: translucent needed a colour of its own (ADR-0011).
         container = QtWidgets.QFrame(self)
         container.setObjectName("PopupContainer")
-        container.setGeometry(10, 10, 260, 380) # Account for shadow padding
-        container.setStyleSheet("""
-            QFrame#PopupContainer {
-                background-color: palette(window);
-                border: 1px solid palette(mid);
-                border-radius: 12px;
-            }
-        """)
-        
+        frame = QtWidgets.QVBoxLayout(self)
+        frame.setContentsMargins(0, 0, 0, 0)
+        frame.addWidget(container)
+
         vbox = QtWidgets.QVBoxLayout(container)
         vbox.setContentsMargins(8, 12, 8, 12)
         vbox.setSpacing(10)
 
-        # Search bar
         self.search_input = QtWidgets.QLineEdit()
         self.search_input.setPlaceholderText("Select a conversation")
         self.search_input.setObjectName("HistorySearch")
         self.search_input.setStyleSheet("""
             QLineEdit#HistorySearch {
-                background-color: palette(base);
-                border: 1px solid palette(mid);
                 border-radius: 6px;
                 padding: 6px 10px;
                 font-size: 13px;
-                color: palette(text);
             }
         """)
         self.search_input.textChanged.connect(self.filter_items)
         vbox.addWidget(self.search_input)
 
-        # Scroll area for items
         self.scroll = QtWidgets.QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
@@ -163,14 +152,14 @@ class HistoryPopup(QtWidgets.QFrame):
 
     def populate(self, sessions_info: list):
         """Rebuild the list from session data."""
-        # Clear existing
         while self.list_layout.count() > 1:
             item = self.list_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
         
         for i, info in enumerate(sessions_info):
-            item = HistoryItem(i, info["name"], info["created_at"])
+            item = HistoryItem(i, info["name"], info.get("created_at"),
+                               info.get("document") or "")
             item.selected.connect(self._on_selected)
             item.deleted.connect(self._on_deleted)
             self.list_layout.insertWidget(self.list_layout.count() - 1, item)
@@ -181,7 +170,6 @@ class HistoryPopup(QtWidgets.QFrame):
 
     def _on_deleted(self, index):
         self.session_deleted.emit(index)
-        # Populate will be called again by panel to refresh
 
     def filter_items(self, text):
         text = text.lower()
@@ -190,16 +178,11 @@ class HistoryPopup(QtWidgets.QFrame):
             if isinstance(widget, HistoryItem):
                 widget.setVisible(text in widget.title_label.text().lower())
 
-    def show_at(self, pos: QtCore.QPoint):
-        self.move(pos - QtCore.QPoint(self.width() // 2, 0))
-        self.show()
-        self.search_input.setFocus()
-
-    def show_center(self):
-        # Center on the primary screen
-        # In PySide, QApplication.desktop() returns QDesktopWidget
-        screen_geo = QtWidgets.QApplication.desktop().screenGeometry()
-        center = screen_geo.center()
-        self.move(center.x() - self.width() // 2, center.y() - self.height() // 2)
+    def drop_from_the_dock(self):
+        """Down from the top of the copilot dock, exactly as wide as it is."""
+        dock = self.parentWidget()
+        area = dock.widget() or dock
+        self.setFixedWidth(area.width())
+        self.move(area.mapToGlobal(QtCore.QPoint(0, 0)))
         self.show()
         self.search_input.setFocus()
