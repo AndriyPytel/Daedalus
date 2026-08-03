@@ -330,6 +330,82 @@ def test_a_session_is_replayed_once_however_often_it_is_opened(panel, tmp_path):
     assert len(_widgets_in(panel)) == first, "the transcript was rendered twice"
 
 
+def _a_long_transcript(path, steps):
+    from core.events import APPLIED, EventStream
+
+    stream = EventStream()
+    stream.log_to(path)
+    for step in range(steps):
+        stream.emit(APPLIED, step=step, label="Box%d" % step, created=["Box%d" % step])
+
+
+def _spin(times=50):
+    """Give the event loop the turns a chunked replay asks for."""
+    from conftest import QT_APP
+
+    for _ in range(times):
+        QT_APP.processEvents()
+
+
+def test_a_long_transcript_is_replayed_a_chunk_at_a_time(panel, tmp_path, monkeypatch):
+    """
+    Opening a Session with hundreds of Steps used to replay them all in one
+    pass on the GUI thread, and the panel was frozen for the duration. FCC-16.
+    """
+    from ui import copilot_panel
+
+    log = str(tmp_path / "long.jsonl")
+    _a_long_transcript(log, 120)
+    index, _ = panel.chat_sessions.add_new_chat("long")
+    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+
+    replayed = []
+    real = panel.on_event
+    monkeypatch.setattr(panel, "on_event", lambda event: replayed.append(event) or real(event))
+
+    panel.switch_session(index)
+
+    assert len(replayed) == copilot_panel.RESTORE_CHUNK, \
+        "the whole transcript was replayed before the event loop got a turn"
+
+    _spin()
+
+    assert len(replayed) == 120, "the rest of the transcript never arrived"
+
+
+def test_a_short_transcript_still_lands_in_one_go(panel, tmp_path):
+    """Chunking must not make the common case wait for an event-loop turn."""
+    log = str(tmp_path / "short.jsonl")
+    _a_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("short")
+    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+
+    panel.switch_session(index)
+
+    assert "Review: pass" in _said_in(panel)
+
+
+def test_switching_away_mid_replay_abandons_the_rest(panel, tmp_path, monkeypatch):
+    """The remaining chunks must not render into whichever Session is open now."""
+    log = str(tmp_path / "abandoned.jsonl")
+    _a_long_transcript(log, 120)
+    index, _ = panel.chat_sessions.add_new_chat("abandoned")
+    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+    elsewhere, _ = panel.chat_sessions.add_new_chat("elsewhere")
+
+    replayed = []
+    real = panel.on_event
+    monkeypatch.setattr(panel, "on_event", lambda event: replayed.append(event) or real(event))
+
+    panel.switch_session(index)
+    panel.switch_session(elsewhere)
+    _spin()
+
+    from ui import copilot_panel
+    assert len(replayed) == copilot_panel.RESTORE_CHUNK
+    assert _widgets_in(panel) == [], "another Session's transcript landed here"
+
+
 def test_a_truncated_transcript_shows_what_survived_and_says_so(panel, tmp_path):
     log = str(tmp_path / "crashed.jsonl")
     _a_transcript(log)
