@@ -173,6 +173,46 @@ def test_the_traps_land_in_the_prompts_that_ask_for_them():
     assert TRAPS[0] not in review_system
 
 
+def test_the_sketch_construction_rule_reaches_plan_and_execute():
+    """
+    The method rule is prompt copy, not a trap — it is how to build a Sketch,
+    not knowledge about this FreeCAD build. It has to reach both phases that
+    author geometry, and Review, which only judges the outcome, does not
+    need it. FCC-20.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    # The prompts are wrapped copy; a sentence crosses line breaks.
+    plan_system, execute_system, review_system = (
+        " ".join(text.split()) for text in _system_messages(llm))
+
+    for text in (plan_system, execute_system):
+        assert "computed coordinates" in text or "coordinates you compute" in text
+        assert "must genuinely be driven" in text
+    assert "same centre" in plan_system
+    assert "same centre vector" in execute_system
+    assert "never invent a constraint type" in execute_system
+    assert "must genuinely be driven" not in review_system
+
+
+def test_the_constraint_spellings_are_a_trap_not_prompt_copy():
+    """
+    Which constraint types exist is knowledge about a specific FreeCAD build,
+    so it lives in TRAPS and lands through the placeholder. FCC-20.
+    """
+    spellings = [trap for trap in TRAPS if "no 'Concentric'" in trap]
+
+    assert len(spellings) == 1, "the constraint spellings are not a single trap"
+    assert "Coincident', a, 3, b, 3" in spellings[0]
+    for phase in ("plan", "execute"):
+        with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
+            assert "Concentric" not in handle.read(), \
+                "a build-specific spelling was written into %s.md" % phase
+
+
 def test_a_missing_prompt_file_raises_rather_than_sending_an_empty_prompt():
     with pytest.raises(IOError):
         prompt("no_such_phase")

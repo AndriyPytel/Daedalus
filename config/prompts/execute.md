@@ -11,6 +11,13 @@ FreeCAD with a look before you write code. It answers about this exact build.
 The Step's code must still change the Document; defining a function you never
 call changes nothing and counts as a failed Step.
 
+Place sketch geometry at coordinates you compute, not by adding a constraint
+afterwards to arrange it. Give two circles the same centre vector rather than
+constraining them together; work out positions and sizes as arithmetic on the
+Step's parameters. Add a constraint only where a parameter must genuinely be
+driven — where changing one value has to move the rest — and never invent a
+constraint type.
+
 Reply with JSON only, one of:
   {"look": {"tool": "...", "arguments": {...}}}   to ask, before committing to code
   {"code": "...", "label": "short name for the undo entry"}

@@ -28,6 +28,15 @@ TRAPS = [
     "Body.addObject moves Body.Tip to the feature you just added. Capture the base "
     "feature before adding, or a dressup such as PartDesign::Fillet will end up "
     "referencing itself and fail to recompute.",
+    "The constraint types this build has are Angle, Block, Coincident, Diameter, "
+    "Distance, DistanceX, DistanceY, Equal, Horizontal, InternalAlignment, Parallel, "
+    "Perpendicular, PointOnObject, Radius, SnellsLaw, Symmetric, Tangent, "
+    "TangentViaPoint, Vertical and Weight. There is no 'Concentric': concentricity is "
+    "Coincident between the two centres — Sketcher.Constraint('Coincident', a, 3, b, 3), "
+    "where the position id is 0 for the edge itself, 1 start, 2 end, 3 centre. A type "
+    "name this build does not have, or one of these at the wrong number of arguments, "
+    "takes the FreeCAD core down inside the C++ constructor rather than raising, so "
+    "there is no traceback to correct against.",
 ]
 
 _SNAPSHOT_LIMIT = 200
