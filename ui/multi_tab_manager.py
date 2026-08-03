@@ -157,6 +157,7 @@ class ChatSessionManager(QtWidgets.QWidget):
     # ── Public API ───────────────────────────────────────────────────────────
 
     def add_new_chat(self, name: str = "New Chat", document: str = ""):
+        self._prune(KEEP - 1)
         idx, area = self._add({
             "name": name,
             "created_at": time.time(),
@@ -168,6 +169,16 @@ class ChatSessionManager(QtWidgets.QWidget):
         self._save()
         self.session_added.emit(idx, name)
         return idx, area
+
+    def _prune(self, keep: int):
+        """
+        Drop the oldest Sessions past the bound, transcripts included.
+
+        Pruning before the new Session is added rather than after keeps the
+        index `add_new_chat` returns pointing at what it just created.
+        """
+        while len(self._sessions) > keep:
+            self.remove_session(0)
 
     def _add(self, record):
         """One Session: its record, its chat area, and the stack page holding it."""
