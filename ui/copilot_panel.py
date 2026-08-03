@@ -289,6 +289,22 @@ class LoopWorker(QtCore.QObject):
             self.finished.emit(None)
 
 
+class _TitleThread(QtCore.QThread):
+    """One short call naming a Session, off the UI thread so the run is not held up."""
+
+    titled = QtCore.Signal(str)
+
+    def __init__(self, intent: str, model_id: str, parent=None):
+        super().__init__(parent)
+        self._intent = intent
+        self._model_id = model_id
+
+    def run(self):
+        from core.session_title import generate
+
+        self.titled.emit(generate(self._intent, self._model_id))
+
+
 # ── Main Panel ─────────────────────────────────────────────────────────────────
 
 # Events replayed per event-loop turn when a Session is opened. Small enough
@@ -364,6 +380,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._running = False
         self._empty_state = None
         self._sent_attachments: list[str] = []
+        self._title_threads = []
         self._reset_render_state()
 
         self.thread.start()
@@ -375,13 +392,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.chat_sessions.session_changed.connect(self.update_header_title)
         self.chat_sessions.session_removed.connect(lambda _: self.update_header_title(self.chat_sessions.stack.currentIndex()))
 
-        if self.chat_sessions.load():
-            last = self.chat_sessions.count() - 1
-            self.chat_sessions.switch_to(last)
-            self.restore_session(last)
-            self.update_header_title(last)
-        else:
-            self.new_chat()
+        # Every launch opens an empty Session; the earlier ones stay in the
+        # picker with their transcripts intact (FCC-42).
+        self.chat_sessions.load()
+        self.new_chat()
 
     # ── Builder helpers ────────────────────────────────────────────────────────
 
@@ -620,8 +634,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.history_popup.drop_from_the_dock()
 
     def new_chat(self):
-        n = self.chat_sessions.count() + 1
-        idx, _ = self.chat_sessions.add_new_chat("Chat %d" % n)
+        # Its real name comes from its first Intent, so there is nothing to call
+        # it yet — and "Chat 3" is what FCC-44 exists to remove.
+        idx, _ = self.chat_sessions.add_new_chat("New Chat")
         self._became_the_live_session()
         self.update_header_title(idx)
         self._empty_state = self._build_empty_state()
@@ -780,7 +795,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if not intent:
             return
 
-        session = self.chat_sessions.get_session_info(self.chat_sessions.stack.currentIndex())
+        index = self.chat_sessions.stack.currentIndex()
+        session = self.chat_sessions.get_session_info(index)
         if session is None:
             return
 
@@ -790,6 +806,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
                 "This would not have reached the model:\n\n"
                 + "\n".join("• " + reason for reason in unusable)))
             return
+
+        # After the attachment check, never before it: an Intent that is turned
+        # away here never ran, and must not name the Session.
+        self._name_session(index, session["log"], intent)
 
         attachments = self.chip_bar.get_and_clear()
         self._sent_attachments = attachments
@@ -806,6 +826,37 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.status_line.setText("Planning…")
         self.status_line.setVisible(True)
         self.request_work.emit(intent, attachments, session["log"])
+
+    def _name_session(self, index: int, log: str, intent: str):
+        """
+        The Session takes its name from this Intent, and enters the picker.
+
+        The truncated Intent goes up immediately so nothing is ever called
+        "Untitled"; the generated title replaces it when it arrives, and is
+        asked for again on the next Intent if this one produced none (FCC-44).
+        """
+        from core.session_title import fallback
+
+        if self.chat_sessions.begin(index, fallback(intent)):
+            # begin() bounds the index and may have dropped Sessions before this
+            # one, so the position it had is not the position it has.
+            index = self.chat_sessions.stack.currentIndex()
+            self.update_header_title(index)
+        if self.chat_sessions.wants_a_title(index):
+            self._ask_for_a_title(log, intent)
+
+    def _ask_for_a_title(self, log: str, intent: str):
+        """Alongside the run, never in front of it."""
+        thread = _TitleThread(intent, settings_manager.instance().get_naming_model(), self)
+        thread.titled.connect(lambda title: self._title_arrived(log, title))
+        # Qt owns the thread; without a reference it is collected mid-flight.
+        self._title_threads.append(thread)
+        thread.finished.connect(lambda: self._title_threads.remove(thread))
+        thread.start()
+
+    def _title_arrived(self, log: str, title: str):
+        if self.chat_sessions.title_arrived(log, title):
+            self.update_header_title(self.chat_sessions.stack.currentIndex())
 
     def on_stop(self):
         if self._gate_card is not None:

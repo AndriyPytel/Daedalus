@@ -410,6 +410,159 @@ def test_a_row_never_changes_height_under_the_cursor(panel):
     QT_APP.processEvents()
 
     assert row.height() == resting
+# ── A Session enters history on its first Intent (FCC-42, FCC-44) ─────────────
+
+
+def test_a_session_with_no_intent_is_not_in_the_history_index(panel):
+    """
+    Fifty promptless launches would otherwise evict fifty real Sessions:
+    load() keeps the newest KEEP and deletes the log of everything past it.
+    """
+    from utils import settings_manager
+
+    before = settings_manager.instance().get_sessions()
+
+    panel.chat_sessions.add_new_chat("New Chat")
+
+    assert settings_manager.instance().get_sessions() == before
+
+
+def test_the_first_intent_puts_the_session_in_history_under_a_name(panel):
+    from utils import settings_manager
+
+    index, _ = panel.chat_sessions.add_new_chat("New Chat")
+
+    panel.chat_sessions.begin(index, "Two-bore bracket")
+
+    stored = settings_manager.instance().get_sessions()
+    assert stored[-1]["name"] == "Two-bore bracket"
+    assert panel.chat_sessions.get_session_info(index)["name"] == "Two-bore bracket"
+
+
+def test_a_session_only_enters_history_once(panel):
+    """The second Intent must not add a second row for the same Session."""
+    from utils import settings_manager
+
+    index, _ = panel.chat_sessions.add_new_chat("New Chat")
+    panel.chat_sessions.begin(index, "first")
+    count = len(settings_manager.instance().get_sessions())
+
+    assert not panel.chat_sessions.begin(index, "second")
+    assert len(settings_manager.instance().get_sessions()) == count
+    assert panel.chat_sessions.get_session_info(index)["name"] == "first"
+
+
+def test_a_generated_title_replaces_the_fallback_but_only_once(panel):
+    index, _ = panel.chat_sessions.add_new_chat("New Chat")
+    panel.chat_sessions.begin(index, "make me a bracket with tw…")
+    log = panel.chat_sessions.get_session_info(index)["log"]
+
+    assert panel.chat_sessions.title_arrived(log, "Two-bore bracket")
+    assert not panel.chat_sessions.title_arrived(log, "Something else")
+    assert panel.chat_sessions.get_session_info(index)["name"] == "Two-bore bracket"
+
+
+def test_a_title_lands_on_the_session_that_asked_for_it(panel):
+    """
+    The call outlives the Session's position in the stack. Keyed by the index,
+    deleting a Session while a title was in flight renames its neighbour.
+    """
+    doomed, _ = panel.chat_sessions.add_new_chat("New Chat")
+    panel.chat_sessions.begin(doomed, "the one that gets deleted")
+    asker, _ = panel.chat_sessions.add_new_chat("New Chat")
+    panel.chat_sessions.begin(asker, "the one that asked")
+    log = panel.chat_sessions.get_session_info(asker)["log"]
+
+    panel.chat_sessions.remove_session(doomed)
+
+    assert panel.chat_sessions.title_arrived(log, "Two-bore bracket")
+    moved = next(i for i in range(panel.chat_sessions.count())
+                 if panel.chat_sessions.get_session_info(i)["log"] == log)
+    assert panel.chat_sessions.get_session_info(moved)["name"] == "Two-bore bracket"
+
+
+def test_a_manual_rename_is_never_overwritten_by_a_generated_title(panel):
+    index, _ = panel.chat_sessions.add_new_chat("New Chat")
+    panel.chat_sessions.begin(index, "make me a bracket with tw…")
+    log = panel.chat_sessions.get_session_info(index)["log"]
+
+    panel.chat_sessions.rename_session(index, "mine")
+
+    assert not panel.chat_sessions.title_arrived(log, "Two-bore bracket")
+    assert panel.chat_sessions.get_session_info(index)["name"] == "mine"
+
+
+def test_a_manual_rename_before_the_first_intent_also_wins(panel):
+    """The generated title lands later, and the name it would replace is the user's."""
+    index, _ = panel.chat_sessions.add_new_chat("New Chat")
+
+    panel.chat_sessions.rename_session(index, "mine")
+    panel.chat_sessions.begin(index, "the truncated intent")
+    log = panel.chat_sessions.get_session_info(index)["log"]
+
+    assert panel.chat_sessions.get_session_info(index)["name"] == "mine"
+    assert not panel.chat_sessions.title_arrived(log, "Two-bore bracket")
+
+
+def test_a_session_still_waiting_for_its_title_asks_again(panel):
+    """A Refusal on the first Intent leaves the retry open for the next one."""
+    index, _ = panel.chat_sessions.add_new_chat("New Chat")
+    panel.chat_sessions.begin(index, "the truncated intent")
+    log = panel.chat_sessions.get_session_info(index)["log"]
+
+    assert panel.chat_sessions.wants_a_title(index)
+    panel.chat_sessions.title_arrived(log, "Two-bore bracket")
+    assert not panel.chat_sessions.wants_a_title(index)
+
+
+def test_a_launch_opens_an_empty_session_and_keeps_the_earlier_ones(sessions_are_the_tests_own):
+    """
+    The panel used to reopen the last Session with its transcript. FCC-42.
+    """
+    from ui.copilot_panel import CopilotPanel
+    from utils import settings_manager
+
+    first = CopilotPanel()
+    try:
+        first.chat_sessions.begin(first.chat_sessions.stack.currentIndex(), "yesterday")
+    finally:
+        first._cleanup_thread()
+
+    relaunched = CopilotPanel()
+    try:
+        live = relaunched.chat_sessions.stack.currentIndex()
+        assert not relaunched.chat_sessions.get_session_info(live)["indexed"]
+        assert relaunched.chat_sessions.count() >= 2, "the earlier Session was dropped"
+        names = [s["name"] for s in settings_manager.instance().get_sessions()]
+        assert "yesterday" in names
+    finally:
+        relaunched._cleanup_thread()
+
+
+def test_a_first_intent_names_the_session_from_what_was_typed(panel, monkeypatch):
+    """A readable name is there from the start — never "Chat 1", never empty."""
+    asked = []
+    monkeypatch.setattr(panel, "_ask_for_a_title", lambda index, intent: asked.append(intent))
+    # An attachment the model cannot read turns the Intent away before it names
+    # anything (FCC-14), which is the behaviour — not this test's subject.
+    panel.chip_bar.get_and_clear()
+    panel.new_chat()
+    index = panel.chat_sessions.stack.currentIndex()
+
+    panel.user_input.setPlainText(
+        "Model a spur gear with 24 teeth, module 2, 10mm thick, and a 12mm bore")
+    panel.request_work.connect(lambda *_: None)
+    try:
+        panel.on_send()
+    finally:
+        panel.request_work.disconnect()
+        panel.worker.stop()
+        panel._set_running(False)
+
+    name = panel.chat_sessions.get_session_info(index)["name"]
+    assert name.startswith("Model a spur gear")
+    assert panel.title_label.text() == name
+    assert asked, "the generated title was never asked for"
 
 
 # ── Sessions that survive a restart (FCC-5) ───────────────────────────────────
@@ -588,14 +741,19 @@ def test_an_event_kind_the_panel_does_not_know_is_skipped_not_fatal(panel, tmp_p
 def test_a_rename_persists_and_reaches_the_header(panel):
     from utils import settings_manager
 
-    index, _ = panel.chat_sessions.add_new_chat("Chat 9")
+    index, _ = panel.chat_sessions.add_new_chat("New Chat")
     panel.chat_sessions.switch_to(index)
+    # Only a Session that has had an Intent is in the index at all (FCC-42), and
+    # the index no longer lines up positionally with the open Sessions.
+    panel.chat_sessions.begin(index, "a first intent")
+    log = panel.chat_sessions.get_session_info(index)["log"]
 
     panel.chat_sessions.rename_session(index, "bracket revision")
     panel.update_header_title(index)
 
     assert panel.title_label.text() == "bracket revision"
-    assert settings_manager.instance().get_sessions()[index]["name"] == "bracket revision"
+    stored = {s["log"]: s["name"] for s in settings_manager.instance().get_sessions()}
+    assert stored[log] == "bracket revision"
 
 
 def test_deleting_a_session_takes_its_transcript_with_it(panel, tmp_path):
@@ -625,14 +783,39 @@ def test_the_session_bound_holds_without_a_restart(sessions_are_the_tests_own, m
         log = str(tmp_path / ("chat%d.jsonl" % n))
         open(log, "w").close()
         manager.get_session_info(index)["log"] = log
+        # Only a Session that has had an Intent is in the durable index (FCC-42).
+        manager.begin(index, "Chat %d" % n)
         logs.append(log)
 
     assert manager.count() == 3
     assert [s["name"] for s in manager._sessions] == ["Chat 2", "Chat 3", "Chat 4"]
-    assert manager.get_session_info(index)["name"] == "Chat 4", "the returned index is stale"
+    # Pruning happens where the index grows — in begin() — so the live Session
+    # is the one just created, at whatever position pruning left it.
+    assert manager.get_session_info(manager.stack.currentIndex())["name"] == "Chat 4"
     assert not os.path.exists(logs[0]), "the pruned Session kept its transcript"
     assert os.path.exists(logs[4])
     assert len(settings_manager.instance().get_sessions()) == 3
+
+
+def test_a_launch_with_no_intent_prunes_nothing(sessions_are_the_tests_own, monkeypatch, tmp_path):
+    """
+    FCC-17 prunes when a Session is created; FCC-42 stopped writing Sessions
+    that never had an Intent. Counting those against the bound would evict a
+    real Session, transcript included, on every launch where nobody typed.
+    """
+    from utils import settings_manager
+    from ui import multi_tab_manager
+
+    monkeypatch.setattr(multi_tab_manager, "KEEP", 3)
+    manager = multi_tab_manager.ChatSessionManager()
+    for n in range(3):
+        index, _ = manager.add_new_chat("Real %d" % n)
+        manager.begin(index, "Real %d" % n)
+    kept = [s["name"] for s in settings_manager.instance().get_sessions()]
+
+    manager.add_new_chat("New Chat")
+
+    assert [s["name"] for s in settings_manager.instance().get_sessions()] == kept
 
 
 def test_a_restored_session_owns_nothing(panel, tmp_path):

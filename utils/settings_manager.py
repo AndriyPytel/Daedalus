@@ -95,6 +95,20 @@ class _SettingsManager(QObject):
         self._grp().SetString("DefaultModel", model_id)
         self.default_model_changed.emit(model_id)
 
+    # ── Naming model (set in Preferences) ───────────────────────────────────
+
+    def get_naming_model(self) -> str:
+        """
+        Which model names a Session. Empty means whichever the combo is on.
+
+        Not a hardcoded cheap model: that assumes a key for one provider, so on
+        a local-only or single-provider setup naming would silently never fire.
+        """
+        return self._grp().GetString("NamingModel", "")
+
+    def set_naming_model(self, model_id: str):
+        self._grp().SetString("NamingModel", model_id)
+
     # ── Last-used model (set by Chat UI, persists across sessions) ────────────
 
     def get_last_model(self) -> str:

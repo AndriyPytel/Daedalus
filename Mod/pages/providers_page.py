@@ -163,7 +163,14 @@ class ProvidersPage(QtWidgets.QWidget):
         self.default_model_combo = QtWidgets.QComboBox()
         self.default_model_combo.setStyleSheet(UIHelpers.get_input_style())
         model_vbox.addWidget(self.default_model_combo)
-        
+
+        model_vbox.addWidget(QtWidgets.QLabel("Session Naming Model"))
+        self.naming_model_combo = QtWidgets.QComboBox()
+        self.naming_model_combo.setStyleSheet(UIHelpers.get_input_style())
+        self.naming_model_combo.setToolTip(
+            "Names a Session from its first message. Unset uses the chat model.")
+        model_vbox.addWidget(self.naming_model_combo)
+
         self.right_layout.addWidget(self.model_container)
 
         self.right_layout.addStretch()
@@ -258,6 +265,16 @@ class ProvidersPage(QtWidgets.QWidget):
                 self.default_model_combo.setCurrentIndex(i)
                 break
 
+        self.naming_model_combo.clear()
+        self.naming_model_combo.addItem("Same as the chat model", userData="")
+        for m in models:
+            self.naming_model_combo.addItem(m['display'], userData=m['id'])
+        current_naming = settings_manager.instance().get_naming_model()
+        for i in range(self.naming_model_combo.count()):
+            if self.naming_model_combo.itemData(i) == current_naming:
+                self.naming_model_combo.setCurrentIndex(i)
+                break
+
     def _run_test(self):
         key = self.key_edit.text().strip()
         if not key:
@@ -338,9 +355,7 @@ class ProvidersPage(QtWidgets.QWidget):
             self._edits[self._current_provider] = self.key_edit.text().strip()
 
         if not self._edits:
-            mid = self.default_model_combo.currentData()
-            if mid:
-                sm.set_default_model(mid)
+            self._save_models(sm)
             return
 
         current_keys = sm.get_api_keys()
@@ -357,7 +372,15 @@ class ProvidersPage(QtWidgets.QWidget):
         
         sm.set_api_keys(current_keys)
         self._edits.clear()
-        
+
+        self._save_models(sm)
+
+    def _save_models(self, sm):
         mid = self.default_model_combo.currentData()
         if mid:
             sm.set_default_model(mid)
+        # "" is the "Same as the chat model" row, which is a choice and has to be
+        # writable; None only means the combo has nothing selected at all.
+        naming = self.naming_model_combo.currentData()
+        if naming is not None:
+            sm.set_naming_model(naming)
