@@ -206,6 +206,62 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     panel.chip_bar.remove_file(str(drawing))
 
 
+# ── A pasted image is cleaned up on the chip's terms (FCC-15) ─────────────────
+
+
+def _a_pasted_image(panel, tmp_path, name):
+    """What handle_clipboard_paste leaves behind, without a real clipboard."""
+    path = str(tmp_path / name)
+    open(path, "w").close()
+    panel.upload_widget.temporary.append(path)
+    panel.chip_bar.add_file(path)
+    return path
+
+
+def test_taking_the_chip_off_deletes_the_pasted_image(panel, tmp_path):
+    pasted = _a_pasted_image(panel, tmp_path, "pasted.png")
+
+    panel.chip_bar.remove_file(pasted)
+
+    assert not os.path.exists(pasted), "a screenshot pasted and thought better of stays in /tmp"
+    assert pasted not in panel.upload_widget.temporary
+
+
+def test_taking_off_a_chip_the_user_chose_keeps_their_file(panel, tmp_path):
+    theirs = tmp_path / "bracket.png"
+    theirs.write_bytes(b"the user's own file, not ours to delete")
+    panel.chip_bar.add_file(str(theirs))
+
+    panel.chip_bar.remove_file(str(theirs))
+
+    assert theirs.exists(), "removing a chip deleted a file the user attached from disk"
+
+
+def test_a_finished_run_leaves_what_is_still_attached(panel, tmp_path):
+    sent = _a_pasted_image(panel, tmp_path, "sent.png")
+    panel.user_input.setPlainText("Build this")
+    try:
+        panel.on_send()
+    finally:
+        panel.worker.stop()
+    still_attached = _a_pasted_image(panel, tmp_path, "pasted-during-the-run.png")
+
+    panel.on_run_finished(None)
+
+    assert not os.path.exists(sent), "the image the run consumed stayed in /tmp"
+    assert os.path.exists(still_attached), "the next Intent lost the image on its chip bar"
+
+
+def test_closing_the_panel_takes_the_unsent_images_with_it(panel, tmp_path):
+    from PySide2 import QtGui
+
+    left_behind = _a_pasted_image(panel, tmp_path, "never-sent.png")
+
+    panel.closeEvent(QtGui.QCloseEvent())
+
+    assert not os.path.exists(left_behind), "closing with an image attached leaked it"
+
+
 # ── Sessions that survive a restart (FCC-5) ───────────────────────────────────
 
 

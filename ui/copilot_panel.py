@@ -358,6 +358,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self._running = False
         self._empty_state = None
+        self._sent_attachments: list[str] = []
         self._reset_render_state()
 
         self.thread.start()
@@ -456,6 +457,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self.upload_widget = UploadWidget()
         self.upload_widget.file_attached.connect(self.chip_bar.add_file)
+        self.chip_bar.file_removed.connect(self.upload_widget.discard)
         strip.addWidget(self.upload_widget)
 
         # ── Model selector pill ───────────────────────────────────────────────
@@ -742,6 +744,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             return
 
         attachments = self.chip_bar.get_and_clear()
+        self._sent_attachments = attachments
 
         if self._empty_state is not None:
             self._empty_state.setParent(None)
@@ -995,7 +998,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
     @QtCore.Slot(object)
     def on_run_finished(self, result):
         self._set_running(False)
-        self.upload_widget.discard_temporary()
+        self.upload_widget.discard(*self._sent_attachments)
+        self._sent_attachments = []
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
@@ -1028,5 +1032,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.thread.wait()
 
     def closeEvent(self, event):
+        self.upload_widget.discard_temporary()
         self._cleanup_thread()
         super().closeEvent(event)
