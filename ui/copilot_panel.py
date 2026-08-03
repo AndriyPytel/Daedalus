@@ -572,14 +572,34 @@ class CopilotPanel(QtWidgets.QDockWidget):
                     items.appendRow(row)
         self.model_combo.setModel(items)
 
-        for wanted in (last_id, settings_manager.instance().get_default_model()):
-            index = self.model_combo.findData(wanted)
-            if index >= 0:
-                break
-        else:
+        index = self.model_combo.findData(last_id) if last_id else -1
+        if index < 0 and last_id:
+            if models and not provider_manager.instance().awaiting_model_lists():
+                index = self.model_combo.findData(self._retire_model(last_id))
+            else:
+                # The provider's real list is still on its way; showing anything
+                # else here is the flash of a model the user never picked.
+                row = QtGui.QStandardItem(last_id)
+                row.setData(last_id, QtCore.Qt.UserRole)
+                items.insertRow(0, row)
+                index = 0
+        if index < 0:
             index = 1 if models else 0
         self.model_combo.setCurrentIndex(index)
         self.model_combo.blockSignals(False)
+
+    def _retire_model(self, model_id: str) -> str:
+        """Every provider has answered and none offers ``model_id``. Say so."""
+        settings = settings_manager.instance()
+        # Row 1 is the first model under the first heading — the Preferences
+        # default is only a preference, and it may never have been set.
+        fallback = settings.get_default_model() or self.model_combo.itemData(1)
+        settings.set_last_model(fallback)
+        self.status_line.setText(
+            "%s is no longer offered by its provider — switched to %s."
+            % (model_id, fallback))
+        self.status_line.setVisible(True)
+        return fallback
 
     def _on_model_changed(self, _idx: int):
         mid = self.model_combo.currentData()

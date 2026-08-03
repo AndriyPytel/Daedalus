@@ -129,6 +129,20 @@ class _ProviderManager(QObject):
                 result.append({"id": m["id"], "display": m["display"], "provider": provider})
         return result
 
+    def awaiting_model_lists(self) -> bool:
+        """
+        True until every keyed provider has delivered its real model list.
+
+        A fetch that failed never lands in ``_fetched``, so its provider stays
+        awaited: a provider that could not be reached has not said any model of
+        its own is gone.
+        """
+        from utils import settings_manager
+        sm = settings_manager.instance()
+        return any(provider not in self._fetched
+                   for provider in self._model_map
+                   if sm.get_api_key_for_provider(provider))
+
     def get_model_entry(self, model_id: str) -> dict | None:
         """Find a model entry by its ``id`` across all providers."""
         for provider in self._model_map:
