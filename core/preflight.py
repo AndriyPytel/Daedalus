@@ -102,6 +102,11 @@ class PreflightWorker:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            # Not the locale's decoder: inside FreeCAD.app neither LANG nor
+            # LC_ALL is set, so it resolves to ascii and the first non-ASCII
+            # byte the Worker emits kills the thread reading that stream.
+            encoding="utf-8",
+            errors="replace",
             bufsize=1,
             env=dict(os.environ, PYTHONUNBUFFERED="1"),
         )
@@ -192,10 +197,15 @@ class PreflightWorker:
         """Forward tagged responses; FreeCAD's own banner on stdout is noise."""
         process = self._process
         lines = self._lines
-        for line in process.stdout:
-            if line.startswith(SENTINEL):
-                lines.put(line[len(SENTINEL):])
-        lines.put(None)   # EOF: the worker is gone
+        try:
+            for line in process.stdout:
+                if line.startswith(SENTINEL):
+                    lines.put(line[len(SENTINEL):])
+        finally:
+            # The only "the worker is gone" signal there is. Sent from a
+            # finally so that a reader dying is a prompt visible failure
+            # rather than every pending request waiting out its timeout.
+            lines.put(None)
 
     def _drain_stderr(self):
         process, sink = self._process, self._stderr
