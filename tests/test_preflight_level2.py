@@ -271,6 +271,66 @@ def test_a_death_on_the_write_reports_the_dead_workers_stderr(fresh):
     assert "the worker had something to say" in result.traceback
 
 
+# ── what the worker says, in any alphabet ─────────────────────────────────────
+
+
+def test_a_step_that_writes_cyrillic_to_stderr_is_read_back_intact(fresh):
+    """
+    The Worker's stderr is the only diagnostic a later death has to offer, and
+    an object Label, a path or a message is not obliged to be ASCII. FCC-51.
+    """
+    result = fresh.check(
+        "import sys; sys.stderr.write('деталь не побудована\\n'); sys.stderr.flush()"
+    )
+
+    assert result.ok, result.traceback
+    time.sleep(0.5)                     # let the drain thread catch up
+    assert "деталь не побудована" in fresh._stderr_text()
+
+
+def test_an_undecodable_byte_on_stderr_does_not_cost_us_the_diagnostics(fresh):
+    """
+    The production shape of the bug: one byte the decoder refuses kills the
+    drain thread, and every later thing the Worker says is lost — including
+    the last words of the death this Step was heading for.
+
+    Written as a raw invalid byte rather than as a locale, because the locale
+    that produces this (ascii, inside FreeCAD.app with no LANG) cannot be
+    staged from a test: the parent's decoder is fixed at interpreter startup.
+    """
+    fresh.check(
+        r"import sys; sys.stderr.buffer.write(b'\xd0 broken\n'); sys.stderr.flush()"
+    )
+    time.sleep(0.5)
+
+    result = fresh.check(
+        "import sys; sys.stderr.write('and this still arrives\\n'); sys.stderr.flush()"
+    )
+
+    assert result.ok, result.traceback
+    time.sleep(0.5)
+    assert "and this still arrives" in fresh._stderr_text(), \
+        "the drain thread died on the undecodable byte and took the rest with it"
+
+
+def test_an_undecodable_byte_on_stdout_does_not_hang_the_request(fresh):
+    """
+    Worse than stderr: `_pump` carries the only end-of-stream signal, so its
+    death used to leave the caller waiting out the whole timeout.
+    """
+    started = time.monotonic()
+
+    result = fresh.check(
+        r"import sys; sys.stdout.buffer.write(b'\xd0 broken\n'); sys.stdout.flush()"
+        "\ndoc.addObject('Part::Box', 'Box')",
+        timeout=20,
+    )
+    elapsed = time.monotonic() - started
+
+    assert result.ok, result.traceback
+    assert elapsed < 15, "the request waited out its timeout instead of being answered"
+
+
 def test_an_infinite_loop_is_killed_on_timeout(fresh):
     hung = fresh.pid
 
