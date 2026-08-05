@@ -142,6 +142,10 @@ def _printer():
 
         state["phase"] = None
         if event.kind in (PLAN, PLAN_REVISED):
+            if data.get("reading"):
+                print("\n\nHOW THE DRAWING WAS READ:")
+                for line in data["reading"].splitlines():
+                    print("  " + line)
             print("\n\n%s:" % ("PLAN" if event.kind == PLAN else "PLAN REVISED"))
             for n, step in enumerate(data["steps"], start=1):
                 print("  %d. %s" % (n, step))

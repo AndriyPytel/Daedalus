@@ -169,6 +169,20 @@ def _as_json(text, phase):
     return parsed
 
 
+@dataclass
+class Plan:
+    """
+    The Steps, and how the drawing they came from was read.
+
+    `reading` is empty when nothing was attached — there is nothing to read —
+    and the Plan Gate then looks exactly as it did before there was a reading
+    at all.
+    """
+
+    steps: list
+    reading: str = ""
+
+
 def plan(intent, snapshot, llm, events, feedback=None, attachments=()):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
@@ -176,6 +190,11 @@ def plan(intent, snapshot, llm, events, feedback=None, attachments=()):
     `attachments` are the files the user showed with the Intent. They ride as
     image blocks beside the request, the same shape Review gets its render in;
     with none, the request is the plain string it always was.
+
+    Plan is the only phase that sees the picture, so it is the only one that
+    can say how it was read. That reading is shown at the Plan Gate and carried
+    as text from there — a misreading is correctable before geometry exists
+    rather than after (FCC-47).
     """
     request = {"intent": intent, "document": snapshot}
     if feedback:
@@ -189,7 +208,23 @@ def plan(intent, snapshot, llm, events, feedback=None, attachments=()):
     steps = [str(step) for step in reply.get("steps", []) if str(step).strip()]
     if not steps:
         raise PhaseError("Plan produced no Steps for this Intent.")
-    return steps
+    return Plan(steps=steps, reading=_reading_of(reply))
+
+
+def _reading_of(reply):
+    """
+    The reading as text, however the model chose to shape it.
+
+    Asked for as prose, but a model that answers a question about dimensions
+    with an object is being reasonable rather than wrong, and dropping that
+    would lose the whole point of having asked.
+    """
+    reading = reply.get("reading")
+    if not reading:
+        return ""
+    if isinstance(reading, str):
+        return reading.strip()
+    return json.dumps(reading, indent=2, default=str)
 
 
 @dataclass
@@ -205,7 +240,7 @@ class ExecuteOutcome:
     obsolete: str = None
 
 
-def execute(step, tools, llm, events, attempts, budgets=None):
+def execute(step, tools, llm, events, attempts, budgets=None, reading=""):
     """
     Write the code for one Step, after asking the Document whatever it needs.
 
@@ -216,9 +251,16 @@ def execute(step, tools, llm, events, attempts, budgets=None):
 
     `attempts` are the failures **for this Step only**. A Step is not told what
     went wrong elsewhere in the Plan; that is noise it cannot act on.
+
+    `reading` is Plan's reading of the drawing, as text. Execute stays on text
+    deliberately: it is called per Step and again per look, so the picture would
+    multiply across dozens of calls, and a Step concerns one feature for which
+    the rest of the drawing is noise.
     """
     budgets = budgets or Budgets()
     request = {"step": step, "document": tools.call("snapshot")}
+    if reading:
+        request["reading_of_the_drawing"] = reading
     if attempts:
         request["your_failed_attempts_at_this_step"] = [
             {"code": a.code, "traceback": a.traceback} for a in attempts
@@ -280,13 +322,17 @@ def _look(tools, look, events):
     return {"tool": name, "arguments": arguments, "result": result}
 
 
-def review(intent, render, objects, llm, events):
+def review(intent, render, objects, llm, events, attachments=()):
     """
     Judge the outcome against the Intent.
 
-    Given the Intent, the render and the final Document state. Deliberately not
-    given the Plan, the code, or Execute's reasoning — an independent judgement
-    of how it turned out, not of how it was produced.
+    Given the Intent, the render, the final Document state, and whatever the
+    user showed with the Intent. Deliberately not given the Plan, the code, or
+    Execute's reasoning — an independent judgement of how it turned out, not of
+    how it was produced.
+
+    Without the attachments this compared a render against a sentence, so "does
+    this resemble what I was shown" was not a question it could ask (FCC-47).
     """
     request = {"intent": intent, "objects_that_now_exist": objects}
     content = [{"type": "text", "text": json.dumps(request, indent=2, default=str)}]
@@ -296,6 +342,15 @@ def review(intent, render, objects, llm, events):
         content.append(picture)
     else:
         content[0]["text"] += "\n\nNo render was produced, so judge on the objects alone."
+
+    shown = [drawing for drawing in map(_as_image, attachments) if drawing]
+    if shown:
+        content[0]["text"] += (
+            "\n\nThe last %d image%s is what the user showed with the Intent, not the "
+            "result. Judge whether the render resembles it."
+            % (len(shown), "s are" if len(shown) > 1 else " is")
+        )
+        content.extend(shown)
 
     reply = _ask(llm, events, REVIEW_PHASE, prompt(REVIEW_PHASE), content)
 
@@ -349,8 +404,9 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments):
     snapshot = tools.call("snapshot")
-    steps = plan(intent, snapshot, llm, events, attachments=attachments)
-    events.emit(PLAN, steps=list(steps))
+    planned = plan(intent, snapshot, llm, events, attachments=attachments)
+    steps = planned.steps
+    events.emit(PLAN, steps=list(steps), reading=planned.reading)
 
     rejections = 0
     revisions = 0
@@ -366,16 +422,18 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         if revisions > budgets.revisions:
             return _block(events, "The Plan has been amended %d times without being approved."
                           % (revisions - 1), [], 0)
-        steps = plan(intent, tools.call("snapshot"), llm, events,
-                     feedback=approval.feedback, attachments=attachments)
-        events.emit(PLAN_REVISED, steps=list(steps),
+        planned = plan(intent, tools.call("snapshot"), llm, events,
+                       feedback=approval.feedback, attachments=attachments)
+        steps = planned.steps
+        events.emit(PLAN_REVISED, steps=list(steps), reading=planned.reading,
                     reason="You asked for: " + approval.feedback)
 
     render = None
     objects = []
 
     while True:
-        outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress)
+        outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
+                                progress, planned.reading)
         applied = progress["applied"]
 
         if outcome["blocked"]:
@@ -391,15 +449,17 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                     % (revisions - 1),
                     outcome["tried"], applied,
                 )
-            steps = plan(intent, tools.call("snapshot"), llm, events,
-                         feedback=outcome["obsolete"], attachments=attachments)
-            events.emit(PLAN_REVISED, steps=list(steps), reason=outcome["obsolete"])
+            planned = plan(intent, tools.call("snapshot"), llm, events,
+                           feedback=outcome["obsolete"], attachments=attachments)
+            steps = planned.steps
+            events.emit(PLAN_REVISED, steps=list(steps), reading=planned.reading,
+                        reason=outcome["obsolete"])
             continue
 
         render = outcome["render"] or render
         objects = outcome["objects"] or objects
 
-        verdict, reason = review(intent, render, objects, llm, events)
+        verdict, reason = review(intent, render, objects, llm, events, attachments)
         events.emit(REVIEW_VERDICT, verdict=verdict, reason=reason)
 
         if verdict == "pass":
@@ -416,12 +476,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             )
 
         revisions += 1
-        steps = plan(intent, tools.call("snapshot"), llm, events,
-                     feedback=reason, attachments=attachments)
-        events.emit(PLAN_REVISED, steps=list(steps), reason=reason)
+        planned = plan(intent, tools.call("snapshot"), llm, events,
+                       feedback=reason, attachments=attachments)
+        steps = planned.steps
+        events.emit(PLAN_REVISED, steps=list(steps), reading=planned.reading, reason=reason)
 
 
-def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress):
+def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress, reading=""):
     """One pass over the Plan. Returns why it stopped."""
     render = None
     objects = []
@@ -435,7 +496,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         while True:
             if cancelled():
                 raise Stopped()
-            outcome = execute(step, tools, llm, events, attempts, budgets)
+            outcome = execute(step, tools, llm, events, attempts, budgets, reading)
 
             if outcome.obsolete:
                 return {"blocked": False, "obsolete": outcome.obsolete,

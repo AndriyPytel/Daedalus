@@ -44,8 +44,9 @@ RENDER_PNG = _a_real_png()
 # ── scripted phase replies ────────────────────────────────────────────────────
 
 
-def plan_reply(*steps, thinking=None):
-    body = json.dumps({"steps": list(steps)})
+def plan_reply(*steps, thinking=None, reading=None):
+    body = json.dumps({"steps": list(steps)} if reading is None
+                      else {"reading": reading, "steps": list(steps)})
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
@@ -573,6 +574,118 @@ def test_a_replan_still_carries_the_attachments():
 
     replan = llm.calls[3][-1]["content"]
     assert [b for b in replan if b.get("type") == "image_url"]
+
+
+# ── the reading of the drawing ────────────────────────────────────────────────
+
+A_READING = (
+    "Base: 80 x 40 x 10 mm plate.\n"
+    "Features: 2x ⌀8 through holes, 15 mm from each end on the centreline; "
+    "R5 fillets on all four corners.\n"
+    "Not defined by the drawing: material, tolerance, surface finish."
+)
+
+
+def test_the_reading_of_the_drawing_is_shown_with_the_plan():
+    """
+    The attachment reached Plan and stopped there, so nothing recorded how it
+    was read. A misreading only became visible once geometry existed. FCC-47.
+    """
+    llm = ScriptedLLMClient([plan_reply("Only", reading=A_READING),
+                             code_reply("box()"), verdict_reply("pass")])
+    events = EventStream()
+
+    run("Build this bracket", llm=llm, tools=FakeTools().registry, events=events,
+        attachments=[RENDER_PNG], gate=lambda steps: None)
+
+    planned = events.first(PLAN)
+    assert planned.data["reading"] == A_READING
+    assert planned.data["steps"] == ["Only"]
+
+
+def test_a_plan_with_no_reading_is_the_event_it_always_was():
+    """With nothing attached the Plan Gate looks exactly as it does today."""
+    _, events, _, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+
+    planned = events.first(PLAN)
+    assert planned.data["steps"] == ["Only"]
+    assert not planned.data.get("reading")
+
+
+def test_the_reading_is_carried_into_execute_as_text():
+    """
+    Execute stays on text deliberately — it is called per Step and again per
+    look, so the picture would multiply across dozens of calls.
+    """
+    llm = ScriptedLLMClient([plan_reply("Only", reading=A_READING),
+                             code_reply("box()"), verdict_reply("pass")])
+
+    run("Build this bracket", llm=llm, tools=FakeTools().registry,
+        attachments=[RENDER_PNG])
+
+    asked = llm.calls[1][-1]["content"]
+    assert isinstance(asked, str), "Execute was sent a picture, not text"
+    assert json.loads(asked)["reading_of_the_drawing"] == A_READING
+
+
+def test_execute_is_told_nothing_extra_when_there_was_no_reading():
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+
+    assert "reading" not in json.loads(llm.calls[1][-1]["content"])
+
+
+def test_a_revised_plan_carries_its_own_reading():
+    """A second Plan re-reads the drawing; the Gate must show that one, not the first."""
+    llm = ScriptedLLMClient([
+        plan_reply("v1", reading="first reading"), code_reply("v1()"),
+        verdict_reply("fail", "not right"),
+        plan_reply("v2", reading="second reading"), code_reply("v2()"), verdict_reply("pass"),
+    ])
+    events = EventStream()
+
+    run("Build this", llm=llm, tools=FakeTools().registry, events=events,
+        attachments=[RENDER_PNG])
+
+    revised = events.first(PLAN_REVISED)
+    assert revised.data["reading"] == "second reading"
+
+
+def test_review_is_shown_the_drawing_beside_the_render():
+    """
+    Review compared a render against a sentence: the picture never reached it,
+    so "does this resemble what I was shown" was not a question it could ask.
+    """
+    llm = ScriptedLLMClient([plan_reply("Only", reading=A_READING),
+                             code_reply("box()"), verdict_reply("pass")])
+
+    run("Build this bracket", llm=llm, tools=FakeTools().registry,
+        attachments=[RENDER_PNG])
+
+    content = llm.calls[-1][-1]["content"]
+    images = [block for block in content if block.get("type") == "image_url"]
+
+    assert len(images) == 2, "Review got the render or the drawing, not both"
+    assert all(i["image_url"]["url"].startswith("data:image/png;base64,") for i in images)
+    assert RENDER_PNG not in json.dumps(content), "a path was sent instead of the bytes"
+
+
+def test_review_gets_only_the_render_when_nothing_was_attached():
+    """The no-attachment request keeps the shape it has always had."""
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+
+    content = llm.calls[-1][-1]["content"]
+    assert len([b for b in content if b.get("type") == "image_url"]) == 1
+
+
+def test_an_attachment_that_has_been_moved_does_not_break_review():
+    llm = ScriptedLLMClient([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+
+    result = run("Build this", llm=llm, tools=FakeTools().registry,
+                 attachments=["/nowhere/gone.png"])
+
+    assert result.ok
+    content = llm.calls[-1][-1]["content"]
+    assert len([b for b in content if b.get("type") == "image_url"]) == 1
 
 
 def test_review_never_sees_the_plan_the_code_or_executes_reasoning():
