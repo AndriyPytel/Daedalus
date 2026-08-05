@@ -36,6 +36,13 @@ One mandatory approval, covering every Step in the Plan. There is no per-Step
 confirmation. Nothing that is not an **Owned Object** — something the assistant created
 in this Session — is deleted without asking.
 
+If you attached a drawing, the Gate also shows **how it was read** — the base dimensions,
+each feature with its size and position, and, separately, what the drawing does not
+define. That reading is the point of the Gate when there is a picture involved: a
+misreading is something to correct here, in one sentence, rather than to recognise later
+in the geometry. It is carried into Execute as text, and the drawing itself is shown to
+Review, so the verdict compares the render to what you actually showed.
+
 ### Lint, then Preflight, then Apply
 
 Before a Step's code runs anywhere:
@@ -142,9 +149,9 @@ so a restored Session cannot drift from a running one.
 
 **FreeCAD is never mocked** (ADR-0007). The suite is layered instead:
 
-- **Level 1** (281 tests) — pure logic with no FreeCAD at all: the loop over a scripted
+- **Level 1** (291 tests) — pure logic with no FreeCAD at all: the loop over a scripted
   LLM client, the lint, the event stream, the title call. This is where TDD happens.
-- **Level 2** (120 tests, marked `@pytest.mark.freecad`) — run against a real FreeCAD:
+- **Level 2** (123 tests, marked `@pytest.mark.freecad`) — run against a real FreeCAD:
   the Tools, Preflight in a real worker, and the Qt panel built offscreen against
   FreeCAD's own PySide2 — its arithmetic and its state machine, not its appearance.
 - **Level 3** — by hand. How a widget looks under a theme is not something a test can
@@ -157,7 +164,20 @@ Level 2 is skipped when FreeCAD is not importable. `conftest.py` finds it at
 > **Known wrinkle.** `conftest.py` puts the checkout on `sys.path` *before* importing
 > FreeCAD, and FreeCAD then puts the Mod directory in front of it. If your Mod entry is a
 > symlink to a different checkout, Level 2 tests exercise that one instead of the one you
-> are in. It matters when running the suite from a git worktree.
+> are in. It matters when running the suite from a git worktree, and it is silent — the
+> tests pass or fail against code you are not looking at.
+>
+> To run a worktree against itself, give FreeCAD a user directory of its own:
+>
+> ```bash
+> mkdir -p /tmp/fcuser/Mod
+> ln -sfn "$PWD" /tmp/fcuser/Mod/FreeCadCopilot
+> ln -sfn ~/Library/Application\ Support/FreeCAD/v1-1/AdditionalPythonPackages /tmp/fcuser/
+> FREECAD_USER_HOME=/tmp/fcuser .venv/bin/python -m pytest -q
+> ```
+>
+> The second symlink is not optional: `AdditionalPythonPackages` is where `litellm`,
+> `httpx`, `numpy` and `Pillow` live, and without it collection fails on the imports.
 
 ---
 
