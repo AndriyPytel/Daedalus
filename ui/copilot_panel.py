@@ -889,11 +889,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._render_thought(data["phase"], data["text"])
 
         elif event.kind == ev.PLAN:
-            self._render_plan(data["steps"], "Plan")
+            self._render_plan(data["steps"], "Plan", data.get("reading", ""))
 
         elif event.kind == ev.PLAN_REVISED:
             self.add_chat_widget(AssistantMessageWidget("Revised the Plan: " + data["reason"]))
-            self._render_plan(data["steps"], "Revised Plan")
+            self._render_plan(data["steps"], "Revised Plan", data.get("reading", ""))
 
         elif event.kind == ev.STEP_STARTED:
             self._thought = None
@@ -950,10 +950,17 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.status_line.setText(("Thinking: " + text.replace("\n", " "))[-90:])
         self.status_line.setVisible(True)
 
-    def _render_plan(self, steps, title):
+    def _render_plan(self, steps, title, reading=""):
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
+        if reading:
+            # Above the Plan, and open: correcting a misreading at the Gate is
+            # the whole point, and a reading one click away is not read (FCC-47).
+            how = AccordionWidget("How the drawing was read")
+            self.add_chat_widget(how)
+            how.append_text(reading)
+            how.toggle_content()
         self._plan_widget = PlanWidget(steps, title=title)
         self.add_chat_widget(self._plan_widget)
 
