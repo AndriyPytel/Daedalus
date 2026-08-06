@@ -1,5 +1,5 @@
 """
-The panel, built for real against FreeCAD's own PySide2, offscreen.
+The panel, built for real against FreeCAD's own Qt binding, offscreen.
 
 Most of the panel stays Level 3 — how a widget *looks* under a theme is not
 something a test can tell you, which is exactly the finding behind ADR-0011.
@@ -12,9 +12,30 @@ import os
 
 import pytest
 
-from conftest import QT_APP
+from conftest import NO_QT, QT_APP
 
 pytestmark = pytest.mark.freecad
+
+
+# ── The lane itself (FCC-52) ──────────────────────────────────────────────────
+
+
+def test_the_qt_modules_all_come_from_one_binding():
+    """
+    Every test below takes Qt from `conftest`, not from a binding it names.
+    Half a migration — QtCore from one package, QtWidgets from another — would
+    build widgets that cannot see each other's types, and it would show up as
+    something unrelated failing. Assert the export contract instead.
+    """
+    from conftest import QtCore, QtGui, QtWidgets
+
+    if QT_APP is None:
+        pytest.skip(NO_QT)
+
+    bindings = {module.__name__.split(".")[0] for module in (QtCore, QtGui, QtWidgets)}
+    assert len(bindings) == 1, f"conftest handed out Qt from more than one binding: {bindings}"
+    assert isinstance(QT_APP, QtWidgets.QApplication), \
+        "the suite's QApplication is not the one conftest's QtWidgets would build"
 
 
 @pytest.fixture(scope="module")
@@ -24,7 +45,7 @@ def sessions_are_the_tests_own():
     The developer's own history is not the suite's to spend.
     """
     if QT_APP is None:
-        pytest.skip("PySide2 is not available")
+        pytest.skip(NO_QT)
     from utils import settings_manager
 
     settings = settings_manager.instance()
@@ -43,7 +64,7 @@ def sessions_are_the_tests_own():
 def panel(sessions_are_the_tests_own):
     app = QT_APP
     if app is None:
-        pytest.skip("PySide2 is not available")
+        pytest.skip(NO_QT)
     from ui.copilot_panel import CopilotPanel
 
     built = CopilotPanel()
@@ -62,7 +83,7 @@ def test_the_empty_composer_is_one_row(panel):
     against a formula — a pixel count copied from the implementation would
     pass however wrong the implementation was.
     """
-    from PySide2 import QtGui
+    from conftest import QtGui
 
     panel.user_input.clear()
     empty = panel.user_input.height()
@@ -78,7 +99,7 @@ def test_the_composer_grows_with_the_text_then_scrolls(panel):
     Past the ceiling it must scroll. Frozen at three rows with scrollbars off,
     as it was, anything past the third row was simply unreachable.
     """
-    from PySide2 import QtCore
+    from conftest import QtCore
 
     panel.user_input.clear()
     one_row = panel.user_input.height()
@@ -136,7 +157,7 @@ def test_the_empty_chat_says_where_the_user_stands(panel):
 
 def test_the_model_picker_groups_under_provider_headings(panel):
     """A heading is a row that cannot be chosen — that is the whole mechanism."""
-    from PySide2 import QtCore
+    from conftest import QtCore
 
     from utils import provider_manager
 
@@ -324,7 +345,7 @@ def test_a_finished_run_leaves_what_is_still_attached(panel, tmp_path):
 
 
 def test_closing_the_panel_takes_the_unsent_images_with_it(panel, tmp_path):
-    from PySide2 import QtGui
+    from conftest import QtGui
 
     left_behind = _a_pasted_image(panel, tmp_path, "never-sent.png")
 
@@ -342,7 +363,7 @@ def _a_row(name="Bracket with two bores", document="Parts.FCStd", created_at=0.0
 
 def test_the_picker_drops_from_the_top_of_the_dock_at_its_width(panel):
     """It used to open in the middle of the screen, 280px wide, detached."""
-    from PySide2 import QtCore
+    from conftest import QtCore
 
     contents = panel.widget()
     for width in (360, 520):
@@ -399,7 +420,7 @@ def test_the_document_a_session_worked_on_is_in_the_row_tooltip(panel):
 
 
 def test_a_row_never_changes_height_under_the_cursor(panel):
-    from PySide2 import QtCore
+    from conftest import QtCore
 
     row = _a_row()
     row.show()
@@ -578,7 +599,7 @@ def _widgets_in(panel):
 
 def _said_in(panel):
     """Every label the Session's chat area is showing, as one string."""
-    from PySide2 import QtWidgets
+    from conftest import QtWidgets
 
     return " ".join(label.text()
                     for widget in _widgets_in(panel)
