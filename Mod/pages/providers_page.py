@@ -288,9 +288,6 @@ class ProvidersPage(QtWidgets.QWidget):
         self._set_editor_enabled(True)
         self._refresh_models()
 
-    def _on_key_changed(self):
-        pass
-
     def _on_models_changed(self, _models):
         self._refresh_models()
 

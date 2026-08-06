@@ -419,9 +419,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         bar.setObjectName("HeaderBar")
         bar.setFixedHeight(44)
 
-        import os
-        icon_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Resources", "icons")
-
         layout = QtWidgets.QHBoxLayout(bar)
         layout.setContentsMargins(12, 0, 12, 0)
         layout.setSpacing(6)
