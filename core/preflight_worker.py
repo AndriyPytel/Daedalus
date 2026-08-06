@@ -149,7 +149,12 @@ _HINT_LIMIT = 60
 # FreeCAD; the Sketcher module holds none of it. Leaving these out of the
 # namespace turned correct code into a NameError, which the assistant read as
 # "Part does not exist here" and answered by inventing Sketcher.Circle.
-STEP_MODULES = ("Part", "Sketcher", "PartDesign")
+#
+# Materials is in for the same reason: ShapeMaterial accepts only a
+# Materials.Material, and the one source of those is Materials.MaterialManager
+# (FCC-38). Left out, the correct code is a NameError and the assistant answers
+# by inventing an App.Material that has no Name or Density.
+STEP_MODULES = ("Part", "Sketcher", "PartDesign", "Materials")
 
 
 def step_namespace(doc):

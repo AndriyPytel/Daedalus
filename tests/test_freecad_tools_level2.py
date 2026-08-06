@@ -182,6 +182,53 @@ def test_dependencies_on_a_ghost_says_what_does_exist(tools, part):
         tools.call("dependencies", {"name": "Ghost"})
 
 
+# ── Materials (FCC-38) ────────────────────────────────────────────────────────
+
+
+def test_materials_carry_the_uuid_shape_material_needs(tools):
+    """
+    A uuid is the one thing about a material card that cannot be introspected
+    and cannot be guessed — `describe_object` reports that ShapeMaterial is a
+    Materials::PropertyMaterial and stops there.
+    """
+    answer = tools.call("materials", {"name": "alumin"})
+
+    assert answer["count"], "this build ships no aluminium card at all"
+    for card in answer["materials"]:
+        assert "alumin" in card["name"].lower()
+        assert card["uuid"], "a card came back with no uuid, which is the point of the Tool"
+
+
+def test_a_materials_density_is_reported_so_a_card_can_be_chosen_by_it(tools):
+    """The prompt says 2700 kg/m³; the card that has it is picked, not edited."""
+    with_density = [card for card in tools.call("materials", {"name": "alumin"})["materials"]
+                    if card["density"]]
+
+    assert with_density, "no aluminium card reported a density, so none can be chosen by one"
+    assert any("2.7" in card["density"] for card in with_density), \
+        "no aluminium card reads as 2700 kg/m³: %s" % [c["density"] for c in with_density]
+
+
+def test_a_card_with_no_density_is_still_listed_rather_than_dropped(tools):
+    """Not every card carries every quantity; a missing one is None, not a failure."""
+    everything = tools.call("materials", {})["materials"]
+
+    assert everything, "the Tool reported no materials at all"
+    assert all("density" in card for card in everything)
+
+
+def test_materials_unfiltered_is_a_page_and_says_so(tools):
+    answer = tools.call("materials", {})
+
+    assert len(answer["materials"]) <= 40
+    if answer["count"] > len(answer["materials"]):
+        assert "filter by name" in answer["truncated"]
+
+
+def test_a_name_that_matches_nothing_is_an_empty_list_not_an_error(tools):
+    assert tools.call("materials", {"name": "unobtainium"}) == {"materials": [], "count": 0}
+
+
 # ── No Document ───────────────────────────────────────────────────────────────
 
 
