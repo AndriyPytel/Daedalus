@@ -229,6 +229,57 @@ def test_the_derived_geometry_invariant_reaches_execute_and_not_the_traps():
     assert not any("thinner as the radius grows" in trap for trap in TRAPS)
 
 
+def test_a_step_is_one_operation_that_names_its_feature_type():
+    """
+    The reversal of plan.md's four granularity rules, asserted as a reversal:
+    the sentences that made Execute the sole author of every derivation are
+    gone, not merely outweighed by newer copy beside them. Plan is the phase
+    that gains the rule; Execute is told to obey the Step, not to re-plan it.
+    FCC-58.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    # The prompts are wrapped copy; a sentence crosses line breaks.
+    plan_system, _, review_system = (
+        " ".join(text.split()) for text in _system_messages(llm))
+
+    assert "one FreeCAD operation with all its numbers" in plan_system
+    assert "names the feature type" in plan_system
+    assert "three Steps, not one" in plan_system
+
+    for reversed_rule in ("shortest ordered list", "and no smaller",
+                          "should achieve, not the code", "one Step, not three"):
+        assert reversed_rule not in plan_system, \
+            "plan.md still carries the rule this ticket reverses: " + reversed_rule
+
+    # Which element a reference resolves to stays Execute's (ADR-0005).
+    assert "never an element" in plan_system
+    assert "one FreeCAD operation" not in review_system
+
+
+def test_the_curve_and_thread_types_are_traps_not_prompt_copy():
+    """
+    Which types this build offers for a thread and for a free curve is
+    knowledge about a specific FreeCAD build, so it lands through TRAPS and
+    not in the prompt files. Plan cannot name a feature type it has not been
+    told exists. FCC-58.
+    """
+    threads = [trap for trap in TRAPS if "AdditiveHelix" in trap]
+    curves = [trap for trap in TRAPS if "BSplineCurve" in trap]
+
+    assert len(threads) == 1, "the thread types are not a single trap"
+    assert "Threaded" in threads[0]
+    assert len(curves) == 1, "the curve types are not a single trap"
+    assert "involute" in curves[0]
+    for phase in ("plan", "execute"):
+        with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
+            assert "AdditiveHelix" not in handle.read(), \
+                "a build-specific type was written into %s.md" % phase
+
+
 def test_the_constraint_spellings_are_a_trap_not_prompt_copy():
     """
     Which constraint types exist is knowledge about a specific FreeCAD build,
