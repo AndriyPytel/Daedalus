@@ -161,14 +161,101 @@ def test_an_amendment_is_surfaced_as_a_revised_plan():
     assert "Simpler please" in revised.data["reason"]
 
 
-def test_amending_forever_cannot_loop():
+# ── the revision budget names what it was spent on (FCC-22) ───────────────────
+
+
+def _amended_twice_then_obsolete_twice():
+    """
+    Two amendments and two obsolete Steps against a budget of three revisions.
+    Whichever branch spent the last one used to take the blame for all of them.
+    """
+    gate = Gate(Approval(AMEND, "simpler"), Approval(AMEND, "simpler still"), Approval(APPROVE))
+    return drive([
+        plan_reply("v1"),
+        plan_reply("v2"),
+        plan_reply("v3"), obsolete_reply("stale 1"),
+        plan_reply("v4"), obsolete_reply("stale 2"),
+        plan_reply("v5"),
+    ], gate)
+
+
+def test_the_block_counts_each_cause_of_a_revision_separately():
+    result, _, _ = _amended_twice_then_obsolete_twice()
+
+    assert result.blocked
+    assert "amended the Plan 2 times" in result.reason, \
+        "the two amendments went unreported: %r" % result.reason
+    assert "out of date 1 time" in result.reason, \
+        "Execute was blamed for more than it did: %r" % result.reason
+
+
+def test_the_block_says_what_was_refused_when_the_budget_ran_out():
+    result, _, _ = _amended_twice_then_obsolete_twice()
+
+    assert "out of date again" in result.reason, \
+        "the block does not say what it refused: %r" % result.reason
+
+
+def test_amendments_alone_are_reported_as_amendments_and_nothing_else():
     gate = Gate(*[Approval(AMEND, "no, again") for _ in range(9)])
 
     result, _, tools = drive([plan_reply("v%d" % n) for n in range(9)], gate)
 
     assert result.blocked
-    assert "amended" in result.reason
+    assert "amended the Plan 3 times" in result.reason
+    assert "out of date" not in result.reason, \
+        "an amendment budget blamed Execute: %r" % result.reason
+    assert "Review" not in result.reason
     assert tools.applied_codes() == []
+
+
+def test_obsolescence_alone_is_reported_as_obsolescence_and_nothing_else():
+    result, _, _ = drive([
+        plan_reply("a"), obsolete_reply("stale 1"),
+        plan_reply("b"), obsolete_reply("stale 2"),
+        plan_reply("c"), obsolete_reply("stale 3"),
+        plan_reply("d"), obsolete_reply("stale 4"),
+    ], Gate())
+
+    assert result.blocked
+    assert "out of date 3 times" in result.reason
+    assert "amended" not in result.reason, \
+        "obsolescence was reported as the user amending: %r" % result.reason
+
+
+def test_a_review_driven_rewrite_spends_the_budget_and_says_so():
+    """
+    The third spender. It is bounded separately by review_cycles, but it spends
+    the shared revision budget too, and used to do so invisibly — incrementing
+    the counter without ever checking it, so the next branch took the blame.
+    """
+    result, _, _ = drive([
+        plan_reply("a"), code_reply("a()"), verdict_reply("fail", "no"),
+        plan_reply("b"), code_reply("b()"), verdict_reply("fail", "still no"),
+        plan_reply("c"), code_reply("c()"), verdict_reply("fail", "no better"),
+    ], Gate(), budgets=Budgets(review_cycles=3, revisions=2))
+
+    assert result.blocked
+    assert "Review rejected the result 2 times" in result.reason, \
+        "the Review-driven rewrites went unreported: %r" % result.reason
+    assert "amended" not in result.reason and "out of date" not in result.reason, \
+        "a Review-driven block blamed another branch: %r" % result.reason
+
+
+def test_a_review_driven_rewrite_shows_up_in_another_branchs_block():
+    """The misattribution the other way round: Review's spending was invisible."""
+    result, _, _ = drive([
+        plan_reply("a"), code_reply("a()"), verdict_reply("fail", "no"),
+        plan_reply("b"), code_reply("b()"), verdict_reply("fail", "still no"),
+        plan_reply("c"), obsolete_reply("stale"),
+        plan_reply("d"), obsolete_reply("stale again"),
+        plan_reply("e"),
+    ], Gate(), budgets=Budgets(review_cycles=2, revisions=3))
+
+    assert result.blocked
+    assert "Review rejected the result 2 times" in result.reason, \
+        "the Review-driven rewrites went unreported: %r" % result.reason
+    assert "out of date 1 time" in result.reason
 
 
 def test_rejecting_after_amending_still_applies_nothing():
