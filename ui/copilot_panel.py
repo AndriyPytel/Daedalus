@@ -643,9 +643,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if self.history_popup.isVisible():
             self.history_popup.close()
         else:
-            self.history_popup.populate(
-                [self.chat_sessions.get_session_info(i)
-                 for i in range(self.chat_sessions.count())])
+            # Indexed only, and carrying its own position: a Session enters the
+            # picker when it gets its name, on its first Intent. The live empty
+            # Session is on screen, not in the history (FCC-42).
+            self.history_popup.populate(self.chat_sessions.indexed_sessions())
             self.history_popup.drop_from_the_dock()
 
     def new_chat(self):

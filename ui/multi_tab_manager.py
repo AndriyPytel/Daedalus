@@ -299,6 +299,19 @@ class ChatSessionManager(QtWidgets.QWidget):
             return self._sessions[index]
         return None
 
+    def indexed_sessions(self) -> list:
+        """
+        `(position, session)` for every Session that has had an Intent.
+
+        The same filter `_save` applies, so the picker shows what survives a
+        restart. The position is carried rather than recounted because it is
+        what names the Session to `switch_session` and `remove_session` — a
+        filtered list numbered from zero would open its neighbour (FCC-42).
+        """
+        return [(position, session)
+                for position, session in enumerate(self._sessions)
+                if session.get("indexed")]
+
     def mark_restored(self, index: int) -> bool:
         """True the first time a Session is asked for; its transcript is due."""
         session = self.get_session_info(index)

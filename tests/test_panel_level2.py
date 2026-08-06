@@ -559,6 +559,66 @@ def test_a_session_with_no_intent_is_not_in_the_history_index(panel):
     assert settings_manager.instance().get_sessions() == before
 
 
+def _rows_in_the_picker(panel):
+    """The names the popup is actually showing, in order."""
+    from ui.history_popup import HistoryItem
+
+    panel.toggle_history()
+    try:
+        rows = [panel.history_popup.list_layout.itemAt(i).widget()
+                for i in range(panel.history_popup.list_layout.count())]
+        return [(row.index, row.title_label.text())
+                for row in rows if isinstance(row, HistoryItem)]
+    finally:
+        panel.history_popup.close()
+
+
+def test_a_session_with_no_intent_is_not_in_the_picker_either(panel):
+    """
+    QA against FreeCAD 1.1.3 found the invariant enforced in the durable index
+    and not in the picker: `toggle_history` built the popup from every Session
+    in the stack, so a fresh dock showed one `New Chat` row against an index
+    holding none of it.
+    """
+    index, _ = panel.chat_sessions.add_new_chat("New Chat")
+
+    assert "New Chat" not in [name for _, name in _rows_in_the_picker(panel)]
+
+    panel.chat_sessions.begin(index, "Two-bore bracket")
+
+    assert "Two-bore bracket" in [name for _, name in _rows_in_the_picker(panel)]
+
+
+def test_a_promptless_launch_adds_no_row_to_the_picker(panel):
+    """Three launches where nobody typed anything, as the QA run did."""
+    index, _ = panel.chat_sessions.add_new_chat("Real work")
+    panel.chat_sessions.begin(index, "Two-bore bracket")
+    before = _rows_in_the_picker(panel)
+
+    for _ in range(3):
+        panel.chat_sessions.add_new_chat("New Chat")
+
+    assert [name for _, name in _rows_in_the_picker(panel)] == \
+        [name for _, name in before]
+
+
+def test_a_picker_row_names_the_session_it_shows_not_its_own_position(panel):
+    """
+    The picker shows a subset, so a row numbered from zero would open its
+    neighbour. The row carries the Session's position in the stack.
+    """
+    panel.chat_sessions.add_new_chat("Never used")          # unindexed, skipped
+    index, _ = panel.chat_sessions.add_new_chat("New Chat")
+    panel.chat_sessions.begin(index, "The one this test is looking for")
+
+    rows = _rows_in_the_picker(panel)
+    position, name = next((p, n) for p, n in rows
+                          if n == "The one this test is looking for")
+
+    assert position == index
+    assert panel.chat_sessions.get_session_info(position)["name"] == name
+
+
 def test_the_first_intent_puts_the_session_in_history_under_a_name(panel):
     from utils import settings_manager
 

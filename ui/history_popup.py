@@ -155,14 +155,21 @@ class HistoryPopup(QtWidgets.QFrame):
         self.scroll.setWidget(self.list_container)
         vbox.addWidget(self.scroll)
 
-    def populate(self, sessions_info: list):
-        """Rebuild the list from session data."""
+    def populate(self, rows: list):
+        """
+        Rebuild the list from `(position, session)` pairs.
+
+        The position is given rather than counted, because the picker shows a
+        subset — only the Sessions that have had an Intent — and the row it
+        emits has to name the Session in the manager, not the row in this list
+        (FCC-42). Counting was how a filter would open the wrong Session.
+        """
         while self.list_layout.count() > 1:
             item = self.list_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-        
-        for i, info in enumerate(sessions_info):
+
+        for i, info in rows:
             item = HistoryItem(i, info["name"], info.get("created_at"),
                                info.get("document") or "")
             item.selected.connect(self._on_selected)
