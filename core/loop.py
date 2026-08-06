@@ -47,8 +47,67 @@ class Budgets:
     attempts_per_step: int = 3
     review_cycles: int = 2
     # Without this, Execute declaring Step after Step obsolete never terminates.
+    # One ceiling over all three causes of a replan (see `_Revisions`): separate
+    # budgets would let the three cycle into each other and would raise the
+    # worst-case number of Plan calls in a run.
     revisions: int = 3
     looks_per_step: int = 2
+
+
+class _Revisions:
+    """
+    How many times the Plan has been rewritten, and why (FCC-22).
+
+    Three unrelated things replan: the user amends at the Plan Gate, Execute
+    finds a Step out of date, and Review rejects the result. They share one
+    ceiling, which is deliberate — but they used to share one *counter* too, so
+    whichever branch spent the last unit was reported as the cause of all of
+    them, and a run stopped by two amendments told the user Execute kept
+    finding the Plan out of date.
+    """
+
+    AMENDED = "amended"
+    OBSOLETE = "obsolete"
+    REJECTED = "rejected"
+
+    _SAID = (
+        (AMENDED, "you amended the Plan %s"),
+        (OBSOLETE, "Execute found the Plan out of date %s"),
+        (REJECTED, "Review rejected the result %s"),
+    )
+
+    def __init__(self):
+        self._spent = {self.AMENDED: 0, self.OBSOLETE: 0, self.REJECTED: 0}
+
+    def spend(self, cause):
+        self._spent[cause] += 1
+
+    def exhausted(self, budgets) -> bool:
+        return sum(self._spent.values()) >= budgets.revisions
+
+    def _causes_spent(self) -> list:
+        return [cause for cause, _ in self._SAID if self._spent[cause]]
+
+    def breakdown(self) -> str:
+        """What the budget actually went on, in the order the causes are listed."""
+        said = [text % ("%d time%s" % (self._spent[cause], "" if self._spent[cause] == 1 else "s"))
+                for cause, text in self._SAID if self._spent[cause]]
+        if not said:
+            return "nothing"
+        if len(said) == 1:
+            return said[0]
+        return ", ".join(said[:-1]) + " and " + said[-1]
+
+    def block_reason(self, budgets, cause: str, refused: str) -> str:
+        reason = ("The Plan has been rewritten %d times, which is the whole budget — %s."
+                  % (budgets.revisions, self.breakdown()))
+        # Where one cause spent the lot, the breakdown has already named it.
+        if self._causes_spent() != [cause]:
+            reason += " " + refused
+        if self._spent[self.OBSOLETE] or cause == self.OBSOLETE:
+            reason += (" Execute finding the Plan out of date means something about this "
+                       "Document does not match what was asked for.")
+        return reason
 
 
 APPROVE = "approve"
@@ -409,7 +468,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     events.emit(PLAN, steps=list(steps), reading=planned.reading)
 
     rejections = 0
-    revisions = 0
+    revisions = _Revisions()
 
     while True:
         approval = gate(list(steps)) or Approval(APPROVE)
@@ -418,10 +477,11 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         if approval.decision == REJECT:
             return _block(events, "You rejected the Plan, so nothing was applied.", [], 0)
 
-        revisions += 1
-        if revisions > budgets.revisions:
-            return _block(events, "The Plan has been amended %d times without being approved."
-                          % (revisions - 1), [], 0)
+        if revisions.exhausted(budgets):
+            return _block(events, revisions.block_reason(
+                budgets, _Revisions.AMENDED,
+                "Your latest amendment was not planned."), [], 0)
+        revisions.spend(_Revisions.AMENDED)
         planned = plan(intent, tools.call("snapshot"), llm, events,
                        feedback=approval.feedback, attachments=attachments)
         steps = planned.steps
@@ -440,15 +500,15 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             return _block(events, outcome["reason"], outcome["tried"], applied)
 
         if outcome["obsolete"]:
-            revisions += 1
-            if revisions > budgets.revisions:
+            if revisions.exhausted(budgets):
                 return _block(
                     events,
-                    "Execute keeps finding the Plan out of date — %d revisions and it has not "
-                    "settled. Something about this Document does not match what was asked for."
-                    % (revisions - 1),
+                    revisions.block_reason(
+                        budgets, _Revisions.OBSOLETE,
+                        "Execute has found it out of date again."),
                     outcome["tried"], applied,
                 )
+            revisions.spend(_Revisions.OBSOLETE)
             planned = plan(intent, tools.call("snapshot"), llm, events,
                            feedback=outcome["obsolete"], attachments=attachments)
             steps = planned.steps
@@ -475,7 +535,17 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                 outcome["tried"] + [{"review": reason}], applied,
             )
 
-        revisions += 1
+        # Bounded by review_cycles above, but it spends the shared revision
+        # budget as well — invisibly, until FCC-22.
+        if revisions.exhausted(budgets):
+            return _block(
+                events,
+                revisions.block_reason(
+                    budgets, _Revisions.REJECTED,
+                    "Review has rejected the result again."),
+                outcome["tried"] + [{"review": reason}], applied,
+            )
+        revisions.spend(_Revisions.REJECTED)
         planned = plan(intent, tools.call("snapshot"), llm, events,
                        feedback=reason, attachments=attachments)
         steps = planned.steps
