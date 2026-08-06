@@ -357,6 +357,31 @@ def introspect(exc):
         return ""
 
 
+def _bodies_in_pieces(doc):
+    """
+    Every PartDesign Body whose result is more than one solid (FCC-27).
+
+    A sketch of disjoint profiles pads into separate lumps, and nothing raises:
+    the feature reports itself up-to-date and valid, so Preflight passed it and
+    the only phase that objected was Review, at the end, from a render.
+
+    Only Bodies. A Part::Compound or a Document holding several unrelated
+    objects is many solids on purpose; a Body is single-solid by design, which
+    is what makes the count mean something here.
+    """
+    scattered = []
+    for obj in doc.Objects:
+        if obj.TypeId != "PartDesign::Body":
+            continue
+        shape = getattr(obj, "Shape", None)
+        if shape is None or shape.isNull():
+            continue
+        solids = shape.Solids
+        if len(solids) > 1:
+            scattered.append("%s: %d separate solids" % (obj.Name, len(solids)))
+    return scattered
+
+
 def preflight(request):
     import FreeCAD
 
@@ -375,6 +400,15 @@ def preflight(request):
                 for o in doc.Objects if o.State and "Invalid" in o.State]
     if failures:
         raise RuntimeError("recompute left these objects in error:\n" + "\n".join(failures))
+
+    scattered = _bodies_in_pieces(doc)
+    if scattered:
+        raise RuntimeError(
+            "this Step left a Body in more than one piece:\n" + "\n".join(scattered)
+            + "\nA PartDesign Body is one solid. Disjoint profiles in one sketch pad into "
+              "separate lumps rather than one part — the profiles that make up the outline "
+              "have to meet, and anything that is genuinely a second part belongs in a "
+              "second Body.")
 
     result = {
         "ok": True,
