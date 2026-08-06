@@ -37,15 +37,17 @@ class _FetchThread(QThread):
     fetched = Signal(str, list)   # provider, [{id, display}]
     failed = Signal(str, str)     # provider, error
 
-    def __init__(self, provider: str, api_key: str, parent=None):
+    def __init__(self, provider: str, api_key: str, base_url: str = "", parent=None):
         super().__init__(parent)
         self._provider = provider
         self._api_key = api_key
+        self._base_url = base_url
 
     def run(self):
         from core import model_catalog
         try:
-            models = model_catalog.fetch(self._provider, self._api_key)
+            models = model_catalog.fetch(self._provider, self._api_key,
+                                         base_url=self._base_url or None)
         except Exception as exc:
             self.failed.emit(self._provider, str(exc))
             return
@@ -68,18 +70,39 @@ class _ProviderManager(QObject):
         # Subscribe to key changes so the model list stays in sync
         from utils import settings_manager
         settings_manager.instance().api_keys_changed.connect(self._on_keys_changed)
+        # An address change invalidates a fetched list exactly as a key change does.
+        settings_manager.instance().base_urls_changed.connect(self._on_keys_changed)
 
     # ── Fetching ──────────────────────────────────────────────────────────────
+
+    def _configured(self, provider: str) -> tuple:
+        """
+        (api_key, base_url) when *provider* is usable at all, else None.
+
+        A local server is configured by its address and may want no token; a
+        hosted provider is configured by its key and has no address to give.
+        """
+        from core import model_catalog
+        from utils import settings_manager
+
+        sm = settings_manager.instance()
+        key = sm.get_api_key_for_provider(provider)
+        base = sm.get_base_url_for_provider(provider)
+        if model_catalog.needs_base_url(provider):
+            return (key, base) if base else None
+        return (key, base) if key else None
 
     def _ensure_fetched(self, provider: str):
         """Start a background fetch the first time a provider is asked for."""
         if provider in self._fetched or provider in self._threads or provider not in self._model_map:
             return
-        from utils import settings_manager
-        key = settings_manager.instance().get_api_key_for_provider(provider)
-        if not key:
+        credentials = self._configured(provider)
+        if credentials is None:
+            # Nothing to ask with. Not a failure and not worth a warning — the
+            # user simply has not filled the page in yet.
             return
-        thread = _FetchThread(provider, key, self)
+        key, base = credentials
+        thread = _FetchThread(provider, key, base, self)
         thread.fetched.connect(self._on_fetched)
         thread.failed.connect(self._on_fetch_failed)
         self._threads[provider] = thread
@@ -93,8 +116,14 @@ class _ProviderManager(QObject):
 
     def _on_fetch_failed(self, provider: str, error: str):
         import FreeCAD
+        from utils import settings_manager
+
+        # A local server's failure is about an address the user typed, and
+        # "Connection refused" without it says nothing they can act on.
+        where = settings_manager.instance().get_base_url_for_provider(provider)
+        at = f" at {where}" if where else ""
         FreeCAD.Console.PrintWarning(
-            f"[FreeCadCopilot] Could not fetch models for {provider}: {error}\n"
+            f"[FreeCadCopilot] Could not fetch models for {provider}{at}: {error}\n"
         )
 
     def _known(self, provider: str) -> list:
@@ -107,7 +136,7 @@ class _ProviderManager(QObject):
 
     # ── Slots ─────────────────────────────────────────────────────────────────
 
-    def _on_keys_changed(self, _keys: list):
+    def _on_keys_changed(self, _changed):
         self._fetched.clear()
         self._threads.clear()
         self.models_changed.emit(self.get_available_models())
@@ -116,14 +145,13 @@ class _ProviderManager(QObject):
 
     def get_available_models(self) -> list:
         """
-        Return a list of model dicts for every provider that has a non-empty
-        API key stored.  Each dict has keys: ``id``, ``display``, ``provider``.
+        Return a list of model dicts for every provider that is configured —
+        a key, or a server address for a local one.  Each dict has keys:
+        ``id``, ``display``, ``provider``.
         """
-        from utils import settings_manager
-        sm = settings_manager.instance()
         result = []
         for provider in self._model_map:
-            if not sm.get_api_key_for_provider(provider):
+            if self._configured(provider) is None:
                 continue
             for m in self._entries_for(provider):
                 result.append({"id": m["id"], "display": m["display"], "provider": provider})
@@ -131,17 +159,15 @@ class _ProviderManager(QObject):
 
     def awaiting_model_lists(self) -> bool:
         """
-        True until every keyed provider has delivered its real model list.
+        True until every configured provider has delivered its real model list.
 
         A fetch that failed never lands in ``_fetched``, so its provider stays
         awaited: a provider that could not be reached has not said any model of
         its own is gone.
         """
-        from utils import settings_manager
-        sm = settings_manager.instance()
         return any(provider not in self._fetched
                    for provider in self._model_map
-                   if sm.get_api_key_for_provider(provider))
+                   if self._configured(provider) is not None)
 
     def get_model_entry(self, model_id: str) -> dict | None:
         """Find a model entry by its ``id`` across all providers."""
@@ -160,7 +186,7 @@ class _ProviderManager(QObject):
         """Return [{id, display}] for a given provider."""
         return list(self._entries_for(provider))
 
-    def test_connection(self, provider: str, api_key: str) -> tuple:
+    def test_connection(self, provider: str, api_key: str, base_url: str = "") -> tuple:
         """
         Synchronous connection test — the same request that fetches the model
         list, so a passing test guarantees a populated combo.  Returns
@@ -169,7 +195,7 @@ class _ProviderManager(QObject):
         """
         from core import model_catalog
         try:
-            models = model_catalog.fetch(provider, api_key)
+            models = model_catalog.fetch(provider, api_key, base_url=base_url or None)
         except Exception as exc:
             return False, str(exc)
         return True, f"Connection successful — {len(models)} models"

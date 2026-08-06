@@ -301,14 +301,15 @@ def client_from_settings(model_id: str = None) -> LiteLLMClient:
     """Build a client from the provider settings page and stored keys."""
     from utils import settings_manager
 
-    provider, mid, secret = settings_manager.instance().get_llm_credentials(model_id)
+    from core import model_catalog
 
-    api_base = None
-    api_key = secret
-    # The Custom/Local page stores the endpoint where other providers store a key.
-    if secret.startswith("http://") or secret.startswith("https://"):
-        api_base = secret.rstrip("/")
-        api_key = "not-needed"
+    sm = settings_manager.instance()
+    provider, mid, secret = sm.get_llm_credentials(model_id)
+
+    # A local server's address is a setting of its own, not the key field (FCC-50).
+    api_base = model_catalog.openai_base(sm.get_base_url_for_provider(provider)) or None
+    # LiteLLM wants a key even where the local server ignores it.
+    api_key = secret or ("not-needed" if api_base else "")
 
     return LiteLLMClient(
         model=litellm_model_name(provider, mid),

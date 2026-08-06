@@ -19,6 +19,26 @@ _DEFAULT_BASE = {
 }
 
 
+def needs_base_url(provider: str) -> bool:
+    """True for a provider whose address only the user knows — a local server."""
+    return provider not in _DEFAULT_BASE
+
+
+def openai_base(base_url: str) -> str:
+    """
+    A server address, as the OpenAI-compatible root LiteLLM and ``fetch`` want.
+
+    What a user types is where the server listens — `http://localhost:11434`.
+    Ollama, llama.cpp and LM Studio all serve the OpenAI shape under `/v1`, so
+    appending it is the addon's business rather than the user's to remember;
+    an address that already says `/v1` is left alone.
+    """
+    base = (base_url or "").strip().rstrip("/")
+    if base and not base.endswith("/v1"):
+        base += "/v1"
+    return base
+
+
 def fetch(provider: str, api_key: str, base_url: str | None = None) -> list[dict]:
     """
     Return ``[{id, display}]`` for ``provider``, raising on transport or HTTP
@@ -37,12 +57,16 @@ def fetch(provider: str, api_key: str, base_url: str | None = None) -> list[dict
     elif provider == "Google":
         headers = {}
         params = {"key": api_key, "pageSize": 1000}
-    elif provider == "Custom/Local":
-        # The Custom/Local page stores the endpoint where others store a key.
-        base = (base_url or api_key).rstrip("/")
-        headers = {}
     else:
-        raise ValueError("Unknown provider: %s" % provider)
+        # A local server. Its address is a setting of its own (FCC-50), never
+        # the API key — a key read as a URL is what produced "Request URL is
+        # missing an 'http://' or 'https://' protocol".
+        if not base_url:
+            raise ValueError("No Base URL for provider: %s" % provider)
+        base = openai_base(base_url)
+        # A local server that wants no token ignores the header; one that does
+        # gets it, which is why the key field stays.
+        headers = {"Authorization": "Bearer %s" % api_key} if api_key else {}
 
     if not base:
         raise ValueError("No endpoint for provider: %s" % provider)

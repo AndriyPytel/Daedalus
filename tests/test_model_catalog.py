@@ -26,6 +26,7 @@ def _recorded(name):
 class _Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.server.last_path = self.path
+        self.server.last_headers = {name.lower(): value for name, value in self.headers.items()}
         body = json.dumps(self.server.payload).encode()
         self.send_response(self.server.status)
         self.send_header("Content-Type", "application/json")
@@ -43,6 +44,7 @@ def provider_endpoint():
     server.payload = {}
     server.status = 200
     server.last_path = None
+    server.last_headers = {}
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -91,13 +93,67 @@ def test_a_local_endpoint_lists_what_has_been_pulled(provider_endpoint):
     server, base = provider_endpoint
     server.payload = _recorded("local_models.json")
 
-    models = fetch("Custom/Local", base + "/v1")
+    models = fetch("Custom/Local", "", base_url=base + "/v1")
 
     assert models == [
         {"id": "llama3.2:latest", "display": "llama3.2:latest"},
         {"id": "qwen2.5-coder:7b", "display": "qwen2.5-coder:7b"},
     ]
     assert server.last_path.startswith("/v1/models")
+
+
+def test_a_bare_local_host_is_asked_at_its_v1_root(provider_endpoint):
+    """
+    What a user types is a server address — `http://localhost:11434`. Ollama,
+    llama.cpp and LM Studio all serve the OpenAI shape under `/v1`, so that is
+    the addon's business to append rather than the user's to remember.
+    """
+    server, base = provider_endpoint
+    server.payload = _recorded("local_models.json")
+
+    fetch("Custom/Local", "", base_url=base)
+
+    assert server.last_path.startswith("/v1/models")
+
+
+def test_a_local_base_url_that_already_says_v1_is_not_doubled(provider_endpoint):
+    server, base = provider_endpoint
+    server.payload = _recorded("local_models.json")
+
+    fetch("Custom/Local", "", base_url=base + "/v1/")
+
+    assert server.last_path.startswith("/v1/models")
+
+
+def test_a_local_token_is_sent_when_there_is_one(provider_endpoint):
+    """A local server may still want a token; one that does not ignores it."""
+    server, base = provider_endpoint
+    server.payload = _recorded("local_models.json")
+
+    fetch("Custom/Local", "sk-local", base_url=base)
+
+    assert server.last_headers.get("authorization") == "Bearer sk-local"
+
+
+def test_a_local_endpoint_with_no_token_sends_no_authorisation(provider_endpoint):
+    server, base = provider_endpoint
+    server.payload = _recorded("local_models.json")
+
+    fetch("Custom/Local", "", base_url=base)
+
+    assert "authorization" not in server.last_headers
+
+
+def test_a_local_provider_with_no_base_url_refuses_rather_than_guessing():
+    """
+    The endpoint used to be read out of the API-key field, so an address typed
+    there became the base and a key typed there became a broken one. There is
+    nowhere left to guess from.
+    """
+    with pytest.raises(ValueError) as raised:
+        fetch("Custom/Local", "http://127.0.0.1:1/v1")
+
+    assert "Base URL" in str(raised.value)
 
 
 def test_a_rejected_key_raises_rather_than_returning_a_partial_list(provider_endpoint):
