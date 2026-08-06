@@ -487,6 +487,49 @@ def test_the_document_a_session_worked_on_is_in_the_row_tooltip(panel):
     assert _a_row(document="Parts.FCStd").toolTip() == "Parts.FCStd"
 
 
+def _icon_drawn(button, size=14):
+    """The fully-opaque colours the button's icon actually paints."""
+    from conftest import QtGui
+
+    image = button.icon().pixmap(size, size).toImage()
+    return [QtGui.QColor(image.pixelColor(x, y))
+            for y in range(image.height())
+            for x in range(image.width())
+            if QtGui.QColor(image.pixelColor(x, y)).alpha() == 255]
+
+
+def test_the_delete_button_draws_a_trash_icon_at_all(panel):
+    """`QIcon(path)` on an SVG rasterises to a null pixmap wherever Qt's SVG
+    image plugin is not loaded, and the button then draws nothing."""
+    row = _a_row()
+    row.show()
+    QT_APP.processEvents()
+
+    assert not row.del_btn.icon().isNull(), "the delete button has no icon"
+    assert _icon_drawn(row.del_btn), "the icon rasterised to nothing — a null pixmap"
+
+
+def test_the_delete_icon_is_tinted_to_the_button_like_every_other_icon(panel):
+    """
+    The row's icon was the one call site not going through `UIHelpers.get_icon`,
+    so it painted the SVG's own hardcoded white — invisible under a light
+    FreeCAD theme, and a colour of the addon's own, which ADR-0011 forbids.
+    """
+    row = _a_row()
+    for wanted in ("#c8321e", "#1e64c8"):
+        # A theme is one global stylesheet, which is what the colour has to
+        # arrive through — the route ADR-0011 describes, not a QPalette call.
+        row.del_btn.setStyleSheet(
+            "QPushButton#DeleteButton { background: transparent; border: none; color: %s; }" % wanted)
+        row.hide()
+        row.show()
+        QT_APP.processEvents()
+
+        painted = {colour.name() for colour in _icon_drawn(row.del_btn)}
+        assert painted == {wanted}, \
+            f"the trash icon painted {painted or 'nothing'} where the button said {wanted}"
+
+
 def test_a_row_never_changes_height_under_the_cursor(panel):
     from conftest import QtCore
 
