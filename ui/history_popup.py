@@ -4,6 +4,8 @@ except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
+from ui.ui_helpers import UIHelpers
+
 class HistoryItem(QtWidgets.QFrame):
     """A single row in the history list with selectable title and delete button."""
     selected = QtCore.Signal(int)
@@ -42,14 +44,7 @@ class HistoryItem(QtWidgets.QFrame):
         layout.addWidget(self.title_label, stretch=1)
         layout.addWidget(self.time_label)
 
-        import os
-        icon_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "Resources", "icons", "trash.svg")
         self.del_btn = QtWidgets.QPushButton()
-        if os.path.exists(icon_path):
-            self.del_btn.setIcon(QtGui.QIcon(icon_path))
-        else:
-            self.del_btn.setText("🗑")
-        
         self.del_btn.setObjectName("DeleteButton")
         self.del_btn.setFixedSize(24, 24)
         self.del_btn.setCursor(QtCore.Qt.PointingHandCursor)
@@ -73,6 +68,16 @@ class HistoryItem(QtWidgets.QFrame):
                 background-color: rgba(127, 127, 127, 40);
             }
         """)
+
+    def showEvent(self, event):
+        """
+        The trash is tinted once the row is on screen, like every other icon.
+
+        Asked in __init__ the button still answers with the OS palette, which
+        is light under every FreeCAD dark theme (ADR-0011).
+        """
+        super().showEvent(event)
+        self.del_btn.setIcon(UIHelpers.get_icon("trash", size=14, on=self.del_btn))
 
     def _format_relative_time(self, created_at: float) -> str:
         dt = QtCore.QDateTime.fromSecsSinceEpoch(int(created_at or 0))
