@@ -261,3 +261,91 @@ def test_an_unreachable_address_names_itself_and_leaves_the_rest_working(
         "the warning does not name the address that could not be reached"
     # And the panel keeps working: asking again is still answerable.
     assert isinstance(manager.get_available_models(), list)
+
+
+# ── The model combos survive their own save (FCC-44) ──────────────────────────
+
+
+def _naming_rows(page):
+    return [(page.naming_model_combo.itemText(i), page.naming_model_combo.itemData(i))
+            for i in range(page.naming_model_combo.count())]
+
+
+def _choose_naming_model(page):
+    """Pick the first real model — row 0 is 'Same as the chat model'."""
+    for row, (_, model_id) in enumerate(_naming_rows(page)):
+        if model_id:
+            page.naming_model_combo.setCurrentIndex(row)
+            return model_id
+    pytest.skip("no models to choose from on this machine")
+
+
+def test_a_naming_model_survives_the_save_that_stores_it(providers_page,
+                                                         settings_are_the_tests_own):
+    """
+    QA against FreeCAD 1.1.3: choose a naming model, press OK, and the setting
+    comes back empty. `saveSettings` wrote the API keys first, which emits
+    `api_keys_changed` → `models_changed` → `_refresh_models`, rebuilding the
+    combo and re-selecting it from the *stored* value — and only then read the
+    combo it had just overwritten.
+    """
+    sm = settings_are_the_tests_own
+    sm.set_api_key_for_provider("OpenAI", "sk-test")
+    _select(providers_page, "OpenAI")
+
+    wanted = _choose_naming_model(providers_page)
+    # An unsaved key edit, so the save takes the branch that writes the keys.
+    providers_page.key_edit.setText("sk-test-changed")
+
+    providers_page.saveSettings()
+
+    assert sm.get_naming_model() == wanted, \
+        "the choice was destroyed by the save meant to persist it"
+
+
+def test_the_default_model_survives_it_too(providers_page, settings_are_the_tests_own):
+    """The same line above it, and the same failure."""
+    sm = settings_are_the_tests_own
+    sm.set_api_key_for_provider("OpenAI", "sk-test")
+    _select(providers_page, "OpenAI")
+
+    combo = providers_page.default_model_combo
+    if combo.count() < 2:
+        pytest.skip("no models to choose from on this machine")
+    combo.setCurrentIndex(1)
+    wanted = combo.currentData()
+    providers_page.key_edit.setText("sk-test-changed")
+
+    providers_page.saveSettings()
+
+    assert sm.get_default_model() == wanted
+
+
+def test_same_as_the_chat_model_is_a_choice_and_is_stored(providers_page,
+                                                          settings_are_the_tests_own):
+    """Empty is a decision, not an absence — it must overwrite a real model."""
+    sm = settings_are_the_tests_own
+    sm.set_api_key_for_provider("OpenAI", "sk-test")
+    _select(providers_page, "OpenAI")
+    _choose_naming_model(providers_page)
+    providers_page.saveSettings()
+
+    providers_page.naming_model_combo.setCurrentIndex(0)     # "Same as the chat model"
+    providers_page.saveSettings()
+
+    assert sm.get_naming_model() == ""
+
+
+def test_the_page_shows_what_was_stored_after_a_save(providers_page,
+                                                     settings_are_the_tests_own):
+    """The mid-save rebuild re-selected the old value; the page must not keep it."""
+    sm = settings_are_the_tests_own
+    sm.set_api_key_for_provider("OpenAI", "sk-test")
+    _select(providers_page, "OpenAI")
+    wanted = _choose_naming_model(providers_page)
+    providers_page.key_edit.setText("sk-test-changed")
+
+    providers_page.saveSettings()
+
+    assert providers_page.naming_model_combo.currentData() == wanted
+    assert sm.get_naming_model() == wanted
