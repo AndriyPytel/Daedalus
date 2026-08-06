@@ -37,9 +37,19 @@ TRAPS = [
     "name this build does not have, or one of these at the wrong number of arguments, "
     "takes the FreeCAD core down inside the C++ constructor rather than raising, so "
     "there is no traceback to correct against.",
+    "A material is assigned as obj.ShapeMaterial = Materials.MaterialManager()."
+    "getMaterial(uuid). The property is a Materials::PropertyMaterial and takes a "
+    "Materials.Material and nothing else. App.Material is the old appearance-only "
+    "material and has no Name or Density. A Materials.Material cannot be built, "
+    "subscripted or written to from here, so a density is chosen by choosing the card "
+    "that already carries it — call the materials Tool for the uuid rather than "
+    "guessing one.",
 ]
 
 _SNAPSHOT_LIMIT = 200
+# 200 cards ship with FreeCAD 1.1 and the list is the same every call, so the
+# unfiltered answer is a page rather than the lot.
+_MATERIALS_LIMIT = 40
 
 # supportedTypes() only reports types whose module has been imported. Without
 # this, a session where the user never opened PartDesign is told PartDesign::Pad
@@ -237,10 +247,51 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
             "used_by": [o.Name for o in obj.InList],
         }
 
+    @registry.tool(
+        "materials",
+        "The material cards this FreeCAD has, with the uuid ShapeMaterial needs. A "
+        "uuid is not something to guess and a card's density is not something to set "
+        "— pick the card that already has the density asked for.",
+        {
+            "type": "object",
+            "properties": {"name": {"type": "string",
+                                    "description": "Optional case-insensitive name filter, e.g. 'alumin'."}},
+        },
+    )
+    def materials(name=None):
+        try:
+            import Materials
+        except ImportError:
+            raise ToolError("This FreeCAD build has no Materials module, so no material "
+                            "can be assigned.")
+        cards = Materials.MaterialManager().Materials
+        wanted = (name or "").lower()
+        found = []
+        for uuid, card in cards.items():
+            if wanted and wanted not in card.Name.lower():
+                continue
+            found.append({"name": card.Name, "uuid": uuid,
+                          "density": _physical(card, "Density")})
+        found.sort(key=lambda entry: entry["name"].lower())
+        result = {"materials": found[:_MATERIALS_LIMIT], "count": len(found)}
+        if len(found) > _MATERIALS_LIMIT:
+            result["truncated"] = ("showing %d of %d — filter by name"
+                                   % (_MATERIALS_LIMIT, len(found)))
+        return result
+
     if pipeline is not None:
         _register_apply(registry, pipeline, _selection)
 
     return registry
+
+
+def _physical(card, quantity):
+    """One physical value off a material card, or None where it has none."""
+    try:
+        value = card.getPhysicalValue(quantity)
+    except Exception:
+        return None
+    return str(value) if value is not None else None
 
 
 def _register_apply(registry, pipeline, selection):

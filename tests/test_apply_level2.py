@@ -67,6 +67,25 @@ def test_a_step_brings_back_the_render_review_will_judge_by(pipeline):
     assert os.path.getsize(result.render) > 1000
 
 
+def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc):
+    """
+    The Step that burned all three attempts of FCC-30 rung 1. It has to survive
+    Preflight — a separate process building its own namespace — and Apply, or
+    the two are running different programs (ADR-0002).
+    """
+    registry = build_registry(doc)
+    aluminium = [card for card in registry.call("materials", {"name": "alumin"})["materials"]
+                 if card["density"] and "2.7" in card["density"]][0]
+
+    result = pipeline.apply(
+        "body = doc.addObject('PartDesign::Body', 'Body')\n"
+        "body.ShapeMaterial = Materials.MaterialManager().getMaterial(%r)\n" % aluminium["uuid"],
+        label="Assign aluminium")
+
+    assert result.ok, result.traceback
+    assert "alumin" in doc.getObject("Body").ShapeMaterial.Name.lower()
+
+
 # ── one undo takes the whole Step back ────────────────────────────────────────
 
 
