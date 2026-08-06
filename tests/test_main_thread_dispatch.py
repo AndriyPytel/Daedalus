@@ -21,10 +21,10 @@ import core.apply
 
 @pytest.fixture
 def qt_app():
-    try:
-        from PySide2 import QtCore
-    except ImportError:
-        pytest.skip("PySide2 is not available")
+    from conftest import NO_QT, QtCore
+
+    if QtCore is None:
+        pytest.skip(NO_QT)
 
     app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
     core.apply._dispatcher = None

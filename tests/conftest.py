@@ -40,6 +40,30 @@ def _try_import_freecad():
 HAVE_FREECAD = _try_import_freecad()
 
 
+def _import_qt():
+    """
+    The Qt modules, by whichever route this FreeCAD offers them.
+
+    The same two-step every `ui/*.py` module makes: PySide2 where it exists,
+    otherwise FreeCAD's own `Ext/PySide` shim, which re-exports PySide6 under
+    the Qt5 spelling. Resolving it here once is what lets a test say `QtCore`
+    without naming a binding — a test that names one is a test that runs on
+    one machine.
+    """
+    for binding in ("PySide2", "PySide"):
+        try:
+            pkg = __import__(binding, fromlist=["QtCore", "QtGui", "QtWidgets"])
+            return pkg.QtCore, pkg.QtGui, pkg.QtWidgets
+        except (ImportError, AttributeError):
+            continue
+    return None, None, None
+
+
+QtCore, QtGui, QtWidgets = _import_qt()
+HAVE_QT = QtWidgets is not None
+NO_QT = "Qt is not available: neither PySide2 nor FreeCAD's PySide shim"
+
+
 def _one_qt_application():
     """
     Build the suite's single QApplication, offscreen, before any test does.
@@ -50,9 +74,7 @@ def _one_qt_application():
     raising. Making it a GUI application here settles that for everyone —
     QApplication *is* a QCoreApplication, so the event-loop tests are unaffected.
     """
-    try:
-        from PySide2 import QtWidgets
-    except ImportError:
+    if not HAVE_QT:
         return None
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
