@@ -13,8 +13,9 @@ import tempfile
 import pytest
 
 from core.events import (
-    APPLIED, BLOCKED, ERROR, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, RENDER,
-    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
+    ANSWER, APPLIED, BLOCKED, ERROR, PLAN, PLAN_REVISED, PREFLIGHT_FAILED,
+    QUESTION, RENDER, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
+    TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
@@ -57,6 +58,11 @@ def code_reply(code, label="Step", thinking=None):
 
 def obsolete_reply(reason):
     return json.dumps({"obsolete": reason})
+
+
+def question_reply(question):
+    """Plan answering that it cannot plan yet, and why (FCC-25)."""
+    return json.dumps({"question": question})
 
 
 def look_reply(tool, **arguments):
@@ -122,13 +128,14 @@ def failed(traceback):
     return {"status": "failed", "traceback": traceback}
 
 
-def drive(turns, applies=(), budgets=None, intent="Make a 10mm box"):
+def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None):
     """Run the loop over scripted turns and hand back everything to assert on."""
     llm = ScriptedLLMClient(turns)
     tools = FakeTools(applies)
     events = EventStream()
+    kwargs = {"ask": ask} if ask is not None else {}
     result = run(intent, llm=llm, tools=tools.registry, events=events,
-                 budgets=budgets or Budgets())
+                 budgets=budgets or Budgets(), **kwargs)
     return result, events, llm, tools
 
 
@@ -1101,3 +1108,104 @@ def test_a_run_reports_what_it_did():
     assert result.steps_applied == 2
     assert result.verdict == "pass"
     assert result.render == RENDER_PNG
+
+
+# ── Plan asks rather than inventing a parameter (FCC-25) ──────────────────────
+
+GEAR = "модельку шестерні"
+MISSING = "I need the module, the tooth count, the thickness and the bore diameter."
+
+
+def test_plan_can_ask_instead_of_planning():
+    """
+    The in-process half of FCC-25: with a value the part cannot be built
+    without missing, Plan answers with a question and no Plan is shown.
+    """
+    asked = []
+
+    result, events, _, tools = drive(
+        [question_reply(MISSING),
+         plan_reply("Sketch the blank", "Pad it"), code_reply("a()"), code_reply("b()"),
+         verdict_reply("pass")],
+        intent=GEAR, ask=lambda question: asked.append(question) or "module 2, 20 teeth")
+
+    assert asked == [MISSING], "Plan did not ask, or asked something else: %s" % asked
+    question = events.first(QUESTION)
+    assert question is not None and question.data["text"] == MISSING
+    # The question came before any Plan reached the user.
+    kinds = [e.kind for e in events]
+    assert kinds.index(QUESTION) < kinds.index(PLAN)
+    assert result.ok
+    assert tools.applied_codes() == ["a()", "b()"]
+
+
+def test_the_answer_reaches_plan_and_nothing_ran_before_it():
+    llm = ScriptedLLMClient([
+        question_reply(MISSING),
+        plan_reply("Sketch a 20-tooth module-2 blank"), code_reply("a()"),
+        verdict_reply("pass"),
+    ])
+    tools = FakeTools()
+
+    run(GEAR, llm=llm, tools=tools.registry, ask=lambda _: "module 2, 20 teeth, 10 thick, ⌀8 bore")
+
+    second_plan = json.dumps(llm.calls[1])
+    assert "you_asked_and_the_user_answered" in second_plan
+    assert "20 teeth" in second_plan
+    assert MISSING in second_plan, "Plan was given the answer without the question"
+
+
+def test_a_user_who_declines_gets_a_plan_that_chose_for_them():
+    result, events, llm, _ = drive(
+        [question_reply(MISSING),
+         plan_reply("Sketch the blank, assumed module 2 and 20 teeth"), code_reply("a()"),
+         verdict_reply("pass")],
+        intent=GEAR, ask=lambda _: "")
+
+    assert result.ok
+    told = json.dumps(llm.calls[1])
+    assert "Choose sensible values yourself" in told
+    assert events.first(ANSWER).data["by"] == "nobody"
+
+
+def test_with_nobody_to_ask_the_run_does_not_stall():
+    """Level 1, Level 2 and headless runs have no user; they must still plan."""
+    result, _, llm, _ = drive(
+        [question_reply(MISSING), plan_reply("Sketch it, assumed module 2"), code_reply("a()"),
+         verdict_reply("pass")],
+        intent=GEAR)
+
+    assert result.ok
+    assert "Choose sensible values yourself" in json.dumps(llm.calls[1])
+
+
+def test_a_plan_that_only_ever_asks_is_bounded():
+    """
+    The user is asked at most `questions` times. After that Plan is told to
+    choose; if it asks even then, the run fails rather than looping.
+    """
+    asked = []
+
+    result, _, _, tools = drive(
+        [question_reply("q1"), question_reply("q2"), question_reply("q3"), question_reply("q4")],
+        intent=GEAR, ask=lambda q: asked.append(q) or "some answer",
+        budgets=Budgets(questions=2))
+
+    assert asked == ["q1", "q2"], "the user was asked past the budget: %s" % asked
+    assert not result.ok
+    assert "told to choose for itself" in result.reason
+    assert tools.applied_codes() == []
+
+
+def test_a_question_alongside_steps_is_still_a_plan():
+    """A question is not a Plan with a caveat; steps win and nothing is asked."""
+    asked = []
+
+    result, events, _, _ = drive(
+        [json.dumps({"question": "how big?", "steps": ["Sketch it"]}),
+         code_reply("a()"), verdict_reply("pass")],
+        intent=GEAR, ask=lambda q: asked.append(q) or "")
+
+    assert result.ok
+    assert asked == []
+    assert events.first(QUESTION) is None

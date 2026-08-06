@@ -1017,3 +1017,70 @@ def test_switching_is_refused_while_a_run_is_in_flight(panel):
         assert "switching sessions" in panel.status_line.text()
     finally:
         panel._set_running(False)
+
+
+# ── Plan asking for what the Intent did not say (FCC-25) ──────────────────────
+
+
+def _button(card, text):
+    from conftest import QtWidgets
+
+    for button in card.findChildren(QtWidgets.QPushButton):
+        if text in button.text():
+            return button
+    raise AssertionError("no %r button on the card: %s"
+                         % (text, [b.text() for b in card.findChildren(QtWidgets.QPushButton)]))
+
+
+def test_the_question_reaches_the_transcript(panel):
+    from core.events import Event, QUESTION
+
+    panel.on_event(Event(QUESTION, {"text": "How many teeth, and what module?"}))
+    QT_APP.processEvents()
+
+    assert "How many teeth, and what module?" in _said_in(panel)
+
+
+def test_an_answer_typed_in_the_composer_reaches_the_loop(panel, monkeypatch):
+    answered = []
+    monkeypatch.setattr(panel.ask, "answer", answered.append)
+
+    panel.on_missing_values("How many teeth?")
+    QT_APP.processEvents()
+    panel.user_input.setPlainText("20 teeth, module 2")
+    _button(panel._answer_card, "Send").click()
+    QT_APP.processEvents()
+
+    assert answered == ["20 teeth, module 2"]
+    assert panel.user_input.toPlainText() == "", "the composer kept the answer"
+    assert "20 teeth, module 2" in _said_in(panel), "the answer is not in the transcript"
+
+
+def test_an_empty_answer_does_not_start_the_run_on_nothing(panel, monkeypatch):
+    answered = []
+    monkeypatch.setattr(panel.ask, "answer", answered.append)
+
+    panel.on_missing_values("How many teeth?")
+    QT_APP.processEvents()
+    panel.user_input.clear()
+    _button(panel._answer_card, "Send").click()
+    QT_APP.processEvents()
+
+    assert answered == [], "an empty composer was sent as the answer"
+    assert panel._answer_card is not None, "the card went away without being answered"
+
+    _button(panel._answer_card, "You decide").click()
+    QT_APP.processEvents()
+    assert answered == [""], "'You decide' did not decline for the user"
+
+
+def test_stopping_releases_a_waiting_question(panel):
+    panel.on_missing_values("How many teeth?")
+    QT_APP.processEvents()
+    card = panel._answer_card
+
+    panel.on_stop()
+    QT_APP.processEvents()
+
+    assert panel._answer_card is None
+    assert not card.isEnabled(), "the card is still answerable after Stop"

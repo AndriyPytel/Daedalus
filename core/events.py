@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Tuple
 
 THOUGHT = "thought"
+QUESTION = "question"
+ANSWER = "answer"
 PLAN = "plan"
 PLAN_REVISED = "plan_revised"
 STEP_STARTED = "step_started"
@@ -26,8 +28,8 @@ BLOCKED = "blocked"
 ERROR = "error"
 
 KINDS = (
-    THOUGHT, PLAN, PLAN_REVISED, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
-    PREFLIGHT_FAILED, RENDER, APPLIED, REVIEW_VERDICT, BLOCKED, ERROR,
+    THOUGHT, QUESTION, ANSWER, PLAN, PLAN_REVISED, STEP_STARTED, TOOL_CALL,
+    TOOL_RESULT, PREFLIGHT_FAILED, RENDER, APPLIED, REVIEW_VERDICT, BLOCKED, ERROR,
 )
 
 

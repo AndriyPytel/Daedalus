@@ -175,13 +175,15 @@ class AskTheUser(QtCore.QObject):
     """
     Blocks the worker thread until the user answers, on the GUI thread.
 
-    Two questions go through here: the Plan Gate, and the Owned Object rule.
-    Both are asked from the loop's thread and must be answered by a person, so
-    the signal crosses to the GUI thread and the worker waits on an Event.
+    Three questions go through here: the Plan Gate, the Owned Object rule, and
+    the parameters Plan is missing. All are asked from the loop's thread and
+    must be answered by a person, so the signal crosses to the GUI thread and
+    the worker waits on an Event.
     """
 
     plan_gate = QtCore.Signal(object)      # steps
     owned_objects = QtCore.Signal(object)  # {"delete": [...]}
+    missing_values = QtCore.Signal(object)  # the question, as text
 
     def __init__(self):
         super().__init__()
@@ -195,6 +197,17 @@ class AskTheUser(QtCore.QObject):
 
     def about_objects_we_do_not_own(self, kinds):
         return self._ask(self.owned_objects, kinds)
+
+    def about_missing_values(self, question):
+        """
+        The values Plan has not been given. An empty answer means "you choose".
+
+        `abandon` releases every waiting question with an Approval, which is
+        the Plan Gate's answer and not one of these — anything that is not
+        text is nobody answering.
+        """
+        answer = self._ask(self.missing_values, question)
+        return answer if isinstance(answer, str) else ""
 
     def _ask(self, signal, payload):
         self._answered.clear()
@@ -282,7 +295,8 @@ class LoopWorker(QtCore.QObject):
         try:
             result = run(intent, llm=self._get_client(), tools=tools,
                          events=events, cancelled=self._stop.is_set,
-                         attachments=attachments, gate=self.ask.about_the_plan)
+                         attachments=attachments, gate=self.ask.about_the_plan,
+                         ask=self.ask.about_missing_values)
             self.finished.emit(result)
         except Exception as exc:
             events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
@@ -376,6 +390,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.bridge.event.connect(self.on_event)
         self.ask.plan_gate.connect(self.on_plan_gate)
         self.ask.owned_objects.connect(self.on_owned_objects)
+        self.ask.missing_values.connect(self.on_missing_values)
 
         self._running = False
         self._empty_state = None
@@ -649,6 +664,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._thought_phase = None
         self._current_step = 0
         self._gate_card = None
+        self._answer_card = None
 
     def _became_the_live_session(self):
         """
@@ -859,9 +875,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.update_header_title(self.chat_sessions.stack.currentIndex())
 
     def on_stop(self):
-        if self._gate_card is not None:
-            self._gate_card.setEnabled(False)
-            self._gate_card = None
+        for card in ("_gate_card", "_answer_card"):
+            if getattr(self, card, None) is not None:
+                getattr(self, card).setEnabled(False)
+                setattr(self, card, None)
         self.worker.stop()       # also releases a waiting question
         self.stop_button.setEnabled(False)
         self.status_line.setText("Stopping after the current attempt…")
@@ -887,6 +904,16 @@ class CopilotPanel(QtWidgets.QDockWidget):
         data = event.data
         if event.kind == ev.THOUGHT:
             self._render_thought(data["phase"], data["text"])
+
+        elif event.kind == ev.QUESTION:
+            self.add_chat_widget(AssistantMessageWidget(data["text"]))
+
+        elif event.kind == ev.ANSWER:
+            # The user's own answer is already in the transcript; what is worth
+            # saying is that nobody gave one (FCC-25).
+            if data.get("by") != "user":
+                self.add_chat_widget(AssistantMessageWidget(
+                    "No values given, so the Plan will say what it assumed."))
 
         elif event.kind == ev.PLAN:
             self._render_plan(data["steps"], "Plan", data.get("reading", ""))
@@ -1075,6 +1102,67 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.user_input.clear()
         self.add_chat_widget(TextMessageWidget(feedback))
         answer(Approval(AMEND, feedback))
+
+    @QtCore.Slot(object)
+    def on_missing_values(self, question):
+        """
+        The values Plan has not been given (FCC-25).
+
+        The question itself is already in the transcript — it arrived as an
+        event. This is only the card that takes the answer, and it takes it
+        from the composer, the same way Amend does.
+        """
+        self.status_line.setText("Waiting for the values the Plan needs…")
+        self.status_line.setVisible(True)
+        self._answer_card = self._build_answer_card()
+        self.add_chat_widget(self._answer_card)
+
+    def _build_answer_card(self):
+        card = QtWidgets.QFrame()
+        card.setObjectName("GateCard")
+        layout = QtWidgets.QVBoxLayout(card)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
+
+        note = QtWidgets.QLabel(
+            "Answer in the box below, then Send. Or let the Copilot choose — it will "
+            "write each assumed value into the Plan, so you can still correct it.")
+        note.setWordWrap(True)
+        note.setStyleSheet("font-size: 11px;")
+        layout.addWidget(note)
+
+        buttons = QtWidgets.QHBoxLayout()
+        buttons.setSpacing(6)
+
+        def answer(text):
+            card.setEnabled(False)
+            self._answer_card = None
+            self.status_line.setText("Working…")
+            self.ask.answer(text)
+
+        send = QtWidgets.QPushButton("↩  Send")
+        send.setObjectName("PillButton")
+        send.clicked.connect(lambda: self._answer_values(answer))
+        buttons.addWidget(send)
+
+        decide = QtWidgets.QPushButton("✎  You decide")
+        decide.setObjectName("PillButton")
+        decide.clicked.connect(lambda: answer(""))
+        buttons.addWidget(decide)
+
+        buttons.addStretch()
+        layout.addLayout(buttons)
+        return card
+
+    def _answer_values(self, answer):
+        text = self.user_input.toPlainText().strip()
+        if not text:
+            self.user_input.setPlaceholderText("Give the values, then press Send…")
+            self.user_input.setFocus()
+            return
+        self.user_input.clear()
+        self.add_chat_widget(TextMessageWidget(text))
+        answer(text)
 
     @QtCore.Slot(object)
     def on_owned_objects(self, kinds):
