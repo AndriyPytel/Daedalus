@@ -26,14 +26,16 @@ _STATUS_STYLE = "font-size: 11px; font-weight: 600;"
 class _TestWorker(QtCore.QObject):
     result = QtCore.Signal(bool, str)   # success, message
 
-    def __init__(self, provider, api_key):
+    def __init__(self, provider, api_key, base_url=""):
         super(_TestWorker, self).__init__()
         self._provider = provider
         self._api_key  = api_key
+        self._base_url = base_url
 
     def run(self):
         from utils import provider_manager
-        ok, msg = provider_manager.instance().test_connection(self._provider, self._api_key)
+        ok, msg = provider_manager.instance().test_connection(
+            self._provider, self._api_key, self._base_url)
         self.result.emit(ok, msg)
 
 
@@ -48,6 +50,7 @@ class ProvidersPage(QtWidgets.QWidget):
         self.setWindowTitle("API & Providers")
         self._current_provider = None
         self._edits = {}  # Tracks all unsaved key changes locally
+        self._base_edits = {}  # The same, for local servers' addresses
         self._thread = None
         self._worker = None
         self._tinted = False
@@ -109,12 +112,28 @@ class ProvidersPage(QtWidgets.QWidget):
         self.title_lbl.setStyleSheet("font-size: 16px; font-weight: 700;")
         self.right_layout.addWidget(self.title_lbl)
 
+        # A local server's address: plain text, not a secret, and shown only for
+        # a provider whose endpoint the addon does not already know (FCC-50).
+        self.base_url_container = QtWidgets.QWidget()
+        base_vbox = QtWidgets.QVBoxLayout(self.base_url_container)
+        base_vbox.setContentsMargins(0, 0, 0, 0)
+        base_vbox.setSpacing(6)
+        base_vbox.addWidget(QtWidgets.QLabel("Base URL"))
+        self.base_url_edit = QtWidgets.QLineEdit()
+        self.base_url_edit.setPlaceholderText("http://localhost:11434")
+        self.base_url_edit.setToolTip(
+            "Where the server listens. /v1 is added for you if you leave it off.")
+        self.base_url_edit.setStyleSheet(UIHelpers.get_input_style())
+        base_vbox.addWidget(self.base_url_edit)
+        self.right_layout.addWidget(self.base_url_container)
+
         self.key_container = QtWidgets.QWidget()
         key_vbox = QtWidgets.QVBoxLayout(self.key_container)
         key_vbox.setContentsMargins(0, 0, 0, 0)
         key_vbox.setSpacing(6)
 
-        key_vbox.addWidget(QtWidgets.QLabel("API Key"))
+        self.key_lbl = QtWidgets.QLabel("API Key")
+        key_vbox.addWidget(self.key_lbl)
         
         key_hbox = QtWidgets.QHBoxLayout()
         key_hbox.setSpacing(6)
@@ -209,35 +228,63 @@ class ProvidersPage(QtWidgets.QWidget):
     def _set_editor_enabled(self, enabled):
         self.title_lbl.setEnabled(enabled)
         self.key_container.setEnabled(enabled)
+        self.base_url_container.setEnabled(enabled)
         self.test_btn.setEnabled(enabled)
         self.model_container.setEnabled(enabled)
         if not enabled:
             self.title_lbl.setText("Select a provider")
             self.key_edit.clear()
+            self.base_url_edit.clear()
+            self.base_url_container.setVisible(False)
             self.status_lbl.setText("")
             self.default_model_combo.clear()
+
+    def _remember_edits(self):
+        """Carry what is typed but unsaved across a change of selection."""
+        if not self._current_provider:
+            return
+        self._edits[self._current_provider] = self.key_edit.text().strip()
+        if self._wants_base_url(self._current_provider):
+            self._base_edits[self._current_provider] = self.base_url_edit.text().strip()
+
+    @staticmethod
+    def _wants_base_url(provider):
+        from core import model_catalog
+
+        return model_catalog.needs_base_url(provider)
 
     def _on_selection_changed(self, current, _prev):
         if not current:
             self._set_editor_enabled(False)
             return
 
-        if self._current_provider:
-            self._edits[self._current_provider] = self.key_edit.text().strip()
-        
+        self._remember_edits()
+
         provider = current.data(QtCore.Qt.UserRole)
         self._current_provider = provider
         self.title_lbl.setText(provider)
-        
+
+        from utils import settings_manager
+        sm = settings_manager.instance()
+
         if provider in self._edits:
             key = self._edits[provider]
         else:
-            from utils import settings_manager
-            key = settings_manager.instance().get_api_key_for_provider(provider)
-        
+            key = sm.get_api_key_for_provider(provider)
+
+        local = self._wants_base_url(provider)
+        self.base_url_container.setVisible(local)
+        if local:
+            self.base_url_edit.setText(
+                self._base_edits.get(provider, sm.get_base_url_for_provider(provider)))
+        # A local server's token is optional; a hosted provider's key is not.
+        self.key_lbl.setText("API Key (optional)" if local else "API Key")
+        self.key_edit.setPlaceholderText(
+            "Only if the server asks for one…" if local else "Enter API key…")
+
         self.key_edit.setText(key)
         self.status_lbl.setText("")
-        
+
         self._set_editor_enabled(True)
         self._refresh_models()
 
@@ -276,9 +323,13 @@ class ProvidersPage(QtWidgets.QWidget):
                 break
 
     def _run_test(self):
+        # A local server is identified by its address, everything else by its key.
+        local = self._wants_base_url(self._current_provider)
         key = self.key_edit.text().strip()
-        if not key:
-            self.status_lbl.setText("No key")
+        base = self.base_url_edit.text().strip() if local else ""
+        missing = not base if local else not key
+        if missing:
+            self.status_lbl.setText("No address" if local else "No key")
             self.status_lbl.setStyleSheet(_STATUS_STYLE)
             return
 
@@ -286,7 +337,7 @@ class ProvidersPage(QtWidgets.QWidget):
         self.status_lbl.setStyleSheet(_STATUS_STYLE)
         self.test_btn.setEnabled(False)
 
-        self._worker = _TestWorker(self._current_provider, key)
+        self._worker = _TestWorker(self._current_provider, key, base)
         self._thread = QtCore.QThread()
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
@@ -351,8 +402,11 @@ class ProvidersPage(QtWidgets.QWidget):
         from utils import settings_manager
         sm = settings_manager.instance()
         
-        if self._current_provider:
-            self._edits[self._current_provider] = self.key_edit.text().strip()
+        self._remember_edits()
+
+        for provider, url in self._base_edits.items():
+            sm.set_base_url_for_provider(provider, url)
+        self._base_edits.clear()
 
         if not self._edits:
             self._save_models(sm)
