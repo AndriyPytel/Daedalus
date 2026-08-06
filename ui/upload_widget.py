@@ -202,7 +202,14 @@ class UploadWidget(QtWidgets.QWidget):
         mime = clipboard.mimeData()
 
         if mime.hasImage():
-            pix = QtGui.QPixmap(mime.imageData())
+            # fromImage, not QPixmap(image): Qt5 has no QImage constructor, and
+            # PySide2 takes the call anyway and hands back a null pixmap, which
+            # save() then writes as a blank (FCC-48).
+            pix = QtGui.QPixmap.fromImage(clipboard.image())
+            if pix.isNull():
+                from utils.logger import logger
+                logger.warning("[Copilot] The clipboard offered an image that did not convert")
+                return False
             tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
             pix.save(tmp.name, "PNG")
             tmp.close()
