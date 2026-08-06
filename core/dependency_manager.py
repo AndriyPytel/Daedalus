@@ -1,10 +1,15 @@
 # FreeCadCopilot/core/dependency_manager.py
+import csv
 import FreeCAD
 import os
+import re
+import shutil
 import sys
 import subprocess
 import importlib.util
 from PySide.QtGui import QMessageBox
+
+_DIST_INFO = re.compile(r"^(?P<name>.+?)-(?P<version>\d[^-]*)\.dist-info$")
 
 # pip name -> import name for the addon's required packages; the two differ for Pillow
 REQUIRED_PACKAGES = {
@@ -22,6 +27,84 @@ def get_target_directory():
     if not os.path.exists(path):
         os.makedirs(path)
     return path
+
+# ── Layered installs (FCC-28) ─────────────────────────────────────────────────
+#
+# `pip install --target` without `--upgrade` refuses to overwrite a file that is
+# already there but writes the new dist-info anyway. Measured: installing
+# six 1.15.0 and then six 1.16.0 leaves `six-1.16.0.dist-info` beside
+# `six-1.15.0.dist-info`, and `six.py` still reporting `__version__ = "1.15.0"`.
+# That is how two pydantic and two pydantic_core versions came to sit side by
+# side, and how a pydantic can end up not matching its pydantic_core.
+#
+# `--upgrade` fixes the code. It does not remove the superseded dist-info, so
+# the metadata still describes two installs where there is one — which is what
+# `prune_superseded` is for.
+
+
+def _normalised(name):
+    """PEP 503: `pydantic_core` and `Pydantic-Core` are the same distribution."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _version_key(version):
+    """Sortable enough to say which of two versions of one package is newer."""
+    return [int(part) if part.isdigit() else part
+            for part in re.split(r"[._-]", version)]
+
+
+def installed_distributions(target_directory):
+    """{distribution: [(version, dist-info path), …]} in *target_directory*."""
+    found = {}
+    for entry in sorted(os.listdir(target_directory)):
+        match = _DIST_INFO.match(entry)
+        if not match or not os.path.isdir(os.path.join(target_directory, entry)):
+            continue
+        found.setdefault(_normalised(match.group("name")), []).append(
+            (match.group("version"), os.path.join(target_directory, entry)))
+    return found
+
+
+def _recorded_files(dist_info):
+    """The paths a distribution's RECORD claims, relative to the target."""
+    record = os.path.join(dist_info, "RECORD")
+    try:
+        with open(record, newline="", encoding="utf-8") as handle:
+            return {row[0] for row in csv.reader(handle) if row}
+    except OSError:
+        return set()
+
+
+def prune_superseded(target_directory):
+    """
+    Leave one version of each distribution: the newest.
+
+    A superseded install's files are removed only where the surviving version
+    does not claim them too — `--upgrade` has already overwritten the shared
+    ones, and deleting those would break the install this is repairing.
+
+    Returns the dist-info directory names removed.
+    """
+    removed = []
+    for versions in installed_distributions(target_directory).values():
+        if len(versions) < 2:
+            continue
+        versions.sort(key=lambda pair: _version_key(pair[0]))
+        keeper = versions[-1][1]
+        kept_files = _recorded_files(keeper)
+        for _, superseded in versions[:-1]:
+            for relative in _recorded_files(superseded) - kept_files:
+                path = os.path.normpath(os.path.join(target_directory, relative))
+                if not path.startswith(os.path.normpath(target_directory)):
+                    continue        # a RECORD is not a licence to delete elsewhere
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            shutil.rmtree(superseded, ignore_errors=True)
+            removed.append(os.path.basename(superseded))
+    return removed
+
 
 def check_package(module_name):
     """
@@ -60,6 +143,9 @@ def install_package(package_name, target_directory):
         python_exe,
         "-m", "pip", "install",
         "--target", target_directory,
+        # Without this pip declines to overwrite a file that is already there,
+        # and installs the new metadata over the old code (FCC-28).
+        "--upgrade",
         "--disable-pip-version-check",
         package_name
     ]
@@ -94,6 +180,15 @@ def run_dependency_check():
     target_dir = get_target_directory()
     if target_dir not in sys.path:
         sys.path.insert(0, target_dir)
+
+    # Before the missing check, not after it: a directory that already has
+    # everything is exactly the one an earlier layered install left behind, and
+    # returning early would never repair it (FCC-28).
+    superseded = prune_superseded(target_dir)
+    if superseded:
+        FreeCAD.Console.PrintMessage(
+            "[FreeCadCopilot] Removed %d superseded package version(s): %s\n"
+            % (len(superseded), ", ".join(superseded)))
 
     missing = missing_packages()
 
