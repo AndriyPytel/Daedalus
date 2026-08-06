@@ -229,6 +229,31 @@ def test_the_derived_geometry_invariant_reaches_execute_and_not_the_traps():
     assert not any("thinner as the radius grows" in trap for trap in TRAPS)
 
 
+def test_reading_may_not_invent_its_way_out_of_a_contradiction():
+    """
+    The requirement already shipped and was not honoured: plan.md asks for
+    "what the drawing does not define" and the Model Mania run listed some
+    undefined dimensions correctly and then invented an operation anyway.
+    What the copy did not forbid is what this asserts. FCC-59.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    # The prompts are wrapped copy; a sentence crosses line breaks.
+    plan_system, _, review_system = (
+        " ".join(text.split()) for text in _system_messages(llm))
+
+    assert "cannot both be true" in plan_system
+    assert "an operation the drawing does not show" in plan_system
+    assert "Read every plane the drawing uses" in plan_system
+    assert "perpendicular" in plan_system
+    # The requirement it leans on has to still be there to lean on.
+    assert "what the drawing does not define" in plan_system
+    assert "cannot both be true" not in review_system
+
+
 def test_a_step_is_one_operation_that_names_its_feature_type():
     """
     The reversal of plan.md's four granularity rules, asserted as a reversal:

@@ -41,6 +41,19 @@ tolerance: say so rather than filling it in silently. Numbers you take from the
 drawing belong in the Steps as well, so the Plan can be checked against the
 reading.
 
+Two dimensions that cannot both be true is itself something the drawing does
+not define. Put it in that list and leave it there. Never bridge the gap with
+an operation the drawing does not show — adding material to a face to reconcile
+a thickness of 40 with one of 50 is inventing a feature, not reading one. If
+the part cannot be planned until the contradiction is settled, ask: that is
+what `question` is for.
+
+Read every plane the drawing uses. A feature whose axis is not the normal of
+the base profile — a hole through a side face, a slot in an end — is named with
+the plane it lies on, and where the drawing shows two features perpendicular to
+one another, say so. A reading that puts everything in one profile plans a flat
+part, and nothing downstream can tell that a plane went missing.
+
 With no image attached there is nothing to read: omit `reading` entirely.
 
 Ask before you plan, or say what you assumed. Do not plan with a number nobody
