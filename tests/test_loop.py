@@ -206,6 +206,29 @@ def test_the_sketch_construction_rule_reaches_plan_and_execute():
     assert "must genuinely be driven" not in review_system
 
 
+def test_the_derived_geometry_invariant_reaches_execute_and_not_the_traps():
+    """
+    Checking a derivation against an invariant of its own is prompt copy: it
+    names no type, no signature and no version, and would read the same
+    against FreeCAD 0.21. Execute is the phase that writes the derivation, so
+    it is the phase that gets the rule, and it stays out of TRAPS, which is for
+    facts about this build. FCC-54.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    # The prompts are wrapped copy; a sentence crosses line breaks.
+    _, execute_system, review_system = (
+        " ".join(text.split()) for text in _system_messages(llm))
+
+    assert "invariant of its own" in execute_system
+    assert "thinner as the radius grows" in execute_system
+    assert "invariant of its own" not in review_system
+    assert not any("thinner as the radius grows" in trap for trap in TRAPS)
+
+
 def test_the_constraint_spellings_are_a_trap_not_prompt_copy():
     """
     Which constraint types exist is knowledge about a specific FreeCAD build,
