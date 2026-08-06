@@ -298,6 +298,74 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     panel.chip_bar.remove_file(str(drawing))
 
 
+# ── A pasted image arrives with its pixels (FCC-48) ───────────────────────────
+
+
+def _on_the_clipboard(colour):
+    """A 6×4 image of one colour, on the real clipboard. Returns it."""
+    from conftest import QtGui
+
+    image = QtGui.QImage(6, 4, QtGui.QImage.Format_RGB32)
+    image.fill(QtGui.QColor(*colour))
+    QT_APP.clipboard().setImage(image)
+    return image
+
+
+def test_pasting_writes_the_clipboard_image_and_not_a_blank(panel):
+    """
+    The pixels are the assertion. `QPixmap(mime.imageData())` is not a Qt5
+    constructor — PySide2 takes the call and hands back a null pixmap, which
+    `save()` writes as a blank and `file_attached` announces regardless. A
+    test that only checked the file exists would pass on the blank.
+    """
+    from conftest import QtGui
+
+    attached = []
+    panel.upload_widget.file_attached.connect(attached.append)
+    _on_the_clipboard((10, 200, 30))
+    try:
+        assert panel.upload_widget.handle_clipboard_paste() is True
+    finally:
+        panel.upload_widget.file_attached.disconnect(attached.append)
+
+    assert len(attached) == 1, "the paste did not announce exactly one attachment"
+    written = QtGui.QImage(attached[0])
+    assert not written.isNull(), "the saved PNG is not an image at all"
+    assert (written.width(), written.height()) == (6, 4)
+    assert QtGui.QColor(written.pixel(3, 2)).getRgb()[:3] == (10, 200, 30), \
+        "the file was written from a null pixmap, so the pasted picture is gone"
+
+    panel.upload_widget.discard(attached[0])
+
+
+def test_a_clipboard_that_promises_an_image_and_has_none_attaches_nothing(panel):
+    """
+    The shape of the PySide2 failure, reachable on any binding: the clipboard
+    answers `hasImage()` yes and converts to nothing. What must not happen is
+    a blank PNG landing on the chip bar as if it were the pasted picture.
+    """
+    from conftest import QtGui
+
+    attached = []
+    panel.upload_widget.file_attached.connect(attached.append)
+    QT_APP.clipboard().setImage(QtGui.QImage())
+    try:
+        assert panel.upload_widget.handle_clipboard_paste() is False
+    finally:
+        panel.upload_widget.file_attached.disconnect(attached.append)
+
+    assert attached == [], "a blank image was attached as though it were the paste"
+    assert panel.upload_widget.temporary == [], "a blank PNG was left in the temp directory"
+
+
+def test_a_paste_with_no_image_falls_through_to_the_default(panel):
+    """Ctrl+V over text is still Ctrl+V over text."""
+    QT_APP.clipboard().setText("40 mm across the flats")
+
+    assert panel.upload_widget.handle_clipboard_paste() is False
+    assert panel.upload_widget.temporary == [], "a text paste left a file behind"
+
+
 # ── A pasted image is cleaned up on the chip's terms (FCC-15) ─────────────────
 
 
