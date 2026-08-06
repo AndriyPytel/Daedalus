@@ -19,7 +19,7 @@ from core.events import (
 )
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
-from core.loop import PROMPTS, Budgets, prompt, run
+from core.loop import PROMPTS, Budgets, prompt, revisions_ceiling, run
 from core.tools import ToolRegistry
 
 SNAPSHOT = {"document": "Unnamed", "objects": [], "object_count": 0,
@@ -447,10 +447,14 @@ def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run()
     """
     A model that spends its looks and then asks for another has failed an
     attempt, not broken the loop. FCC-8.
+
+    `revisions=0` keeps this on the terminal path: since FCC-61 a Step that
+    cannot be built hands back to Plan, and this test is about the attempt, not
+    about the handback.
     """
     result, events, _, _ = drive(
         [plan_reply("Add a sketch")] + [look_reply("supported_types")] * 9,
-        budgets=Budgets(looks_per_step=2, attempts_per_step=3),
+        budgets=Budgets(looks_per_step=2, attempts_per_step=3, revisions=0),
     )
 
     assert not result.ok
@@ -865,6 +869,7 @@ def test_the_verdict_is_surfaced_either_way():
 
 
 def test_three_attempts_per_step_then_blocked_with_what_was_tried():
+    """`revisions=0`: the handback path has its own tests, this one is the budget."""
     result, events, _, tools = drive(
         [
             plan_reply("Only"),
@@ -873,6 +878,7 @@ def test_three_attempts_per_step_then_blocked_with_what_was_tried():
             code_reply("try3()"),
         ],
         applies=[failed("one"), failed("two"), failed("three")],
+        budgets=Budgets(revisions=0),
     )
 
     assert not result.ok
@@ -881,6 +887,94 @@ def test_three_attempts_per_step_then_blocked_with_what_was_tried():
     assert blocked is not None
     assert len(blocked.data["tried"]) == 3
     assert [t["traceback"] for t in blocked.data["tried"]] == ["one", "two", "three"]
+
+
+def test_a_step_that_cannot_be_built_returns_to_plan():
+    """
+    Execute has one escape today and it is narrow: `obsolete` means the Step no
+    longer makes sense. "I cannot build this" was not handled at all — the run
+    died with whatever had already been applied left in the Document. FCC-61.
+    """
+    result, events, _, tools = drive(
+        [
+            plan_reply("Impossible"),
+            code_reply("nope1()"), code_reply("nope2()"), code_reply("nope3()"),
+            plan_reply("Possible"),
+            code_reply("yes()"),
+            verdict_reply("pass"),
+        ],
+        applies=[failed("one"), failed("two"), failed("three")],
+    )
+
+    assert result.ok
+    revised = events.first(PLAN_REVISED)
+    assert revised is not None
+    assert revised.data["steps"] == ["Possible"]
+    # The Plan is told what could not be built and what came back from trying.
+    assert "could not be built" in revised.data["reason"]
+    assert "three" in revised.data["reason"]
+
+
+def test_the_replan_after_a_handback_reads_the_document_as_it_is():
+    """
+    The Steps already applied are not repeated: the revision is planned from a
+    fresh Snapshot, the same path `obsolete` already takes. FCC-61.
+    """
+    _, _, _, tools = drive(
+        [
+            plan_reply("First", "Impossible"),
+            code_reply("first()"),
+            code_reply("nope1()"), code_reply("nope2()"), code_reply("nope3()"),
+            plan_reply("Possible"),
+            code_reply("yes()"),
+            verdict_reply("pass"),
+        ],
+        applies=[None, failed("one"), failed("two"), failed("three")],
+    )
+
+    last_failure = max(index for index, (name, args) in enumerate(tools.calls)
+                       if name == "apply_step" and args["code"] == "nope3()")
+    after = [name for name, _ in tools.calls[last_failure:]]
+    assert "snapshot" in after, "the revision was planned without re-reading the Document"
+    # The Step that did apply is not planned again.
+    assert tools.applied_codes() == [
+        "first()", "nope1()", "nope2()", "nope3()", "yes()"]
+
+
+def test_a_run_out_of_revisions_stops_and_names_handbacks_not_amendments():
+    """
+    FCC-22's rule survives the new cause: whichever branch spends the last
+    unit is not blamed for the others. A run stopped by handbacks does not
+    report amendments. FCC-61.
+    """
+    result, _, _, _ = drive(
+        [
+            plan_reply("Impossible"),
+            code_reply("nope1()"),
+            plan_reply("Impossible again"),
+            code_reply("nope2()"),
+        ],
+        applies=[failed("one"), failed("two")],
+        budgets=Budgets(attempts_per_step=1, revisions=1),
+    )
+
+    assert result.blocked
+    assert "could not build a Step 1 time" in result.reason
+    assert "amended" not in result.reason
+    assert "Review rejected" not in result.reason
+
+
+def test_the_revisions_ceiling_is_computed_from_the_plans_length():
+    """
+    A four-Step Plan and a forty-Step Plan cannot have the same allowance —
+    atomic Steps (FCC-58) turn one part into roughly thirty-five, and every
+    handback spends one. The configured value is the floor. FCC-61.
+    """
+    assert revisions_ceiling(Budgets(), ["s"] * 4) == 3
+    assert revisions_ceiling(Budgets(), ["s"] * 14) == 3
+    assert revisions_ceiling(Budgets(), ["s"] * 15) == 3
+    assert revisions_ceiling(Budgets(), ["s"] * 40) == 8
+    assert revisions_ceiling(Budgets(revisions=10), ["s"] * 4) == 10
 
 
 def test_the_attempt_budget_is_per_step_not_per_run():
@@ -939,7 +1033,7 @@ def test_blocked_waits_for_the_user_rather_than_failing_silently():
     result, events, _, _ = drive(
         [plan_reply("Only"), code_reply("x()")],
         applies=[failed("no")],
-        budgets=Budgets(attempts_per_step=1),
+        budgets=Budgets(attempts_per_step=1, revisions=0),
     )
 
     assert result.blocked
@@ -1059,7 +1153,7 @@ def test_the_event_stream_of_a_blocked_run():
     _, events, _, _ = drive(
         [plan_reply("Only"), code_reply("x()")],
         applies=[failed("boom")],
-        budgets=Budgets(attempts_per_step=1),
+        budgets=Budgets(attempts_per_step=1, revisions=0),
     )
 
     assert [e.kind for e in events] == [

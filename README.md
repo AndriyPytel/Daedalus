@@ -30,6 +30,12 @@ Plan produces the Steps, Execute works through them one at a time, Review judges
 outcome against the Intent, and Review's verdict returns to Plan — never to Execute.
 There is no model-chosen speaker selection anywhere.
 
+**Execute has one edge back to Plan** (ADR-0013). A Step that is out of date, or that
+cannot be built once its attempts are spent, returns to Plan to be written differently
+rather than ending the run. The Plan is a precise instruction while it is buildable and
+advisory the moment it is not; Execute's only two moves are "do exactly this" and "hand
+back", and the loop decides when that edge fires, not the model.
+
 ### The Plan Gate
 
 One mandatory approval, covering every Step in the Plan. There is no per-Step
