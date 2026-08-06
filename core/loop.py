@@ -24,8 +24,9 @@ from dataclasses import dataclass, field
 from typing import List
 
 from core.events import (
-    APPLIED, BLOCKED, ERROR, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, RENDER,
-    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
+    ANSWER, APPLIED, BLOCKED, ERROR, PLAN, PLAN_REVISED, PREFLIGHT_FAILED,
+    QUESTION, RENDER, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
+    TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import TRAPS
 from core.llm import REASONING, ProviderRefused
@@ -52,6 +53,9 @@ class Budgets:
     # worst-case number of Plan calls in a run.
     revisions: int = 3
     looks_per_step: int = 2
+    # A model that only ever asks would never plan. After this many rounds Plan
+    # is told to choose for itself and say what it chose (FCC-25).
+    questions: int = 2
 
 
 class _Revisions:
@@ -135,6 +139,24 @@ def auto_approve(steps):
     and a real gate is the only reason a Step ever runs in front of a user.
     """
     return Approval(APPROVE)
+
+
+DECIDE_FOR_ME = ""
+
+_DECIDE = ("The user is not answering. Choose sensible values yourself, and write every "
+           "value you chose into the prose of the Step that uses it, so a wrong choice is "
+           "correctable at the Plan Gate.")
+
+
+def nobody_to_ask(question):
+    """
+    The answerer when nothing is wired up to ask a person.
+
+    Level 1, Level 2 and headless runs use this: it declines, which sends Plan
+    down the decide-for-yourself-and-say-so path rather than stalling a run
+    nobody is watching.
+    """
+    return DECIDE_FOR_ME
 
 
 @dataclass
@@ -240,9 +262,12 @@ class Plan:
 
     steps: list
     reading: str = ""
+    # What Plan must know before it can plan at all. Set *instead of* steps,
+    # never beside them — a question is not a Plan with a caveat (FCC-25).
+    question: str = ""
 
 
-def plan(intent, snapshot, llm, events, feedback=None, attachments=()):
+def plan(intent, snapshot, llm, events, feedback=None, attachments=(), answers=()):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
 
@@ -258,6 +283,9 @@ def plan(intent, snapshot, llm, events, feedback=None, attachments=()):
     request = {"intent": intent, "document": snapshot}
     if feedback:
         request["what_went_wrong_last_time"] = feedback
+    if answers:
+        request["you_asked_and_the_user_answered"] = [
+            {"question": question, "answer": answer} for question, answer in answers]
 
     body = json.dumps(request, indent=2, default=str)
     pictures = [picture for picture in map(_as_image, attachments) if picture]
@@ -265,6 +293,9 @@ def plan(intent, snapshot, llm, events, feedback=None, attachments=()):
 
     reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE), content)
     steps = [str(step) for step in reply.get("steps", []) if str(step).strip()]
+    question = str(reply.get("question") or "").strip()
+    if not steps and question:
+        return Plan(steps=[], reading=_reading_of(reply), question=question)
     if not steps:
         raise PhaseError("Plan produced no Steps for this Intent.")
     return Plan(steps=steps, reading=_reading_of(reply))
@@ -427,7 +458,7 @@ class Stopped(Exception):
 
 
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
-        gate=auto_approve) -> LoopResult:
+        gate=auto_approve, ask=nobody_to_ask) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
 
@@ -446,7 +477,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
 
     try:
         return _run(intent, llm, tools, events, budgets, cancelled or (lambda: False), gate,
-                    progress, attachments)
+                    progress, attachments, ask)
     except Stopped:
         return _block(events, "Stopped by you. Everything applied so far is still in the "
                               "Document; undo it Step by Step if you want it gone.", [],
@@ -461,9 +492,52 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
         return LoopResult(ok=False, reason=str(exc))
 
 
-def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments):
+def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, attachments,
+                               ask, cancelled):
+    """
+    Plan, letting it ask for what the Intent did not say (FCC-25).
+
+    "модельку шестерні" names no module, no tooth count, no thickness and no
+    bore. Planning anyway means inventing them, and an invented value is not
+    visible anywhere the user could correct it — it turns up in the geometry.
+    So Plan may answer with a question instead of Steps, and the run waits.
+
+    A question is not an approval: the Plan Gate is still the single point of
+    approval, and it still sees every Step. `budgets.questions` bounds this,
+    because a model that only asks would never plan.
+    """
+    answers = []
+    told_to_choose = False
+    while True:
+        if cancelled():
+            raise Stopped()
+        planned = plan(intent, snapshot, llm, events, attachments=attachments, answers=answers)
+        if not planned.question:
+            return planned
+
+        events.emit(QUESTION, text=planned.question)
+        if told_to_choose:
+            raise PhaseError("Plan asked again after being told to choose for itself, so "
+                             "there is no Plan and no way to get one.")
+        if len(answers) >= budgets.questions:
+            # Asked enough. Not an error — the run goes on with Plan choosing
+            # and saying, in each Step, what it chose.
+            answers.append((planned.question, _DECIDE))
+            events.emit(ANSWER, text=_DECIDE, by="budget")
+            told_to_choose = True
+            continue
+
+        answer = str(ask(planned.question) or DECIDE_FOR_ME).strip()
+        if not answer:
+            told_to_choose = True
+        answers.append((planned.question, answer or _DECIDE))
+        events.emit(ANSWER, text=answer, by="user" if answer else "nobody")
+
+
+def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask):
     snapshot = tools.call("snapshot")
-    planned = plan(intent, snapshot, llm, events, attachments=attachments)
+    planned = _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets,
+                                         attachments, ask, cancelled)
     steps = planned.steps
     events.emit(PLAN, steps=list(steps), reading=planned.reading)
 
