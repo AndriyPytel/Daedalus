@@ -247,3 +247,92 @@ def test_a_passing_result_is_truthy_and_reports_nothing():
 
     assert result and result.ok
     assert result.report() == ""
+
+
+# ── a raw shape passed off as a feature (ADR-0012) ────────────────────────────
+
+
+PAD = "pad = body.newObject('PartDesign::Feature', 'Pad')\n"
+
+
+@pytest.mark.parametrize("code", [
+    PAD + "pad.Shape = cut",
+    PAD + "pad.addProperty('App::PropertyString', 'Profile')",
+    "f = doc.addObject('PartDesign::Pad', 'Pad')\nf.Shape = solid",
+])
+def test_a_raw_shape_passed_off_as_a_partdesign_feature_is_rejected(code):
+    result = lint(code)
+
+    assert not result.ok
+    assert "computes its own Shape" in result.report()
+
+
+def test_the_reason_names_the_feature_types_to_use_instead():
+    result = lint(PAD + "pad.Shape = cut")
+
+    reason = result.report()
+    assert "PartDesign::Pad" in reason and "PartDesign::Pocket" in reason
+
+
+def test_a_part_feature_may_still_be_given_a_shape():
+    """
+    The rule is about passing a raw shape off as a PartDesign feature, not
+    about Part. A Step that legitimately builds a Part shape outside any Body
+    still runs. FCC-60.
+    """
+    code = (
+        "cut = base.Shape.cut(tool.Shape)\n"
+        "out = doc.addObject('Part::Feature', 'Cut')\n"
+        "out.Shape = cut\n"
+    )
+
+    assert lint(code).ok, lint(code).report()
+
+
+def test_a_real_partdesign_feature_is_untouched():
+    code = (
+        "pad = body.newObject('PartDesign::Pad', 'Pad')\n"
+        "pad.Profile = sketch\n"
+        "pad.Length = 12.0\n"
+    )
+
+    assert lint(code).ok, lint(code).report()
+
+
+# ── a Step that swallows its own failure (ADR-0008, ADR-0012) ─────────────────
+
+
+@pytest.mark.parametrize("code", [
+    "try:\n    fillet.recompute()\nexcept:\n    raise",
+    "try:\n    fillet.recompute()\nexcept Exception:\n    pass",
+    "try:\n    fillet.recompute()\nexcept Exception:\n    ...",
+    "for e in edges:\n    try:\n        f(e)\n    except ValueError:\n        continue",
+])
+def test_a_step_that_swallows_its_own_failure_is_rejected(code):
+    result = lint(code)
+
+    assert not result.ok
+    assert "swallow" in result.report()
+
+
+def test_a_handler_that_does_something_is_accepted():
+    code = (
+        "try:\n"
+        "    import numpy\n"
+        "except ImportError:\n"
+        "    numpy = None\n"
+    )
+
+    assert lint(code).ok, lint(code).report()
+
+
+def test_the_element_reason_no_longer_points_at_shape():
+    """
+    Told to find the edge from `.Shape`, the assistant computes an index and
+    has nowhere to put it but an assembled 'Face%d'. Carried in from FCC-26,
+    closed wontfix: a message fix, not a new rule.
+    """
+    reason = lint("fillet.Base = (box, ['Edge12'])").report()
+
+    assert ".Shape" not in reason
+    assert "adjacency" not in reason

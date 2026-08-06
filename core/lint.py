@@ -1,7 +1,7 @@
 """
 The AST lint that runs before Preflight.
 
-Three rules, each from an ADR, each about a failure a Preflight traceback
+Five rules, each from an ADR, each about a failure a Preflight traceback
 cannot teach the way out of (ADR-0008):
 
 - **No literal `Edge12` / `Face3` / `Vertex7`** (ADR-0005). FreeCAD 1.0's
@@ -16,6 +16,16 @@ cannot teach the way out of (ADR-0008):
 - **Nothing may be made active** (ADR-0008). Activation is GUI-only, so no
   spelling of it works headless and the traceback has no right answer to
   point at — introspection would only confirm the absence, once per guess.
+- **No raw shape passed off as a PartDesign feature** (ADR-0012). Assigning
+  `.Shape` on a `PartDesign::*` object, or bolting fields onto one with
+  `addProperty`, builds a feature tree that is fiction: the sketch is
+  decorative, nothing rebuilds when a dimension changes, and no traceback
+  appears anywhere — Preflight recomputes clean and Review sees a correct
+  picture. `Part::Feature` is untouched; the rule is about the disguise.
+- **No Step may swallow its own failure** (ADR-0008). A bare `except`, or a
+  handler that only passes, discards the traceback the correction path is
+  built on. Code that catches its own exception and says nothing disables the
+  mechanism the architecture rests on.
 
 Element names the *user* selected are explicit input, not a guess, so they are
 allowed through when they match the live selection.
@@ -102,9 +112,31 @@ _ELEMENT_REASON = (
     "%r is a literal element name. It points somewhere else as soon as a "
     "parameter upstream in the history changes, and nothing downstream can "
     "detect that the fillet landed on the wrong edge. Compute the reference at "
-    "execution time instead — find the edge by its geometry (length, direction, "
-    "position, adjacency) from doc.getObject(...).Shape — or use an element the "
-    "user has actually selected."
+    "execution time instead, or use an element the user has actually selected. "
+    "Better still, pick an operation that needs no element name at all — a "
+    "PartDesign::Hole rather than a bore you then have to go and find."
+)
+
+# ADR-0012. Named types rather than "a real feature": the round this came from
+# answered every prohibition with the next spelling of the same workaround.
+_RAW_SHAPE_REASON = (
+    "%s came from PartDesign and a PartDesign feature computes its own Shape "
+    "from its Profile — assigning it, or bolting fields on with addProperty, "
+    "produces a feature tree that is fiction. Nothing raises: the sketch is "
+    "decorative, Preflight recomputes clean, and the part stops rebuilding "
+    "when a dimension changes. Use the feature that performs the operation — "
+    "PartDesign::Pad, PartDesign::Pocket, PartDesign::Revolution, "
+    "PartDesign::Groove, PartDesign::AdditiveHelix, PartDesign::Hole, "
+    "PartDesign::Fillet, PartDesign::Chamfer — on a real sketch. If the shape "
+    "genuinely belongs outside a Body, build it as Part::Feature and say so."
+)
+
+_SWALLOWED_REASON = (
+    "This Step's error handling breaks the correction path: %s. A failed Step "
+    "answers itself (ADR-0008) — the traceback is what goes back and gets "
+    "corrected, so code that swallows its own exception disables the mechanism "
+    "the whole run rests on. Let it raise. A Step that applied none of the "
+    "twelve edges it meant to must fail, not record how many it managed."
 )
 
 _GUI_REASON = (
@@ -166,6 +198,7 @@ def lint(code: str, selection=None) -> LintResult:
         return LintResult(["The code does not parse: %s (line %s)" % (exc.msg, exc.lineno)])
 
     allowed = selected_elements(selection)
+    features = _partdesign_features(tree)
     problems = []
     seen = set()
 
@@ -191,10 +224,24 @@ def lint(code: str, selection=None) -> LintResult:
         elif isinstance(node, ast.Attribute) and node.attr in ACTIVATION_NAMES:
             complain(_ACTIVATION_REASON % node.attr)
 
-        elif isinstance(node, ast.Call) and _is_sketcher_constraint(node):
-            problem = _constraint_problem(node)
-            if problem:
-                complain(problem)
+        elif isinstance(node, ast.ExceptHandler):
+            swallowed = _swallowed(node)
+            if swallowed:
+                complain(_SWALLOWED_REASON % swallowed)
+
+        elif isinstance(node, ast.Assign):
+            disguised = _shape_assignment(node, features)
+            if disguised:
+                complain(_RAW_SHAPE_REASON % disguised)
+
+        elif isinstance(node, ast.Call):
+            disguised = _added_property(node, features)
+            if disguised:
+                complain(_RAW_SHAPE_REASON % disguised)
+            elif _is_sketcher_constraint(node):
+                problem = _constraint_problem(node)
+                if problem:
+                    complain(problem)
 
         elif isinstance(node, ast.Import):
             for alias in node.names:
@@ -209,6 +256,73 @@ def lint(code: str, selection=None) -> LintResult:
                     complain(_GUI_REASON % alias.name)
 
     return LintResult(problems)
+
+
+def _partdesign_features(tree) -> set:
+    """
+    Variables holding an object this Step made with a `PartDesign::` type.
+
+    Only what the AST can see: `x = <anything>.addObject('PartDesign::…', …)`
+    and the `newObject` spelling a Body takes. A feature fetched from the
+    Document by name is not tracked — the type is not in the source to read.
+    """
+    features = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        call = node.value
+        if not (isinstance(call.func, ast.Attribute)
+                and call.func.attr in ("addObject", "newObject") and call.args):
+            continue
+        first = call.args[0]
+        if not (isinstance(first, ast.Constant)
+                and isinstance(first.value, str)
+                and first.value.startswith("PartDesign::")):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                features.add(target.id)
+    return features
+
+
+def _shape_assignment(node: ast.Assign, features: set):
+    """The name in `feature.Shape = ...`, where the feature came from PartDesign."""
+    for target in node.targets:
+        if (isinstance(target, ast.Attribute) and target.attr == "Shape"
+                and isinstance(target.value, ast.Name)
+                and target.value.id in features):
+            return target.value.id
+    return None
+
+
+def _added_property(node: ast.Call, features: set):
+    """The name in `feature.addProperty(...)`, same tracking."""
+    if (isinstance(node.func, ast.Attribute) and node.func.attr == "addProperty"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id in features):
+        return node.func.value.id
+    return None
+
+
+def _swallowed(handler: ast.ExceptHandler):
+    """
+    Why this handler discards the failure, or None.
+
+    Two shapes and no more: a bare `except`, which catches what it was never
+    written for, and a body that does nothing with what it caught. A handler
+    that takes a different route on purpose — a fallback import, a default —
+    is left alone; refusing those would be the rule per surprise this module
+    exists without.
+    """
+    if handler.type is None:
+        return "a bare `except` catches everything, including what you did not foresee"
+    if all(isinstance(statement, (ast.Pass, ast.Continue))
+           or (isinstance(statement, ast.Expr)
+               and isinstance(statement.value, ast.Constant)
+               and statement.value.value is Ellipsis)
+           for statement in handler.body):
+        return "the handler does nothing with the exception it caught"
+    return None
 
 
 def _is_sketcher_constraint(node: ast.Call) -> bool:

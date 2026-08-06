@@ -20,6 +20,19 @@ Step's parameters. Add a constraint only where a parameter must genuinely be
 driven — where changing one value has to move the rest — and never invent a
 constraint type.
 
+Build the feature the Step names, on a real sketch, inside the Body. A
+PartDesign feature computes its own Shape from its Profile: assigning `.Shape`
+on one, or adding fields to it with `addProperty`, leaves a tree that looks
+right and rebuilds nothing. Where the geometry gets hard the answer is the
+feature that performs the operation — a helix for a thread, a hole for a hole —
+not a `Part` boolean wearing a PartDesign name. If the shape genuinely belongs
+outside a Body, build it as a `Part::Feature` and say that is what it is.
+
+Let a Step fail. Do not wrap its code in a bare `except` and do not catch an
+exception only to carry on: the traceback is what comes back to you, and a
+Step that quietly applies none of the twelve edges it meant to has no way of
+telling you so.
+
 Geometry you derive from a formula must be checked against an invariant of its
 own before you commit it. A derivation reads as correct and still comes out
 inverted or mirrored — a wrong sign raises nothing, and the result still looks
