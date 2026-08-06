@@ -68,3 +68,21 @@ def test_a_runaway_answer_is_not_accepted_as_a_title():
     client = ScriptedLLMClient(["A bracket " * 40])
 
     assert generate("x", client=client) == ""
+
+
+def test_a_model_that_cannot_be_resolved_is_no_title_rather_than_a_crash(monkeypatch):
+    """
+    `client_from_settings` raises ValueError when the model id is in no
+    provider's list — which happens whenever a key change clears the fetched
+    lists. Built outside the try, that escaped `_TitleThread.run` unhandled and
+    the Session was then silently never named (FCC-44).
+    """
+    import core.llm
+    from core.session_title import generate
+
+    def refuse(model_id=None):
+        raise ValueError("Unknown model 'gpt-5.6-terra'. Check your Preferences.")
+
+    monkeypatch.setattr(core.llm, "client_from_settings", refuse)
+
+    assert generate("Make a bracket") == ""

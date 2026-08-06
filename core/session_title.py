@@ -34,11 +34,14 @@ def fallback(intent: str) -> str:
 
 def generate(intent: str, model_id: str = None, client=None) -> str:
     """The generated title, or "" when the provider gave nothing usable."""
-    if client is None:
-        from core.llm import client_from_settings
-
-        client = client_from_settings(model_id)
     try:
+        if client is None:
+            from core.llm import client_from_settings
+
+            # Inside the try, not before it: building the client raises when the
+            # model cannot be resolved, and that escaped `_TitleThread.run`
+            # unhandled, so the Session was silently never named (FCC-44).
+            client = client_from_settings(model_id)
         said = "".join(chunk.text for chunk in client.stream(
             [{"role": "system", "content": PROMPT},
              {"role": "user", "content": intent}])

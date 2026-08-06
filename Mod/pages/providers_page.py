@@ -404,12 +404,21 @@ class ProvidersPage(QtWidgets.QWidget):
         
         self._remember_edits()
 
+        # Read the combos before anything is written. `set_api_keys` emits
+        # `api_keys_changed`; the provider manager answers it by clearing its
+        # fetched lists and emitting `models_changed`; this page answers *that*
+        # by rebuilding these very combos and re-selecting them from the
+        # settings as they still are. All of it synchronous, inside this call —
+        # so a choice read afterwards is the old stored value, and the user's
+        # pick is destroyed by the save meant to persist it (FCC-44).
+        chosen = self._chosen_models()
+
         for provider, url in self._base_edits.items():
             sm.set_base_url_for_provider(provider, url)
         self._base_edits.clear()
 
         if not self._edits:
-            self._save_models(sm)
+            self._save_models(sm, chosen)
             return
 
         current_keys = sm.get_api_keys()
@@ -427,14 +436,20 @@ class ProvidersPage(QtWidgets.QWidget):
         sm.set_api_keys(current_keys)
         self._edits.clear()
 
-        self._save_models(sm)
+        self._save_models(sm, chosen)
 
-    def _save_models(self, sm):
-        mid = self.default_model_combo.currentData()
-        if mid:
-            sm.set_default_model(mid)
+    def _chosen_models(self):
+        """What the two model combos are showing right now."""
+        return {"default": self.default_model_combo.currentData(),
+                "naming": self.naming_model_combo.currentData()}
+
+    def _save_models(self, sm, chosen):
+        if chosen["default"]:
+            sm.set_default_model(chosen["default"])
         # "" is the "Same as the chat model" row, which is a choice and has to be
         # writable; None only means the combo has nothing selected at all.
-        naming = self.naming_model_combo.currentData()
-        if naming is not None:
-            sm.set_naming_model(naming)
+        if chosen["naming"] is not None:
+            sm.set_naming_model(chosen["naming"])
+        # The rebuild that ran mid-save re-selected the old values; show what
+        # was actually stored.
+        self._refresh_models()
