@@ -46,7 +46,7 @@ _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 # Tools the loop drives itself. Neither is a Look: one writes to the Document,
 # the other moves the user's camera.
-NOT_A_LOOK = ("apply_step", "review_views")
+NOT_A_LOOK = ("apply_step", "review_views", "overall_size")
 
 # In the order `capture_review_views` writes them, for Review's own prose.
 _VIEW_NAMES = ("isometric", "the front", "above", "the right")
@@ -299,9 +299,10 @@ class Plan:
     # What Plan must know before it can plan at all. Set *instead of* steps,
     # never beside them — a question is not a Plan with a caveat (FCC-25).
     question: str = ""
-    # One entry per Step, aligned by index, None where Plan promised nothing
-    # measurable about that Step (ADR-0014).
-    promises: list = field(default_factory=list)
+    # One entry per Step, aligned by index: the operation that Step performs
+    # and the numbers Plan gave it, None where the Step names no object
+    # (ADR-0016).
+    parameters: list = field(default_factory=list)
 
 
 def plan(intent, snapshot, llm, events, feedback=None, attachments=(), answers=()):
@@ -329,47 +330,45 @@ def plan(intent, snapshot, llm, events, feedback=None, attachments=(), answers=(
     content = [{"type": "text", "text": body}] + pictures if pictures else body
 
     reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE), content)
-    steps, promises = _steps_and_promises(reply.get("steps", []))
+    steps, parameters = _steps_and_parameters(reply.get("steps", []))
     question = str(reply.get("question") or "").strip()
     if not steps and question:
         return Plan(steps=[], reading=_reading_of(reply), question=question)
     if not steps:
         raise PhaseError("Plan produced no Steps for this Intent.")
-    return Plan(steps=steps, reading=_reading_of(reply), promises=promises)
+    return Plan(steps=steps, reading=_reading_of(reply), parameters=parameters)
 
 
-_PROMISE_KEYS = ("solids", "faces", "volume", "bbox")
-
-
-def _steps_and_promises(planned):
+def _steps_and_parameters(planned):
     """
-    Split what Plan sent into prose and Promises, aligned by index.
+    Split what Plan sent into prose and named parameters, aligned by index.
 
-    A Step is `{"do": "...", "promise": {...}}` or the bare string it has
+    A Step is `{"do": "...", "parameters": {...}}` or the bare string it has
     always been. Both spellings are accepted and a bare string is not an error:
-    where Plan has nothing worth promising, the structural delta applies on its
-    own and the Step still runs (ADR-0010 is the floor beneath both).
+    a Step that names no operation still runs against the floor ADR-0010 and
+    FCC-27 provide.
     """
-    steps, promises = [], []
+    steps, parameters = [], []
     for step in planned:
         if isinstance(step, dict):
             prose = str(step.get("do") or step.get("step") or "").strip()
-            promise = step.get("promise")
+            named = step.get("parameters")
         else:
-            prose, promise = str(step).strip(), None
+            prose, named = str(step).strip(), None
         if not prose:
             continue
         steps.append(prose)
-        promises.append(_promise_of(promise))
-    return steps, promises
+        parameters.append(_parameters_of(named))
+    return steps, parameters
 
 
-def _promise_of(promise):
-    """Only the four keys Preflight can measure, and only if any survive."""
-    if not isinstance(promise, dict):
+def _parameters_of(named):
+    """A type, its properties, or nothing — never a half of one."""
+    if not isinstance(named, dict) or not named.get("type"):
         return None
-    kept = {key: promise[key] for key in _PROMISE_KEYS if promise.get(key) is not None}
-    return kept or None
+    properties = named.get("properties")
+    return {"type": str(named["type"]),
+            "properties": properties if isinstance(properties, dict) else {}}
 
 
 def _reading_of(reply):
@@ -401,7 +400,7 @@ class ExecuteOutcome:
     obsolete: str = None
 
 
-def execute(step, tools, llm, events, attempts, budgets=None, reading="", promise=None):
+def execute(step, tools, llm, events, attempts, budgets=None, reading="", parameters=None):
     """
     Write the code for one Step, after asking the Document whatever it needs.
 
@@ -420,10 +419,10 @@ def execute(step, tools, llm, events, attempts, budgets=None, reading="", promis
     """
     budgets = budgets or Budgets()
     request = {"step": step, "document": tools.call("snapshot")}
-    if promise:
-        # Told before writing, not only after failing: Preflight measures this
-        # on the throwaway copy and a miss fails the Step (ADR-0014).
-        request["this_step_promised"] = promise
+    if parameters:
+        # Told before writing, not only after failing: Preflight checks the
+        # throwaway copy against these and a mismatch fails the Step (ADR-0016).
+        request["the_operation_this_step_names"] = parameters
     if reading:
         request["reading_of_the_drawing"] = reading
     if attempts:
@@ -471,6 +470,21 @@ def _lookable(tools):
             if described["name"] not in NOT_A_LOOK]
 
 
+def _emit_plan(events, kind, planned, reason=None):
+    """A Plan on the stream, in one place — the panel reads both kinds alike."""
+    extra = {"reason": reason} if reason is not None else {}
+    events.emit(kind, steps=list(planned.steps), reading=planned.reading,
+                parameters=list(planned.parameters), **extra)
+
+
+def _overall_size(tools):
+    """How big the part came out, or nothing where the Tool is not there."""
+    try:
+        return tools.call("overall_size").get("size_mm")
+    except Exception:
+        return None
+
+
 def _review_views(tools, events):
     """
     The four viewport views for Review, or nothing where there is no GUI.
@@ -512,7 +526,7 @@ def _look(tools, look, events):
     return {"tool": name, "arguments": arguments, "result": result}
 
 
-def review(intent, render, objects, llm, events, attachments=()):
+def review(intent, render, objects, llm, events, attachments=(), size=None):
     """
     Judge the outcome against the Intent.
 
@@ -529,6 +543,11 @@ def review(intent, render, objects, llm, events, attachments=()):
     this resemble what I was shown" was not a question it could ask (FCC-47).
     """
     request = {"intent": intent, "objects_that_now_exist": objects}
+    if size:
+        # Read once off the finished Document rather than promised per Step: a
+        # tooth flank has no volume anyone works out in advance, and every
+        # drawing states the overall size outright (FCC-66).
+        request["overall_size_mm"] = size
     content = [{"type": "text", "text": json.dumps(request, indent=2, default=str)}]
 
     paths = [render] if isinstance(render, str) else list(render or ())
@@ -649,8 +668,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     planned = _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets,
                                          attachments, ask, cancelled)
     steps = planned.steps
-    events.emit(PLAN, steps=list(steps), reading=planned.reading,
-                promises=list(planned.promises))
+    _emit_plan(events, PLAN, planned)
 
     rejections = 0
     revisions = _Revisions()
@@ -670,16 +688,15 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         planned = plan(intent, tools.call("snapshot"), llm, events,
                        feedback=approval.feedback, attachments=attachments)
         steps = planned.steps
-        events.emit(PLAN_REVISED, steps=list(steps), reading=planned.reading,
-                    promises=list(planned.promises),
-                    reason="You asked for: " + approval.feedback)
+        _emit_plan(events, PLAN_REVISED, planned,
+                   reason="You asked for: " + approval.feedback)
 
     render = None
     objects = []
 
     while True:
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
-                                progress, planned.reading, planned.promises)
+                                progress, planned.reading, planned.parameters)
         applied = progress["applied"]
 
         if outcome["blocked"]:
@@ -705,15 +722,15 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             planned = plan(intent, tools.call("snapshot"), llm, events,
                            feedback=feedback, attachments=attachments)
             steps = planned.steps
-            events.emit(PLAN_REVISED, steps=list(steps), reading=planned.reading,
-                        promises=list(planned.promises), reason=feedback)
+            _emit_plan(events, PLAN_REVISED, planned, reason=feedback)
             continue
 
         render = outcome["render"] or render
         objects = outcome["objects"] or objects
 
         views = _review_views(tools, events) or ([render] if render else [])
-        verdict, reason = review(intent, views, objects, llm, events, attachments)
+        verdict, reason = review(intent, views, objects, llm, events, attachments,
+                                 size=_overall_size(tools))
         events.emit(REVIEW_VERDICT, verdict=verdict, reason=reason)
 
         if verdict == "pass":
@@ -743,12 +760,11 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         planned = plan(intent, tools.call("snapshot"), llm, events,
                        feedback=reason, attachments=attachments)
         steps = planned.steps
-        events.emit(PLAN_REVISED, steps=list(steps), reading=planned.reading,
-                    promises=list(planned.promises), reason=reason)
+        _emit_plan(events, PLAN_REVISED, planned, reason=reason)
 
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
-                  reading="", promises=()):
+                  reading="", parameters=()):
     """One pass over the Plan. Returns why it stopped."""
     render = None
     objects = []
@@ -756,15 +772,15 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     for index, step in enumerate(steps, start=1):
         if cancelled():
             raise Stopped()
-        promise = promises[index - 1] if index - 1 < len(promises) else None
+        named = parameters[index - 1] if index - 1 < len(parameters) else None
         events.emit(STEP_STARTED, index=index, total=len(steps), description=step,
-                    promise=promise)
+                    parameters=named)
 
         attempts = []
         while True:
             if cancelled():
                 raise Stopped()
-            outcome = execute(step, tools, llm, events, attempts, budgets, reading, promise)
+            outcome = execute(step, tools, llm, events, attempts, budgets, reading, named)
 
             if outcome.obsolete:
                 return {"blocked": False, "obsolete": outcome.obsolete,
@@ -773,8 +789,10 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
             if outcome.code:
                 arguments = {"code": outcome.code, "label": outcome.label}
-                if promise:
-                    arguments["promise"] = promise
+                if named:
+                    # Injected, never asked for: the operation is the Plan's to
+                    # name, and Execute may not soften the check on its own code.
+                    arguments["parameters"] = named
                 events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
                 result = tools.call("apply_step", arguments)
                 events.emit(TOOL_RESULT, name="apply_step", result=result)

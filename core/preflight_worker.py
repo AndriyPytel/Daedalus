@@ -382,68 +382,62 @@ def _bodies_in_pieces(doc):
     return scattered
 
 
-def measure(doc):
+def _as_written(value):
+    """A property value in the spelling Plan would have used for it."""
+    if isinstance(value, tuple) and value and hasattr(value[0], "TypeId"):
+        return value[0]                      # a link: (object, [subelements])
+    return getattr(value, "Value", value)    # a Quantity: 10.0 mm -> 10.0
+
+
+def _agrees(got, want):
+    got = _as_written(got)
+    if hasattr(got, "TypeId"):
+        return want in (got.Name, got.Label)
+    if isinstance(want, bool) or isinstance(got, bool):
+        return bool(got) is bool(want)
+    if isinstance(want, (int, float)):
+        return isinstance(got, (int, float)) and abs(float(got) - float(want)) <= 1e-9
+    return str(got) == str(want)
+
+
+def wrong_parameters(parameters, doc, created, modified=()):
     """
-    What a Promise is checked against: the structural facts, collected cheaply.
+    Where what the Step built disagrees with the operation the Plan named.
 
-    Solids, faces and volume over every shape in the Document, and the overall
-    bounding box. No picture, no provider call, nothing that needs a GUI — that
-    is the whole reason a Promise is checkable at all (ADR-0014).
+    Plan writes the operation and its numbers for every Step; Execute writes
+    the code. Checking one against the other is exact, and it is exact on an
+    involute flank as much as on a cylinder — which measuring the result never
+    was, because nobody works out the volume of a tooth in advance.
+
+    A `type` without `::` is not a document object at all — the geometry inside
+    a sketch is spelled `Part.Circle` and creates nothing to look at. Such a
+    Step is left to the floor ADR-0010 and FCC-27 already provide.
     """
-    solids = faces = 0
-    volume = 0.0
-    box = None
-    for obj in doc.Objects:
-        shape = getattr(obj, "Shape", None)
-        if shape is None or shape.isNull():
-            continue
-        solids += len(shape.Solids)
-        faces += len(shape.Faces)
-        for solid in shape.Solids:
-            volume += solid.Volume
-        if shape.Faces:
-            box = shape.BoundBox if box is None else box.united(shape.BoundBox)
-    return {"solids": solids, "faces": faces, "volume": volume,
-            "bbox": None if box is None else [box.XLength, box.YLength, box.ZLength]}
+    named = str(parameters.get("type") or "")
+    if "::" not in named:
+        return []
 
+    # Created first, because most Steps create. A Step that edits an existing
+    # feature — a Pad whose Length changes — touches one instead.
+    touched = [doc.getObject(name) for name in list(created) + list(modified)]
+    touched = [obj for obj in touched if obj is not None]
+    matching = [obj for obj in touched if obj.TypeId == named]
+    if not matching:
+        did = ", ".join(sorted({obj.TypeId for obj in touched})) or "nothing"
+        return ["type: the Plan named %s, the Step built %s" % (named, did)]
 
-# A count is exact. A size is the model's arithmetic and may be close.
-PROMISE_TOLERANCE = 0.05
-
-
-def broken(promise, before, after):
-    """
-    Every part of the Promise the throwaway copy did not keep (ADR-0014).
-
-    Counts and volume are promised as deltas — a Step is one operation, and
-    "one new solid, twelve new faces" is what an operation knows about itself;
-    a signed volume lets a pocket promise removing material. The bounding box
-    is the one absolute, because it is the one of the four a drawing states
-    outright.
-    """
-    missed = []
-    for key in ("solids", "faces"):
-        if promise.get(key) is None:
-            continue
-        want, got = int(promise[key]), after[key] - before[key]
-        if got != want:
-            missed.append("%s: promised %+d, measured %+d" % (key, want, got))
-
-    if promise.get("volume") is not None:
-        want, got = float(promise["volume"]), after["volume"] - before["volume"]
-        if abs(got - want) > max(abs(want) * PROMISE_TOLERANCE, 1e-6):
-            missed.append("volume: promised %+.3f mm3, measured %+.3f mm3" % (want, got))
-
-    if promise.get("bbox"):
-        want = [float(value) for value in promise["bbox"]]
-        got = after["bbox"]
-        if got is None:
-            missed.append("bbox: promised %s, measured nothing with a face in it" % (want,))
-        elif any(abs(g - w) > max(abs(w) * PROMISE_TOLERANCE, 1e-6)
-                 for g, w in zip(got, want)):
-            missed.append("bbox: promised %s mm, measured %s mm"
-                          % ([round(v, 3) for v in want], [round(v, 3) for v in got]))
-    return missed
+    wrong = []
+    for obj in matching:
+        for prop, want in (parameters.get("properties") or {}).items():
+            if prop not in obj.PropertiesList:
+                wrong.append("%s: the Plan named it, and %s has no such property"
+                             % (prop, named))
+            elif not _agrees(got := getattr(obj, prop), want):
+                built = _as_written(got)
+                wrong.append("%s: the Plan named %s, the Step built %s"
+                             % (prop, want,
+                                built.Name if hasattr(built, "TypeId") else built))
+    return wrong
 
 
 def preflight(request):
@@ -451,8 +445,7 @@ def preflight(request):
 
     doc = load_fresh(request.get("document"))
     namespace = step_namespace(doc)
-    promise = request.get("promise") or {}
-    before = measure(doc)
+    parameters = request.get("parameters") or {}
 
     touched = _Touched()
     FreeCAD.addDocumentObserver(touched)
@@ -476,18 +469,16 @@ def preflight(request):
               "have to meet, and anything that is genuinely a second part belongs in a "
               "second Body.")
 
-    after = measure(doc)
-    missed = broken(promise, before, after)
-    if missed:
+    wrong = wrong_parameters(parameters, doc, touched.created, touched.modified())
+    if wrong:
         raise RuntimeError(
-            "this Step did not produce what it promised:\n" + "\n".join(missed)
-            + "\nThe Promise is what the Plan said this Step would have produced. Code "
-              "that runs cleanly and misses it has done something other than the Step, "
-              "so correct the code against the measurement rather than sending it again.")
+            "this Step did not build the operation the Plan named:\n" + "\n".join(wrong)
+            + "\nThe Plan names the operation and its numbers, and this code built "
+              "something else. Correct the code against the Plan's numbers rather than "
+              "sending it again.")
 
     result = {
         "ok": True,
-        "measured": after,
         "objects": summarise(doc),
         "created": sorted(touched.created),
         "deleted": sorted(touched.deleted),

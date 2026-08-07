@@ -61,6 +61,36 @@ def test_snapshot_carries_the_selection_and_the_active_body(tools, part):
     assert snapshot["active_body"] is None
 
 
+def test_the_overall_size_is_what_is_modelled(tools, part):
+    """
+    The one number a drawing states outright, and the one nothing else in the
+    loop measured: Review judged four renders and a list of type names, so
+    "a gear the right size" was not a question it could ask. FCC-66.
+    """
+    assert tools.call("overall_size")["size_mm"] == [10, 20, 5]
+
+
+def test_the_origin_datums_do_not_become_the_overall_size(tools, doc):
+    """
+    A Body carries three planes and three axes, each 1e100 across. Taken
+    literally they make every part 2e+100 mm wide — which is exactly what the
+    old measurement reported to Preflight before FCC-66.
+    """
+    doc.addObject("PartDesign::Body", "Body")     # brings its Origin with it
+    box = doc.addObject("Part::Box", "Box")
+    box.Length, box.Width, box.Height = 40, 30, 10
+    doc.recompute()
+
+    assert tools.call("overall_size")["size_mm"] == [40, 30, 10]
+
+
+def test_a_document_with_nothing_modelled_has_no_overall_size(tools, doc):
+    doc.addObject("Sketcher::SketchObject", "RootProfile")
+    doc.recompute()
+
+    assert tools.call("overall_size")["size_mm"] is None
+
+
 def test_snapshot_of_an_empty_document_is_still_a_snapshot(tools):
     snapshot = tools.call("snapshot")
 

@@ -167,6 +167,34 @@ def _errors(obj):
     return [s for s in (obj.State or []) if s in ("Invalid", "Error", "Touched")]
 
 
+def _overall_size(doc):
+    """
+    How big the modelled part is, `[x, y, z]` in mm, or None if nothing is.
+
+    The one dimension a drawing states outright, and the one nothing in the
+    loop reported: Review judged renders and a list of type names, so whether
+    the result came out the right size was not a question it could ask.
+
+    A Body's Origin carries three planes and three axes, each 1e100 across, so
+    a literal union of every bounding box makes any part 2e+100 mm wide.
+    """
+    # ponytail: anything bigger than a kilometre is scaffolding, not a part.
+    # Widen if someone models a bridge.
+    scaffolding = 1e6
+    box = None
+    for obj in doc.Objects:
+        shape = getattr(obj, "Shape", None)
+        if shape is None or shape.isNull() or not shape.Faces:
+            continue
+        bound = shape.BoundBox
+        if not bound.isValid() or bound.DiagonalLength > scaffolding:
+            continue
+        box = bound if box is None else box.united(bound)
+    if box is None:
+        return None
+    return [round(box.XLength, 6), round(box.YLength, 6), round(box.ZLength, 6)]
+
+
 def build_registry(document=None, pipeline=None) -> ToolRegistry:
     """
     Build the registry against a Document.
@@ -212,6 +240,14 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
         if len(doc.Objects) > _SNAPSHOT_LIMIT:
             result["truncated"] = "showing %d of %d objects" % (_SNAPSHOT_LIMIT, len(doc.Objects))
         return result
+
+    @registry.tool(
+        "overall_size",
+        "How big the finished part is. Driven by the loop once before Review, "
+        "never by a phase.",
+    )
+    def overall_size():
+        return {"size_mm": _overall_size(active())}
 
     @registry.tool(
         "describe_object",
@@ -380,20 +416,19 @@ def _register_apply(registry, pipeline, selection):
                     "type": "string",
                     "description": "Short name for the undo entry, e.g. 'Pad the base sketch'.",
                 },
-                "promise": {
-                    "type": "object",
-                    "description": "What the Plan said this Step would have produced. "
-                                   "Measured on the throwaway copy before Apply.",
-                },
+                # Injected by the loop, never asked for, so it carries no
+                # description: the operation is the Plan's to name and Execute
+                # may not soften the check on its own code (ADR-0016).
+                "parameters": {"type": "object"},
             },
             "required": ["code"],
         },
     )
-    def apply_step(code, label="Copilot Step", promise=None):
+    def apply_step(code, label="Copilot Step", parameters=None):
         # Preflight lives behind this Tool. From here up, a Step was applied or
         # it was not — there is no third thing to know about.
         return pipeline.apply(code, selection=selection(), label=label,
-                              promise=promise).as_tool_result()
+                              parameters=parameters).as_tool_result()
 
     @registry.tool(
         "review_views",
@@ -403,6 +438,7 @@ def _register_apply(registry, pipeline, selection):
     )
     def review_views():
         return {"views": pipeline.review_views()}
+
 
 
 def _readable(value):

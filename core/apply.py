@@ -222,7 +222,7 @@ class ApplyPipeline:
         self._renders += 1
         return os.path.join(directory, "copilot_step_%d.png" % self._renders)
 
-    def apply(self, code, selection=None, label="Copilot Step", promise=None) -> ApplyResult:
+    def apply(self, code, selection=None, label="Copilot Step", parameters=None) -> ApplyResult:
         checked = lint(code, selection)
         if not checked.ok:
             return ApplyResult(ok=False, traceback=checked.report())
@@ -238,7 +238,7 @@ class ApplyPipeline:
             # No render_path: Preflight no longer renders (ADR-0015). A
             # rasterisation per Step, in a headless process, for a picture
             # whose only reader has the real 3D view open beside it.
-            preflighted = self.worker.check(code, document=copy, promise=promise)
+            preflighted = self.worker.check(code, document=copy, parameters=parameters)
         finally:
             _discard(copy)
 

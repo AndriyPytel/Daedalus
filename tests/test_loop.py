@@ -51,9 +51,9 @@ def plan_reply(*steps, thinking=None, reading=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
-def promised(prose, **promise):
-    """A Step in the shape Plan sends since FCC-62: prose beside its Promise."""
-    return {"do": prose, "promise": promise}
+def names(prose, type, **properties):
+    """A Step as Plan sends it since FCC-66: prose beside the operation it names."""
+    return {"do": prose, "parameters": {"type": type, "properties": properties}}
 
 
 def code_reply(code, label="Step", thinking=None):
@@ -108,6 +108,11 @@ class FakeTools:
             self.calls.append(("snapshot", {}))
             return dict(SNAPSHOT)
 
+        @registry.tool("overall_size", "How big the part came out.")
+        def overall_size():
+            self.calls.append(("overall_size", {}))
+            return {"size_mm": [40, 30, 10]}
+
         @registry.tool("supported_types", "Types this build can create.", {
             "type": "object", "properties": {"prefix": {"type": "string"}},
         })
@@ -118,13 +123,13 @@ class FakeTools:
         @registry.tool("apply_step", "Apply one Step.", {
             "type": "object",
             "properties": {"code": {"type": "string"}, "label": {"type": "string"},
-                           "promise": {"type": "object"}},
+                           "parameters": {"type": "object"}},
             "required": ["code"],
         })
-        def apply_step(code, label="Step", promise=None):
+        def apply_step(code, label="Step", parameters=None):
             recorded = {"code": code, "label": label}
-            if promise is not None:
-                recorded["promise"] = promise
+            if parameters is not None:
+                recorded["parameters"] = parameters
             self.calls.append(("apply_step", recorded))
             # A None entry, or running off the end, means "this one worked".
             queued = self.applies.pop(0) if self.applies else None
@@ -909,35 +914,39 @@ def test_three_attempts_per_step_then_blocked_with_what_was_tried():
     assert [t["traceback"] for t in blocked.data["tried"]] == ["one", "two", "three"]
 
 
-def test_a_promise_rides_with_the_step_it_belongs_to():
+def test_the_named_operation_rides_with_the_step_it_belongs_to():
     """
-    Plan writes the Promise beside the Step's prose; it reaches the Plan Gate
-    through the event, and Preflight through the apply Tool. FCC-62.
+    Plan writes the operation and its numbers beside the Step's prose; they
+    reach the Plan Gate through the event, and Preflight through the apply
+    Tool. FCC-66.
     """
     _, events, _, tools = drive([
-        plan_reply(promised("Pad the base", solids=1, faces=6),
-                   promised("Fillet twelve edges", faces=12),
-                   "Rename it"),
-        code_reply("pad()"), code_reply("fillet()"), code_reply("rename()"),
+        plan_reply(names("Pad the base", "PartDesign::Pad", Length=10),
+                   names("Fillet the edges", "PartDesign::Fillet", Radius=2),
+                   "Draw the tooth flank"),
+        code_reply("pad()"), code_reply("fillet()"), code_reply("draw()"),
         verdict_reply("pass"),
     ])
 
     plan = events.first(PLAN)
-    assert plan.data["steps"] == ["Pad the base", "Fillet twelve edges", "Rename it"]
-    assert plan.data["promises"] == [
-        {"solids": 1, "faces": 6}, {"faces": 12}, None]
+    assert plan.data["steps"] == ["Pad the base", "Fillet the edges",
+                                  "Draw the tooth flank"]
+    assert plan.data["parameters"] == [
+        {"type": "PartDesign::Pad", "properties": {"Length": 10}},
+        {"type": "PartDesign::Fillet", "properties": {"Radius": 2}},
+        None]
 
     applied = [args for name, args in tools.calls if name == "apply_step"]
-    assert applied[0]["promise"] == {"solids": 1, "faces": 6}
-    assert applied[1]["promise"] == {"faces": 12}
-    # A Step with nothing worth promising still runs, checked on the delta alone.
-    assert "promise" not in applied[2]
+    assert applied[0]["parameters"]["properties"] == {"Length": 10}
+    assert applied[1]["parameters"]["properties"] == {"Radius": 2}
+    # A Step that creates no object of its own still runs, on the floor alone.
+    assert "parameters" not in applied[2]
 
 
 def test_a_bare_string_step_is_still_a_step():
     """
-    Plan may promise nothing at all. ADR-0010 stays as the floor beneath the
-    Promise and is not replaced by it. FCC-62.
+    Plan may name no operation at all. ADR-0010 stays as the floor beneath the
+    parameter check and is not replaced by it. FCC-66.
     """
     result, events, _, tools = drive([
         plan_reply("Add a box"),
@@ -946,41 +955,60 @@ def test_a_bare_string_step_is_still_a_step():
     ])
 
     assert result.ok
-    assert events.first(PLAN).data["promises"] == [None]
-    assert all("promise" not in args
+    assert events.first(PLAN).data["parameters"] == [None]
+    assert all("parameters" not in args
                for name, args in tools.calls if name == "apply_step")
 
 
-def test_execute_is_told_what_the_step_promised_before_it_writes_the_code():
+def test_execute_is_told_the_operation_before_it_writes_the_code():
     """
-    Told up front, not only after a miss: the point is code aimed at the
-    Promise, and the refused attempt correcting against the measurement. FCC-62.
+    Told up front, not only after a mismatch: the point is code aimed at the
+    numbers the Plan named, not a correction after Preflight. FCC-66.
     """
     _, _, llm, _ = drive([
-        plan_reply(promised("Pad the base", faces=6)),
+        plan_reply(names("Pad the base", "PartDesign::Pad", Length=10)),
         code_reply("pad()"),
         verdict_reply("pass"),
     ])
 
     execute_request = llm.calls[1][1]["content"]
-    assert "this_step_promised" in execute_request
-    assert '"faces": 6' in execute_request
+    assert "the_operation_this_step_names" in execute_request
+    assert '"Length": 10' in execute_request
 
 
-def test_only_the_four_measurable_keys_survive():
+def test_a_type_without_properties_is_kept_and_properties_without_a_type_are_not():
     """
-    A Promise is what Preflight can collect, not free-form prose. Anything
-    else Plan attaches is dropped rather than sent to a worker that would
-    silently ignore it. FCC-62.
+    Preflight finds the object by its type, so a type is the whole of what
+    makes the check possible; properties on their own have nothing to be read
+    off. Half a naming is dropped rather than sent to a worker that would
+    silently ignore it. FCC-66.
     """
     _, events, _, _ = drive([
-        plan_reply({"do": "Pad it",
-                    "promise": {"faces": 6, "looks_right": True, "volume": None}}),
-        code_reply("pad()"),
+        plan_reply({"do": "Pad it", "parameters": {"type": "PartDesign::Pad"}},
+                   {"do": "Fillet it", "parameters": {"properties": {"Radius": 2}}}),
+        code_reply("pad()"), code_reply("fillet()"),
         verdict_reply("pass"),
     ])
 
-    assert events.first(PLAN).data["promises"] == [{"faces": 6}]
+    assert events.first(PLAN).data["parameters"] == [
+        {"type": "PartDesign::Pad", "properties": {}}, None]
+
+
+def test_review_is_told_how_big_the_part_came_out():
+    """
+    The one number the user states outright and the loop never reported back.
+    Read once from the finished Document, not promised per Step: nobody can
+    work out the volume of a tooth in advance, and everybody can read a
+    caliper. FCC-66.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Pad the base"), code_reply("pad()"), verdict_reply("pass"),
+    ])
+
+    # The prose about the views is appended after the JSON, past a blank line.
+    review_request = llm.calls[-1][1]["content"][0]["text"].split("\n\n")[0]
+
+    assert json.loads(review_request)["overall_size_mm"] == [40, 30, 10]
 
 
 def test_review_is_given_four_views_and_execute_cannot_ask_for_one():

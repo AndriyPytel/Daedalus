@@ -46,9 +46,6 @@ class PreflightResult:
     created: list = field(default_factory=list)
     deleted: list = field(default_factory=list)
     modified: list = field(default_factory=list)
-    # Solids, faces, volume and bounding box of the copy after the Step: what
-    # a Promise is checked against, kept so the reason can quote it (ADR-0014).
-    measured: dict = field(default_factory=dict)
 
 
 def find_freecadcmd():
@@ -150,22 +147,22 @@ class PreflightWorker:
 
     # ── the one thing this class is for ──────────────────────────────────────
 
-    def check(self, code, document=None, render_path=None, timeout=None, promise=None):
+    def check(self, code, document=None, render_path=None, timeout=None, parameters=None):
         """
         Run *code* against a fresh copy of *document* in the worker.
 
         Returns a PreflightResult. Never raises for anything the code did —
         a crash and a timeout are results, not exceptions.
 
-        `promise` is what the Plan said this Step would have produced. The
-        worker measures the copy against it before Apply is ever reached
-        (ADR-0014); a mismatch comes back as a failure, like a traceback.
+        `parameters` is the operation the Plan named and the numbers it gave
+        it. The worker checks what the copy built against them before Apply is
+        ever reached (ADR-0016); a mismatch comes back like a traceback.
         """
         if not self.alive:
             self.start()
 
         request = {"code": code, "document": document, "render_path": render_path,
-                   "promise": promise}
+                   "parameters": parameters}
         try:
             self._process.stdin.write(json.dumps(request) + "\n")
             self._process.stdin.flush()
@@ -196,8 +193,7 @@ class PreflightWorker:
                                    objects=response.get("objects", []),
                                    created=response.get("created", []),
                                    deleted=response.get("deleted", []),
-                                   modified=response.get("modified", []),
-                                   measured=response.get("measured", {}))
+                                   modified=response.get("modified", []))
         return PreflightResult(ok=False, traceback=response.get("traceback", "Preflight failed"))
 
     # ── plumbing ─────────────────────────────────────────────────────────────
