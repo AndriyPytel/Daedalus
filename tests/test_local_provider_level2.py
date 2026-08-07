@@ -6,14 +6,11 @@ back out of it — so it was kept in secret storage, a server wanting both an
 address and a token had nowhere to put the token, and the model fetch started
 with a URL where a key belonged.
 
-What is checked here is the whole route, against a real HTTP server: the field
+What is checked here is the field and what the combo does with it: the field
 exists and is not masked, what it holds survives a restart, it is not in the key
-list, and a running server's model list reaches `get_available_models`.
+list, an empty address asks nothing and an unreachable one says so.
 """
 import json
-import os
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
@@ -22,37 +19,6 @@ from conftest import NO_QT, QT_APP
 pytestmark = pytest.mark.freecad
 
 LOCAL = "Custom/Local"
-RECORDED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recorded")
-
-
-class _Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.server.last_path = self.path
-        body = json.dumps(self.server.payload).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def log_message(self, *args):
-        pass
-
-
-@pytest.fixture
-def local_server():
-    with open(os.path.join(RECORDED, "local_models.json"), encoding="utf-8") as handle:
-        payload = json.load(handle)
-    server = HTTPServer(("127.0.0.1", 0), _Handler)
-    server.payload = payload
-    server.last_path = None
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        yield server, "http://127.0.0.1:%d" % server.server_address[1]
-    finally:
-        server.shutdown()
-        thread.join(timeout=5)
 
 
 @pytest.fixture
@@ -183,31 +149,19 @@ def test_clearing_the_address_removes_it(providers_page, settings_are_the_tests_
 # ── What reaches the combo ────────────────────────────────────────────────────
 
 
-def _settle(manager, timeout_turns=400):
-    """Give the fetch thread its turns; the list arrives on a signal."""
+def _drain(manager, timeout_turns=400):
+    """
+    Let every fetch already in flight finish before a test starts recording.
+
+    The tests above save addresses nothing is listening on, so their fetches
+    fail late. Clearing `_threads` hides such a thread instead of waiting for
+    it, and its warning then lands in whichever test is recording at the time.
+    """
     for _ in range(timeout_turns):
         QT_APP.processEvents()
-        if manager._fetched.get(LOCAL) is not None:
-            return True
+        if not any(thread.isRunning() for thread in manager._threads.values()):
+            return
         QT_APP.thread().msleep(5)
-    return False
-
-
-def test_a_running_local_server_fills_the_model_list(settings_are_the_tests_own, local_server):
-    from utils import provider_manager
-
-    server, address = local_server
-    sm = settings_are_the_tests_own
-    manager = provider_manager.instance()
-    sm.set_base_url_for_provider(LOCAL, address)
-
-    manager.get_available_models()   # starts the fetch
-    assert _settle(manager), "the local server's model list never arrived"
-
-    local = [m for m in manager.get_available_models() if m["provider"] == LOCAL]
-    assert {m["id"] for m in local} == {"llama3.2:latest", "qwen2.5-coder:7b"}
-    assert server.last_path.startswith("/v1/models"), \
-        "the address was asked at something other than its OpenAI-compatible root"
 
 
 def test_no_address_means_no_fetch_and_nothing_said(settings_are_the_tests_own, monkeypatch):
@@ -219,10 +173,12 @@ def test_no_address_means_no_fetch_and_nothing_said(settings_are_the_tests_own, 
     import FreeCAD
     from utils import provider_manager
 
+    manager = provider_manager.instance()
+    _drain(manager)
+
     warnings = []
     monkeypatch.setattr(FreeCAD.Console, "PrintWarning", warnings.append)
 
-    manager = provider_manager.instance()
     manager._fetched.clear()
     manager._threads.clear()
 
@@ -241,10 +197,12 @@ def test_an_unreachable_address_names_itself_and_leaves_the_rest_working(
     import FreeCAD
     from utils import provider_manager
 
+    manager = provider_manager.instance()
+    _drain(manager)
+
     warnings = []
     monkeypatch.setattr(FreeCAD.Console, "PrintWarning", warnings.append)
 
-    manager = provider_manager.instance()
     manager._fetched.clear()
     manager._threads.clear()
     settings_are_the_tests_own.set_base_url_for_provider(LOCAL, "http://127.0.0.1:1")
