@@ -8,6 +8,12 @@ to Execute. Within its turn Execute may spend a bounded number of read-only
 looks at the Document before it writes code (ADR-0009); that is one phase
 reading its input, not a negotiation between phases.
 
+There is one edge back from Execute to Plan and it carries no geometry: a Step
+that is out of date, or that cannot be built after its attempts are spent, goes
+back to Plan to be written differently (ADR-0013). Still deterministic — the
+loop decides when it fires, not the model — and Execute's only two moves stay
+"do exactly this" and "hand back".
+
 The loop is a function of `(intent, context)` over injected dependencies, so a
 narrower Intent is all a future sub-agent needs. Nothing here imports FreeCAD;
 the Document is reached only through the Tool registry.
@@ -48,9 +54,10 @@ class Budgets:
     attempts_per_step: int = 3
     review_cycles: int = 2
     # Without this, Execute declaring Step after Step obsolete never terminates.
-    # One ceiling over all three causes of a replan (see `_Revisions`): separate
-    # budgets would let the three cycle into each other and would raise the
-    # worst-case number of Plan calls in a run.
+    # One ceiling over all four causes of a replan (see `_Revisions`): separate
+    # budgets would let them cycle into each other and would raise the
+    # worst-case number of Plan calls in a run. This is the floor under
+    # `revisions_ceiling`, which scales the allowance with the Plan's length.
     revisions: int = 3
     looks_per_step: int = 2
     # A model that only ever asks would never plan. After this many rounds Plan
@@ -58,36 +65,50 @@ class Budgets:
     questions: int = 2
 
 
+def revisions_ceiling(budgets, steps) -> int:
+    """
+    How many replans this Plan is allowed, from how long it is (FCC-61).
+
+    A four-Step Plan and a forty-Step Plan cannot have the same allowance:
+    atomic Steps (FCC-58) turn one part into roughly thirty-five, and every
+    Execute -> Plan handback spends one. Still a single ceiling over all four
+    causes, for the reason recorded on `Budgets`; only its size is computed.
+    """
+    return max(budgets.revisions, len(steps) // 5)
+
+
 class _Revisions:
     """
     How many times the Plan has been rewritten, and why (FCC-22).
 
-    Three unrelated things replan: the user amends at the Plan Gate, Execute
-    finds a Step out of date, and Review rejects the result. They share one
-    ceiling, which is deliberate — but they used to share one *counter* too, so
-    whichever branch spent the last unit was reported as the cause of all of
-    them, and a run stopped by two amendments told the user Execute kept
-    finding the Plan out of date.
+    Four unrelated things replan: the user amends at the Plan Gate, Execute
+    finds a Step out of date, Execute cannot build one, and Review rejects the
+    result. They share one ceiling, which is deliberate — but they used to
+    share one *counter* too, so whichever branch spent the last unit was
+    reported as the cause of all of them, and a run stopped by two amendments
+    told the user Execute kept finding the Plan out of date.
     """
 
     AMENDED = "amended"
     OBSOLETE = "obsolete"
+    UNBUILDABLE = "unbuildable"
     REJECTED = "rejected"
 
     _SAID = (
         (AMENDED, "you amended the Plan %s"),
         (OBSOLETE, "Execute found the Plan out of date %s"),
+        (UNBUILDABLE, "Execute could not build a Step %s"),
         (REJECTED, "Review rejected the result %s"),
     )
 
     def __init__(self):
-        self._spent = {self.AMENDED: 0, self.OBSOLETE: 0, self.REJECTED: 0}
+        self._spent = {cause: 0 for cause, _ in self._SAID}
 
     def spend(self, cause):
         self._spent[cause] += 1
 
-    def exhausted(self, budgets) -> bool:
-        return sum(self._spent.values()) >= budgets.revisions
+    def exhausted(self, budgets, steps) -> bool:
+        return sum(self._spent.values()) >= revisions_ceiling(budgets, steps)
 
     def _causes_spent(self) -> list:
         return [cause for cause, _ in self._SAID if self._spent[cause]]
@@ -102,15 +123,21 @@ class _Revisions:
             return said[0]
         return ", ".join(said[:-1]) + " and " + said[-1]
 
-    def block_reason(self, budgets, cause: str, refused: str) -> str:
+    def block_reason(self, budgets, steps, cause: str, refused: str) -> str:
+        if not self._causes_spent():
+            # A ceiling of nought: the run may not replan at all.
+            return "The Plan may not be rewritten in this run. " + refused
         reason = ("The Plan has been rewritten %d times, which is the whole budget — %s."
-                  % (budgets.revisions, self.breakdown()))
+                  % (revisions_ceiling(budgets, steps), self.breakdown()))
         # Where one cause spent the lot, the breakdown has already named it.
         if self._causes_spent() != [cause]:
             reason += " " + refused
         if self._spent[self.OBSOLETE] or cause == self.OBSOLETE:
             reason += (" Execute finding the Plan out of date means something about this "
                        "Document does not match what was asked for.")
+        if self._spent[self.UNBUILDABLE] or cause == self.UNBUILDABLE:
+            reason += (" A Step Execute cannot build is a Step Plan has to write "
+                       "differently; the tracebacks are in what was tried.")
         return reason
 
 
@@ -551,9 +578,9 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         if approval.decision == REJECT:
             return _block(events, "You rejected the Plan, so nothing was applied.", [], 0)
 
-        if revisions.exhausted(budgets):
+        if revisions.exhausted(budgets, steps):
             return _block(events, revisions.block_reason(
-                budgets, _Revisions.AMENDED,
+                budgets, steps, _Revisions.AMENDED,
                 "Your latest amendment was not planned."), [], 0)
         revisions.spend(_Revisions.AMENDED)
         planned = plan(intent, tools.call("snapshot"), llm, events,
@@ -573,21 +600,28 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         if outcome["blocked"]:
             return _block(events, outcome["reason"], outcome["tried"], applied)
 
-        if outcome["obsolete"]:
-            if revisions.exhausted(budgets):
+        # Both go back to Plan from a fresh Snapshot and spend the same budget:
+        # the Step no longer makes sense, or it cannot be built (ADR-0013).
+        if outcome["obsolete"] or outcome["handback"]:
+            if outcome["obsolete"]:
+                cause, feedback = _Revisions.OBSOLETE, outcome["obsolete"]
+                refused = "Execute has found it out of date again."
+            else:
+                cause, feedback = _Revisions.UNBUILDABLE, outcome["handback"]
+                refused = outcome["handback"]
+
+            if revisions.exhausted(budgets, steps):
                 return _block(
                     events,
-                    revisions.block_reason(
-                        budgets, _Revisions.OBSOLETE,
-                        "Execute has found it out of date again."),
+                    revisions.block_reason(budgets, steps, cause, refused),
                     outcome["tried"], applied,
                 )
-            revisions.spend(_Revisions.OBSOLETE)
+            revisions.spend(cause)
             planned = plan(intent, tools.call("snapshot"), llm, events,
-                           feedback=outcome["obsolete"], attachments=attachments)
+                           feedback=feedback, attachments=attachments)
             steps = planned.steps
             events.emit(PLAN_REVISED, steps=list(steps), reading=planned.reading,
-                        reason=outcome["obsolete"])
+                        reason=feedback)
             continue
 
         render = outcome["render"] or render
@@ -611,11 +645,11 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
         # Bounded by review_cycles above, but it spends the shared revision
         # budget as well — invisibly, until FCC-22.
-        if revisions.exhausted(budgets):
+        if revisions.exhausted(budgets, steps):
             return _block(
                 events,
                 revisions.block_reason(
-                    budgets, _Revisions.REJECTED,
+                    budgets, steps, _Revisions.REJECTED,
                     "Review has rejected the result again."),
                 outcome["tried"] + [{"review": reason}], applied,
             )
@@ -644,7 +678,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
             if outcome.obsolete:
                 return {"blocked": False, "obsolete": outcome.obsolete,
-                        "render": render, "objects": objects,
+                        "handback": None, "render": render, "objects": objects,
                         "tried": [_tried(step, a) for a in attempts]}
 
             if outcome.code:
@@ -674,15 +708,21 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                         traceback=traceback)
 
             if len(attempts) >= budgets.attempts_per_step:
+                # Not the end of the run: the Plan is a precise instruction
+                # while it is buildable and advisory the moment it is not, so
+                # this goes back to Plan the way `obsolete` does (ADR-0013).
                 return {
-                    "blocked": True,
-                    "reason": "Step %d of %d (%s) failed %d times; the attempt budget for a "
-                              "Step is spent." % (index, len(steps), step, len(attempts)),
+                    "handback": "Step %d of %d could not be built after %d attempts: %s\n"
+                                "The last traceback was:\n%s"
+                                % (index, len(steps), len(attempts), step,
+                                   attempts[-1].traceback),
                     "tried": [_tried(step, a) for a in attempts],
-                    "obsolete": None, "render": render, "objects": objects,
+                    "blocked": False, "obsolete": None,
+                    "render": render, "objects": objects,
                 }
 
-    return {"blocked": False, "obsolete": None, "render": render, "objects": objects, "tried": []}
+    return {"blocked": False, "obsolete": None, "handback": None,
+            "render": render, "objects": objects, "tried": []}
 
 
 def _tried(step, attempt):
