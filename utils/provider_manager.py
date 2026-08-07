@@ -66,6 +66,14 @@ class _ProviderManager(QObject):
         # upgrade path if one fetch per provider per session becomes noticeable.
         self._fetched: dict = {}   # provider -> [{id, display}]
         self._threads: dict = {}   # provider -> _FetchThread (also the "asked already" mark)
+        # What each fetched list was fetched with, so a key change can clear
+        # the one provider it invalidated rather than all of them.
+        self._fetched_with: dict = {}   # provider -> (api_key, base_url)
+        # Every model any provider has ever reported, and where it came from.
+        # Survives a cleared fetch: between a key change and the new list
+        # landing, this is the only thing that can resolve a fetched-only
+        # model, and `get_model_entry` runs on the Step thread and cannot ask.
+        self._resolved: dict = {}   # model_id -> (provider, display)
 
         # Subscribe to key changes so the model list stays in sync
         from utils import settings_manager
@@ -112,7 +120,21 @@ class _ProviderManager(QObject):
         if self.sender() is not self._threads.get(provider):
             return  # a fetch outlived the key it was started for
         self._fetched[provider] = models
+        self._fetched_with[provider] = self._configured(provider)
+        self._remember(provider, models)
         self.models_changed.emit(self.get_available_models())
+
+    def _remember(self, provider: str, models: list):
+        """
+        Where each of these models came from, kept past the next key change.
+
+        ponytail: a model the provider stops reporting stays remembered, so a
+        run against it fails at the provider rather than here. Dropping it
+        would need the fetch that has not landed yet, which is the whole
+        problem — and the provider's own error is the honest one anyway.
+        """
+        for model in models:
+            self._resolved[model["id"]] = (provider, model["display"])
 
     def _on_fetch_failed(self, provider: str, error: str):
         import FreeCAD
@@ -137,8 +159,20 @@ class _ProviderManager(QObject):
     # ── Slots ─────────────────────────────────────────────────────────────────
 
     def _on_keys_changed(self, _changed):
-        self._fetched.clear()
-        self._threads.clear()
+        """
+        Drop the lists the change actually invalidated, and no others.
+
+        A key change invalidates the list that key entitled you to. Clearing
+        every provider threw away answers that were still true, and the signal
+        carries the whole map rather than which entry moved — so the check is
+        against what each list was fetched with (FCC-53).
+        """
+        for provider in list(self._model_map):
+            if self._fetched_with.get(provider) == self._configured(provider):
+                continue
+            self._fetched.pop(provider, None)
+            self._fetched_with.pop(provider, None)
+            self._threads.pop(provider, None)
         self.models_changed.emit(self.get_available_models())
 
     # ── Public API ─────────────────────────────────────────────────────────────
@@ -170,12 +204,24 @@ class _ProviderManager(QObject):
                    if self._configured(provider) is not None)
 
     def get_model_entry(self, model_id: str) -> dict | None:
-        """Find a model entry by its ``id`` across all providers."""
+        """
+        Find a model entry by its ``id`` across all providers.
+
+        Falls back to what the provider last reported. A model that resolved
+        once keeps its provider until a fetch says otherwise — without that,
+        every fetched-only model is unresolvable between a key change and the
+        new list landing, and the run ends in a crash report (FCC-53).
+        """
         for provider in self._model_map:
             # Deliberately does not trigger a fetch: this runs on the Step thread.
             for m in self._known(provider):
                 if m["id"] == model_id:
                     return {"id": m["id"], "display": m["display"], "provider": provider}
+
+        remembered = self._resolved.get(model_id)
+        if remembered:
+            provider, display = remembered
+            return {"id": model_id, "display": display, "provider": provider}
         return None
 
     def get_all_providers(self) -> list:
