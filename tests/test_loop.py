@@ -260,6 +260,28 @@ def test_a_step_is_one_operation_that_names_its_feature_type():
     assert "one FreeCAD operation" not in review_system
 
 
+def test_the_positive_form_of_the_lint_rules_reaches_execute():
+    """
+    Lint can only say no. Without the how, the model enumerates workarounds —
+    it already answered the one-solid rule with max(solids, key=volume). The
+    prompt carries what to build instead; Review is told neither. FCC-60.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    # The prompts are wrapped copy; a sentence crosses line breaks.
+    _, execute_system, review_system = (
+        " ".join(text.split()) for text in _system_messages(llm))
+
+    assert "computes its own Shape from its Profile" in execute_system
+    assert "addProperty" in execute_system
+    assert "Let a Step fail" in execute_system
+    assert "bare `except`" in execute_system
+    assert "computes its own Shape" not in review_system
+
+
 def test_the_curve_and_thread_types_are_traps_not_prompt_copy():
     """
     Which types this build offers for a thread and for a free curve is
