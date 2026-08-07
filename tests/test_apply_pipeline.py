@@ -62,7 +62,14 @@ def pipeline(trace):
     def dispatch(func, timeout=None):
         return func()
 
-    built = ApplyPipeline(document=doc, worker=worker, dispatch=dispatch, transaction=transaction)
+    def view_capture(path):
+        # The viewport, which Level 1 has none of. Injected the way `dispatch`
+        # and `transaction` already are (ADR-0015).
+        trace.append(("capture", path))
+        return "/tmp/step.png"
+
+    built = ApplyPipeline(document=doc, worker=worker, dispatch=dispatch,
+                          transaction=transaction, view_capture=view_capture)
     built.document, built.fake_worker, built.trace = doc, worker, trace
     return built
 
@@ -76,7 +83,9 @@ def test_a_clean_step_lands_and_reports_what_it_created(pipeline):
     assert result.ok
     assert result.created == ["Box"]
     assert result.render == "/tmp/step.png"
-    assert pipeline.trace == [("transaction", "Add the box")]
+    # The picture is taken after the transaction, from the viewport the Step
+    # has already changed — not from the throwaway copy (ADR-0015).
+    assert [what for what, _ in pipeline.trace] == ["transaction", "capture"]
 
 
 def test_lint_runs_before_preflight_so_a_bad_step_costs_nothing(pipeline):
@@ -119,7 +128,8 @@ def test_preflight_gets_a_throwaway_copy_not_the_document(pipeline):
 
     checked = pipeline.fake_worker.checked[0]
     assert pipeline.document.saved_copies == [checked["document"]]
-    assert checked["render_path"].endswith(".png")
+    # Preflight no longer renders: the panel's picture is the viewport (ADR-0015).
+    assert checked["render_path"] is None
 
 
 def test_the_throwaway_copy_is_deleted_afterwards(pipeline):
@@ -208,5 +218,6 @@ def test_every_document_touch_goes_through_the_dispatcher():
 
     pipeline.apply("doc.recompute()")
 
-    # resolve the Document, read it, copy it, run the transaction, read it again
-    assert len(dispatched) == 5
+    # resolve the Document, read it, copy it, run the transaction, read it
+    # again, capture the viewport — which is Qt's thread too (ADR-0015).
+    assert len(dispatched) == 6

@@ -92,8 +92,11 @@ class FakeTools:
                "objects": [{"name": "Box", "label": "Box", "type": "Part::Box"}],
                "render": RENDER_PNG}
 
-    def __init__(self, applies=()):
+    def __init__(self, applies=(), views=None):
         self.applies = list(applies)
+        # What the end-of-run capture answers. None means a registry that has
+        # no `review_views` at all, which is the same case as headless.
+        self.views = views
         self.calls = []
         self.registry = self._build()
 
@@ -127,6 +130,13 @@ class FakeTools:
             queued = self.applies.pop(0) if self.applies else None
             return queued if queued is not None else dict(self.APPLIED)
 
+        if self.views is not None:
+            @registry.tool("review_views", "The views Review judges.",
+                           {"type": "object", "properties": {}})
+            def review_views():
+                self.calls.append(("review_views", {}))
+                return {"views": list(self.views)}
+
         return registry
 
     def applied_codes(self):
@@ -137,10 +147,11 @@ def failed(traceback):
     return {"status": "failed", "traceback": traceback}
 
 
-def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None):
+def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
+          views=None):
     """Run the loop over scripted turns and hand back everything to assert on."""
     llm = ScriptedLLMClient(turns)
-    tools = FakeTools(applies)
+    tools = FakeTools(applies, views=views)
     events = EventStream()
     kwargs = {"ask": ask} if ask is not None else {}
     result = run(intent, llm=llm, tools=tools.registry, events=events,
@@ -970,6 +981,51 @@ def test_only_the_four_measurable_keys_survive():
     ])
 
     assert events.first(PLAN).data["promises"] == [{"faces": 6}]
+
+
+def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
+    """
+    One view is not enough: the mirrored gear of FCC-54 reads only from above,
+    and in isometry the tooth flank is foreshortened, which is exactly why
+    Review passed it. Execute may not ask for a view either — a picture on
+    request would be a loop inside a phase. FCC-63.
+    """
+    views = [RENDER_PNG] * 4
+    _, _, llm, tools = drive(
+        [plan_reply("Add a box"),
+         code_reply("doc.addObject('Part::Box', 'Box')"),
+         verdict_reply("pass")],
+        views=views,
+    )
+
+    assert [name for name, _ in tools.calls].count("review_views") == 1
+
+    review_content = llm.calls[2][1]["content"]
+    assert sum(1 for part in review_content if part["type"] == "image_url") == 4
+    assert "the same result seen from" in review_content[0]["text"]
+    assert "not several" in review_content[0]["text"]
+
+    # review_views is not in the list Execute was offered to look with.
+    assert "review_views" not in llm.calls[1][1]["content"]
+
+
+def test_a_run_with_no_views_still_reaches_a_verdict():
+    """
+    `render=None` still degrades Review to objects-only, and a registry with
+    no `review_views` at all — an older one, a test one — is the same case as
+    a headless one. FCC-63.
+    """
+    result, _, llm, _ = drive(
+        [plan_reply("Add a box"),
+         code_reply("doc.addObject('Part::Box', 'Box')"),
+         verdict_reply("pass")],
+        # Headless: no viewport to capture per Apply, and no views at the end.
+        applies=[{"status": "applied", "created": ["Box"], "objects": []}],
+        views=[],
+    )
+
+    assert result.ok
+    assert "No render was produced" in llm.calls[2][1]["content"][0]["text"]
 
 
 def test_a_step_that_cannot_be_built_returns_to_plan():
