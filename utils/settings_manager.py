@@ -177,7 +177,11 @@ class _SettingsManager(QObject):
 
         entry = provider_manager.instance().get_model_entry(mid)
         if not entry:
-            raise ValueError(f"Unknown model '{mid}'. Check your Preferences.")
+            raise ValueError(
+                f"'{mid}' is not a model any configured provider reports. Pick one from "
+                f"the model list in the panel, or check the keys in "
+                f"Preferences → API & Providers."
+            )
 
         provider = entry["provider"]
         api_key  = self.get_api_key_for_provider(provider)

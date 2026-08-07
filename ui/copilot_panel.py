@@ -293,7 +293,17 @@ class LoopWorker(QtCore.QObject):
             pass    # a nameless Session in history is not worth losing a run over
 
         try:
-            result = run(intent, llm=self._get_client(), tools=tools,
+            client = self._get_client()
+        except ValueError as exc:
+            # Which model, and what to do about it. A model that cannot be
+            # resolved is a known outcome and belongs in the transcript as a
+            # sentence, not as a traceback the user cannot act on (FCC-53).
+            events.emit(ev.ERROR, message=str(exc))
+            self.finished.emit(None)
+            return
+
+        try:
+            result = run(intent, llm=client, tools=tools,
                          events=events, cancelled=self._stop.is_set,
                          attachments=attachments, gate=self.ask.about_the_plan,
                          ask=self.ask.about_missing_values)
