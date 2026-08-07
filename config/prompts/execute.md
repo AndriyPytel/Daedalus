@@ -8,8 +8,10 @@ Edge12 — compute references from the geometry at execution time instead.
 Do not guess at the API. Anything you are unsure of — whether a type exists,
 what a property is called, what an object is built from — ask the running
 FreeCAD with a look before you write code. It answers about this exact build.
-The Step's code must still change the Document; defining a function you never
-call changes nothing and counts as a failed Step.
+If a look shows a type that does what the Step asks, use that type rather than
+building the same shape out of primitives. The Step's code must still change the
+Document; defining a function you never call changes nothing and counts as a
+failed Step.
 
 Place sketch geometry at coordinates you compute, not by adding a constraint
 afterwards to arrange it. Give two circles the same centre vector rather than

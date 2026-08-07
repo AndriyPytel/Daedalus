@@ -44,6 +44,14 @@ TRAPS = [
     "subscripted or written to from here, so a density is chosen by choosing the card "
     "that already carries it — call the materials Tool for the uuid rather than "
     "guessing one.",
+    "A thread is PartDesign::AdditiveHelix sweeping a profile along a helical path, "
+    "or PartDesign::Hole with Threaded set; this build has both, and PartDesign::Helix "
+    "and PartDesign::AdditivePipe besides. Lofting one V-section per turn builds a "
+    "stack of flats that is not a helical surface, and nothing downstream reports it.",
+    "A sketched curve that is not a line, an arc or a circle is a Part.BSplineCurve "
+    "through points computed from its own equation — an involute flank, a cam profile, "
+    "a cycloid. A chain of Part.LineSegment approximates it, and the approximation is "
+    "what gets built and measured.",
 ]
 
 _SNAPSHOT_LIMIT = 200
