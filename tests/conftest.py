@@ -39,6 +39,12 @@ def _try_import_freecad():
 
 HAVE_FREECAD = _try_import_freecad()
 
+# Importing FreeCAD prepends its Mod directory, where this addon is symlinked
+# from one checkout — so a run from a worktree would import that one instead.
+if sys.path[0] != ROOT:
+    sys.path.remove(ROOT)
+    sys.path.insert(0, ROOT)
+
 
 def _import_qt():
     """
