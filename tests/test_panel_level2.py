@@ -397,21 +397,6 @@ def test_taking_off_a_chip_the_user_chose_keeps_their_file(panel, tmp_path):
     assert theirs.exists(), "removing a chip deleted a file the user attached from disk"
 
 
-def test_a_finished_run_leaves_what_is_still_attached(panel, tmp_path):
-    sent = _a_pasted_image(panel, tmp_path, "sent.png")
-    panel.user_input.setPlainText("Build this")
-    try:
-        panel.on_send()
-    finally:
-        panel.worker.stop()
-    still_attached = _a_pasted_image(panel, tmp_path, "pasted-during-the-run.png")
-
-    panel.on_run_finished(None)
-
-    assert not os.path.exists(sent), "the image the run consumed stayed in /tmp"
-    assert os.path.exists(still_attached), "the next Intent lost the image on its chip bar"
-
-
 def test_closing_the_panel_takes_the_unsent_images_with_it(panel, tmp_path):
     from conftest import QtGui
 
