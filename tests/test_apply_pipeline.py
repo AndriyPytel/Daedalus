@@ -39,8 +39,9 @@ class FakeWorker:
                                                 created=["Box"])
         self.checked = []
 
-    def check(self, code, document=None, render_path=None, timeout=None):
-        self.checked.append({"code": code, "document": document, "render_path": render_path})
+    def check(self, code, document=None, render_path=None, timeout=None, promise=None):
+        self.checked.append({"code": code, "document": document,
+                             "render_path": render_path, "promise": promise})
         return self.result
 
 

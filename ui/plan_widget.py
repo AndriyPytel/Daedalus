@@ -17,10 +17,31 @@ FAILED = "failed"
 _MARK = {PENDING: "○", RUNNING: "▸", DONE: "✓", FAILED: "✗"}
 
 
+def describe_promise(promise):
+    """
+    A Step's Promise in units a reader can check, or "" if it made none.
+
+    Shown beside the prose at the Plan Gate: a Promise the user cannot read is
+    a Promise they cannot correct, and the Gate is the only place they could.
+    """
+    if not promise:
+        return ""
+    said = []
+    for key, word in (("solids", "solid"), ("faces", "face")):
+        count = promise.get(key)
+        if count is not None:
+            said.append("%+d %s%s" % (count, word, "" if abs(count) == 1 else "s"))
+    if promise.get("volume") is not None:
+        said.append("%+.6g mm³" % promise["volume"])
+    if promise.get("bbox"):
+        said.append(" × ".join("%.6g" % value for value in promise["bbox"]) + " mm")
+    return ", ".join(said)
+
+
 class PlanWidget(QtWidgets.QFrame):
     """One row per Step. `highlight(n)` moves the marker; earlier rows go done."""
 
-    def __init__(self, steps=(), title="Plan"):
+    def __init__(self, steps=(), title="Plan", promises=()):
         super().__init__()
         self.setObjectName("PlanCard")
 
@@ -40,14 +61,16 @@ class PlanWidget(QtWidgets.QFrame):
         self._rows = []
         self._steps = []
         self._states = []
-        self.set_steps(steps)
+        self._promises = []
+        self.set_steps(steps, promises)
 
     # ── what it is told ──────────────────────────────────────────────────────
 
-    def set_steps(self, steps):
+    def set_steps(self, steps, promises=()):
         for row in self._rows:
             row.setParent(None)
         self._rows, self._steps, self._states = [], list(steps), []
+        self._promises = list(promises)
 
         for position in range(len(self._steps)):
             row = QtWidgets.QLabel()
@@ -88,8 +111,13 @@ class PlanWidget(QtWidgets.QFrame):
         style = "font-weight:%s;" % ("600" if state == RUNNING else "400")
         if colour:
             style = "color:%s; %s" % (colour, style)
+        promised = describe_promise(
+            self._promises[position] if position < len(self._promises) else None)
+        # No colour of its own: dimmed by weight, which reads in either theme.
+        beside = ('<span style="font-weight:400;">&nbsp;— promises %s</span>'
+                  % promised) if promised else ""
         self._rows[position].setText(
-            '<span style="%s">%d. %s &nbsp;%s</span>'
-            % (style, position + 1, _MARK[state], self._steps[position])
+            '<span style="%s">%d. %s &nbsp;%s%s</span>'
+            % (style, position + 1, _MARK[state], self._steps[position], beside)
         )
         self._rows[position].setStyleSheet("font-size: 12px; padding: 1px 0px;")

@@ -51,6 +51,11 @@ def plan_reply(*steps, thinking=None, reading=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
+def promised(prose, **promise):
+    """A Step in the shape Plan sends since FCC-62: prose beside its Promise."""
+    return {"do": prose, "promise": promise}
+
+
 def code_reply(code, label="Step", thinking=None):
     body = json.dumps({"code": code, "label": label})
     return {"reasoning": thinking, "text": body} if thinking else body
@@ -109,11 +114,15 @@ class FakeTools:
 
         @registry.tool("apply_step", "Apply one Step.", {
             "type": "object",
-            "properties": {"code": {"type": "string"}, "label": {"type": "string"}},
+            "properties": {"code": {"type": "string"}, "label": {"type": "string"},
+                           "promise": {"type": "object"}},
             "required": ["code"],
         })
-        def apply_step(code, label="Step"):
-            self.calls.append(("apply_step", {"code": code, "label": label}))
+        def apply_step(code, label="Step", promise=None):
+            recorded = {"code": code, "label": label}
+            if promise is not None:
+                recorded["promise"] = promise
+            self.calls.append(("apply_step", recorded))
             # A None entry, or running off the end, means "this one worked".
             queued = self.applies.pop(0) if self.applies else None
             return queued if queued is not None else dict(self.APPLIED)
@@ -887,6 +896,80 @@ def test_three_attempts_per_step_then_blocked_with_what_was_tried():
     assert blocked is not None
     assert len(blocked.data["tried"]) == 3
     assert [t["traceback"] for t in blocked.data["tried"]] == ["one", "two", "three"]
+
+
+def test_a_promise_rides_with_the_step_it_belongs_to():
+    """
+    Plan writes the Promise beside the Step's prose; it reaches the Plan Gate
+    through the event, and Preflight through the apply Tool. FCC-62.
+    """
+    _, events, _, tools = drive([
+        plan_reply(promised("Pad the base", solids=1, faces=6),
+                   promised("Fillet twelve edges", faces=12),
+                   "Rename it"),
+        code_reply("pad()"), code_reply("fillet()"), code_reply("rename()"),
+        verdict_reply("pass"),
+    ])
+
+    plan = events.first(PLAN)
+    assert plan.data["steps"] == ["Pad the base", "Fillet twelve edges", "Rename it"]
+    assert plan.data["promises"] == [
+        {"solids": 1, "faces": 6}, {"faces": 12}, None]
+
+    applied = [args for name, args in tools.calls if name == "apply_step"]
+    assert applied[0]["promise"] == {"solids": 1, "faces": 6}
+    assert applied[1]["promise"] == {"faces": 12}
+    # A Step with nothing worth promising still runs, checked on the delta alone.
+    assert "promise" not in applied[2]
+
+
+def test_a_bare_string_step_is_still_a_step():
+    """
+    Plan may promise nothing at all. ADR-0010 stays as the floor beneath the
+    Promise and is not replaced by it. FCC-62.
+    """
+    result, events, _, tools = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert events.first(PLAN).data["promises"] == [None]
+    assert all("promise" not in args
+               for name, args in tools.calls if name == "apply_step")
+
+
+def test_execute_is_told_what_the_step_promised_before_it_writes_the_code():
+    """
+    Told up front, not only after a miss: the point is code aimed at the
+    Promise, and the refused attempt correcting against the measurement. FCC-62.
+    """
+    _, _, llm, _ = drive([
+        plan_reply(promised("Pad the base", faces=6)),
+        code_reply("pad()"),
+        verdict_reply("pass"),
+    ])
+
+    execute_request = llm.calls[1][1]["content"]
+    assert "this_step_promised" in execute_request
+    assert '"faces": 6' in execute_request
+
+
+def test_only_the_four_measurable_keys_survive():
+    """
+    A Promise is what Preflight can collect, not free-form prose. Anything
+    else Plan attaches is dropped rather than sent to a worker that would
+    silently ignore it. FCC-62.
+    """
+    _, events, _, _ = drive([
+        plan_reply({"do": "Pad it",
+                    "promise": {"faces": 6, "looks_right": True, "volume": None}}),
+        code_reply("pad()"),
+        verdict_reply("pass"),
+    ])
+
+    assert events.first(PLAN).data["promises"] == [{"faces": 6}]
 
 
 def test_a_step_that_cannot_be_built_returns_to_plan():

@@ -21,6 +21,24 @@ what; `Face3` and `Edge12` are not yours to write, and neither is how a
 reference is found. Which edge or face a Step lands on is worked out against
 the geometry at the moment it runs.
 
+Every Step carries a **Promise**: what it will have produced, in terms that can
+be measured. Preflight collects it from a throwaway copy before the Step
+touches anything, and a Step that misses its Promise fails the way a traceback
+does. Four things can be promised, all optional:
+
+- `solids` — the change in the number of solids. A pad that makes the first
+  solid promises `1`; one that thickens what is already there promises `0`.
+- `faces` — the change in the number of faces. A fillet on twelve edges
+  promises `12`. This is the one that catches a dressup that applied nothing.
+- `volume` — the change in mm³, signed, so a pocket promises a negative number.
+- `bbox` — the overall bounding box afterwards, `[x, y, z]` in mm. The one
+  absolute of the four, because it is the one a drawing states outright.
+
+Promise only what you can actually work out. Where a Step has nothing
+measurable to promise, leave `promise` out and it is checked against the
+structural delta alone. A Promise you guessed is worse than one you omitted,
+because a wrong one costs the Step an attempt.
+
 Sketch geometry is positioned by computed coordinates, not by the constraint
 solver. Two circles are concentric because they were given the same centre; a
 Step that asks for constraints "to make the circles concentric" is asking the
@@ -74,9 +92,11 @@ value you chose into the prose of the Step that uses it, as "assumed module 2",
 Gate; an assumption that only exists in the code is not.
 
 Reply with JSON only, either
-{"reading": "...", "steps": ["...", "..."]} or {"question": "..."}
-`reading` is optional. Never send both `steps` and `question` — a question is
-not a Plan with a caveat.
+{"reading": "...", "steps": [{"do": "...", "promise": {"solids": 1, "faces": 6,
+"volume": 12000, "bbox": [40, 30, 10]}}, {"do": "..."}]} or {"question": "..."}
+`reading` is optional, and so is every part of a `promise` — a Step with
+nothing measurable to promise is `{"do": "..."}` alone. Never send both `steps`
+and `question`: a question is not a Plan with a caveat.
 
 Traps in this build:
 {{traps}}
