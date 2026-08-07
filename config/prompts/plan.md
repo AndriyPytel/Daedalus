@@ -4,7 +4,7 @@ Break the Intent into an ordered list of Steps that achieves it. A Step is
 **one FreeCAD operation with all its numbers**, and it **names the feature
 type** that performs it. Creating a sketch, attaching it to a plane and drawing
 its geometry is three Steps, not one, and a distinct piece of geometry within a
-sketch is a Step of its own. At that granularity a spur gear is roughly eight
+sketch is a Step of its own. At that granularity a spur gear is roughly twenty
 Steps and a part with thirty features is roughly forty; four Steps for such a
 part is too coarse to be judged or corrected.
 
@@ -21,23 +21,28 @@ what; `Face3` and `Edge12` are not yours to write, and neither is how a
 reference is found. Which edge or face a Step lands on is worked out against
 the geometry at the moment it runs.
 
-Every Step carries a **Promise**: what it will have produced, in terms that can
-be measured. Preflight collects it from a throwaway copy before the Step
-touches anything, and a Step that misses its Promise fails the way a traceback
-does. Four things can be promised, all optional:
+Every Step carries its **parameters**: the FreeCAD type the operation creates
+and the properties you are setting on it, by their real property names. Execute
+never sees these as a suggestion — Preflight reads them off the object the code
+built on a throwaway copy, and a Step that built something else fails the way a
+traceback does.
 
-- `solids` — the change in the number of solids. A pad that makes the first
-  solid promises `1`; one that thickens what is already there promises `0`.
-- `faces` — the change in the number of faces. A fillet on twelve edges
-  promises `12`. This is the one that catches a dressup that applied nothing.
-- `volume` — the change in mm³, signed, so a pocket promises a negative number.
-- `bbox` — the overall bounding box afterwards, `[x, y, z]` in mm. The one
-  absolute of the four, because it is the one a drawing states outright.
+    "parameters": {"type": "PartDesign::Pad",
+                   "properties": {"Length": 10, "Profile": "RootProfile"}}
 
-Promise only what you can actually work out. Where a Step has nothing
-measurable to promise, leave `promise` out and it is checked against the
-structural delta alone. A Promise you guessed is worse than one you omitted,
-because a wrong one costs the Step an attempt.
+Write the numbers you already put in the prose, in the property that carries
+them: `Length`, `Radius`, `Occurrences`, `Reversed`, `Midplane`. A link is
+written as the name you gave that object in the Step that created it. Nothing
+here is measured and nothing is estimated, so there is no arithmetic to get
+wrong — a volume, a face count and a bounding box are not parameters and are
+not asked for.
+
+Geometry drawn inside a sketch creates no document object, so there is nothing
+for Preflight to read the properties off — but write its `parameters` anyway,
+`{"type": "Part.LineSegment", "properties": {"from": [17.464, -1.115], "to":
+[18.756, -1.197]}}`. They are what the Plan Gate shows, and coordinates the
+user cannot see are coordinates they cannot correct. Such a Step still has to
+change the Document and still has to leave a Body in one piece.
 
 Sketch geometry is positioned by computed coordinates, not by the constraint
 solver. Two circles are concentric because they were given the same centre; a
@@ -92,11 +97,11 @@ value you chose into the prose of the Step that uses it, as "assumed module 2",
 Gate; an assumption that only exists in the code is not.
 
 Reply with JSON only, either
-{"reading": "...", "steps": [{"do": "...", "promise": {"solids": 1, "faces": 6,
-"volume": 12000, "bbox": [40, 30, 10]}}, {"do": "..."}]} or {"question": "..."}
-`reading` is optional, and so is every part of a `promise` — a Step with
-nothing measurable to promise is `{"do": "..."}` alone. Never send both `steps`
-and `question`: a question is not a Plan with a caveat.
+{"reading": "...", "steps": [{"do": "...", "parameters": {"type": "PartDesign::Pad",
+"properties": {"Length": 10}}}, {"do": "..."}]} or {"question": "..."}
+`reading` is optional, and so is `parameters` — a Step that creates no object
+of its own is `{"do": "..."}` alone. Never send both `steps` and `question`: a
+question is not a Plan with a caveat.
 
 Traps in this build:
 {{traps}}

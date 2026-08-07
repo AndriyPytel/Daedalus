@@ -925,12 +925,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         elif event.kind == ev.PLAN:
             self._render_plan(data["steps"], "Plan", data.get("reading", ""),
-                              data.get("promises", ()))
+                              data.get("parameters", ()))
 
         elif event.kind == ev.PLAN_REVISED:
             self.add_chat_widget(AssistantMessageWidget("Revised the Plan: " + data["reason"]))
             self._render_plan(data["steps"], "Revised Plan", data.get("reading", ""),
-                              data.get("promises", ()))
+                              data.get("parameters", ()))
 
         elif event.kind == ev.STEP_STARTED:
             self._thought = None
@@ -987,7 +987,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.status_line.setText(("Thinking: " + text.replace("\n", " "))[-90:])
         self.status_line.setVisible(True)
 
-    def _render_plan(self, steps, title, reading="", promises=()):
+    def _render_plan(self, steps, title, reading="", parameters=()):
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
@@ -998,7 +998,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.add_chat_widget(how)
             how.append_text(reading)
             how.toggle_content()
-        self._plan_widget = PlanWidget(steps, title=title, promises=promises)
+        self._plan_widget = PlanWidget(steps, title=title, parameters=parameters)
         self.add_chat_widget(self._plan_widget)
 
     def _render_tool_call(self, name, arguments):
