@@ -295,23 +295,26 @@ def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
 
     assert kinds[0] == PLAN
     assert len(events.of(STEP_STARTED)) == 4
-    assert len(events.of(TOOL_CALL)) == 4
-    assert len(events.of(TOOL_RESULT)) == 4
+    # Four applies plus the one review_views the loop drives at the end.
+    assert len(events.of(TOOL_CALL)) == 5
+    assert len(events.of(TOOL_RESULT)) == 5
     assert len(events.of(APPLIED)) == 4
     assert events.last(REVIEW_VERDICT).data["verdict"] == "pass"
     assert events.first(BLOCKED) is None
 
 
-def test_every_step_that_produced_geometry_produced_a_render(slice_run):
+def test_no_step_rendered_and_review_still_got_a_picture(slice_run):
     """
-    Three renders, not four: Step 1 leaves only a sketch, and a wire has no
-    facets to rasterise. Review judges the finished model, and the Step that
-    finished it did render.
+    Preflight stopped rendering per Step (ADR-0015): this run is headless, so
+    there is no viewport to capture and no RENDER event at all. Review is
+    still given a picture — the Worker's rasteriser, once, at the end.
     """
-    rendered = [e.data["step"] for e in slice_run["events"].of(RENDER)]
+    assert slice_run["events"].of(RENDER) == []
 
-    assert rendered == [2, 3, 4]
-    assert slice_run["result"].render is not None
+    views = [e for e in slice_run["events"].of(TOOL_RESULT)
+             if e.data["name"] == "review_views"]
+    assert len(views) == 1, "the loop did not ask for Review's picture"
+    assert len(views[0].data["result"]["views"]) == 1, "headless is one isometry"
 
 
 def test_each_step_is_narrated_in_order(slice_run):

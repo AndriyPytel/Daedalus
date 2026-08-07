@@ -36,6 +36,12 @@ rather than ending the run. The Plan is a precise instruction while it is builda
 advisory the moment it is not; Execute's only two moves are "do exactly this" and "hand
 back", and the loop decides when that edge fires, not the model.
 
+**Review judges the viewport** (ADR-0015). The panel shows a capture of the 3D view after
+each Apply — the same view you have open beside it — and at the end Review is given four
+views of the result: isometric, front, top and right, captured once, with your camera put
+back. One view is not enough: a mirrored gear tooth reads only from above. Headless, with
+no viewport to capture, the Preflight Worker's rasteriser draws the Document once instead.
+
 ### The Plan Gate
 
 One mandatory approval, covering every Step in the Plan. There is no per-Step
@@ -47,7 +53,7 @@ each feature with its size and position, and, separately, what the drawing does 
 define. That reading is the point of the Gate when there is a picture involved: a
 misreading is something to correct here, in one sentence, rather than to recognise later
 in the geometry. It is carried into Execute as text, and the drawing itself is shown to
-Review, so the verdict compares the render to what you actually showed.
+Review, so the verdict compares the result to what you actually showed.
 
 ### Lint, then Preflight, then Apply
 
@@ -57,7 +63,8 @@ Before a Step's code runs anywhere:
   cannot teach the way out of — a literal `Edge12` / `Face3` (ADR-0005), anything
   reaching for the GUI or the live selection, anything trying to make an object active.
 - **Preflight** runs the Step against a throwaway copy of the Document in a separate,
-  disposable headless FreeCAD process (ADR-0002). A Step that fails Preflight never
+  disposable headless FreeCAD process (ADR-0002), and measures the copy against the
+  Step's Promise before Apply (ADR-0014). A Step that fails Preflight never
   reaches your Document. The worker dying is a normal outcome, not an incident: it is
   restarted and the crash comes back as a traceback the assistant can correct against.
 - **Apply** commits what survived, as one undoable transaction.
@@ -85,7 +92,7 @@ prompt, so a phase never discovers it by failing.
 | `core/freecad_tools.py` | The Tools themselves: snapshot, describe_object, dependencies, apply_step, and the `TRAPS` |
 | `core/lint.py` | The AST lint that runs before Preflight |
 | `core/preflight.py` | The parent half: owns one warm headless FreeCAD, enforces the timeout |
-| `core/preflight_worker.py` | The child half: runs inside that FreeCAD, renders the result |
+| `core/preflight_worker.py` | The child half: runs inside that FreeCAD, measures the Promise |
 | `core/apply.py` | Lint → Preflight → Apply, as one undoable transaction |
 | `core/llm.py` | The provider seam — LiteLLM, plus a scripted client for tests |
 | `core/events.py` | The event stream every phase narrates into, and the per-Session log |

@@ -44,6 +44,13 @@ REVIEW_PHASE = "review"
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
+# Tools the loop drives itself. Neither is a Look: one writes to the Document,
+# the other moves the user's camera.
+NOT_A_LOOK = ("apply_step", "review_views")
+
+# In the order `capture_review_views` writes them, for Review's own prose.
+_VIEW_NAMES = ("isometric", "the front", "above", "the right")
+
 
 class PhaseError(Exception):
     """A phase gave back something the loop cannot act on."""
@@ -456,9 +463,34 @@ def _lookable(tools):
 
     `apply_step` is not among them — Execute proposes a Step, the loop decides
     when it runs, and a phase that could apply its own code would be a second,
-    unbudgeted route to the Document.
+    unbudgeted route to the Document. `review_views` is not either: it moves
+    the user's camera, and letting Execute ask for a picture would be a loop
+    inside a phase (ADR-0015).
     """
-    return [described for described in tools.describe() if described["name"] != "apply_step"]
+    return [described for described in tools.describe()
+            if described["name"] not in NOT_A_LOOK]
+
+
+def _review_views(tools, events):
+    """
+    The four viewport views for Review, or nothing where there is no GUI.
+
+    Driven by the loop, once per run, because a picture is not something a
+    phase gets to ask for (ADR-0015). A build without the Tool at all — an
+    older registry, a test registry — falls through to the same nothing as a
+    headless one, and Review keeps the Worker's single render.
+    """
+    if "review_views" not in tools:
+        return []
+    events.emit(TOOL_CALL, name="review_views", arguments={})
+    try:
+        result = tools.call("review_views", {})
+    except ToolError as exc:
+        # Never lose a finished run over its photograph.
+        events.emit(TOOL_RESULT, name="review_views", result={"error": str(exc)})
+        return []
+    events.emit(TOOL_RESULT, name="review_views", result=result)
+    return list(result.get("views") or ())
 
 
 def _look(tools, look, events):
@@ -467,7 +499,7 @@ def _look(tools, look, events):
     arguments = look.get("arguments") or {}
 
     events.emit(TOOL_CALL, name=name, arguments=dict(arguments))
-    if name == "apply_step" or name not in tools:
+    if name in NOT_A_LOOK or name not in tools:
         result = {"error": "%r is not a Tool you can look with. Reply with code instead." % name}
     else:
         try:
@@ -484,10 +516,14 @@ def review(intent, render, objects, llm, events, attachments=()):
     """
     Judge the outcome against the Intent.
 
-    Given the Intent, the render, the final Document state, and whatever the
+    Given the Intent, the views, the final Document state, and whatever the
     user showed with the Intent. Deliberately not given the Plan, the code, or
     Execute's reasoning — an independent judgement of how it turned out, not of
     how it was produced.
+
+    `render` is the views: a list of paths since ADR-0015, or the one path it
+    used to be. One view is not enough — a mirrored tooth flank reads only from
+    above, and in isometry it is foreshortened, which is why Review passed one.
 
     Without the attachments this compared a render against a sentence, so "does
     this resemble what I was shown" was not a question it could ask (FCC-47).
@@ -495,9 +531,15 @@ def review(intent, render, objects, llm, events, attachments=()):
     request = {"intent": intent, "objects_that_now_exist": objects}
     content = [{"type": "text", "text": json.dumps(request, indent=2, default=str)}]
 
-    picture = _as_image(render)
-    if picture:
-        content.append(picture)
+    paths = [render] if isinstance(render, str) else list(render or ())
+    pictures = [picture for picture in map(_as_image, paths) if picture]
+    if len(pictures) > 1:
+        content[0]["text"] += (
+            "\n\nThe next %d images are the same result seen from %s. They are one part, "
+            "not several — a defect that reads in any one of them is a defect."
+            % (len(pictures), ", ".join(_VIEW_NAMES[:len(pictures)])))
+    if pictures:
+        content.extend(pictures)
     else:
         content[0]["text"] += "\n\nNo render was produced, so judge on the objects alone."
 
@@ -505,7 +547,7 @@ def review(intent, render, objects, llm, events, attachments=()):
     if shown:
         content[0]["text"] += (
             "\n\nThe last %d image%s is what the user showed with the Intent, not the "
-            "result. Judge whether the render resembles it."
+            "result. Judge whether the result resembles it."
             % (len(shown), "s are" if len(shown) > 1 else " is")
         )
         content.extend(shown)
@@ -670,7 +712,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         render = outcome["render"] or render
         objects = outcome["objects"] or objects
 
-        verdict, reason = review(intent, render, objects, llm, events, attachments)
+        views = _review_views(tools, events) or ([render] if render else [])
+        verdict, reason = review(intent, views, objects, llm, events, attachments)
         events.emit(REVIEW_VERDICT, verdict=verdict, reason=reason)
 
         if verdict == "pass":

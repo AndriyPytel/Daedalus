@@ -93,6 +93,64 @@ def _selection():
     ]
 
 
+# Isometric, front, top, right. One view is not enough, and the user's own
+# camera is undetermined as well as single: a mirrored tooth flank reads only
+# from above, and in isometry it is foreshortened — which is why Review passed
+# one (FCC-54). Spellings checked against libFreeCADGui, not recalled (ADR-0015).
+REVIEW_VIEWS = ("viewIsometric", "viewFront", "viewTop", "viewRight")
+
+
+def _active_view():
+    try:
+        import FreeCADGui
+        return FreeCADGui.ActiveDocument.ActiveView
+    except (ImportError, AttributeError):
+        return None
+
+
+def capture(path, size=(800, 600)):
+    """
+    The 3D view as the user is looking at it right now, or None with no GUI.
+
+    The panel's picture after each Apply. What the user sees beside the panel
+    is now what the panel shows, because it is the same view — which a
+    software rasterisation of a throwaway copy never was.
+    """
+    view = _active_view()
+    if view is None:
+        return None
+    view.saveImage(path, size[0], size[1], "Current")
+    return path
+
+
+def capture_review_views(paths, size=(800, 600)):
+    """
+    The four views Review judges, captured once, camera put back afterwards.
+
+    Returns the paths actually written — empty with no GUI, which is what
+    leaves the headless fallback to the Preflight Worker's rasteriser.
+
+    The camera is restored whatever happens. The user did not ask for their
+    view to be moved, and a run that ends with the part face-on because Review
+    looked at it last has damaged something that belongs to them.
+    """
+    view = _active_view()
+    if view is None:
+        return []
+
+    camera = view.getCamera()
+    written = []
+    try:
+        for name, path in zip(REVIEW_VIEWS, paths):
+            getattr(view, name)()
+            view.fitAll()
+            view.saveImage(path, size[0], size[1], "Current")
+            written.append(path)
+    finally:
+        view.setCamera(camera)
+    return written
+
+
 def _active_body(doc):
     try:
         import FreeCADGui
@@ -336,6 +394,15 @@ def _register_apply(registry, pipeline, selection):
         # it was not — there is no third thing to know about.
         return pipeline.apply(code, selection=selection(), label=label,
                               promise=promise).as_tool_result()
+
+    @registry.tool(
+        "review_views",
+        "Capture the four views Review judges. Driven by the loop at the end of a "
+        "run, never by a phase.",
+        {"type": "object", "properties": {}},
+    )
+    def review_views():
+        return {"views": pipeline.review_views()}
 
 
 def _readable(value):

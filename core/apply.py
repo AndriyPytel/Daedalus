@@ -156,6 +156,13 @@ def run_in_transaction(doc, code, label="Copilot Step"):
 # ── the pipeline ──────────────────────────────────────────────────────────────
 
 
+def _viewport(path):
+    """The real 3D view, imported late so Level 1 never reaches for a GUI."""
+    from core.freecad_tools import capture
+
+    return capture(path)
+
+
 def refuse_without_asking(kinds):
     """
     The default answer when nothing is wired up to ask the user.
@@ -176,12 +183,14 @@ class ApplyPipeline:
     user's say-so; modifying one does not, because the Plan Gate already
     approved the Step that said so.
 
-    `dispatch`, `worker`, `transaction` and `confirm` are injected so Level 1
-    can drive the whole pipeline without Qt or a headless FreeCAD.
+    `dispatch`, `worker`, `transaction`, `confirm` and `view_capture` are
+    injected so Level 1 can drive the whole pipeline without Qt or a headless
+    FreeCAD.
     """
 
     def __init__(self, document=None, worker=None, dispatch=on_main_thread,
-                 transaction=None, render_dir=None, confirm=None, owned=None):
+                 transaction=None, render_dir=None, confirm=None, owned=None,
+                 view_capture=None):
         self._document = document
         self._worker = worker
         self._dispatch = dispatch
@@ -190,6 +199,7 @@ class ApplyPipeline:
         self._renders = 0
         self._confirm = confirm or refuse_without_asking
         self.owned = set(owned or ())
+        self._view_capture = view_capture or _viewport
 
     @property
     def worker(self) -> PreflightWorker:
@@ -225,8 +235,10 @@ class ApplyPipeline:
 
         copy = self._dispatch(lambda: copy_of(doc))
         try:
-            preflighted = self.worker.check(code, document=copy, promise=promise,
-                                            render_path=self._render_path())
+            # No render_path: Preflight no longer renders (ADR-0015). A
+            # rasterisation per Step, in a headless process, for a picture
+            # whose only reader has the real 3D view open beside it.
+            preflighted = self.worker.check(code, document=copy, promise=promise)
         finally:
             _discard(copy)
 
@@ -255,7 +267,49 @@ class ApplyPipeline:
                                         for o in doc.Objects])
         created = [o["name"] for o in after if o["name"] not in before]
         self.owned.update(created)
-        return ApplyResult(ok=True, render=preflighted.render, objects=after, created=created)
+        return ApplyResult(ok=True, render=self._capture(), objects=after, created=created)
+
+    def _capture(self):
+        """
+        The viewport after this Apply, for the panel. None when there is no GUI.
+
+        On the main thread, because that is where Qt and the 3D view live —
+        the same dispatch every other Document touch here goes through.
+        """
+        return self._dispatch(lambda: self._view_capture(self._render_path()))
+
+    def review_views(self):
+        """
+        The views Review judges, captured once at the end of a run.
+
+        Four viewport views where there is a GUI. Where there is not, the
+        Worker's rasteriser instead — one isometry, called once, so FCC-46's
+        per-pixel depth test and edges are not thrown away (ADR-0015).
+        """
+        from core.freecad_tools import REVIEW_VIEWS, capture_review_views
+
+        paths = [self._render_path() for _ in REVIEW_VIEWS]
+        views = self._dispatch(lambda: capture_review_views(paths))
+        return views or self._rasterised()
+
+    def _rasterised(self):
+        """
+        The headless fallback: the Worker draws the Document once.
+
+        A Step of `pass` because the Worker renders what a Step left behind,
+        and what this wants a picture of is the Document as it now stands. One
+        call per run rather than one per Step, which is the whole point.
+        """
+        doc = self._dispatch(self._active)
+        if doc is None:
+            return []
+        copy = self._dispatch(lambda: copy_of(doc))
+        try:
+            drawn = self.worker.check("pass", document=copy,
+                                      render_path=self._render_path())
+        finally:
+            _discard(copy)
+        return [drawn.render] if drawn.ok and drawn.render else []
 
     def _not_ours(self, preflighted):
         """

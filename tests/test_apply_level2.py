@@ -59,12 +59,31 @@ def test_a_step_lands_in_the_document(pipeline, doc):
     assert doc.getObject("Box").Length.Value == 10
 
 
-def test_a_step_brings_back_the_render_review_will_judge_by(pipeline):
-    import os
-
+def test_a_step_headless_brings_back_no_picture_at_all(pipeline):
+    """
+    Preflight stopped rendering (ADR-0015). The panel's picture is now the
+    viewport, and a test process has no viewport — so a Step brings back no
+    render, and nothing downstream depends on one per Step any more.
+    """
     result = pipeline.apply(BOX)
 
-    assert os.path.getsize(result.render) > 1000
+    assert result.ok, result.traceback
+    assert result.render is None
+
+
+def test_the_headless_fallback_still_draws_the_document_once(pipeline):
+    """
+    The Worker's rasteriser survives as the fallback, so FCC-46's per-pixel
+    depth test and edges are not thrown away — called once at the end of a run
+    rather than once per Step.
+    """
+    import os
+
+    pipeline.apply(BOX)
+    views = pipeline.review_views()
+
+    assert len(views) == 1, "the headless fallback is one isometry, not four"
+    assert os.path.getsize(views[0]) > 1000
 
 
 def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc):
