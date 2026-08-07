@@ -212,7 +212,7 @@ class ApplyPipeline:
         self._renders += 1
         return os.path.join(directory, "copilot_step_%d.png" % self._renders)
 
-    def apply(self, code, selection=None, label="Copilot Step") -> ApplyResult:
+    def apply(self, code, selection=None, label="Copilot Step", promise=None) -> ApplyResult:
         checked = lint(code, selection)
         if not checked.ok:
             return ApplyResult(ok=False, traceback=checked.report())
@@ -225,7 +225,8 @@ class ApplyPipeline:
 
         copy = self._dispatch(lambda: copy_of(doc))
         try:
-            preflighted = self.worker.check(code, document=copy, render_path=self._render_path())
+            preflighted = self.worker.check(code, document=copy, promise=promise,
+                                            render_path=self._render_path())
         finally:
             _discard(copy)
 

@@ -292,6 +292,9 @@ class Plan:
     # What Plan must know before it can plan at all. Set *instead of* steps,
     # never beside them — a question is not a Plan with a caveat (FCC-25).
     question: str = ""
+    # One entry per Step, aligned by index, None where Plan promised nothing
+    # measurable about that Step (ADR-0014).
+    promises: list = field(default_factory=list)
 
 
 def plan(intent, snapshot, llm, events, feedback=None, attachments=(), answers=()):
@@ -319,13 +322,47 @@ def plan(intent, snapshot, llm, events, feedback=None, attachments=(), answers=(
     content = [{"type": "text", "text": body}] + pictures if pictures else body
 
     reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE), content)
-    steps = [str(step) for step in reply.get("steps", []) if str(step).strip()]
+    steps, promises = _steps_and_promises(reply.get("steps", []))
     question = str(reply.get("question") or "").strip()
     if not steps and question:
         return Plan(steps=[], reading=_reading_of(reply), question=question)
     if not steps:
         raise PhaseError("Plan produced no Steps for this Intent.")
-    return Plan(steps=steps, reading=_reading_of(reply))
+    return Plan(steps=steps, reading=_reading_of(reply), promises=promises)
+
+
+_PROMISE_KEYS = ("solids", "faces", "volume", "bbox")
+
+
+def _steps_and_promises(planned):
+    """
+    Split what Plan sent into prose and Promises, aligned by index.
+
+    A Step is `{"do": "...", "promise": {...}}` or the bare string it has
+    always been. Both spellings are accepted and a bare string is not an error:
+    where Plan has nothing worth promising, the structural delta applies on its
+    own and the Step still runs (ADR-0010 is the floor beneath both).
+    """
+    steps, promises = [], []
+    for step in planned:
+        if isinstance(step, dict):
+            prose = str(step.get("do") or step.get("step") or "").strip()
+            promise = step.get("promise")
+        else:
+            prose, promise = str(step).strip(), None
+        if not prose:
+            continue
+        steps.append(prose)
+        promises.append(_promise_of(promise))
+    return steps, promises
+
+
+def _promise_of(promise):
+    """Only the four keys Preflight can measure, and only if any survive."""
+    if not isinstance(promise, dict):
+        return None
+    kept = {key: promise[key] for key in _PROMISE_KEYS if promise.get(key) is not None}
+    return kept or None
 
 
 def _reading_of(reply):
@@ -357,7 +394,7 @@ class ExecuteOutcome:
     obsolete: str = None
 
 
-def execute(step, tools, llm, events, attempts, budgets=None, reading=""):
+def execute(step, tools, llm, events, attempts, budgets=None, reading="", promise=None):
     """
     Write the code for one Step, after asking the Document whatever it needs.
 
@@ -376,6 +413,10 @@ def execute(step, tools, llm, events, attempts, budgets=None, reading=""):
     """
     budgets = budgets or Budgets()
     request = {"step": step, "document": tools.call("snapshot")}
+    if promise:
+        # Told before writing, not only after failing: Preflight measures this
+        # on the throwaway copy and a miss fails the Step (ADR-0014).
+        request["this_step_promised"] = promise
     if reading:
         request["reading_of_the_drawing"] = reading
     if attempts:
@@ -566,7 +607,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     planned = _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets,
                                          attachments, ask, cancelled)
     steps = planned.steps
-    events.emit(PLAN, steps=list(steps), reading=planned.reading)
+    events.emit(PLAN, steps=list(steps), reading=planned.reading,
+                promises=list(planned.promises))
 
     rejections = 0
     revisions = _Revisions()
@@ -587,6 +629,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                        feedback=approval.feedback, attachments=attachments)
         steps = planned.steps
         events.emit(PLAN_REVISED, steps=list(steps), reading=planned.reading,
+                    promises=list(planned.promises),
                     reason="You asked for: " + approval.feedback)
 
     render = None
@@ -594,7 +637,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
     while True:
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
-                                progress, planned.reading)
+                                progress, planned.reading, planned.promises)
         applied = progress["applied"]
 
         if outcome["blocked"]:
@@ -621,7 +664,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                            feedback=feedback, attachments=attachments)
             steps = planned.steps
             events.emit(PLAN_REVISED, steps=list(steps), reading=planned.reading,
-                        reason=feedback)
+                        promises=list(planned.promises), reason=feedback)
             continue
 
         render = outcome["render"] or render
@@ -657,10 +700,12 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         planned = plan(intent, tools.call("snapshot"), llm, events,
                        feedback=reason, attachments=attachments)
         steps = planned.steps
-        events.emit(PLAN_REVISED, steps=list(steps), reading=planned.reading, reason=reason)
+        events.emit(PLAN_REVISED, steps=list(steps), reading=planned.reading,
+                    promises=list(planned.promises), reason=reason)
 
 
-def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress, reading=""):
+def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
+                  reading="", promises=()):
     """One pass over the Plan. Returns why it stopped."""
     render = None
     objects = []
@@ -668,13 +713,15 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     for index, step in enumerate(steps, start=1):
         if cancelled():
             raise Stopped()
-        events.emit(STEP_STARTED, index=index, total=len(steps), description=step)
+        promise = promises[index - 1] if index - 1 < len(promises) else None
+        events.emit(STEP_STARTED, index=index, total=len(steps), description=step,
+                    promise=promise)
 
         attempts = []
         while True:
             if cancelled():
                 raise Stopped()
-            outcome = execute(step, tools, llm, events, attempts, budgets, reading)
+            outcome = execute(step, tools, llm, events, attempts, budgets, reading, promise)
 
             if outcome.obsolete:
                 return {"blocked": False, "obsolete": outcome.obsolete,
@@ -683,6 +730,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
             if outcome.code:
                 arguments = {"code": outcome.code, "label": outcome.label}
+                if promise:
+                    arguments["promise"] = promise
                 events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
                 result = tools.call("apply_step", arguments)
                 events.emit(TOOL_RESULT, name="apply_step", result=result)

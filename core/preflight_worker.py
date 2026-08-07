@@ -382,11 +382,77 @@ def _bodies_in_pieces(doc):
     return scattered
 
 
+def measure(doc):
+    """
+    What a Promise is checked against: the structural facts, collected cheaply.
+
+    Solids, faces and volume over every shape in the Document, and the overall
+    bounding box. No picture, no provider call, nothing that needs a GUI — that
+    is the whole reason a Promise is checkable at all (ADR-0014).
+    """
+    solids = faces = 0
+    volume = 0.0
+    box = None
+    for obj in doc.Objects:
+        shape = getattr(obj, "Shape", None)
+        if shape is None or shape.isNull():
+            continue
+        solids += len(shape.Solids)
+        faces += len(shape.Faces)
+        for solid in shape.Solids:
+            volume += solid.Volume
+        if shape.Faces:
+            box = shape.BoundBox if box is None else box.united(shape.BoundBox)
+    return {"solids": solids, "faces": faces, "volume": volume,
+            "bbox": None if box is None else [box.XLength, box.YLength, box.ZLength]}
+
+
+# A count is exact. A size is the model's arithmetic and may be close.
+PROMISE_TOLERANCE = 0.05
+
+
+def broken(promise, before, after):
+    """
+    Every part of the Promise the throwaway copy did not keep (ADR-0014).
+
+    Counts and volume are promised as deltas — a Step is one operation, and
+    "one new solid, twelve new faces" is what an operation knows about itself;
+    a signed volume lets a pocket promise removing material. The bounding box
+    is the one absolute, because it is the one of the four a drawing states
+    outright.
+    """
+    missed = []
+    for key in ("solids", "faces"):
+        if promise.get(key) is None:
+            continue
+        want, got = int(promise[key]), after[key] - before[key]
+        if got != want:
+            missed.append("%s: promised %+d, measured %+d" % (key, want, got))
+
+    if promise.get("volume") is not None:
+        want, got = float(promise["volume"]), after["volume"] - before["volume"]
+        if abs(got - want) > max(abs(want) * PROMISE_TOLERANCE, 1e-6):
+            missed.append("volume: promised %+.3f mm3, measured %+.3f mm3" % (want, got))
+
+    if promise.get("bbox"):
+        want = [float(value) for value in promise["bbox"]]
+        got = after["bbox"]
+        if got is None:
+            missed.append("bbox: promised %s, measured nothing with a face in it" % (want,))
+        elif any(abs(g - w) > max(abs(w) * PROMISE_TOLERANCE, 1e-6)
+                 for g, w in zip(got, want)):
+            missed.append("bbox: promised %s mm, measured %s mm"
+                          % ([round(v, 3) for v in want], [round(v, 3) for v in got]))
+    return missed
+
+
 def preflight(request):
     import FreeCAD
 
     doc = load_fresh(request.get("document"))
     namespace = step_namespace(doc)
+    promise = request.get("promise") or {}
+    before = measure(doc)
 
     touched = _Touched()
     FreeCAD.addDocumentObserver(touched)
@@ -410,8 +476,18 @@ def preflight(request):
               "have to meet, and anything that is genuinely a second part belongs in a "
               "second Body.")
 
+    after = measure(doc)
+    missed = broken(promise, before, after)
+    if missed:
+        raise RuntimeError(
+            "this Step did not produce what it promised:\n" + "\n".join(missed)
+            + "\nThe Promise is what the Plan said this Step would have produced. Code "
+              "that runs cleanly and misses it has done something other than the Step, "
+              "so correct the code against the measurement rather than sending it again.")
+
     result = {
         "ok": True,
+        "measured": after,
         "objects": summarise(doc),
         "created": sorted(touched.created),
         "deleted": sorted(touched.deleted),

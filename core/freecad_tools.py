@@ -322,14 +322,20 @@ def _register_apply(registry, pipeline, selection):
                     "type": "string",
                     "description": "Short name for the undo entry, e.g. 'Pad the base sketch'.",
                 },
+                "promise": {
+                    "type": "object",
+                    "description": "What the Plan said this Step would have produced. "
+                                   "Measured on the throwaway copy before Apply.",
+                },
             },
             "required": ["code"],
         },
     )
-    def apply_step(code, label="Copilot Step"):
+    def apply_step(code, label="Copilot Step", promise=None):
         # Preflight lives behind this Tool. From here up, a Step was applied or
         # it was not — there is no third thing to know about.
-        return pipeline.apply(code, selection=selection(), label=label).as_tool_result()
+        return pipeline.apply(code, selection=selection(), label=label,
+                              promise=promise).as_tool_result()
 
 
 def _readable(value):
