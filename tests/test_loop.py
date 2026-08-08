@@ -13,9 +13,9 @@ import tempfile
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, BLOCKED, ERROR, PLAN, PLAN_REVISED, PREFLIGHT_FAILED,
-    QUESTION, RENDER, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
-    TOOL_RESULT, EventStream,
+    ANSWER, APPLIED, ASSERTION, BLOCKED, ERROR, PLAN, PLAN_REVISED,
+    PREFLIGHT_FAILED, QUESTION, RENDER, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
+    TOOL_CALL, TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
@@ -60,6 +60,14 @@ def code_reply(code, label="Step", thinking=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
+def assertion_reply(code, uncovered=None):
+    """The Assertion phase's turn: the checks it wrote, and what it could not check."""
+    reply = {"code": code}
+    if uncovered is not None:
+        reply["uncovered"] = list(uncovered)
+    return json.dumps(reply)
+
+
 def obsolete_reply(reason):
     return json.dumps({"obsolete": reason})
 
@@ -91,11 +99,13 @@ class FakeTools:
                "objects": [{"name": "Box", "label": "Box", "type": "Part::Box"}],
                "render": RENDER_PNG}
 
-    def __init__(self, applies=(), views=None):
+    def __init__(self, applies=(), views=None, checks=()):
         self.applies = list(applies)
         # What the end-of-run capture answers. None means a registry that has
         # no `review_views` at all, which is the same case as headless.
         self.views = views
+        # One entry per `check_assertions` call; anything left over passes.
+        self.checks = list(checks)
         self.calls = []
         self.registry = self._build()
 
@@ -121,18 +131,23 @@ class FakeTools:
 
         @registry.tool("apply_step", "Apply one Step.", {
             "type": "object",
-            "properties": {"code": {"type": "string"}, "label": {"type": "string"},
-                           "parameters": {"type": "object"}},
+            "properties": {"code": {"type": "string"}, "label": {"type": "string"}},
             "required": ["code"],
         })
-        def apply_step(code, label="Step", parameters=None):
-            recorded = {"code": code, "label": label}
-            if parameters is not None:
-                recorded["parameters"] = parameters
-            self.calls.append(("apply_step", recorded))
+        def apply_step(code, label="Step"):
+            self.calls.append(("apply_step", {"code": code, "label": label}))
             # A None entry, or running off the end, means "this one worked".
             queued = self.applies.pop(0) if self.applies else None
             return queued if queued is not None else dict(self.APPLIED)
+
+        @registry.tool("check_assertions", "Run read-only checks against a copy.", {
+            "type": "object", "properties": {"code": {"type": "string"}},
+            "required": ["code"],
+        })
+        def check_assertions(code):
+            self.calls.append(("check_assertions", {"code": code}))
+            queued = self.checks.pop(0) if self.checks else None
+            return queued if queued is not None else {"ok": True}
 
         if self.views is not None:
             @registry.tool("review_views", "The views Review judges.",
@@ -152,10 +167,10 @@ def failed(traceback):
 
 
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
-          views=None):
+          views=None, checks=()):
     """Run the loop over scripted turns and hand back everything to assert on."""
     llm = ScriptedLLMClient(turns)
-    tools = FakeTools(applies, views=views)
+    tools = FakeTools(applies, views=views, checks=checks)
     events = EventStream()
     kwargs = {"ask": ask} if ask is not None else {}
     result = run(intent, llm=llm, tools=tools.registry, events=events,
@@ -171,15 +186,17 @@ def _system_messages(llm):
     return [call[0]["content"] for call in llm.calls]
 
 
-@pytest.mark.parametrize("turn, phase", [(0, "plan"), (1, "execute"), (2, "review")])
+@pytest.mark.parametrize("turn, phase",
+                         [(0, "plan"), (1, "execute"), (2, "assertion"), (3, "review")])
 def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
     """
     The file reached the provider — not that the loader returned a string. The
     prompts are config, so this reads the config. FCC-3.
     """
     _, _, llm, _ = drive([
-        plan_reply("Add a box"),
+        plan_reply("Add a box", acceptance=["10 mm on a side"]),
         code_reply("doc.addObject('Part::Box', 'Box')"),
+        assertion_reply("assert True, '10 mm on a side'"),
         verdict_reply("pass"),
     ])
 
@@ -1372,6 +1389,27 @@ def test_the_event_stream_of_a_clean_run():
     ]
 
 
+def test_the_event_stream_of_a_clean_run_with_acceptance():
+    """
+    The same run with something to check: the Assertion phase stands between
+    the last Step and the verdict, and its code rides on the Tool call the way
+    a Step's does. FCC-76.
+    """
+    _, events, _, _ = drive([
+        plan_reply("Only", acceptance=["10 mm on a side"]),
+        code_reply("box()"),
+        assertion_reply("assert True, '10 mm on a side'"),
+        verdict_reply("pass", "Good."),
+    ])
+
+    assert [e.kind for e in events] == [
+        PLAN,
+        STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED, RENDER,
+        TOOL_CALL, TOOL_RESULT, ASSERTION,
+        REVIEW_VERDICT,
+    ]
+
+
 def test_the_event_stream_of_a_retried_run():
     _, events, _, _ = drive(
         [plan_reply("Only"), code_reply("bad()"), code_reply("good()"), verdict_reply("pass")],
@@ -1747,3 +1785,200 @@ def test_no_plan_without_steps_ever_reaches_execute(monkeypatch):
     assert result.blocked
     assert "no Steps" in result.reason
     assert tools.applied_codes() == []
+
+
+# ── the Assertion phase ───────────────────────────────────────────────────────
+
+
+ACCEPTANCE = ["13.0 mm across the flats", "6.5 mm tall"]
+
+CHECKS = ("flats = [f for f in doc.Objects[0].Shape.Faces]\n"
+          "assert abs(13.0 - across(flats)) < 1e-6, '13.0 mm across the flats'\n")
+
+
+def assertion_failed(traceback):
+    return {"ok": False, "traceback": traceback}
+
+
+ASSERT_FAILED = ('Traceback (most recent call last):\n'
+                 '  File "<step>", line 2, in <module>\n'
+                 "AssertionError: 13.0 mm across the flats\n")
+
+CHECK_IS_BROKEN = ('Traceback (most recent call last):\n'
+                   '  File "<step>", line 1, in <module>\n'
+                   "AttributeError: 'Part::Feature' object has no attribute 'Flats'\n")
+
+
+def test_the_assertion_phase_runs_after_the_last_step_and_before_review():
+    """
+    Once per run, on the finished Document: what is checked is how close the
+    built part is to the goal, not the arithmetic of a state that may not be
+    ready yet. Read-only, so it goes through a Tool of its own rather than
+    through apply. FCC-76.
+    """
+    _, events, llm, tools = drive([
+        plan_reply("Sketch it", "Pad it", acceptance=ACCEPTANCE),
+        code_reply("sketch()"), code_reply("pad()"),
+        assertion_reply(CHECKS),
+        verdict_reply("pass"),
+    ])
+
+    assert [name for name, _ in tools.calls
+            if name in ("apply_step", "check_assertions")] == [
+        "apply_step", "apply_step", "check_assertions"]
+    checked = next(args for name, args in tools.calls if name == "check_assertions")
+    assert checked["code"] == CHECKS.strip(), "the Tool ran something other than the checks"
+
+    kinds = [e.kind for e in events]
+    assert kinds.index(ASSERTION) < kinds.index(REVIEW_VERDICT)
+    assert events.first(ASSERTION).data["ok"] is True
+
+
+def test_an_empty_acceptance_list_costs_no_llm_call():
+    """
+    Nothing to check means no phase at all — not a phase that checks nothing.
+    The run reaches Review exactly as it did before this ticket. FCC-76.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Add a box"),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert len(llm.calls) == 3, "an extra provider call on a Plan with nothing to check"
+    assert events.first(ASSERTION) is None
+    assert not any(name == "check_assertions" for name, _ in tools.calls)
+
+
+def test_failed_assertions_return_to_plan_and_never_to_execute():
+    """
+    A failed check is a rejected result: revision, feedback, a new Plan and a
+    new Plan Gate. The traceback is what Plan is told, and Execute is told
+    none of it — the mirror of a failed verdict. FCC-76.
+    """
+    _, events, llm, _ = drive([
+        plan_reply("Make it", acceptance=ACCEPTANCE),
+        code_reply("make()"),
+        assertion_reply(CHECKS),
+        plan_reply("Make it 13 mm across the flats", acceptance=ACCEPTANCE),
+        code_reply("fix()"),
+        assertion_reply(CHECKS),
+        verdict_reply("pass"),
+    ], checks=[assertion_failed(ASSERT_FAILED), None])
+
+    to_plan = json.dumps(llm.calls[3])
+    to_execute = json.dumps(llm.calls[4])
+
+    assert "13.0 mm across the flats" in to_plan
+    assert "AssertionError" in to_plan
+    assert "AssertionError" not in to_execute, "the failed check reached Execute"
+    assert events.first(PLAN_REVISED).data["steps"] == ["Make it 13 mm across the flats"]
+    assert events.first(ASSERTION).data["ok"] is False
+
+
+def test_a_run_out_of_revisions_names_the_assertions_not_review():
+    """
+    FCC-22's separate accounting, extended: a run stopped by failed checks must
+    not tell the user Review kept rejecting the result. FCC-76.
+    """
+    result, _, _, _ = drive(
+        [plan_reply("Make it", acceptance=ACCEPTANCE), code_reply("make()"),
+         assertion_reply(CHECKS)] * 5,
+        budgets=Budgets(revisions=2),
+        checks=[assertion_failed(ASSERT_FAILED)] * 5,
+    )
+
+    assert result.blocked
+    assert "acceptance checks failed" in result.reason
+    assert "Review rejected" not in result.reason
+    assert "you amended" not in result.reason
+
+
+def test_review_is_told_the_facts_the_checks_confirmed():
+    """
+    Measured facts beside the four views, so Review judges what the checks did
+    not cover rather than re-judging what they did. The views do not go
+    (ADR-0015). FCC-76.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Make it", acceptance=ACCEPTANCE),
+        code_reply("make()"),
+        assertion_reply(CHECKS, uncovered=["6.5 mm tall"]),
+        verdict_reply("pass"),
+    ], views=[RENDER_PNG] * 4)
+
+    review_request = json.loads(llm.calls[-1][1]["content"][0]["text"].split("\n\n")[0])
+
+    assert review_request["facts_the_checks_confirmed"] == ["13.0 mm across the flats"]
+    assert review_request["what_the_checks_could_not_cover"] == ["6.5 mm tall"]
+
+
+def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
+    """
+    An AttributeError in the checking code says nothing about the nut. Read as
+    a failed model it would send Plan to rebuild a part that is already right,
+    so it is handed back to the phase that wrote it, on the same attempts
+    budget Execute uses. FCC-76.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Make it", acceptance=ACCEPTANCE),
+        code_reply("make()"),
+        assertion_reply("bad_check()"),
+        assertion_reply(CHECKS),
+        verdict_reply("pass"),
+    ], checks=[assertion_failed(CHECK_IS_BROKEN), None])
+
+    assert result.ok
+    assert events.first(PLAN_REVISED) is None, "a broken check sent Plan to rebuild"
+    assert len([c for c in tools.calls if c[0] == "check_assertions"]) == 2
+    # The traceback came back to the phase that wrote the check, not to Plan.
+    assert "AttributeError" in json.dumps(llm.calls[3])
+
+
+def test_a_check_that_cannot_be_written_lets_review_judge_alone():
+    """
+    Attempts spent on a check that never runs is not a reason to rebuild a good
+    model, and not a reason to lose a finished run either: the phase gives up,
+    says so, and everything it failed to cover goes to Review. FCC-76.
+    """
+    result, events, _, _ = drive([
+        plan_reply("Make it", acceptance=ACCEPTANCE),
+        code_reply("make()"),
+        assertion_reply("bad_check()"),
+        assertion_reply("bad_check()"),
+        assertion_reply("bad_check()"),
+        verdict_reply("pass"),
+    ], checks=[assertion_failed(CHECK_IS_BROKEN)] * 3)
+
+    assert result.ok
+    assert events.first(PLAN_REVISED) is None
+    assert events.first(ASSERTION).data["ok"] is None, "an unwritable check is not a verdict"
+
+
+def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
+    """
+    Stop is a decision, not a request. Three attempts at writing the checks is
+    long enough that a run which ignored it there would feel hung. FCC-76.
+    """
+    llm = ScriptedLLMClient([
+        plan_reply("Make it", acceptance=ACCEPTANCE),
+        code_reply("make()"),
+        assertion_reply("bad_check()"),
+        assertion_reply("bad_check()"),
+        assertion_reply("bad_check()"),
+        verdict_reply("pass"),
+    ])
+    tools = FakeTools(checks=[assertion_failed(CHECK_IS_BROKEN)] * 3)
+    events = EventStream()
+
+    def cancelled():
+        # Runs clean until the checks start; then the user presses Stop.
+        return any(name == "check_assertions" for name, _ in tools.calls)
+
+    result = run("Make a nut", llm=llm, tools=tools.registry, events=events,
+                 cancelled=cancelled)
+
+    assert result.blocked
+    assert "Stopped by you" in result.reason
+    assert len([c for c in tools.calls if c[0] == "check_assertions"]) == 1
