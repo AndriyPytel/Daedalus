@@ -218,25 +218,6 @@ def test_apply_step_returns_the_traceback_for_the_assistant_to_correct_against(d
     assert doc.Objects == []
 
 
-def test_apply_step_takes_the_parameters_the_loop_injects(doc, worker, tmp_path):
-    """
-    The loop puts the Plan's parameters into the call itself, so the real
-    Tool has to take them. A fake registry that declares the argument would
-    agree either way — this one is the schema the loop actually meets, and an
-    argument it does not declare is a ToolError that ends the run. FCC-66.
-    """
-    pipeline = ApplyPipeline(document=doc, worker=worker,
-                             dispatch=lambda func, timeout=None: func(),
-                             render_dir=str(tmp_path))
-    tools = build_registry(doc, pipeline=pipeline)
-
-    result = tools.call("apply_step", {
-        "code": BOX, "label": "Add the box",
-        "parameters": {"type": "Part::Box", "properties": {"Length": 10}}})
-
-    assert result["status"] == "applied", result
-
-
 def test_the_read_only_registry_has_no_apply_step(doc):
     assert "apply_step" not in build_registry(doc)
 

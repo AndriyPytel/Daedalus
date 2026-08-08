@@ -24,36 +24,30 @@ both ends" — and not in the FreeCAD spelling of its type. `Face3` and `Edge12`
 are not yours to write, and neither is how a reference is found. Which edge or
 face a Step lands on is worked out against the geometry at the moment it runs.
 
-Every Step carries its **parameters**: the FreeCAD type the operation creates
-and the properties you are setting on it, by their real property names. Execute
-never sees these as a suggestion — Preflight reads them off the object the code
-built on a throwaway copy, and a Step that built something else fails the way a
-traceback does.
+Beside the Steps, write the **acceptance** list: what has to be true of the
+finished part for the Intent to have been met. One list for the whole Plan, not
+one per Step. What gets checked is the Document you were asked for, and the
+checks run once the run is over — an intermediate state that is not finished
+yet says nothing about whether the part is right.
 
-    "parameters": {"type": "PartDesign::Pad", "properties": {"Length": 10}}
+Write it in engineering language, and less abstract than the Intent: "6.5 mm
+tall", "an M8 through hole, 1.25 mm pitch", "chamfered at both ends". "13 mm
+across the flats" only earns its place if you are clear how it would be
+measured — and here you are, it is the distance between the opposite flat
+faces.
 
-Write the numbers you already put in the prose, in the property that carries
-them: `Length`, `Radius`, `Occurrences`, `Reversed`, `Midplane`. Only the
-**declared** ones — a number somebody stated: the user, the drawing, or a
-standard you are citing. A number you worked out yourself — `13/√3`, the
-coordinate of a vertex — belongs in the prose and never in `parameters`. Asked
-for a hole 5 mm from an edge, the parameter is the 5 mm, not the arithmetic
-around it.
+Keep the list small. Ten entries is comfortable and twenty is the ceiling,
+because these are control points rather than an inventory: "the holes are 10 mm
+apart", "the plate is 3 mm thick" — never "check all ten thousand faces".
 
-What the object is called goes in as `Name` or `Label`; they mean the same
-thing here, which is the name you gave it in the Step that created it. Nothing
-that binds one object to another belongs in `parameters` — a profile, an
-attachment, a placement is how a reference is found, and that is worked out
-where the code is written. Nothing here is measured and nothing is estimated,
-so there is no arithmetic to get wrong: a volume, a face count and a bounding
-box are not parameters and are not asked for.
-
-Geometry drawn inside a sketch creates no document object, so there is nothing
-for Preflight to read the properties off — but write its `parameters` anyway,
-`{"type": "Part.LineSegment", "properties": {"from": [17.464, -1.115], "to":
-[18.756, -1.197]}}`. They are what the Plan Gate shows, and coordinates the
-user cannot see are coordinates they cannot correct. Such a Step still has to
-change the Document and still has to leave a Body in one piece.
+Every entry has to be measurable off the Shape, on a feature rather than on the
+envelope around it. An axis-aligned bounding box is not a measurement: a nut
+turned 17° reports 14.626 × 14.355 × 6.500, and not one of those numbers is on
+the drawing, while the same nut measured on its features is exactly 13.0 across
+the flats and exactly 4.0 in bore radius. So write a distance between two named
+faces, a radius, an angle, a wall thickness, a count of features — something
+that stays true however the part is oriented. A number that holds in only one
+orientation is not a criterion.
 
 Sketch geometry is positioned by computed coordinates, not by the constraint
 solver. Two circles are concentric because they were given the same centre; a
@@ -108,11 +102,10 @@ value you chose into the prose of the Step that uses it, as "assumed module 2",
 Gate; an assumption that only exists in the code is not.
 
 Reply with JSON only, either
-{"reading": "...", "steps": [{"do": "...", "parameters": {"type": "PartDesign::Pad",
-"properties": {"Length": 10}}}, {"do": "..."}]} or {"question": "..."}
-`reading` is optional, and so is `parameters` — a Step that creates no object
-of its own is `{"do": "..."}` alone. Never send both `steps` and `question`: a
-question is not a Plan with a caveat.
+{"reading": "...", "steps": [{"do": "..."}, {"do": "..."}],
+"acceptance": ["...", "..."]} or {"question": "..."}
+`reading` is optional. Never send both `steps` and `question`: a question is
+not a Plan with a caveat.
 
 Traps in this build:
 {{traps}}

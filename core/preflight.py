@@ -147,22 +147,17 @@ class PreflightWorker:
 
     # ── the one thing this class is for ──────────────────────────────────────
 
-    def check(self, code, document=None, render_path=None, timeout=None, parameters=None):
+    def check(self, code, document=None, render_path=None, timeout=None):
         """
         Run *code* against a fresh copy of *document* in the worker.
 
         Returns a PreflightResult. Never raises for anything the code did —
         a crash and a timeout are results, not exceptions.
-
-        `parameters` is the operation the Plan named and the numbers it gave
-        it. The worker checks what the copy built against them before Apply is
-        ever reached (ADR-0016); a mismatch comes back like a traceback.
         """
         if not self.alive:
             self.start()
 
-        request = {"code": code, "document": document, "render_path": render_path,
-                   "parameters": parameters}
+        request = {"code": code, "document": document, "render_path": render_path}
         try:
             self._process.stdin.write(json.dumps(request) + "\n")
             self._process.stdin.flush()

@@ -45,15 +45,14 @@ RENDER_PNG = _a_real_png()
 # ── scripted phase replies ────────────────────────────────────────────────────
 
 
-def plan_reply(*steps, thinking=None, reading=None):
-    body = json.dumps({"steps": list(steps)} if reading is None
-                      else {"reading": reading, "steps": list(steps)})
+def plan_reply(*steps, thinking=None, reading=None, acceptance=None):
+    reply = {"steps": list(steps)}
+    if reading is not None:
+        reply = {"reading": reading, "steps": list(steps)}
+    if acceptance is not None:
+        reply["acceptance"] = list(acceptance)
+    body = json.dumps(reply)
     return {"reasoning": thinking, "text": body} if thinking else body
-
-
-def names(prose, type, **properties):
-    """A Step as Plan sends it since FCC-66: prose beside the operation it names."""
-    return {"do": prose, "parameters": {"type": type, "properties": properties}}
 
 
 def code_reply(code, label="Step", thinking=None):
@@ -338,8 +337,9 @@ def test_plan_names_declared_numbers_and_not_how_a_reference_is_found():
     """
     FCC-66 asked Plan for links in the same prompt that forbids it writing how
     a reference is found (ADR-0005), and every Step that attached a sketch then
-    failed Preflight for obeying. What Plan writes is the operation, what the
-    object is called, and numbers somebody stated. FCC-71.
+    failed Preflight for obeying. FCC-71 took the link back; FCC-75 took the
+    whole field, and what is asserted here is the half of FCC-71 that outlives
+    it — the link is not asked for anywhere.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -350,12 +350,9 @@ def test_plan_names_declared_numbers_and_not_how_a_reference_is_found():
     plan_system, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     assert "A link is written as the name you gave" not in plan_system, \
-        "plan.md still asks Plan for the link this ticket takes back"
+        "plan.md still asks Plan for the link FCC-71 takes back"
     assert '"Profile": "RootProfile"' not in plan_system, \
         "the parameters example still shows a link as a parameter"
-
-    assert "declared" in plan_system
-    assert "`Name` or `Label`" in plan_system
 
 
 def test_the_positive_form_of_the_lint_rules_reaches_execute():
@@ -962,101 +959,125 @@ def test_three_attempts_per_step_then_blocked_with_what_was_tried():
     assert [t["traceback"] for t in blocked.data["tried"]] == ["one", "two", "three"]
 
 
-def test_the_named_operation_rides_with_the_step_it_belongs_to():
+def test_the_acceptance_list_rides_with_the_plan_it_belongs_to():
     """
-    Plan writes the operation and its numbers beside the Step's prose; they
-    reach the Plan Gate through the event, and Preflight through the apply
-    Tool. FCC-66.
+    One list for the whole Plan, not one entry per Step: what is checked is the
+    finished Document, and the check runs once the run is over. It reaches the
+    Plan Gate through the event, because a criterion the user cannot see is a
+    criterion they cannot correct. FCC-75.
     """
-    _, events, _, tools = drive([
-        plan_reply(names("Pad the base", "PartDesign::Pad", Length=10),
-                   names("Fillet the edges", "PartDesign::Fillet", Radius=2),
-                   "Draw the tooth flank"),
-        code_reply("pad()"), code_reply("fillet()"), code_reply("draw()"),
+    _, events, _, _ = drive([
+        plan_reply("Sketch the hex profile", "Pad it 6.5 mm",
+                   acceptance=["13.0 mm across the flats",
+                               "6.5 mm tall",
+                               "an M8 through hole, 4.0 mm bore radius"]),
+        code_reply("sketch()"), code_reply("pad()"),
         verdict_reply("pass"),
     ])
 
     plan = events.first(PLAN)
-    assert plan.data["steps"] == ["Pad the base", "Fillet the edges",
-                                  "Draw the tooth flank"]
-    assert plan.data["parameters"] == [
-        {"type": "PartDesign::Pad", "properties": {"Length": 10}},
-        {"type": "PartDesign::Fillet", "properties": {"Radius": 2}},
-        None]
-
-    applied = [args for name, args in tools.calls if name == "apply_step"]
-    assert applied[0]["parameters"]["properties"] == {"Length": 10}
-    assert applied[1]["parameters"]["properties"] == {"Radius": 2}
-    # A Step that creates no object of its own still runs, on the floor alone.
-    assert "parameters" not in applied[2]
+    assert plan.data["steps"] == ["Sketch the hex profile", "Pad it 6.5 mm"]
+    assert plan.data["acceptance"] == ["13.0 mm across the flats", "6.5 mm tall",
+                                       "an M8 through hole, 4.0 mm bore radius"]
 
 
-def test_a_bare_string_step_is_still_a_step():
+def test_a_plan_without_acceptance_is_still_a_plan():
     """
-    Plan may name no operation at all. ADR-0010 stays as the floor beneath the
-    parameter check and is not replaced by it. FCC-66.
+    An empty list is not fatal: the run goes on and Review judges alone, as it
+    did before there was a list at all. Making it fatal would kill runs over a
+    prompt regression, and the one fatal answer stays "no Steps". FCC-75.
     """
-    result, events, _, tools = drive([
+    result, events, _, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
 
     assert result.ok
-    assert events.first(PLAN).data["parameters"] == [None]
-    assert all("parameters" not in args
-               for name, args in tools.calls if name == "apply_step")
+    assert events.first(PLAN).data["acceptance"] == []
 
 
-def test_execute_is_told_the_operation_before_it_writes_the_code():
+def test_no_step_carries_named_parameters_any_more():
     """
-    Told up front, not only after a mismatch: the point is code aimed at the
-    numbers the Plan named, not a correction after Preflight. FCC-66.
+    The whole mechanism, gone at every layer it crossed: the Plan event, the
+    Execute request and the apply call. `type` plus real FreeCAD property names
+    *is* Plan writing code, which is the level FCC-74 named as the root — the
+    field kept demanding it. FCC-75.
     """
-    _, _, llm, _ = drive([
-        plan_reply(names("Pad the base", "PartDesign::Pad", Length=10)),
+    _, events, llm, tools = drive([
+        plan_reply({"do": "Pad the base",
+                    "parameters": {"type": "PartDesign::Pad", "properties": {"Length": 10}}}),
         code_reply("pad()"),
         verdict_reply("pass"),
     ])
 
-    execute_request = llm.calls[1][1]["content"]
-    assert "the_operation_this_step_names" in execute_request
-    assert '"Length": 10' in execute_request
+    assert events.first(PLAN).data["steps"] == ["Pad the base"]
+    assert "parameters" not in events.first(PLAN).data
+    assert "the_operation_this_step_names" not in llm.calls[1][1]["content"]
+    assert all("parameters" not in args
+               for name, args in tools.calls if name == "apply_step")
 
 
-def test_a_type_without_properties_is_kept_and_properties_without_a_type_are_not():
+def test_review_is_no_longer_told_the_bounding_box():
     """
-    Preflight finds the object by its type, so a type is the whole of what
-    makes the check possible; properties on their own have nothing to be read
-    off. Half a naming is dropped rather than sent to a worker that would
-    silently ignore it. FCC-66.
+    `overall_size` is a union of `shape.BoundBox` — the axis-aligned envelope,
+    with the flaw that makes it not a measurement: a nut turned 17° reports
+    14.626 × 14.355 × 6.500 and not one of those numbers is on the drawing.
+    Its place is taken by the acceptance list. FCC-75.
     """
-    _, events, _, _ = drive([
-        plan_reply({"do": "Pad it", "parameters": {"type": "PartDesign::Pad"}},
-                   {"do": "Fillet it", "parameters": {"properties": {"Radius": 2}}}),
-        code_reply("pad()"), code_reply("fillet()"),
-        verdict_reply("pass"),
-    ])
-
-    assert events.first(PLAN).data["parameters"] == [
-        {"type": "PartDesign::Pad", "properties": {}}, None]
-
-
-def test_review_is_told_how_big_the_part_came_out():
-    """
-    The one number the user states outright and the loop never reported back.
-    Read once from the finished Document, not promised per Step: nobody can
-    work out the volume of a tooth in advance, and everybody can read a
-    caliper. FCC-66.
-    """
-    _, _, llm, _ = drive([
+    _, _, llm, tools = drive([
         plan_reply("Pad the base"), code_reply("pad()"), verdict_reply("pass"),
     ])
 
     # The prose about the views is appended after the JSON, past a blank line.
     review_request = llm.calls[-1][1]["content"][0]["text"].split("\n\n")[0]
 
-    assert json.loads(review_request)["overall_size_mm"] == [40, 30, 10]
+    assert "overall_size_mm" not in json.loads(review_request)
+    assert not any(name == "overall_size" for name, _ in tools.calls)
+
+
+def test_plan_is_told_how_to_write_an_acceptance_list():
+    """
+    A hybrid vocabulary, not a closed one — a fixed list of allowed
+    measurements would bound too tightly what can be measured. What goes in the
+    prompt is the rule: what may be checked and how to approach checking it.
+    FCC-75.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    # The prompts are wrapped copy; a sentence crosses line breaks.
+    plan_system = " ".join(_system_messages(llm)[0].split())
+
+    assert "One list for the whole Plan" in plan_system
+    assert "control points" in plan_system
+    assert "twenty is the ceiling" in plan_system
+    assert "measurable off the Shape" in plan_system
+    assert "bounding box is not a measurement" in plan_system
+
+    # `Part.LineSegment` alone still appears in the traps, where it is a fact
+    # about this build; what goes is Plan being asked to write it as a parameter.
+    for cancelled in ("Every Step carries its **parameters**",
+                      '"parameters": {"type": "PartDesign::Pad"',
+                      '{"type": "Part.LineSegment"', '"properties": {"Length": 10}'):
+        assert cancelled not in plan_system, \
+            "plan.md still carries the parameters copy this ticket removes: " + cancelled
+
+
+def test_the_named_parameters_mechanism_is_gone_from_the_code():
+    """
+    Not merely unused — absent. A comparator left importable is a comparator
+    the next ticket wires back in. FCC-75.
+    """
+    with pytest.raises(ImportError):
+        from core.preflight_worker import wrong_parameters    # noqa: F401
+
+    # The real registry, not the fake one: the schema is what reaches the model.
+    from core.freecad_tools import build_registry
+    described = {tool["name"]: tool for tool in build_registry(pipeline=object()).describe()}
+    assert "parameters" not in described["apply_step"]["parameters"]["properties"]
 
 
 def test_review_is_given_four_views_and_execute_cannot_ask_for_one():

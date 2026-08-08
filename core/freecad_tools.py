@@ -416,19 +416,14 @@ def _register_apply(registry, pipeline, selection):
                     "type": "string",
                     "description": "Short name for the undo entry, e.g. 'Pad the base sketch'.",
                 },
-                # Injected by the loop, never asked for, so it carries no
-                # description: the operation is the Plan's to name and Execute
-                # may not soften the check on its own code (ADR-0016).
-                "parameters": {"type": "object"},
             },
             "required": ["code"],
         },
     )
-    def apply_step(code, label="Copilot Step", parameters=None):
+    def apply_step(code, label="Copilot Step"):
         # Preflight lives behind this Tool. From here up, a Step was applied or
         # it was not — there is no third thing to know about.
-        return pipeline.apply(code, selection=selection(), label=label,
-                              parameters=parameters).as_tool_result()
+        return pipeline.apply(code, selection=selection(), label=label).as_tool_result()
 
     @registry.tool(
         "review_views",

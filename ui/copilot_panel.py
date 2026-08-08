@@ -932,12 +932,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         elif event.kind == ev.PLAN:
             self._render_plan(data["steps"], "Plan", data.get("reading", ""),
-                              data.get("parameters", ()))
+                              data.get("acceptance", ()))
 
         elif event.kind == ev.PLAN_REVISED:
             self.add_chat_widget(AssistantMessageWidget("Revised the Plan: " + data["reason"]))
             self._render_plan(data["steps"], "Revised Plan", data.get("reading", ""),
-                              data.get("parameters", ()))
+                              data.get("acceptance", ()))
 
         elif event.kind == ev.STEP_STARTED:
             self._thought = None
@@ -994,7 +994,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.status_line.setText(("Thinking: " + text.replace("\n", " "))[-90:])
         self.status_line.setVisible(True)
 
-    def _render_plan(self, steps, title, reading="", parameters=()):
+    def _render_plan(self, steps, title, reading="", acceptance=()):
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
@@ -1005,8 +1005,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.add_chat_widget(how)
             how.append_text(reading)
             how.toggle_content()
-        self._plan_widget = PlanWidget(steps, title=title, parameters=parameters)
+        self._plan_widget = PlanWidget(steps, title=title)
         self.add_chat_widget(self._plan_widget)
+        if acceptance:
+            # Under the Steps and open, for the same reason the reading is: the
+            # Gate is the only place a wrong criterion is correctable (FCC-75).
+            criteria = AccordionWidget("What it has to satisfy")
+            self.add_chat_widget(criteria)
+            criteria.append_text("\n".join("• " + str(entry) for entry in acceptance))
+            criteria.toggle_content()
 
     def _render_tool_call(self, name, arguments):
         if self._thought:
