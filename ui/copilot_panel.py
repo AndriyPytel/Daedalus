@@ -1052,7 +1052,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
     def on_plan_gate(self, steps):
         """
         The Plan Gate. One approval covers every Step; there is no per-Step
-        approval, so this appears once per Plan and the run waits on it.
+        approval, so this appears once per Plan and the run waits on it. A
+        revised Plan is a new Plan and gets its own card (FCC-68).
         """
         self.status_line.setText("Waiting for you to approve the Plan…")
         self.status_line.setVisible(True)
@@ -1069,7 +1070,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         layout.setSpacing(8)
 
         prompt = QtWidgets.QLabel(
-            "Run this Plan? Approving covers all %d Steps — you will not be asked again."
+            "Run this Plan? Approving covers all %d Steps — no Step is confirmed separately."
             % step_count)
         prompt.setWordWrap(True)
         prompt.setStyleSheet("font-size: 12px; font-weight: 600;")

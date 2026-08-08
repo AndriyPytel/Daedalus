@@ -1615,3 +1615,88 @@ def test_a_question_alongside_steps_is_still_a_plan():
     assert result.ok
     assert asked == []
     assert events.first(QUESTION) is None
+
+
+# ── a re-plan is a Plan: it may ask, and never comes back empty (FCC-67) ──────
+
+
+def test_a_replan_after_a_handback_asks_rather_than_planning_blind():
+    """
+    A re-plan that needs a value nobody gave it used to answer with a question
+    and no Steps, and the loop took `planned.steps` blind: the question was
+    dropped and the revised Plan was empty. FCC-67.
+    """
+    asked = []
+
+    result, events, llm, _ = drive(
+        [
+            plan_reply("Impossible"),
+            code_reply("nope1()"), code_reply("nope2()"), code_reply("nope3()"),
+            question_reply(MISSING),
+            plan_reply("Possible"),
+            code_reply("yes()"),
+            verdict_reply("pass"),
+        ],
+        applies=[failed("one"), failed("two"), failed("three")],
+        ask=lambda question: asked.append(question) or "module 2, 20 teeth",
+    )
+
+    assert asked == [MISSING], "the re-plan planned without asking: %s" % asked
+    assert result.ok
+    assert events.first(PLAN_REVISED).data["steps"] == ["Possible"]
+    # The answer reached the revised Plan, so it is built on a named value.
+    revised = json.dumps(llm.calls[5])
+    assert "20 teeth" in revised and MISSING in revised
+
+
+def test_a_replan_after_a_rejected_verdict_asks_too():
+    asked = []
+
+    result, _, llm, _ = drive(
+        [
+            plan_reply("Make it"), code_reply("make()"), verdict_reply("fail", "20mm, not 10mm"),
+            question_reply(MISSING),
+            plan_reply("Make it 10mm"), code_reply("fix()"), verdict_reply("pass"),
+        ],
+        ask=lambda question: asked.append(question) or "10mm across the flats",
+    )
+
+    assert asked == [MISSING]
+    assert result.ok
+    assert "10mm across the flats" in json.dumps(llm.calls[4])
+
+
+def test_a_replan_that_only_ever_asks_stops_the_run_rather_than_looping():
+    asked = []
+
+    result, _, _, _ = drive(
+        [
+            plan_reply("Impossible"), code_reply("nope1()"),
+            question_reply("q1"), question_reply("q2"), question_reply("q3"),
+        ],
+        applies=[failed("one")],
+        budgets=Budgets(attempts_per_step=1, questions=1),
+        ask=lambda question: asked.append(question) or "some answer",
+    )
+
+    assert asked == ["q1"], "the user was asked past the budget: %s" % asked
+    assert not result.ok
+    assert "told to choose for itself" in result.reason
+
+
+def test_no_plan_without_steps_ever_reaches_execute(monkeypatch):
+    """
+    Unreachable through `plan()`, which either has Steps, or a question, or
+    raises. The guard is the cheap insurance that no future path sends Review
+    over a Document nothing changed. FCC-67.
+    """
+    from core import loop as loop_module
+
+    monkeypatch.setattr(loop_module, "plan",
+                        lambda *args, **kwargs: loop_module.Plan(steps=[]))
+
+    result, _, _, tools = drive([plan_reply("never asked for")])
+
+    assert result.blocked
+    assert "no Steps" in result.reason
+    assert tools.applied_codes() == []

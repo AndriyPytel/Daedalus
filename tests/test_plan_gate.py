@@ -2,7 +2,8 @@
 Level 1 — the Plan Gate.
 
 The single point at which the user approves a Plan. Approval covers every Step
-in it; there is no per-Step approval. Nothing runs before it.
+in it; there is no per-Step approval. Nothing runs before it. A revised Plan is
+a new Plan and has its own Gate — which is still one Gate per Plan (FCC-68).
 """
 import json
 
@@ -10,16 +11,17 @@ from core.events import BLOCKED, PLAN, PLAN_REVISED, EventStream
 from core.llm import ScriptedLLMClient
 from core.loop import AMEND, APPROVE, REJECT, Approval, Budgets, run
 from tests.test_loop import (
-    FakeTools, code_reply, obsolete_reply, plan_reply, verdict_reply,
+    FakeTools, code_reply, failed, obsolete_reply, plan_reply, question_reply, verdict_reply,
 )
 
 
-def drive(turns, gate, budgets=None):
+def drive(turns, gate, budgets=None, ask=None):
     llm = ScriptedLLMClient(turns)
     tools = FakeTools()
     events = EventStream()
+    kwargs = {"ask": ask} if ask is not None else {}
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
-                 gate=gate, budgets=budgets or Budgets())
+                 gate=gate, budgets=budgets or Budgets(), **kwargs)
     return result, events, tools
 
 
@@ -86,32 +88,87 @@ def test_approval_covers_every_step_so_there_is_no_per_step_approval():
     assert len(tools.applied_codes()) == 3
 
 
-def test_a_review_driven_revision_is_surfaced_not_re_approved():
+def test_a_review_driven_revision_goes_back_to_the_gate():
     """
-    User story 17 says the user is *told* about a revision, not asked again —
-    otherwise the single Plan Gate becomes a per-round gate.
+    Rewritten from user story 17, which said a revision is *told*, not asked
+    again. FCC-68 reversed it: the user approved 18 Steps and a different set
+    ran, learned about after the fact. A revised Plan is a new Plan, and every
+    Plan has its own Gate — which is still one Gate per Plan, not per Step.
     """
-    gate = Gate(Approval(APPROVE))
+    gate = Gate(Approval(APPROVE), Approval(APPROVE))
 
-    _, events, _ = drive([
+    _, events, tools = drive([
         plan_reply("Make it"), code_reply("make()"), verdict_reply("fail", "20mm, not 10mm"),
         plan_reply("Fix the length"), code_reply("fix()"), verdict_reply("pass"),
     ], gate)
 
-    assert len(gate.shown) == 1
+    assert gate.shown == [["Make it"], ["Fix the length"]]
+    # Still surfaced as a revision — the Gate is added to PLAN_REVISED, not
+    # substituted for it.
     assert events.first(PLAN_REVISED).data["reason"] == "20mm, not 10mm"
+    # What the previous Plan applied stays in the Document.
+    assert tools.applied_codes() == ["make()", "fix()"]
 
 
-def test_an_obsolete_driven_revision_is_surfaced_not_re_approved():
-    gate = Gate(Approval(APPROVE))
+def test_an_obsolete_driven_revision_goes_back_to_the_gate():
+    """The other half of user story 17, reversed the same way. FCC-68."""
+    gate = Gate(Approval(APPROVE), Approval(APPROVE))
 
     _, events, _ = drive([
         plan_reply("Delete the old pad"), obsolete_reply("There is no pad here."),
         plan_reply("Add the new one"), code_reply("add()"), verdict_reply("pass"),
     ], gate)
 
-    assert len(gate.shown) == 1
+    assert gate.shown == [["Delete the old pad"], ["Add the new one"]]
     assert "no pad here" in events.first(PLAN_REVISED).data["reason"]
+
+
+def test_a_revised_plan_is_shown_before_it_changes_anything():
+    """A handback replans; the revision is at the Gate before it touches the Document."""
+    applied_when_shown = []
+    tools = FakeTools([failed("one")])
+
+    def gate(steps):
+        applied_when_shown.append(list(tools.applied_codes()))
+        return Approval(APPROVE)
+
+    run("Make a 10mm box", llm=ScriptedLLMClient([
+        plan_reply("Impossible"), code_reply("nope()"),
+        plan_reply("Possible"), code_reply("yes()"), verdict_reply("pass"),
+    ]), tools=tools.registry, gate=gate, budgets=Budgets(attempts_per_step=1))
+
+    assert applied_when_shown == [[], ["nope()"]], \
+        "the revised Plan ran before it was shown: %s" % applied_when_shown
+
+
+def test_rejecting_a_revised_plan_applies_nothing_new_and_says_so():
+    gate = Gate(Approval(APPROVE), Approval(REJECT))
+
+    result, _, tools = drive([
+        plan_reply("Make it"), code_reply("make()"), verdict_reply("fail", "20mm, not 10mm"),
+        plan_reply("Fix the length"),
+    ], gate)
+
+    assert result.blocked
+    assert tools.applied_codes() == ["make()"], "a rejected Plan applied a Step"
+    assert result.steps_applied == 1
+    assert "rejected the Plan" in result.reason
+    assert "nothing was applied" not in result.reason, \
+        "the block claims an empty Document over one Step already in it: %r" % result.reason
+
+
+def test_amending_a_revised_plan_spends_the_amendment_budget():
+    gate = Gate(Approval(APPROVE), Approval(AMEND, "simpler"), Approval(AMEND, "simpler still"),
+                Approval(AMEND, "simpler again"))
+
+    result, _, _ = drive([
+        plan_reply("Make it"), code_reply("make()"), verdict_reply("fail", "no"),
+        plan_reply("v2"), plan_reply("v3"), plan_reply("v4"),
+    ], gate, budgets=Budgets(revisions=3))
+
+    assert result.blocked
+    assert "amended the Plan 2 times" in result.reason
+    assert "Review rejected the result 1 time" in result.reason
 
 
 # ── amending ──────────────────────────────────────────────────────────────────
@@ -146,6 +203,23 @@ def test_the_amendment_reaches_plan():
     run("Make a 10mm box", llm=llm, tools=FakeTools().registry, gate=gate)
 
     assert "Use PartDesign, not Part primitives" in json.dumps(llm.calls[1])
+
+
+def test_a_replan_after_an_amendment_asks_rather_than_planning_blind():
+    """The third re-plan site, and it had the same hole as the other two. FCC-67."""
+    asked = []
+    gate = Gate(Approval(AMEND, "Use PartDesign, not Part primitives"), Approval(APPROVE))
+
+    result, _, tools = drive([
+        plan_reply("Add a Part::Box"),
+        question_reply("Which thickness?"),
+        plan_reply("Create a 10mm Body"), code_reply("a()"), verdict_reply("pass"),
+    ], gate, ask=lambda question: asked.append(question) or "10mm")
+
+    assert asked == ["Which thickness?"]
+    assert result.ok
+    assert gate.shown[-1] == ["Create a 10mm Body"]
+    assert tools.applied_codes() == ["a()"]
 
 
 def test_an_amendment_is_surfaced_as_a_revised_plan():

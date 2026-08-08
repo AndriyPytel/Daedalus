@@ -622,7 +622,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
 
 
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, attachments,
-                               ask, cancelled):
+                               ask, cancelled, feedback=None):
     """
     Plan, letting it ask for what the Intent did not say (FCC-25).
 
@@ -634,13 +634,17 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, attachmen
     A question is not an approval: the Plan Gate is still the single point of
     approval, and it still sees every Step. `budgets.questions` bounds this,
     because a model that only asks would never plan.
+
+    Every Plan comes through here, first or revised: a re-plan is a new Plan and
+    may ask the same way, or it invents the value it was missing (FCC-67).
     """
     answers = []
     told_to_choose = False
     while True:
         if cancelled():
             raise Stopped()
-        planned = plan(intent, snapshot, llm, events, attachments=attachments, answers=answers)
+        planned = plan(intent, snapshot, llm, events, feedback=feedback,
+                       attachments=attachments, answers=answers)
         if not planned.question:
             return planned
 
@@ -664,37 +668,53 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, attachmen
 
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask):
-    snapshot = tools.call("snapshot")
-    planned = _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets,
-                                         attachments, ask, cancelled)
-    steps = planned.steps
+    def replan(feedback=None):
+        return _plan_once_it_knows_enough(intent, tools.call("snapshot"), llm, events, budgets,
+                                          attachments, ask, cancelled, feedback)
+
+    planned = replan()
     _emit_plan(events, PLAN, planned)
 
     rejections = 0
     revisions = _Revisions()
-
-    while True:
-        approval = gate(list(steps)) or Approval(APPROVE)
-        if approval.decision == APPROVE:
-            break
-        if approval.decision == REJECT:
-            return _block(events, "You rejected the Plan, so nothing was applied.", [], 0)
-
-        if revisions.exhausted(budgets, steps):
-            return _block(events, revisions.block_reason(
-                budgets, steps, _Revisions.AMENDED,
-                "Your latest amendment was not planned."), [], 0)
-        revisions.spend(_Revisions.AMENDED)
-        planned = plan(intent, tools.call("snapshot"), llm, events,
-                       feedback=approval.feedback, attachments=attachments)
-        steps = planned.steps
-        _emit_plan(events, PLAN_REVISED, planned,
-                   reason="You asked for: " + approval.feedback)
-
     render = None
     objects = []
 
+    # One loop, so every Plan reaches the Gate before any of its Steps runs — a
+    # revised Plan is a new Plan and used to go straight into the work (FCC-68).
     while True:
+        steps = planned.steps
+        approval = gate(list(steps)) or Approval(APPROVE)
+
+        if approval.decision == REJECT:
+            applied = progress["applied"]
+            said = "You rejected the Plan, so nothing was applied."
+            if applied:
+                # True only of the first Plan; a rejected revision leaves what
+                # the Plan before it already applied.
+                said = ("You rejected the Plan, so nothing more was applied. The Document keeps "
+                        "the %d Step%s an earlier Plan already applied."
+                        % (applied, "" if applied == 1 else "s"))
+            return _block(events, said, progress["tried"], applied)
+
+        # AMEND, and anything that is not an approval: no Step runs on a
+        # decision the Gate does not recognise.
+        if approval.decision != APPROVE:
+            if revisions.exhausted(budgets, steps):
+                return _block(events, revisions.block_reason(
+                    budgets, steps, _Revisions.AMENDED,
+                    "Your latest amendment was not planned."),
+                    progress["tried"], progress["applied"])
+            revisions.spend(_Revisions.AMENDED)
+            planned = replan(approval.feedback)
+            _emit_plan(events, PLAN_REVISED, planned,
+                       reason="You asked for: " + approval.feedback)
+            continue
+
+        if not steps:
+            return _block(events, "The Plan came back with no Steps, so there is nothing to "
+                                  "apply and nothing to review.", progress["tried"],
+                          progress["applied"])
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, planned.reading, planned.parameters)
         applied = progress["applied"]
@@ -719,9 +739,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                     outcome["tried"], applied,
                 )
             revisions.spend(cause)
-            planned = plan(intent, tools.call("snapshot"), llm, events,
-                           feedback=feedback, attachments=attachments)
-            steps = planned.steps
+            planned = replan(feedback)
             _emit_plan(events, PLAN_REVISED, planned, reason=feedback)
             continue
 
@@ -757,9 +775,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                 outcome["tried"] + [{"review": reason}], applied,
             )
         revisions.spend(_Revisions.REJECTED)
-        planned = plan(intent, tools.call("snapshot"), llm, events,
-                       feedback=reason, attachments=attachments)
-        steps = planned.steps
+        planned = replan(reason)
         _emit_plan(events, PLAN_REVISED, planned, reason=reason)
 
 
