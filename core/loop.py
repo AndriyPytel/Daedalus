@@ -76,10 +76,10 @@ def revisions_ceiling(budgets, steps) -> int:
     """
     How many replans this Plan is allowed, from how long it is (FCC-61).
 
-    A four-Step Plan and a forty-Step Plan cannot have the same allowance:
-    atomic Steps (FCC-58) turn one part into roughly thirty-five, and every
-    Execute -> Plan handback spends one. Still a single ceiling over all four
-    causes, for the reason recorded on `Budgets`; only its size is computed.
+    A four-Step Plan and a forty-Step Plan cannot have the same allowance: a
+    long Plan has more places to hand back from, and every Execute -> Plan
+    handback spends one. Still a single ceiling over all four causes, for the
+    reason recorded on `Budgets`; only its size is computed.
     """
     return max(budgets.revisions, len(steps) // 5)
 
