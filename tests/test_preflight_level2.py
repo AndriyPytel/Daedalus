@@ -359,3 +359,26 @@ def test_worker_death_is_never_raised_at_the_caller(fresh):
 
     assert fresh.restarts == 2
     assert fresh.check("pass").ok
+
+
+def test_a_body_left_in_pieces_is_still_refused(warm):
+    """
+    The floor under a Step, and all of it since FCC-75 took the named-parameter
+    check away: a sketch of disjoint profiles pads into separate lumps and
+    nothing raises, so Preflight is the only phase that objects (FCC-27).
+    """
+    two_lumps = (
+        "body = doc.addObject('PartDesign::Body', 'Body')\n"
+        "sketch = doc.addObject('Sketcher::SketchObject', 'RootProfile')\n"
+        "body.addObject(sketch)\n"
+        "sketch.addGeometry(Part.Circle(App.Vector(0, 0, 0), App.Vector(0, 0, 1), 5), False)\n"
+        "sketch.addGeometry(Part.Circle(App.Vector(50, 0, 0), App.Vector(0, 0, 1), 5), False)\n"
+        "pad = doc.addObject('PartDesign::Pad', 'Pad')\n"
+        "body.addObject(pad)\n"
+        "pad.Profile = sketch\n"
+        "pad.Length = 10\n")
+
+    result = warm.check(two_lumps, None)
+
+    assert not result.ok
+    assert "more than one piece" in result.traceback

@@ -382,91 +382,11 @@ def _bodies_in_pieces(doc):
     return scattered
 
 
-def _as_written(value):
-    """A property value in the spelling Plan would have used for it."""
-    return getattr(value, "Value", value)    # a Quantity: 10.0 mm -> 10.0
-
-
-# A written number is a rounding of the one Execute typed: 13/√3 is
-# 7.505553499… in the code and 7.505553 in the Plan, and those are the same
-# number. Relative, because the decimals Plan writes scale with the size.
-_TOLERANCE = 1e-6
-
-# Plan means the same thing by either, and `Name` is not a property at all, so
-# a Plan that wrote it was refused as if it had invented one (FCC-71).
-NAMING = ("Name", "Label")
-
-
-def _agrees(got, want):
-    """
-    Whether what the Step built agrees with what the Plan wrote for it.
-
-    Silence is the default, and that is the decision. Plan owns the operation,
-    the names and the declared numbers; the binding — a link, a support list, a
-    placement — is worked out where the code is written (ADR-0005), and those
-    arrive here as objects and lists of tuples whose `str()` matches nothing
-    Plan could have written. Comparing them refused every Step that attached a
-    sketch, for building exactly what it was told to (FCC-71).
-    """
-    got = _as_written(got)
-    if isinstance(got, bool) or isinstance(want, bool):
-        return bool(got) is bool(want)
-    if isinstance(got, (int, float)):
-        return (isinstance(want, (int, float))
-                and abs(got - want) <= max(abs(want) * _TOLERANCE, _TOLERANCE))
-    if isinstance(got, str):
-        return got == str(want)
-    return True
-
-
-def wrong_parameters(parameters, doc, created, modified=()):
-    """
-    Where what the Step built disagrees with the operation the Plan named.
-
-    Plan writes the operation and its declared numbers for every Step; Execute
-    writes the code. Checking one against the other holds on an involute flank
-    as much as on a cylinder — which measuring the result never did, because
-    nobody works out the volume of a tooth in advance.
-
-    A `type` without `::` is not a document object at all — the geometry inside
-    a sketch is spelled `Part.Circle` and creates nothing to look at. Such a
-    Step is left to the floor ADR-0010 and FCC-27 already provide.
-    """
-    named = str(parameters.get("type") or "")
-    if "::" not in named:
-        return []
-
-    # Created first, because most Steps create. A Step that edits an existing
-    # feature — a Pad whose Length changes — touches one instead.
-    touched = [doc.getObject(name) for name in list(created) + list(modified)]
-    touched = [obj for obj in touched if obj is not None]
-    matching = [obj for obj in touched if obj.TypeId == named]
-    if not matching:
-        did = ", ".join(sorted({obj.TypeId for obj in touched})) or "nothing"
-        return ["type: the Plan named %s, the Step built %s" % (named, did)]
-
-    wrong = []
-    for obj in matching:
-        for prop, want in (parameters.get("properties") or {}).items():
-            if prop in NAMING:
-                if str(want) not in (obj.Name, obj.Label):
-                    wrong.append("%s: the Plan named %s, the Step built %s"
-                                 % (prop, want, obj.Label))
-            elif prop not in obj.PropertiesList:
-                wrong.append("%s: the Plan named it, and %s has no such property"
-                             % (prop, named))
-            elif not _agrees(got := getattr(obj, prop), want):
-                wrong.append("%s: the Plan named %s, the Step built %s"
-                             % (prop, want, _as_written(got)))
-    return wrong
-
-
 def preflight(request):
     import FreeCAD
 
     doc = load_fresh(request.get("document"))
     namespace = step_namespace(doc)
-    parameters = request.get("parameters") or {}
 
     touched = _Touched()
     FreeCAD.addDocumentObserver(touched)
@@ -489,14 +409,6 @@ def preflight(request):
               "separate lumps rather than one part — the profiles that make up the outline "
               "have to meet, and anything that is genuinely a second part belongs in a "
               "second Body.")
-
-    wrong = wrong_parameters(parameters, doc, touched.created, touched.modified())
-    if wrong:
-        raise RuntimeError(
-            "this Step did not build the operation the Plan named:\n" + "\n".join(wrong)
-            + "\nThe Plan names the operation and its numbers, and this code built "
-              "something else. Correct the code against the Plan's numbers rather than "
-              "sending it again.")
 
     result = {
         "ok": True,

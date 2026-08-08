@@ -1154,3 +1154,27 @@ def test_stopping_releases_a_waiting_question(panel):
 
     assert panel._answer_card is None
     assert not card.isEnabled(), "the card is still answerable after Stop"
+
+
+def test_the_acceptance_list_is_on_the_plan_card_before_the_gate(panel):
+    """
+    A criterion the user cannot see is a criterion they cannot correct, and the
+    Plan Gate is the only place they could. The `plan` event is emitted before
+    `gate(...)` is called, so this is what the Gate is looking at. FCC-75.
+    """
+    from core.events import Event, PLAN, PLAN_REVISED
+
+    panel.on_event(Event(PLAN, {"steps": ["Sketch the hex profile", "Pad it 6.5 mm"],
+                                "acceptance": ["13.0 mm across the flats", "6.5 mm tall"]}))
+    QT_APP.processEvents()
+
+    said = _said_in(panel)
+    assert "13.0 mm across the flats" in said
+    assert "6.5 mm tall" in said
+
+    panel.on_event(Event(PLAN_REVISED, {"reason": "you asked for M10",
+                                        "steps": ["Sketch the hex profile"],
+                                        "acceptance": ["17.0 mm across the flats"]}))
+    QT_APP.processEvents()
+
+    assert "17.0 mm across the flats" in _said_in(panel)

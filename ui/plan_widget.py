@@ -17,27 +17,10 @@ FAILED = "failed"
 _MARK = {PENDING: "○", RUNNING: "▸", DONE: "✓", FAILED: "✗"}
 
 
-def describe_parameters(parameters):
-    """
-    The operation a Step names and its numbers, or "" if it names none.
-
-    Shown beside the prose at the Plan Gate: a number the user cannot read is
-    a number they cannot correct, and the Gate is the only place they could.
-    """
-    if not parameters:
-        return ""
-    said = [parameters["type"]]
-    for name, value in (parameters.get("properties") or {}).items():
-        said.append("%s %s%s" % (name, value,
-                                 " mm" if isinstance(value, (int, float))
-                                 and not isinstance(value, bool) else ""))
-    return ", ".join(said)
-
-
 class PlanWidget(QtWidgets.QFrame):
     """One row per Step. `highlight(n)` moves the marker; earlier rows go done."""
 
-    def __init__(self, steps=(), title="Plan", parameters=()):
+    def __init__(self, steps=(), title="Plan"):
         super().__init__()
         self.setObjectName("PlanCard")
 
@@ -57,16 +40,14 @@ class PlanWidget(QtWidgets.QFrame):
         self._rows = []
         self._steps = []
         self._states = []
-        self._parameters = []
-        self.set_steps(steps, parameters)
+        self.set_steps(steps)
 
     # ── what it is told ──────────────────────────────────────────────────────
 
-    def set_steps(self, steps, parameters=()):
+    def set_steps(self, steps):
         for row in self._rows:
             row.setParent(None)
         self._rows, self._steps, self._states = [], list(steps), []
-        self._parameters = list(parameters)
 
         for position in range(len(self._steps)):
             row = QtWidgets.QLabel()
@@ -107,13 +88,8 @@ class PlanWidget(QtWidgets.QFrame):
         style = "font-weight:%s;" % ("600" if state == RUNNING else "400")
         if colour:
             style = "color:%s; %s" % (colour, style)
-        named = describe_parameters(
-            self._parameters[position] if position < len(self._parameters) else None)
-        # No colour of its own: dimmed by weight, which reads in either theme.
-        beside = ('<span style="font-weight:400;">&nbsp;— %s</span>'
-                  % named) if named else ""
         self._rows[position].setText(
-            '<span style="%s">%d. %s &nbsp;%s%s</span>'
-            % (style, position + 1, _MARK[state], self._steps[position], beside)
+            '<span style="%s">%d. %s &nbsp;%s</span>'
+            % (style, position + 1, _MARK[state], self._steps[position])
         )
         self._rows[position].setStyleSheet("font-size: 12px; padding: 1px 0px;")
