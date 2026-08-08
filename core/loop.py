@@ -181,6 +181,34 @@ def auto_approve(steps):
     return Approval(APPROVE)
 
 
+# What to do when the phases that judge the result say no, and a revision may
+# wipe what has already been built. The Plan Gate has three answers about a
+# Plan that exists; this is asked earlier and has a fourth, because REJECT
+# stops a run and does not licence a restart (FCC-77).
+ACCEPT = "accept"           # the result will do; finish, no revision
+STOP = "stop"               # stop here; what was built stays
+REVISE = "revise"           # feedback, a new Plan, a new Plan Gate
+START_OVER = "start_over"   # revise, and it may delete what was built
+
+DECISIONS = (ACCEPT, STOP, REVISE, START_OVER)
+
+_MAY_START_AGAIN = (
+    "\n\nThe user has decided you may start again: you may delete what was built and "
+    "plan the part from nothing."
+)
+
+
+def revise_by_default(failure):
+    """
+    The decider when nothing is wired up to ask.
+
+    Level 1, Level 2 and headless runs use this, and it is the behaviour the
+    loop had before there was a question: no automatic acceptance of a failed
+    result, and no automatic licence to wipe the model.
+    """
+    return REVISE
+
+
 DECIDE_FOR_ME = ""
 
 _DECIDE = ("The user is not answering. Choose sensible values yourself, and write every "
@@ -692,16 +720,17 @@ class Stopped(Exception):
 
 
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
-        gate=auto_approve, ask=nobody_to_ask) -> LoopResult:
+        gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
 
     Everything it needs is an argument: the LLM client, the Tool registry, the
     event stream to narrate into, the budgets, `cancelled` — a callable the loop
-    asks between Steps and attempts so the user is never a passenger — and
-    `gate`, the Plan Gate, which must approve before any Step runs. Nothing is
-    global, so two runs cannot see each other and a sub-agent is a narrower
-    Intent.
+    asks between Steps and attempts so the user is never a passenger — `gate`,
+    the Plan Gate, which must approve before any Step runs, and `decide`, which
+    is asked what to do about a result that did not pass before a revision may
+    wipe it. Nothing is global, so two runs cannot see each other and a
+    sub-agent is a narrower Intent.
 
     `attachments` are files the user showed with the Intent; Plan sees them.
     """
@@ -711,7 +740,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
 
     try:
         return _run(intent, llm, tools, events, budgets, cancelled or (lambda: False), gate,
-                    progress, attachments, ask)
+                    progress, attachments, ask, decide)
     except Stopped:
         return _block(events, "Stopped by you. Everything applied so far is still in the "
                               "Document; undo it Step by Step if you want it gone.", [],
@@ -772,10 +801,25 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, attachmen
         events.emit(ANSWER, text=answer, by="user" if answer else "nobody")
 
 
-def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask):
+def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
+         decide=revise_by_default):
     def replan(feedback=None):
         return _plan_once_it_knows_enough(intent, tools.call("snapshot"), llm, events, budgets,
                                           attachments, ask, cancelled, feedback)
+
+    def decided(why, applied):
+        """
+        What the user wants done about a result that did not pass.
+
+        Only where there is something to lose: the right to delete a model four
+        minutes and seventeen Steps in is not the agent's, but with nothing
+        applied there is nothing to decide about. Anything unrecognised is the
+        default — the panel is what turns "nobody answered" into a stop.
+        """
+        if not applied:
+            return REVISE
+        answer = decide({"why": why, "applied": applied})
+        return answer if answer in DECISIONS else REVISE
 
     planned = replan()
     _emit_plan(events, PLAN, planned)
@@ -859,6 +903,18 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                    if planned.acceptance else None)
         if checked is not None and checked.failed:
             feedback = _why_the_checks_failed(checked.traceback)
+            answer = decided(feedback, applied)
+            if answer == ACCEPT:
+                return LoopResult(ok=True, verdict="pass", steps_applied=applied,
+                                  render=render,
+                                  reason="You accepted the result although the acceptance "
+                                         "checks did not pass.")
+            if answer == STOP:
+                return _block(events, _stopped_here(applied, "the acceptance checks failed"),
+                              outcome["tried"] + [{"assertion": checked.traceback}], applied)
+            if answer == START_OVER:
+                feedback += _MAY_START_AGAIN
+
             if revisions.exhausted(budgets, steps):
                 return _block(
                     events,
@@ -881,6 +937,17 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             return LoopResult(ok=True, verdict=verdict, reason=reason,
                               steps_applied=applied, render=render)
 
+        feedback = reason
+        answer = decided(reason, applied)
+        if answer == ACCEPT:
+            return LoopResult(ok=True, verdict="pass", reason=reason,
+                              steps_applied=applied, render=render)
+        if answer == STOP:
+            return _block(events, _stopped_here(applied, "Review rejected the result"),
+                          outcome["tried"] + [{"review": reason}], applied)
+        if answer == START_OVER:
+            feedback += _MAY_START_AGAIN
+
         rejections += 1
         if rejections > budgets.review_cycles:
             return _block(
@@ -901,8 +968,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                 outcome["tried"] + [{"review": reason}], applied,
             )
         revisions.spend(_Revisions.REJECTED)
-        planned = replan(reason)
-        _emit_plan(events, PLAN_REVISED, planned, reason=reason)
+        planned = replan(feedback)
+        _emit_plan(events, PLAN_REVISED, planned, reason=feedback)
 
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
@@ -969,6 +1036,18 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
     return {"blocked": False, "obsolete": None, "handback": None,
             "render": render, "objects": objects, "tried": []}
+
+
+def _stopped_here(applied, why):
+    """
+    Stopping on the user's say-so, without claiming nothing was applied.
+
+    A run stopped after seventeen Steps that reports "nothing was applied" is
+    telling the user the Document is untouched when it is not (FCC-77).
+    """
+    return ("You stopped the run because %s. The Document keeps the %d Step%s already "
+            "applied; undo them Step by Step if you want them gone."
+            % (why, applied, "" if applied == 1 else "s"))
 
 
 def _tried(step, attempt):

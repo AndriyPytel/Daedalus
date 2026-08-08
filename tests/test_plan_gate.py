@@ -5,13 +5,17 @@ The single point at which the user approves a Plan. Approval covers every Step
 in it; there is no per-Step approval. Nothing runs before it. A revised Plan is
 a new Plan and has its own Gate — which is still one Gate per Plan (FCC-68).
 """
+import inspect
 import json
 
 from core.events import BLOCKED, PLAN, PLAN_REVISED, EventStream
 from core.llm import ScriptedLLMClient
-from core.loop import AMEND, APPROVE, REJECT, Approval, Budgets, run
+from core.loop import (
+    ACCEPT, AMEND, APPROVE, REJECT, REVISE, START_OVER, STOP, Approval, Budgets, run,
+)
 from tests.test_loop import (
-    FakeTools, code_reply, failed, obsolete_reply, plan_reply, question_reply, verdict_reply,
+    FakeTools, assertion_reply, code_reply, failed, obsolete_reply, plan_reply,
+    question_reply, verdict_reply,
 )
 
 
@@ -350,3 +354,188 @@ def test_a_gate_that_answers_nothing_is_treated_as_approval():
                         gate=lambda steps: None)
 
     assert tools.applied_codes() == ["box()"]
+
+
+# ── the decision before a revision may wipe the model (FCC-77) ────────────────
+
+
+class Decider:
+    """Records what it was shown and answers however the test says."""
+
+    def __init__(self, *answers):
+        self.answers = list(answers)
+        self.shown = []
+
+    def __call__(self, failure):
+        self.shown.append(failure)
+        return self.answers.pop(0) if self.answers else REVISE
+
+
+def drive_with(turns, decide, gate=None, applies=(), checks=()):
+    from tests.test_loop import FakeTools as Tools
+
+    llm = ScriptedLLMClient(turns)
+    tools = Tools(applies, checks=checks)
+    events = EventStream()
+    result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
+                 gate=gate or Gate(), decide=decide)
+    return result, events, tools
+
+
+FAILED_CHECKS = ('Traceback (most recent call last):\n'
+                 "AssertionError: 13.0 mm across the flats\n")
+
+
+def a_run_whose_checks_fail(*extra):
+    return [plan_reply("Make it", acceptance=["13.0 mm across the flats"]),
+            code_reply("make()"), assertion_reply("check()")] + list(extra)
+
+
+def test_ok_finishes_the_run_without_a_revision():
+    """The result will do despite the failed check; nothing is replanned."""
+    decide = Decider(ACCEPT)
+
+    result, events, tools = drive_with(
+        a_run_whose_checks_fail(), decide,
+        checks=[{"ok": False, "traceback": FAILED_CHECKS}])
+
+    assert result.ok
+    assert result.steps_applied == 1
+    assert events.first(PLAN_REVISED) is None
+    assert tools.applied_codes() == ["make()"]
+    assert len(decide.shown) == 1
+
+
+def test_not_ok_stops_the_run_and_does_not_claim_nothing_was_applied():
+    decide = Decider(STOP)
+
+    result, events, _ = drive_with(
+        a_run_whose_checks_fail(), decide,
+        checks=[{"ok": False, "traceback": FAILED_CHECKS}])
+
+    assert result.blocked
+    assert result.steps_applied == 1
+    assert "nothing was applied" not in result.reason
+    assert events.first(PLAN_REVISED) is None
+
+
+def test_revise_replans_and_the_revision_goes_through_the_gate():
+    gate = Gate(Approval(APPROVE), Approval(APPROVE))
+    decide = Decider(REVISE)
+
+    result, events, tools = drive_with(
+        a_run_whose_checks_fail(
+            plan_reply("Make it 13 mm", acceptance=["13.0 mm across the flats"]),
+            code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
+        decide, gate=gate,
+        checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
+
+    assert result.ok
+    assert gate.shown == [["Make it"], ["Make it 13 mm"]]
+    assert tools.applied_codes() == ["make()", "fix()"]
+    assert "start again" not in events.first(PLAN_REVISED).data["reason"].lower()
+
+
+def test_start_over_replans_with_an_explicit_permission_and_still_hits_the_gate():
+    """
+    The answer the Plan Gate has no word for: REJECT stops a run, it does not
+    licence a restart. So the permission is carried in the feedback, and the
+    Plan built on it is gated before anything is deleted.
+    """
+    gate = Gate(Approval(APPROVE), Approval(APPROVE))
+    decide = Decider(START_OVER)
+
+    _, events, _ = drive_with(
+        a_run_whose_checks_fail(
+            plan_reply("Start from nothing", acceptance=["13.0 mm across the flats"]),
+            code_reply("again()"), assertion_reply("check()"), verdict_reply("pass")),
+        decide, gate=gate,
+        checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
+
+    assert gate.shown == [["Make it"], ["Start from nothing"]]
+    assert "delete what was built" in events.first(PLAN_REVISED).data["reason"]
+
+
+def test_the_decision_is_not_raised_when_nothing_was_applied():
+    """Nothing to lose, nothing to decide about."""
+    decide = Decider(STOP)
+
+    _, events, _ = drive_with(
+        a_run_whose_checks_fail(
+            plan_reply("Try again", acceptance=["13.0 mm across the flats"]),
+            code_reply("again()"), assertion_reply("check()"), verdict_reply("pass")),
+        decide, applies=[failed("boom"), failed("boom"), failed("boom")],
+        checks=[{"ok": True}])
+
+    assert decide.shown == []
+
+
+def test_the_decision_is_not_raised_on_an_obsolete_or_unbuildable_step():
+    """
+    There the model is still being built rather than wiped, and asking on every
+    re-plan is three cards a run — noise the fourth answer would be lost in.
+    """
+    decide = Decider(STOP)
+
+    _, _, _ = drive_with([
+        plan_reply("Make it"), obsolete_reply("the Body already has it"),
+        plan_reply("Do the rest"), code_reply("rest()"), verdict_reply("pass"),
+    ], decide)
+
+    assert decide.shown == []
+
+
+def test_a_review_rejection_raises_the_same_decision():
+    """
+    Both phases that judge the result route through it — the checks and Review.
+    """
+    decide = Decider(ACCEPT)
+
+    result, events, _ = drive_with([
+        plan_reply("Make it"), code_reply("make()"),
+        verdict_reply("fail", "20mm, not 10mm"),
+    ], decide)
+
+    assert result.ok
+    assert events.first(PLAN_REVISED) is None
+    assert "20mm, not 10mm" in decide.shown[0]["why"]
+    assert decide.shown[0]["applied"] == 1
+
+
+def test_an_unrecognised_answer_is_the_default_and_not_a_crash():
+    decide = Decider("maybe")
+
+    result, events, _ = drive_with([
+        plan_reply("Make it"), code_reply("make()"),
+        verdict_reply("fail", "20mm, not 10mm"),
+        plan_reply("Fix it"), code_reply("fix()"), verdict_reply("pass"),
+    ], decide)
+
+    assert result.ok
+    assert events.first(PLAN_REVISED) is not None
+
+
+def test_a_headless_run_revises_by_default_and_never_wipes_the_model():
+    """
+    No automatic "ok" and no automatic "start over": the default is exactly
+    what the loop did before this ticket, which is what every existing revision
+    test asserts.
+    """
+    from core.loop import revise_by_default
+
+    assert revise_by_default({"why": "anything", "applied": 17}) == REVISE
+
+    signature = inspect.signature(run)
+    assert signature.parameters["decide"].default is revise_by_default
+
+
+def test_plan_is_told_to_build_on_the_model_that_already_exists():
+    llm = ScriptedLLMClient([
+        plan_reply("Make it"), code_reply("make()"), verdict_reply("pass"),
+    ])
+    tools = FakeTools()
+    run("Make a 10mm box", llm=llm, tools=tools.registry, events=EventStream())
+    plan_system = " ".join(llm.calls[0][0]["content"].split())
+
+    assert "builds on the model that already exists" in plan_system
+    assert "only when the feedback says outright that you may" in plan_system

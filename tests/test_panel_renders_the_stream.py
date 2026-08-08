@@ -46,7 +46,8 @@ def test_the_panel_only_ever_asks_the_loop_to_start():
     """
     Rendering means reacting to events. The panel may name the loop's
     vocabulary — Approval and its three decisions are the Plan Gate's answer
-    type — but the only loop *function* it may call is `run`. Calling anything
+    type, and the four answers about a failed result are the same kind of
+    thing — but the only loop *function* it may call is `run`. Calling anything
     else would mean the event stream had stopped being the contract.
     """
     tree = panel_tree()
@@ -62,7 +63,8 @@ def test_the_panel_only_ever_asks_the_loop_to_start():
     }
 
     # Data types are fine to name; only `run` may be invoked.
-    vocabulary = {"Approval", "APPROVE", "REJECT", "AMEND"}
+    vocabulary = {"Approval", "APPROVE", "REJECT", "AMEND",
+                  "ACCEPT", "STOP", "REVISE", "START_OVER", "DECISIONS"}
     assert imported <= vocabulary | {"run"}, \
         "the panel reaches into the loop for: %s" % (imported - vocabulary - {"run"})
     assert called & imported <= {"run", "Approval"}, \
