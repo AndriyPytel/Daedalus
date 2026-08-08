@@ -279,13 +279,13 @@ def test_reading_may_not_invent_its_way_out_of_a_contradiction():
     assert "cannot both be true" not in review_system
 
 
-def test_a_step_is_one_operation_that_names_its_feature_type():
+def test_a_step_is_an_action_a_user_would_perform_not_a_call():
     """
-    The reversal of plan.md's four granularity rules, asserted as a reversal:
-    the sentences that made Execute the sole author of every derivation are
-    gone, not merely outweighed by newer copy beside them. Plan is the phase
-    that gains the rule; Execute is told to obey the Step, not to re-plan it.
-    FCC-58.
+    A Step written at the level of code is a call, and the same call is easy to
+    write twice at two granularities — which is how one run drew the hexagon in
+    Step 1 and again in Steps 3-8. The rule that closes it is the level: the
+    action a user would perform, one piece of work per Step, no sub-steps and
+    no restating another Step's work. FCC-74.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -296,18 +296,42 @@ def test_a_step_is_one_operation_that_names_its_feature_type():
     plan_system, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
-    assert "one FreeCAD operation with all its numbers" in plan_system
-    assert "names the feature type" in plan_system
-    assert "three Steps, not one" in plan_system
+    assert "an action a user would perform" in plan_system
+    assert "Execute translates that action into code" in plan_system
+    assert "One piece of work is one Step" in plan_system
+    assert "no sub-steps of its own" in plan_system
+    assert "restates work another Step already carries" in plan_system
 
-    for reversed_rule in ("shortest ordered list", "and no smaller",
-                          "should achieve, not the code", "one Step, not three"):
-        assert reversed_rule not in plan_system, \
-            "plan.md still carries the rule this ticket reverses: " + reversed_rule
-
+    # Decision (a) on FCC-74: the operation is still named, in engineering
+    # words rather than the FreeCAD spelling of its type.
+    assert "not in the FreeCAD spelling of its type" in plan_system
     # Which element a reference resolves to stays Execute's (ADR-0005).
     assert "never an element" in plan_system
-    assert "one FreeCAD operation" not in review_system
+    assert "an action a user would perform" not in review_system
+
+
+def test_the_granularity_rules_this_reverses_are_gone_from_plan():
+    """
+    Asserted as a reversal, because copy is only cancelled when it is absent:
+    a newer rule standing beside "three Steps, not one" leaves Plan free to
+    obey either. FCC-58's four sentences go the same way its own reversal of
+    the rules before it went. FCC-74.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    plan_system = " ".join(_system_messages(llm)[0].split())
+
+    for reversed_rule in ("shortest ordered list", "and no smaller",
+                          "should achieve, not the code", "one Step, not three",
+                          "one FreeCAD operation with all its numbers",
+                          "three Steps, not one",
+                          "a distinct piece of geometry within a sketch is a Step of its own",
+                          "roughly twenty Steps", "too coarse to be judged or corrected"):
+        assert reversed_rule not in plan_system, \
+            "plan.md still carries the rule this ticket reverses: " + reversed_rule
 
 
 def test_plan_names_declared_numbers_and_not_how_a_reference_is_found():
@@ -1158,10 +1182,12 @@ def test_a_run_out_of_revisions_stops_and_names_handbacks_not_amendments():
 def test_the_revisions_ceiling_is_computed_from_the_plans_length():
     """
     A four-Step Plan and a forty-Step Plan cannot have the same allowance —
-    atomic Steps (FCC-58) turn one part into roughly thirty-five, and every
-    handback spends one. The configured value is the floor. FCC-61.
+    a long Plan has more places to hand back from, and every handback spends
+    one. The configured value is the floor. FCC-61.
     """
     assert revisions_ceiling(Budgets(), ["s"] * 4) == 3
+    # A nut planned as actions is six to eight Steps, and still gets the floor.
+    assert revisions_ceiling(Budgets(), ["s"] * 6) == 3
     assert revisions_ceiling(Budgets(), ["s"] * 14) == 3
     assert revisions_ceiling(Budgets(), ["s"] * 15) == 3
     assert revisions_ceiling(Budgets(), ["s"] * 40) == 8
