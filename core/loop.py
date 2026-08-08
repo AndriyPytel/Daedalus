@@ -1,12 +1,14 @@
 """
 The Plan -> Execute -> Review loop.
 
-Three phases, fixed order, deterministic routing (ADR-0003). No LLM-chosen
-speaker selection: Plan produces Steps, Execute works through them one at a
-time, Review judges the outcome, and Review's verdict returns to Plan — never
-to Execute. Within its turn Execute may spend a bounded number of read-only
-looks at the Document before it writes code (ADR-0009); that is one phase
-reading its input, not a negotiation between phases.
+Fixed order, deterministic routing (ADR-0003). No LLM-chosen speaker
+selection: Plan produces Steps and the list they have to satisfy, Execute works
+through the Steps one at a time, Assertion measures the finished Document
+against that list once the run is over (ADR-0017), Review judges the outcome,
+and a failure from either of the last two returns to Plan — never to Execute.
+Within its turn Execute may spend a bounded number of read-only looks at the
+Document before it writes code (ADR-0009); that is one phase reading its input,
+not a negotiation between phases.
 
 There is one edge back from Execute to Plan and it carries no geometry: a Step
 that is out of date, or that cannot be built after its attempts are spent, goes
@@ -30,9 +32,9 @@ from dataclasses import dataclass, field
 from typing import List
 
 from core.events import (
-    ANSWER, APPLIED, BLOCKED, ERROR, PLAN, PLAN_REVISED, PREFLIGHT_FAILED,
-    QUESTION, RENDER, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
-    TOOL_RESULT, EventStream,
+    ANSWER, APPLIED, ASSERTION, BLOCKED, ERROR, PLAN, PLAN_REVISED,
+    PREFLIGHT_FAILED, QUESTION, RENDER, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
+    TOOL_CALL, TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import TRAPS
 from core.llm import REASONING, ProviderRefused
@@ -40,13 +42,14 @@ from core.tools import ToolError
 
 PLAN_PHASE = "plan"
 EXECUTE_PHASE = "execute"
+ASSERTION_PHASE = "assertion"
 REVIEW_PHASE = "review"
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
-# Tools the loop drives itself. Neither is a Look: one writes to the Document,
-# the other moves the user's camera.
-NOT_A_LOOK = ("apply_step", "review_views")
+# Tools the loop drives itself. None of them is a Look: one writes to the
+# Document, one moves the user's camera, one belongs to a phase of its own.
+NOT_A_LOOK = ("apply_step", "review_views", "check_assertions")
 
 # In the order `capture_review_views` writes them, for Review's own prose.
 _VIEW_NAMES = ("isometric", "the front", "above", "the right")
@@ -61,7 +64,7 @@ class Budgets:
     attempts_per_step: int = 3
     review_cycles: int = 2
     # Without this, Execute declaring Step after Step obsolete never terminates.
-    # One ceiling over all four causes of a replan (see `_Revisions`): separate
+    # One ceiling over all five causes of a replan (see `_Revisions`): separate
     # budgets would let them cycle into each other and would raise the
     # worst-case number of Plan calls in a run. This is the floor under
     # `revisions_ceiling`, which scales the allowance with the Plan's length.
@@ -78,7 +81,7 @@ def revisions_ceiling(budgets, steps) -> int:
 
     A four-Step Plan and a forty-Step Plan cannot have the same allowance: a
     long Plan has more places to hand back from, and every Execute -> Plan
-    handback spends one. Still a single ceiling over all four causes, for the
+    handback spends one. Still a single ceiling over all five causes, for the
     reason recorded on `Budgets`; only its size is computed.
     """
     return max(budgets.revisions, len(steps) // 5)
@@ -88,23 +91,26 @@ class _Revisions:
     """
     How many times the Plan has been rewritten, and why (FCC-22).
 
-    Four unrelated things replan: the user amends at the Plan Gate, Execute
-    finds a Step out of date, Execute cannot build one, and Review rejects the
-    result. They share one ceiling, which is deliberate — but they used to
-    share one *counter* too, so whichever branch spent the last unit was
-    reported as the cause of all of them, and a run stopped by two amendments
-    told the user Execute kept finding the Plan out of date.
+    Five unrelated things replan: the user amends at the Plan Gate, Execute
+    finds a Step out of date, Execute cannot build one, the acceptance checks
+    fail, and Review rejects the result. They share one ceiling, which is
+    deliberate — but they used to share one *counter* too, so whichever branch
+    spent the last unit was reported as the cause of all of them, and a run
+    stopped by two amendments told the user Execute kept finding the Plan out
+    of date.
     """
 
     AMENDED = "amended"
     OBSOLETE = "obsolete"
     UNBUILDABLE = "unbuildable"
+    ASSERTED = "asserted"
     REJECTED = "rejected"
 
     _SAID = (
         (AMENDED, "you amended the Plan %s"),
         (OBSOLETE, "Execute found the Plan out of date %s"),
         (UNBUILDABLE, "Execute could not build a Step %s"),
+        (ASSERTED, "the acceptance checks failed %s"),
         (REJECTED, "Review rejected the result %s"),
     )
 
@@ -513,7 +519,118 @@ def _look(tools, look, events):
     return {"tool": name, "arguments": arguments, "result": result}
 
 
-def review(intent, render, objects, llm, events, attachments=()):
+@dataclass
+class Checked:
+    """
+    What the Assertion phase made of the finished Document.
+
+    `failed` is a model that did not meet its acceptance list; `traceback` is
+    what Plan is told. A check that could not be written is neither passed nor
+    failed — `confirmed` is empty, `failed` is False, and Review judges the
+    whole list alone.
+    """
+
+    failed: bool = False
+    traceback: str = ""
+    confirmed: list = field(default_factory=list)
+    uncovered: list = field(default_factory=list)
+
+
+def assertion(acceptance, objects, tools, llm, events, budgets=None, cancelled=None):
+    """
+    Write checks for the acceptance list and run them against the result.
+
+    A fourth context, not Review and not Preflight. Review judges and is
+    deliberately not told how the result was produced (ADR-0003), so it cannot
+    also author the code that checks it; Preflight is a gate in front of the
+    Document on every Step, and this measures a finished one. Read-only, once
+    per run.
+
+    An `AssertionError` is the model failing its list. Any other traceback is
+    the *check* failing, and it goes back to the phase that wrote it on the
+    same budget a Step gets — read as a failed model it would send Plan to
+    rebuild a part that is already right.
+    """
+    budgets = budgets or Budgets()
+    request = {"acceptance": list(acceptance), "objects_that_now_exist": objects}
+
+    cancelled = cancelled or (lambda: False)
+
+    attempts = []
+    for _ in range(budgets.attempts_per_step):
+        # Asked between attempts the way Execute's are: three provider calls is
+        # long enough that Stop must not wait them out.
+        if cancelled():
+            raise Stopped()
+        if attempts:
+            request["your_failed_attempts_at_the_checks"] = list(attempts)
+
+        reply = _ask(llm, events, ASSERTION_PHASE, prompt(ASSERTION_PHASE),
+                     json.dumps(request, indent=2, default=str))
+        code = str(reply.get("code") or "").strip()
+        uncovered = [str(entry) for entry in (reply.get("uncovered") or ())]
+        if not code:
+            attempts.append({"code": "", "traceback": "You replied with no code. "
+                                                      "Write the checks."})
+            continue
+
+        events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
+        result = tools.call("check_assertions", {"code": code})
+        events.emit(TOOL_RESULT, name="check_assertions", result=result)
+
+        if result.get("ok"):
+            confirmed = [entry for entry in acceptance if entry not in uncovered]
+            checked = Checked(confirmed=confirmed, uncovered=uncovered)
+            events.emit(ASSERTION, ok=True, code=code, confirmed=confirmed,
+                        uncovered=uncovered, traceback="")
+            return checked
+
+        traceback = result.get("traceback") or "The checks failed without saying why."
+        if _the_model_failed(traceback):
+            events.emit(ASSERTION, ok=False, code=code, confirmed=[],
+                        uncovered=uncovered, traceback=traceback)
+            return Checked(failed=True, traceback=traceback, uncovered=uncovered)
+
+        attempts.append({"code": code, "traceback": traceback})
+
+    # The checks could not be written. Not a verdict on the part, and not a
+    # reason to lose a finished run: Review judges the whole list instead.
+    events.emit(ASSERTION, ok=None, code="", confirmed=[],
+                uncovered=list(acceptance),
+                traceback=attempts[-1]["traceback"] if attempts else "")
+    return Checked(uncovered=list(acceptance))
+
+
+_MODEL_IS_INVALID = "recompute left these objects in error"
+
+
+def _the_model_failed(traceback):
+    """
+    Whether this traceback is about the part or about the code that checked it.
+
+    Two ways the part is at fault. An `AssertionError` on the last line is an
+    entry of the list that did not hold. A Document the copy cannot recompute
+    is a part already broken before anything was measured — that one has to
+    read differently in the feedback, or Plan is told a dimension is wrong
+    when the model is in error.
+    """
+    if _MODEL_IS_INVALID in traceback:
+        return True
+    lines = [line for line in traceback.strip().splitlines() if line.strip()]
+    return bool(lines) and lines[-1].startswith("AssertionError")
+
+
+def _why_the_checks_failed(traceback):
+    """The feedback Plan gets, which must not say "a dimension is wrong" of a broken part."""
+    if _MODEL_IS_INVALID in traceback:
+        return ("The acceptance checks could not run: the Document does not recompute "
+                "cleanly, so the part is in error before anything could be measured.\n"
+                + traceback)
+    return ("The result does not meet its acceptance list. The check that failed says "
+            "which entry:\n" + traceback)
+
+
+def review(intent, render, objects, llm, events, attachments=(), checked=None):
     """
     Judge the outcome against the Intent.
 
@@ -530,6 +647,12 @@ def review(intent, render, objects, llm, events, attachments=()):
     this resemble what I was shown" was not a question it could ask (FCC-47).
     """
     request = {"intent": intent, "objects_that_now_exist": objects}
+    if checked is not None:
+        # Measured facts beside the views, so the verdict is about what the
+        # checks did not cover rather than a second opinion on what they did
+        # (ADR-0015, FCC-76).
+        request["facts_the_checks_confirmed"] = list(checked.confirmed)
+        request["what_the_checks_could_not_cover"] = list(checked.uncovered)
     content = [{"type": "text", "text": json.dumps(request, indent=2, default=str)}]
 
     paths = [render] if isinstance(render, str) else list(render or ())
@@ -728,8 +851,30 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         render = outcome["render"] or render
         objects = outcome["objects"] or objects
 
+        # Once the run is over, before Review: what is checked is the finished
+        # Document, and a failure here is a rejection (FCC-76). No acceptance
+        # list means no phase at all, not a phase that checks nothing.
+        checked = (assertion(planned.acceptance, objects, tools, llm, events, budgets,
+                             cancelled)
+                   if planned.acceptance else None)
+        if checked is not None and checked.failed:
+            feedback = _why_the_checks_failed(checked.traceback)
+            if revisions.exhausted(budgets, steps):
+                return _block(
+                    events,
+                    revisions.block_reason(
+                        budgets, steps, _Revisions.ASSERTED,
+                        "The acceptance checks have failed again."),
+                    outcome["tried"] + [{"assertion": checked.traceback}], applied,
+                )
+            revisions.spend(_Revisions.ASSERTED)
+            planned = replan(feedback)
+            _emit_plan(events, PLAN_REVISED, planned, reason=feedback)
+            continue
+
         views = _review_views(tools, events) or ([render] if render else [])
-        verdict, reason = review(intent, views, objects, llm, events, attachments)
+        verdict, reason = review(intent, views, objects, llm, events, attachments,
+                                 checked=checked)
         events.emit(REVIEW_VERDICT, verdict=verdict, reason=reason)
 
         if verdict == "pass":

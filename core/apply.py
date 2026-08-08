@@ -278,6 +278,27 @@ class ApplyPipeline:
         """
         return self._dispatch(lambda: self._view_capture(self._render_path()))
 
+    def check_assertions(self, code):
+        """
+        Run read-only checks against a copy of the finished Document (FCC-76).
+
+        Deliberately past `apply`: that refuses code which changed nothing and
+        wraps it in a transaction on the live Document, and both are wrong for
+        a check whose whole point is to change nothing. The copy is what makes
+        it read-only — this process never touches the live Document at all, so
+        even a check that tried to write could not.
+        """
+        doc = self._dispatch(self._active)
+        if doc is None:
+            return {"ok": False, "traceback": "There is no open Document to check."}
+
+        copy = self._dispatch(lambda: copy_of(doc))
+        try:
+            checked = self.worker.check(code, document=copy)
+        finally:
+            _discard(copy)
+        return {"ok": bool(checked.ok), "traceback": checked.traceback or ""}
+
     def review_views(self):
         """
         The views Review judges, captured once at the end of a run.

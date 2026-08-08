@@ -329,6 +329,25 @@ class _TitleThread(QtCore.QThread):
         self.titled.emit(generate(self._intent, self._model_id))
 
 
+def _assertion_said(data):
+    """
+    What the acceptance checks came to, in one line.
+
+    Three outcomes, not two: `ok` is None when the checks could not be written
+    at all, which is a fact about the checking code and not a verdict on the
+    part.
+    """
+    uncovered = data.get("uncovered") or []
+    if data.get("ok") is None:
+        return "⚠ Acceptance checks could not be written; Review judges the list alone."
+    if not data.get("ok"):
+        return "✗ Acceptance checks failed:\n" + (data.get("traceback") or "")
+    said = "✓ Acceptance checks passed: %d confirmed." % len(data.get("confirmed") or [])
+    if uncovered:
+        said += " Left to Review: " + ", ".join(uncovered) + "."
+    return said
+
+
 # ── Main Panel ─────────────────────────────────────────────────────────────────
 
 # Events replayed per event-loop turn when a Session is opened. Small enough
@@ -967,6 +986,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         elif event.kind == ev.RENDER:
             self._render_image(data["path"])
+
+        elif event.kind == ev.ASSERTION:
+            # Its own line, never REVIEW_VERDICT's: the checks are code, and
+            # Review deliberately never sees code (ADR-0003).
+            self.add_chat_widget(AssistantMessageWidget(_assertion_said(data)))
 
         elif event.kind == ev.REVIEW_VERDICT:
             mark = "✓" if data["verdict"] == "pass" else "✗"

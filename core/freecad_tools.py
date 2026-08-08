@@ -426,6 +426,19 @@ def _register_apply(registry, pipeline, selection):
         return pipeline.apply(code, selection=selection(), label=label).as_tool_result()
 
     @registry.tool(
+        "check_assertions",
+        "Run read-only checks against a throwaway copy of the finished Document. "
+        "Driven by the loop once per run, never by a phase.",
+        {
+            "type": "object",
+            "properties": {"code": {"type": "string"}},
+            "required": ["code"],
+        },
+    )
+    def check_assertions(code):
+        return pipeline.check_assertions(code)
+
+    @registry.tool(
         "review_views",
         "Capture the four views Review judges. Driven by the loop at the end of a "
         "run, never by a phase.",
