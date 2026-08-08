@@ -64,7 +64,7 @@ def test_the_panel_only_ever_asks_the_loop_to_start():
 
     # Data types are fine to name; only `run` may be invoked.
     vocabulary = {"Approval", "APPROVE", "REJECT", "AMEND",
-                  "ACCEPT", "STOP", "REVISE", "START_OVER", "DECISIONS"}
+                  "ACCEPT", "REVISE", "START_OVER", "DECISIONS"}
     assert imported <= vocabulary | {"run"}, \
         "the panel reaches into the loop for: %s" % (imported - vocabulary - {"run"})
     assert called & imported <= {"run", "Approval"}, \

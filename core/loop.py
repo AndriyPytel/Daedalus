@@ -182,15 +182,20 @@ def auto_approve(steps):
 
 
 # What to do when the phases that judge the result say no, and a revision may
-# wipe what has already been built. The Plan Gate has three answers about a
-# Plan that exists; this is asked earlier and has a fourth, because REJECT
-# stops a run and does not licence a restart (FCC-77).
-ACCEPT = "accept"           # the result will do; finish, no revision
-STOP = "stop"               # stop here; what was built stays
+# wipe what has already been built. Three answers: stop with what is there, or
+# replan — with or without leave to delete it. The last is the one the Plan
+# Gate has no word for, since REJECT stops a run but does not licence a
+# restart (FCC-77).
+#
+# "Accepted" and "stopped without accepting" were two answers until they were
+# found to be one: both end the run and both keep what was built, and which of
+# them happened is already on the stream — the `assertion` and `review_verdict`
+# events say whether anything passed.
+ACCEPT = "accept"           # stop here; what was built stays, and it will do
 REVISE = "revise"           # feedback, a new Plan, a new Plan Gate
 START_OVER = "start_over"   # revise, and it may delete what was built
 
-DECISIONS = (ACCEPT, STOP, REVISE, START_OVER)
+DECISIONS = (ACCEPT, REVISE, START_OVER)
 
 _MAY_START_AGAIN = (
     "\n\nThe user has decided you may start again: you may delete what was built and "
@@ -905,13 +910,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             feedback = _why_the_checks_failed(checked.traceback)
             answer = decided(feedback, applied)
             if answer == ACCEPT:
+                # Straight out, without Review: the user has already judged the
+                # result, and a verdict nobody will act on is a provider call
+                # spent on nothing.
                 return LoopResult(ok=True, verdict="pass", steps_applied=applied,
                                   render=render,
-                                  reason="You accepted the result although the acceptance "
-                                         "checks did not pass.")
-            if answer == STOP:
-                return _block(events, _stopped_here(applied, "the acceptance checks failed"),
-                              outcome["tried"] + [{"assertion": checked.traceback}], applied)
+                                  reason="You took the result as it is, although the "
+                                         "acceptance checks did not pass.")
             if answer == START_OVER:
                 feedback += _MAY_START_AGAIN
 
@@ -942,9 +947,6 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         if answer == ACCEPT:
             return LoopResult(ok=True, verdict="pass", reason=reason,
                               steps_applied=applied, render=render)
-        if answer == STOP:
-            return _block(events, _stopped_here(applied, "Review rejected the result"),
-                          outcome["tried"] + [{"review": reason}], applied)
         if answer == START_OVER:
             feedback += _MAY_START_AGAIN
 
@@ -1036,18 +1038,6 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
     return {"blocked": False, "obsolete": None, "handback": None,
             "render": render, "objects": objects, "tried": []}
-
-
-def _stopped_here(applied, why):
-    """
-    Stopping on the user's say-so, without claiming nothing was applied.
-
-    A run stopped after seventeen Steps that reports "nothing was applied" is
-    telling the user the Document is untouched when it is not (FCC-77).
-    """
-    return ("You stopped the run because %s. The Document keeps the %d Step%s already "
-            "applied; undo them Step by Step if you want them gone."
-            % (why, applied, "" if applied == 1 else "s"))
 
 
 def _tried(step, attempt):

@@ -11,7 +11,7 @@ import json
 from core.events import BLOCKED, PLAN, PLAN_REVISED, EventStream
 from core.llm import ScriptedLLMClient
 from core.loop import (
-    ACCEPT, AMEND, APPROVE, REJECT, REVISE, START_OVER, STOP, Approval, Budgets, run,
+    ACCEPT, AMEND, APPROVE, REJECT, REVISE, START_OVER, Approval, Budgets, run,
 )
 from tests.test_loop import (
     FakeTools, assertion_reply, code_reply, failed, obsolete_reply, plan_reply,
@@ -406,17 +406,42 @@ def test_ok_finishes_the_run_without_a_revision():
     assert len(decide.shown) == 1
 
 
-def test_not_ok_stops_the_run_and_does_not_claim_nothing_was_applied():
-    decide = Decider(STOP)
+def test_accepting_does_not_spend_a_review_on_a_result_already_judged():
+    """
+    Taking a result that failed its checks ends the run there. Review is not
+    asked: the user has judged it, and a verdict nobody will act on is a
+    provider call spent on nothing. FCC-77.
+    """
+    decide = Decider(ACCEPT)
 
-    result, events, _ = drive_with(
+    result, _, _ = drive_with(
         a_run_whose_checks_fail(), decide,
         checks=[{"ok": False, "traceback": FAILED_CHECKS}])
 
+    assert result.ok
+    assert "acceptance checks did not pass" in result.reason
+
+
+def test_stopping_while_the_decision_is_open_is_recorded_as_stopped():
+    """
+    Stop must not read as "the user took the result": the panel answers with
+    something unrecognised, that falls to the default, and the loop asks
+    `cancelled()` before it plans anything. FCC-77.
+    """
+    stopped = []
+
+    def presses_stop(failure):
+        stopped.append(failure)
+        return "released-by-abandon"      # what the panel sends on Stop
+
+    llm = ScriptedLLMClient(a_run_whose_checks_fail())
+    tools = FakeTools(checks=[{"ok": False, "traceback": FAILED_CHECKS}])
+    result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=EventStream(),
+                 cancelled=lambda: bool(stopped), decide=presses_stop)
+
     assert result.blocked
-    assert result.steps_applied == 1
-    assert "nothing was applied" not in result.reason
-    assert events.first(PLAN_REVISED) is None
+    assert not result.ok, "a stopped run was recorded as a result the user took"
+    assert "Stopped by you" in result.reason
 
 
 def test_revise_replans_and_the_revision_goes_through_the_gate():
@@ -458,7 +483,7 @@ def test_start_over_replans_with_an_explicit_permission_and_still_hits_the_gate(
 
 def test_the_decision_is_not_raised_when_nothing_was_applied():
     """Nothing to lose, nothing to decide about."""
-    decide = Decider(STOP)
+    decide = Decider(ACCEPT)
 
     _, events, _ = drive_with(
         a_run_whose_checks_fail(
@@ -475,7 +500,7 @@ def test_the_decision_is_not_raised_on_an_obsolete_or_unbuildable_step():
     There the model is still being built rather than wiped, and asking on every
     re-plan is three cards a run — noise the fourth answer would be lost in.
     """
-    decide = Decider(STOP)
+    decide = Decider(ACCEPT)
 
     _, _, _ = drive_with([
         plan_reply("Make it"), obsolete_reply("the Body already has it"),
