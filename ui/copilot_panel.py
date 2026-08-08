@@ -215,13 +215,15 @@ class AskTheUser(QtCore.QObject):
         What to do about a result that did not pass, before anything is wiped.
 
         `abandon` releases every waiting question with an Approval, which is
-        not one of these four answers — so Stop reads as "not ok": the run
-        ends and what was built stays (FCC-77).
+        not one of these three answers, so Stop falls to the default. That is
+        deliberately not "accept": the loop asks `cancelled()` before it plans
+        anything, so a stopped run is recorded as stopped rather than as a
+        result the user took (FCC-77).
         """
-        from core.loop import STOP, DECISIONS
+        from core.loop import DECISIONS, REVISE
 
         answer = self._ask(self.revision, failure)
-        return answer if answer in DECISIONS else STOP
+        return answer if answer in DECISIONS else REVISE
 
     def _ask(self, signal, payload):
         self._answered.clear()
@@ -926,7 +928,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.update_header_title(self.chat_sessions.stack.currentIndex())
 
     def on_stop(self):
-        for card in ("_gate_card", "_answer_card"):
+        for card in ("_gate_card", "_answer_card", "_revision_card"):
             if getattr(self, card, None) is not None:
                 getattr(self, card).setEnabled(False)
                 setattr(self, card, None)
@@ -1112,8 +1114,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
     def on_revision(self, failure):
         """
         What to do about a result that did not pass, before a revision may wipe
-        it. Four answers, not the Gate's three: REJECT stops a run and does not
-        licence a restart, so "start over" needs a word of its own (FCC-77).
+        it. Three answers, and the Gate's three are not them: REJECT stops a
+        run and does not licence a restart, so "start over" needs a word of its
+        own (FCC-77).
         """
         self.status_line.setText("Waiting for you to decide what to do…")
         self.status_line.setVisible(True)
@@ -1125,7 +1128,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.add_chat_widget(self._revision_card)
 
     def _build_revision_card(self):
-        from core.loop import ACCEPT, REVISE, START_OVER, STOP
+        from core.loop import ACCEPT, REVISE, START_OVER
 
         card = QtWidgets.QFrame()
         card.setObjectName("GateCard")
@@ -1139,8 +1142,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
         layout.addWidget(prompt)
 
         note = QtWidgets.QLabel(
-            "Fix it keeps the model and plans the rest. Start over lets the next Plan "
-            "delete it and build again.")
+            "Take it as it is ends the run and keeps the model. Fix it keeps the model "
+            "and plans the rest. Start over lets the next Plan delete it and build again.")
         note.setWordWrap(True)
         note.setStyleSheet("font-size: 11px;")
         layout.addWidget(note)
@@ -1154,8 +1157,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.status_line.setText("Working…")
             self.ask.answer(decision)
 
-        for text, decision in (("✓  It will do", ACCEPT), ("✗  It will not", STOP),
-                               ("✎  Fix it", REVISE), ("↺  Start over", START_OVER)):
+        for text, decision in (("✓  Take it as it is", ACCEPT), ("✎  Fix it", REVISE),
+                               ("↺  Start over", START_OVER)):
             button = QtWidgets.QPushButton(text)
             button.setObjectName("PillButton")
             button.clicked.connect(lambda _=False, d=decision: answer(d))

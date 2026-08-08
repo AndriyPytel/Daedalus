@@ -1180,10 +1180,10 @@ def test_the_acceptance_list_is_on_the_plan_card_before_the_gate(panel):
     assert "17.0 mm across the flats" in _said_in(panel)
 
 
-def test_the_decision_card_offers_four_answers_and_returns_the_one_clicked(panel):
+def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(panel):
     """
-    Four, not the Gate's three: REJECT stops a run and does not licence a
-    restart, so "start over" needs a word of its own. FCC-77.
+    Take it, fix it, start again. The last is the one the Plan Gate has no word
+    for: REJECT stops a run and does not licence a restart. FCC-77.
     """
     from conftest import QtWidgets
 
@@ -1197,7 +1197,7 @@ def test_the_decision_card_offers_four_answers_and_returns_the_one_clicked(panel
     QT_APP.processEvents()
 
     labels = [b.text() for b in panel._revision_card.findChildren(QtWidgets.QPushButton)]
-    assert len(labels) == 4, labels
+    assert len(labels) == 3, labels
     assert "17 Steps were applied" in _said_in(panel)
     assert "13.0 mm across the flats" in _said_in(panel)
 
@@ -1207,15 +1207,16 @@ def test_the_decision_card_offers_four_answers_and_returns_the_one_clicked(panel
     assert answered == [START_OVER]
 
 
-def test_stop_while_the_decision_is_open_reads_as_not_ok(panel):
+def test_stop_while_the_decision_is_open_releases_it_and_is_not_an_acceptance(panel):
     """
     `abandon` releases every waiting question with an Approval, which is not
-    one of the four answers — so Stop ends the run and leaves what was built,
-    rather than hanging on an open card. FCC-77.
+    one of the three answers, so Stop falls to the default rather than hanging
+    on an open card. Deliberately not ACCEPT: the loop asks `cancelled()`
+    before it plans anything, so the run is recorded as stopped. FCC-77.
     """
     import threading
 
-    from core.loop import STOP
+    from core.loop import ACCEPT, REVISE
 
     answers = []
 
@@ -1231,4 +1232,18 @@ def test_stop_while_the_decision_is_open_reads_as_not_ok(panel):
     waiting.join(timeout=2)
 
     assert not waiting.is_alive(), "Stop did not release the open decision"
-    assert answers == [STOP]
+    assert answers == [REVISE]
+    assert answers != [ACCEPT], "Stop was recorded as the user taking the result"
+
+
+def test_stop_disables_an_open_decision_card(panel):
+    """A card left clickable after Stop answers a run that is already over."""
+    panel.on_revision({"why": "no", "applied": 3})
+    QT_APP.processEvents()
+    card = panel._revision_card
+
+    panel.on_stop()
+    QT_APP.processEvents()
+
+    assert panel._revision_card is None
+    assert not card.isEnabled()
