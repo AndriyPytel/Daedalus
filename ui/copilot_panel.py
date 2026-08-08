@@ -175,15 +175,16 @@ class AskTheUser(QtCore.QObject):
     """
     Blocks the worker thread until the user answers, on the GUI thread.
 
-    Three questions go through here: the Plan Gate, the Owned Object rule, and
-    the parameters Plan is missing. All are asked from the loop's thread and
-    must be answered by a person, so the signal crosses to the GUI thread and
-    the worker waits on an Event.
+    Four questions go through here: the Plan Gate, the Owned Object rule, the
+    values Plan is missing, and what to do about a result that did not pass.
+    All are asked from the loop's thread and must be answered by a person, so
+    the signal crosses to the GUI thread and the worker waits on an Event.
     """
 
     plan_gate = QtCore.Signal(object)      # steps
     owned_objects = QtCore.Signal(object)  # {"delete": [...]}
     missing_values = QtCore.Signal(object)  # the question, as text
+    revision = QtCore.Signal(object)       # {"why": "...", "applied": n}
 
     def __init__(self):
         super().__init__()
@@ -208,6 +209,19 @@ class AskTheUser(QtCore.QObject):
         """
         answer = self._ask(self.missing_values, question)
         return answer if isinstance(answer, str) else ""
+
+    def about_the_revision(self, failure):
+        """
+        What to do about a result that did not pass, before anything is wiped.
+
+        `abandon` releases every waiting question with an Approval, which is
+        not one of these four answers — so Stop reads as "not ok": the run
+        ends and what was built stays (FCC-77).
+        """
+        from core.loop import STOP, DECISIONS
+
+        answer = self._ask(self.revision, failure)
+        return answer if answer in DECISIONS else STOP
 
     def _ask(self, signal, payload):
         self._answered.clear()
@@ -306,7 +320,8 @@ class LoopWorker(QtCore.QObject):
             result = run(intent, llm=client, tools=tools,
                          events=events, cancelled=self._stop.is_set,
                          attachments=attachments, gate=self.ask.about_the_plan,
-                         ask=self.ask.about_missing_values)
+                         ask=self.ask.about_missing_values,
+                         decide=self.ask.about_the_revision)
             self.finished.emit(result)
         except Exception as exc:
             events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
@@ -420,6 +435,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.ask.plan_gate.connect(self.on_plan_gate)
         self.ask.owned_objects.connect(self.on_owned_objects)
         self.ask.missing_values.connect(self.on_missing_values)
+        self.ask.revision.connect(self.on_revision)
 
         self._running = False
         self._empty_state = None
@@ -692,6 +708,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._current_step = 0
         self._gate_card = None
         self._answer_card = None
+        self._revision_card = None
 
     def _became_the_live_session(self):
         """
@@ -1090,6 +1107,63 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.status_line.setVisible(True)
         self._gate_card = self._build_gate_card(len(steps))
         self.add_chat_widget(self._gate_card)
+
+    @QtCore.Slot(object)
+    def on_revision(self, failure):
+        """
+        What to do about a result that did not pass, before a revision may wipe
+        it. Four answers, not the Gate's three: REJECT stops a run and does not
+        licence a restart, so "start over" needs a word of its own (FCC-77).
+        """
+        self.status_line.setText("Waiting for you to decide what to do…")
+        self.status_line.setVisible(True)
+        self.add_chat_widget(AssistantMessageWidget(
+            "The result did not pass, after %d Step%s were applied:\n%s"
+            % (failure.get("applied", 0), "" if failure.get("applied") == 1 else "s",
+               failure.get("why", ""))))
+        self._revision_card = self._build_revision_card()
+        self.add_chat_widget(self._revision_card)
+
+    def _build_revision_card(self):
+        from core.loop import ACCEPT, REVISE, START_OVER, STOP
+
+        card = QtWidgets.QFrame()
+        card.setObjectName("GateCard")
+        layout = QtWidgets.QVBoxLayout(card)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(8)
+
+        prompt = QtWidgets.QLabel("What should happen to what has been built?")
+        prompt.setWordWrap(True)
+        prompt.setStyleSheet("font-size: 12px; font-weight: 600;")
+        layout.addWidget(prompt)
+
+        note = QtWidgets.QLabel(
+            "Fix it keeps the model and plans the rest. Start over lets the next Plan "
+            "delete it and build again.")
+        note.setWordWrap(True)
+        note.setStyleSheet("font-size: 11px;")
+        layout.addWidget(note)
+
+        buttons = QtWidgets.QHBoxLayout()
+        buttons.setSpacing(6)
+
+        def answer(decision):
+            card.setEnabled(False)
+            self._revision_card = None
+            self.status_line.setText("Working…")
+            self.ask.answer(decision)
+
+        for text, decision in (("✓  It will do", ACCEPT), ("✗  It will not", STOP),
+                               ("✎  Fix it", REVISE), ("↺  Start over", START_OVER)):
+            button = QtWidgets.QPushButton(text)
+            button.setObjectName("PillButton")
+            button.clicked.connect(lambda _=False, d=decision: answer(d))
+            buttons.addWidget(button)
+
+        buttons.addStretch()
+        layout.addLayout(buttons)
+        return card
 
     def _build_gate_card(self, step_count):
         from core.loop import AMEND, APPROVE, REJECT, Approval

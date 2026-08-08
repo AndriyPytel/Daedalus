@@ -49,6 +49,13 @@ faces, a radius, an angle, a wall thickness, a count of features — something
 that stays true however the part is oriented. A number that holds in only one
 orientation is not a criterion.
 
+A revised Plan builds on the model that already exists. `document` is the
+Document as it now stands, and `what_went_wrong_last_time` is what to correct
+in it — so plan the Steps that carry it the rest of the way, not the Steps that
+build it a second time. Start again from nothing only when the feedback says
+outright that you may; the part in front of you cost the user a run, and
+throwing it away is their decision, not yours.
+
 Sketch geometry is positioned by computed coordinates, not by the constraint
 solver. Two circles are concentric because they were given the same centre; a
 Step that asks for constraints "to make the circles concentric" is asking the
