@@ -815,6 +815,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
         return unusable_attachments(attached, model)
 
     def on_send(self):
+        # While the Plan is waiting on a question the composer answers it. Enter
+        # is the only route to Send there — the button is hidden mid-run — and
+        # it used to start a second run on the answer instead (FCC-71).
+        if self._answer_card is not None:
+            self._answer_values()
+            return
+
         intent = self.user_input.toPlainText().strip()
         if not intent:
             return
@@ -1144,27 +1151,21 @@ class CopilotPanel(QtWidgets.QDockWidget):
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(6)
 
-        def answer(text):
-            card.setEnabled(False)
-            self._answer_card = None
-            self.status_line.setText("Working…")
-            self.ask.answer(text)
-
         send = QtWidgets.QPushButton("↩  Send")
         send.setObjectName("PillButton")
-        send.clicked.connect(lambda: self._answer_values(answer))
+        send.clicked.connect(self._answer_values)
         buttons.addWidget(send)
 
         decide = QtWidgets.QPushButton("✎  You decide")
         decide.setObjectName("PillButton")
-        decide.clicked.connect(lambda: answer(""))
+        decide.clicked.connect(lambda: self._answer(""))
         buttons.addWidget(decide)
 
         buttons.addStretch()
         layout.addLayout(buttons)
         return card
 
-    def _answer_values(self, answer):
+    def _answer_values(self):
         text = self.user_input.toPlainText().strip()
         if not text:
             self.user_input.setPlaceholderText("Give the values, then press Send…")
@@ -1172,7 +1173,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
             return
         self.user_input.clear()
         self.add_chat_widget(TextMessageWidget(text))
-        answer(text)
+        self._answer(text)
+
+    def _answer(self, text):
+        card, self._answer_card = self._answer_card, None
+        card.setEnabled(False)
+        self.status_line.setText("Working…")
+        self.ask.answer(text)
 
     @QtCore.Slot(object)
     def on_owned_objects(self, kinds):

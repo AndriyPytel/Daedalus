@@ -9,6 +9,10 @@ eighteen. What is checked now is the operation and its numbers, which Plan
 writes for every Step and which are exact for a tooth flank as much as for a
 cylinder.
 
+Where that line falls is FCC-71's: Plan owns the operation, the names and the
+declared numbers, Execute owns the binding — the links, the attachment, the
+placement — and the comparator is silent on everything it does not own.
+
 Run against a real headless FreeCAD through the real Preflight Worker: what is
 being checked is what FreeCAD built, not what a fake would agree to (ADR-0007).
 """
@@ -45,8 +49,26 @@ PAD_IN_A_BODY = (
     "pad.Length = 10\n")
 
 
+# The Step the 2026-08-08 nut run died on three times over: a sketch attached
+# to the Body's XY plane, whose code is correct and every property of which is
+# Execute's to write.
+ATTACHED_SKETCH = (
+    "body = doc.addObject('PartDesign::Body', 'Body')\n"
+    "sketch = doc.addObject('Sketcher::SketchObject', 'NutHexProfile')\n"
+    "body.addObject(sketch)\n"
+    "plane = doc.getObject('XY_Plane')\n"
+    "sketch.AttachmentSupport = [(plane, [''])]\n"
+    "sketch.MapMode = 'FlatFace'\n"
+    "sketch.AttachmentOffset = App.Placement(App.Vector(0, 0, 0), App.Rotation())\n")
+
+
 def pad(**properties):
     return {"type": "PartDesign::Pad", "properties": properties}
+
+
+def a_pad_of(length):
+    """The same Body and sketch, padded by a number of the caller's choosing."""
+    return PAD_IN_A_BODY.replace("pad.Length = 10", "pad.Length = %s" % length)
 
 
 def test_a_step_that_builds_what_the_plan_named_passes(worker):
@@ -136,27 +158,63 @@ def test_a_step_that_edits_an_existing_feature_is_checked_too(worker, a_padded_b
     assert not worker.check(lengthen, a_padded_body, parameters=pad(Length=10)).ok
 
 
-def test_a_link_is_compared_by_the_name_the_plan_wrote(worker):
+def test_a_step_that_attaches_a_sketch_passes(worker):
     """
-    Plan writes the sketch the way it named it in an earlier Step. Whether that
-    is the Name or the Label is not a distinction Plan makes, so neither does
-    this: a Step renamed for the reader still answers to what the Plan wrote.
+    The nut run's Step 2, refused three times for building exactly what it was
+    told to. `AttachmentSupport` is a list of tuples and `AttachmentOffset` is
+    a Placement; against what Plan wrote for them the comparator held up the
+    `str()` of a live object and refused every attachment there is. FCC-71.
     """
-    relabelled = PAD_IN_A_BODY + "sketch.Label = 'Root profile'\n"
+    result = worker.check(ATTACHED_SKETCH, None, parameters={
+        "type": "Sketcher::SketchObject",
+        "properties": {
+            "AttachmentSupport": [{"object": "XY_Plane", "subelements": [""]}],
+            "AttachmentOffset": {"Base": [0, 0, 0], "Rotation": [0, 0, 0, 1]},
+            "MapMode": "FlatFace",
+        }})
 
-    assert worker.check(relabelled, None, parameters=pad(Profile="RootProfile")).ok
-    assert worker.check(relabelled, None, parameters=pad(Profile="Root profile")).ok
-    assert not worker.check(relabelled, None, parameters=pad(Profile="ToothProfile")).ok
+    assert result.ok, result.traceback
 
 
-def test_a_number_is_exact_and_has_no_tolerance(worker):
+def test_the_comparator_is_silent_on_what_execute_owns(worker):
     """
-    A Promise carried the model's arithmetic and needed 5% of room. A parameter
-    is the number Plan wrote and Execute typed, so a Step off by 1% is as wrong
-    as one off by half.
+    Plan owns the operation, the names and the declared numbers. The binding —
+    a link, a support list, a placement — is worked out where the code is
+    written, so a Plan that names it wrongly is not evidence of a wrong Step.
     """
+    a_live_object = worker.check(PAD_IN_A_BODY, None, parameters=pad(Profile="NotThisSketch"))
+    a_placement = worker.check(ATTACHED_SKETCH, None, parameters={
+        "type": "Sketcher::SketchObject",
+        "properties": {"AttachmentOffset": "somewhere else entirely"}})
+
+    assert a_live_object.ok, a_live_object.traceback
+    assert a_placement.ok, a_placement.traceback
+
+
+def test_a_written_decimal_is_the_number_it_was_rounded_from(worker):
+    """
+    `13/√3` is 7.505553499… in the code and 7.505553 in the Plan that wrote it
+    down, and those are the same number — the old exact comparison was 500
+    times tighter than the Plan's own decimals. A percent is still wrong.
+    """
+    assert worker.check(a_pad_of(13 / 3 ** 0.5), None, parameters=pad(Length=7.505553)).ok
     assert not worker.check(PAD_IN_A_BODY, None, parameters=pad(Length=10.1)).ok
     assert not worker.check(PAD_IN_A_BODY, None, parameters=pad(Length=15)).ok
+
+
+def test_what_the_object_is_called_is_one_rule_for_name_and_label(worker):
+    """
+    Plan wrote `Name` in one session and `Label` in the next and meant the same
+    thing both times. `Name` is not a property at all, so it was refused as an
+    invented one and the Step died for having been named.
+    """
+    relabelled = PAD_IN_A_BODY + "pad.Label = 'The pad'\n"
+
+    assert worker.check(relabelled, None, parameters=pad(Name="Pad")).ok
+    assert worker.check(relabelled, None, parameters=pad(Name="The pad")).ok
+    assert worker.check(relabelled, None, parameters=pad(Label="Pad")).ok
+    assert worker.check(relabelled, None, parameters=pad(Label="The pad")).ok
+    assert not worker.check(relabelled, None, parameters=pad(Name="ToothProfile")).ok
 
 
 def test_an_enumeration_and_a_flag_are_compared_as_written(worker):

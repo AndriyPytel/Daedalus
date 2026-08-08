@@ -384,30 +384,49 @@ def _bodies_in_pieces(doc):
 
 def _as_written(value):
     """A property value in the spelling Plan would have used for it."""
-    if isinstance(value, tuple) and value and hasattr(value[0], "TypeId"):
-        return value[0]                      # a link: (object, [subelements])
     return getattr(value, "Value", value)    # a Quantity: 10.0 mm -> 10.0
 
 
+# A written number is a rounding of the one Execute typed: 13/√3 is
+# 7.505553499… in the code and 7.505553 in the Plan, and those are the same
+# number. Relative, because the decimals Plan writes scale with the size.
+_TOLERANCE = 1e-6
+
+# Plan means the same thing by either, and `Name` is not a property at all, so
+# a Plan that wrote it was refused as if it had invented one (FCC-71).
+NAMING = ("Name", "Label")
+
+
 def _agrees(got, want):
+    """
+    Whether what the Step built agrees with what the Plan wrote for it.
+
+    Silence is the default, and that is the decision. Plan owns the operation,
+    the names and the declared numbers; the binding — a link, a support list, a
+    placement — is worked out where the code is written (ADR-0005), and those
+    arrive here as objects and lists of tuples whose `str()` matches nothing
+    Plan could have written. Comparing them refused every Step that attached a
+    sketch, for building exactly what it was told to (FCC-71).
+    """
     got = _as_written(got)
-    if hasattr(got, "TypeId"):
-        return want in (got.Name, got.Label)
-    if isinstance(want, bool) or isinstance(got, bool):
+    if isinstance(got, bool) or isinstance(want, bool):
         return bool(got) is bool(want)
-    if isinstance(want, (int, float)):
-        return isinstance(got, (int, float)) and abs(float(got) - float(want)) <= 1e-9
-    return str(got) == str(want)
+    if isinstance(got, (int, float)):
+        return (isinstance(want, (int, float))
+                and abs(got - want) <= max(abs(want) * _TOLERANCE, _TOLERANCE))
+    if isinstance(got, str):
+        return got == str(want)
+    return True
 
 
 def wrong_parameters(parameters, doc, created, modified=()):
     """
     Where what the Step built disagrees with the operation the Plan named.
 
-    Plan writes the operation and its numbers for every Step; Execute writes
-    the code. Checking one against the other is exact, and it is exact on an
-    involute flank as much as on a cylinder — which measuring the result never
-    was, because nobody works out the volume of a tooth in advance.
+    Plan writes the operation and its declared numbers for every Step; Execute
+    writes the code. Checking one against the other holds on an involute flank
+    as much as on a cylinder — which measuring the result never did, because
+    nobody works out the volume of a tooth in advance.
 
     A `type` without `::` is not a document object at all — the geometry inside
     a sketch is spelled `Part.Circle` and creates nothing to look at. Such a
@@ -429,14 +448,16 @@ def wrong_parameters(parameters, doc, created, modified=()):
     wrong = []
     for obj in matching:
         for prop, want in (parameters.get("properties") or {}).items():
-            if prop not in obj.PropertiesList:
+            if prop in NAMING:
+                if str(want) not in (obj.Name, obj.Label):
+                    wrong.append("%s: the Plan named %s, the Step built %s"
+                                 % (prop, want, obj.Label))
+            elif prop not in obj.PropertiesList:
                 wrong.append("%s: the Plan named it, and %s has no such property"
                              % (prop, named))
             elif not _agrees(got := getattr(obj, prop), want):
-                built = _as_written(got)
                 wrong.append("%s: the Plan named %s, the Step built %s"
-                             % (prop, want,
-                                built.Name if hasattr(built, "TypeId") else built))
+                             % (prop, want, _as_written(got)))
     return wrong
 
 

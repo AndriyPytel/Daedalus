@@ -27,15 +27,23 @@ never sees these as a suggestion — Preflight reads them off the object the cod
 built on a throwaway copy, and a Step that built something else fails the way a
 traceback does.
 
-    "parameters": {"type": "PartDesign::Pad",
-                   "properties": {"Length": 10, "Profile": "RootProfile"}}
+    "parameters": {"type": "PartDesign::Pad", "properties": {"Length": 10}}
 
 Write the numbers you already put in the prose, in the property that carries
-them: `Length`, `Radius`, `Occurrences`, `Reversed`, `Midplane`. A link is
-written as the name you gave that object in the Step that created it. Nothing
-here is measured and nothing is estimated, so there is no arithmetic to get
-wrong — a volume, a face count and a bounding box are not parameters and are
-not asked for.
+them: `Length`, `Radius`, `Occurrences`, `Reversed`, `Midplane`. Only the
+**declared** ones — a number somebody stated: the user, the drawing, or a
+standard you are citing. A number you worked out yourself — `13/√3`, the
+coordinate of a vertex — belongs in the prose and never in `parameters`. Asked
+for a hole 5 mm from an edge, the parameter is the 5 mm, not the arithmetic
+around it.
+
+What the object is called goes in as `Name` or `Label`; they mean the same
+thing here, which is the name you gave it in the Step that created it. Nothing
+that binds one object to another belongs in `parameters` — a profile, an
+attachment, a placement is how a reference is found, and that is worked out
+where the code is written. Nothing here is measured and nothing is estimated,
+so there is no arithmetic to get wrong: a volume, a face count and a bounding
+box are not parameters and are not asked for.
 
 Geometry drawn inside a sketch creates no document object, so there is nothing
 for Preflight to read the properties off — but write its `parameters` anyway,

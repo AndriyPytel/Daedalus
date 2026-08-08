@@ -310,6 +310,30 @@ def test_a_step_is_one_operation_that_names_its_feature_type():
     assert "one FreeCAD operation" not in review_system
 
 
+def test_plan_names_declared_numbers_and_not_how_a_reference_is_found():
+    """
+    FCC-66 asked Plan for links in the same prompt that forbids it writing how
+    a reference is found (ADR-0005), and every Step that attached a sketch then
+    failed Preflight for obeying. What Plan writes is the operation, what the
+    object is called, and numbers somebody stated. FCC-71.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    # The prompts are wrapped copy; a sentence crosses line breaks.
+    plan_system, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
+
+    assert "A link is written as the name you gave" not in plan_system, \
+        "plan.md still asks Plan for the link this ticket takes back"
+    assert '"Profile": "RootProfile"' not in plan_system, \
+        "the parameters example still shows a link as a parameter"
+
+    assert "declared" in plan_system
+    assert "`Name` or `Label`" in plan_system
+
+
 def test_the_positive_form_of_the_lint_rules_reaches_execute():
     """
     Lint can only say no. Without the how, the model enumerates workarounds —

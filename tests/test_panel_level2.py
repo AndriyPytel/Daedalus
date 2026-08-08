@@ -1119,6 +1119,31 @@ def test_an_empty_answer_does_not_start_the_run_on_nothing(panel, monkeypatch):
     assert answered == [""], "'You decide' did not decline for the user"
 
 
+def test_enter_while_a_question_is_open_answers_it_rather_than_starting_a_run(panel, monkeypatch):
+    """
+    Enter in the composer goes to `on_send`, which had exactly one behaviour: a
+    new Intent, a new run, a new Plan. The question stayed on screen unanswered
+    and the re-plan asked it again — which is what "it planned first and only
+    then started asking" looked like from the outside. FCC-71.
+    """
+    answered, sent = [], []
+    monkeypatch.setattr(panel.ask, "answer", answered.append)
+    panel.request_work.connect(lambda intent, files, log: sent.append(intent))
+    try:
+        panel.on_missing_values("How many teeth?")
+        QT_APP.processEvents()
+        panel.user_input.setPlainText("20 teeth, module 2")
+        panel.on_send()
+        QT_APP.processEvents()
+    finally:
+        panel.request_work.disconnect()
+
+    assert answered == ["20 teeth, module 2"]
+    assert sent == [], "Enter started a second run instead of answering the question"
+    assert panel._answer_card is None, "the card is still open after being answered"
+    assert panel.user_input.toPlainText() == "", "the composer kept the answer"
+
+
 def test_stopping_releases_a_waiting_question(panel):
     panel.on_missing_values("How many teeth?")
     QT_APP.processEvents()
