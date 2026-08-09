@@ -371,6 +371,10 @@ def _assertion_said(data):
 # that no single turn is felt, large enough that a short Session lands in one.
 RESTORE_CHUNK = 25
 
+# How wide an attached picture is shown in the chat. Wide enough to recognise
+# the drawing, narrow enough that it is not the whole transcript.
+ATTACHMENT_WIDTH = 320
+
 
 class CopilotPanel(QtWidgets.QDockWidget):
     request_work = QtCore.Signal(str, object, str)
@@ -968,6 +972,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
                 self.add_chat_widget(AssistantMessageWidget(
                     "No values given, so the Plan will say what it assumed."))
 
+        elif event.kind == ev.ATTACHED:
+            self._render_attachments(data["files"])
+
         elif event.kind == ev.READING:
             self._render_reading(data["text"])
 
@@ -1034,6 +1041,30 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._thought.append_text(text)
         self.status_line.setText(("Thinking: " + text.replace("\n", " "))[-90:])
         self.status_line.setVisible(True)
+
+    def _render_attachments(self, files):
+        """
+        What the run was shown, in the chat beside the Intent (FCC-88).
+
+        The picture itself, not a filename — the chips come off the bar on Send
+        and nothing replaced them. A restored Session is the case that decides
+        the shape: a clipboard paste is a temp file the panel deletes when the
+        run ends, so the record has to outlive its file. Gone means the name,
+        never a broken image and never a raised exception — `EventStream.emit`
+        swallows a renderer that throws, so the failure would be silent.
+        """
+        for attached in files:
+            name = attached.get("name") or ""
+            picture = QtGui.QPixmap(attached.get("path") or "")
+            if picture.isNull():
+                self.add_chat_widget(TextMessageWidget("📎 %s" % name))
+                continue
+            label = QtWidgets.QLabel()
+            label.setPixmap(picture.scaledToWidth(
+                min(ATTACHMENT_WIDTH, picture.width()),
+                QtCore.Qt.SmoothTransformation))
+            label.setToolTip(name)
+            self.add_chat_widget(label)
 
     def _render_reading(self, text):
         """

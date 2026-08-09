@@ -59,6 +59,12 @@ parameters and its named sketch constraints, then an inventory of the geometry r
 the `Shape`, grouped so twenty identical holes are one entry with a count. Raw sketch
 geometry is deliberately not in it.
 
+**An attachment leaves a trace.** The picture stays in the chat beside the Intent after
+the chips clear, and the run records it on the event stream, so the Session's `.jsonl`
+and a transcript reopened from the Session Picker both say what the run was shown. A
+clipboard paste is a temp file the panel deletes when the run ends — the name is in the
+record, so a Session opened tomorrow still names the drawing it no longer has.
+
 ### The Plan Gate
 
 One mandatory approval, covering every Step in the Plan. There is no per-Step

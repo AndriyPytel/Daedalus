@@ -1199,6 +1199,56 @@ def test_the_acceptance_list_is_on_the_plan_card_before_the_gate(panel):
     assert "17.0 mm across the flats" in _said_in(panel)
 
 
+def test_an_attached_picture_stays_in_the_chat_after_the_chips_clear(panel, tmp_path):
+    """
+    `chip_bar.get_and_clear()` took the chips off the bar and nothing replaced
+    them, so the user could not see what the run had been shown. FCC-88.
+    """
+    from conftest import QtWidgets
+
+    from core.events import ATTACHED, Event
+
+    drawing = tmp_path / "bracket.png"
+    _write_a_png(str(drawing))
+
+    panel.on_event(Event(ATTACHED, {"files": [{"name": "bracket.png",
+                                               "path": str(drawing)}]}))
+    QT_APP.processEvents()
+
+    shown = [w for w in _widgets_in(panel)
+             if isinstance(w, QtWidgets.QLabel) and w.pixmap() is not None
+             and not w.pixmap().isNull()]
+    assert shown, "the picture is not in the transcript"
+    assert shown[-1].toolTip() == "bracket.png"
+
+
+def test_an_attachment_whose_file_has_gone_renders_its_name(panel):
+    """
+    A clipboard paste is a temp file the panel deletes when the run ends, so a
+    Session opened tomorrow points at nothing. A renderer that raised would be
+    swallowed by `EventStream.emit` and the whole transcript would lose it
+    silently. FCC-88.
+    """
+    from core.events import ATTACHED, Event
+
+    before = len(_widgets_in(panel))
+    panel.on_event(Event(ATTACHED, {"files": [{"name": "pasted.png",
+                                               "path": "/nowhere/pasted.png"}]}))
+    QT_APP.processEvents()
+
+    assert len(_widgets_in(panel)) == before + 1
+    assert "pasted.png" in _said_in(panel)
+
+
+def _write_a_png(path):
+    """A file Qt itself will decode — the panel renders it through QPixmap."""
+    from conftest import QtCore, QtGui
+
+    picture = QtGui.QPixmap(8, 8)
+    picture.fill(QtGui.QColor(QtCore.Qt.darkCyan))
+    assert picture.save(path, "PNG")
+
+
 def test_the_reading_stands_above_the_plan_at_the_gate(panel):
     """
     The Reading is its own event since it became its own phase, and the

@@ -13,7 +13,7 @@ import tempfile
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, BLOCKED, ERROR, PLAN, PLAN_REVISED,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, PLAN, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, READING, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
     TOOL_CALL, TOOL_RESULT, EventStream,
 )
@@ -948,6 +948,42 @@ def test_an_attachment_that_has_been_moved_is_dropped_not_fatal():
     assert result.ok
     content = llm.calls[0][-1]["content"]
     assert len([b for b in content if b.get("type") == "image_url"]) == 1
+
+
+def test_a_run_that_had_an_attachment_says_so_on_the_stream():
+    """
+    Nothing recorded an attachment at all: the chips came off the bar and the
+    per-Session log could not say the run had one, so a replayed transcript
+    could not either. FCC-88.
+    """
+    _, events, _, _ = drive([reading_reply(A_READING), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")],
+                            attachments=[RENDER_PNG])
+
+    attached = events.first(ATTACHED)
+    assert attached.data["files"] == [{"name": os.path.basename(RENDER_PNG),
+                                       "path": RENDER_PNG}]
+    assert [event.kind for event in events].index(ATTACHED) == 0
+
+
+def test_the_attachment_is_recorded_even_where_the_file_has_gone():
+    """
+    A clipboard paste is a temp file the panel deletes when the run ends, so
+    the record has to survive its file — the name is in the event. FCC-88.
+    """
+    _, events, _, _ = drive([reading_reply(A_READING), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")],
+                            attachments=["/nowhere/gone.png", RENDER_PNG])
+
+    assert [f["name"] for f in events.first(ATTACHED).data["files"]] == \
+        ["gone.png", os.path.basename(RENDER_PNG)]
+
+
+def test_an_intent_with_no_attachment_adds_no_event():
+    _, events, _, _ = drive([plan_reply("Only"), code_reply("box()"),
+                             verdict_reply("pass")])
+
+    assert events.first(ATTACHED) is None
 
 
 # ── the reading of the drawing ────────────────────────────────────────────────

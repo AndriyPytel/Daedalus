@@ -10,15 +10,16 @@ import json
 import pytest
 
 from core.events import (
-    APPLIED, BLOCKED, KINDS, PLAN, THOUGHT, Event, EventStream, replay,
+    APPLIED, ATTACHED, BLOCKED, KINDS, PLAN, THOUGHT, Event, EventStream, replay,
 )
 
 
 def test_every_specced_event_kind_exists():
     assert set(KINDS) == {
-        "thought", "question", "answer", "reading", "plan", "plan_revised",
-        "step_started", "tool_call", "tool_result", "preflight_failed",
-        "applied", "assertion", "review_verdict", "blocked", "error",
+        "thought", "question", "answer", "attached", "reading", "plan",
+        "plan_revised", "step_started", "tool_call", "tool_result",
+        "preflight_failed", "applied", "assertion", "review_verdict",
+        "blocked", "error",
     }
 
 
@@ -99,6 +100,27 @@ def test_a_logged_run_reads_back_as_the_run(tmp_path):
     assert replayed[0]["data"]["steps"] == ["Make a box", "Fillet it"]
     assert replayed[1]["data"]["tried"][0]["traceback"] == "boom"
     assert all("at" in entry for entry in replayed), "no timestamps to order a bad run by"
+
+
+def test_an_attachment_survives_the_round_trip_by_name(tmp_path):
+    """
+    The whole point of recording it: a Session opened tomorrow can say the run
+    had a picture and what it was called, whether or not the file is still
+    there. FCC-88.
+    """
+    path = str(tmp_path / "session.jsonl")
+    events = EventStream()
+    events.log_to(path)
+
+    events.emit(ATTACHED, files=[{"name": "mm2023-phase1.png",
+                                  "path": "/tmp/gone/mm2023-phase1.png"}])
+    events.emit(PLAN, steps=["Make a box"])
+
+    replayed, truncated = replay(path)
+
+    assert not truncated
+    assert [event.kind for event in replayed] == [ATTACHED, PLAN]
+    assert replayed[0].data["files"][0]["name"] == "mm2023-phase1.png"
 
 
 def test_unserialisable_data_does_not_break_the_log(tmp_path):

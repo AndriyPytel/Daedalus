@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from typing import List
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, BLOCKED, ERROR, PLAN, PLAN_REVISED,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, PLAN, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, READING, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
     TOOL_CALL, TOOL_RESULT, EventStream,
 )
@@ -828,6 +828,16 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
          decide=revise_by_default):
     if cancelled():
         raise Stopped()
+    # What the run was shown, before anything is done with it. Nothing recorded
+    # it at all: the chips came off the bar and the transcript could not say the
+    # run had a picture, live or replayed (FCC-88). The name rides beside the
+    # path because a clipboard paste is a temp file the panel deletes when the
+    # run ends, and a Session opened tomorrow must still be able to say what was
+    # attached.
+    if attachments:
+        events.emit(ATTACHED, files=[{"name": os.path.basename(path), "path": path}
+                                     for path in attachments])
+
     # Once per run, ahead of every Plan: a revision plans from the same reading
     # rather than paying a second call to look at the same picture (ADR-0018).
     how_it_was_read = reading(intent, llm, events, attachments)
