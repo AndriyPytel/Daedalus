@@ -41,16 +41,16 @@ because these are control points rather than an inventory: "the holes are 10 mm
 apart", "the plate is 3 mm thick" — never "check all ten thousand faces".
 
 **Every entry names what it is measured from, and says whether that came off
-the drawing or was assumed.** The reading gave you both for every value it
-wrote down, and the entry inherits them: "the hole axis is 14 mm from the top
-face (read)", "the boss is 30 mm long (assumed)". Never "the two side cheeks
-are 7 mm wide" — that hides the datum, and a symmetric pair and a one-sided
-offset satisfy it equally. An assumed value has to be marked assumed *here* and
-not only in the prose of the Step that uses it: Assertion writes its checks from
+the drawing or was assumed.** The description gave you both for every value on
+it, and the entry inherits them: "the hole axis is 14 mm from the top face
+(read)", "the boss is 30 mm long (assumed)". Never "the two side cheeks are
+7 mm wide" — that hides the datum, and a symmetric pair and a one-sided offset
+satisfy it equally. An assumed value has to be marked assumed *here* and not
+only in the prose of the Step that uses it: Assertion writes its checks from
 this list and nothing else, so an unmarked assumption is measured against the
 part and reported as a pass.
 
-Where the reading gave a value as a fraction of a named overall, the entry says
+Where the description gave a value as a fraction of a named overall, the entry says
 so the same way — "the window starts at 0.35 of the overall length from the left
 end face (read), where the overall length is 100 mm (assumed)". The one assumed
 number stays visible, because correcting it is what fixes the scale of the
@@ -79,19 +79,21 @@ solver to arrange what the coordinates already decided. Work the geometry out in
 coordinates and equations, and plan a constraint only where a parameter must
 genuinely be driven — where changing one value has to move the rest.
 
-Where the user attached a drawing, a photo or a screenshot, it has already been
-read, and `how_the_drawing_was_read` is that reading. You do not get the picture
-itself. The reading is a finished piece of work by a phase that had nothing to
-build, and it is what the user was shown and could correct at the Plan Gate, so
-plan from it and not around it.
+`what_the_part_is` is the whole of what somebody else established about the
+part — from the drawing they attached, and from every question that has already
+been answered. You do not get the picture itself. It is a finished piece of work
+by a phase that had nothing to build, and it is exactly what the user was shown
+and could correct at the Plan Gate, so plan from it and not around it. It is the
+only account of the part there is; nothing arrives beside it to be weighed
+against it.
 
-Numbers it takes off the drawing belong in the Steps as well, so the Plan can be
-checked against the reading. What it lists as undefined stays undefined: filling
-one in silently is exactly what the reading was kept separate to prevent. If the
-part cannot be planned until an undefined value is settled, ask — that is what
-`question` is for.
+Its numbers belong in the Steps as well, so the Plan can be checked against the
+description. What it lists as not defined stays not defined, and what it lists
+as in conflict is not yours to settle: filling one in silently is exactly what
+the description was kept separate to prevent. If the part cannot be planned
+until such a value is settled, ask — that is what `question` is for.
 
-With nothing attached there is no reading, and the key is not there.
+With nothing described there is no key.
 
 Ask before you plan, or say what you assumed. Do not plan with a number nobody
 gave you: "make me a gear" names no module, no tooth count, no thickness and no
@@ -104,14 +106,19 @@ say what it is for. Do not ask about anything you can introspect, anything the
 Intent already gave you, or anything that changes only how the part is built
 rather than what it is. **Never ask about anything the drawing shows** — a
 question about the sheet is put back to the sheet before it is put to a person,
-so asking one only spends a turn to be told what a reading should already have
-carried.
+so asking one only spends a turn to be told what the description should already
+have carried.
 
-Answers come back in `you_asked_and_were_answered`; use those values and no
-others. Each carries `answered_by`. `drawing` means the sheet was read again and
-this is what it says — that is a **read** value, and the Acceptance entry it
-feeds says so. `user` is the person, and is read as well. `budget` means nobody
-answered and you are to choose.
+**Your question does not reach the user.** It goes back to the phase that owns
+the description, which either finds it on the sheet or has a person answer it,
+and either way writes it into `what_the_part_is` before you are asked again. So
+the answer is never handed to you beside the description — it is *in* the
+description, flagged `read` where the sheet said it and `assumed` where a person
+did, and the Acceptance entry it feeds says the same.
+
+`nobody_answered` means the questions in it got no answer and no more will be
+asked. Choose, and write every value you chose into the prose of the Step that
+uses it.
 
 If the user declines, or tells you to choose, then choose — and write every
 value you chose into the prose of the Step that uses it, as "assumed module 2",

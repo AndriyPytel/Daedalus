@@ -3,10 +3,10 @@ What an event says to a person.
 
 The stream is narrated in two places — the Qt panel and `tools/run_slice.py` —
 and they used to be two `if/elif` chains over the same sixteen kinds. The second
-one drifted: it still read the Reading off the `plan` event months after
-ADR-0018 gave the Reading an event of its own, so the slice runner silently
-stopped narrating it and never learned `attached`, `assertion`, `question` or
-`answer` either. Nothing failed, because prose that only exists inside a
+one drifted: it still read the description off the `plan` event months after
+ADR-0018 gave it an event of its own, so the slice runner silently stopped
+narrating it and never learned `attached`, `assertion`, `question` or `answer`
+either. Nothing failed, because prose that only exists inside a
 `QDockWidget` has nothing to test it.
 
 So the wording lives here, once, with no Qt in sight. What is left to each
@@ -16,10 +16,10 @@ a block of code, a picture.
 """
 from dataclasses import dataclass
 
+from core.design import render
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, READING, REVIEW_VERDICT, STEP_STARTED,
-    TOOL_RESULT,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, PLAN_REVISED,
+    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, TOOL_RESULT,
 )
 
 
@@ -29,9 +29,10 @@ class Narration:
     One event, in words.
 
     `line` is the sentence that belongs in the transcript. `title` and `body`
-    are the detail that folds away under it — a traceback, a reading, the
-    attempts behind a block. `status` is the one-line progress note that
-    replaces itself; an event carrying only a status says nothing permanent.
+    are the detail that folds away under it — a traceback, the part as
+    described, the attempts behind a block. `status` is the one-line progress
+    note that replaces itself; an event carrying only a status says nothing
+    permanent.
 
     A `blocked` event is the one that needs both a line and a folded body, so
     the title is a field rather than the line doing double duty.
@@ -73,8 +74,10 @@ def narrate(event) -> Narration:
         names = [file["name"] for file in data.get("files") or []]
         return Narration(line="Attached: " + ", ".join(names)) if names else _NOTHING
 
-    if kind == READING:
-        return Narration(title="How the drawing was read", body=data["text"])
+    if kind == DESIGN:
+        # The structure, laid out, rather than the JSON it travels as: the Gate
+        # is where a misreading is cheap to correct, and a dump is not read.
+        return Narration(title="What the part is", body=render(data["model"]))
 
     if kind == PLAN_REVISED:
         return Narration(line="Revised the Plan: " + data["reason"])

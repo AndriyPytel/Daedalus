@@ -9,7 +9,7 @@ import pytest
 
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, KINDS, PLAN,
-    PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, READING, REVIEW_VERDICT,
+    DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
     STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, Event,
 )
 from core.narrate import Narration, narrate
@@ -23,7 +23,7 @@ SAMPLES = {
     # and a sample that says nothing would not prove the kind is covered.
     ANSWER: {"text": "the pockets go through", "by": "drawing"},
     ATTACHED: {"files": [{"name": "sheet.pdf", "path": "/tmp/sheet.pdf"}]},
-    READING: {"text": "Base 40×40×10"},
+    DESIGN: {"model": {"envelope": {"length": {"value": "40 mm", "flag": "read"}}}},
     PLAN: {"steps": ["Sketch the base"], "acceptance": []},
     PLAN_REVISED: {"steps": ["Sketch the base"], "reason": "the pocket was too deep"},
     STEP_STARTED: {"index": 1, "total": 3, "description": "Sketch the base"},
@@ -57,12 +57,16 @@ def test_the_shapes_that_are_not_prose_say_nothing(kind):
     assert narrate(an_event(kind)) == Narration()
 
 
-def test_a_reading_is_a_row_that_carries_the_reading():
-    said = narrate(an_event(READING))
+def test_the_part_is_a_row_that_carries_the_structure_laid_out():
+    """
+    Laid out rather than dumped: the Gate is where a misreading is cheap to
+    correct, and JSON is not read. FCC-93.
+    """
+    said = narrate(an_event(DESIGN))
 
-    assert said.title == "How the drawing was read"
-    assert said.body == "Base 40×40×10"
-    assert not said.line, "a reading is the row, not a line above it"
+    assert said.title == "What the part is"
+    assert said.body == "Envelope\n  length: 40 mm (read)"
+    assert not said.line, "the description is the row, not a line above it"
 
 
 def test_the_users_own_answer_is_not_repeated_back_at_them():

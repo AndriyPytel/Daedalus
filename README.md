@@ -19,26 +19,36 @@ is a live parametric feature tree you can keep editing, not a dead mesh or an ST
 ## How a run works
 
 ```
-Intent ──► Reading ──► Plan ──► [ Plan Gate ] ──► Step 1 ──► … ──► Assertion ──► Review
+Intent ──► Design ──► Plan ──► [ Plan Gate ] ──► Step 1 ──► … ──► Assertion ──► Review
                                       │             │                              │
                                  you approve   Lint → Preflight → Apply       verdict returns
                                  the whole Plan   (disposable worker)             to Plan
 ```
 
-**Reading → Plan → Execute → Assertion → Review is a fixed order with deterministic
-routing** (ADR-0003, ADR-0018). Reading says what is on the drawing, Plan produces the
+**Design → Plan → Execute → Assertion → Review is a fixed order with deterministic
+routing** (ADR-0003, ADR-0018, ADR-0019). Design says what the part is, Plan produces the
 Steps, Execute works through them one at a time, Assertion measures the finished part
 against the Acceptance list, Review judges the outcome against the Intent, and a failure
 from either of the last two returns to Plan — never to Execute. There is no model-chosen
 speaker selection anywhere.
 
-**Reading is a context of its own, with nothing to build** (ADR-0018). It used to be part
-of the same call that produced the Plan, and one context answering "what is on the
-drawing" and "how do I build it" at once invents the numbers the second question needs:
-one run read an overall length of 108 as 100 and then wrote itself the missing term that
-made its own arithmetic close. A phase with nothing to build has no reason to write a
-number in — where it cannot read a value it says so. It runs once per run, is reused by
-every revision, and with nothing attached it does not run at all.
+**Design is a context of its own, with nothing to build** (ADR-0018, ADR-0019). It used
+to be part of the same call that produced the Plan, and one context answering "what is on
+the drawing" and "how do I build it" at once invents the numbers the second question
+needs: one run read an overall length of 108 as 100 and then wrote itself the missing term
+that made its own arithmetic close. A phase with nothing to build has no reason to write a
+number in — where nobody supplied a value it says so. It runs once per run against the
+sheet, is reused by every revision, and with nothing attached it does not run at all.
+
+**The part is a structure that only ever grows** (ADR-0019). Design holds it as datums, an
+envelope, features — each with an id, a kind, a topology, a position from a named datum
+and the views it was seen in — plus what is in conflict and what nobody defined. Every
+source merges into that one model and none overwrites it: a field already filled cannot
+change, and two dimensions that cannot both be true stay recorded as a conflict for you to
+settle at the Gate rather than being reconciled by the machine. One run read the depth as
+100 mm off a section and planned 150 × 50 × 50 two turns later; the 100 was never
+overruled, it was simply gone. Plan is handed that one model under one key, so there is
+nothing left for it to adjudicate.
 
 **Execute has one edge back to Plan** (ADR-0013). A Step that is out of date, or that
 cannot be built once its attempts are spent, returns to Plan to be written differently
@@ -60,7 +70,7 @@ the `Shape`, grouped so twenty identical holes are one entry with a count. Raw s
 geometry is deliberately not in it.
 
 **A PDF is a full attachment.** Drawings arrive as PDFs, and the "+" button offers them
-beside PNG, JPEG, GIF and WebP. A PDF rides to the Reading phase and to Review as a `file`
+beside PNG, JPEG, GIF and WebP. A PDF rides to the Design phase and to Review as a `file`
 content block; there is no page rendering on our side. A model that cannot read one says
 so before the run starts, naming the file and the model, the same way an unreadable
 attachment already does — and every attachment now goes out labelled as what it is rather
@@ -80,13 +90,13 @@ in this Session — is deleted without asking.
 
 If you attached a drawing, the Gate also shows **how it was read** — the base dimensions,
 each feature with its size and position, and, separately, what the drawing does not
-define — above the Plan that was written from it. That reading is the point of the Gate
-when there is a picture involved: a misreading is something to correct here, in one
+define — above the Plan that was written from it. That description is the point of the
+Gate when there is a picture involved: a misreading is something to correct here, in one
 sentence, rather than to recognise later in the geometry. It is carried into Execute as
 text, and the drawing itself is shown to Review, so the verdict compares the result to
 what you actually showed.
 
-**A reading is not prose.** Every value comes with what it is measured from — a named
+**A description is not prose.** Every value comes with what it is measured from — a named
 face, axis, plane or edge — with a value that is either millimetres or a fraction of a
 named overall, and with a `read` or `assumed` flag. A magnitude without its datum is the
 whole defect: read "7 from the top face, 14 to the hole axis, over 30" as "two 7 mm
@@ -98,20 +108,22 @@ wrong shape. The Acceptance list inherits both the datum and the flag, because A
 writes its checks from that list and would otherwise measure the part against an invented
 number and report a pass.
 
-**The sheet is asked before you are.** No reading of a drawing is exhaustive, and Plan's
-only escape from a value the reading did not carry used to be a question to you — about a
-sheet you attached so you would not have to answer for it. A question about the drawing
-now goes back to the Reading phase first, which still has the picture, and only reaches
-you if the sheet genuinely does not say. The transcript shows which happened, and an
-answer read off the drawing is a `read` value, not an assumed one.
+**The question belongs to whoever owns the description.** Design asks you itself, before
+any Plan exists, for what it sees empty in its own model. A question Plan raises does not
+reach you at all: it goes back to Design, which either finds it on the sheet — the sheet is
+asked before you are, since you attached it so you would not have to answer for it — or
+has you answer. Either way the answer is merged into the description before the next Plan,
+so what Plan reads is one account of the part and not an answer beside it. The transcript
+shows which happened, and an answer read off the drawing is a `read` value where one you
+gave is `assumed`.
 
-**The reading opens with a sweep of the sheet** — every callout printed on it, listed with
-the view it is in — and every entry on that list has to end up either in the reading or in
+**The description opens with a sweep of the sheet** — every callout printed on it, listed
+with the view it is in — and every entry on that list has to end up either on the part or in
 the not-defined list with a reason, so a dimension that was missed is something you can
 see was missed. And **"not dimensioned" is not "not defined"**: which way an arc bows,
 which side of a section is material, whether a cut goes in or a boss stands out, whether a
 hole goes through — none of that is dimensioned on any drawing and all of it is on the
-sheet. A radius in particular is only half a reading; without its centre placed, `R30`
+sheet. A radius in particular is only half read; without its centre placed, `R30`
 describes a wall that curves in and a wall that curves out equally well.
 
 ### Lint, then Preflight, then Apply
@@ -146,7 +158,8 @@ prompt, so a phase never discovers it by failing.
 
 | Path | What lives there |
 |---|---|
-| `core/loop.py` | The Reading → Plan → Execute → Assertion → Review loop, budgets, the Plan Gate |
+| `core/loop.py` | The Design → Plan → Execute → Assertion → Review loop, budgets, the Plan Gate |
+| `core/design.py` | The part Design holds: the merge that never overwrites, and how it reads at the Gate |
 | `core/tools.py` | The Tool registry — the only sanctioned route to the Document |
 | `core/freecad_tools.py` | The Tools themselves: snapshot, describe_object, dependencies, apply_step, and the `TRAPS` |
 | `core/lint.py` | The AST lint that runs before Preflight |

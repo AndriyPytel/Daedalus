@@ -14,8 +14,8 @@ from core.loop import (
     ACCEPT, AMEND, APPROVE, REJECT, REVISE, START_OVER, Approval, Budgets, run,
 )
 from tests.test_loop import (
-    FakeTools, assertion_reply, code_reply, failed, obsolete_reply, plan_reply,
-    question_reply, verdict_reply,
+    FakeTools, assertion_reply, code_reply, design_reply, failed, obsolete_reply,
+    plan_reply, question_reply, verdict_reply,
 )
 
 
@@ -217,6 +217,7 @@ def test_a_replan_after_an_amendment_asks_rather_than_planning_blind():
     result, _, tools = drive([
         plan_reply("Add a Part::Box"),
         question_reply("Which thickness?"),
+        design_reply({"envelope": {"thickness": {"value": "10 mm", "flag": "assumed"}}}),
         plan_reply("Create a 10mm Body"), code_reply("a()"), verdict_reply("pass"),
     ], gate, ask=lambda question: asked.append(question) or "10mm")
 
