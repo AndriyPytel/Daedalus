@@ -1003,9 +1003,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
             if self._plan_widget:
                 self._plan_widget.mark(data["step"], PLAN_DONE)
 
-        elif event.kind == ev.RENDER:
-            self._render_image(data["path"])
-
         elif event.kind == ev.ASSERTION:
             # Its own line, never REVIEW_VERDICT's: the checks are code, and
             # Review deliberately never sees code (ADR-0003).
@@ -1085,16 +1082,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
                 if entry.get("traceback"):
                     panel.append_text("\n" + entry["traceback"])
                 panel.append_text("\n" + "─" * 40 + "\n")
-
-    def _render_image(self, path):
-        label = QtWidgets.QLabel()
-        pixmap = QtGui.QPixmap(path)
-        if pixmap.isNull():
-            return
-        label.setPixmap(pixmap.scaledToWidth(360, QtCore.Qt.SmoothTransformation))
-        label.setToolTip("The render Review judged this run by: " + path)
-        label.setStyleSheet("padding: 6px 12px;")
-        self.add_chat_widget(label)
 
     # ── The two places the user keeps control ──────────────────────────────────
 

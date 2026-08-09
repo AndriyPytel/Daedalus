@@ -7,6 +7,8 @@ mixes versions and would reintroduce the removed API this project exists to
 eliminate (ADR-0006). What these Tools report is true of the user's exact
 build, because it was asked of it.
 """
+import math
+
 from core.tools import NO_PARAMETERS, ToolError, ToolRegistry
 
 # Introspection reports what exists, not always what is correct. These are the
@@ -108,21 +110,6 @@ def _active_view():
         return None
 
 
-def capture(path, size=(800, 600)):
-    """
-    The 3D view as the user is looking at it right now, or None with no GUI.
-
-    The panel's picture after each Apply. What the user sees beside the panel
-    is now what the panel shows, because it is the same view — which a
-    software rasterisation of a throwaway copy never was.
-    """
-    view = _active_view()
-    if view is None:
-        return None
-    view.saveImage(path, size[0], size[1], "Current")
-    return path
-
-
 def capture_review_views(paths, size=(800, 600)):
     """
     The four views Review judges, captured once, camera put back afterwards.
@@ -167,6 +154,27 @@ def _errors(obj):
     return [s for s in (obj.State or []) if s in ("Invalid", "Error", "Touched")]
 
 
+# ponytail: anything bigger than a kilometre is scaffolding, not a part.
+# Widen if someone models a bridge.
+_SCAFFOLDING = 1e6
+
+
+def _measurable(obj):
+    """
+    The object's bounding box where it is modelled geometry, else None.
+
+    A datum plane is a real Shape with a real face and it is 1e100 across, so
+    everything that measures the part has to refuse the same things.
+    """
+    shape = getattr(obj, "Shape", None)
+    if shape is None or shape.isNull() or not shape.Faces:
+        return None
+    bound = shape.BoundBox
+    if not bound.isValid() or bound.DiagonalLength > _SCAFFOLDING:
+        return None
+    return bound
+
+
 def _overall_size(doc):
     """
     How big the modelled part is, `[x, y, z]` in mm, or None if nothing is.
@@ -178,21 +186,160 @@ def _overall_size(doc):
     A Body's Origin carries three planes and three axes, each 1e100 across, so
     a literal union of every bounding box makes any part 2e+100 mm wide.
     """
-    # ponytail: anything bigger than a kilometre is scaffolding, not a part.
-    # Widen if someone models a bridge.
-    scaffolding = 1e6
     box = None
     for obj in doc.Objects:
-        shape = getattr(obj, "Shape", None)
-        if shape is None or shape.isNull() or not shape.Faces:
-            continue
-        bound = shape.BoundBox
-        if not bound.isValid() or bound.DiagonalLength > scaffolding:
+        bound = _measurable(obj)
+        if bound is None:
             continue
         box = bound if box is None else box.united(bound)
     if box is None:
         return None
     return [round(box.XLength, 6), round(box.YLength, 6), round(box.ZLength, 6)]
+
+
+# ── the Description ───────────────────────────────────────────────────────────
+
+# A constraint holds an angle in radians; every place a person reads one, it is
+# degrees.
+_ANGULAR = ("Angle", "AngleViaPoint")
+_DIMENSIONAL = ("Distance", "DistanceX", "DistanceY", "Radius", "Diameter")
+
+
+def description(doc):
+    """
+    What the Document now holds, in the two layers Review can judge by.
+
+    The feature tree with its parameters is what the part was asked to be, and
+    it is trustworthy because Lint forces the tree to be genuine PartDesign
+    (ADR-0012). The inventory read off `Shape` is what it came out as — the
+    only one of the two that reports a hole nobody thought to ask about, since
+    the Acceptance list is written before the part exists.
+
+    Both layers read data that was already there; neither is a subsystem.
+    """
+    return {"features": [_described(obj) for obj in doc.Objects],
+            "geometry": _inventory(doc)}
+
+
+def _described(obj):
+    described = {"name": obj.Name, "label": obj.Label, "type": obj.TypeId}
+    parameters = _parameters(obj)
+    if parameters:
+        described["parameters"] = parameters
+    constraints = _constraints(obj)
+    if constraints:
+        described["constraints"] = constraints
+    return described
+
+
+def _parameters(obj):
+    """
+    The named values of one feature, as the property editor would show them.
+
+    Hidden and read-only are FreeCAD's own answer to "is this editable here":
+    a Pad extruded one side marks the other side's length read-only, a Hole
+    cut through marks its depth read-only. It is not a relevance filter — an
+    unthreaded Hole still reports its thread properties, because this build
+    leaves them editable — so what comes out is every value the property
+    editor would let someone type into, and not a curated list. A link, a
+    shape or a placement is not a value to judge by, so those go.
+    """
+    parameters = {}
+    for prop in getattr(obj, "PropertiesList", ()):
+        if prop == "Label" or set(obj.getEditorMode(prop)) & {"Hidden", "ReadOnly"}:
+            continue
+        try:
+            value = _named_value(getattr(obj, prop))
+        except Exception:
+            continue
+        if value is not None:
+            parameters[prop] = value
+    return parameters
+
+
+def _named_value(value):
+    """The property's value where it is a number someone could name, else None."""
+    if isinstance(value, (bool, int, float, str)):
+        return value
+    if hasattr(value, "Value") and hasattr(value, "Unit"):      # a Quantity: "10.0 mm"
+        return str(value)
+    return None
+
+
+def _constraints(obj):
+    """
+    A sketch's driving, named constraints — and deliberately not its geometry.
+
+    Raw geometry is the form in which a defect is formally present and
+    practically invisible: the coordinates of every LineSegment are the most
+    tokens in the Description for the least judgement. A named constraint is
+    the same dimension, said once, by someone who chose to name it.
+    """
+    return {constraint.Name: _dimension(constraint)
+            for constraint in getattr(obj, "Constraints", ())
+            if constraint.Name and constraint.Driving}
+
+
+def _dimension(constraint):
+    if constraint.Type in _ANGULAR:
+        return "%.6g deg" % math.degrees(constraint.Value)
+    if constraint.Type in _DIMENSIONAL:
+        return "%.6g mm" % constraint.Value
+    return constraint.Type
+
+
+def _inventory(doc):
+    """
+    The geometry as it came out, one entry per family of surfaces.
+
+    Grouping by kind, diameter and axis is what keeps this a description: on a
+    real part twenty identical holes are one entry with a count, and ungrouped
+    they are twenty. Only what nothing else uses is measured, so this is the
+    part as it stands and not every intermediate feature it was built from.
+    """
+    solids, seats = 0, {}
+    for obj in doc.Objects:
+        if getattr(obj, "InList", None) or _measurable(obj) is None:
+            continue
+        shape = obj.Shape
+        solids += len(shape.Solids)
+        for face in shape.Faces:
+            family, seat = _family(face.Surface)
+            seats.setdefault(family, []).append(seat)
+
+    surfaces = []
+    for family in sorted(seats, key=str):
+        kind, diameter, axis = family
+        seated = seats[family]
+        entry = {"kind": kind}
+        if diameter is not None:
+            entry["diameter_mm"] = diameter
+            entry["axis"] = list(axis)
+        # Two faces of one bore share a seat on the axis; six flats share nothing.
+        entry["count"] = len(set(seated)) if all(seated) else len(seated)
+        surfaces.append(entry)
+    return {"solids": solids, "surfaces": surfaces}
+
+
+def _family(surface):
+    """Which family of surfaces this face belongs to, and where along it it sits."""
+    kind = surface.__class__.__name__
+    radius = getattr(surface, "Radius", None)
+    axis = getattr(surface, "Axis", None)
+    centre = getattr(surface, "Center", None)
+    if radius is None or axis is None:
+        return (kind, None, None), None
+    return ((kind, round(radius * 2, 6), _along(axis)),
+            tuple(round(v, 6) for v in centre) if centre is not None else None)
+
+
+def _along(axis):
+    """An axis is a line: a bore's normal pointing in or out is the same axis."""
+    direction = [round(value, 6) for value in (axis.x, axis.y, axis.z)]
+    leading = next((value for value in direction if value), 0.0)
+    flip = -1 if leading < 0 else 1
+    # + 0.0 so a flipped zero reads as 0.0 rather than -0.0.
+    return tuple(value * flip + 0.0 for value in direction)
 
 
 def build_registry(document=None, pipeline=None) -> ToolRegistry:

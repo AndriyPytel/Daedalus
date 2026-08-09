@@ -59,16 +59,18 @@ def test_a_step_lands_in_the_document(pipeline, doc):
     assert doc.getObject("Box").Length.Value == 10
 
 
-def test_a_step_headless_brings_back_no_picture_at_all(pipeline):
+def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline):
     """
-    Preflight stopped rendering (ADR-0015). The panel's picture is now the
-    viewport, and a test process has no viewport — so a Step brings back no
-    render, and nothing downstream depends on one per Step any more.
+    An Apply now answers with the part rather than a picture of it (FCC-81):
+    the feature with its parameters, and the geometry read off the Shape.
     """
     result = pipeline.apply(BOX)
 
     assert result.ok, result.traceback
-    assert result.render is None
+    described = {f["name"]: f for f in result.description["features"]}
+    assert described["Box"]["parameters"]["Length"] == "10.0 mm"
+    assert result.description["geometry"] == {"solids": 1,
+                                              "surfaces": [{"kind": "Plane", "count": 6}]}
 
 
 def test_the_headless_fallback_still_draws_the_document_once(pipeline):

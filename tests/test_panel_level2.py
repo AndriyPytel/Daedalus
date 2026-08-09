@@ -797,6 +797,25 @@ def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
     assert "Review: pass" in said
 
 
+def test_a_session_recorded_before_the_step_render_went_away_still_opens(panel, tmp_path):
+    """
+    An old transcript carries `render` events, and this build has no such kind
+    any more (FCC-81). The renderer skips it the way it skips any kind it does
+    not know: a Session is not refused over an event that has been retired.
+    """
+    log = str(tmp_path / "before.jsonl")
+    _a_transcript(log)
+    with open(log, "a", encoding="utf-8") as handle:
+        handle.write('{"kind": "render", "at": 1.0, '
+                     '"data": {"path": "/tmp/copilot_step_1.png", "step": 1}}\n')
+    index, _ = panel.chat_sessions.add_new_chat("before")
+    panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
+
+    panel.switch_session(index)
+
+    assert "Review: pass" in _said_in(panel), "the transcript did not replay"
+
+
 def test_a_session_is_replayed_once_however_often_it_is_opened(panel, tmp_path):
     log = str(tmp_path / "twice.jsonl")
     _a_transcript(log)

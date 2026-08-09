@@ -5,9 +5,11 @@ Every property name asserted here is asserted against the running FreeCAD, not
 against a fixture. A fixture would happily agree that `sketch.Support` exists;
 this build will not (ADR-0006, ADR-0007).
 """
+import json
+
 import pytest
 
-from core.freecad_tools import build_registry
+from core.freecad_tools import build_registry, description
 from core.tools import ToolError
 
 pytestmark = pytest.mark.freecad
@@ -257,6 +259,113 @@ def test_materials_unfiltered_is_a_page_and_says_so(tools):
 
 def test_a_name_that_matches_nothing_is_an_empty_list_not_an_error(tools):
     assert tools.call("materials", {"name": "unobtainium"}) == {"materials": [], "count": 0}
+
+
+# ── The Description Review judges by (FCC-81) ─────────────────────────────────
+
+
+def _plate(doc, holes=1):
+    """
+    A plate with Ø8 holes through it, built as a real PartDesign tree.
+
+    A `Part::Box` would describe as a box and prove nothing: the Description's
+    first layer is the feature tree, and it is trustworthy only because Lint
+    forces the tree to be genuine PartDesign (ADR-0012).
+    """
+    import FreeCAD as App
+    import Part
+    import Sketcher
+
+    length = 10 * (holes + 1)
+    body = doc.addObject("PartDesign::Body", "Body")
+    profile = doc.addObject("Sketcher::SketchObject", "BaseProfile")
+    body.addObject(profile)
+    corners = [(0, 0), (length, 0), (length, 20), (0, 20)]
+    for start, end in zip(corners, corners[1:] + corners[:1]):
+        profile.addGeometry(Part.LineSegment(App.Vector(start[0], start[1], 0),
+                                             App.Vector(end[0], end[1], 0)), False)
+    for edge in range(4):
+        profile.addConstraint(Sketcher.Constraint("Coincident", edge, 2, (edge + 1) % 4, 1))
+    named = profile.addConstraint(Sketcher.Constraint("DistanceY", 1, 1, 1, 2, 20.0))
+    profile.renameConstraint(named, "plate_width")
+
+    pad = doc.addObject("PartDesign::Pad", "Pad")
+    body.addObject(pad)
+    pad.Profile = profile
+    pad.Length = 10
+    doc.recompute()
+
+    centres = doc.addObject("Sketcher::SketchObject", "HoleProfile")
+    body.addObject(centres)
+    for index in range(holes):
+        centres.addGeometry(Part.Circle(App.Vector(10 + index * 10, 10, 0),
+                                        App.Vector(0, 0, 1), 4.0), False)
+    hole = doc.addObject("PartDesign::Hole", "Hole")
+    body.addObject(hole)
+    hole.Profile = centres
+    hole.Diameter = 8.0
+    hole.DepthType = "ThroughAll"
+    # The profile sits on XY and the material is above it, so the cut goes up.
+    hole.Reversed = True
+    doc.recompute()
+    return doc
+
+
+@pytest.fixture
+def described(doc):
+    return description(_plate(doc))
+
+
+def _feature(described, name):
+    return {entry["name"]: entry for entry in described["features"]}[name]
+
+
+def test_a_feature_is_described_by_its_parameters_not_by_its_type_alone(described):
+    """
+    `{name, label, type}` says a `PartDesign::Pad` exists and not one dimension
+    of it, so there was nothing to judge and the whole weight fell on the
+    picture. FCC-81.
+    """
+    assert _feature(described, "Pad")["parameters"]["Length"] == "10.0 mm"
+    assert _feature(described, "Hole")["parameters"]["Diameter"] == "8.0 mm"
+    assert _feature(described, "Hole")["parameters"]["DepthType"] == "ThroughAll"
+
+
+def test_a_hole_reads_off_the_shape_although_nobody_asked_for_it(described):
+    """
+    The Acceptance list is written before the part exists, so a hole nobody
+    thought to name is in no list — but it is in the `Shape` unconditionally.
+    """
+    assert described["geometry"]["solids"] == 1
+    assert [entry for entry in described["geometry"]["surfaces"]
+            if entry["kind"] == "Cylinder"] == [
+        {"kind": "Cylinder", "diameter_mm": 8.0, "axis": [0.0, 0.0, 1.0], "count": 1}]
+
+
+def test_twenty_identical_holes_are_one_entry_rather_than_twenty(doc):
+    """Without grouping, the inventory of a real part is a dump."""
+    surfaces = description(_plate(doc, holes=20))["geometry"]["surfaces"]
+
+    assert [entry for entry in surfaces if entry["kind"] == "Cylinder"] == [
+        {"kind": "Cylinder", "diameter_mm": 8.0, "axis": [0.0, 0.0, 1.0], "count": 20}]
+    assert len(surfaces) == 2, "the flats grouped into one entry too: %s" % surfaces
+
+
+def test_the_named_driving_constraints_are_described_and_the_geometry_is_not(described):
+    """
+    Sketch geometry is the form in which a defect is formally present and
+    practically invisible, and it is the most tokens for the least judgement.
+    A named constraint is the same fact, said once.
+    """
+    profile = _feature(described, "BaseProfile")
+
+    assert profile["constraints"] == {"plate_width": "20 mm"}
+    assert "Geometry" not in profile.get("parameters", {})
+    assert "LineSegment" not in json.dumps(described)
+
+
+def test_a_document_with_nothing_modelled_is_still_described(doc):
+    assert description(doc) == {"features": [], "geometry": {"solids": 0, "surfaces": []}}
 
 
 # ── No Document ───────────────────────────────────────────────────────────────

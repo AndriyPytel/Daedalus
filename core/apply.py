@@ -13,6 +13,7 @@ import os
 import threading
 from dataclasses import dataclass, field
 
+from core.freecad_tools import description
 from core.lint import lint
 from core.preflight import PreflightWorker, copy_of
 from core.preflight_worker import step_namespace
@@ -29,14 +30,13 @@ class ApplyResult:
 
     ok: bool
     traceback: str = ""
-    render: str = None
-    objects: list = field(default_factory=list)
+    description: dict = field(default_factory=dict)
     created: list = field(default_factory=list)
 
     def as_tool_result(self) -> dict:
         if self.ok:
             return {"status": "applied", "created": self.created,
-                    "objects": self.objects, "render": self.render}
+                    "description": self.description}
         return {"status": "failed", "traceback": self.traceback}
 
 
@@ -156,13 +156,6 @@ def run_in_transaction(doc, code, label="Copilot Step"):
 # ── the pipeline ──────────────────────────────────────────────────────────────
 
 
-def _viewport(path):
-    """The real 3D view, imported late so Level 1 never reaches for a GUI."""
-    from core.freecad_tools import capture
-
-    return capture(path)
-
-
 def refuse_without_asking(kinds):
     """
     The default answer when nothing is wired up to ask the user.
@@ -183,14 +176,12 @@ class ApplyPipeline:
     user's say-so; modifying one does not, because the Plan Gate already
     approved the Step that said so.
 
-    `dispatch`, `worker`, `transaction`, `confirm` and `view_capture` are
-    injected so Level 1 can drive the whole pipeline without Qt or a headless
-    FreeCAD.
+    `dispatch`, `worker`, `transaction` and `confirm` are injected so Level 1
+    can drive the whole pipeline without Qt or a headless FreeCAD.
     """
 
     def __init__(self, document=None, worker=None, dispatch=on_main_thread,
-                 transaction=None, render_dir=None, confirm=None, owned=None,
-                 view_capture=None):
+                 transaction=None, render_dir=None, confirm=None, owned=None):
         self._document = document
         self._worker = worker
         self._dispatch = dispatch
@@ -199,7 +190,6 @@ class ApplyPipeline:
         self._renders = 0
         self._confirm = confirm or refuse_without_asking
         self.owned = set(owned or ())
-        self._view_capture = view_capture or _viewport
 
     @property
     def worker(self) -> PreflightWorker:
@@ -263,20 +253,10 @@ class ApplyPipeline:
                               tb.format_exception(type(exc), exc, exc.__traceback__)),
             )
 
-        after = self._dispatch(lambda: [{"name": o.Name, "label": o.Label, "type": o.TypeId}
-                                        for o in doc.Objects])
-        created = [o["name"] for o in after if o["name"] not in before]
+        described = self._dispatch(lambda: description(doc))
+        created = [o["name"] for o in described["features"] if o["name"] not in before]
         self.owned.update(created)
-        return ApplyResult(ok=True, render=self._capture(), objects=after, created=created)
-
-    def _capture(self):
-        """
-        The viewport after this Apply, for the panel. None when there is no GUI.
-
-        On the main thread, because that is where Qt and the 3D view live —
-        the same dispatch every other Document touch here goes through.
-        """
-        return self._dispatch(lambda: self._view_capture(self._render_path()))
+        return ApplyResult(ok=True, description=described, created=created)
 
     def check_assertions(self, code):
         """

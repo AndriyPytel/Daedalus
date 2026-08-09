@@ -14,7 +14,7 @@ import pytest
 
 from core.events import (
     ANSWER, APPLIED, ASSERTION, BLOCKED, ERROR, PLAN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, RENDER, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
+    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
     TOOL_CALL, TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import TRAPS
@@ -40,6 +40,14 @@ def _a_real_png():
 
 
 RENDER_PNG = _a_real_png()
+
+# What a real Apply hands back: the feature tree with its parameters, and the
+# geometry read off the Shape (FCC-81).
+DESCRIPTION = {
+    "features": [{"name": "Box", "label": "Box", "type": "Part::Box",
+                  "parameters": {"Length": "10.0 mm"}}],
+    "geometry": {"solids": 1, "surfaces": [{"kind": "Plane", "count": 6}]},
+}
 
 
 # ── scripted phase replies ────────────────────────────────────────────────────
@@ -95,9 +103,7 @@ class FakeTools:
     one entry per call; anything left over is a success.
     """
 
-    APPLIED = {"status": "applied", "created": ["Box"],
-               "objects": [{"name": "Box", "label": "Box", "type": "Part::Box"}],
-               "render": RENDER_PNG}
+    APPLIED = {"status": "applied", "created": ["Box"], "description": DESCRIPTION}
 
     def __init__(self, applies=(), views=None, checks=()):
         self.applies = list(applies)
@@ -247,13 +253,15 @@ def test_the_sketch_construction_rule_reaches_plan_and_execute():
     assert "must genuinely be driven" not in review_system
 
 
-def test_the_derived_geometry_invariant_reaches_execute_and_not_the_traps():
+def test_execute_is_no_longer_asked_to_assert_inside_a_step():
     """
-    Checking a derivation against an invariant of its own is prompt copy: it
-    names no type, no signature and no version, and would read the same
-    against FreeCAD 0.21. Execute is the phase that writes the derivation, so
-    it is the phase that gets the rule, and it stays out of TRAPS, which is for
-    facts about this build. FCC-54.
+    FCC-54 asked Execute to assert an invariant of its own derivation, because
+    at the time there was nowhere else to check a result. There is now: Plan
+    writes the Acceptance list and the Assertion phase measures the finished
+    run (ADR-0017). What the rule actually produced was ten to twenty
+    preconditions per Step — `len(bodies) == 1`, `base.TypeId == 'PartDesign::Pad'`
+    — and a precondition that does not hold is an `AssertionError` out of the
+    transaction, so it spends one of the Step's three attempts. FCC-83.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -261,13 +269,15 @@ def test_the_derived_geometry_invariant_reaches_execute_and_not_the_traps():
         verdict_reply("pass"),
     ])
     # The prompts are wrapped copy; a sentence crosses line breaks.
-    _, execute_system, review_system = (
-        " ".join(text.split()) for text in _system_messages(llm))
+    _, execute_system, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
-    assert "invariant of its own" in execute_system
-    assert "thinner as the radius grows" in execute_system
-    assert "invariant of its own" not in review_system
-    assert not any("thinner as the radius grows" in trap for trap in TRAPS)
+    for cancelled in ("invariant of its own", "assert it in the Step's code",
+                      "thinner as the radius grows"):
+        assert cancelled not in execute_system, \
+            "execute.md still asks for an assert inside a Step: " + cancelled
+
+    # The rule this one is not: a Step still may not swallow its own traceback.
+    assert "Let a Step fail" in execute_system
 
 
 def test_reading_may_not_invent_its_way_out_of_a_contradiction():
@@ -699,13 +709,35 @@ def test_review_receives_the_intent_the_render_and_the_document_state():
     assert "Part::Box" in asked, "Review did not see the final Document state"
 
 
+def test_review_and_assertion_are_both_given_the_whole_description():
+    """
+    Both phases judge a finished part, so both get the same description of it
+    — the features with their parameters and the geometry off the Shape, not
+    a list of type names. FCC-81.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Only", acceptance=["10 mm on a side"]),
+        code_reply("box()"),
+        assertion_reply("assert True, '10 mm on a side'"),
+        verdict_reply("pass"),
+    ])
+
+    to_assertion = json.loads(llm.calls[2][-1]["content"])
+    # The prose about the views is appended after the JSON, past a blank line.
+    to_review = json.loads(llm.calls[3][-1]["content"][0]["text"].split("\n\n")[0])
+
+    assert to_assertion["the_document_as_it_now_stands"] == DESCRIPTION
+    assert to_review["the_document_as_it_now_stands"] == DESCRIPTION
+
+
 def test_review_is_shown_the_render_as_a_picture_not_as_a_path():
     """
     A path is meaningless to a model — it cannot open files. Sending one would
     mean Review judged on the object list while the panel showed the user an
     image the model never saw.
     """
-    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")],
+                         views=[RENDER_PNG])
 
     content = llm.calls[-1][-1]["content"]
     images = [block for block in content if block.get("type") == "image_url"]
@@ -718,8 +750,7 @@ def test_review_is_shown_the_render_as_a_picture_not_as_a_path():
 def test_review_is_told_when_there_is_no_render_to_judge_by():
     """A sketch-only Step produces no render; Review must not be left guessing."""
     tools = FakeTools(applies=[{"status": "applied", "created": ["Sketch"],
-                                "objects": [{"name": "Sketch", "label": "Sketch",
-                                             "type": "Sketcher::SketchObject"}]}])
+                                "description": {"features": [], "geometry": {}}}])
     llm = ScriptedLLMClient([plan_reply("Only"), code_reply("sketch()"), verdict_reply("pass")])
 
     run("Sketch a square", llm=llm, tools=tools.registry)
@@ -877,7 +908,7 @@ def test_review_is_shown_the_drawing_beside_the_render():
     llm = ScriptedLLMClient([plan_reply("Only", reading=A_READING),
                              code_reply("box()"), verdict_reply("pass")])
 
-    run("Build this bracket", llm=llm, tools=FakeTools().registry,
+    run("Build this bracket", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
         attachments=[RENDER_PNG])
 
     content = llm.calls[-1][-1]["content"]
@@ -890,7 +921,8 @@ def test_review_is_shown_the_drawing_beside_the_render():
 
 def test_review_gets_only_the_render_when_nothing_was_attached():
     """The no-attachment request keeps the shape it has always had."""
-    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")],
+                         views=[RENDER_PNG])
 
     content = llm.calls[-1][-1]["content"]
     assert len([b for b in content if b.get("type") == "image_url"]) == 1
@@ -899,7 +931,7 @@ def test_review_gets_only_the_render_when_nothing_was_attached():
 def test_an_attachment_that_has_been_moved_does_not_break_review():
     llm = ScriptedLLMClient([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
 
-    result = run("Build this", llm=llm, tools=FakeTools().registry,
+    result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
                  attachments=["/nowhere/gone.png"])
 
     assert result.ok
@@ -1125,7 +1157,7 @@ def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
 
 def test_a_run_with_no_views_still_reaches_a_verdict():
     """
-    `render=None` still degrades Review to objects-only, and a registry with
+    No views still degrades Review to the Description alone, and a registry with
     no `review_views` at all — an older one, a test one — is the same case as
     a headless one. FCC-63.
     """
@@ -1133,8 +1165,8 @@ def test_a_run_with_no_views_still_reaches_a_verdict():
         [plan_reply("Add a box"),
          code_reply("doc.addObject('Part::Box', 'Box')"),
          verdict_reply("pass")],
-        # Headless: no viewport to capture per Apply, and no views at the end.
-        applies=[{"status": "applied", "created": ["Box"], "objects": []}],
+        # Headless: no views at the end, and no Step ever produced a picture.
+        applies=[{"status": "applied", "created": ["Box"], "description": {}}],
         views=[],
     )
 
@@ -1384,7 +1416,7 @@ def test_the_event_stream_of_a_clean_run():
 
     assert [e.kind for e in events] == [
         THOUGHT, PLAN,
-        STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, APPLIED, RENDER,
+        STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, APPLIED,
         THOUGHT, REVIEW_VERDICT,
     ]
 
@@ -1404,7 +1436,7 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
 
     assert [e.kind for e in events] == [
         PLAN,
-        STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED, RENDER,
+        STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
         TOOL_CALL, TOOL_RESULT, ASSERTION,
         REVIEW_VERDICT,
     ]
@@ -1420,7 +1452,7 @@ def test_the_event_stream_of_a_retried_run():
         PLAN,
         STEP_STARTED,
         TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
-        TOOL_CALL, TOOL_RESULT, APPLIED, RENDER,
+        TOOL_CALL, TOOL_RESULT, APPLIED,
         REVIEW_VERDICT,
     ]
 
@@ -1449,12 +1481,18 @@ def test_tool_calls_and_their_results_are_both_visible():
     assert result.data["result"]["status"] == "applied"
 
 
-def test_the_render_review_judged_by_is_in_the_stream():
+def test_no_step_puts_a_picture_in_the_stream():
+    """
+    The per-Step viewport screenshot is gone, panel and all (FCC-81). Nobody
+    read it: the only images that reach a model go through `_as_image`, and
+    the step render was never among them.
+    """
     _, events, _, _ = drive([
         plan_reply("Only"), code_reply("box()"), verdict_reply("pass"),
     ])
 
-    assert events.first(RENDER).data["path"] == RENDER_PNG
+    assert [e for e in events if e.kind == "render"] == []
+    assert "render" not in events.first(TOOL_RESULT).data["result"]
 
 
 def test_reasoning_is_streamed_tagged_with_the_phase_it_came_from():
@@ -1598,7 +1636,6 @@ def test_a_run_reports_what_it_did():
     assert result.ok
     assert result.steps_applied == 2
     assert result.verdict == "pass"
-    assert result.render == RENDER_PNG
 
 
 # ── Plan asks rather than inventing a parameter (FCC-25) ──────────────────────

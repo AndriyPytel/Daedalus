@@ -36,11 +36,18 @@ rather than ending the run. The Plan is a precise instruction while it is builda
 advisory the moment it is not; Execute's only two moves are "do exactly this" and "hand
 back", and the loop decides when that edge fires, not the model.
 
-**Review judges the viewport** (ADR-0015). The panel shows a capture of the 3D view after
-each Apply — the same view you have open beside it — and at the end Review is given four
-views of the result: isometric, front, top and right, captured once, with your camera put
-back. One view is not enough: a mirrored gear tooth reads only from above. Headless, with
-no viewport to capture, the Preflight Worker's rasteriser draws the Document once instead.
+**Review judges the viewport** (ADR-0015). At the end of a run Review is given four views
+of the result: isometric, front, top and right, captured once, with your camera put back.
+One view is not enough: a mirrored gear tooth reads only from above. Headless, with no
+viewport to capture, the Preflight Worker's rasteriser draws the Document once instead.
+No Step produces a picture of its own — there is one render in a run, and it is the one
+Review judges by.
+
+**Review judges a Description too.** Four views cannot answer "is that hole Ø8", so beside
+them Review and Assertion are given the Document as it now stands: every feature with its
+parameters and its named sketch constraints, then an inventory of the geometry read off
+the `Shape`, grouped so twenty identical holes are one entry with a count. Raw sketch
+geometry is deliberately not in it.
 
 ### The Plan Gate
 

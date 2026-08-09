@@ -33,7 +33,7 @@ from typing import List
 
 from core.events import (
     ANSWER, APPLIED, ASSERTION, BLOCKED, ERROR, PLAN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, RENDER, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
+    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
     TOOL_CALL, TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import TRAPS
@@ -239,7 +239,6 @@ class LoopResult:
     verdict: str = None
     reason: str = ""
     steps_applied: int = 0
-    render: str = None
     tried: List[dict] = field(default_factory=list)
 
     @property
@@ -569,7 +568,7 @@ class Checked:
     uncovered: list = field(default_factory=list)
 
 
-def assertion(acceptance, objects, tools, llm, events, budgets=None, cancelled=None):
+def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None):
     """
     Write checks for the acceptance list and run them against the result.
 
@@ -585,7 +584,8 @@ def assertion(acceptance, objects, tools, llm, events, budgets=None, cancelled=N
     rebuild a part that is already right.
     """
     budgets = budgets or Budgets()
-    request = {"acceptance": list(acceptance), "objects_that_now_exist": objects}
+    request = {"acceptance": list(acceptance),
+               "the_document_as_it_now_stands": described}
 
     cancelled = cancelled or (lambda: False)
 
@@ -663,23 +663,24 @@ def _why_the_checks_failed(traceback):
             "which entry:\n" + traceback)
 
 
-def review(intent, render, objects, llm, events, attachments=(), checked=None):
+def review(intent, views, described, llm, events, attachments=(), checked=None):
     """
     Judge the outcome against the Intent.
 
-    Given the Intent, the views, the final Document state, and whatever the
-    user showed with the Intent. Deliberately not given the Plan, the code, or
-    Execute's reasoning — an independent judgement of how it turned out, not of
-    how it was produced.
+    Given the Intent, the views, the Description of the finished Document, and
+    whatever the user showed with the Intent. Deliberately not given the Plan,
+    the code, or Execute's reasoning — an independent judgement of how it
+    turned out, not of how it was produced.
 
-    `render` is the views: a list of paths since ADR-0015, or the one path it
-    used to be. One view is not enough — a mirrored tooth flank reads only from
-    above, and in isometry it is foreshortened, which is why Review passed one.
+    One view is not enough — a mirrored tooth flank reads only from above, and
+    in isometry it is foreshortened, which is why Review passed one. Neither is
+    the picture enough on its own: a hole is a dimension, not a pixel, and the
+    Description is where it can be read (FCC-81).
 
     Without the attachments this compared a render against a sentence, so "does
     this resemble what I was shown" was not a question it could ask (FCC-47).
     """
-    request = {"intent": intent, "objects_that_now_exist": objects}
+    request = {"intent": intent, "the_document_as_it_now_stands": described}
     if checked is not None:
         # Measured facts beside the views, so the verdict is about what the
         # checks did not cover rather than a second opinion on what they did
@@ -688,8 +689,7 @@ def review(intent, render, objects, llm, events, attachments=(), checked=None):
         request["what_the_checks_could_not_cover"] = list(checked.uncovered)
     content = [{"type": "text", "text": json.dumps(request, indent=2, default=str)}]
 
-    paths = [render] if isinstance(render, str) else list(render or ())
-    pictures = [picture for picture in map(_as_image, paths) if picture]
+    pictures = [picture for picture in map(_as_image, views or ()) if picture]
     if len(pictures) > 1:
         content[0]["text"] += (
             "\n\nThe next %d images are the same result seen from %s. They are one part, "
@@ -698,7 +698,8 @@ def review(intent, render, objects, llm, events, attachments=(), checked=None):
     if pictures:
         content.extend(pictures)
     else:
-        content[0]["text"] += "\n\nNo render was produced, so judge on the objects alone."
+        content[0]["text"] += ("\n\nNo render was produced, so judge on the description "
+                               "alone.")
 
     shown = [drawing for drawing in map(_as_image, attachments) if drawing]
     if shown:
@@ -831,8 +832,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
     rejections = 0
     revisions = _Revisions()
-    render = None
-    objects = []
+    described = {}
 
     # One loop, so every Plan reaches the Gate before any of its Steps runs — a
     # revised Plan is a new Plan and used to go straight into the work (FCC-68).
@@ -897,13 +897,12 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             _emit_plan(events, PLAN_REVISED, planned, reason=feedback)
             continue
 
-        render = outcome["render"] or render
-        objects = outcome["objects"] or objects
+        described = outcome["description"] or described
 
         # Once the run is over, before Review: what is checked is the finished
         # Document, and a failure here is a rejection (FCC-76). No acceptance
         # list means no phase at all, not a phase that checks nothing.
-        checked = (assertion(planned.acceptance, objects, tools, llm, events, budgets,
+        checked = (assertion(planned.acceptance, described, tools, llm, events, budgets,
                              cancelled)
                    if planned.acceptance else None)
         if checked is not None and checked.failed:
@@ -914,7 +913,6 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                 # result, and a verdict nobody will act on is a provider call
                 # spent on nothing.
                 return LoopResult(ok=True, verdict="pass", steps_applied=applied,
-                                  render=render,
                                   reason="You took the result as it is, although the "
                                          "acceptance checks did not pass.")
             if answer == START_OVER:
@@ -933,20 +931,20 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             _emit_plan(events, PLAN_REVISED, planned, reason=feedback)
             continue
 
-        views = _review_views(tools, events) or ([render] if render else [])
-        verdict, reason = review(intent, views, objects, llm, events, attachments,
+        views = _review_views(tools, events)
+        verdict, reason = review(intent, views, described, llm, events, attachments,
                                  checked=checked)
         events.emit(REVIEW_VERDICT, verdict=verdict, reason=reason)
 
         if verdict == "pass":
             return LoopResult(ok=True, verdict=verdict, reason=reason,
-                              steps_applied=applied, render=render)
+                              steps_applied=applied)
 
         feedback = reason
         answer = decided(reason, applied)
         if answer == ACCEPT:
             return LoopResult(ok=True, verdict="pass", reason=reason,
-                              steps_applied=applied, render=render)
+                              steps_applied=applied)
         if answer == START_OVER:
             feedback += _MAY_START_AGAIN
 
@@ -977,8 +975,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   reading=""):
     """One pass over the Plan. Returns why it stopped."""
-    render = None
-    objects = []
+    described = {}
 
     for index, step in enumerate(steps, start=1):
         if cancelled():
@@ -993,7 +990,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
             if outcome.obsolete:
                 return {"blocked": False, "obsolete": outcome.obsolete,
-                        "handback": None, "render": render, "objects": objects,
+                        "handback": None, "description": described,
                         "tried": [_tried(step, a) for a in attempts]}
 
             if outcome.code:
@@ -1008,12 +1005,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
             if result.get("status") == "applied":
                 progress["applied"] += 1
-                render = result.get("render") or render
-                objects = result.get("objects") or objects
+                described = result.get("description") or described
                 events.emit(APPLIED, step=index, label=outcome.label,
                             created=result.get("created", []))
-                if result.get("render"):
-                    events.emit(RENDER, path=result["render"], step=index)
                 break
 
             traceback = result.get("traceback", "The Step failed without saying why.")
@@ -1032,12 +1026,11 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                                 % (index, len(steps), len(attempts), step,
                                    attempts[-1].traceback),
                     "tried": [_tried(step, a) for a in attempts],
-                    "blocked": False, "obsolete": None,
-                    "render": render, "objects": objects,
+                    "blocked": False, "obsolete": None, "description": described,
                 }
 
     return {"blocked": False, "obsolete": None, "handback": None,
-            "render": render, "objects": objects, "tried": []}
+            "description": described, "tried": []}
 
 
 def _tried(step, attempt):

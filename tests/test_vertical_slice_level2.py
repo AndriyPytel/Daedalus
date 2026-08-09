@@ -1,7 +1,8 @@
 """
 Level 2 — the first vertical slice, end to end.
 
-Primitive -> pad -> parameter change -> fillet via a Computed Reference, through
+Primitive -> pad -> parameter change -> fillet via a Computed Reference -> a
+through hole, whose diameter is the thing no view of the result answers, through
 the real loop, the real Tool registry, the real apply pipeline and a real
 Preflight Worker, against a real Document. Only the model is scripted, because
 what is being checked here is the machinery, not the model's taste.
@@ -16,7 +17,7 @@ import pytest
 
 from core.apply import ApplyPipeline
 from core.events import (
-    APPLIED, BLOCKED, PLAN, RENDER, REVIEW_VERDICT, STEP_STARTED, TOOL_CALL,
+    APPLIED, BLOCKED, PLAN, REVIEW_VERDICT, STEP_STARTED, TOOL_CALL,
     TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import build_registry
@@ -30,6 +31,7 @@ SQUARE = 10.0
 PAD = 5.0
 PAD_CHANGED = 12.0
 RADIUS = 1.5
+BORE = 4.0
 
 # ── the four Steps, as a model would write them ───────────────────────────────
 
@@ -88,6 +90,29 @@ fillet.Base = (base, ["Edge%%d" %% n for n in edges])
 fillet.Radius = %s
 """ % RADIUS
 
+# A hole, because a hole is the feature the Description exists for: it is a
+# dimension and not a pixel, and no view answers "is that one Ø4" (FCC-81).
+STEP_HOLE = """
+import Part
+
+body = doc.getObject("Body")
+profile = doc.addObject("Sketcher::SketchObject", "HoleSketch")
+body.addObject(profile)
+profile.AttachmentSupport = [(doc.getObject("XY_Plane"), '')]
+profile.MapMode = "FlatFace"
+side = %(side)s
+profile.addGeometry(Part.Circle(App.Vector(side / 2, side / 2, 0),
+                                App.Vector(0, 0, 1), %(bore)s / 2), False)
+
+hole = doc.addObject("PartDesign::Hole", "Hole")
+body.addObject(hole)
+hole.Profile = profile
+hole.Diameter = %(bore)s
+hole.DepthType = "ThroughAll"
+# The profile is on XY and the material is above it, so the cut goes up.
+hole.Reversed = True
+""" % {"side": SQUARE, "bore": BORE}
+
 
 def scripted_model():
     return ScriptedLLMClient([
@@ -96,14 +121,16 @@ def scripted_model():
             "Pad the sketch by %gmm" % PAD,
             "Change the pad length to %gmm" % PAD_CHANGED,
             "Fillet the top edges with a %gmm radius, finding them from the geometry" % RADIUS,
+            "Drill a %gmm hole through it on the centreline" % BORE,
         ]}),
         json.dumps({"code": STEP_SKETCH, "label": "Sketch the square"}),
         json.dumps({"code": STEP_PAD, "label": "Pad the sketch"}),
         json.dumps({"code": STEP_PARAMETER, "label": "Change the pad length"}),
         json.dumps({"code": STEP_FILLET, "label": "Fillet the top edges"}),
+        json.dumps({"code": STEP_HOLE, "label": "Drill the hole"}),
         json.dumps({"verdict": "pass",
-                    "reason": "A %gmm square padded to %gmm with the top edges filleted."
-                              % (SQUARE, PAD_CHANGED)}),
+                    "reason": "A %gmm square padded to %gmm, top edges filleted, "
+                              "drilled Ø%g." % (SQUARE, PAD_CHANGED, BORE)}),
     ])
 
 
@@ -163,7 +190,7 @@ def test_the_full_loop_runs_end_to_end(slice_run):
     result = slice_run["result"]
 
     assert result.ok, result.reason
-    assert result.steps_applied == 4
+    assert result.steps_applied == 5
     assert result.verdict == "pass"
 
 
@@ -261,21 +288,24 @@ def test_the_fillet_survives_a_change_further_upstream_still(slice_run):
 
 def test_one_undo_takes_back_exactly_one_step(slice_run):
     doc = slice_run["doc"]
-    assert doc.getObject("Fillet") is not None
+    assert doc.getObject("Hole") is not None
 
     doc.undo()
 
-    assert doc.getObject("Fillet") is None, "the fillet Step did not come back off"
-    assert doc.getObject("Pad") is not None, "undo took more than one Step"
+    assert doc.getObject("Hole") is None, "the hole Step did not come back off"
+    assert doc.getObject("Fillet") is not None, "undo took more than one Step"
     assert doc.getObject("Pad").Length.Value == PAD_CHANGED
 
 
 def test_each_step_of_the_run_undoes_in_turn(slice_run):
     doc = slice_run["doc"]
 
-    assert doc.UndoNames == ["Fillet the top edges", "Change the pad length",
-                             "Pad the sketch", "Sketch the square"]
+    assert doc.UndoNames == ["Drill the hole", "Fillet the top edges",
+                             "Change the pad length", "Pad the sketch",
+                             "Sketch the square"]
 
+    doc.undo()                                        # un-drill
+    assert doc.getObject("Hole") is None
     doc.undo()                                        # un-fillet
     assert doc.getObject("Fillet") is None
     doc.undo()                                        # un-change the parameter
@@ -294,22 +324,25 @@ def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
     kinds = [e.kind for e in events]
 
     assert kinds[0] == PLAN
-    assert len(events.of(STEP_STARTED)) == 4
-    # Four applies plus the one review_views the loop drives at the end.
-    assert len(events.of(TOOL_CALL)) == 5
-    assert len(events.of(TOOL_RESULT)) == 5
-    assert len(events.of(APPLIED)) == 4
+    assert len(events.of(STEP_STARTED)) == 5
+    # Five applies plus the one review_views the loop drives at the end.
+    assert len(events.of(TOOL_CALL)) == 6
+    assert len(events.of(TOOL_RESULT)) == 6
+    assert len(events.of(APPLIED)) == 5
     assert events.last(REVIEW_VERDICT).data["verdict"] == "pass"
     assert events.first(BLOCKED) is None
 
 
 def test_no_step_rendered_and_review_still_got_a_picture(slice_run):
     """
-    Preflight stopped rendering per Step (ADR-0015): this run is headless, so
-    there is no viewport to capture and no RENDER event at all. Review is
-    still given a picture — the Worker's rasteriser, once, at the end.
+    No Step produces a picture at all any more (FCC-81): there is one render
+    in a run and it is the one Review judges by — the Worker's rasteriser
+    here, because this run is headless.
     """
-    assert slice_run["events"].of(RENDER) == []
+    assert [e for e in slice_run["events"] if e.kind == "render"] == []
+    assert all("render" not in e.data["result"]
+               for e in slice_run["events"].of(TOOL_RESULT)
+               if e.data["name"] == "apply_step")
 
     views = [e for e in slice_run["events"].of(TOOL_RESULT)
              if e.data["name"] == "review_views"]
@@ -317,19 +350,36 @@ def test_no_step_rendered_and_review_still_got_a_picture(slice_run):
     assert len(views[0].data["result"]["views"]) == 1, "headless is one isometry"
 
 
+def test_the_description_review_judged_by_is_in_the_session_log(slice_run):
+    """
+    A whole run leaves behind what Review was actually given, and it is a
+    description of the part rather than three lines per object: the Pad's
+    length in mm, and the hole read off the Shape with a diameter and an axis
+    that no Acceptance list had to ask for. FCC-81.
+    """
+    applied = [e for e in slice_run["events"].of(TOOL_RESULT)
+               if e.data["name"] == "apply_step"]
+    described = applied[-1].data["result"]["description"]
+    features = {f["name"]: f for f in described["features"]}
+
+    assert features["Pad"]["parameters"]["Length"] == "%.1f mm" % PAD_CHANGED
+    assert features["Fillet"]["parameters"]["Radius"] == "%.1f mm" % RADIUS
+    rounded = [entry for entry in described["geometry"]["surfaces"]
+               if entry["kind"] == "Cylinder"]
+    assert rounded == [{"kind": "Cylinder", "diameter_mm": RADIUS * 2,
+                        "axis": [0.0, 1.0, 0.0], "count": 2},
+                       {"kind": "Cylinder", "diameter_mm": RADIUS * 2,
+                        "axis": [1.0, 0.0, 0.0], "count": 2},
+                       {"kind": "Cylinder", "diameter_mm": BORE,
+                        "axis": [0.0, 0.0, 1.0], "count": 1}]
+
+
 def test_each_step_is_narrated_in_order(slice_run):
     started = slice_run["events"].of(STEP_STARTED)
 
-    assert [e.data["index"] for e in started] == [1, 2, 3, 4]
-    assert all(e.data["total"] == 4 for e in started)
+    assert [e.data["index"] for e in started] == [1, 2, 3, 4, 5]
+    assert all(e.data["total"] == 5 for e in started)
     assert "Fillet the top edges" in started[3].data["description"]
-
-
-def test_a_render_review_could_judge_by_exists_for_every_step(slice_run):
-    import os
-
-    for event in slice_run["events"].of(RENDER):
-        assert os.path.getsize(event.data["path"]) > 1000
 
 
 def test_the_run_reads_back_from_its_log(slice_run, tmp_path):

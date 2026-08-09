@@ -62,14 +62,8 @@ def pipeline(trace):
     def dispatch(func, timeout=None):
         return func()
 
-    def view_capture(path):
-        # The viewport, which Level 1 has none of. Injected the way `dispatch`
-        # and `transaction` already are (ADR-0015).
-        trace.append(("capture", path))
-        return "/tmp/step.png"
-
     built = ApplyPipeline(document=doc, worker=worker, dispatch=dispatch,
-                          transaction=transaction, view_capture=view_capture)
+                          transaction=transaction)
     built.document, built.fake_worker, built.trace = doc, worker, trace
     return built
 
@@ -82,10 +76,9 @@ def test_a_clean_step_lands_and_reports_what_it_created(pipeline):
 
     assert result.ok
     assert result.created == ["Box"]
-    assert result.render == "/tmp/step.png"
-    # The picture is taken after the transaction, from the viewport the Step
-    # has already changed — not from the throwaway copy (ADR-0015).
-    assert [what for what, _ in pipeline.trace] == ["transaction", "capture"]
+    # An Apply lands a Step and describes what is now there. It takes no
+    # picture: nothing read the per-Step render (FCC-81).
+    assert [what for what, _ in pipeline.trace] == ["transaction"]
 
 
 def test_lint_runs_before_preflight_so_a_bad_step_costs_nothing(pipeline):
@@ -128,7 +121,7 @@ def test_preflight_gets_a_throwaway_copy_not_the_document(pipeline):
 
     checked = pipeline.fake_worker.checked[0]
     assert pipeline.document.saved_copies == [checked["document"]]
-    # Preflight no longer renders: the panel's picture is the viewport (ADR-0015).
+    # Preflight no longer renders per Step (ADR-0015).
     assert checked["render_path"] is None
 
 
@@ -152,7 +145,7 @@ def test_the_caller_sees_applied_or_failed_and_nothing_else(pipeline):
     assert failed == {"status": "failed", "traceback": "boom"}
     # Nothing in either result names Preflight, the worker, or a copy.
     assert "preflight" not in repr(applied).lower()
-    assert set(applied) == {"status", "created", "objects", "render"}
+    assert set(applied) == {"status", "created", "description"}
 
 
 def test_a_worker_that_died_reads_as_a_failed_step_not_an_incident(pipeline):
@@ -218,6 +211,6 @@ def test_every_document_touch_goes_through_the_dispatcher():
 
     pipeline.apply("doc.recompute()")
 
-    # resolve the Document, read it, copy it, run the transaction, read it
-    # again, capture the viewport — which is Qt's thread too (ADR-0015).
-    assert len(dispatched) == 6
+    # resolve the Document, read it, copy it, run the transaction, describe
+    # what is there now.
+    assert len(dispatched) == 5

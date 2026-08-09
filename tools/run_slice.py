@@ -54,7 +54,7 @@ def main():
     import FreeCAD
 
     from core.apply import ApplyPipeline
-    from core.events import BLOCKED, ERROR, PREFLIGHT_FAILED, RENDER, THOUGHT, EventStream
+    from core.events import BLOCKED, ERROR, PREFLIGHT_FAILED, THOUGHT, EventStream
     from core.freecad_tools import build_registry
     from core.llm import LiteLLMClient
     from core.loop import APPROVE, Approval, run
@@ -96,7 +96,6 @@ def main():
     print("objects       :", [o.Name for o in doc.Objects])
     print("owned         :", sorted(pipeline.owned))
     print("undo entries  :", list(doc.UndoNames))
-    print("render        :", result.render)
     print("event log     :", args.log)
 
     fillet = next((o for o in doc.Objects if "Fillet" in o.TypeId), None)
@@ -124,7 +123,7 @@ def main():
 def _printer():
     """Narrate the run the way the panel would."""
     from core.events import (
-        APPLIED, BLOCKED, ERROR, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, RENDER,
+        APPLIED, BLOCKED, ERROR, PLAN, PLAN_REVISED, PREFLIGHT_FAILED,
         REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT,
     )
 
@@ -164,8 +163,6 @@ def _printer():
                 print("    " + line)
         elif event.kind == APPLIED:
             print("  applied %r, created %s" % (data["label"], data.get("created")))
-        elif event.kind == RENDER:
-            print("  render: " + data["path"])
         elif event.kind == REVIEW_VERDICT:
             print("\nREVIEW: %s - %s" % (data["verdict"], data["reason"]))
         elif event.kind == BLOCKED:

@@ -39,14 +39,6 @@ exception only to carry on: the traceback is what comes back to you, and a
 Step that quietly applies none of the twelve edges it meant to has no way of
 telling you so.
 
-Geometry you derive from a formula must be checked against an invariant of its
-own before you commit it. A derivation reads as correct and still comes out
-inverted or mirrored — a wrong sign raises nothing, and the result still looks
-like the part. Work out something that must be true of the shape independently
-of how you computed it, assert it in the Step's code, and let it fail. An
-involute gear tooth, for one, gets thinner as the radius grows: its angular
-thickness is smallest at the tip circle and largest at the base circle.
-
 Reply with JSON only, one of:
   {"look": {"tool": "...", "arguments": {...}}}   to ask, before committing to code
   {"code": "...", "label": "short name for the undo entry"}
