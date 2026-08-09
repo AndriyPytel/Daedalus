@@ -975,8 +975,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._render_tool_call(data["name"], data["arguments"])
             return
 
-        if event.kind == ev.READING:
-            self._render_reading(narrate(event))
+        if event.kind == ev.DESIGN:
+            self._render_design(narrate(event))
             return
 
         if event.kind == ev.PLAN:
@@ -1053,14 +1053,16 @@ class CopilotPanel(QtWidgets.QDockWidget):
             label.setToolTip(name)
             self.add_chat_widget(label)
 
-    def _render_reading(self, narration):
+    def _render_design(self, narration):
         """
         Above the Plan, and open: correcting a misreading at the Gate is the
-        whole point, and a reading one click away is not read (FCC-47). Being
-        open is why this is not left to `_say` with the other rows.
+        whole point, and a description one click away is not read (FCC-47).
+        Being open is why this is not left to `_say` with the other rows.
 
-        Its own event since the Reading became its own phase, so a replayed
-        transcript shows it standing before the Plan that used it (FCC-86).
+        Its own event since the description became its own phase, so a replayed
+        transcript shows it standing before the Plan that used it (FCC-86). It
+        is laid out as a structure by `core.design`, not dumped as JSON — the
+        panel is handed prose either way (ADR-0019).
         """
         if self._thought:
             self._thought.stop_pulsing()

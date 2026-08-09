@@ -1242,17 +1242,24 @@ def _write_a_png(path):
     assert picture.save(path, "PNG")
 
 
-def test_the_reading_stands_above_the_plan_at_the_gate(panel):
+def test_the_part_stands_above_the_plan_at_the_gate(panel):
     """
-    The Reading is its own event since it became its own phase, and the
-    arrangement at the Gate is unchanged: "How the drawing was read", above the
-    Plan, open — a reading one click away is not read. FCC-86.
+    The description is its own event since it became its own phase, and the
+    arrangement at the Gate is unchanged: "What the part is", above the Plan,
+    open — a description one click away is not read. What the panel shows is a
+    structure laid out, not a JSON dump, and the laying out is `core.design`'s,
+    so the panel is handed prose either way. FCC-86, FCC-93.
     """
-    from core.events import PLAN, READING, Event
+    from core.events import DESIGN, PLAN, Event
 
     from ui.plan_widget import PlanWidget
 
-    panel.on_event(Event(READING, {"text": "Base: an 80 x 40 x 10 mm plate."}))
+    panel.on_event(Event(DESIGN, {"model": {
+        "envelope": {"length": {"value": "80 mm", "flag": "read"}},
+        "features": [{"id": "hole-8-left", "kind": "Ø8 through hole",
+                      "position": {"the left end face": {"value": "15 mm",
+                                                         "flag": "read"}}}],
+    }}))
     panel.on_event(Event(PLAN, {"steps": ["Sketch the plate"], "acceptance": []}))
     QT_APP.processEvents()
 
@@ -1261,14 +1268,17 @@ def test_the_reading_stands_above_the_plan_at_the_gate(panel):
     # The panel is shared with the tests above, so it is the last of each that
     # this one just put there.
     widgets = _widgets_in(panel)
-    reading_at, how = max((i, w) for i, w in enumerate(widgets)
-                          if isinstance(w, AccordionWidget)
-                          and "How the drawing was read" in w.toggle_button.text())
+    described_at, how = max((i, w) for i, w in enumerate(widgets)
+                            if isinstance(w, AccordionWidget)
+                            and "What the part is" in w.toggle_button.text())
     plan_at = max(i for i, w in enumerate(widgets) if isinstance(w, PlanWidget))
 
-    assert reading_at < plan_at, "the reading rendered below the Plan it was read for"
-    assert how.content_area.isVisible(), "the reading is one click away, so it is not read"
-    assert "80 x 40 x 10 mm plate" in _said_in(panel)
+    assert described_at < plan_at, "the part rendered below the Plan it was described for"
+    assert how.content_area.isVisible(), "it is one click away, so it is not read"
+    said = _said_in(panel)
+    assert "length: 80 mm (read)" in said
+    assert "- hole-8-left" in said
+    assert "{" not in said.split("What the part is")[-1], "the Gate was shown a JSON dump"
 
 
 def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(panel):

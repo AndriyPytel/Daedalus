@@ -14,12 +14,15 @@ import pytest
 
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, PLAN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, READING, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
+    DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
     TOOL_CALL, TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
-from core.loop import PROMPTS, Budgets, prompt, revisions_ceiling, run
+from core.design import render
+from core.loop import (
+    PROMPTS, Budgets, prompt, revisions_ceiling, run,
+)
 from core.tools import ToolRegistry
 
 SNAPSHOT = {"document": "Unnamed", "objects": [], "object_count": 0,
@@ -57,12 +60,24 @@ DESCRIPTION = {
     "geometry": {"solids": 1, "surfaces": [{"kind": "Plane", "count": 6}]},
 }
 
-A_READING = (
-    "Base: 80 x 40 x 10 mm plate.\n"
-    "Features: 2x ⌀8 through holes, 15 mm from each end on the centreline; "
-    "R5 fillets on all four corners.\n"
-    "Not defined by the drawing: material, tolerance, surface finish."
-)
+
+def read(value):
+    return {"value": value, "flag": "read"}
+
+
+# The smallest part there is, for the tests that only care that a Design turn
+# happened at all.
+A_CUBE = {"envelope": {"length": read("10 mm")}}
+
+A_PART = {
+    "datums": [{"name": "the left end face", "is": "the flat face at the left"}],
+    "envelope": {"length": read("80 mm"), "width": read("40 mm"),
+                 "thickness": read("10 mm")},
+    "features": [{"id": "hole-8-left", "kind": "Ø8 hole", "topology": "through",
+                  "position": {"the left end face": read("15 mm")},
+                  "seen_in": ["top view"]}],
+    "not_defined": [{"what": "the material", "looked_in": ["the title block"]}],
+}
 
 
 # ── scripted phase replies ────────────────────────────────────────────────────
@@ -76,15 +91,16 @@ def plan_reply(*steps, thinking=None, acceptance=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
-def reading_reply(reading, thinking=None):
-    """The Reading phase's turn — first in a run that has an attachment."""
-    body = json.dumps({"reading": reading})
+def design_reply(model=None, question="", thinking=None):
+    """
+    One Design turn: what it adds to the part, and what it wants a person asked.
+
+    Every turn of the phase has this one shape — the first pass at the sheet, a
+    question put back to it, a person's answer being written in — because every
+    one of them ends in a merge into the same model (FCC-93).
+    """
+    body = json.dumps({"design": model or {}, "question": question})
     return {"reasoning": thinking, "text": body} if thinking else body
-
-
-def answer_reply(answer):
-    """The Reading phase asked again, with Plan's question (FCC-90)."""
-    return json.dumps({"answer": answer})
 
 
 def code_reply(code, label="Step", thinking=None):
@@ -217,18 +233,18 @@ def _system_messages(llm):
 
 
 @pytest.mark.parametrize("turn, phase",
-                         [(0, "reading"), (1, "plan"), (2, "execute"), (3, "assertion"),
+                         [(0, "design"), (1, "plan"), (2, "execute"), (3, "assertion"),
                           (4, "review")])
 def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
     """
     The file reached the provider — not that the loader returned a string. The
     prompts are config, so this reads the config. FCC-3.
 
-    Driven with an attachment, because Reading is a turn only where there is
+    Driven with an attachment, because Design is a turn only where there is
     something to read (FCC-86); every later phase shifts by one with it.
     """
     _, _, llm, _ = drive([
-        reading_reply("A 10 mm cube."),
+        design_reply(A_CUBE),
         plan_reply("Add a box", acceptance=["10 mm on a side"]),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         assertion_reply("assert True, '10 mm on a side'"),
@@ -309,85 +325,86 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
     assert "Let a Step fail" in execute_system
 
 
-def test_the_reading_rules_moved_to_the_reading_phase_whole():
+def test_the_reading_rules_moved_to_the_design_phase_whole():
     """
     FCC-59's rules were live in plan.md and did not hold, so FCC-86 moved who
-    reads and when rather than rewriting them a fourth time. They move as they
-    are: what is asserted is that every one of them survived the move, that
-    Plan no longer carries any of it, and that Review is still told none of it.
-    FCC-59, FCC-86.
+    reads and when rather than rewriting them a fourth time. They moved again
+    with the file when Reading became Design, and they move as they are: what
+    is asserted is that every one of them survived, that Plan no longer carries
+    any of it, and that Review is still told none of it. FCC-59, FCC-86,
+    FCC-93.
     """
     _, _, llm, _ = drive([
-        reading_reply("A 10 mm cube."),
+        design_reply(A_CUBE),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     # The prompts are wrapped copy; a sentence crosses line breaks.
-    reading_system, plan_system, _, review_system = (
+    design_system, plan_system, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
-    for rule in ("A reading is not a description of the picture",
-                 "what the drawing does not define",
+    for rule in ("A description is not a description of the *picture*",
+                 "Design records; it does not invent",
                  "cannot both be true",
                  "an operation the drawing does not show",
                  "Read every plane the drawing uses",
                  "perpendicular"):
-        assert rule in reading_system, "the Reading phase lost: " + rule
-        assert rule not in plan_system, "plan.md still carries the Reading rule: " + rule
+        assert rule in design_system, "the Design phase lost: " + rule
+        assert rule not in plan_system, "plan.md still carries the Design rule: " + rule
         assert rule not in review_system
 
 
-def test_a_reading_carries_a_named_datum_a_value_and_a_read_or_assumed_flag():
+def test_a_value_carries_a_named_datum_and_a_read_or_assumed_flag():
     """
     Dimensions were read and positions were not: a magnitude arrived without
     what it was measured from, and a position with no named datum degrades into
     "somewhere sensible", which defaults to centred. Prose is what allows it —
-    a sentence carries a number without carrying its datum. This is the third
-    pass at the same symptom through copy, so what the copy now demands is the
-    three fields, not another sentence. FCC-87.
+    a sentence carries a number without carrying its datum. FCC-87 demanded the
+    three fields in copy; they are now the shape of the model itself, keyed by
+    the datum the value is measured from. FCC-87, FCC-93.
     """
     _, _, llm, _ = drive([
-        reading_reply("A 10 mm cube."),
+        design_reply(A_CUBE),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     # The prompts are wrapped copy; a sentence crosses line breaks.
-    reading_system, _, _, review_system = (
+    design_system, _, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
-    assert "A reading is not prose" in reading_system
-    assert "<what it is> — from <datum> — <value> — read" in reading_system
-    assert "named the way the drawing names it" in reading_system
+    assert "Every value carries its datum and its flag" in design_system
+    assert 'A value is `{"value": ..., "flag": ...}`' in design_system
+    assert "named the way the drawing names it" in design_system
     assert "A magnitude without its datum is the defect this phase exists for" \
-        in reading_system
-    assert "A reading is not prose" not in review_system
+        in design_system
+    assert "Every value carries its datum and its flag" not in review_system
 
 
 def test_a_curve_is_not_read_until_its_centre_is_placed():
     """
     On the Model Mania 2025 Phase 1 sheet, `(R30)` places the central pocket's
     side walls and its leader starts at the end-bore axis, which is where the
-    arc centre is. The Reading wrote the radius, filed the centre under "cannot
+    arc centre is. The first pass wrote the radius, filed the centre under "cannot
     be read", and Plan then put the centres at ±10 from the middle: the same
     R30, the same 10 mm web beside it, and the wall curving out instead of in.
     A radius with no centre is two shapes, and no number on the sheet chooses
     between them. FCC-87.
     """
     _, _, llm, _ = drive([
-        reading_reply("A 10 mm cube."),
+        design_reply(A_CUBE),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    reading_system = " ".join(_system_messages(llm)[0].split())
+    design_system = " ".join(_system_messages(llm)[0].split())
 
-    assert "A curve is not read until its centre is placed" in reading_system
-    assert "every arc, fillet and round gets **two** lines" in reading_system
-    assert "from the centre of the arc to the arc" in reading_system
+    assert "A curve is not read until its centre is placed" in design_system
+    assert "every arc, fillet and round gets **two** values" in design_system
+    assert "from the centre of the arc to the arc" in design_system
     # A reference dimension is repeated, not invented.
-    assert "it is `read`, never `assumed`" in reading_system
+    assert "it is `read`, never `assumed`" in design_system
 
 
 def test_the_views_decide_what_no_dimension_arrow_says():
@@ -399,41 +416,41 @@ def test_the_views_decide_what_no_dimension_arrow_says():
     "Not dimensioned" is not "not defined". FCC-87.
     """
     _, _, llm, _ = drive([
-        reading_reply("A 10 mm cube."),
+        design_reply(A_CUBE),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    reading_system = " ".join(_system_messages(llm)[0].split())
+    design_system = " ".join(_system_messages(llm)[0].split())
 
     assert "A value with no dimension arrow on it is not an undefined value" \
-        in reading_system
-    assert "hatched where there is material" in reading_system
+        in design_system
+    assert "hatched where there is material" in design_system
     assert "Where two readings satisfy the same numbers, say which one the view shows" \
-        in reading_system
+        in design_system
     # And the escape hatch costs something to use.
-    assert "name the views you looked in" in reading_system
+    assert "name the views you looked in" in design_system
 
 
 def test_every_callout_printed_on_the_sheet_has_to_be_accounted_for():
     """
     "It often says it cannot see something, and the PDF has everything on it."
-    A reading written from what the model happened to notice has no way to tell
+    A description written from what the model happened to notice has no way to tell
     that it missed a callout; one written from a sweep of the sheet does, by
     counting. FCC-87.
     """
     _, _, llm, _ = drive([
-        reading_reply("A 10 mm cube."),
+        design_reply(A_CUBE),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    reading_system = " ".join(_system_messages(llm)[0].split())
+    design_system = " ".join(_system_messages(llm)[0].split())
 
-    assert "First, sweep the sheet" in reading_system
-    assert "list **every callout printed on it**" in reading_system
-    assert "account for every entry on it" in reading_system
-    assert "illegible" in reading_system
+    assert "First, sweep the sheet" in design_system
+    assert "list **every callout printed on it**" in design_system
+    assert "account for every entry on it" in design_system
+    assert "illegible" in design_system
 
 
 def test_a_fraction_of_a_named_overall_is_a_value_on_equal_terms_with_millimetres():
@@ -446,17 +463,17 @@ def test_a_fraction_of_a_named_overall_is_a_value_on_equal_terms_with_millimetre
     shape, which nothing corrects. FCC-87.
     """
     _, _, llm, _ = drive([
-        reading_reply("A 10 mm cube."),
+        design_reply(A_CUBE),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    reading_system = " ".join(_system_messages(llm)[0].split())
+    design_system = " ".join(_system_messages(llm)[0].split())
 
-    assert "a fraction of a named overall" in reading_system
-    assert "a fraction is a full record, not a fallback" in reading_system
-    assert "Never stop to ask for dimensions" in reading_system
-    assert "Exactly one assumption in the whole reading" in reading_system
+    assert "a fraction of a named overall" in design_system
+    assert "a fraction is a full record, not a fallback" in design_system
+    assert "Never stop to ask for dimensions" in design_system
+    assert "Exactly one assumption in the whole model" in design_system
 
 
 def test_the_acceptance_inherits_the_datum_and_the_flag():
@@ -482,43 +499,51 @@ def test_the_acceptance_inherits_the_datum_and_the_flag():
     assert "Every entry names what it is measured from" not in review_system
 
 
-def test_a_structured_reading_survives_into_plan_and_onto_the_stream():
+def test_the_part_travels_as_a_structure_and_reaches_the_gate_laid_out():
     """
-    A model that answers with an object rather than a paragraph is being
-    reasonable; the pipe has to carry it to the Plan Gate and to Plan without
-    dropping it. FCC-87.
+    The structure is the point: it is what the merge can refuse to overwrite,
+    and what the Plan Gate can show as datums, an envelope and features rather
+    than as paragraphs. It rides the stream as the model and reaches Plan as the
+    same thing the user was shown. FCC-87, FCC-93.
     """
-    structured = {"features": [{"what": "Ø8 through hole", "datum": "the top face",
-                                "value": "14 mm", "read": True}]}
     _, events, llm, _ = drive([
-        reading_reply(structured),
+        design_reply(A_PART),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    rendered = events.first(READING).data["text"]
-    assert json.loads(rendered) == structured, "the structure was flattened away"
-    assert json.loads(llm.calls[1][-1]["content"])["how_the_drawing_was_read"] == rendered
+    assert events.first(DESIGN).data["model"] == A_PART, "the structure was flattened away"
+
+    shown = json.loads(llm.calls[1][-1]["content"])["what_the_part_is"]
+    assert shown == render(A_PART), "Plan and the Gate were shown different things"
+    for heading in ("Datums", "Envelope", "Features", "Not defined"):
+        assert heading in shown
+    assert "the left end face: 15 mm (read)" in shown
+    assert "{" not in shown, "Plan was handed a JSON dump"
 
 
-def test_plan_is_handed_a_finished_reading_and_not_the_picture():
+def test_plan_is_handed_a_finished_description_and_not_the_picture():
     """
     Far too much of the split is invisible in the background otherwise: Plan is
-    told plainly that this is a Reading somebody else produced, and that what it
-    calls undefined stays undefined. FCC-86.
+    told plainly that this is a description somebody else produced, that what it
+    calls not defined stays not defined, and that nothing arrives beside it to
+    be weighed against it. FCC-86, FCC-93.
     """
     _, _, llm, _ = drive([
-        reading_reply("A 10 mm cube."),
+        design_reply(A_CUBE),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     plan_system = " ".join(_system_messages(llm)[1].split())
 
-    assert "how_the_drawing_was_read" in plan_system
+    assert "what_the_part_is" in plan_system
     assert "You do not get the picture itself" in plan_system
-    assert "What it lists as undefined stays undefined" in plan_system
+    assert "What it lists as not defined stays not defined" in plan_system
+    assert "nothing arrives beside it to be weighed against it" in plan_system
+    assert "you_asked_and_were_answered" not in plan_system, \
+        "plan.md still documents the second source this ticket removed"
 
 
 def test_a_step_is_an_action_a_user_would_perform_not_a_call():
@@ -979,13 +1004,13 @@ def test_review_is_told_when_there_is_no_render_to_judge_by():
 # ── attachments ───────────────────────────────────────────────────────────────
 
 
-def test_an_attachment_reaches_the_reading_phase_as_a_picture():
+def test_an_attachment_reaches_the_design_phase_as_a_picture():
     """
     The panel used to collect the attached paths and throw them away, so the
     user showed the assistant a photo it never saw. FCC-4. The phase that
-    receives it is the Reading phase since FCC-86; Plan never sees a picture.
+    receives it is the Design phase since FCC-86; Plan never sees a picture.
     """
-    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools().registry, attachments=[RENDER_PNG])
@@ -1008,7 +1033,7 @@ def test_a_pdf_goes_out_as_a_file_block_and_not_as_a_picture():
     page rendering on our side. FCC-89.
     """
     drawing = _a_real_pdf()
-    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools().registry, attachments=[drawing])
@@ -1027,7 +1052,7 @@ def test_a_jpeg_reaches_the_provider_labelled_as_a_jpeg():
     WebP was already going out labelled as a PNG. FCC-89.
     """
     photo = _a_real_png(suffix=".jpg")
-    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[photo])
@@ -1056,7 +1081,7 @@ def test_a_pdf_rides_into_review_beside_the_render():
     step. FCC-89.
     """
     drawing = _a_real_pdf()
-    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
@@ -1068,8 +1093,8 @@ def test_a_pdf_rides_into_review_beside_the_render():
     assert len([b for b in content if b.get("type") == "image_url"]) == 1
 
 
-def test_several_attachments_all_reach_the_reading_phase():
-    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+def test_several_attachments_all_reach_the_design_phase():
+    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
     second = _a_real_png()
 
@@ -1091,7 +1116,7 @@ def test_an_intent_with_no_attachments_sends_what_it_always_did():
 
 
 def test_an_attachment_that_has_been_moved_is_dropped_not_fatal():
-    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools().registry,
@@ -1108,7 +1133,7 @@ def test_a_run_that_had_an_attachment_says_so_on_the_stream():
     per-Session log could not say the run had one, so a replayed transcript
     could not either. FCC-88.
     """
-    _, events, _, _ = drive([reading_reply(A_READING), plan_reply("Only"),
+    _, events, _, _ = drive([design_reply(A_PART), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")],
                             attachments=[RENDER_PNG])
 
@@ -1123,7 +1148,7 @@ def test_the_attachment_is_recorded_even_where_the_file_has_gone():
     A clipboard paste is a temp file the panel deletes when the run ends, so
     the record has to survive its file — the name is in the event. FCC-88.
     """
-    _, events, _, _ = drive([reading_reply(A_READING), plan_reply("Only"),
+    _, events, _, _ = drive([design_reply(A_PART), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")],
                             attachments=["/nowhere/gone.png", RENDER_PNG])
 
@@ -1138,77 +1163,119 @@ def test_an_intent_with_no_attachment_adds_no_event():
     assert events.first(ATTACHED) is None
 
 
-# ── the reading of the drawing ────────────────────────────────────────────────
+# ── the part Design describes ─────────────────────────────────────────────────
 
 
-def test_the_reading_is_an_event_of_its_own_standing_before_the_plan():
+def test_the_description_is_an_event_of_its_own_standing_before_the_plan():
     """
-    The Reading used to be a field on the Plan event, because Plan produced it.
-    A phase of its own emits its own event, and a replayed transcript then shows
-    it in the order it was actually produced. FCC-47, FCC-86.
+    It used to be a field on the Plan event, because Plan produced it. A phase
+    of its own emits its own event, and a replayed transcript then shows it in
+    the order it was actually produced. It carries the model, so the Session log
+    holds the structure and not somebody's rendering of it. FCC-47, FCC-86.
     """
-    _, events, _, _ = drive([reading_reply(A_READING), plan_reply("Only"),
+    _, events, _, _ = drive([design_reply(A_PART), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")],
                             attachments=[RENDER_PNG])
 
     kinds = [event.kind for event in events]
-    assert events.first(READING).data["text"] == A_READING
-    assert kinds.index(READING) < kinds.index(PLAN)
+    assert events.first(DESIGN).data["model"] == A_PART
+    assert kinds.index(DESIGN) < kinds.index(PLAN)
     assert "reading" not in events.first(PLAN).data
 
 
-def test_with_nothing_attached_there_is_no_reading_turn_at_all():
-    """No extra provider call, and the Plan Gate is identical to today's."""
+def test_with_nothing_attached_there_is_no_design_turn_at_all():
+    """
+    No extra provider call for a sheet that does not exist, and the Plan Gate is
+    identical to today's. Design then holds only what the user's answers supply.
+    FCC-93.
+    """
     _, events, llm, _ = drive([plan_reply("Only"), code_reply("box()"),
                                verdict_reply("pass")])
 
-    assert events.first(READING) is None
-    assert len(llm.calls) == 3, "a Reading turn was spent on an Intent with no picture"
+    assert events.first(DESIGN) is None
+    assert len(llm.calls) == 3, "a Design turn was spent on an Intent with no picture"
     assert events.first(PLAN).data["steps"] == ["Only"]
 
 
-def test_the_reading_is_carried_into_execute_as_text():
+def test_design_asks_the_user_itself_before_any_plan_exists():
+    """
+    The recorded run closed its first description with "Exact coordinate
+    dimensions for the Ø35 hole … not defined" and then let Plan draft Steps
+    around the gap, so the question reached the user out of a Plan that had
+    already committed to a shape. Design owns the question: it asks for what it
+    sees empty in its own model, before Plan, and the answer is merged in.
+    FCC-93.
+    """
+    asked = []
+
+    _, events, llm, _ = drive([
+        design_reply(A_PART, question="Where are the Ø40 and Ø35 hole axes?"),
+        design_reply({"features": [{"id": "hole-35", "kind": "Ø35 hole",
+                                    "position": {"the left end face":
+                                                 {"value": "25 mm", "flag": "assumed"}}}]}),
+        plan_reply("Only"), code_reply("box()"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "25 mm from the left end")
+
+    assert asked == ["Where are the Ø40 and Ø35 hole axes?"]
+    kinds = [event.kind for event in events]
+    assert kinds.index(QUESTION) < kinds.index(DESIGN) < kinds.index(PLAN), \
+        "the question reached the user after a Plan had been drafted"
+
+    # A value the user supplied is assumed; one off the sheet stays read.
+    shown = json.loads(llm.calls[2][-1]["content"])["what_the_part_is"]
+    assert "the left end face: 25 mm (assumed)" in shown
+    assert "the left end face: 15 mm (read)" in shown
+
+
+def test_the_description_is_carried_into_execute_as_text():
     """
     Execute stays on text deliberately — it is called per Step and again per
     look, so the picture would multiply across dozens of calls.
     """
-    _, _, llm, _ = drive([reading_reply(A_READING), plan_reply("Only"),
+    _, _, llm, _ = drive([design_reply(A_PART), plan_reply("Only"),
                           code_reply("box()"), verdict_reply("pass")],
                          attachments=[RENDER_PNG])
 
     asked = llm.calls[2][-1]["content"]
     assert isinstance(asked, str), "Execute was sent a picture, not text"
-    assert json.loads(asked)["reading_of_the_drawing"] == A_READING
+    assert json.loads(asked)["what_the_part_is"] == render(A_PART)
 
 
-def test_the_reading_reaches_plan_under_a_key_of_its_own():
-    _, _, llm, _ = drive([reading_reply(A_READING), plan_reply("Only"),
+def test_the_description_reaches_plan_under_one_key():
+    """
+    One key, one source. Two were how the 100 mm was lost: the description and
+    the answers arrived separately and Plan preferred the newer. FCC-93.
+    """
+    _, _, llm, _ = drive([design_reply(A_PART), plan_reply("Only"),
                           code_reply("box()"), verdict_reply("pass")],
                          attachments=[RENDER_PNG])
 
-    assert json.loads(llm.calls[1][-1]["content"])["how_the_drawing_was_read"] == A_READING
+    request = json.loads(llm.calls[1][-1]["content"])
+    assert request["what_the_part_is"] == render(A_PART)
+    assert "how_the_drawing_was_read" not in request
+    assert "you_asked_and_were_answered" not in request
 
 
-def test_execute_is_told_nothing_extra_when_there_was_no_reading():
+def test_execute_is_told_nothing_extra_when_nothing_was_described():
     _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
 
-    assert "reading" not in json.loads(llm.calls[1][-1]["content"])
+    assert "what_the_part_is" not in json.loads(llm.calls[1][-1]["content"])
 
 
-def test_a_revision_plans_from_the_same_reading_and_does_not_read_again():
+def test_a_revision_plans_from_the_same_description_and_does_not_read_again():
     """
-    The Reading depends on neither the Snapshot nor the feedback, so a second
-    call at the same picture is a provider call spent on nothing. FCC-86.
+    The description depends on neither the Snapshot nor the feedback, so a
+    second call at the same picture is a provider call spent on nothing. FCC-86.
     """
     _, events, llm, _ = drive([
-        reading_reply(A_READING),
+        design_reply(A_PART),
         plan_reply("v1"), code_reply("v1()"), verdict_reply("fail", "not right"),
         plan_reply("v2"), code_reply("v2()"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert len(events.of(READING)) == 1
+    assert len(events.of(DESIGN)) == 1
     replan = json.loads(llm.calls[4][-1]["content"])
-    assert replan["how_the_drawing_was_read"] == A_READING
+    assert replan["what_the_part_is"] == render(A_PART)
     assert replan["what_went_wrong_last_time"] == "not right"
 
 
@@ -1217,7 +1284,7 @@ def test_review_is_shown_the_drawing_beside_the_render():
     Review compared a render against a sentence: the picture never reached it,
     so "does this resemble what I was shown" was not a question it could ask.
     """
-    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
@@ -1964,7 +2031,7 @@ def test_plan_can_ask_instead_of_planning():
     asked = []
 
     result, events, _, tools = drive(
-        [question_reply(MISSING),
+        [question_reply(MISSING), design_reply(GEAR_AS_TOLD),
          plan_reply("Sketch the blank", "Pad it"), code_reply("a()"), code_reply("b()"),
          verdict_reply("pass")],
         intent=GEAR, ask=lambda question: asked.append(question) or "module 2, 20 teeth")
@@ -1979,9 +2046,21 @@ def test_plan_can_ask_instead_of_planning():
     assert tools.applied_codes() == ["a()", "b()"]
 
 
-def test_the_answer_reaches_plan_and_nothing_ran_before_it():
+GEAR_AS_TOLD = {"features": [{"id": "teeth", "kind": "20 teeth of module 2",
+                              "position": {"the blank axis": {"value": "20 teeth",
+                                                              "flag": "assumed"}}}]}
+
+
+def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan():
+    """
+    A person's answer goes back through Design and lands in the same model by
+    the same merge, so what Plan is handed next is the description grown — never
+    an answer standing beside it, which is the arrangement that lost the 100 mm.
+    The user supplied it, so it is `assumed`. FCC-25, FCC-93.
+    """
     llm = ScriptedLLMClient([
         question_reply(MISSING),
+        design_reply(GEAR_AS_TOLD),
         plan_reply("Sketch a 20-tooth module-2 blank"), code_reply("a()"),
         verdict_reply("pass"),
     ])
@@ -1989,12 +2068,14 @@ def test_the_answer_reaches_plan_and_nothing_ran_before_it():
 
     run(GEAR, llm=llm, tools=tools.registry, ask=lambda _: "module 2, 20 teeth, 10 thick, ⌀8 bore")
 
-    second_plan = json.dumps(llm.calls[1])
-    assert "20 teeth" in second_plan
-    assert MISSING in second_plan, "Plan was given the answer without the question"
+    # The answer went to Design first, with the question it answers.
+    told = json.loads(llm.calls[1][-1]["content"][0]["text"])
+    assert told["the_question"] == MISSING
+    assert told["the_answer_you_were_given"] == "module 2, 20 teeth, 10 thick, ⌀8 bore"
 
-    answered = json.loads(llm.calls[1][-1]["content"])["you_asked_and_were_answered"]
-    assert answered[0]["answered_by"] == "user"
+    described = json.loads(llm.calls[2][-1]["content"])
+    assert "20 teeth (assumed)" in described["what_the_part_is"]
+    assert "you_asked_and_were_answered" not in described
 
 
 def test_a_user_who_declines_gets_a_plan_that_chose_for_them():
@@ -2029,7 +2110,9 @@ def test_a_plan_that_only_ever_asks_is_bounded():
     asked = []
 
     result, _, _, tools = drive(
-        [question_reply("q1"), question_reply("q2"), question_reply("q3"), question_reply("q4")],
+        [question_reply("q1"), design_reply(),
+         question_reply("q2"), design_reply(),
+         question_reply("q3"), question_reply("q4")],
         intent=GEAR, ask=lambda q: asked.append(q) or "some answer",
         budgets=Budgets(questions=2))
 
@@ -2039,13 +2122,15 @@ def test_a_plan_that_only_ever_asks_is_bounded():
     assert tools.applied_codes() == []
 
 
-# ── the sheet is asked before the person (FCC-90) ─────────────────────────────
+# ── the question goes back to the description, never to the user (FCC-90) ─────
 
 THROUGH_OR_NOT = ("Does the hourglass pocket go through the 150 mm length, or is it "
                   "a set depth? And which edges take the R2 fillet?")
-OFF_THE_SECTION = ("Front pocket — cut into the part from the front face — 20 mm deep — "
-                   "read (SECTION A-A, hatched)\nR2 fillets — from each pocket mouth — "
-                   "8 edges — read (top and front views, drawn red)")
+OFF_THE_SECTION = {"features": [
+    {"id": "pocket-front", "kind": "hourglass pocket", "topology": "blind",
+     "position": {"the front face": {"value": "20 mm deep", "flag": "read"}},
+     "seen_in": ["SECTION A-A"]},
+]}
 
 
 def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
@@ -2053,15 +2138,15 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
     The run asked the user whether the pockets go through and which edges take
     R2. SECTION A-A shows the depth, hatched, and the R2 edges are drawn in red
     in every view — the user attached the sheet so they would not have to answer
-    what it shows. The reading missed it, which is what readings do; the route
-    is what has to stop the miss becoming a question. FCC-90.
+    what it shows. The first pass missed it, which is what a first pass does;
+    the route is what has to stop the miss becoming a question. FCC-90.
     """
     asked = []
 
     result, events, llm, _ = drive([
-        reading_reply(A_READING),
+        design_reply(A_PART),
         question_reply(THROUGH_OR_NOT),
-        answer_reply(OFF_THE_SECTION),
+        design_reply(OFF_THE_SECTION),
         plan_reply("Pocket both faces 20 mm"), code_reply("a()"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "")
 
@@ -2069,19 +2154,44 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
     assert asked == [], "the user was asked what the drawing answers"
     answered = events.first(ANSWER)
     assert answered.data["by"] == "drawing"
-    assert "SECTION A-A" in answered.data["text"]
+    assert "20 mm deep (read)" in answered.data["text"]
 
-    # The re-read was given the picture and the reading it already wrote.
+    # The re-read was given the picture and the description it already wrote.
     re_read = llm.calls[2][-1]["content"]
     assert [b for b in re_read if b.get("type") == "image_url"], "it re-read without the sheet"
     asked_again = json.loads(re_read[0]["text"])
     assert asked_again["the_question"] == THROUGH_OR_NOT
-    assert asked_again["the_reading_you_wrote"] == A_READING
+    assert asked_again["the_part_as_you_described_it"] == A_PART
 
-    # And Plan was told the drawing answered, not the user.
-    to_plan = json.loads(llm.calls[3][-1]["content"])["you_asked_and_were_answered"]
-    assert to_plan[0]["answered_by"] == "drawing"
-    assert to_plan[0]["answer"] == OFF_THE_SECTION
+    # And Plan was handed the description grown, not an answer beside it.
+    to_plan = json.loads(llm.calls[3][-1]["content"])
+    assert "- pocket-front" in to_plan["what_the_part_is"]
+    assert "the front face: 20 mm deep (read)" in to_plan["what_the_part_is"]
+    assert "you_asked_and_were_answered" not in to_plan
+
+
+def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
+    """
+    The run read the left bore axis 20 mm from the left end face and then 25 mm,
+    both `read`, and built 25. 20 is still what the Gate shows, and the
+    disagreement is visible rather than absent — the merge is enforced by `id`
+    in the loop, not only asked for in the prompt. FCC-93.
+    """
+    _, events, llm, _ = drive([
+        design_reply(A_PART),
+        question_reply("Where is the Ø8 hole?"),
+        design_reply({"features": [{"id": "hole-8-left",
+                                    "position": {"the left end face": read("25 mm")}}]}),
+        plan_reply("Sketch it"), code_reply("a()"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    grown = events.last(DESIGN).data["model"]
+    assert grown["features"][0]["position"]["the left end face"] == read("15 mm")
+    assert grown["conflicts"][0]["was_also_said"] == read("25 mm")
+
+    shown = json.loads(llm.calls[3][-1]["content"])["what_the_part_is"]
+    assert "the left end face: 15 mm (read)" in shown
+    assert "In conflict" in shown, "the disagreement never reached the Plan Gate"
 
 
 def test_a_question_the_sheet_does_not_answer_still_reaches_the_user():
@@ -2089,9 +2199,11 @@ def test_a_question_the_sheet_does_not_answer_still_reaches_the_user():
     asked = []
 
     result, events, _, _ = drive([
-        reading_reply(A_READING),
+        design_reply(A_PART),
         question_reply("What general tolerance applies?"),
-        answer_reply(""),                       # not on the sheet
+        design_reply(),                         # not on the sheet
+        design_reply({"not_defined": [{"what": "the general tolerance",
+                                       "looked_in": ["the notes"]}]}),
         plan_reply("Sketch it"), code_reply("a()"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG],
         ask=lambda q: asked.append(q) or "±0.1 mm")
@@ -2109,10 +2221,11 @@ def test_the_drawing_answering_does_not_spend_the_users_question_budget():
     asked = []
 
     result, _, _, _ = drive([
-        reading_reply(A_READING),
-        question_reply("q1"), answer_reply("the sheet says so"),
-        question_reply("q2"), answer_reply("the sheet says so too"),
-        question_reply("q3"), answer_reply(""),
+        design_reply(A_PART),
+        question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
+        question_reply("q2"), design_reply({"datums": [{"name": "d2"}]}),
+        question_reply("q3"), design_reply(),          # not on the sheet
+        design_reply({"datums": [{"name": "d3"}]}),    # the person's answer, written in
         plan_reply("Sketch it"), code_reply("a()"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(questions=2),
         ask=lambda q: asked.append(q) or "an answer")
@@ -2129,9 +2242,10 @@ def test_the_re_reads_have_a_ceiling_of_their_own():
     asked = []
 
     drive([
-        reading_reply(A_READING),
-        question_reply("q1"), answer_reply("read off the sheet"),
+        design_reply(A_PART),
+        question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
         question_reply("q2"),
+        design_reply({"datums": [{"name": "d2"}]}),    # the person's answer, written in
         plan_reply("Sketch it"), code_reply("a()"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1),
         ask=lambda q: asked.append(q) or "an answer")
@@ -2140,16 +2254,22 @@ def test_the_re_reads_have_a_ceiling_of_their_own():
 
 
 def test_with_no_attachment_a_question_goes_straight_to_the_user():
-    """No sheet to ask, so no extra provider call and the old behaviour exactly."""
+    """
+    No sheet to ask, so no turn is spent asking one. The answer still comes back
+    through Design, because merge is the only way the description grows. FCC-93.
+    """
     asked = []
 
     _, _, llm, _ = drive(
-        [question_reply(MISSING), plan_reply("Sketch it"), code_reply("a()"),
-         verdict_reply("pass")],
+        [question_reply(MISSING), design_reply(GEAR_AS_TOLD), plan_reply("Sketch it"),
+         code_reply("a()"), verdict_reply("pass")],
         intent=GEAR, ask=lambda q: asked.append(q) or "module 2")
 
     assert asked == [MISSING]
-    assert len(llm.calls) == 4, "a turn was spent re-reading a drawing that is not there"
+    assert len(llm.calls) == 5, "a turn was spent re-reading a drawing that is not there"
+    # The one Design turn there was had no picture with it.
+    written_in = llm.calls[1][-1]["content"]
+    assert len(written_in) == 1 and written_in[0]["type"] == "text"
 
 
 def test_a_question_alongside_steps_is_still_a_plan():
@@ -2181,7 +2301,7 @@ def test_a_replan_after_a_handback_asks_rather_than_planning_blind():
         [
             plan_reply("Impossible"),
             code_reply("nope1()"), code_reply("nope2()"), code_reply("nope3()"),
-            question_reply(MISSING),
+            question_reply(MISSING), design_reply(GEAR_AS_TOLD),
             plan_reply("Possible"),
             code_reply("yes()"),
             verdict_reply("pass"),
@@ -2193,9 +2313,9 @@ def test_a_replan_after_a_handback_asks_rather_than_planning_blind():
     assert asked == [MISSING], "the re-plan planned without asking: %s" % asked
     assert result.ok
     assert events.first(PLAN_REVISED).data["steps"] == ["Possible"]
-    # The answer reached the revised Plan, so it is built on a named value.
-    revised = json.dumps(llm.calls[5])
-    assert "20 teeth" in revised and MISSING in revised
+    # The answer reached the revised Plan, through the description it grew.
+    revised = json.loads(llm.calls[6][-1]["content"])
+    assert "20 teeth (assumed)" in revised["what_the_part_is"]
 
 
 def test_a_replan_after_a_rejected_verdict_asks_too():
@@ -2204,7 +2324,7 @@ def test_a_replan_after_a_rejected_verdict_asks_too():
     result, _, llm, _ = drive(
         [
             plan_reply("Make it"), code_reply("make()"), verdict_reply("fail", "20mm, not 10mm"),
-            question_reply(MISSING),
+            question_reply(MISSING), design_reply(GEAR_AS_TOLD),
             plan_reply("Make it 10mm"), code_reply("fix()"), verdict_reply("pass"),
         ],
         ask=lambda question: asked.append(question) or "10mm across the flats",
@@ -2213,6 +2333,7 @@ def test_a_replan_after_a_rejected_verdict_asks_too():
     assert asked == [MISSING]
     assert result.ok
     assert "10mm across the flats" in json.dumps(llm.calls[4])
+    assert "20 teeth (assumed)" in json.loads(llm.calls[5][-1]["content"])["what_the_part_is"]
 
 
 def test_a_replan_that_only_ever_asks_stops_the_run_rather_than_looping():
@@ -2221,7 +2342,8 @@ def test_a_replan_that_only_ever_asks_stops_the_run_rather_than_looping():
     result, _, _, _ = drive(
         [
             plan_reply("Impossible"), code_reply("nope1()"),
-            question_reply("q1"), question_reply("q2"), question_reply("q3"),
+            question_reply("q1"), design_reply(),
+            question_reply("q2"), question_reply("q3"),
         ],
         applies=[failed("one")],
         budgets=Budgets(attempts_per_step=1, questions=1),

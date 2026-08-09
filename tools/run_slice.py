@@ -127,8 +127,8 @@ def _printer():
     cannot say anything different.
 
     This used to be a second `if/elif` over the same kinds, and it drifted:
-    long after ADR-0018 gave the Reading an event of its own it was still
-    looking for the reading on the `plan` event, so it printed none, and it
+    long after ADR-0018 gave the description an event of its own it was still
+    looking for it on the `plan` event, so it printed none, and it
     never learned `attached`, `assertion`, `question` or `answer` at all.
 
     What is left here is the shapes the narrator does not carry, because they

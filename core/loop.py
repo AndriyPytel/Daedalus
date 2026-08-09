@@ -1,9 +1,9 @@
 """
-The Reading -> Plan -> Execute -> Assertion -> Review loop.
+The Design -> Plan -> Execute -> Assertion -> Review loop.
 
 Fixed order, deterministic routing (ADR-0003). No LLM-chosen speaker
-selection: Reading says what is on the drawing and has nothing to build with it
-(ADR-0018), Plan produces Steps and the list they have to satisfy, Execute works
+selection: Design says what the part is and has nothing to build with it
+(ADR-0019), Plan produces Steps and the list they have to satisfy, Execute works
 through the Steps one at a time, Assertion measures the finished Document
 against that list once the run is over (ADR-0017), Review judges the outcome,
 and a failure from either of the last two returns to Plan — never to Execute.
@@ -33,16 +33,17 @@ import re
 from dataclasses import dataclass, field
 from typing import List
 
+from core.design import merge, render
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, PLAN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, READING, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, EventStream,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, PLAN,
+    PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED,
+    THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import TRAPS
 from core.llm import REASONING, ProviderRefused
 from core.tools import ToolError
 
-READING_PHASE = "reading"
+DESIGN_PHASE = "design"
 PLAN_PHASE = "plan"
 EXECUTE_PHASE = "execute"
 ASSERTION_PHASE = "assertion"
@@ -343,64 +344,38 @@ def _as_json(text, phase):
     return parsed
 
 
-def _at_the_drawing(body, llm, events, attachments):
+def _pictures(attachments):
+    return [picture for picture in map(_as_image, attachments) if picture]
+
+
+def design(body, llm, events, attachments=()):
     """
-    One turn with the sheet in front of it: *body* as text, the attachments as
-    pictures. None when there is nothing to look at, which is not a turn.
+    One Design turn: what it adds to the part, and what it needs a person for.
 
-    Both of the Reading phase's turns come through here, so the picture
-    encoding and the nothing-to-look-at guard are written once. What differs
-    between them is the body and the key they read back, and that is all that
-    differs (ADR-0018, FCC-90).
+    Every turn of the phase comes through here — the first pass at the sheet, a
+    question put back to it, a person's answer being written in — because every
+    one of them ends in the same place, a merge into the same model. Merge is
+    the only way the description grows, so there is never an answer standing
+    beside it to be adjudicated (ADR-0019). What differs between the turns is
+    the body, and that is all that differs.
+
+    A context of its own, with nothing to build (ADR-0018, kept): Design and
+    Plan used to be one call, and the second pressure spoilt the first — a value
+    was invented not because the model saw badly but because it needed something
+    to plan with. The sheet rides along whenever there is one, because the phase
+    that owns the description is the only phase that ever sees the picture.
+
+    Hands back what to merge and what Design wants asked. A reply that is not a
+    model grows the part by nothing, which is the same case as a sheet that does
+    not answer: the run carries on with what it already had rather than losing
+    it, the way an acceptance list nobody wrote is not fatal either.
     """
-    pictures = [picture for picture in map(_as_image, attachments) if picture]
-    if not pictures:
-        return None
-
-    return _ask(llm, events, READING_PHASE, prompt(READING_PHASE),
-                [{"type": "text", "text": json.dumps(body, indent=2, default=str)}] + pictures)
-
-
-def reading(intent, llm, events, attachments=()):
-    """
-    Read the attached drawing, once per run, before anything is planned.
-
-    A context of its own, with nothing to build (ADR-0018). Reading and Plan
-    used to be one call, and the second pressure spoilt the first: a value was
-    invented not because the model saw badly but because it needed something to
-    plan with. A phase with nothing to build has no reason to write a number in.
-
-    Produced once per run and reused by every revision: it depends on neither
-    the Snapshot nor the feedback, so re-reading the same picture would be a
-    provider call spent on nothing. With nothing to look at there is no turn at
-    all, and the run costs exactly what it costs today.
-    """
-    reply = _at_the_drawing({"intent": intent}, llm, events, attachments)
-    if reply is None:
-        return ""
-
-    how_it_was_read = _reading_of(reply)
-    if how_it_was_read:
-        events.emit(READING, text=how_it_was_read)
-    return how_it_was_read
-
-
-def look_again(question, how_it_was_read, llm, events, attachments=()):
-    """
-    Put Plan's question to the drawing, before it is put to the user (FCC-90).
-
-    Reading is the only phase that sees the picture, and it runs once — so the
-    moment Plan needs something the reading did not carry, its only escape is a
-    question, and that question goes to the person who attached the sheet
-    precisely so they would not have to answer what it shows. No reading of a
-    drawing is exhaustive; that is why this is a phase and not a parser.
-
-    Returns what the sheet says, or "" where it genuinely does not say, and the
-    question carries on to the user unchanged.
-    """
-    reply = _at_the_drawing({"the_reading_you_wrote": how_it_was_read,
-                             "the_question": question}, llm, events, attachments)
-    return "" if reply is None else str(reply.get("answer") or "").strip()
+    reply = _ask(llm, events, DESIGN_PHASE, prompt(DESIGN_PHASE),
+                 [{"type": "text", "text": json.dumps(body, indent=2, default=str)}]
+                 + _pictures(attachments))
+    the_part = reply.get("design")
+    return (the_part if isinstance(the_part, dict) else {},
+            str(reply.get("question") or "").strip())
 
 
 @dataclass
@@ -417,27 +392,30 @@ class Plan:
     acceptance: list = field(default_factory=list)
 
 
-def plan(intent, snapshot, llm, events, feedback=None, how_it_was_read="", answers=()):
+def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered=()):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
 
-    Plan never sees the picture. It is handed the finished Reading instead, and
-    told plainly that is what it is — the drawing was read by a phase with
-    nothing to build, and what that phase called undefined stays undefined here
-    (ADR-0018).
+    Plan never sees the picture. It is handed the part Design describes instead,
+    under one key and in the words the user approved at the Plan Gate, and told
+    plainly that is what it is (ADR-0019).
+
+    One key, because two were how the 100 mm was lost: the description and the
+    answers to Plan's own questions used to arrive separately and Plan
+    consistently preferred the newer, so a value read off SECTION B-B vanished
+    without ever being overruled. Every answer is now merged into the
+    description before Plan sees it, and there is nothing left to adjudicate.
     """
     request = {"intent": intent, "document": snapshot}
-    if how_it_was_read:
-        request["how_the_drawing_was_read"] = how_it_was_read
+    if the_part:
+        request["what_the_part_is"] = render(the_part)
     if feedback:
         request["what_went_wrong_last_time"] = feedback
-    if answers:
-        # Who answered is part of the answer: the drawing answering means the
-        # value was read off the sheet, and the Acceptance entry it feeds says
-        # `read` rather than `assumed` (FCC-90).
-        request["you_asked_and_were_answered"] = [
-            {"question": question, "answer": answer, "answered_by": by}
-            for question, answer, by in answers]
+    if unanswered:
+        # Not a value and not a source — an instruction. Nobody answered, so
+        # Plan chooses and says in the Step what it chose (FCC-25).
+        request["nobody_answered"] = {"the_questions": list(unanswered),
+                                      "what_to_do": _DECIDE}
 
     reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
                  json.dumps(request, indent=2, default=str))
@@ -480,22 +458,6 @@ def _acceptance_of(reply):
     return [str(entry).strip() for entry in written if str(entry).strip()]
 
 
-def _reading_of(reply):
-    """
-    The reading as text, however the phase chose to shape it.
-
-    A model that answers a question about dimensions with an object is being
-    reasonable rather than wrong, and dropping that would lose the whole point
-    of having asked.
-    """
-    reading = reply.get("reading")
-    if not reading:
-        return ""
-    if isinstance(reading, str):
-        return reading.strip()
-    return json.dumps(reading, indent=2, default=str)
-
-
 @dataclass
 class Attempt:
     code: str
@@ -509,7 +471,7 @@ class ExecuteOutcome:
     obsolete: str = None
 
 
-def execute(step, tools, llm, events, attempts, budgets=None, reading=""):
+def execute(step, tools, llm, events, attempts, budgets=None, as_described=""):
     """
     Write the code for one Step, after asking the Document whatever it needs.
 
@@ -521,15 +483,15 @@ def execute(step, tools, llm, events, attempts, budgets=None, reading=""):
     `attempts` are the failures **for this Step only**. A Step is not told what
     went wrong elsewhere in the Plan; that is noise it cannot act on.
 
-    `reading` is the Reading phase's, as text. Execute stays on text
+    `as_described` is the part Design holds, rendered. Execute stays on text
     deliberately: it is called per Step and again per look, so the picture would
     multiply across dozens of calls, and a Step concerns one feature for which
     the rest of the drawing is noise.
     """
     budgets = budgets or Budgets()
     request = {"step": step, "document": tools.call("snapshot")}
-    if reading:
-        request["reading_of_the_drawing"] = reading
+    if as_described:
+        request["what_the_part_is"] = as_described
     if attempts:
         request["your_failed_attempts_at_this_step"] = [
             {"code": a.code, "traceback": a.traceback} for a in attempts
@@ -824,7 +786,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     wipe it. Nothing is global, so two runs cannot see each other and a
     sub-agent is a narrower Intent.
 
-    `attachments` are files the user showed with the Intent; the Reading phase
+    `attachments` are files the user showed with the Intent; the Design phase
     sees them, and Review sees them again at the end.
     """
     events = events if events is not None else EventStream()
@@ -850,20 +812,83 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
         return LoopResult(ok=False, reason=str(exc))
 
 
-def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, how_it_was_read,
+def _answered(question, ask, events):
+    """Put a question to the person and say on the stream what came back."""
+    answer = str(ask(question) or DECIDE_FOR_ME).strip()
+    events.emit(ANSWER, text=answer, by="user" if answer else "nobody")
+    return answer
+
+
+def _written_in(the_part, question, answer, llm, events, attachments):
+    """
+    A person's answer, back through Design rather than on to Plan.
+
+    The drawing answering writes `read` and the person answering writes
+    `assumed` (FCC-87 preserved), and both land in the same model by the same
+    merge — which is what makes a value already on it impossible to replace.
+    An answer carried alongside the description instead would be a second source
+    for Plan to prefer, and preferring the newer is exactly how the depth off
+    SECTION B-B was lost.
+    """
+    grew, asks = design({"the_part_as_you_described_it": the_part,
+                         "the_question": question,
+                         "the_answer_you_were_given": answer},
+                        llm, events, attachments)
+    return merge(the_part, grew), asks
+
+
+def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments):
+    """
+    The part as Design has it, before anything is planned.
+
+    Design owns the question (ADR-0019). It asks the user itself, here, for what
+    it sees empty in its own model — before Steps have been drafted, rather than
+    out of a Plan that has already committed to a shape. What comes back is
+    merged, so the answer is part of the description the Plan Gate shows and not
+    a note beside it.
+
+    With nothing to look at there is no turn at all: Design then holds only what
+    the user's answers to Plan supply, and the run costs exactly what it costs
+    without a drawing.
+    """
+    if not _pictures(attachments):
+        return {}
+
+    the_part, question = design({"intent": intent}, llm, events, attachments)
+    the_part = merge({}, the_part)
+
+    asked = 0
+    while question and asked < budgets.questions:
+        if cancelled():
+            raise Stopped()
+        asked += 1
+        events.emit(QUESTION, text=question)
+        answer = _answered(question, ask, events)
+        if not answer:
+            break
+        the_part, question = _written_in(the_part, question, answer, llm, events,
+                                         attachments)
+
+    if the_part:
+        events.emit(DESIGN, model=the_part)
+    return the_part
+
+
+def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                ask, cancelled, feedback=None, attachments=()):
     """
-    Plan, letting it ask for what the Intent did not say (FCC-25).
+    Plan, letting it ask for what the description did not carry (FCC-25).
 
     "модельку шестерні" names no module, no tooth count, no thickness and no
     bore. Planning anyway means inventing them, and an invented value is not
     visible anywhere the user could correct it — it turns up in the geometry.
     So Plan may answer with a question instead of Steps, and the run waits.
 
-    The sheet is asked before the person (FCC-90). Where the run has an
-    attachment, the question goes back to Reading first, and only reaches the
-    user if the drawing does not answer it — the user attached the sheet so they
-    would not have to answer what it shows.
+    A question Plan raises goes back to Design, never to the user (ADR-0019).
+    Design decides whether the sheet answers it — a `read` value — or a person
+    must, which is an `assumed` one, and either way the answer is merged into
+    the description before the next Plan is made. FCC-90 was an interception for
+    the drawing's sake; it is now the general rule, for the description's.
 
     A question is not an approval: the Plan Gate is still the single point of
     approval, and it still sees every Step. `budgets.questions` bounds how much
@@ -873,8 +898,10 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, how_it_wa
 
     Every Plan comes through here, first or revised: a re-plan is a new Plan and
     may ask the same way, or it invents the value it was missing (FCC-67).
+    Hands back the description as it now stands, because it grew on the way.
     """
-    answers = []
+    grown = the_part
+    unanswered = []
     asked_the_user = 0
     read_again = 0
     told_to_choose = False
@@ -882,39 +909,45 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, how_it_wa
         if cancelled():
             raise Stopped()
         planned = plan(intent, snapshot, llm, events, feedback=feedback,
-                       how_it_was_read=how_it_was_read, answers=answers)
+                       the_part=grown, unanswered=unanswered)
         if not planned.question:
-            return planned
+            if grown != the_part:
+                # The Gate stands over the description the Plan was made from.
+                events.emit(DESIGN, model=grown)
+            return planned, grown
 
         events.emit(QUESTION, text=planned.question)
         if told_to_choose:
             raise PhaseError("Plan asked again after being told to choose for itself, so "
                              "there is no Plan and no way to get one.")
 
-        if read_again < budgets.rereads:
+        if read_again < budgets.rereads and _pictures(attachments):
             read_again += 1
-            from_the_drawing = look_again(planned.question, how_it_was_read, llm, events,
-                                          attachments)
+            from_the_drawing, _ = design({"the_part_as_you_described_it": grown,
+                                          "the_question": planned.question},
+                                         llm, events, attachments)
             if from_the_drawing:
-                answers.append((planned.question, from_the_drawing, "drawing"))
-                events.emit(ANSWER, text=from_the_drawing, by="drawing")
+                grown = merge(grown, from_the_drawing)
+                events.emit(ANSWER, text=render(from_the_drawing), by="drawing")
                 continue
 
         if asked_the_user >= budgets.questions:
             # Asked enough. Not an error — the run goes on with Plan choosing
             # and saying, in each Step, what it chose.
-            answers.append((planned.question, _DECIDE, "budget"))
+            unanswered.append(planned.question)
             events.emit(ANSWER, text=_DECIDE, by="budget")
             told_to_choose = True
             continue
 
         asked_the_user += 1
-        answer = str(ask(planned.question) or DECIDE_FOR_ME).strip()
+        answer = _answered(planned.question, ask, events)
         if not answer:
+            unanswered.append(planned.question)
             told_to_choose = True
-        answers.append((planned.question, answer or _DECIDE,
-                        "user" if answer else "nobody"))
-        events.emit(ANSWER, text=answer, by="user" if answer else "nobody")
+            continue
+        # Whatever Design would ask next waits for its own turn: the questioning
+        # here is Plan's, and it is Plan's budget being spent.
+        grown, _ = _written_in(grown, planned.question, answer, llm, events, attachments)
 
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
@@ -931,14 +964,17 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         events.emit(ATTACHED, files=[{"name": os.path.basename(path), "path": path}
                                      for path in attachments])
 
-    # Once per run, ahead of every Plan: a revision plans from the same reading
-    # rather than paying a second call to look at the same picture (ADR-0018).
-    how_it_was_read = reading(intent, llm, events, attachments)
+    # Once per run, ahead of every Plan: a revision plans from the description
+    # that already exists rather than paying a second call to look at the same
+    # picture (ADR-0018). It only ever grows from here (ADR-0019).
+    part = {"the_part": _describe_the_part(intent, llm, events, budgets, ask, cancelled,
+                                           attachments)}
 
     def replan(feedback=None):
-        return _plan_once_it_knows_enough(intent, tools.call("snapshot"), llm, events, budgets,
-                                          how_it_was_read, ask, cancelled, feedback,
-                                          attachments)
+        planned, part["the_part"] = _plan_once_it_knows_enough(
+            intent, tools.call("snapshot"), llm, events, budgets, part["the_part"],
+            ask, cancelled, feedback, attachments)
+        return planned
 
     def decided(why, applied):
         """
@@ -1009,7 +1045,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                   "apply and nothing to review.", progress["tried"],
                           progress["applied"])
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
-                                progress, how_it_was_read)
+                                progress, render(part["the_part"]))
         applied = progress["applied"]
 
         # Both go back to Plan from a fresh Snapshot and spend the same budget:
@@ -1084,7 +1120,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
-                  reading=""):
+                  as_described=""):
     """One pass over the Plan. Returns why it stopped."""
     described = {}
 
@@ -1097,7 +1133,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         while True:
             if cancelled():
                 raise Stopped()
-            outcome = execute(step, tools, llm, events, attempts, budgets, reading)
+            outcome = execute(step, tools, llm, events, attempts, budgets, as_described)
 
             if outcome.obsolete:
                 return {"obsolete": outcome.obsolete, "handback": None,
