@@ -26,16 +26,24 @@ SNAPSHOT = {"document": "Unnamed", "objects": [], "object_count": 0,
             "active_body": None, "selection": []}
 
 
-def _a_real_png():
+def _a_real_png(suffix=".png"):
     """
     Review is meant to look at the render, so the tests hand it a file that
     actually decodes rather than a path to nothing.
     """
-    handle, path = tempfile.mkstemp(prefix="loop_render_", suffix=".png")
+    handle, path = tempfile.mkstemp(prefix="loop_render_", suffix=suffix)
     with os.fdopen(handle, "wb") as png:
         png.write(base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8Dw"
             "HwAFAAH/q842iQAAAABJRU5ErkJggg=="))
+    return path
+
+
+def _a_real_pdf():
+    """The smallest thing on disk that is unambiguously a PDF by name and header."""
+    handle, path = tempfile.mkstemp(prefix="loop_drawing_", suffix=".pdf")
+    with os.fdopen(handle, "wb") as pdf:
+        pdf.write(b"%PDF-1.4\n%%EOF\n")
     return path
 
 
@@ -914,6 +922,74 @@ def test_an_attachment_reaches_the_reading_phase_as_a_picture():
     assert images[0]["image_url"]["url"].startswith("data:image/png;base64,")
     assert RENDER_PNG not in json.dumps(content), "the path was sent instead of the bytes"
     assert isinstance(llm.calls[1][-1]["content"], str), "Plan was sent the picture"
+
+
+def test_a_pdf_goes_out_as_a_file_block_and_not_as_a_picture():
+    """
+    Drawings arrive as PDFs and could not be attached at all. LiteLLM takes the
+    `file` content block on /chat/completions, which is the same path the
+    picture already takes with a different envelope — no new dependency and no
+    page rendering on our side. FCC-89.
+    """
+    drawing = _a_real_pdf()
+    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")])
+
+    run("Build this bracket", llm=llm, tools=FakeTools().registry, attachments=[drawing])
+
+    content = llm.calls[0][-1]["content"]
+    files = [block for block in content if block.get("type") == "file"]
+
+    assert len(files) == 1, "the PDF was not sent, or was sent as a picture"
+    assert files[0]["file"]["file_data"].startswith("data:application/pdf;base64,")
+    assert not [block for block in content if block.get("type") == "image_url"]
+
+
+def test_a_jpeg_reaches_the_provider_labelled_as_a_jpeg():
+    """
+    `data:image/png;base64` was stamped on every attachment, so a JPEG or a
+    WebP was already going out labelled as a PNG. FCC-89.
+    """
+    photo = _a_real_png(suffix=".jpg")
+    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")])
+
+    run("Build this", llm=llm, tools=FakeTools().registry, attachments=[photo])
+
+    picture = [b for b in llm.calls[0][-1]["content"] if b.get("type") == "image_url"][0]
+    assert picture["image_url"]["url"].startswith("data:image/jpeg;base64,")
+
+
+def test_the_render_still_goes_to_review_as_a_png():
+    """
+    The same helper carries Review's four views and the Worker's render, which
+    are PNGs we wrote ourselves. That path must come out of this unchanged.
+    """
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")],
+                         views=[RENDER_PNG])
+
+    picture = [b for b in llm.calls[-1][-1]["content"] if b.get("type") == "image_url"][0]
+    assert picture["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_a_pdf_rides_into_review_beside_the_render():
+    """
+    Whatever carries a PDF to the phase that reads it carries it to Review as
+    well, or the judgement is handed a drawing it cannot open — or a block the
+    provider rejects, which turns a finished run into a Refusal at the last
+    step. FCC-89.
+    """
+    drawing = _a_real_pdf()
+    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")])
+
+    result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
+                 attachments=[drawing])
+
+    assert result.ok
+    content = llm.calls[-1][-1]["content"]
+    assert len([b for b in content if b.get("type") == "file"]) == 1
+    assert len([b for b in content if b.get("type") == "image_url"]) == 1
 
 
 def test_several_attachments_all_reach_the_reading_phase():

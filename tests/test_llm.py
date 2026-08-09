@@ -19,6 +19,7 @@ from core.llm import (
     LiteLLMClient,
     ProviderRefused,
     ScriptedLLMClient,
+    accepts_pdf,
     litellm_model_name,
     unusable_attachments,
 )
@@ -425,7 +426,7 @@ def test_a_model_litellm_does_not_know_is_given_the_benefit_of_the_doubt(tmp_pat
     assert unusable_attachments([_an_image(tmp_path)], "openai/some-local-build") == []
 
 
-def test_a_file_that_is_not_an_image_is_named(tmp_path):
+def test_a_file_that_is_not_an_image_or_a_pdf_is_named(tmp_path):
     drawing = tmp_path / "bracket.step"
     drawing.write_text("ISO-10303-21;")
 
@@ -434,6 +435,50 @@ def test_a_file_that_is_not_an_image_is_named(tmp_path):
     assert len(reasons) == 1
     assert "bracket.step" in reasons[0]
     assert "PNG" in reasons[0]
+
+
+def _a_pdf(tmp_path, name="bracket.pdf"):
+    drawing = tmp_path / name
+    drawing.write_bytes(b"%PDF-1.4\n%%EOF\n")
+    return str(drawing)
+
+
+def test_a_pdf_on_a_model_that_reads_pdfs_is_usable(tmp_path):
+    """
+    Drawings arrive as PDFs, and `IMAGE_SUFFIXES` turned every one of them away
+    before the run started while the chip icon dressed them as attachable.
+    FCC-89.
+    """
+    assert unusable_attachments([_a_pdf(tmp_path)], "anthropic/claude-3-7-sonnet-20250219") \
+        == []
+
+
+def test_a_model_that_cannot_read_a_pdf_is_named_before_the_run(tmp_path):
+    """
+    The case that is now possible: the model takes images and not PDFs. It has
+    to be named before anything is sent, in the same voice as the sentences
+    beside it — the provider's own complaint arrives too late (FCC-14).
+    """
+    model = "xai/grok-2-vision-1212"      # sees, and does not read a PDF
+    reasons = unusable_attachments([_a_pdf(tmp_path)], model)
+
+    assert len(reasons) == 1, reasons
+    assert "bracket.pdf" in reasons[0]
+    assert model in reasons[0]
+    assert "PDF" in reasons[0]
+
+
+def test_a_pdf_on_a_model_litellm_does_not_know_is_given_the_benefit_of_the_doubt(tmp_path):
+    """`accepts_pdf` is the exact twin of `accepts_images`: absent is not a no."""
+    assert accepts_pdf("openai/some-local-build") is None
+    assert unusable_attachments([_a_pdf(tmp_path)], "openai/some-local-build") == []
+
+
+def test_a_pdf_alone_is_not_refused_for_a_model_that_cannot_see(tmp_path):
+    """A PDF is not an image, so "cannot accept images" is not the complaint."""
+    reasons = unusable_attachments([_a_pdf(tmp_path)], "openai/gpt-3.5-turbo")
+
+    assert not any("cannot accept images" in reason for reason in reasons), reasons
 
 
 def test_a_file_that_is_gone_is_named_rather_than_silently_dropped(tmp_path):

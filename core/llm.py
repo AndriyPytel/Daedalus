@@ -245,8 +245,10 @@ def litellm_model_name(provider: str, model_id: str) -> str:
     return prefix + "/" + model_id
 
 
-# What the providers take as an image, and what the attach dialog offers.
+# What the providers take, and what the attach dialog offers. A PDF is a full
+# attachment, not a second-class one: drawings arrive as PDFs (FCC-89).
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+PDF_SUFFIXES = (".pdf",)
 
 
 def accepts_images(model: str):
@@ -263,29 +265,64 @@ def accepts_images(model: str):
     return bool(litellm.supports_vision(model))
 
 
+def accepts_pdf(model: str):
+    """
+    The exact twin of `accepts_images`, over the same table.
+
+    Anthropic, OpenAI, Vertex AI, Bedrock and Mistral take a PDF on
+    `/chat/completions`; None for a model LiteLLM has never heard of, because a
+    Custom/Local model is not a no.
+
+    Read off `get_model_info` rather than through `litellm.supports_pdf_input`:
+    the flag is in the table in every version, the top-level predicate is not —
+    the LiteLLM this addon ships against (1.95.0) has the one and not the other.
+    """
+    import litellm
+
+    try:
+        info = litellm.get_model_info(model)
+    except Exception:
+        return None
+    return bool(info.get("supports_pdf_input"))
+
+
 def unusable_attachments(paths, model: str) -> list:
     """
     One sentence per attachment this run would not be able to use, before it
     starts. Empty means send it.
 
-    The provider's own complaint arrives after Plan has already been called,
-    which is too late to be told the picture was ignored (FCC-14).
+    The provider's own complaint arrives after the phase has already been
+    called, which is too late to be told the picture was ignored (FCC-14).
     """
     reasons = []
+    pdfs, pictures = [], []
     for path in paths:
         name = os.path.basename(path)
+        suffix = os.path.splitext(path)[1].lower()
         if not os.path.isfile(path):
             reasons.append(
                 "%s is not there any more, so there would be nothing to send." % name)
-        elif os.path.splitext(path)[1].lower() not in IMAGE_SUFFIXES:
+        elif suffix in PDF_SUFFIXES:
+            pdfs.append(name)
+        elif suffix in IMAGE_SUFFIXES:
+            pictures.append(name)
+        else:
             reasons.append(
-                "%s is not an image the provider will take. Attach a PNG, JPEG, GIF or "
-                "WebP instead." % name)
+                "%s is not something the provider will take. Attach a PNG, JPEG, GIF, "
+                "WebP or PDF instead." % name)
 
-    if paths and accepts_images(model) is False:
+    # A PDF is not an image, so a run carrying nothing but PDFs is not refused
+    # for a model that cannot see — the next check is the one that decides it.
+    nothing_but_pdfs = bool(pdfs) and not pictures
+    if paths and not nothing_but_pdfs and accepts_images(model) is False:
         reasons.append(
             "%s cannot accept images. Send the Intent without the attachment, or pick a "
             "model with image support." % model)
+    if pdfs and accepts_pdf(model) is False:
+        reasons.append(
+            "%s cannot read a PDF, so %s would not reach it. Attach an image of the "
+            "drawing instead, or pick a model that reads PDFs."
+            % (model, ", ".join(pdfs)))
     return reasons
 
 

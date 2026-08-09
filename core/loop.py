@@ -27,6 +27,7 @@ defects, so both are bounded and both are reported.
 """
 import base64
 import json
+import mimetypes
 import os
 import re
 from dataclasses import dataclass, field
@@ -297,17 +298,29 @@ def _ask(llm, events, phase, system, user):
 
 def _as_image(path):
     """
-    Read the render as an image content block, so Review actually looks at it.
+    Read a file as the content block the provider takes for it.
 
     A path is meaningless to the model — it cannot open files. Returns None if
     there is nothing to show, which a sketch-only Step produces.
+
+    The mime comes off the file rather than being stamped `image/png` on
+    everything, which is how a JPEG went out labelled as a PNG (FCC-89). A PDF
+    is a `file` block rather than an `image_url` one — the same path with a
+    different envelope, and no page rendering on our side. The renders we write
+    ourselves are PNGs, so that path is unchanged.
     """
     if not path or not os.path.isfile(path):
         return None
     with open(path, "rb") as handle:
         encoded = base64.b64encode(handle.read()).decode("ascii")
+
+    mime, _ = mimetypes.guess_type(path)
+    mime = mime or "application/octet-stream"
+    if mime == "application/pdf":
+        return {"type": "file",
+                "file": {"file_data": "data:%s;base64,%s" % (mime, encoded)}}
     return {"type": "image_url",
-            "image_url": {"url": "data:image/png;base64," + encoded}}
+            "image_url": {"url": "data:%s;base64,%s" % (mime, encoded)}}
 
 
 def _as_json(text, phase):
@@ -720,8 +733,8 @@ def review(intent, views, described, llm, events, attachments=(), checked=None):
     shown = [drawing for drawing in map(_as_image, attachments) if drawing]
     if shown:
         content[0]["text"] += (
-            "\n\nThe last %d image%s is what the user showed with the Intent, not the "
-            "result. Judge whether the result resembles it."
+            "\n\nThe last %d attachment%s is what the user showed with the Intent, not "
+            "the result. Judge whether the result resembles it."
             % (len(shown), "s are" if len(shown) > 1 else " is")
         )
         content.extend(shown)

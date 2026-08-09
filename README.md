@@ -59,6 +59,13 @@ parameters and its named sketch constraints, then an inventory of the geometry r
 the `Shape`, grouped so twenty identical holes are one entry with a count. Raw sketch
 geometry is deliberately not in it.
 
+**A PDF is a full attachment.** Drawings arrive as PDFs, and the "+" button offers them
+beside PNG, JPEG, GIF and WebP. A PDF rides to the Reading phase and to Review as a `file`
+content block; there is no page rendering on our side. A model that cannot read one says
+so before the run starts, naming the file and the model, the same way an unreadable
+attachment already does — and every attachment now goes out labelled as what it is rather
+than as a PNG.
+
 **An attachment leaves a trace.** The picture stays in the chat beside the Intent after
 the chips clear, and the run records it on the event stream, so the Session's `.jsonl`
 and a transcript reopened from the Session Picker both say what the run was shown. A

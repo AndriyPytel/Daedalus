@@ -164,7 +164,7 @@ class UploadWidget(QtWidgets.QWidget):
         self.upload_btn = QtWidgets.QPushButton()
         self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=20, on=self.upload_btn))
         self.upload_btn.setFixedSize(28, 28)
-        self.upload_btn.setToolTip("Attach an image")
+        self.upload_btn.setToolTip("Attach a drawing — an image or a PDF")
         self.upload_btn.setStyleSheet("""
             QPushButton {
                 border: none;
@@ -184,9 +184,11 @@ class UploadWidget(QtWidgets.QWidget):
         self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=20, on=self.upload_btn))
 
     def open_file_dialog(self):
+        # PDFs are offered because they are accepted: the chip icon at
+        # `_ICON_MAP` has always dressed a PDF as attachable (FCC-89).
         files, _ = QtWidgets.QFileDialog.getOpenFileNames(
-            self, "Attach an image", "",
-            "Images (*.png *.jpg *.jpeg *.gif *.webp);;All (*)"
+            self, "Attach a drawing", "",
+            "Drawings (*.png *.jpg *.jpeg *.gif *.webp *.pdf);;All (*)"
         )
         for f in files:
             self.file_attached.emit(f)
