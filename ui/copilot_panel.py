@@ -967,8 +967,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         elif event.kind == ev.ANSWER:
             # The user's own answer is already in the transcript; what is worth
-            # saying is that nobody gave one (FCC-25).
-            if data.get("by") != "user":
+            # saying is that nobody gave one (FCC-25) — or that nobody had to,
+            # because the drawing answered it (FCC-90).
+            if data.get("by") == "drawing":
+                self.add_chat_widget(AssistantMessageWidget(
+                    "Looked at the drawing again — " + data["text"]))
+            elif data.get("by") != "user":
                 self.add_chat_widget(AssistantMessageWidget(
                     "No values given, so the Plan will say what it assumed."))
 

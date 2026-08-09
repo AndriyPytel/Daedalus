@@ -102,8 +102,16 @@ When a value the part cannot be built without is missing, reply with a
 `question` instead of `steps`. Ask for all of them at once, name each one, and
 say what it is for. Do not ask about anything you can introspect, anything the
 Intent already gave you, or anything that changes only how the part is built
-rather than what it is. Answers come back in `you_asked_and_the_user_answered`;
-use those values and no others.
+rather than what it is. **Never ask about anything the drawing shows** — a
+question about the sheet is put back to the sheet before it is put to a person,
+so asking one only spends a turn to be told what a reading should already have
+carried.
+
+Answers come back in `you_asked_and_were_answered`; use those values and no
+others. Each carries `answered_by`. `drawing` means the sheet was read again and
+this is what it says — that is a **read** value, and the Acceptance entry it
+feeds says so. `user` is the person, and is read as well. `budget` means nobody
+answered and you are to choose.
 
 If the user declines, or tells you to choose, then choose — and write every
 value you chose into the prose of the Step that uses it, as "assumed module 2",

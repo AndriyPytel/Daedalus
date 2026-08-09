@@ -98,6 +98,13 @@ wrong shape. The Acceptance list inherits both the datum and the flag, because A
 writes its checks from that list and would otherwise measure the part against an invented
 number and report a pass.
 
+**The sheet is asked before you are.** No reading of a drawing is exhaustive, and Plan's
+only escape from a value the reading did not carry used to be a question to you — about a
+sheet you attached so you would not have to answer for it. A question about the drawing
+now goes back to the Reading phase first, which still has the picture, and only reaches
+you if the sheet genuinely does not say. The transcript shows which happened, and an
+answer read off the drawing is a `read` value, not an assumed one.
+
 **The reading opens with a sweep of the sheet** — every callout printed on it, listed with
 the view it is in — and every entry on that list has to end up either in the reading or in
 the not-defined list with a reason, so a dimension that was missed is something you can

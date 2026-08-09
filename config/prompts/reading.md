@@ -149,4 +149,23 @@ the plane it lies on, and where the drawing shows two features perpendicular to
 one another, say so. A reading that puts everything in one profile plans a flat
 part, and nothing downstream can tell that a plane went missing.
 
-Reply with JSON only: {"reading": "..."}
+## When you are asked again
+
+Sometimes you are called a second time, with `the_question` and the reading you
+already wrote. That means somebody downstream needs a value your reading did not
+carry and is about to ask the **user** for it — and the user attached this sheet
+so they would not have to answer what it shows.
+
+So look again, at the views and not at your own reading. Your reading is what
+was found the first time, not what is on the sheet: the answer is very often
+there and simply did not make it into a line. Count the edges, read the section,
+follow the leader.
+
+Answer in the reading's own line shape, one line per value, with the datum and
+the `read` flag. Where the sheet genuinely does not answer, answer with nothing
+at all — and that is earned the same way `not defined` is earned, by naming the
+views you searched.
+
+Reply with JSON only: {"reading": "..."} the first time, and
+{"answer": "..."} when you were given a question — `""` where the sheet does
+not say, so the question can go to the user instead.

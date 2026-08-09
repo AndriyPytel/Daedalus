@@ -74,8 +74,14 @@ class Budgets:
     revisions: int = 3
     looks_per_step: int = 2
     # A model that only ever asks would never plan. After this many rounds Plan
-    # is told to choose for itself and say what it chose (FCC-25).
+    # is told to choose for itself and say what it chose (FCC-25). It counts
+    # what a *person* was asked; the drawing answering is not being asked.
     questions: int = 2
+    # How many of Plan's questions may be put back to the drawing before they
+    # are put to the user (FCC-90). A re-read is still a provider call, and
+    # without a ceiling a Plan that keeps asking and a drawing that keeps
+    # answering never terminates.
+    rereads: int = 3
 
 
 def revisions_ceiling(budgets, steps) -> int:
@@ -364,6 +370,30 @@ def reading(intent, llm, events, attachments=()):
     return how_it_was_read
 
 
+def look_again(question, how_it_was_read, llm, events, attachments=()):
+    """
+    Put Plan's question to the drawing, before it is put to the user (FCC-90).
+
+    Reading is the only phase that sees the picture, and it runs once — so the
+    moment Plan needs something the reading did not carry, its only escape is a
+    question, and that question goes to the person who attached the sheet
+    precisely so they would not have to answer what it shows. No reading of a
+    drawing is exhaustive; that is why this is a phase and not a parser.
+
+    Returns what the sheet says, or "" where it genuinely does not say, and the
+    question carries on to the user unchanged.
+    """
+    pictures = [picture for picture in map(_as_image, attachments) if picture]
+    if not pictures:
+        return ""
+
+    body = json.dumps({"the_reading_you_wrote": how_it_was_read,
+                       "the_question": question}, indent=2, default=str)
+    reply = _ask(llm, events, READING_PHASE, prompt(READING_PHASE),
+                 [{"type": "text", "text": body}] + pictures)
+    return str(reply.get("answer") or "").strip()
+
+
 @dataclass
 class Plan:
     """The Steps, and what the finished part has to satisfy."""
@@ -393,8 +423,12 @@ def plan(intent, snapshot, llm, events, feedback=None, how_it_was_read="", answe
     if feedback:
         request["what_went_wrong_last_time"] = feedback
     if answers:
-        request["you_asked_and_the_user_answered"] = [
-            {"question": question, "answer": answer} for question, answer in answers]
+        # Who answered is part of the answer: the drawing answering means the
+        # value was read off the sheet, and the Acceptance entry it feeds says
+        # `read` rather than `assumed` (FCC-90).
+        request["you_asked_and_were_answered"] = [
+            {"question": question, "answer": answer, "answered_by": by}
+            for question, answer, by in answers]
 
     reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
                  json.dumps(request, indent=2, default=str))
@@ -792,7 +826,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
 
 
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, how_it_was_read,
-                               ask, cancelled, feedback=None):
+                               ask, cancelled, feedback=None, attachments=()):
     """
     Plan, letting it ask for what the Intent did not say (FCC-25).
 
@@ -801,14 +835,23 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, how_it_wa
     visible anywhere the user could correct it — it turns up in the geometry.
     So Plan may answer with a question instead of Steps, and the run waits.
 
+    The sheet is asked before the person (FCC-90). Where the run has an
+    attachment, the question goes back to Reading first, and only reaches the
+    user if the drawing does not answer it — the user attached the sheet so they
+    would not have to answer what it shows.
+
     A question is not an approval: the Plan Gate is still the single point of
-    approval, and it still sees every Step. `budgets.questions` bounds this,
-    because a model that only asks would never plan.
+    approval, and it still sees every Step. `budgets.questions` bounds how much
+    a *person* is asked, because a model that only asks would never plan; a
+    drawing answering is not a person being asked, and spends `budgets.rereads`
+    instead.
 
     Every Plan comes through here, first or revised: a re-plan is a new Plan and
     may ask the same way, or it invents the value it was missing (FCC-67).
     """
     answers = []
+    asked_the_user = 0
+    read_again = 0
     told_to_choose = False
     while True:
         if cancelled():
@@ -822,18 +865,30 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, how_it_wa
         if told_to_choose:
             raise PhaseError("Plan asked again after being told to choose for itself, so "
                              "there is no Plan and no way to get one.")
-        if len(answers) >= budgets.questions:
+
+        if read_again < budgets.rereads:
+            read_again += 1
+            from_the_drawing = look_again(planned.question, how_it_was_read, llm, events,
+                                          attachments)
+            if from_the_drawing:
+                answers.append((planned.question, from_the_drawing, "drawing"))
+                events.emit(ANSWER, text=from_the_drawing, by="drawing")
+                continue
+
+        if asked_the_user >= budgets.questions:
             # Asked enough. Not an error — the run goes on with Plan choosing
             # and saying, in each Step, what it chose.
-            answers.append((planned.question, _DECIDE))
+            answers.append((planned.question, _DECIDE, "budget"))
             events.emit(ANSWER, text=_DECIDE, by="budget")
             told_to_choose = True
             continue
 
+        asked_the_user += 1
         answer = str(ask(planned.question) or DECIDE_FOR_ME).strip()
         if not answer:
             told_to_choose = True
-        answers.append((planned.question, answer or _DECIDE))
+        answers.append((planned.question, answer or _DECIDE,
+                        "user" if answer else "nobody"))
         events.emit(ANSWER, text=answer, by="user" if answer else "nobody")
 
 
@@ -857,7 +912,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
     def replan(feedback=None):
         return _plan_once_it_knows_enough(intent, tools.call("snapshot"), llm, events, budgets,
-                                          how_it_was_read, ask, cancelled, feedback)
+                                          how_it_was_read, ask, cancelled, feedback,
+                                          attachments)
 
     def decided(why, applied):
         """

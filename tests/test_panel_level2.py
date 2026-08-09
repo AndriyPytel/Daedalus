@@ -1199,6 +1199,25 @@ def test_the_acceptance_list_is_on_the_plan_card_before_the_gate(panel):
     assert "17.0 mm across the flats" in _said_in(panel)
 
 
+def test_an_answer_off_the_drawing_says_so_rather_than_no_values_given(panel):
+    """
+    A question put back to the sheet is answered without the user, and the
+    transcript has to show that rather than falling through to "No values
+    given, so the Plan will say what it assumed" — which would be a lie: a
+    value read off the drawing is read, not assumed. FCC-90.
+    """
+    from core.events import ANSWER, Event
+
+    panel.on_event(Event(ANSWER, {"text": "Front pocket — 20 mm deep — read (SECTION A-A)",
+                                  "by": "drawing"}))
+    QT_APP.processEvents()
+
+    said = _said_in(panel)
+    assert "Looked at the drawing again" in said
+    assert "SECTION A-A" in said
+    assert "No values given" not in said.split("Looked at the drawing again")[-1]
+
+
 def test_an_attached_picture_stays_in_the_chat_after_the_chips_clear(panel, tmp_path):
     """
     `chip_bar.get_and_clear()` took the chips off the bar and nothing replaced

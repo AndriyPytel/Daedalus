@@ -82,6 +82,11 @@ def reading_reply(reading, thinking=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
+def answer_reply(answer):
+    """The Reading phase asked again, with Plan's question (FCC-90)."""
+    return json.dumps({"answer": answer})
+
+
 def code_reply(code, label="Step", thinking=None):
     body = json.dumps({"code": code, "label": label})
     return {"reasoning": thinking, "text": body} if thinking else body
@@ -1985,9 +1990,11 @@ def test_the_answer_reaches_plan_and_nothing_ran_before_it():
     run(GEAR, llm=llm, tools=tools.registry, ask=lambda _: "module 2, 20 teeth, 10 thick, ⌀8 bore")
 
     second_plan = json.dumps(llm.calls[1])
-    assert "you_asked_and_the_user_answered" in second_plan
     assert "20 teeth" in second_plan
     assert MISSING in second_plan, "Plan was given the answer without the question"
+
+    answered = json.loads(llm.calls[1][-1]["content"])["you_asked_and_were_answered"]
+    assert answered[0]["answered_by"] == "user"
 
 
 def test_a_user_who_declines_gets_a_plan_that_chose_for_them():
@@ -2030,6 +2037,119 @@ def test_a_plan_that_only_ever_asks_is_bounded():
     assert not result.ok
     assert "told to choose for itself" in result.reason
     assert tools.applied_codes() == []
+
+
+# ── the sheet is asked before the person (FCC-90) ─────────────────────────────
+
+THROUGH_OR_NOT = ("Does the hourglass pocket go through the 150 mm length, or is it "
+                  "a set depth? And which edges take the R2 fillet?")
+OFF_THE_SECTION = ("Front pocket — cut into the part from the front face — 20 mm deep — "
+                   "read (SECTION A-A, hatched)\nR2 fillets — from each pocket mouth — "
+                   "8 edges — read (top and front views, drawn red)")
+
+
+def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
+    """
+    The run asked the user whether the pockets go through and which edges take
+    R2. SECTION A-A shows the depth, hatched, and the R2 edges are drawn in red
+    in every view — the user attached the sheet so they would not have to answer
+    what it shows. The reading missed it, which is what readings do; the route
+    is what has to stop the miss becoming a question. FCC-90.
+    """
+    asked = []
+
+    result, events, llm, _ = drive([
+        reading_reply(A_READING),
+        question_reply(THROUGH_OR_NOT),
+        answer_reply(OFF_THE_SECTION),
+        plan_reply("Pocket both faces 20 mm"), code_reply("a()"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "")
+
+    assert result.ok
+    assert asked == [], "the user was asked what the drawing answers"
+    answered = events.first(ANSWER)
+    assert answered.data["by"] == "drawing"
+    assert "SECTION A-A" in answered.data["text"]
+
+    # The re-read was given the picture and the reading it already wrote.
+    re_read = llm.calls[2][-1]["content"]
+    assert [b for b in re_read if b.get("type") == "image_url"], "it re-read without the sheet"
+    asked_again = json.loads(re_read[0]["text"])
+    assert asked_again["the_question"] == THROUGH_OR_NOT
+    assert asked_again["the_reading_you_wrote"] == A_READING
+
+    # And Plan was told the drawing answered, not the user.
+    to_plan = json.loads(llm.calls[3][-1]["content"])["you_asked_and_were_answered"]
+    assert to_plan[0]["answered_by"] == "drawing"
+    assert to_plan[0]["answer"] == OFF_THE_SECTION
+
+
+def test_a_question_the_sheet_does_not_answer_still_reaches_the_user():
+    """A tolerance nobody printed is not on the sheet, and the person is asked."""
+    asked = []
+
+    result, events, _, _ = drive([
+        reading_reply(A_READING),
+        question_reply("What general tolerance applies?"),
+        answer_reply(""),                       # not on the sheet
+        plan_reply("Sketch it"), code_reply("a()"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG],
+        ask=lambda q: asked.append(q) or "±0.1 mm")
+
+    assert result.ok
+    assert asked == ["What general tolerance applies?"]
+    assert events.first(ANSWER).data["by"] == "user"
+
+
+def test_the_drawing_answering_does_not_spend_the_users_question_budget():
+    """
+    `budgets.questions` bounds how much a person is asked, and the drawing
+    answering is not a person being asked. FCC-90.
+    """
+    asked = []
+
+    result, _, _, _ = drive([
+        reading_reply(A_READING),
+        question_reply("q1"), answer_reply("the sheet says so"),
+        question_reply("q2"), answer_reply("the sheet says so too"),
+        question_reply("q3"), answer_reply(""),
+        plan_reply("Sketch it"), code_reply("a()"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(questions=2),
+        ask=lambda q: asked.append(q) or "an answer")
+
+    assert result.ok
+    assert asked == ["q3"], "two drawing answers ate the user's budget: %s" % asked
+
+
+def test_the_re_reads_have_a_ceiling_of_their_own():
+    """
+    A Plan that keeps asking and a drawing that keeps answering would never
+    terminate. Past the ceiling the question reaches the user as it did before.
+    """
+    asked = []
+
+    drive([
+        reading_reply(A_READING),
+        question_reply("q1"), answer_reply("read off the sheet"),
+        question_reply("q2"),
+        plan_reply("Sketch it"), code_reply("a()"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1),
+        ask=lambda q: asked.append(q) or "an answer")
+
+    assert asked == ["q2"], "the second question was put to the sheet past the ceiling"
+
+
+def test_with_no_attachment_a_question_goes_straight_to_the_user():
+    """No sheet to ask, so no extra provider call and the old behaviour exactly."""
+    asked = []
+
+    _, _, llm, _ = drive(
+        [question_reply(MISSING), plan_reply("Sketch it"), code_reply("a()"),
+         verdict_reply("pass")],
+        intent=GEAR, ask=lambda q: asked.append(q) or "module 2")
+
+    assert asked == [MISSING]
+    assert len(llm.calls) == 4, "a turn was spent re-reading a drawing that is not there"
 
 
 def test_a_question_alongside_steps_is_still_a_plan():
