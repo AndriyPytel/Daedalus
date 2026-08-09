@@ -968,14 +968,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
                 self.add_chat_widget(AssistantMessageWidget(
                     "No values given, so the Plan will say what it assumed."))
 
+        elif event.kind == ev.READING:
+            self._render_reading(data["text"])
+
         elif event.kind == ev.PLAN:
-            self._render_plan(data["steps"], "Plan", data.get("reading", ""),
-                              data.get("acceptance", ()))
+            self._render_plan(data["steps"], "Plan", data.get("acceptance", ()))
 
         elif event.kind == ev.PLAN_REVISED:
             self.add_chat_widget(AssistantMessageWidget("Revised the Plan: " + data["reason"]))
-            self._render_plan(data["steps"], "Revised Plan", data.get("reading", ""),
-                              data.get("acceptance", ()))
+            self._render_plan(data["steps"], "Revised Plan", data.get("acceptance", ()))
 
         elif event.kind == ev.STEP_STARTED:
             self._thought = None
@@ -1034,17 +1035,26 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.status_line.setText(("Thinking: " + text.replace("\n", " "))[-90:])
         self.status_line.setVisible(True)
 
-    def _render_plan(self, steps, title, reading="", acceptance=()):
+    def _render_reading(self, text):
+        """
+        Above the Plan, and open: correcting a misreading at the Gate is the
+        whole point, and a reading one click away is not read (FCC-47).
+
+        Its own event since the Reading became its own phase, so a replayed
+        transcript shows it standing before the Plan that used it (FCC-86).
+        """
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
-        if reading:
-            # Above the Plan, and open: correcting a misreading at the Gate is
-            # the whole point, and a reading one click away is not read (FCC-47).
-            how = AccordionWidget("How the drawing was read")
-            self.add_chat_widget(how)
-            how.append_text(reading)
-            how.toggle_content()
+        how = AccordionWidget("How the drawing was read")
+        self.add_chat_widget(how)
+        how.append_text(text)
+        how.toggle_content()
+
+    def _render_plan(self, steps, title, acceptance=()):
+        if self._thought:
+            self._thought.stop_pulsing()
+            self._thought = None
         self._plan_widget = PlanWidget(steps, title=title)
         self.add_chat_widget(self._plan_widget)
         if acceptance:

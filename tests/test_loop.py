@@ -14,7 +14,7 @@ import pytest
 
 from core.events import (
     ANSWER, APPLIED, ASSERTION, BLOCKED, ERROR, PLAN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
+    PREFLIGHT_FAILED, QUESTION, READING, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
     TOOL_CALL, TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import TRAPS
@@ -49,17 +49,28 @@ DESCRIPTION = {
     "geometry": {"solids": 1, "surfaces": [{"kind": "Plane", "count": 6}]},
 }
 
+A_READING = (
+    "Base: 80 x 40 x 10 mm plate.\n"
+    "Features: 2x ⌀8 through holes, 15 mm from each end on the centreline; "
+    "R5 fillets on all four corners.\n"
+    "Not defined by the drawing: material, tolerance, surface finish."
+)
+
 
 # ── scripted phase replies ────────────────────────────────────────────────────
 
 
-def plan_reply(*steps, thinking=None, reading=None, acceptance=None):
+def plan_reply(*steps, thinking=None, acceptance=None):
     reply = {"steps": list(steps)}
-    if reading is not None:
-        reply = {"reading": reading, "steps": list(steps)}
     if acceptance is not None:
         reply["acceptance"] = list(acceptance)
     body = json.dumps(reply)
+    return {"reasoning": thinking, "text": body} if thinking else body
+
+
+def reading_reply(reading, thinking=None):
+    """The Reading phase's turn — first in a run that has an attachment."""
+    body = json.dumps({"reading": reading})
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
@@ -173,14 +184,14 @@ def failed(traceback):
 
 
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
-          views=None, checks=()):
+          views=None, checks=(), attachments=()):
     """Run the loop over scripted turns and hand back everything to assert on."""
     llm = ScriptedLLMClient(turns)
     tools = FakeTools(applies, views=views, checks=checks)
     events = EventStream()
     kwargs = {"ask": ask} if ask is not None else {}
     result = run(intent, llm=llm, tools=tools.registry, events=events,
-                 budgets=budgets or Budgets(), **kwargs)
+                 budgets=budgets or Budgets(), attachments=list(attachments), **kwargs)
     return result, events, llm, tools
 
 
@@ -193,18 +204,23 @@ def _system_messages(llm):
 
 
 @pytest.mark.parametrize("turn, phase",
-                         [(0, "plan"), (1, "execute"), (2, "assertion"), (3, "review")])
+                         [(0, "reading"), (1, "plan"), (2, "execute"), (3, "assertion"),
+                          (4, "review")])
 def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
     """
     The file reached the provider — not that the loader returned a string. The
     prompts are config, so this reads the config. FCC-3.
+
+    Driven with an attachment, because Reading is a turn only where there is
+    something to read (FCC-86); every later phase shifts by one with it.
     """
     _, _, llm, _ = drive([
+        reading_reply("A 10 mm cube."),
         plan_reply("Add a box", acceptance=["10 mm on a side"]),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         assertion_reply("assert True, '10 mm on a side'"),
         verdict_reply("pass"),
-    ])
+    ], attachments=[RENDER_PNG])
 
     with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
         expected = handle.read().strip().replace(
@@ -280,29 +296,52 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
     assert "Let a Step fail" in execute_system
 
 
-def test_reading_may_not_invent_its_way_out_of_a_contradiction():
+def test_the_reading_rules_moved_to_the_reading_phase_whole():
     """
-    The requirement already shipped and was not honoured: plan.md asks for
-    "what the drawing does not define" and the Model Mania run listed some
-    undefined dimensions correctly and then invented an operation anyway.
-    What the copy did not forbid is what this asserts. FCC-59.
+    FCC-59's rules were live in plan.md and did not hold, so FCC-86 moved who
+    reads and when rather than rewriting them a fourth time. They move as they
+    are: what is asserted is that every one of them survived the move, that
+    Plan no longer carries any of it, and that Review is still told none of it.
+    FCC-59, FCC-86.
     """
     _, _, llm, _ = drive([
+        reading_reply("A 10 mm cube."),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
-    ])
+    ], attachments=[RENDER_PNG])
     # The prompts are wrapped copy; a sentence crosses line breaks.
-    plan_system, _, review_system = (
+    reading_system, plan_system, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
-    assert "cannot both be true" in plan_system
-    assert "an operation the drawing does not show" in plan_system
-    assert "Read every plane the drawing uses" in plan_system
-    assert "perpendicular" in plan_system
-    # The requirement it leans on has to still be there to lean on.
-    assert "what the drawing does not define" in plan_system
-    assert "cannot both be true" not in review_system
+    for rule in ("A reading is not a description of the picture",
+                 "what the drawing does not define",
+                 "cannot both be true",
+                 "an operation the drawing does not show",
+                 "Read every plane the drawing uses",
+                 "perpendicular"):
+        assert rule in reading_system, "the Reading phase lost: " + rule
+        assert rule not in plan_system, "plan.md still carries the Reading rule: " + rule
+        assert rule not in review_system
+
+
+def test_plan_is_handed_a_finished_reading_and_not_the_picture():
+    """
+    Far too much of the split is invisible in the background otherwise: Plan is
+    told plainly that this is a Reading somebody else produced, and that what it
+    calls undefined stays undefined. FCC-86.
+    """
+    _, _, llm, _ = drive([
+        reading_reply("A 10 mm cube."),
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    plan_system = " ".join(_system_messages(llm)[1].split())
+
+    assert "how_the_drawing_was_read" in plan_system
+    assert "You do not get the picture itself" in plan_system
+    assert "What it lists as undefined stays undefined" in plan_system
 
 
 def test_a_step_is_an_action_a_user_would_perform_not_a_call():
@@ -763,12 +802,14 @@ def test_review_is_told_when_there_is_no_render_to_judge_by():
 # ── attachments ───────────────────────────────────────────────────────────────
 
 
-def test_an_attachment_reaches_plan_as_a_picture():
+def test_an_attachment_reaches_the_reading_phase_as_a_picture():
     """
     The panel used to collect the attached paths and throw them away, so the
-    user showed the assistant a photo it never saw. FCC-4.
+    user showed the assistant a photo it never saw. FCC-4. The phase that
+    receives it is the Reading phase since FCC-86; Plan never sees a picture.
     """
-    llm = ScriptedLLMClient([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools().registry, attachments=[RENDER_PNG])
 
@@ -779,10 +820,12 @@ def test_an_attachment_reaches_plan_as_a_picture():
     assert len(images) == 1
     assert images[0]["image_url"]["url"].startswith("data:image/png;base64,")
     assert RENDER_PNG not in json.dumps(content), "the path was sent instead of the bytes"
+    assert isinstance(llm.calls[1][-1]["content"], str), "Plan was sent the picture"
 
 
-def test_several_attachments_all_reach_plan():
-    llm = ScriptedLLMClient([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+def test_several_attachments_all_reach_the_reading_phase():
+    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")])
     second = _a_real_png()
 
     run("From both angles", llm=llm, tools=FakeTools().registry,
@@ -803,7 +846,8 @@ def test_an_intent_with_no_attachments_sends_what_it_always_did():
 
 
 def test_an_attachment_that_has_been_moved_is_dropped_not_fatal():
-    llm = ScriptedLLMClient([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools().registry,
                  attachments=["/nowhere/gone.png", RENDER_PNG])
@@ -813,53 +857,33 @@ def test_an_attachment_that_has_been_moved_is_dropped_not_fatal():
     assert len([b for b in content if b.get("type") == "image_url"]) == 1
 
 
-def test_a_replan_still_carries_the_attachments():
-    """The reference the user showed is as relevant to the second Plan as the first."""
-    llm = ScriptedLLMClient([
-        plan_reply("v1"), code_reply("v1()"), verdict_reply("fail", "not right"),
-        plan_reply("v2"), code_reply("v2()"), verdict_reply("pass"),
-    ])
-
-    run("Build this", llm=llm, tools=FakeTools().registry, attachments=[RENDER_PNG])
-
-    replan = llm.calls[3][-1]["content"]
-    assert [b for b in replan if b.get("type") == "image_url"]
-
-
 # ── the reading of the drawing ────────────────────────────────────────────────
 
-A_READING = (
-    "Base: 80 x 40 x 10 mm plate.\n"
-    "Features: 2x ⌀8 through holes, 15 mm from each end on the centreline; "
-    "R5 fillets on all four corners.\n"
-    "Not defined by the drawing: material, tolerance, surface finish."
-)
 
-
-def test_the_reading_of_the_drawing_is_shown_with_the_plan():
+def test_the_reading_is_an_event_of_its_own_standing_before_the_plan():
     """
-    The attachment reached Plan and stopped there, so nothing recorded how it
-    was read. A misreading only became visible once geometry existed. FCC-47.
+    The Reading used to be a field on the Plan event, because Plan produced it.
+    A phase of its own emits its own event, and a replayed transcript then shows
+    it in the order it was actually produced. FCC-47, FCC-86.
     """
-    llm = ScriptedLLMClient([plan_reply("Only", reading=A_READING),
-                             code_reply("box()"), verdict_reply("pass")])
-    events = EventStream()
+    _, events, _, _ = drive([reading_reply(A_READING), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")],
+                            attachments=[RENDER_PNG])
 
-    run("Build this bracket", llm=llm, tools=FakeTools().registry, events=events,
-        attachments=[RENDER_PNG], gate=lambda steps: None)
-
-    planned = events.first(PLAN)
-    assert planned.data["reading"] == A_READING
-    assert planned.data["steps"] == ["Only"]
+    kinds = [event.kind for event in events]
+    assert events.first(READING).data["text"] == A_READING
+    assert kinds.index(READING) < kinds.index(PLAN)
+    assert "reading" not in events.first(PLAN).data
 
 
-def test_a_plan_with_no_reading_is_the_event_it_always_was():
-    """With nothing attached the Plan Gate looks exactly as it does today."""
-    _, events, _, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+def test_with_nothing_attached_there_is_no_reading_turn_at_all():
+    """No extra provider call, and the Plan Gate is identical to today's."""
+    _, events, llm, _ = drive([plan_reply("Only"), code_reply("box()"),
+                               verdict_reply("pass")])
 
-    planned = events.first(PLAN)
-    assert planned.data["steps"] == ["Only"]
-    assert not planned.data.get("reading")
+    assert events.first(READING) is None
+    assert len(llm.calls) == 3, "a Reading turn was spent on an Intent with no picture"
+    assert events.first(PLAN).data["steps"] == ["Only"]
 
 
 def test_the_reading_is_carried_into_execute_as_text():
@@ -867,15 +891,21 @@ def test_the_reading_is_carried_into_execute_as_text():
     Execute stays on text deliberately — it is called per Step and again per
     look, so the picture would multiply across dozens of calls.
     """
-    llm = ScriptedLLMClient([plan_reply("Only", reading=A_READING),
-                             code_reply("box()"), verdict_reply("pass")])
+    _, _, llm, _ = drive([reading_reply(A_READING), plan_reply("Only"),
+                          code_reply("box()"), verdict_reply("pass")],
+                         attachments=[RENDER_PNG])
 
-    run("Build this bracket", llm=llm, tools=FakeTools().registry,
-        attachments=[RENDER_PNG])
-
-    asked = llm.calls[1][-1]["content"]
+    asked = llm.calls[2][-1]["content"]
     assert isinstance(asked, str), "Execute was sent a picture, not text"
     assert json.loads(asked)["reading_of_the_drawing"] == A_READING
+
+
+def test_the_reading_reaches_plan_under_a_key_of_its_own():
+    _, _, llm, _ = drive([reading_reply(A_READING), plan_reply("Only"),
+                          code_reply("box()"), verdict_reply("pass")],
+                         attachments=[RENDER_PNG])
+
+    assert json.loads(llm.calls[1][-1]["content"])["how_the_drawing_was_read"] == A_READING
 
 
 def test_execute_is_told_nothing_extra_when_there_was_no_reading():
@@ -884,20 +914,21 @@ def test_execute_is_told_nothing_extra_when_there_was_no_reading():
     assert "reading" not in json.loads(llm.calls[1][-1]["content"])
 
 
-def test_a_revised_plan_carries_its_own_reading():
-    """A second Plan re-reads the drawing; the Gate must show that one, not the first."""
-    llm = ScriptedLLMClient([
-        plan_reply("v1", reading="first reading"), code_reply("v1()"),
-        verdict_reply("fail", "not right"),
-        plan_reply("v2", reading="second reading"), code_reply("v2()"), verdict_reply("pass"),
-    ])
-    events = EventStream()
+def test_a_revision_plans_from_the_same_reading_and_does_not_read_again():
+    """
+    The Reading depends on neither the Snapshot nor the feedback, so a second
+    call at the same picture is a provider call spent on nothing. FCC-86.
+    """
+    _, events, llm, _ = drive([
+        reading_reply(A_READING),
+        plan_reply("v1"), code_reply("v1()"), verdict_reply("fail", "not right"),
+        plan_reply("v2"), code_reply("v2()"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
 
-    run("Build this", llm=llm, tools=FakeTools().registry, events=events,
-        attachments=[RENDER_PNG])
-
-    revised = events.first(PLAN_REVISED)
-    assert revised.data["reading"] == "second reading"
+    assert len(events.of(READING)) == 1
+    replan = json.loads(llm.calls[4][-1]["content"])
+    assert replan["how_the_drawing_was_read"] == A_READING
+    assert replan["what_went_wrong_last_time"] == "not right"
 
 
 def test_review_is_shown_the_drawing_beside_the_render():
@@ -905,7 +936,7 @@ def test_review_is_shown_the_drawing_beside_the_render():
     Review compared a render against a sentence: the picture never reached it,
     so "does this resemble what I was shown" was not a question it could ask.
     """
-    llm = ScriptedLLMClient([plan_reply("Only", reading=A_READING),
+    llm = ScriptedLLMClient([reading_reply(A_READING), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,

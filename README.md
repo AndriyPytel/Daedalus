@@ -19,16 +19,26 @@ is a live parametric feature tree you can keep editing, not a dead mesh or an ST
 ## How a run works
 
 ```
-Intent ──► Plan ──► [ Plan Gate ] ──► Step 1 ──► Step 2 ──► … ──► Review
-                          │             │                            │
-                     you approve    Lint → Preflight → Apply     verdict returns
-                     the whole Plan   (disposable worker)           to Plan
+Intent ──► Reading ──► Plan ──► [ Plan Gate ] ──► Step 1 ──► … ──► Assertion ──► Review
+                                      │             │                              │
+                                 you approve   Lint → Preflight → Apply       verdict returns
+                                 the whole Plan   (disposable worker)             to Plan
 ```
 
-**Plan → Execute → Review is a fixed order with deterministic routing** (ADR-0003).
-Plan produces the Steps, Execute works through them one at a time, Review judges the
-outcome against the Intent, and Review's verdict returns to Plan — never to Execute.
-There is no model-chosen speaker selection anywhere.
+**Reading → Plan → Execute → Assertion → Review is a fixed order with deterministic
+routing** (ADR-0003, ADR-0018). Reading says what is on the drawing, Plan produces the
+Steps, Execute works through them one at a time, Assertion measures the finished part
+against the Acceptance list, Review judges the outcome against the Intent, and a failure
+from either of the last two returns to Plan — never to Execute. There is no model-chosen
+speaker selection anywhere.
+
+**Reading is a context of its own, with nothing to build** (ADR-0018). It used to be part
+of the same call that produced the Plan, and one context answering "what is on the
+drawing" and "how do I build it" at once invents the numbers the second question needs:
+one run read an overall length of 108 as 100 and then wrote itself the missing term that
+made its own arithmetic close. A phase with nothing to build has no reason to write a
+number in — where it cannot read a value it says so. It runs once per run, is reused by
+every revision, and with nothing attached it does not run at all.
 
 **Execute has one edge back to Plan** (ADR-0013). A Step that is out of date, or that
 cannot be built once its attempts are spent, returns to Plan to be written differently
@@ -57,7 +67,8 @@ in this Session — is deleted without asking.
 
 If you attached a drawing, the Gate also shows **how it was read** — the base dimensions,
 each feature with its size and position, and, separately, what the drawing does not
-define. That reading is the point of the Gate when there is a picture involved: a
+define — above the Plan that was written from it. That reading is the point of the Gate
+when there is a picture involved: a
 misreading is something to correct here, in one sentence, rather than to recognise later
 in the geometry. It is carried into Execute as text, and the drawing itself is shown to
 Review, so the verdict compares the result to what you actually showed.
@@ -94,7 +105,7 @@ prompt, so a phase never discovers it by failing.
 
 | Path | What lives there |
 |---|---|
-| `core/loop.py` | The Plan → Execute → Review loop, budgets, the Plan Gate |
+| `core/loop.py` | The Reading → Plan → Execute → Assertion → Review loop, budgets, the Plan Gate |
 | `core/tools.py` | The Tool registry — the only sanctioned route to the Document |
 | `core/freecad_tools.py` | The Tools themselves: snapshot, describe_object, dependencies, apply_step, and the `TRAPS` |
 | `core/lint.py` | The AST lint that runs before Preflight |

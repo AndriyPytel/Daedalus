@@ -1,8 +1,9 @@
 """
-The Plan -> Execute -> Review loop.
+The Reading -> Plan -> Execute -> Assertion -> Review loop.
 
 Fixed order, deterministic routing (ADR-0003). No LLM-chosen speaker
-selection: Plan produces Steps and the list they have to satisfy, Execute works
+selection: Reading says what is on the drawing and has nothing to build with it
+(ADR-0018), Plan produces Steps and the list they have to satisfy, Execute works
 through the Steps one at a time, Assertion measures the finished Document
 against that list once the run is over (ADR-0017), Review judges the outcome,
 and a failure from either of the last two returns to Plan — never to Execute.
@@ -33,13 +34,14 @@ from typing import List
 
 from core.events import (
     ANSWER, APPLIED, ASSERTION, BLOCKED, ERROR, PLAN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
+    PREFLIGHT_FAILED, QUESTION, READING, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
     TOOL_CALL, TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import TRAPS
 from core.llm import REASONING, ProviderRefused
 from core.tools import ToolError
 
+READING_PHASE = "reading"
 PLAN_PHASE = "plan"
 EXECUTE_PHASE = "execute"
 ASSERTION_PHASE = "assertion"
@@ -322,18 +324,38 @@ def _as_json(text, phase):
     return parsed
 
 
+def reading(intent, llm, events, attachments=()):
+    """
+    Read the attached drawing, once per run, before anything is planned.
+
+    A context of its own, with nothing to build (ADR-0018). Reading and Plan
+    used to be one call, and the second pressure spoilt the first: a value was
+    invented not because the model saw badly but because it needed something to
+    plan with. A phase with nothing to build has no reason to write a number in.
+
+    Produced once per run and reused by every revision: it depends on neither
+    the Snapshot nor the feedback, so re-reading the same picture would be a
+    provider call spent on nothing. With nothing to look at there is no turn at
+    all, and the run costs exactly what it costs today.
+    """
+    pictures = [picture for picture in map(_as_image, attachments) if picture]
+    if not pictures:
+        return ""
+
+    body = json.dumps({"intent": intent}, indent=2, default=str)
+    reply = _ask(llm, events, READING_PHASE, prompt(READING_PHASE),
+                 [{"type": "text", "text": body}] + pictures)
+    how_it_was_read = _reading_of(reply)
+    if how_it_was_read:
+        events.emit(READING, text=how_it_was_read)
+    return how_it_was_read
+
+
 @dataclass
 class Plan:
-    """
-    The Steps, and how the drawing they came from was read.
-
-    `reading` is empty when nothing was attached — there is nothing to read —
-    and the Plan Gate then looks exactly as it did before there was a reading
-    at all.
-    """
+    """The Steps, and what the finished part has to satisfy."""
 
     steps: list
-    reading: str = ""
     # What Plan must know before it can plan at all. Set *instead of* steps,
     # never beside them — a question is not a Plan with a caveat (FCC-25).
     question: str = ""
@@ -343,39 +365,33 @@ class Plan:
     acceptance: list = field(default_factory=list)
 
 
-def plan(intent, snapshot, llm, events, feedback=None, attachments=(), answers=()):
+def plan(intent, snapshot, llm, events, feedback=None, how_it_was_read="", answers=()):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
 
-    `attachments` are the files the user showed with the Intent. They ride as
-    image blocks beside the request, the same shape Review gets its render in;
-    with none, the request is the plain string it always was.
-
-    Plan is the only phase that sees the picture, so it is the only one that
-    can say how it was read. That reading is shown at the Plan Gate and carried
-    as text from there — a misreading is correctable before geometry exists
-    rather than after (FCC-47).
+    Plan never sees the picture. It is handed the finished Reading instead, and
+    told plainly that is what it is — the drawing was read by a phase with
+    nothing to build, and what that phase called undefined stays undefined here
+    (ADR-0018).
     """
     request = {"intent": intent, "document": snapshot}
+    if how_it_was_read:
+        request["how_the_drawing_was_read"] = how_it_was_read
     if feedback:
         request["what_went_wrong_last_time"] = feedback
     if answers:
         request["you_asked_and_the_user_answered"] = [
             {"question": question, "answer": answer} for question, answer in answers]
 
-    body = json.dumps(request, indent=2, default=str)
-    pictures = [picture for picture in map(_as_image, attachments) if picture]
-    content = [{"type": "text", "text": body}] + pictures if pictures else body
-
-    reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE), content)
+    reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
+                 json.dumps(request, indent=2, default=str))
     steps = _steps_of(reply.get("steps", []))
     question = str(reply.get("question") or "").strip()
     if not steps and question:
-        return Plan(steps=[], reading=_reading_of(reply), question=question)
+        return Plan(steps=[], question=question)
     if not steps:
         raise PhaseError("Plan produced no Steps for this Intent.")
-    return Plan(steps=steps, reading=_reading_of(reply),
-                acceptance=_acceptance_of(reply))
+    return Plan(steps=steps, acceptance=_acceptance_of(reply))
 
 
 def _steps_of(planned):
@@ -410,11 +426,11 @@ def _acceptance_of(reply):
 
 def _reading_of(reply):
     """
-    The reading as text, however the model chose to shape it.
+    The reading as text, however the phase chose to shape it.
 
-    Asked for as prose, but a model that answers a question about dimensions
-    with an object is being reasonable rather than wrong, and dropping that
-    would lose the whole point of having asked.
+    A model that answers a question about dimensions with an object is being
+    reasonable rather than wrong, and dropping that would lose the whole point
+    of having asked.
     """
     reading = reply.get("reading")
     if not reading:
@@ -449,7 +465,7 @@ def execute(step, tools, llm, events, attempts, budgets=None, reading=""):
     `attempts` are the failures **for this Step only**. A Step is not told what
     went wrong elsewhere in the Plan; that is noise it cannot act on.
 
-    `reading` is Plan's reading of the drawing, as text. Execute stays on text
+    `reading` is the Reading phase's, as text. Execute stays on text
     deliberately: it is called per Step and again per look, so the picture would
     multiply across dozens of calls, and a Step concerns one feature for which
     the rest of the drawing is noise.
@@ -506,7 +522,7 @@ def _lookable(tools):
 def _emit_plan(events, kind, planned, reason=None):
     """A Plan on the stream, in one place — the panel reads both kinds alike."""
     extra = {"reason": reason} if reason is not None else {}
-    events.emit(kind, steps=list(planned.steps), reading=planned.reading,
+    events.emit(kind, steps=list(planned.steps),
                 acceptance=list(planned.acceptance), **extra)
 
 
@@ -738,7 +754,8 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     wipe it. Nothing is global, so two runs cannot see each other and a
     sub-agent is a narrower Intent.
 
-    `attachments` are files the user showed with the Intent; Plan sees them.
+    `attachments` are files the user showed with the Intent; the Reading phase
+    sees them, and Review sees them again at the end.
     """
     events = events if events is not None else EventStream()
     budgets = budgets or Budgets()
@@ -761,7 +778,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
         return LoopResult(ok=False, reason=str(exc))
 
 
-def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, attachments,
+def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, how_it_was_read,
                                ask, cancelled, feedback=None):
     """
     Plan, letting it ask for what the Intent did not say (FCC-25).
@@ -784,7 +801,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, attachmen
         if cancelled():
             raise Stopped()
         planned = plan(intent, snapshot, llm, events, feedback=feedback,
-                       attachments=attachments, answers=answers)
+                       how_it_was_read=how_it_was_read, answers=answers)
         if not planned.question:
             return planned
 
@@ -809,9 +826,15 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, attachmen
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
          decide=revise_by_default):
+    if cancelled():
+        raise Stopped()
+    # Once per run, ahead of every Plan: a revision plans from the same reading
+    # rather than paying a second call to look at the same picture (ADR-0018).
+    how_it_was_read = reading(intent, llm, events, attachments)
+
     def replan(feedback=None):
         return _plan_once_it_knows_enough(intent, tools.call("snapshot"), llm, events, budgets,
-                                          attachments, ask, cancelled, feedback)
+                                          how_it_was_read, ask, cancelled, feedback)
 
     def decided(why, applied):
         """
@@ -870,7 +893,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                   "apply and nothing to review.", progress["tried"],
                           progress["applied"])
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
-                                progress, planned.reading)
+                                progress, how_it_was_read)
         applied = progress["applied"]
 
         if outcome["blocked"]:

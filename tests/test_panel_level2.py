@@ -1199,6 +1199,35 @@ def test_the_acceptance_list_is_on_the_plan_card_before_the_gate(panel):
     assert "17.0 mm across the flats" in _said_in(panel)
 
 
+def test_the_reading_stands_above_the_plan_at_the_gate(panel):
+    """
+    The Reading is its own event since it became its own phase, and the
+    arrangement at the Gate is unchanged: "How the drawing was read", above the
+    Plan, open — a reading one click away is not read. FCC-86.
+    """
+    from core.events import PLAN, READING, Event
+
+    from ui.plan_widget import PlanWidget
+
+    panel.on_event(Event(READING, {"text": "Base: an 80 x 40 x 10 mm plate."}))
+    panel.on_event(Event(PLAN, {"steps": ["Sketch the plate"], "acceptance": []}))
+    QT_APP.processEvents()
+
+    from ui.accordion_widget import AccordionWidget
+
+    # The panel is shared with the tests above, so it is the last of each that
+    # this one just put there.
+    widgets = _widgets_in(panel)
+    reading_at, how = max((i, w) for i, w in enumerate(widgets)
+                          if isinstance(w, AccordionWidget)
+                          and "How the drawing was read" in w.toggle_button.text())
+    plan_at = max(i for i, w in enumerate(widgets) if isinstance(w, PlanWidget))
+
+    assert reading_at < plan_at, "the reading rendered below the Plan it was read for"
+    assert how.content_area.isVisible(), "the reading is one click away, so it is not read"
+    assert "80 x 40 x 10 mm plate" in _said_in(panel)
+
+
 def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(panel):
     """
     Take it, fix it, start again. The last is the one the Plan Gate has no word
