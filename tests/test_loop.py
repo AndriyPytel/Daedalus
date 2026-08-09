@@ -325,6 +325,99 @@ def test_the_reading_rules_moved_to_the_reading_phase_whole():
         assert rule not in review_system
 
 
+def test_a_reading_carries_a_named_datum_a_value_and_a_read_or_assumed_flag():
+    """
+    Dimensions were read and positions were not: a magnitude arrived without
+    what it was measured from, and a position with no named datum degrades into
+    "somewhere sensible", which defaults to centred. Prose is what allows it —
+    a sentence carries a number without carrying its datum. This is the third
+    pass at the same symptom through copy, so what the copy now demands is the
+    three fields, not another sentence. FCC-87.
+    """
+    _, _, llm, _ = drive([
+        reading_reply("A 10 mm cube."),
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    # The prompts are wrapped copy; a sentence crosses line breaks.
+    reading_system, _, _, review_system = (
+        " ".join(text.split()) for text in _system_messages(llm))
+
+    assert "A reading is not prose" in reading_system
+    assert "<what it is> — from <datum> — <value> — read" in reading_system
+    assert "named the way the drawing names it" in reading_system
+    assert "A magnitude without its datum is the defect this phase exists for" \
+        in reading_system
+    assert "A reading is not prose" not in review_system
+
+
+def test_a_fraction_of_a_named_overall_is_a_value_on_equal_terms_with_millimetres():
+    """
+    A picture with no dimensions on it has no millimetres, only proportions.
+    Millimetres-only sends it to `question`, which is the behaviour that burned
+    the run in FCC-85: the model asked about the medium rather than a value and
+    the answer came back nobody's. One assumed overall is a wrong scale, which
+    one number at the Plan Gate corrects; a dozen assumed dimensions is a wrong
+    shape, which nothing corrects. FCC-87.
+    """
+    _, _, llm, _ = drive([
+        reading_reply("A 10 mm cube."),
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    reading_system = " ".join(_system_messages(llm)[0].split())
+
+    assert "a fraction of a named overall" in reading_system
+    assert "a fraction is a full record, not a fallback" in reading_system
+    assert "Never stop to ask for dimensions" in reading_system
+    assert "Exactly one assumption in the whole reading" in reading_system
+
+
+def test_the_acceptance_inherits_the_datum_and_the_flag():
+    """
+    The hole `34.5` and `50.5` came through: the requirement to write an assumed
+    value into the prose of a Step exists and was obeyed, and there was no
+    matching requirement on the Acceptance — so invented numbers stood in the
+    list as fact, and Assertion would measure the part against them and report
+    a pass. FCC-87.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    plan_system, _, review_system = (
+        " ".join(text.split()) for text in _system_messages(llm))
+
+    assert "Every entry names what it is measured from" in plan_system
+    assert "whether that came off the drawing or was assumed" in plan_system
+    assert "an unmarked assumption is measured against the part" in plan_system
+    # Assertion is untouched: it still writes asserts from the Acceptance text.
+    assert "Every entry names what it is measured from" not in review_system
+
+
+def test_a_structured_reading_survives_into_plan_and_onto_the_stream():
+    """
+    A model that answers with an object rather than a paragraph is being
+    reasonable; the pipe has to carry it to the Plan Gate and to Plan without
+    dropping it. FCC-87.
+    """
+    structured = {"features": [{"what": "Ø8 through hole", "datum": "the top face",
+                                "value": "14 mm", "read": True}]}
+    _, events, llm, _ = drive([
+        reading_reply(structured),
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    rendered = events.first(READING).data["text"]
+    assert json.loads(rendered) == structured, "the structure was flattened away"
+    assert json.loads(llm.calls[1][-1]["content"])["how_the_drawing_was_read"] == rendered
+
+
 def test_plan_is_handed_a_finished_reading_and_not_the_picture():
     """
     Far too much of the split is invisible in the background otherwise: Plan is

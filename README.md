@@ -68,10 +68,22 @@ in this Session — is deleted without asking.
 If you attached a drawing, the Gate also shows **how it was read** — the base dimensions,
 each feature with its size and position, and, separately, what the drawing does not
 define — above the Plan that was written from it. That reading is the point of the Gate
-when there is a picture involved: a
-misreading is something to correct here, in one sentence, rather than to recognise later
-in the geometry. It is carried into Execute as text, and the drawing itself is shown to
-Review, so the verdict compares the result to what you actually showed.
+when there is a picture involved: a misreading is something to correct here, in one
+sentence, rather than to recognise later in the geometry. It is carried into Execute as
+text, and the drawing itself is shown to Review, so the verdict compares the result to
+what you actually showed.
+
+**A reading is not prose.** Every value comes with what it is measured from — a named
+face, axis, plane or edge — with a value that is either millimetres or a fraction of a
+named overall, and with a `read` or `assumed` flag. A magnitude without its datum is the
+whole defect: read "7 from the top face, 14 to the hole axis, over 30" as "two 7 mm
+cheeks 16 mm apart" and a one-sided mounting has become a symmetric pair, with every
+number still correct. A picture carrying no dimensions at all does not stop the run to
+ask: exactly one number is assumed — an overall — and everything else is a fraction of
+it, so a wrong guess is a wrong scale you fix with one number at the Gate rather than a
+wrong shape. The Acceptance list inherits both the datum and the flag, because Assertion
+writes its checks from that list and would otherwise measure the part against an invented
+number and report a pass.
 
 ### Lint, then Preflight, then Apply
 

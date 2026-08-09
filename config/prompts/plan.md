@@ -40,6 +40,22 @@ Keep the list small. Ten entries is comfortable and twenty is the ceiling,
 because these are control points rather than an inventory: "the holes are 10 mm
 apart", "the plate is 3 mm thick" — never "check all ten thousand faces".
 
+**Every entry names what it is measured from, and says whether that came off
+the drawing or was assumed.** The reading gave you both for every value it
+wrote down, and the entry inherits them: "the hole axis is 14 mm from the top
+face (read)", "the boss is 30 mm long (assumed)". Never "the two side cheeks
+are 7 mm wide" — that hides the datum, and a symmetric pair and a one-sided
+offset satisfy it equally. An assumed value has to be marked assumed *here* and
+not only in the prose of the Step that uses it: Assertion writes its checks from
+this list and nothing else, so an unmarked assumption is measured against the
+part and reported as a pass.
+
+Where the reading gave a value as a fraction of a named overall, the entry says
+so the same way — "the window starts at 0.35 of the overall length from the left
+end face (read), where the overall length is 100 mm (assumed)". The one assumed
+number stays visible, because correcting it is what fixes the scale of the
+whole part.
+
 Every entry has to be measurable off the Shape, on a feature rather than on the
 envelope around it. An axis-aligned bounding box is not a measurement: a nut
 turned 17° reports 14.626 × 14.355 × 6.500, and not one of those numbers is on
