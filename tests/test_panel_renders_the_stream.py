@@ -28,18 +28,27 @@ def function(tree, name):
     raise AssertionError("%s has no %s" % (PANEL, name))
 
 
-def test_every_event_kind_is_rendered():
+def test_every_event_kind_is_shown():
     """
-    A kind added to the stream and forgotten in the panel is an event the user
-    never sees. Caught here instead of in a demo.
+    A kind added to the stream and forgotten is an event the user never sees.
+
+    It is shown one of two ways: narrated, which is now plain Python and so is
+    checked by running it, or rendered structurally by the panel because it is
+    not a sentence — which is still a switch, and still parsed.
     """
-    rendered = {
+    from core.narrate import Narration, narrate
+
+    from tests.test_narrate import an_event
+
+    structural = {
         node.attr for node in ast.walk(function(panel_tree(), "on_event"))
         if isinstance(node, ast.Attribute) and node.attr.isupper()
     }
-    expected = {kind.upper() for kind in KINDS}
+    narrated = {kind.upper() for kind in KINDS
+                if narrate(an_event(kind)) != Narration()}
 
-    assert expected <= rendered, "not rendered: %s" % ", ".join(sorted(expected - rendered))
+    missing = {kind.upper() for kind in KINDS} - structural - narrated
+    assert not missing, "neither narrated nor rendered: %s" % ", ".join(sorted(missing))
 
 
 def test_the_panel_only_ever_asks_the_loop_to_start():

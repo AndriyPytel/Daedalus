@@ -343,6 +343,24 @@ def _as_json(text, phase):
     return parsed
 
 
+def _at_the_drawing(body, llm, events, attachments):
+    """
+    One turn with the sheet in front of it: *body* as text, the attachments as
+    pictures. None when there is nothing to look at, which is not a turn.
+
+    Both of the Reading phase's turns come through here, so the picture
+    encoding and the nothing-to-look-at guard are written once. What differs
+    between them is the body and the key they read back, and that is all that
+    differs (ADR-0018, FCC-90).
+    """
+    pictures = [picture for picture in map(_as_image, attachments) if picture]
+    if not pictures:
+        return None
+
+    return _ask(llm, events, READING_PHASE, prompt(READING_PHASE),
+                [{"type": "text", "text": json.dumps(body, indent=2, default=str)}] + pictures)
+
+
 def reading(intent, llm, events, attachments=()):
     """
     Read the attached drawing, once per run, before anything is planned.
@@ -357,13 +375,10 @@ def reading(intent, llm, events, attachments=()):
     provider call spent on nothing. With nothing to look at there is no turn at
     all, and the run costs exactly what it costs today.
     """
-    pictures = [picture for picture in map(_as_image, attachments) if picture]
-    if not pictures:
+    reply = _at_the_drawing({"intent": intent}, llm, events, attachments)
+    if reply is None:
         return ""
 
-    body = json.dumps({"intent": intent}, indent=2, default=str)
-    reply = _ask(llm, events, READING_PHASE, prompt(READING_PHASE),
-                 [{"type": "text", "text": body}] + pictures)
     how_it_was_read = _reading_of(reply)
     if how_it_was_read:
         events.emit(READING, text=how_it_was_read)
@@ -383,15 +398,9 @@ def look_again(question, how_it_was_read, llm, events, attachments=()):
     Returns what the sheet says, or "" where it genuinely does not say, and the
     question carries on to the user unchanged.
     """
-    pictures = [picture for picture in map(_as_image, attachments) if picture]
-    if not pictures:
-        return ""
-
-    body = json.dumps({"the_reading_you_wrote": how_it_was_read,
-                       "the_question": question}, indent=2, default=str)
-    reply = _ask(llm, events, READING_PHASE, prompt(READING_PHASE),
-                 [{"type": "text", "text": body}] + pictures)
-    return str(reply.get("answer") or "").strip()
+    reply = _at_the_drawing({"the_reading_you_wrote": how_it_was_read,
+                             "the_question": question}, llm, events, attachments)
+    return "" if reply is None else str(reply.get("answer") or "").strip()
 
 
 @dataclass
@@ -788,6 +797,20 @@ class Stopped(Exception):
     """The user stopped the run. Not a failure — a decision."""
 
 
+class _OutOfRevisions(Exception):
+    """
+    The shared revision ceiling is spent. Raised where the rewrite was asked
+    for, because that is the only place that knows which cause asked and what
+    had been tried by then; carries the finished reason so the block does not
+    have to work it out again.
+    """
+
+    def __init__(self, reason, tried):
+        super().__init__(reason)
+        self.reason = reason
+        self.tried = tried
+
+
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
         gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default) -> LoopResult:
     """
@@ -815,6 +838,8 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
         return _block(events, "Stopped by you. Everything applied so far is still in the "
                               "Document; undo it Step by Step if you want it gone.", [],
                       progress["applied"])
+    except _OutOfRevisions as spent:
+        return _block(events, spent.reason, spent.tried, progress["applied"])
     except ProviderRefused as exc:
         return _block(events, str(exc), progress["tried"], progress["applied"], said=exc.said)
     except PhaseError as exc:
@@ -936,6 +961,23 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     revisions = _Revisions()
     described = {}
 
+    def rewrite(cause, refused, feedback, tried, reason=None):
+        """
+        Rewrite the Plan for *cause*, or stop because the budget is spent.
+
+        Five unrelated things replan and every one of them does it the same
+        way: spend one unit of the shared ceiling, plan again from a fresh
+        Snapshot, and say on the stream why. Only the cause, the sentence and
+        what had been tried differ, so only those are arguments.
+        """
+        if revisions.exhausted(budgets, steps):
+            raise _OutOfRevisions(
+                revisions.block_reason(budgets, steps, cause, refused), tried)
+        revisions.spend(cause)
+        revised = replan(feedback)
+        _emit_plan(events, PLAN_REVISED, revised, reason=reason or feedback)
+        return revised
+
     # One loop, so every Plan reaches the Gate before any of its Steps runs — a
     # revised Plan is a new Plan and used to go straight into the work (FCC-68).
     while True:
@@ -956,15 +998,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         # AMEND, and anything that is not an approval: no Step runs on a
         # decision the Gate does not recognise.
         if approval.decision != APPROVE:
-            if revisions.exhausted(budgets, steps):
-                return _block(events, revisions.block_reason(
-                    budgets, steps, _Revisions.AMENDED,
-                    "Your latest amendment was not planned."),
-                    progress["tried"], progress["applied"])
-            revisions.spend(_Revisions.AMENDED)
-            planned = replan(approval.feedback)
-            _emit_plan(events, PLAN_REVISED, planned,
-                       reason="You asked for: " + approval.feedback)
+            planned = rewrite(_Revisions.AMENDED,
+                              "Your latest amendment was not planned.",
+                              approval.feedback, progress["tried"],
+                              reason="You asked for: " + approval.feedback)
             continue
 
         if not steps:
@@ -974,9 +1011,6 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, how_it_was_read)
         applied = progress["applied"]
-
-        if outcome["blocked"]:
-            return _block(events, outcome["reason"], outcome["tried"], applied)
 
         # Both go back to Plan from a fresh Snapshot and spend the same budget:
         # the Step no longer makes sense, or it cannot be built (ADR-0013).
@@ -988,15 +1022,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                 cause, feedback = _Revisions.UNBUILDABLE, outcome["handback"]
                 refused = outcome["handback"]
 
-            if revisions.exhausted(budgets, steps):
-                return _block(
-                    events,
-                    revisions.block_reason(budgets, steps, cause, refused),
-                    outcome["tried"], applied,
-                )
-            revisions.spend(cause)
-            planned = replan(feedback)
-            _emit_plan(events, PLAN_REVISED, planned, reason=feedback)
+            planned = rewrite(cause, refused, feedback, outcome["tried"])
             continue
 
         described = outcome["description"] or described
@@ -1020,17 +1046,9 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             if answer == START_OVER:
                 feedback += _MAY_START_AGAIN
 
-            if revisions.exhausted(budgets, steps):
-                return _block(
-                    events,
-                    revisions.block_reason(
-                        budgets, steps, _Revisions.ASSERTED,
-                        "The acceptance checks have failed again."),
-                    outcome["tried"] + [{"assertion": checked.traceback}], applied,
-                )
-            revisions.spend(_Revisions.ASSERTED)
-            planned = replan(feedback)
-            _emit_plan(events, PLAN_REVISED, planned, reason=feedback)
+            planned = rewrite(_Revisions.ASSERTED,
+                              "The acceptance checks have failed again.", feedback,
+                              outcome["tried"] + [{"assertion": checked.traceback}])
             continue
 
         views = _review_views(tools, events)
@@ -1061,17 +1079,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
         # Bounded by review_cycles above, but it spends the shared revision
         # budget as well — invisibly, until FCC-22.
-        if revisions.exhausted(budgets, steps):
-            return _block(
-                events,
-                revisions.block_reason(
-                    budgets, steps, _Revisions.REJECTED,
-                    "Review has rejected the result again."),
-                outcome["tried"] + [{"review": reason}], applied,
-            )
-        revisions.spend(_Revisions.REJECTED)
-        planned = replan(feedback)
-        _emit_plan(events, PLAN_REVISED, planned, reason=feedback)
+        planned = rewrite(_Revisions.REJECTED, "Review has rejected the result again.",
+                          feedback, outcome["tried"] + [{"review": reason}])
 
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
@@ -1091,8 +1100,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             outcome = execute(step, tools, llm, events, attempts, budgets, reading)
 
             if outcome.obsolete:
-                return {"blocked": False, "obsolete": outcome.obsolete,
-                        "handback": None, "description": described,
+                return {"obsolete": outcome.obsolete, "handback": None,
+                        "description": described,
                         "tried": [_tried(step, a) for a in attempts]}
 
             if outcome.code:
@@ -1128,10 +1137,10 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                                 % (index, len(steps), len(attempts), step,
                                    attempts[-1].traceback),
                     "tried": [_tried(step, a) for a in attempts],
-                    "blocked": False, "obsolete": None, "description": described,
+                    "obsolete": None, "description": described,
                 }
 
-    return {"blocked": False, "obsolete": None, "handback": None,
+    return {"obsolete": None, "handback": None,
             "description": described, "tried": []}
 
 

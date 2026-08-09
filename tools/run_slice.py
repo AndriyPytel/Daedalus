@@ -54,7 +54,7 @@ def main():
     import FreeCAD
 
     from core.apply import ApplyPipeline
-    from core.events import BLOCKED, ERROR, PREFLIGHT_FAILED, THOUGHT, EventStream
+    from core.events import EventStream
     from core.freecad_tools import build_registry
     from core.llm import LiteLLMClient
     from core.loop import APPROVE, Approval, run
@@ -82,7 +82,8 @@ def main():
         pipeline = ApplyPipeline(
             document=doc, worker=worker,
             dispatch=lambda func, timeout=None: func(),   # already the main thread
-            confirm=lambda kinds: args.allow_user_objects,
+            confirm=lambda kinds: args.allow_user_objects is True,
+            events=events,
         )
         result = run(args.intent, llm=client,
                      tools=build_registry(doc, pipeline=pipeline),
@@ -121,11 +122,21 @@ def main():
 
 
 def _printer():
-    """Narrate the run the way the panel would."""
-    from core.events import (
-        APPLIED, BLOCKED, ERROR, PLAN, PLAN_REVISED, PREFLIGHT_FAILED,
-        REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT,
-    )
+    """
+    Narrate the run the way the panel does — through `core.narrate`, so it
+    cannot say anything different.
+
+    This used to be a second `if/elif` over the same kinds, and it drifted:
+    long after ADR-0018 gave the Reading an event of its own it was still
+    looking for the reading on the `plan` event, so it printed none, and it
+    never learned `attached`, `assertion`, `question` or `answer` at all.
+
+    What is left here is the shapes the narrator does not carry, because they
+    are not sentences: reasoning as it streams, the Steps of a Plan, and the
+    code of a tool call.
+    """
+    from core.events import PLAN, PLAN_REVISED, THOUGHT, TOOL_CALL
+    from core.narrate import narrate
 
     state = {"phase": None}
 
@@ -140,35 +151,24 @@ def _printer():
             return
 
         state["phase"] = None
+        said = narrate(event)
+        if said.line:
+            print("\n" + said.line)
+        if said.title:
+            print("\n" + said.title.upper() + ":")
+            for line in said.body.splitlines():
+                print("  " + line)
+        if said.status:
+            print("  " + said.status)
+
         if event.kind in (PLAN, PLAN_REVISED):
-            if data.get("reading"):
-                print("\n\nHOW THE DRAWING WAS READ:")
-                for line in data["reading"].splitlines():
-                    print("  " + line)
-            print("\n\n%s:" % ("PLAN" if event.kind == PLAN else "PLAN REVISED"))
+            print("\n%s:" % ("PLAN" if event.kind == PLAN else "PLAN REVISED"))
             for n, step in enumerate(data["steps"], start=1):
                 print("  %d. %s" % (n, step))
-        elif event.kind == STEP_STARTED:
-            print("\n> Step %d/%d: %s" % (data["index"], data["total"], data["description"]))
         elif event.kind == TOOL_CALL:
-            code = data["arguments"].get("code", "")
             print("  %s(%s)" % (data["name"], data["arguments"].get("label", "")))
-            for line in code.strip().splitlines():
+            for line in data["arguments"].get("code", "").strip().splitlines():
                 print("    | " + line)
-        elif event.kind == TOOL_RESULT:
-            print("  -> " + str(data["result"].get("status")))
-        elif event.kind == PREFLIGHT_FAILED:
-            print("  x attempt %d failed:" % data["attempt"])
-            for line in data["traceback"].strip().splitlines()[-6:]:
-                print("    " + line)
-        elif event.kind == APPLIED:
-            print("  applied %r, created %s" % (data["label"], data.get("created")))
-        elif event.kind == REVIEW_VERDICT:
-            print("\nREVIEW: %s - %s" % (data["verdict"], data["reason"]))
-        elif event.kind == BLOCKED:
-            print("\nBLOCKED: " + data["reason"])
-        elif event.kind == ERROR:
-            print("\nERROR: " + data["message"])
 
     return show
 

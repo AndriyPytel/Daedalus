@@ -155,9 +155,11 @@ prompt, so a phase never discovers it by failing.
 | `core/apply.py` | Lint → Preflight → Apply, as one undoable transaction |
 | `core/llm.py` | The provider seam — LiteLLM, plus a scripted client for tests |
 | `core/events.py` | The event stream every phase narrates into, and the per-Session log |
+| `core/narrate.py` | What an event says to a person — the panel and `run_slice` share it |
+| `core/sessions.py` | The Sessions: the durable index, the naming, the bound. No Qt |
 | `core/session_title.py` | The short call that names a Session from its first Intent |
-| `ui/copilot_panel.py` | The dock: composer, transcript, Plan Gate card, model picker |
-| `ui/multi_tab_manager.py` | Sessions and the stack of chat areas |
+| `ui/copilot_panel.py` | The dock: composer, transcript, question card, model picker |
+| `ui/multi_tab_manager.py` | The stack of chat areas, one per Session |
 | `ui/history_popup.py` | The Session Picker |
 | `config/prompts/*.md` | The three phase prompts — copy to tune, kept out of the source |
 | `Mod/` | Workbench registration and the Preferences pages |
@@ -221,11 +223,13 @@ so a restored Session cannot drift from a running one.
 
 **FreeCAD is never mocked** (ADR-0007). The suite is layered instead:
 
-- **Level 1** (291 tests) — pure logic with no FreeCAD at all: the loop over a scripted
-  LLM client, the lint, the event stream, the title call. This is where TDD happens.
-- **Level 2** (123 tests, marked `@pytest.mark.freecad`) — run against a real FreeCAD:
-  the Tools, Preflight in a real worker, and the Qt panel built offscreen against
-  FreeCAD's own PySide2 — its arithmetic and its state machine, not its appearance.
+- **Level 1** (436 tests, 8 seconds) — pure logic with no FreeCAD and no Qt at all: the
+  loop over a scripted LLM client, the lint, the event stream, what an event says, the
+  Sessions, the title call. This is where TDD happens.
+- **Level 2** (209 tests, marked `@pytest.mark.freecad`, two and a half minutes) — run
+  against a real FreeCAD: the Tools, Preflight in a real worker, and the Qt panel built
+  offscreen against FreeCAD's own PySide2 — its arithmetic and its state machine, not
+  its appearance.
 - **Level 3** — by hand. How a widget looks under a theme is not something a test can
   tell you, which is the finding behind ADR-0011.
 

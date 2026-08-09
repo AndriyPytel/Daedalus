@@ -13,6 +13,7 @@ import os
 import threading
 from dataclasses import dataclass, field
 
+from core.events import ANSWER, QUESTION
 from core.freecad_tools import description
 from core.lint import lint
 from core.preflight import PreflightWorker, copy_of
@@ -178,10 +179,17 @@ class ApplyPipeline:
 
     `dispatch`, `worker`, `transaction` and `confirm` are injected so Level 1
     can drive the whole pipeline without Qt or a headless FreeCAD.
+
+    `events` is the running Session's stream, set per run because the pipeline
+    outlives one. It is here for one reason: the Owned Object question is the
+    only thing the user is ever asked that does not go through the loop, so
+    without it a Session that authorised a deletion could not say so when it
+    was replayed.
     """
 
     def __init__(self, document=None, worker=None, dispatch=on_main_thread,
-                 transaction=None, render_dir=None, confirm=None, owned=None):
+                 transaction=None, render_dir=None, confirm=None, owned=None,
+                 events=None):
         self._document = document
         self._worker = worker
         self._dispatch = dispatch
@@ -190,6 +198,7 @@ class ApplyPipeline:
         self._renders = 0
         self._confirm = confirm or refuse_without_asking
         self.owned = set(owned or ())
+        self.events = events
 
     @property
     def worker(self) -> PreflightWorker:
@@ -312,6 +321,11 @@ class ApplyPipeline:
             _discard(copy)
         return [drawn.render] if drawn.ok and drawn.render else []
 
+    def _narrate(self, kind, **data):
+        """Say it on the stream, if a run is listening. Headless, nobody is."""
+        if self.events is not None:
+            self.events.emit(kind, **data)
+
     def _not_ours(self, preflighted):
         """
         Ask before deleting anything the assistant did not create this Session.
@@ -323,9 +337,28 @@ class ApplyPipeline:
 
         Preflight already ran the Step against a copy, so this is what the code
         *did*, not what reading it suggested it might do.
+
+        Asked and answered on the stream, like every other question put to the
+        user. It is the one that does not come through the loop, so it is the
+        one that would otherwise vanish from a replayed Session — leaving a
+        deleted object with nothing anywhere saying it was allowed.
         """
         deletes = sorted(set(preflighted.deleted) - self.owned)
-        if not deletes or self._confirm({"delete": deletes}):
+        if not deletes:
+            return None
+
+        wanted = "delete " + ", ".join(deletes)
+        self._narrate(QUESTION, text="The assistant wants to " + wanted + ".")
+
+        # Only an explicit yes is one. Whoever asks releases waiting questions
+        # somehow when a run is stopped, and the panel releases this one with
+        # the Plan Gate's answer — an object, and so truthy. Read as consent,
+        # that let Stop delete the user's own work.
+        allowed = self._confirm({"delete": deletes}) is True
+        self._narrate(ANSWER, by="user",
+                      text=("You allowed it to " if allowed else "You refused to let it ")
+                           + wanted + ".")
+        if allowed:
             return None
 
         return (

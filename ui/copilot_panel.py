@@ -197,6 +197,15 @@ class AskTheUser(QtCore.QObject):
         return self._ask(self.plan_gate, steps)
 
     def about_objects_we_do_not_own(self, kinds):
+        """
+        Whether the assistant may delete something the user made themselves.
+
+        `abandon` releases this with an Approval, like every other waiting
+        question, and an Approval is truthy — so what makes Stop a refusal
+        rather than consent is `ApplyPipeline`, which takes nothing but an
+        explicit yes. It is the choke point every asker routes through, so the
+        guard is there rather than repeated in each of them.
+        """
         return self._ask(self.owned_objects, kinds)
 
     def about_missing_values(self, question):
@@ -276,12 +285,16 @@ class LoopWorker(QtCore.QObject):
             self.client = client_from_settings(settings_manager.instance().get_last_model())
         return self.client
 
-    def _get_tools(self):
+    def _get_tools(self, events=None):
         from core.apply import ApplyPipeline
         from core.freecad_tools import build_registry
 
         if self.pipeline is None:
             self.pipeline = ApplyPipeline(confirm=self.ask.about_objects_we_do_not_own)
+        # The pipeline outlives a run — it keeps the Session's Owned Objects —
+        # so the stream it narrates the Owned Object question into is set per
+        # run rather than at construction.
+        self.pipeline.events = events
         return build_registry(pipeline=self.pipeline)
 
     @QtCore.Slot(str, object, str)
@@ -301,7 +314,7 @@ class LoopWorker(QtCore.QObject):
         events.subscribe(lambda event: logger.error("%s: %s" % (event.kind, event.data))
                          if event.kind in (ev.BLOCKED, ev.ERROR) else None)
 
-        tools = self._get_tools()
+        tools = self._get_tools(events)
         try:
             self.document_named.emit(transcript,
                                      str(tools.call("snapshot").get("document") or ""))
@@ -344,25 +357,6 @@ class _TitleThread(QtCore.QThread):
         from core.session_title import generate
 
         self.titled.emit(generate(self._intent, self._model_id))
-
-
-def _assertion_said(data):
-    """
-    What the acceptance checks came to, in one line.
-
-    Three outcomes, not two: `ok` is None when the checks could not be written
-    at all, which is a fact about the checking code and not a verdict on the
-    part.
-    """
-    uncovered = data.get("uncovered") or []
-    if data.get("ok") is None:
-        return "⚠ Acceptance checks could not be written; Review judges the list alone."
-    if not data.get("ok"):
-        return "✗ Acceptance checks failed:\n" + (data.get("traceback") or "")
-    said = "✓ Acceptance checks passed: %d confirmed." % len(data.get("confirmed") or [])
-    if uncovered:
-        said += " Left to Review: " + ", ".join(uncovered) + "."
-    return said
 
 
 # ── Main Panel ─────────────────────────────────────────────────────────────────
@@ -712,9 +706,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._thought = None
         self._thought_phase = None
         self._current_step = 0
-        self._gate_card = None
-        self._answer_card = None
-        self._revision_card = None
+        # One question at a time: the run is blocked on the answer, so it
+        # cannot have asked a second thing while the first is on screen.
+        self._question_card = None
+        self._answers_to_enter = None
 
     def _became_the_live_session(self):
         """
@@ -857,11 +852,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         return unusable_attachments(attached, model)
 
     def on_send(self):
-        # While the Plan is waiting on a question the composer answers it. Enter
-        # is the only route to Send there — the button is hidden mid-run — and
-        # it used to start a second run on the answer instead (FCC-71).
-        if self._answer_card is not None:
-            self._answer_values()
+        # While the Plan is waiting on a question the composer answers, Enter
+        # answers it rather than starting a second run on the answer (FCC-71).
+        if self._answers_to_enter is not None:
+            self._answer_with(self._answers_to_enter)
             return
 
         intent = self.user_input.toPlainText().strip()
@@ -932,10 +926,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.update_header_title(self.chat_sessions.stack.currentIndex())
 
     def on_stop(self):
-        for card in ("_gate_card", "_answer_card", "_revision_card"):
-            if getattr(self, card, None) is not None:
-                getattr(self, card).setEnabled(False)
-                setattr(self, card, None)
+        # A card left clickable after Stop answers a run that is already over.
+        if self._question_card is not None:
+            self._question_card.setEnabled(False)
+            self._question_card = None
+            self._answers_to_enter = None
         self.worker.stop()       # also releases a waiting question
         self.stop_button.setEnabled(False)
         self.status_line.setText("Stopping after the current attempt…")
@@ -953,87 +948,75 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         The whole panel is this method.
 
-        One branch per event kind, no calls back into the loop. If a kind is
-        added and not handled here, it is simply not rendered — nothing breaks.
+        What an event *says* is `core.narrate`'s, so the panel and the slice
+        runner cannot word the same event differently. What is left here is
+        where a line goes, and the shapes that are not prose: the Steps of a
+        Plan, a block of code, a picture, reasoning as it streams.
+
+        No calls back into the loop. A kind nobody narrates and nobody renders
+        is simply not shown — nothing breaks.
         """
         from core import events as ev
+        from core.narrate import narrate
 
         data = event.data
+
+        # Structure first: these carry more than a sentence, and some of them
+        # also change the Plan widget's marks.
         if event.kind == ev.THOUGHT:
             self._render_thought(data["phase"], data["text"])
+            return
 
-        elif event.kind == ev.QUESTION:
-            self.add_chat_widget(AssistantMessageWidget(data["text"]))
-
-        elif event.kind == ev.ANSWER:
-            # The user's own answer is already in the transcript; what is worth
-            # saying is that nobody gave one (FCC-25) — or that nobody had to,
-            # because the drawing answered it (FCC-90).
-            if data.get("by") == "drawing":
-                self.add_chat_widget(AssistantMessageWidget(
-                    "Looked at the drawing again — " + data["text"]))
-            elif data.get("by") != "user":
-                self.add_chat_widget(AssistantMessageWidget(
-                    "No values given, so the Plan will say what it assumed."))
-
-        elif event.kind == ev.ATTACHED:
+        if event.kind == ev.ATTACHED:
             self._render_attachments(data["files"])
+            return
 
-        elif event.kind == ev.READING:
-            self._render_reading(data["text"])
+        if event.kind == ev.TOOL_CALL:
+            self._render_tool_call(data["name"], data["arguments"])
+            return
 
-        elif event.kind == ev.PLAN:
+        if event.kind == ev.READING:
+            self._render_reading(narrate(event))
+            return
+
+        if event.kind == ev.PLAN:
             self._render_plan(data["steps"], "Plan", data.get("acceptance", ()))
+            return
 
-        elif event.kind == ev.PLAN_REVISED:
-            self.add_chat_widget(AssistantMessageWidget("Revised the Plan: " + data["reason"]))
-            self._render_plan(data["steps"], "Revised Plan", data.get("acceptance", ()))
-
-        elif event.kind == ev.STEP_STARTED:
+        if event.kind == ev.STEP_STARTED:
             self._thought = None
             self._current_step = data["index"]
             if self._plan_widget:
                 self._plan_widget.highlight(data["index"])
-            self.status_line.setText("Step %d/%d: %s" % (data["index"], data["total"],
-                                                         data["description"]))
-            self.status_line.setVisible(True)
 
-        elif event.kind == ev.TOOL_CALL:
-            self._render_tool_call(data["name"], data["arguments"])
+        elif event.kind == ev.APPLIED and self._plan_widget:
+            self._plan_widget.mark(data["step"], PLAN_DONE)
 
-        elif event.kind == ev.TOOL_RESULT:
-            self.status_line.setText("%s → %s" % (data["name"],
-                                                  data["result"].get("status", "done")))
+        elif event.kind == ev.BLOCKED and self._plan_widget and self._current_step:
+            self._plan_widget.mark(self._current_step, PLAN_FAILED)
 
-        elif event.kind == ev.PREFLIGHT_FAILED:
-            self._render_failure(data["attempt"], data["traceback"])
+        self._say(narrate(event))
 
-        elif event.kind == ev.APPLIED:
-            created = ", ".join(data.get("created") or []) or "no new objects"
-            self.add_chat_widget(AssistantMessageWidget(
-                "✓ Applied “%s” — %s. Ctrl+Z undoes this Step." % (data["label"], created)))
-            if self._plan_widget:
-                self._plan_widget.mark(data["step"], PLAN_DONE)
+        # The revised Steps stand under the line that says they were revised.
+        if event.kind == ev.PLAN_REVISED:
+            self._render_plan(data["steps"], "Revised Plan", data.get("acceptance", ()))
 
-        elif event.kind == ev.ASSERTION:
-            # Its own line, never REVIEW_VERDICT's: the checks are code, and
-            # Review deliberately never sees code (ADR-0003).
-            self.add_chat_widget(AssistantMessageWidget(_assertion_said(data)))
+    def _say(self, narration):
+        """
+        Put a narrated event where it belongs: a bubble, a collapsible row, or
+        the status line that replaces itself.
+        """
+        if narration.line:
+            self.add_chat_widget(AssistantMessageWidget(narration.line))
 
-        elif event.kind == ev.REVIEW_VERDICT:
-            mark = "✓" if data["verdict"] == "pass" else "✗"
-            self.add_chat_widget(AssistantMessageWidget(
-                "%s Review: %s — %s" % (mark, data["verdict"], data["reason"])))
-
-        elif event.kind == ev.BLOCKED:
-            if self._plan_widget and self._current_step:
-                self._plan_widget.mark(self._current_step, PLAN_FAILED)
-            self._render_blocked(data["reason"], data.get("tried") or [])
-
-        elif event.kind == ev.ERROR:
-            row = AccordionWidget("✗ Something went wrong")
+        if narration.title:
+            row = AccordionWidget(narration.title)
             self.add_chat_widget(row)
-            row.append_text(data["message"])
+            row.append_text(narration.body)
+
+        if narration.status:
+            self.status_line.setText(narration.status)
+            self.status_line.setVisible(True)
 
     def _render_thought(self, phase, text):
         """Reasoning appends to one accordion per phase turn, as it forms."""
@@ -1070,10 +1053,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
             label.setToolTip(name)
             self.add_chat_widget(label)
 
-    def _render_reading(self, text):
+    def _render_reading(self, narration):
         """
         Above the Plan, and open: correcting a misreading at the Gate is the
-        whole point, and a reading one click away is not read (FCC-47).
+        whole point, and a reading one click away is not read (FCC-47). Being
+        open is why this is not left to `_say` with the other rows.
 
         Its own event since the Reading became its own phase, so a replayed
         transcript shows it standing before the Plan that used it (FCC-86).
@@ -1081,9 +1065,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
-        how = AccordionWidget("How the drawing was read")
+        how = AccordionWidget(narration.title)
         self.add_chat_widget(how)
-        how.append_text(text)
+        how.append_text(narration.body)
         how.toggle_content()
 
     def _render_plan(self, steps, title, acceptance=()):
@@ -1112,22 +1096,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.add_chat_widget(row)
             row.append_text(str(arguments))
 
-    def _render_failure(self, attempt, traceback):
-        panel = AccordionWidget("✗ Preflight failed (attempt %d) — retrying" % attempt)
-        self.add_chat_widget(panel)
-        panel.append_text(traceback)
-
-    def _render_blocked(self, reason, tried):
-        self.add_chat_widget(AssistantMessageWidget("⏸  " + reason))
-        if tried:
-            panel = AccordionWidget("What was tried (%d)" % len(tried))
-            self.add_chat_widget(panel)
-            for entry in tried:
-                panel.append_text(str(entry.get("code") or entry.get("review") or entry))
-                if entry.get("traceback"):
-                    panel.append_text("\n" + entry["traceback"])
-                panel.append_text("\n" + "─" * 40 + "\n")
-
     # ── The two places the user keeps control ──────────────────────────────────
 
     @QtCore.Slot(object)
@@ -1137,10 +1105,18 @@ class CopilotPanel(QtWidgets.QDockWidget):
         approval, so this appears once per Plan and the run waits on it. A
         revised Plan is a new Plan and gets its own card (FCC-68).
         """
-        self.status_line.setText("Waiting for you to approve the Plan…")
-        self.status_line.setVisible(True)
-        self._gate_card = self._build_gate_card(len(steps))
-        self.add_chat_widget(self._gate_card)
+        from core.loop import AMEND, APPROVE, REJECT, Approval
+
+        self._put_the_question(
+            "Waiting for you to approve the Plan\u2026",
+            "Run this Plan? Approving covers all %d Steps \u2014 no Step is confirmed "
+            "separately." % len(steps),
+            "To amend it, say what to change in the box below, then Amend.",
+            (("\u2713  Approve", lambda: Approval(APPROVE)),
+             ("\u270e  Amend", lambda: self._from_composer(
+                 "Say what to change, then press Amend\u2026",
+                 lambda said: Approval(AMEND, said))),
+             ("\u2717  Reject", lambda: Approval(REJECT))))
 
     @QtCore.Slot(object)
     def on_revision(self, failure):
@@ -1150,202 +1126,154 @@ class CopilotPanel(QtWidgets.QDockWidget):
         run and does not licence a restart, so "start over" needs a word of its
         own (FCC-77).
         """
-        self.status_line.setText("Waiting for you to decide what to do…")
-        self.status_line.setVisible(True)
-        self.add_chat_widget(AssistantMessageWidget(
-            "The result did not pass, after %d Step%s were applied:\n%s"
-            % (failure.get("applied", 0), "" if failure.get("applied") == 1 else "s",
-               failure.get("why", ""))))
-        self._revision_card = self._build_revision_card()
-        self.add_chat_widget(self._revision_card)
-
-    def _build_revision_card(self):
         from core.loop import ACCEPT, REVISE, START_OVER
 
-        card = QtWidgets.QFrame()
-        card.setObjectName("GateCard")
-        layout = QtWidgets.QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
+        applied = failure.get("applied", 0)
+        self.add_chat_widget(AssistantMessageWidget(
+            "The result did not pass, after %d Step%s were applied:\n%s"
+            % (applied, "" if applied == 1 else "s", failure.get("why", ""))))
 
-        prompt = QtWidgets.QLabel("What should happen to what has been built?")
-        prompt.setWordWrap(True)
-        prompt.setStyleSheet("font-size: 12px; font-weight: 600;")
-        layout.addWidget(prompt)
-
-        note = QtWidgets.QLabel(
+        self._put_the_question(
+            "Waiting for you to decide what to do\u2026",
+            "What should happen to what has been built?",
             "Take it as it is ends the run and keeps the model. Fix it keeps the model "
-            "and plans the rest. Start over lets the next Plan delete it and build again.")
-        note.setWordWrap(True)
-        note.setStyleSheet("font-size: 11px;")
-        layout.addWidget(note)
-
-        buttons = QtWidgets.QHBoxLayout()
-        buttons.setSpacing(6)
-
-        def answer(decision):
-            card.setEnabled(False)
-            self._revision_card = None
-            self.status_line.setText("Working…")
-            self.ask.answer(decision)
-
-        for text, decision in (("✓  Take it as it is", ACCEPT), ("✎  Fix it", REVISE),
-                               ("↺  Start over", START_OVER)):
-            button = QtWidgets.QPushButton(text)
-            button.setObjectName("PillButton")
-            button.clicked.connect(lambda _=False, d=decision: answer(d))
-            buttons.addWidget(button)
-
-        buttons.addStretch()
-        layout.addLayout(buttons)
-        return card
-
-    def _build_gate_card(self, step_count):
-        from core.loop import AMEND, APPROVE, REJECT, Approval
-
-        card = QtWidgets.QFrame()
-        card.setObjectName("GateCard")
-        layout = QtWidgets.QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
-
-        prompt = QtWidgets.QLabel(
-            "Run this Plan? Approving covers all %d Steps — no Step is confirmed separately."
-            % step_count)
-        prompt.setWordWrap(True)
-        prompt.setStyleSheet("font-size: 12px; font-weight: 600;")
-        layout.addWidget(prompt)
-
-        note = QtWidgets.QLabel("To amend it, say what to change in the box below, then Amend.")
-        note.setWordWrap(True)
-        note.setStyleSheet("font-size: 11px;")
-        layout.addWidget(note)
-
-        buttons = QtWidgets.QHBoxLayout()
-        buttons.setSpacing(6)
-
-        def answer(approval):
-            card.setEnabled(False)
-            self._gate_card = None
-            self.status_line.setText("Working…")
-            self.ask.answer(approval)
-
-        approve = QtWidgets.QPushButton("✓  Approve")
-        approve.setObjectName("PillButton")
-        approve.clicked.connect(lambda: answer(Approval(APPROVE)))
-        buttons.addWidget(approve)
-
-        amend = QtWidgets.QPushButton("✎  Amend")
-        amend.setObjectName("PillButton")
-        amend.clicked.connect(lambda: self._amend(answer))
-        buttons.addWidget(amend)
-
-        reject = QtWidgets.QPushButton("✗  Reject")
-        reject.setObjectName("PillButton")
-        reject.clicked.connect(lambda: answer(Approval(REJECT)))
-        buttons.addWidget(reject)
-
-        buttons.addStretch()
-        layout.addLayout(buttons)
-        return card
-
-    def _amend(self, answer):
-        from core.loop import AMEND, Approval
-
-        feedback = self.user_input.toPlainText().strip()
-        if not feedback:
-            self.user_input.setPlaceholderText("Say what to change, then press Amend…")
-            self.user_input.setFocus()
-            return
-        self.user_input.clear()
-        self.add_chat_widget(TextMessageWidget(feedback))
-        answer(Approval(AMEND, feedback))
+            "and plans the rest. Start over lets the next Plan delete it and build again.",
+            (("\u2713  Take it as it is", lambda: ACCEPT),
+             ("\u270e  Fix it", lambda: REVISE),
+             ("\u21ba  Start over", lambda: START_OVER)))
 
     @QtCore.Slot(object)
     def on_missing_values(self, question):
         """
         The values Plan has not been given (FCC-25).
 
-        The question itself is already in the transcript — it arrived as an
+        The question itself is already in the transcript \u2014 it arrived as an
         event. This is only the card that takes the answer, and it takes it
         from the composer, the same way Amend does.
         """
-        self.status_line.setText("Waiting for the values the Plan needs…")
-        self.status_line.setVisible(True)
-        self._answer_card = self._build_answer_card()
-        self.add_chat_widget(self._answer_card)
+        def send():
+            return self._from_composer("Give the values, then press Send\u2026",
+                                       lambda said: said)
 
-    def _build_answer_card(self):
+        # Enter is the only route to Send here \u2014 the button is hidden mid-run \u2014
+        # and it used to start a second run on the answer instead (FCC-71).
+        self._put_the_question(
+            "Waiting for the values the Plan needs\u2026",
+            "",
+            "Answer in the box below, then Send. Or let the Copilot choose \u2014 it will "
+            "write each assumed value into the Plan, so you can still correct it.",
+            (("\u21a9  Send", send),
+             ("\u270e  You decide", lambda: "")),
+            enter=send)
+
+    @QtCore.Slot(object)
+    def on_owned_objects(self, kinds):
+        """
+        The Owned Object rule. Deletion only \u2014 a modification is covered by the
+        Plan Gate, which approved a Step that said the object changes.
+
+        The same card as every other question rather than a modal box: this one
+        used to be the exception, and being the exception is how it ended up
+        outside the transcript as well (FCC-88). What is said about it, before
+        and after, is on the stream from `ApplyPipeline`.
+        """
+        deletes = list(kinds.get("delete") or ())
+
+        self._put_the_question(
+            "Waiting for you to allow a deletion\u2026",
+            "Delete %s?" % ", ".join(deletes),
+            "%s did not create %s in this session, so this is your own work. Ctrl+Z will "
+            "still undo it as one Step."
+            % ("The assistant", "these" if len(deletes) > 1 else "it"),
+            (("\u2713  Allow", lambda: True),
+             ("\u2717  Refuse", lambda: False)))
+
+    # ── one question, one card ─────────────────────────────────────────────────
+
+    def _put_the_question(self, waiting_for, prompt, note, choices, enter=None):
+        """
+        Ask the user the one way this panel asks anything.
+
+        Four questions reach here \u2014 the Plan Gate, what to do about a result
+        that did not pass, the values Plan was not given, and permission to
+        delete the user\u2019s own object. They were four bespoke cards, three of
+        them the same forty lines with different words and the fourth a modal
+        box that answered outside the transcript entirely.
+
+        A `choice` is a label and a callable returning the answer to hand back
+        to the worker thread, which is blocked waiting for it. Returning None
+        leaves the card up \u2014 that is how a composer with nothing in it nags
+        instead of answering.
+
+        `enter` is the choice the composer's Enter key takes, where there is
+        one. Only the question that is answered by typing has it: Enter at the
+        Plan Gate would amend a Plan the user was reading, not approving.
+        """
+        self.status_line.setText(waiting_for)
+        self.status_line.setVisible(True)
+
         card = QtWidgets.QFrame()
         card.setObjectName("GateCard")
         layout = QtWidgets.QVBoxLayout(card)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(8)
 
-        note = QtWidgets.QLabel(
-            "Answer in the box below, then Send. Or let the Copilot choose — it will "
-            "write each assumed value into the Plan, so you can still correct it.")
-        note.setWordWrap(True)
-        note.setStyleSheet("font-size: 11px;")
-        layout.addWidget(note)
+        if prompt:
+            asked = QtWidgets.QLabel(prompt)
+            asked.setWordWrap(True)
+            asked.setStyleSheet("font-size: 12px; font-weight: 600;")
+            layout.addWidget(asked)
+
+        explained = QtWidgets.QLabel(note)
+        explained.setWordWrap(True)
+        explained.setStyleSheet("font-size: 11px;")
+        layout.addWidget(explained)
 
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(6)
-
-        send = QtWidgets.QPushButton("↩  Send")
-        send.setObjectName("PillButton")
-        send.clicked.connect(self._answer_values)
-        buttons.addWidget(send)
-
-        decide = QtWidgets.QPushButton("✎  You decide")
-        decide.setObjectName("PillButton")
-        decide.clicked.connect(lambda: self._answer(""))
-        buttons.addWidget(decide)
-
+        for label, decide in choices:
+            button = QtWidgets.QPushButton(label)
+            button.setObjectName("PillButton")
+            button.clicked.connect(lambda _=False, d=decide: self._answer_with(d))
+            buttons.addWidget(button)
         buttons.addStretch()
         layout.addLayout(buttons)
-        return card
 
-    def _answer_values(self):
-        text = self.user_input.toPlainText().strip()
-        if not text:
-            self.user_input.setPlaceholderText("Give the values, then press Send…")
-            self.user_input.setFocus()
+        self._question_card = card
+        self._answers_to_enter = enter
+        self.add_chat_widget(card)
+
+    def _answer_with(self, decide):
+        """Close the card on an answer; leave it up when there is not one yet."""
+        answer = decide()
+        if answer is None:
             return
+
+        card, self._question_card = self._question_card, None
+        self._answers_to_enter = None
+        if card is not None:
+            card.setEnabled(False)
+        self.status_line.setText("Working\u2026")
+        self.ask.answer(answer)
+
+    def _from_composer(self, nag, into):
+        """
+        Take the answer from the composer, echo it, and shape it.
+
+        None when there is nothing typed: the placeholder says what is wanted
+        and the card stays up, because an empty answer here is a slip rather
+        than a decision \u2014 the questions where "nothing" is a real answer
+        offer it as a button of its own.
+        """
+        said = self.user_input.toPlainText().strip()
+        if not said:
+            self.user_input.setPlaceholderText(nag)
+            self.user_input.setFocus()
+            return None
+
         self.user_input.clear()
-        self.add_chat_widget(TextMessageWidget(text))
-        self._answer(text)
-
-    def _answer(self, text):
-        card, self._answer_card = self._answer_card, None
-        card.setEnabled(False)
-        self.status_line.setText("Working…")
-        self.ask.answer(text)
-
-    @QtCore.Slot(object)
-    def on_owned_objects(self, kinds):
-        """
-        The Owned Object rule. Deletion only — a modification is covered by the
-        Plan Gate, which approved a Step that said the object changes.
-        """
-        deletes = list(kinds.get("delete") or ())
-        wanted = "delete " + ", ".join(deletes)
-
-        box = QtWidgets.QMessageBox(self)
-        box.setIcon(QtWidgets.QMessageBox.Warning)
-        box.setWindowTitle("Your own objects")
-        box.setText("The assistant wants to " + wanted + ".")
-        box.setInformativeText(
-            "It did not create %s in this session, so this is your own work. "
-            "Ctrl+Z will still undo it as one Step."
-            % ("these" if len(deletes) > 1 else "it"))
-        box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-        box.setDefaultButton(QtWidgets.QMessageBox.No)
-
-        allowed = box.exec_() == QtWidgets.QMessageBox.Yes
-        self.add_chat_widget(AssistantMessageWidget(
-            ("You allowed it to " if allowed else "You refused to let it ") + wanted + "."))
-        self.ask.answer(allowed)
+        self.add_chat_widget(TextMessageWidget(said))
+        return into(said)
 
     @QtCore.Slot(object)
     def on_run_finished(self, result):

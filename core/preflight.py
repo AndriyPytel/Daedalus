@@ -47,6 +47,25 @@ class PreflightResult:
     deleted: list = field(default_factory=list)
     modified: list = field(default_factory=list)
 
+    @classmethod
+    def from_response(cls, response):
+        """
+        A worker's reply, as the result callers see.
+
+        The wire shape is read here and nowhere else. It used to be spelled out
+        again at the one call site, which is how a field the worker starts
+        sending arrives at the parent and stops there — the two halves are
+        separate processes and nothing links their spellings but this.
+        """
+        if not response.get("ok"):
+            return cls(ok=False, traceback=response.get("traceback", "Preflight failed"))
+        return cls(ok=True,
+                   render=response.get("render"),
+                   objects=response.get("objects", []),
+                   created=response.get("created", []),
+                   deleted=response.get("deleted", []),
+                   modified=response.get("modified", []))
+
 
 def find_freecadcmd():
     """Locate the headless FreeCAD binary, or raise saying how to point at it."""
@@ -183,13 +202,7 @@ class PreflightWorker:
                 )
             return PreflightResult(ok=False, traceback=died)
 
-        if response.get("ok"):
-            return PreflightResult(ok=True, render=response.get("render"),
-                                   objects=response.get("objects", []),
-                                   created=response.get("created", []),
-                                   deleted=response.get("deleted", []),
-                                   modified=response.get("modified", []))
-        return PreflightResult(ok=False, traceback=response.get("traceback", "Preflight failed"))
+        return PreflightResult.from_response(response)
 
     # ── plumbing ─────────────────────────────────────────────────────────────
 

@@ -28,7 +28,7 @@ class Asked:
         return self.answer
 
 
-def pipeline(worker, confirm=None, owned=None, created=("Box",)):
+def pipeline(worker, confirm=None, owned=None, created=("Box",), events=None):
     doc = FakeDocument()
 
     def transaction(document, code, label):
@@ -37,7 +37,8 @@ def pipeline(worker, confirm=None, owned=None, created=("Box",)):
 
     built = ApplyPipeline(document=doc, worker=worker,
                           dispatch=lambda func, timeout=None: func(),
-                          transaction=transaction, confirm=confirm, owned=owned)
+                          transaction=transaction, confirm=confirm, owned=owned,
+                          events=events)
     built.document = doc
     return built
 
@@ -222,3 +223,65 @@ def test_with_no_way_to_ask_our_own_objects_are_still_fine():
     built = pipeline(touching(created=["Box"]))
 
     assert built.apply("box()").ok
+
+
+# ── the question leaves a trace (FCC-88) ──────────────────────────────────────
+
+
+def test_asking_to_delete_the_users_own_work_is_on_the_stream():
+    """
+    This is the one question the user is asked that does not go through the
+    loop, so it was the one that never reached the Session log. A Document that
+    lost an object with nothing anywhere saying it was allowed is the failure.
+    """
+    from core.events import ANSWER, QUESTION, EventStream
+
+    events = EventStream()
+    built = pipeline(touching(deleted=["UserBox"]), confirm=Asked(True), events=events)
+
+    assert built.apply("delete()").ok
+
+    assert [event.kind for event in events] == [QUESTION, ANSWER]
+    assert "UserBox" in events.first(QUESTION).data["text"]
+    assert events.first(ANSWER).data["text"] == "You allowed it to delete UserBox."
+    assert events.first(ANSWER).data["by"] == "user", \
+        "a person answered it, so a replay must not read it as an assumption"
+
+
+def test_refusing_is_recorded_just_as_plainly():
+    from core.events import ANSWER, EventStream
+
+    events = EventStream()
+    built = pipeline(touching(deleted=["UserBox"]), confirm=Asked(False), events=events)
+
+    assert not built.apply("delete()").ok
+    assert events.first(ANSWER).data["text"] == "You refused to let it delete UserBox."
+
+
+def test_a_step_that_deletes_nothing_of_theirs_asks_nothing_and_says_nothing():
+    from core.events import EventStream
+
+    events = EventStream()
+    built = pipeline(touching(created=["Box"]), confirm=Asked(), events=events)
+
+    assert built.apply("box()").ok
+    assert list(events) == [], "a question nobody was asked is noise in the transcript"
+
+
+def test_the_pipeline_narrates_nothing_when_no_run_is_listening():
+    """`tools/run_slice.py` and the Level 2 harness build one with no stream."""
+    built = pipeline(touching(deleted=["UserBox"]), confirm=Asked(True))
+
+    assert built.apply("delete()").ok
+
+
+def test_only_an_explicit_yes_is_consent():
+    """
+    Stop releases every waiting question with the Plan Gate's answer, which is
+    an object and therefore truthy. Anything that is not a yes must not let a
+    Step delete the user's own work.
+    """
+    for answer in (None, "", object(), refuse_without_asking):
+        built = pipeline(touching(deleted=["UserBox"]), confirm=lambda kinds: answer)
+
+        assert not built.apply("delete()").ok, "%r was taken for consent" % (answer,)

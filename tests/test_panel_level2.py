@@ -966,52 +966,26 @@ def test_deleting_a_session_takes_its_transcript_with_it(panel, tmp_path):
     assert "doomed" not in [s["name"] for s in settings_manager.instance().get_sessions()]
 
 
-def test_the_session_bound_holds_without_a_restart(sessions_are_the_tests_own, monkeypatch, tmp_path):
-    """Creating a Session prunes too, so a FreeCAD left open stays bounded. FCC-17."""
-    from utils import settings_manager
+# The bound itself — pruning on create, and a promptless launch counting for
+# nothing — is Level 1 now that the Sessions are not behind a widget. See
+# tests/test_sessions.py; what stays here is the stack keeping step with them.
+
+
+def test_pruning_takes_the_chat_area_with_the_session(sessions_are_the_tests_own,
+                                                      monkeypatch):
+    """A page left behind would show the wrong Session's transcript (FCC-17)."""
+    from core import sessions as sessions_module
     from ui import multi_tab_manager
 
-    monkeypatch.setattr(multi_tab_manager, "KEEP", 3)
+    monkeypatch.setattr(sessions_module, "KEEP", 3)
     manager = multi_tab_manager.ChatSessionManager()
-    logs = []
     for n in range(5):
         index, _ = manager.add_new_chat("Chat %d" % n)
-        log = str(tmp_path / ("chat%d.jsonl" % n))
-        open(log, "w").close()
-        manager.get_session_info(index)["log"] = log
-        # Only a Session that has had an Intent is in the durable index (FCC-42).
         manager.begin(index, "Chat %d" % n)
-        logs.append(log)
 
     assert manager.count() == 3
-    assert [s["name"] for s in manager._sessions] == ["Chat 2", "Chat 3", "Chat 4"]
-    # Pruning happens where the index grows — in begin() — so the live Session
-    # is the one just created, at whatever position pruning left it.
+    assert manager.stack.count() == 3, "a page outlived the Session it was showing"
     assert manager.get_session_info(manager.stack.currentIndex())["name"] == "Chat 4"
-    assert not os.path.exists(logs[0]), "the pruned Session kept its transcript"
-    assert os.path.exists(logs[4])
-    assert len(settings_manager.instance().get_sessions()) == 3
-
-
-def test_a_launch_with_no_intent_prunes_nothing(sessions_are_the_tests_own, monkeypatch, tmp_path):
-    """
-    FCC-17 prunes when a Session is created; FCC-42 stopped writing Sessions
-    that never had an Intent. Counting those against the bound would evict a
-    real Session, transcript included, on every launch where nobody typed.
-    """
-    from utils import settings_manager
-    from ui import multi_tab_manager
-
-    monkeypatch.setattr(multi_tab_manager, "KEEP", 3)
-    manager = multi_tab_manager.ChatSessionManager()
-    for n in range(3):
-        index, _ = manager.add_new_chat("Real %d" % n)
-        manager.begin(index, "Real %d" % n)
-    kept = [s["name"] for s in settings_manager.instance().get_sessions()]
-
-    manager.add_new_chat("New Chat")
-
-    assert [s["name"] for s in settings_manager.instance().get_sessions()] == kept
 
 
 def test_a_restored_session_owns_nothing(panel, tmp_path):
@@ -1112,7 +1086,7 @@ def test_an_answer_typed_in_the_composer_reaches_the_loop(panel, monkeypatch):
     panel.on_missing_values("How many teeth?")
     QT_APP.processEvents()
     panel.user_input.setPlainText("20 teeth, module 2")
-    _button(panel._answer_card, "Send").click()
+    _button(panel._question_card, "Send").click()
     QT_APP.processEvents()
 
     assert answered == ["20 teeth, module 2"]
@@ -1127,13 +1101,13 @@ def test_an_empty_answer_does_not_start_the_run_on_nothing(panel, monkeypatch):
     panel.on_missing_values("How many teeth?")
     QT_APP.processEvents()
     panel.user_input.clear()
-    _button(panel._answer_card, "Send").click()
+    _button(panel._question_card, "Send").click()
     QT_APP.processEvents()
 
     assert answered == [], "an empty composer was sent as the answer"
-    assert panel._answer_card is not None, "the card went away without being answered"
+    assert panel._question_card is not None, "the card went away without being answered"
 
-    _button(panel._answer_card, "You decide").click()
+    _button(panel._question_card, "You decide").click()
     QT_APP.processEvents()
     assert answered == [""], "'You decide' did not decline for the user"
 
@@ -1159,19 +1133,19 @@ def test_enter_while_a_question_is_open_answers_it_rather_than_starting_a_run(pa
 
     assert answered == ["20 teeth, module 2"]
     assert sent == [], "Enter started a second run instead of answering the question"
-    assert panel._answer_card is None, "the card is still open after being answered"
+    assert panel._question_card is None, "the card is still open after being answered"
     assert panel.user_input.toPlainText() == "", "the composer kept the answer"
 
 
 def test_stopping_releases_a_waiting_question(panel):
     panel.on_missing_values("How many teeth?")
     QT_APP.processEvents()
-    card = panel._answer_card
+    card = panel._question_card
 
     panel.on_stop()
     QT_APP.processEvents()
 
-    assert panel._answer_card is None
+    assert panel._question_card is None
     assert not card.isEnabled(), "the card is still answerable after Stop"
 
 
@@ -1313,12 +1287,12 @@ def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(pane
     panel.on_revision({"why": "13.0 mm across the flats", "applied": 17})
     QT_APP.processEvents()
 
-    labels = [b.text() for b in panel._revision_card.findChildren(QtWidgets.QPushButton)]
+    labels = [b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton)]
     assert len(labels) == 3, labels
     assert "17 Steps were applied" in _said_in(panel)
     assert "13.0 mm across the flats" in _said_in(panel)
 
-    _button(panel._revision_card, "Start over").click()
+    _button(panel._question_card, "Start over").click()
     QT_APP.processEvents()
 
     assert answered == [START_OVER]
@@ -1357,10 +1331,10 @@ def test_stop_disables_an_open_decision_card(panel):
     """A card left clickable after Stop answers a run that is already over."""
     panel.on_revision({"why": "no", "applied": 3})
     QT_APP.processEvents()
-    card = panel._revision_card
+    card = panel._question_card
 
     panel.on_stop()
     QT_APP.processEvents()
 
-    assert panel._revision_card is None
+    assert panel._question_card is None
     assert not card.isEnabled()

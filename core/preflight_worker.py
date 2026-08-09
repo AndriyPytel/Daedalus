@@ -1,14 +1,21 @@
 """
 The child half of Preflight. Runs inside a headless FreeCAD started by
-`core/preflight.py`; never imported by the addon itself.
+`core/preflight.py`, as a bare script — so it may import the standard library
+and FreeCAD, and nothing of the addon's own.
+
+Two things are imported *out* of it, by name, and both deliberately: `SENTINEL`
+by `core/preflight.py`, and `step_namespace` by `core/apply.py`, so that
+Preflight and Apply cannot build different namespaces for the same Step.
 
 One JSON request per line on stdin, one tagged JSON response per line on
 stdout. FreeCAD writes its own banner to stdout, so responses carry a
-sentinel prefix and the parent ignores everything else.
+sentinel prefix and the parent ignores everything else. What a reply means is
+read in exactly one place, `PreflightResult.from_response`.
 
 Death is a normal outcome here. If the code under test takes the C++ core
 down, this process goes with it and the parent restarts a new one — which is
-the entire point of the arrangement (ADR-0002).
+the entire point of the arrangement (ADR-0002). That is also why there is no
+shutdown message: the parent kills the process rather than asking it to go.
 """
 import difflib
 import json
@@ -436,8 +443,6 @@ def serve(stdin=None, respond=respond):
         except ValueError as exc:
             respond({"ok": False, "traceback": "malformed request: " + str(exc)})
             continue
-        if request.get("shutdown"):
-            return
         try:
             respond(preflight(request))
         except BaseException as exc:
