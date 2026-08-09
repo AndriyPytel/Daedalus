@@ -98,6 +98,15 @@ wrong shape. The Acceptance list inherits both the datum and the flag, because A
 writes its checks from that list and would otherwise measure the part against an invented
 number and report a pass.
 
+**The reading opens with a sweep of the sheet** — every callout printed on it, listed with
+the view it is in — and every entry on that list has to end up either in the reading or in
+the not-defined list with a reason, so a dimension that was missed is something you can
+see was missed. And **"not dimensioned" is not "not defined"**: which way an arc bows,
+which side of a section is material, whether a cut goes in or a boss stands out, whether a
+hole goes through — none of that is dimensioned on any drawing and all of it is on the
+sheet. A radius in particular is only half a reading; without its centre placed, `R30`
+describes a wall that curves in and a wall that curves out equally well.
+
 ### Lint, then Preflight, then Apply
 
 Before a Step's code runs anywhere:

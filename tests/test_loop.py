@@ -360,6 +360,77 @@ def test_a_reading_carries_a_named_datum_a_value_and_a_read_or_assumed_flag():
     assert "A reading is not prose" not in review_system
 
 
+def test_a_curve_is_not_read_until_its_centre_is_placed():
+    """
+    On the Model Mania 2025 Phase 1 sheet, `(R30)` places the central pocket's
+    side walls and its leader starts at the end-bore axis, which is where the
+    arc centre is. The Reading wrote the radius, filed the centre under "cannot
+    be read", and Plan then put the centres at ±10 from the middle: the same
+    R30, the same 10 mm web beside it, and the wall curving out instead of in.
+    A radius with no centre is two shapes, and no number on the sheet chooses
+    between them. FCC-87.
+    """
+    _, _, llm, _ = drive([
+        reading_reply("A 10 mm cube."),
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    reading_system = " ".join(_system_messages(llm)[0].split())
+
+    assert "A curve is not read until its centre is placed" in reading_system
+    assert "every arc, fillet and round gets **two** lines" in reading_system
+    assert "from the centre of the arc to the arc" in reading_system
+    # A reference dimension is repeated, not invented.
+    assert "it is `read`, never `assumed`" in reading_system
+
+
+def test_the_views_decide_what_no_dimension_arrow_says():
+    """
+    The run declared the pocket directions "not defined" while SECTION A-A
+    shows them outright — hatched where there is material. Which way an arc
+    bows, which side is material, whether a cut goes in or a boss stands out:
+    none of it is dimensioned on any drawing, and all of it is on the sheet.
+    "Not dimensioned" is not "not defined". FCC-87.
+    """
+    _, _, llm, _ = drive([
+        reading_reply("A 10 mm cube."),
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    reading_system = " ".join(_system_messages(llm)[0].split())
+
+    assert "A value with no dimension arrow on it is not an undefined value" \
+        in reading_system
+    assert "hatched where there is material" in reading_system
+    assert "Where two readings satisfy the same numbers, say which one the view shows" \
+        in reading_system
+    # And the escape hatch costs something to use.
+    assert "name the views you looked in" in reading_system
+
+
+def test_every_callout_printed_on_the_sheet_has_to_be_accounted_for():
+    """
+    "It often says it cannot see something, and the PDF has everything on it."
+    A reading written from what the model happened to notice has no way to tell
+    that it missed a callout; one written from a sweep of the sheet does, by
+    counting. FCC-87.
+    """
+    _, _, llm, _ = drive([
+        reading_reply("A 10 mm cube."),
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    reading_system = " ".join(_system_messages(llm)[0].split())
+
+    assert "First, sweep the sheet" in reading_system
+    assert "list **every callout printed on it**" in reading_system
+    assert "account for every entry on it" in reading_system
+    assert "illegible" in reading_system
+
+
 def test_a_fraction_of_a_named_overall_is_a_value_on_equal_terms_with_millimetres():
     """
     A picture with no dimensions on it has no millimetres, only proportions.
