@@ -6,7 +6,7 @@ logic in FCC-93, so it is tested on its own rather than only through a run. The
 numbers are the ones from the run that named the defect
 (`logs/sessions/daefe57b593448e9baf83422fc37af1e.jsonl`, mm25-p1-1.pdf).
 """
-from core.design import merge, render
+from core.design import entries, merge, render
 
 
 def _read(value):
@@ -169,3 +169,74 @@ def test_a_conflict_and_a_gap_are_shown_apart_from_the_part():
 def test_a_part_nobody_has_described_renders_as_nothing():
     assert render({}) == ""
     assert render(None) == ""
+
+
+# ── what a Step cites and a check measures ────────────────────────────────────
+
+
+def _about(model):
+    return [entry["about"] for entry in entries(model)]
+
+
+def test_every_value_is_addressed_by_where_it_sits():
+    """
+    The address is the path the merge already records a conflict under, so an
+    entry is cited by exactly the words it is kept under and there is one
+    notation, not two. Matched by identity in a list, never by position: a
+    feature added ahead of another must not move the address of everything
+    after it. FCC-94.
+    """
+    assert _about(THE_PART) == [
+        "envelope → length",
+        "envelope → depth front to rear",
+        "features → hole-40-left → position → the left end face",
+    ]
+
+
+def test_an_envelope_entry_is_as_addressable_as_a_feature():
+    """
+    The value the recorded run lost between the description and the Plan was
+    the 100 mm front to rear — an envelope entry, not a feature. An enumeration
+    that only reached features could not have caught it. FCC-94.
+    """
+    assert "envelope → depth front to rear" in _about(THE_PART)
+
+
+def test_an_entry_carries_its_datum_and_its_flag_into_the_words():
+    """
+    A criterion is the description's own entry and not a paraphrase of it: the
+    datum is the key it sits under, and it reaches the assert message with the
+    flag still on it. FCC-94.
+    """
+    said = [entry["says"] for entry in entries(THE_PART)]
+
+    assert "features → hole-40-left → position → the left end face: 20 mm (read)" in said
+    assert "envelope → depth front to rear: 100 mm (read)" in said
+    assert [entry["flag"] for entry in entries(THE_PART)] == ["read", "read", "read"]
+
+
+def test_an_assumed_value_is_an_entry_and_says_so():
+    """
+    Dropping it would hide from the checks the one kind of value most likely to
+    be wrong, and the user has to see at the Gate that it is theirs. FCC-94.
+    """
+    entry = entries({"envelope": {"length": {"value": "150 mm", "flag": "assumed"}}})[0]
+
+    assert entry["flag"] == "assumed"
+    assert entry["says"] == "envelope → length: 150 mm (assumed)"
+
+
+def test_a_conflict_and_a_gap_are_not_criteria():
+    """
+    A conflict holds two values of which neither is settled, so a criterion
+    derived from one would assert whichever half the merge happened to keep —
+    the machine settling what ADR-0019 says the user settles. FCC-94.
+    """
+    assert not [entry for entry in entries(THE_PART) if "conflict" in entry["about"]]
+    assert not [entry for entry in entries(THE_PART) if "not_defined" in entry["about"]]
+
+
+def test_a_part_nobody_has_described_carries_no_entries():
+    """No description means an empty Acceptance, which means no Assertion phase."""
+    assert entries({}) == []
+    assert entries(None) == []

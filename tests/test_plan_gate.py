@@ -14,8 +14,8 @@ from core.loop import (
     ACCEPT, AMEND, APPROVE, REJECT, REVISE, START_OVER, Approval, Budgets, run,
 )
 from tests.test_loop import (
-    FakeTools, assertion_reply, code_reply, design_reply, failed, obsolete_reply,
-    plan_reply, question_reply, verdict_reply,
+    RENDER_PNG, FakeTools, assertion_reply, code_reply, design_reply, failed,
+    obsolete_reply, plan_reply, question_reply, verdict_reply,
 )
 
 
@@ -218,7 +218,8 @@ def test_a_replan_after_an_amendment_asks_rather_than_planning_blind():
         plan_reply("Add a Part::Box"),
         question_reply("Which thickness?"),
         design_reply({"envelope": {"thickness": {"value": "10 mm", "flag": "assumed"}}}),
-        plan_reply("Create a 10mm Body"), code_reply("a()"), verdict_reply("pass"),
+        plan_reply("Create a 10mm Body"), code_reply("a()"),
+        assertion_reply("check()"), verdict_reply("pass"),
     ], gate, ask=lambda question: asked.append(question) or "10mm")
 
     assert asked == ["Which thickness?"]
@@ -372,23 +373,28 @@ class Decider:
         return self.answers.pop(0) if self.answers else REVISE
 
 
-def drive_with(turns, decide, gate=None, applies=(), checks=()):
+def drive_with(turns, decide, gate=None, applies=(), checks=(), attachments=()):
     from tests.test_loop import FakeTools as Tools
 
     llm = ScriptedLLMClient(turns)
     tools = Tools(applies, checks=checks)
     events = EventStream()
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
-                 gate=gate or Gate(), decide=decide)
+                 gate=gate or Gate(), decide=decide, attachments=list(attachments))
     return result, events, tools
 
 
 FAILED_CHECKS = ('Traceback (most recent call last):\n'
                  "AssertionError: 13.0 mm across the flats\n")
 
+# What the user said the nut is. Every value assumed, so there is an Acceptance
+# to fail and no entry a Step is obliged to cite — the coverage check is not
+# what these tests are about (FCC-94).
+THE_NUT = {"envelope": {"across the flats": {"value": "13.0 mm", "flag": "assumed"}}}
+
 
 def a_run_whose_checks_fail(*extra):
-    return [plan_reply("Make it", acceptance=["13.0 mm across the flats"]),
+    return [design_reply(THE_NUT), plan_reply("Make it"),
             code_reply("make()"), assertion_reply("check()")] + list(extra)
 
 
@@ -397,7 +403,7 @@ def test_ok_finishes_the_run_without_a_revision():
     decide = Decider(ACCEPT)
 
     result, events, tools = drive_with(
-        a_run_whose_checks_fail(), decide,
+        a_run_whose_checks_fail(), decide, attachments=[RENDER_PNG],
         checks=[{"ok": False, "traceback": FAILED_CHECKS}])
 
     assert result.ok
@@ -416,7 +422,7 @@ def test_accepting_does_not_spend_a_review_on_a_result_already_judged():
     decide = Decider(ACCEPT)
 
     result, _, _ = drive_with(
-        a_run_whose_checks_fail(), decide,
+        a_run_whose_checks_fail(), decide, attachments=[RENDER_PNG],
         checks=[{"ok": False, "traceback": FAILED_CHECKS}])
 
     assert result.ok
@@ -438,7 +444,8 @@ def test_stopping_while_the_decision_is_open_is_recorded_as_stopped():
     llm = ScriptedLLMClient(a_run_whose_checks_fail())
     tools = FakeTools(checks=[{"ok": False, "traceback": FAILED_CHECKS}])
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=EventStream(),
-                 cancelled=lambda: bool(stopped), decide=presses_stop)
+                 cancelled=lambda: bool(stopped), decide=presses_stop,
+                 attachments=[RENDER_PNG])
 
     assert result.blocked
     assert not result.ok, "a stopped run was recorded as a result the user took"
@@ -451,9 +458,9 @@ def test_revise_replans_and_the_revision_goes_through_the_gate():
 
     result, events, tools = drive_with(
         a_run_whose_checks_fail(
-            plan_reply("Make it 13 mm", acceptance=["13.0 mm across the flats"]),
+            plan_reply("Make it 13 mm"),
             code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
-        decide, gate=gate,
+        decide, gate=gate, attachments=[RENDER_PNG],
         checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
 
     assert result.ok
@@ -473,9 +480,9 @@ def test_start_over_replans_with_an_explicit_permission_and_still_hits_the_gate(
 
     _, events, _ = drive_with(
         a_run_whose_checks_fail(
-            plan_reply("Start from nothing", acceptance=["13.0 mm across the flats"]),
+            plan_reply("Start from nothing"),
             code_reply("again()"), assertion_reply("check()"), verdict_reply("pass")),
-        decide, gate=gate,
+        decide, gate=gate, attachments=[RENDER_PNG],
         checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
 
     assert gate.shown == [["Make it"], ["Start from nothing"]]
@@ -488,10 +495,10 @@ def test_the_decision_is_not_raised_when_nothing_was_applied():
 
     _, events, _ = drive_with(
         a_run_whose_checks_fail(
-            plan_reply("Try again", acceptance=["13.0 mm across the flats"]),
+            plan_reply("Try again"),
             code_reply("again()"), assertion_reply("check()"), verdict_reply("pass")),
         decide, applies=[failed("boom"), failed("boom"), failed("boom")],
-        checks=[{"ok": True}])
+        attachments=[RENDER_PNG], checks=[{"ok": True}])
 
     assert decide.shown == []
 
