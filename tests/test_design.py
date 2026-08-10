@@ -123,6 +123,100 @@ def test_merging_does_not_touch_what_it_was_given():
     assert held == {"features": [{"id": "hole-40-left", "kind": "Ø40 hole"}]}
 
 
+# ── the outside of the part ───────────────────────────────────────────────────
+
+
+THE_CAPSULE_SAID_IN_PASSING = {
+    "datums": [
+        {"name": "the left end face",
+         "is": "the planar end face at the left of the 150 mm overall length"},
+        {"name": "the top face", "is": "the outer face at the top"},
+    ],
+    "envelope": {"length between the end faces": _read("150 mm"),
+                 "height between the top and bottom faces": _read("50 mm")},
+    "features": [
+        {"id": "left-end-bore", "kind": "one of two Ø40 bores", "topology": "through the depth"},
+        {"id": "red-edge-fillets", "kind": "R2 fillets on all edges shown red",
+         "radius": _read("2 mm"),
+         "edge_selection": [{"what": "the two closed capsule-shaped exterior perimeter loops",
+                             "value": "each loop where its outer face meets the exterior top, "
+                                      "bottom, and rounded end surfaces",
+                             "flag": "read"}]},
+    ],
+}
+
+
+def test_an_outside_described_in_passing_and_carried_by_nothing_is_a_conflict():
+    """
+    The recorded run
+    (`logs/sessions/57af6c09950047bf9f0582cd398d2a66.jsonl`, mm25-p1-1.pdf):
+    the description called the exterior perimeter capsule-shaped, but said it
+    inside the *fillet's* edge selection, where it is prose about which edges to
+    round. No feature carried the contour, so a 150 × 100 rectangle was padded
+    50 deep and every acceptance check passed on a box.
+    """
+    grown = merge({}, THE_CAPSULE_SAID_IN_PASSING)
+    about = [conflict["about"] for conflict in grown["conflicts"]]
+
+    assert "envelope → the shape of the outside" in about
+    said = [conflict for conflict in grown["conflicts"]
+            if conflict["about"] == "envelope → the shape of the outside"][0]
+    assert "capsule-shaped" in said["was_also_said"]
+    assert "red-edge-fillets" in said["was_also_said"], "the conflict does not say where it read it"
+
+
+def test_a_datum_that_calls_a_rounded_end_flat_is_a_conflict():
+    """
+    "the planar end face at the left" cannot sit beside "rounded end surfaces",
+    and the merge cannot see it: the two were never written under one address.
+    """
+    grown = merge({}, THE_CAPSULE_SAID_IN_PASSING)
+    about = [conflict["about"] for conflict in grown["conflicts"]]
+
+    assert "datums → the left end face" in about
+    assert "datums → the top face" not in about, "a face nobody called rounded is not in conflict"
+
+
+def test_a_feature_that_carries_the_outer_contour_settles_it():
+    """The fix the conflict asks for: the outside as geometry, not as prose."""
+    grown = merge({}, {
+        "datums": [{"name": "the left rounded end",
+                    "is": "the semicylindrical end at the left"}],
+        "envelope": {"length between the end faces": _read("150 mm")},
+        "features": [{"id": "outer-profile",
+                      "kind": "obround (capsule) outer profile, 150 x 50, ends R25",
+                      "topology": "extruded 100 mm front to rear"}],
+    })
+
+    assert "conflicts" not in grown
+
+
+def test_a_part_with_a_boxed_outside_raises_nothing():
+    """Silence on the ordinary part, or the finding is noise at every Gate."""
+    assert "conflicts" not in merge({}, THE_PART_AS_A_BOX)
+
+
+THE_PART_AS_A_BOX = {
+    "datums": [{"name": "the left end face", "is": "the planar end face at the left"}],
+    "envelope": {"length between the end faces": _read("150 mm")},
+    "features": [{"id": "bore", "kind": "Ø40 bore", "topology": "through"}],
+}
+
+
+def test_the_finding_does_not_pile_up_over_a_run():
+    """Design is called again and again; one reading is one conflict."""
+    grown = merge(merge({}, THE_CAPSULE_SAID_IN_PASSING), {"features": [{"id": "hole-35"}]})
+
+    assert len(grown["conflicts"]) == len(merge({}, THE_CAPSULE_SAID_IN_PASSING)["conflicts"])
+
+
+def test_a_conflict_the_merge_did_not_see_is_still_not_a_criterion():
+    """It holds two readings of which neither is settled, the same as any other."""
+    grown = merge({}, THE_CAPSULE_SAID_IN_PASSING)
+
+    assert not [entry for entry in entries(grown) if "the shape of the outside" in entry["about"]]
+
+
 # ── what the Plan Gate shows ──────────────────────────────────────────────────
 
 

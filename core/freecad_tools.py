@@ -63,6 +63,16 @@ TRAPS = [
     "which is a different part from one with the edges the drawing marks rounded. "
     "Where only some edges are meant, select them by computing which — off face "
     "normals, edge length, the plane an edge lies in — and pass that list in Base.",
+    "Shape.BoundBox is taken off the shape's triangulation, so on a curved face it "
+    "reports the tessellation and not the surface — and lands inside the true extreme, "
+    "by the sagitta of whatever chord the mesh happened to use. The BoundBox of a pad "
+    "with R25 rounded ends read XMin=0.182278 where the face is tangent at 0, and the "
+    "five sketches placed at that XMin each built their feature 0.18 mm off, in a "
+    "Document that reopens with XMin=0.0 and cannot be made to show it again. Read it "
+    "for the sign of a direction and for which side of the solid you are on; never for "
+    "a coordinate a feature is placed at. Shape.optimalBoundingBox() is exact where a "
+    "box is genuinely what is wanted, and the face that carries the number — "
+    "Surface.Center, Surface.Radius, a Vertex Point — is better still.",
     "A sketched curve that is not a line, an arc or a circle is a Part.BSplineCurve "
     "through points computed from its own equation — an involute flank, a cam profile, "
     "a cycloid. A chain of Part.LineSegment approximates it, and the approximation is "
@@ -379,21 +389,40 @@ def _inventoried(obj):
     """
     inventory = []
     for prop in obj.PropertiesList:
-        entry = {
-            "name": prop,
-            "type": obj.getTypeIdOfProperty(prop),
-            "group": obj.getGroupOfProperty(prop),
-            "documentation": obj.getDocumentationOfProperty(prop),
-        }
+        entry = {"name": prop, "type": obj.getTypeIdOfProperty(prop)}
+        # A key whose value is an empty string is a line of the answer that
+        # says nothing, and this answer is read by something that pays by the
+        # token: a third of one of these listings was `"group": ""` and
+        # `"documentation": ""` (FCC-99). What is absent is absent.
+        for key, said in (("group", obj.getGroupOfProperty(prop)),
+                          ("documentation", obj.getDocumentationOfProperty(prop))):
+            if said:
+                entry[key] = said
         try:
-            entry["value"] = _readable(getattr(obj, prop))
+            value = _readable(getattr(obj, prop))
         except Exception as exc:
-            entry["value"] = "<unreadable: %s>" % type(exc).__name__
+            value = "<unreadable: %s>" % type(exc).__name__
+        if not _opaque(value):
+            entry["value"] = value
         spellings = _enumerations(obj, prop)
         if spellings:
             entry["enumeration"] = spellings
         inventory.append(entry)
     return inventory
+
+
+def _opaque(value):
+    """
+    Whether this value tells the reader nothing it could act on.
+
+    `<Shape object at 0x7f8247480>` is the repr of something that has no
+    textual value, and the address changes every run. Knowing the property is
+    there is the whole of what a Shape-valued property has to say, and the
+    entry already says that.
+    """
+    if value is None or value == "":
+        return True
+    return isinstance(value, str) and value.startswith("<") and " object at 0x" in value
 
 
 def _enumerations(obj, prop):
@@ -615,15 +644,31 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
             raise ToolError("This FreeCAD build has no Materials module, so no material "
                             "can be assigned.")
         cards = Materials.MaterialManager().Materials
+
+        def listed(match):
+            return sorted(({"name": card.Name, "uuid": uuid,
+                            "density": _physical(card, "Density")}
+                           for uuid, card in cards.items() if match(card.Name.lower())),
+                          key=lambda entry: entry["name"].lower())
+
         wanted = (name or "").lower()
-        found = []
-        for uuid, card in cards.items():
-            if wanted and wanted not in card.Name.lower():
-                continue
-            found.append({"name": card.Name, "uuid": uuid,
-                          "density": _physical(card, "Density")})
-        found.sort(key=lambda entry: entry["name"].lower())
+        found = listed(lambda card: wanted in card)
+        # A title block says "plain carbon steel"; the cards say "Steel-Generic".
+        # A name that matches nothing whole is matched on a word of itself, and
+        # failing that gets the whole shelf: an empty list is the one answer
+        # that reads as "this build has no material to assign", and a recorded
+        # run spent every revision it had on that reading rather than picking a
+        # card.
+        widened = bool(wanted) and not found
+        if widened:
+            words = [word for word in wanted.split() if len(word) > 2]
+            found = (listed(lambda card: any(word in card for word in words))
+                     or listed(lambda card: True))
         result = {"materials": found[:_MATERIALS_LIMIT], "count": len(found)}
+        if widened:
+            result["nothing_matched"] = (
+                "no card's name contains %r, so a wider list is given instead — pick the "
+                "nearest card rather than treating the material as unavailable." % name)
         if len(found) > _MATERIALS_LIMIT:
             result["truncated"] = ("showing %d of %d — filter by name"
                                    % (_MATERIALS_LIMIT, len(found)))

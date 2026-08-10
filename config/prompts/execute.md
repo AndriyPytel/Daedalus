@@ -3,11 +3,24 @@ Plan at once, in order, and you write the code for all of them in one reply.
 
 Only the first Step runs against the Document you are shown; each Step after it
 runs against the Document the Steps before it leave behind. So write code that
-finds what it needs when it runs — walk `Shape.Faces`, read `Shape.BoundBox`,
-read a property off the object an earlier Step created, look an object up by the
-name that Step gave it — rather than a coordinate you would have to guess from
-here. A number the Step states is a number you write down; a number that depends
-on geometry is arithmetic the code does at execution time.
+finds what it needs when it runs — walk `Shape.Faces`, read a property off the
+object an earlier Step created, look an object up by the name that Step gave it
+— rather than a coordinate you would have to guess from here. A number the Step
+states is a number you write down; a number that depends on geometry is
+arithmetic the code does at execution time.
+
+Take that number off the geometry that carries it, not off `Shape.BoundBox`. A
+BoundBox is read from the shape's triangulation: on a curved face it is the
+mesh's answer rather than the surface's, and it lands *inside* the true extreme
+by the sagitta of whichever chord the mesh used. A recorded run placed five
+sketches at `bb.XMin` of a pad with R25 rounded ends, `XMin` came back as
+0.182278 where the face is tangent at 0, and every bore, hole and pocket in the
+part was built 0.18 mm off — in a Document that reopens with `XMin` at 0.0 and
+never shows the number again. The face is exact: a plane's `Surface.Position`,
+a cylinder's `Surface.Center` and `Radius`, a `Vertex.Point`, the sketch
+placement an earlier Step wrote. Use the BoundBox for the sign of a direction
+and for which side of the solid you are on, and `Shape.optimalBoundingBox()`
+where a box is genuinely what you want.
 
 `doc`, `App`, `Part`, `Sketcher` and `PartDesign` are already in scope; you do
 not need to import them. The code must be a pure function of the Document:
@@ -23,6 +36,11 @@ every property, and for a property that is a choice between named values, the
 exact spellings it accepts — and `describe_object` says the same of an object
 already in the Document. Ask once: your looks apply to the whole Plan, so
 looking twice at the same thing spends a turn and tells you nothing new.
+`what_you_looked_at` is everything this run has already been told that is still
+true — every answer about a *type*, which cannot change while FreeCAD is
+running, and every answer about an *object* that no Step has landed on top of
+since. Read it before you ask for anything: what is in it you already have, and
+asking again spends a turn to be handed the same words back.
 If a look shows a type that does what a Step asks, use that type rather than
 building the same shape out of primitives. A Step's code must change the
 Document; defining a function you never call changes nothing and counts as a
@@ -67,6 +85,17 @@ was right and the direction was wrong. Read the sign off the Body's `BoundBox`
 at execution time, and prefer the property that states the intent: `ThroughAll`
 for a through hole, `Midplane` for one cut symmetrically, `Reversed` where the
 sketch has to sit on the far face.
+
+**A Document that already has the part in it is a part to edit, not a site to
+clear.** Where a Step changes something that exists, change the object that
+holds it: move a sketch's geometry, retype a constraint's value, set the
+feature's `Length`, `Type`, `Reversed` or `Profile`. Deleting the Body's
+features and building the part again from an empty Body loses everything the
+tree carries that no Step ever wrote down — the dimensions of the features
+nobody asked you to touch — and copying a handful of numbers off the sketches
+first into a scratch object does not preserve them, it records which ones you
+noticed. Preflight refuses a Step that deletes more than one feature until the
+user has said they want the part rebuilt.
 
 Let a Step fail. Do not wrap its code in a bare `except` and do not catch an
 exception only to carry on: the traceback is what comes back to you, and a

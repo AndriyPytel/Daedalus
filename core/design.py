@@ -79,15 +79,124 @@ def merge(held, offered):
     Design answering with prose is a phase that did not do its job, and losing
     the description over it would be the worse failure — the same call
     `_acceptance_of` makes about an acceptance list nobody wrote.
+
+    What the merge cannot see it is told: `silhouette` reads the grown model for
+    an outside described in words and carried by nothing, and its findings join
+    the same `conflicts` the disagreements go to.
     """
     if not isinstance(offered, dict):
-        return dict(held or {})
+        return _with_silhouette(dict(held or {}))
 
     conflicts = []
     merged = _written(dict(held or {}), offered, "", conflicts)
     if conflicts:
         merged["conflicts"] = _appended(merged.get("conflicts"), conflicts)
-    return merged
+    return _with_silhouette(merged)
+
+
+def _with_silhouette(model):
+    found = silhouette(model)
+    if found:
+        model["conflicts"] = _appended(model.get("conflicts"), found)
+    return model
+
+
+# ── the outside of the part ───────────────────────────────────────────────────
+
+# Words that say the outside of the part is curved rather than boxed. They are
+# the words a draughtsman and a description both use for it; the list is short
+# on purpose, because a word that also means something inside the part would
+# raise this on every model.
+_ROUNDED_OUTSIDE = ("capsule", "obround", "racetrack", "oval",
+                    "rounded end", "semicircular end", "radiused end",
+                    "rounded exterior", "rounded end surfaces")
+
+# What a datum says when it has the same face flat.
+_FLAT = ("planar", "flat")
+
+# A datum only contradicts a rounded outside where it is about the ends.
+_AN_END = ("end face", "end faces", "end of", "left end", "right end")
+
+
+def silhouette(model) -> list:
+    """
+    The outside of the part described in words and carried by nothing.
+
+    An `envelope` is three distances between named faces, and three distances
+    are satisfied exactly as well by a rectangular prism as by the obround plate
+    the drawing shows. The recorded run
+    (`logs/sessions/57af6c09950047bf9f0582cd398d2a66.jsonl`, mm25-p1-1.pdf) is
+    the whole case: the description said "the two closed capsule-shaped exterior
+    perimeter edge loops" and "the exterior top, bottom, and rounded end
+    surfaces" — but said it inside the *fillet's* edge selection, where it is
+    prose about which edges to round and not geometry anybody builds. No feature
+    carried the outer contour, so the Plan padded a 150 × 100 rectangle 50 deep
+    and every acceptance check passed on a box.
+
+    So where the model calls the outside rounded and no feature owns that
+    contour, that is a conflict, in the same list and settled the same way: by
+    the user at the Plan Gate, or by Design filling in the feature it left out.
+    The words are looked for anywhere in the model and the ownership only in a
+    feature's `id`, `kind` and `topology` — the fields that say what a feature
+    *is*. A fillet whose edge-selection prose mentions a capsule is the very
+    thing this exists to catch, so its prose must not count as carrying one.
+
+    The second finding is the datum that says the same face is flat. "the planar
+    end face at the left of the 150 mm overall length" cannot both be true and
+    sit beside "rounded end surfaces", and the merge cannot see it because
+    neither was ever written under the same address.
+    """
+    said = _said(model, "")
+    rounded = [(path, text) for path, text in said
+               if any(word in text.lower() for word in _ROUNDED_OUTSIDE)]
+    if not rounded:
+        return []
+
+    found = []
+    where, why = rounded[0]
+    if not any(_carries_the_outside(feature) for feature in _features(model)):
+        found.append({
+            "about": "envelope → the shape of the outside",
+            "stands": "no feature carries the outer contour, so the outside of the part is "
+                      "whatever profile the envelope's overall sizes are padded into",
+            "was_also_said": "%s: %s" % (where, why),
+        })
+
+    for datum in model.get("datums") or ():
+        if not isinstance(datum, dict):
+            continue
+        text = ("%s %s" % (datum.get("name") or "", datum.get("is") or "")).lower()
+        if any(word in text for word in _FLAT) and any(word in text for word in _AN_END):
+            found.append({
+                "about": _under("datums", datum.get("name") or "an end face"),
+                "stands": datum.get("is") or datum.get("name"),
+                "was_also_said": "%s: %s" % (where, why),
+            })
+    return found
+
+
+def _features(model):
+    return [feature for feature in (model or {}).get("features") or ()
+            if isinstance(feature, dict)]
+
+
+def _carries_the_outside(feature):
+    """Whether this feature *is* the rounded outside, rather than talking about it."""
+    text = " ".join(str(feature.get(key) or "") for key in ("id", "kind", "topology")).lower()
+    return any(word in text for word in _ROUNDED_OUTSIDE)
+
+
+def _said(node, path):
+    """Every string on the model, with the address it sits under."""
+    if isinstance(node, str):
+        return [(path, node)]
+    if isinstance(node, dict):
+        return [entry for key, value in node.items() if key != "conflicts"
+                for entry in _said(value, _under(path, key))]
+    if isinstance(node, list):
+        return [entry for at, value in enumerate(node, start=1)
+                for entry in _said(value, _under(path, _named(value, _IDENTITY) or at))]
+    return []
 
 
 def render(model) -> str:

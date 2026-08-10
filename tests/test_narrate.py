@@ -8,9 +8,9 @@ now, so this runs with no FreeCAD and no Qt.
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, KINDS, PLAN,
-    DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
-    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, Event,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, KINDS,
+    OUTSTANDING, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
+    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, Event,
 )
 from core.narrate import Narration, narrate
 
@@ -25,13 +25,18 @@ SAMPLES = {
     ATTACHED: {"files": [{"name": "sheet.pdf", "path": "/tmp/sheet.pdf"}]},
     DESIGN: {"model": {"envelope": {"length": {"value": "40 mm", "flag": "read"}}}},
     PLAN: {"steps": ["Sketch the base"], "acceptance": []},
-    PLAN_REVISED: {"steps": ["Sketch the base"], "reason": "the pocket was too deep"},
+    PLAN_REVISED: {"steps": ["Sketch the base"], "reason": "the pocket was too deep",
+                   "revision": 2, "of": 3, "because": "Execute could not build a Step"},
+    # The answered Gate, not the waiting one: a sample has to carry the field
+    # the wording turns on.
+    GATE: {"decision": "approve"},
     STEP_STARTED: {"index": 1, "total": 3, "description": "Sketch the base"},
     TOOL_CALL: {"name": "apply_step", "arguments": {"code": "pass", "label": "Base"}},
     TOOL_RESULT: {"name": "apply_step", "result": {"status": "applied"}},
     PREFLIGHT_FAILED: {"step": 1, "attempt": 2, "traceback": "AttributeError: Support"},
     APPLIED: {"step": 1, "label": "Base", "created": ["Pad"]},
     ASSERTION: {"ok": True, "confirmed": ["6.5 mm tall"], "uncovered": []},
+    OUTSTANDING: {"entries": ["envelope \u2192 across the flats: 13.0 mm (read)"]},
     REVIEW_VERDICT: {"verdict": "pass", "reason": "matches the Intent"},
     BLOCKED: {"reason": "The budget is spent.", "tried": []},
     ERROR: {"message": "ValueError: no key"},

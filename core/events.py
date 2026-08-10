@@ -19,20 +19,24 @@ ATTACHED = "attached"
 DESIGN = "design"
 PLAN = "plan"
 PLAN_REVISED = "plan_revised"
+GATE = "gate"
 STEP_STARTED = "step_started"
 TOOL_CALL = "tool_call"
 TOOL_RESULT = "tool_result"
 PREFLIGHT_FAILED = "preflight_failed"
 APPLIED = "applied"
 ASSERTION = "assertion"
+# What an earlier run's acceptance checks found wrong and nobody fixed. Emitted
+# once, at the top of the run that inherits it (FCC-98).
+OUTSTANDING = "outstanding"
 REVIEW_VERDICT = "review_verdict"
 BLOCKED = "blocked"
 ERROR = "error"
 
 KINDS = (
-    THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PLAN, PLAN_REVISED,
+    THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PLAN, PLAN_REVISED, GATE,
     STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED, ASSERTION,
-    REVIEW_VERDICT, BLOCKED, ERROR,
+    OUTSTANDING, REVIEW_VERDICT, BLOCKED, ERROR,
 )
 
 

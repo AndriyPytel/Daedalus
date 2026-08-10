@@ -13,17 +13,18 @@ import tempfile
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, PLAN, PLAN_REVISED,
-    DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, EventStream,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, PLAN,
+    PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
+    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
+from core import sheet_reader
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
 from core.design import entries, merge, render
 from core.loop import (
     PROMPTS, Budgets, prompt, revisions_ceiling, run,
 )
-from core.tools import ToolRegistry
+from core.tools import ToolError, ToolRegistry
 
 SNAPSHOT = {"document": "Unnamed", "objects": [], "object_count": 0,
             "active_body": None, "selection": []}
@@ -234,6 +235,18 @@ class FakeTools:
                 {"name": "Type", "type": "App::PropertyEnumeration",
                  "enumeration": ["Length", "ThroughAll", "UpToFirst"]}]}
 
+        @registry.tool("describe_object", "What an object in the Document has.", {
+            "type": "object", "properties": {"name": {"type": "string"}},
+            "required": ["name"],
+        })
+        def describe_object(name):
+            self.calls.append(("describe_object", {"name": name}))
+            if name not in self.created:
+                raise ToolError("No object named %r." % name)
+            return {"name": name, "type": "Part::Box",
+                    "properties": [{"name": "Length", "type": "App::PropertyLength",
+                                    "value": "10.0 mm"}]}
+
         @registry.tool("apply_step", "Apply one Step.", {
             "type": "object",
             "properties": {"code": {"type": "string"}, "label": {"type": "string"}},
@@ -275,14 +288,17 @@ def failed(traceback):
 
 
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
-          views=None, checks=(), attachments=()):
+          views=None, checks=(), attachments=(), decide=None, outstanding=()):
     """Run the loop over scripted turns and hand back everything to assert on."""
     llm = ScriptedLLMClient(turns)
     tools = FakeTools(applies, views=views, checks=checks)
     events = EventStream()
     kwargs = {"ask": ask} if ask is not None else {}
+    if decide is not None:
+        kwargs["decide"] = decide
     result = run(intent, llm=llm, tools=tools.registry, events=events,
-                 budgets=budgets or Budgets(), attachments=list(attachments), **kwargs)
+                 budgets=budgets or Budgets(), attachments=list(attachments),
+                 outstanding=list(outstanding), **kwargs)
     return result, events, llm, tools
 
 
@@ -365,6 +381,51 @@ def test_the_sketch_construction_rule_reaches_plan_and_execute():
     assert "same centre vector" in execute_system
     assert "never invent a constraint type" in execute_system
     assert "must genuinely be driven" not in review_system
+
+
+def test_design_is_told_the_outer_contour_is_a_feature():
+    """
+    Prompt copy, not a trap: it is how a part is described, not knowledge about
+    a FreeCAD build. The recorded run
+    (`logs/sessions/57af6c09950047bf9f0582cd398d2a66.jsonl`, mm25-p1-1.pdf) put
+    "capsule-shaped exterior perimeter" inside a fillet's edge selection, where
+    nobody builds from it, and the envelope's three sizes were padded into a
+    box that passed every check.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Add a box", satisfies=everything(A_CUBE)),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    design_system = " ".join(_system_messages(llm)[0].split())
+
+    assert "The outside of the part is a feature, not three numbers" in design_system
+    assert "obround" in design_system and "outer-profile" in design_system
+    assert "A shape word inside another feature's prose is not the shape being recorded" \
+        in design_system
+
+
+def test_assertion_is_told_what_a_fillet_does_to_the_surface_it_replaced():
+    """
+    The same run's checks read `MajorRadius == 20` on bore mouths that were
+    correctly filleted R2 — a torus of major radius 22 — reported four entries
+    as unmet and spent a Plan revision on geometry that was already right.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Add a box", satisfies=everything(A_CUBE)),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    assertion_system = " ".join(_system_messages(llm)[3].split())
+
+    assert "A fillet's own surface is not the surface it was cut into" in assertion_system
+    assert "minor radius" in assertion_system
+    assert "nominal ± the fillet radius" in assertion_system
+    assert "Three distances are not a shape" in assertion_system
 
 
 def test_execute_is_no_longer_asked_to_assert_inside_a_step():
@@ -737,6 +798,28 @@ def test_the_curve_and_thread_types_are_traps_not_prompt_copy():
                 "a build-specific type was written into %s.md" % phase
 
 
+def test_the_tessellated_bound_box_is_a_trap_not_a_number_in_the_prompt():
+    """
+    That `Shape.BoundBox` answers off the triangulation, and lands inside a
+    curved face by the mesh's sagitta, is knowledge about this build — so it
+    lands through TRAPS. The prompt says only what to read instead.
+
+    A recorded run placed five sketches at `bb.XMin` of a pad with R25 rounded
+    ends and built every bore, hole and pocket 0.18 mm off, in a Document that
+    reopens with `XMin` at 0.0.
+    """
+    boxes = [trap for trap in TRAPS if "optimalBoundingBox" in trap]
+
+    assert len(boxes) == 1, "the BoundBox reading is not a single trap"
+    assert "triangulation" in boxes[0]
+    assert "Surface.Center" in boxes[0]
+
+    with open(os.path.join(PROMPTS, "execute.md"), encoding="utf-8") as handle:
+        execute = " ".join(handle.read().split())
+    assert "not off `Shape.BoundBox`" in execute, \
+        "Execute no longer says where a coordinate comes from"
+
+
 def test_the_constraint_spellings_are_a_trap_not_prompt_copy():
     """
     Which constraint types exist is knowledge about a specific FreeCAD build,
@@ -841,12 +924,19 @@ def test_looking_is_budgeted_and_the_last_turn_offers_nothing_to_look_with():
     ], budgets=Budgets(looks_per_turn=2))
 
     assert result.ok
-    assert len([c for c in tools.calls if c[0] == "supported_types"]) == 2
+    # Two looks, one Tool call: the allowance is spent by asking, and the
+    # second answer was already here to give (FCC-99).
+    assert len([c for c in tools.calls if c[0] == "supported_types"]) == 1
 
     final = json.loads(llm.calls[3][-1]["content"])
     assert final["tools_you_may_look_with"] == [], "the last turn still invited a look"
     assert "code" in final["this_is_your_last_turn"]
+    # Scoped, not just mentioned: an empty Tool list and an open invitation to
+    # declare the Plan obsolete is how one value nobody could look up threw away
+    # every Step that was buildable without it.
     assert "obsolete" in final["this_is_your_last_turn"]
+    assert "Document" in final["this_is_your_last_turn"]
+    assert "still exists" in final["this_is_your_last_turn"]
     assert "this_is_your_last_turn" not in json.loads(llm.calls[1][-1]["content"])
 
 
@@ -1151,6 +1241,44 @@ def test_execute_can_declare_a_step_obsolete_and_plan_revises():
     assert tools.applied_codes() == ["add_new()"]
 
 
+def test_a_revised_plan_says_which_revision_it_is_and_what_caused_it():
+    """
+    Three Revised Plans hitting the same wall read as three fresh starts, and
+    the reason alone never said otherwise — which is what a run that looks
+    stalled for no reason actually is.
+    """
+    _, events, _, _ = drive([
+        plan_reply("Delete the old pad", "Add the new one"),
+        obsolete_reply("There is no pad in this Document."),
+        plan_reply("Add the new one"),
+        code_reply("add_new()"),
+        verdict_reply("pass"),
+    ], budgets=Budgets(revisions=3))
+
+    revised = events.first(PLAN_REVISED).data
+    assert (revised["revision"], revised["of"]) == (1, 3)
+    assert revised["because"] == "Execute found the Plan out of date"
+
+
+def test_the_plan_gate_leaves_both_ends_of_its_wait_on_the_stream():
+    """
+    The Gate is the longest silence in a run. Without it on the stream, a
+    session read back cannot tell a user thinking for half an hour from a
+    provider taking half an hour.
+    """
+    _, events, _, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("add_box()"),
+        verdict_reply("pass"),
+    ])
+
+    opened, decided = events.of(GATE)
+    assert opened.data == {"steps": 1, "asked": True}
+    assert decided.data == {"decision": "approve", "standing": False}
+    kinds = [e.kind for e in events]
+    assert kinds.index(PLAN) < kinds.index(GATE) < kinds.index(STEP_STARTED)
+
+
 def test_an_obsolete_step_is_never_applied():
     _, _, _, tools = drive([
         plan_reply("Obsolete one"),
@@ -1254,12 +1382,121 @@ def test_an_attachment_reaches_the_design_phase_as_a_picture():
     assert isinstance(llm.calls[1][-1]["content"], str), "Plan was sent the picture"
 
 
-def test_a_pdf_goes_out_as_a_file_block_and_not_as_a_picture():
+MODEL_MANIA = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                           "modelmania", "mm25-p1-1.pdf")
+
+
+def _pictures_shown(llm, at=0):
+    return [block for block in llm.calls[at][-1]["content"]
+            if block.get("type") == "image_url"]
+
+
+def _said_to_design(llm, at=0):
+    return "\n".join(block.get("text", "") for block in llm.calls[at][-1]["content"]
+                      if block.get("type") == "text")
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_a_sheet_is_shown_as_its_views_and_not_as_one_page():
     """
-    Drawings arrive as PDFs and could not be attached at all. LiteLLM takes the
-    `file` content block on /chat/completions, which is the same path the
-    picture already takes with a different envelope — no new dependency and no
-    page rendering on our side. FCC-89.
+    The whole point of FCC-102. Sent as one page this sheet arrives at the
+    provider's 143 DPI cap with 14 px of ink in a dimension digit; sent as the
+    layout plus one picture per view it arrives at 279 DPI. A single picture
+    reaching Design means the sheet went out at the resolution that misreads.
+    """
+    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")])
+
+    run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
+
+    shown = _pictures_shown(llm)
+    assert len(shown) > 1, "the sheet went out whole, which is what FCC-102 is about"
+    assert not [b for b in llm.calls[0][-1]["content"] if b.get("type") == "file"], \
+        "the PDF also went out as an opaque file block, at the provider's own DPI"
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_design_is_told_what_the_sheet_prints_rather_than_asked_to_find_it():
+    """
+    The text layer is the draughtsman's own strings and cannot be misread, so
+    the sweep is handed over instead of being compiled off a picture. `150` and
+    `100` are on this sheet; the run that named the defect read one of them as
+    something else.
+    """
+    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")])
+
+    run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
+
+    said = _said_to_design(llm)
+    assert "150" in said and "100" in said
+    assert "\u00d8" in said, "nothing warned that the diameter sign is not in the layer"
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_a_callout_the_description_never_used_goes_back_to_design_naming_it():
+    """
+    The check `printed_on_the_sheet` was written for. A description that drops
+    the Ø40 is not caught by counting the model's own sweep against itself —
+    the callout is missing from both sides. Held against the file it is caught,
+    and the question that comes back says the number.
+    """
+    thin = {"envelope": {"length": read("150 mm")}}
+    llm = ScriptedLLMClient([design_reply(thin), design_reply({}),
+                             plan_reply("Only"), code_reply("box()"),
+                             verdict_reply("pass")])
+
+    run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
+
+    asked = json.loads(llm.calls[1][-1]["content"][0]["text"])
+    assert "the_question" in asked, "Design was not sent back to the sheet at all"
+    assert "40" in asked["the_question"]
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_looking_again_stops_when_it_stops_finding_anything():
+    """
+    A re-read is a provider call. Design answering with nothing, or with the
+    same nothing twice, is a sheet that does not carry the value — and the run
+    carries on with what it had rather than spending the budget proving it.
+    """
+    result, _, llm, _ = drive([design_reply(A_DATUM), design_reply({}),
+                               plan_reply("Only"), code_reply("box()"),
+                               verdict_reply("pass")],
+                              attachments=[MODEL_MANIA])
+
+    assert result.ok, "the run did not finish: the re-look kept going"
+    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    assert len(design_turns) == 2, \
+        "the sheet was asked again after it had already answered with nothing"
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_the_second_look_is_bounded_by_the_re_read_ceiling():
+    """
+    Design finding one more callout every time and never all of them would
+    otherwise loop for as long as the sheet has numbers on it.
+    """
+    llm = ScriptedLLMClient(
+        [design_reply({"envelope": {"length": read("150 mm")}})]
+        + [design_reply({"envelope": {"width %d" % at: read("%d mm" % at)}})
+           for at in (40, 35, 30, 20, 10)]
+        + [plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+
+    run("Build this", llm=llm, tools=FakeTools().registry,
+        budgets=Budgets(rereads=2), attachments=[MODEL_MANIA])
+
+    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    assert len(design_turns) <= 3, "the re-look ran past its ceiling"
+
+
+def test_a_pdf_that_cannot_be_rendered_here_still_goes_out_as_a_file_block():
+    """
+    The fallback, and the reason PyMuPDF is a package the addon wants rather
+    than one it needs. A PDF this cannot open — a stub, a truncated file, no
+    PyMuPDF at all — takes exactly the path it took before FCC-102: the `file`
+    content block LiteLLM carries on /chat/completions, at whatever resolution
+    the provider chooses, with the model saying so if it cannot read it (FCC-89).
     """
     drawing = _a_real_pdf()
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
@@ -2037,7 +2274,7 @@ def test_the_event_stream_of_a_clean_run():
     # any Step runs (FCC-95). What a Step still has of its own is
     # `step_started`, the apply and `applied`.
     assert [e.kind for e in events] == [
-        THOUGHT, PLAN,
+        THOUGHT, PLAN, GATE, GATE,
         THOUGHT, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
         THOUGHT, REVIEW_VERDICT,
     ]
@@ -2058,7 +2295,7 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
     ], attachments=[RENDER_PNG])
 
     assert [e.kind for e in events] == [
-        ATTACHED, DESIGN, PLAN,
+        ATTACHED, DESIGN, PLAN, GATE, GATE,
         STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
         TOOL_CALL, TOOL_RESULT, ASSERTION,
         REVIEW_VERDICT,
@@ -2072,7 +2309,7 @@ def test_the_event_stream_of_a_retried_run():
     )
 
     assert [e.kind for e in events] == [
-        PLAN,
+        PLAN, GATE, GATE,
         STEP_STARTED,
         TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
         TOOL_CALL, TOOL_RESULT, APPLIED,
@@ -2088,7 +2325,8 @@ def test_the_event_stream_of_a_blocked_run():
     )
 
     assert [e.kind for e in events] == [
-        PLAN, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, BLOCKED,
+        PLAN, GATE, GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
+        BLOCKED,
     ]
 
 
@@ -2348,21 +2586,22 @@ def test_with_nobody_to_ask_the_run_does_not_stall():
 
 def test_a_plan_that_only_ever_asks_is_bounded():
     """
-    The user is asked at most `questions` times. After that Plan is told to
-    choose; if it asks even then, the run fails rather than looping.
+    The user is asked at most `questions` times, and at most `questions` may
+    stand unanswered. Past that the run stops rather than looping — as a block
+    naming what to answer, not an error (FCC-96).
     """
     asked = []
 
     result, _, _, tools = drive(
         [question_reply("q1"), design_reply(),
          question_reply("q2"), design_reply(),
-         question_reply("q3"), question_reply("q4")],
+         question_reply("q3"), question_reply("q4"), question_reply("q5")],
         intent=GEAR, ask=lambda q: asked.append(q) or "some answer",
         budgets=Budgets(questions=2))
 
     assert asked == ["q1", "q2"], "the user was asked past the budget: %s" % asked
-    assert not result.ok
-    assert "told to choose for itself" in result.reason
+    assert result.blocked
+    assert "q3; q4; q5" in result.reason, "the block did not say what to answer"
     assert tools.applied_codes() == []
 
 
@@ -2442,7 +2681,13 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
 
 
 def test_a_question_the_sheet_does_not_answer_still_reaches_the_user():
-    """A tolerance nobody printed is not on the sheet, and the person is asked."""
+    """
+    A tolerance nobody printed is not on the sheet, and the person is asked.
+
+    The sheet saying nothing is on the stream too. Without it a stalled run
+    cannot be told from one where the drawing was never looked at, which is the
+    first thing anybody reading the log asks (FCC-96).
+    """
     asked = []
 
     result, events, _, _ = drive([
@@ -2458,7 +2703,8 @@ def test_a_question_the_sheet_does_not_answer_still_reaches_the_user():
 
     assert result.ok
     assert asked == ["What general tolerance applies?"]
-    assert events.first(ANSWER).data["by"] == "user"
+    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "user"]
+    assert "nothing in the views" in events.first(ANSWER).data["text"]
 
 
 def test_the_drawing_answering_does_not_spend_the_users_question_budget():
@@ -2500,6 +2746,93 @@ def test_the_re_reads_have_a_ceiling_of_their_own():
         ask=lambda q: asked.append(q) or "an answer")
 
     assert asked == ["q2"], "the second question was put to the sheet past the ceiling"
+
+
+# ── the questioning belongs to the run, not to one Plan (FCC-96) ─────────────
+
+
+def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
+    """
+    The run that stalled on Model Mania 2025 asked three times. The third
+    question was the good one — it had spotted that its own outer profile could
+    not be 50 mm tall with 30 mm end rounds — and it never reached the drawing,
+    because the loop stopped one line above the re-read. A question raised after
+    Plan was told to choose is a *new* obstacle, and the sheet answers it as
+    often as any other. FCC-96.
+    """
+    asked = []
+    off_the_sheet = {"datums": [{"name": "the front-to-rear centre plane"}]}
+
+    result, events, llm, _ = drive([
+        design_reply(A_PART),
+        question_reply("q1"), design_reply(),          # not on the sheet
+        question_reply("q2"), design_reply(off_the_sheet),
+        plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(questions=1),
+        ask=lambda q: asked.append(q) or "")
+
+    assert result.ok, "the second question killed the run: %s" % result.reason
+    assert asked == ["q1"]
+    assert [answer.data["by"] for answer in events.of(ANSWER)] \
+        == ["drawing", "nobody", "drawing"]
+    re_read = llm.calls[4][-1]["content"]
+    assert json.loads(re_read[0]["text"])["the_question"] == "q2"
+    assert [b for b in re_read if b.get("type") == "image_url"], "it re-read without the sheet"
+
+
+def test_the_same_question_twice_is_a_block_naming_it_and_not_an_error():
+    """
+    Nothing has changed since the last time it was asked, so asking again
+    cannot end. That is a stop with the question in it, not an error nobody can
+    act on. FCC-96.
+    """
+    result, events, _, tools = drive([
+        design_reply(A_PART),
+        question_reply("q1"), design_reply(),          # not on the sheet
+        question_reply("q1"),
+    ], attachments=[RENDER_PNG], ask=lambda _: "")
+
+    assert result.blocked
+    assert "q1" in result.reason
+    assert events.of(ERROR) == []
+    assert tools.applied_codes() == []
+
+
+def test_the_questions_nobody_answered_are_shown_beside_the_plan():
+    """
+    A Plan told to choose for itself carries values nobody supplied, and the
+    Gate is the only place they are correctable — so the Gate is handed the
+    questions, not only the Steps. FCC-96.
+    """
+    _, events, _, _ = drive(
+        [question_reply("What module?"), plan_reply("Sketch it"), code_reply("a()"),
+         verdict_reply("pass")],
+        intent=GEAR, ask=lambda _: "")
+
+    assert events.first(PLAN).data["unanswered"] == ["What module?"]
+
+
+def test_a_replan_does_not_refill_the_re_read_ceiling():
+    """
+    The counters used to be locals of one Plan, so every re-plan started the
+    questioning over: the same question went to the user twice and the sheet
+    could be re-read without end. FCC-96.
+    """
+    asked = []
+
+    drive([
+        design_reply(A_PART),
+        question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
+        plan_reply("Impossible", satisfies=everything(A_PART)), code_reply("nope()"),
+        question_reply("q2"),                          # the re-plan asks too
+        plan_reply("Possible", satisfies=everything(A_PART)), code_reply("yes()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
+    ], applies=[failed("one")], attachments=[RENDER_PNG],
+        budgets=Budgets(rereads=1, attempts_per_step=1),
+        ask=lambda q: asked.append(q) or "an answer")
+
+    assert asked == ["q2"], "the re-plan refilled the re-read ceiling: %s" % asked
 
 
 def test_with_no_attachment_a_question_goes_straight_to_the_user():
@@ -2602,8 +2935,8 @@ def test_a_replan_that_only_ever_asks_stops_the_run_rather_than_looping():
     )
 
     assert asked == ["q1"], "the user was asked past the budget: %s" % asked
-    assert not result.ok
-    assert "told to choose for itself" in result.reason
+    assert result.blocked
+    assert "q2; q3" in result.reason, "the block did not say what to answer"
 
 
 def test_no_plan_without_steps_ever_reaches_execute(monkeypatch):
@@ -3046,3 +3379,675 @@ def test_a_run_with_no_attachment_still_plans_and_still_shows_an_acceptance():
     assert result.ok
     assert events.first(PLAN).data["acceptance"] == ["envelope → length: 150 mm (assumed)"]
     assert any(name == "check_assertions" for name, _ in tools.calls)
+
+
+# ── what a failed run leaves behind (FCC-98) ──────────────────────────────────
+#
+# A recorded run finished eight Steps, failed six of its acceptance entries,
+# and stopped. Nothing carried that out of the run: the choice the user was
+# offered was made in the panel and never reached the transcript, and the next
+# drawing was planned against the same Document as though the part were sound.
+# The second run then rebuilt on top of six entries that were already wrong.
+
+
+SIX_FAILED = ('Traceback (most recent call last):\n'
+              '  File "<step>", line 156, in <module>\n'
+              'AssertionError: these did not hold: envelope \u2192 across the flats: '
+              '13.0 mm (read); envelope \u2192 height: 6.5 mm (read)\n')
+
+
+def test_the_entries_that_did_not_hold_come_out_on_the_result():
+    result, _, _, _ = a_run_over_the_nut(
+        *[planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS)] * 5,
+        budgets=Budgets(revisions=1),
+        checks=[assertion_failed(SIX_FAILED)] * 5,
+    )
+
+    assert result.unmet == ["envelope \u2192 across the flats: 13.0 mm (read)",
+                            "envelope \u2192 height: 6.5 mm (read)"]
+
+
+def test_a_result_the_user_took_as_it_is_still_says_what_is_wrong_with_it():
+    """
+    ACCEPT ends the run as a pass. It does not make the part right, and the
+    Document the next Intent starts from still has both entries wrong in it.
+    """
+    from core.loop import ACCEPT
+
+    result, _, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        checks=[assertion_failed(SIX_FAILED)],
+        decide=lambda failure: ACCEPT,
+    )
+
+    assert result.ok, "the user took it, so the run passed"
+    assert result.unmet == ["envelope \u2192 across the flats: 13.0 mm (read)",
+                            "envelope \u2192 height: 6.5 mm (read)"]
+
+
+def test_a_run_whose_checks_passed_leaves_nothing_outstanding():
+    result, _, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        verdict_reply("pass"))
+
+    assert result.ok
+    assert result.unmet == []
+
+
+def test_a_run_stopped_partway_still_reports_what_was_wrong():
+    """
+    Every way out of the loop carries it, not only the tidy one — a run that
+    ran out of revisions is exactly the run whose Document nobody fixed.
+    """
+    result, _, _, _ = a_run_over_the_nut(
+        *[planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS)] * 5,
+        budgets=Budgets(revisions=1),
+        checks=[assertion_failed(SIX_FAILED)] * 5,
+    )
+
+    assert result.blocked
+    assert result.unmet
+
+
+def test_the_assertion_event_names_the_entries_and_not_only_the_traceback():
+    _, events, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        checks=[assertion_failed(SIX_FAILED)],
+        decide=lambda failure: "accept",
+    )
+
+    assert events.first(ASSERTION).data["unmet"] == [
+        "envelope \u2192 across the flats: 13.0 mm (read)",
+        "envelope \u2192 height: 6.5 mm (read)"]
+
+
+def test_a_document_that_cannot_recompute_leaves_the_whole_list_outstanding():
+    """Nothing was measured, so nothing can be named, and nothing is assumed right."""
+    broken = ("Traceback (most recent call last):\n"
+              "RuntimeError: recompute left these objects in error:\n"
+              "Pocket (PartDesign::Pocket): Links go out of the allowed scope\n")
+
+    result, _, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        checks=[assertion_failed(broken)],
+        decide=lambda failure: "accept",
+    )
+
+    assert result.unmet == ACCEPTANCE
+
+
+# ── the choice the user is offered is part of the transcript ──────────────────
+
+
+def test_what_the_user_decided_about_a_failed_result_is_on_the_stream():
+    decided = []
+
+    _, events, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        checks=[assertion_failed(SIX_FAILED)],
+        decide=lambda failure: decided.append(failure) or "accept",
+    )
+
+    assert decided, "the user was never asked"
+    question = events.of(QUESTION)[-1]
+    answer = events.of(ANSWER)[-1]
+    assert "what to do about it is yours to say" in question.data["text"]
+    assert "did not hold" in question.data["text"]
+    assert answer.data["text"] == "You took the result as it is."
+    assert answer.data["by"] == "user"
+
+
+def test_starting_over_is_recorded_as_the_licence_it_is():
+    from core.loop import START_OVER
+
+    _, events, _, _ = a_run_over_the_nut(
+        *[planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS)] * 5,
+        budgets=Budgets(revisions=1),
+        checks=[assertion_failed(SIX_FAILED)] * 5,
+        decide=lambda failure: START_OVER,
+    )
+
+    assert "delete what was built" in events.of(ANSWER)[-1].data["text"]
+
+
+def test_nothing_is_asked_when_the_run_applied_nothing_to_lose():
+    asked = []
+
+    a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), code_reply("make()"),
+        code_reply("make()"),
+        applies=[failed("one"), failed("two"), failed("three")],
+        checks=[assertion_failed(SIX_FAILED)],
+        decide=lambda failure: asked.append(failure) or "accept",
+    )
+
+    assert asked == []
+
+
+# ── the next run inherits it ──────────────────────────────────────────────────
+
+
+STILL_WRONG = ["envelope \u2192 across the flats: 13.0 mm (read)"]
+
+
+def test_a_run_that_inherits_a_failure_says_so_before_it_reads_the_drawing():
+    from core.events import OUTSTANDING
+
+    _, events, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        verdict_reply("pass"),
+        outstanding=STILL_WRONG)
+
+    assert events.first(OUTSTANDING).data["entries"] == STILL_WRONG
+    assert list(events)[0].kind == OUTSTANDING, \
+        "what is already wrong turned up after the run had started planning"
+
+
+def test_the_first_plan_of_an_inheriting_run_is_told_what_is_wrong():
+    _, _, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        verdict_reply("pass"),
+        outstanding=STILL_WRONG)
+
+    to_plan = json.dumps(llm.calls[1])
+
+    assert "acceptance checks did not pass" in to_plan
+    assert "13.0 mm" in to_plan
+    assert "Do not plan around it" in to_plan
+
+
+def test_an_inherited_failure_is_checked_again_at_the_end_of_the_new_run():
+    """
+    The second drawing's acceptance list describes the part it wants and knows
+    nothing of what the run before it got wrong. Adding the entries is what
+    makes the checks an answer about the Document rather than about the changes.
+    """
+    inherited = ["features \u2192 bore-left \u2192 position: 25 mm (read)"]
+
+    _, _, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        verdict_reply("pass"),
+        outstanding=inherited)
+
+    checked = json.loads(llm.calls[3][-1]["content"])
+
+    assert checked["acceptance"] == ACCEPTANCE + inherited
+
+
+def test_an_inherited_entry_the_new_run_already_lists_is_not_listed_twice():
+    _, _, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        verdict_reply("pass"),
+        outstanding=[ACCEPTANCE[0]])
+
+    assert json.loads(llm.calls[3][-1]["content"])["acceptance"] == ACCEPTANCE
+
+
+def test_an_inherited_failure_that_now_passes_is_no_longer_outstanding():
+    result, _, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        verdict_reply("pass"),
+        outstanding=STILL_WRONG)
+
+    assert result.ok
+    assert result.unmet == [], "a passing check did not clear what it inherited"
+
+
+def test_a_run_that_inherits_nothing_says_nothing_about_it():
+    from core.events import OUTSTANDING
+
+    _, events, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        verdict_reply("pass"))
+
+    assert events.first(OUTSTANDING) is None
+    assert "acceptance checks did not pass" not in json.dumps(llm.calls[1])
+
+
+# ── a look this run already took (FCC-99) ─────────────────────────────────────
+#
+# A look costs a whole provider turn: Execute replies with a question instead
+# of code and has to be asked again. A recorded run asked what the same scratch
+# object had eight times and what PartDesign::Pocket has five, across the
+# regenerations of one Plan, and every one of those answers had already been
+# given. So what the run has been told is handed back to Execute before it can
+# ask, and an answer it asks for anyway comes out of what it was told.
+
+
+def test_execute_is_handed_what_the_run_already_looked_at():
+    _, _, llm, _ = drive([
+        plan_reply("Sketch it", "Pad it"),
+        look_reply("describe_type", type_id="PartDesign::Pad"),
+        code_reply("sketch()", "pad()"),
+        verdict_reply("pass"),
+    ])
+
+    # The turn after the look already carries it, which is the turn it was
+    # asked in. What matters is the next Execute call after that.
+    asked_with = json.loads(llm.calls[2][-1]["content"])
+
+    assert [look["tool"] for look in asked_with["what_you_looked_at"]] == ["describe_type"]
+
+
+def test_a_regeneration_does_not_have_to_look_again():
+    """
+    The Step failed, so Execute is asked again — and asked with everything the
+    turn before it was told. That is the turn the eight repeats came out of.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Pad it"),
+        look_reply("describe_type", type_id="PartDesign::Pad"),
+        code_reply("pad_wrong()"),
+        code_reply("pad_right()"),
+        verdict_reply("pass"),
+    ], applies=[failed("Reversed")])
+
+    regenerated = json.loads(llm.calls[3][-1]["content"])
+
+    assert [look["tool"] for look in regenerated["what_you_looked_at"]] == ["describe_type"]
+    assert regenerated["what_you_looked_at"][0]["arguments"] == {"type_id": "PartDesign::Pad"}
+
+
+def test_asking_twice_for_the_same_thing_calls_the_tool_once():
+    _, events, _, tools = drive([
+        plan_reply("Pad it"),
+        look_reply("describe_type", type_id="PartDesign::Pad"),
+        look_reply("describe_type", type_id="PartDesign::Pad"),
+        code_reply("pad()"),
+        verdict_reply("pass"),
+    ], budgets=Budgets(looks_per_turn=2))
+
+    assert len([c for c in tools.calls if c[0] == "describe_type"]) == 1
+    # Both are still narrated: a transcript showing the question and not the
+    # answer would read as a look that went nowhere.
+    told = [e for e in events.of(TOOL_RESULT) if e.data["name"] == "describe_type"]
+    assert len(told) == 2
+    assert [e.data["already_known"] for e in told] == [False, True]
+
+
+def test_a_different_argument_is_a_different_look():
+    _, _, _, tools = drive([
+        plan_reply("Pad it"),
+        look_reply("describe_type", type_id="PartDesign::Pad"),
+        look_reply("describe_type", type_id="PartDesign::Pocket"),
+        code_reply("pad()"),
+        verdict_reply("pass"),
+    ], budgets=Budgets(looks_per_turn=2))
+
+    assert len([c for c in tools.calls if c[0] == "describe_type"]) == 2
+
+
+def test_what_an_object_has_is_forgotten_once_a_step_lands():
+    """
+    A property list read off the Document is a fact about the Document as it
+    was. Every applied Step is a chance for it to have moved, so it is not
+    carried across one and not answered from memory after one.
+    """
+    _, _, llm, tools = drive([
+        plan_reply("Sketch it", "Pad it"),
+        look_reply("describe_object", name="Box"),
+        code_reply("sketch()", "pad_wrong()"),
+        look_reply("describe_object", name="Box"),
+        code_reply("pad_right()"),
+        verdict_reply("pass"),
+    ], applies=[FakeTools.APPLIED, failed("Reversed")])
+
+    assert len([c for c in tools.calls if c[0] == "describe_object"]) == 2, \
+        "an object read before a Step landed was reported as though it still held"
+    regenerated = json.loads(llm.calls[3][-1]["content"])
+    assert "what_you_looked_at" not in regenerated
+
+
+def test_what_a_type_has_survives_a_step_because_the_build_does_not_change():
+    _, _, llm, tools = drive([
+        plan_reply("Sketch it", "Pad it"),
+        look_reply("describe_type", type_id="PartDesign::Pad"),
+        code_reply("sketch()", "pad_wrong()"),
+        code_reply("pad_right()"),
+        verdict_reply("pass"),
+    ], applies=[FakeTools.APPLIED, failed("Reversed")])
+
+    regenerated = json.loads(llm.calls[3][-1]["content"])
+
+    assert [look["tool"] for look in regenerated["what_you_looked_at"]] == ["describe_type"]
+
+
+def test_a_look_that_failed_is_not_remembered_as_an_answer():
+    """A ToolError is a thing to correct, and correcting it means asking again."""
+    _, _, _, tools = drive([
+        plan_reply("Pad it"),
+        look_reply("describe_object", name="NoSuchThing"),
+        look_reply("describe_object", name="NoSuchThing"),
+        code_reply("pad()"),
+        verdict_reply("pass"),
+    ], budgets=Budgets(looks_per_turn=2))
+
+    assert len([c for c in tools.calls if c[0] == "describe_object"]) == 2
+
+
+def test_the_carried_looks_are_bounded():
+    """An unbounded list would grow the request for the whole length of a run."""
+    from core.loop import Looks
+
+    looks = Looks()
+    for number in range(Looks.CARRIED + 4):
+        looks.remember("describe_type", {"type_id": "T%d" % number}, {"ok": number})
+
+    carried = looks.still_true()
+
+    assert len(carried) == Looks.CARRIED
+    assert carried[-1]["arguments"] == {"type_id": "T%d" % (Looks.CARRIED + 3)}, \
+        "the oldest looks went, not the newest"
+
+
+# ── failing the same way twice (FCC-100) ──────────────────────────────────────
+#
+# A recorded run failed one Step three times running with the identical "moved
+# no material" traceback. Each rewrite renamed the objects and restructured the
+# loop that built the profiles, and none of them changed the direction of the
+# cut the traceback was describing. Then it replanned and did the same three
+# again. The traceback said what to change; nothing said that the answer being
+# tried had already been tried.
+
+
+NO_MATERIAL = ("Traceback (most recent call last):\n"
+               "RuntimeError: this Step added a feature that neither removed nor added "
+               "any material:\nPocketHook (PartDesign::Pocket): 421045.77 mm3 before, "
+               "421045.77 mm3 after\n")
+
+IN_PIECES = ("Traceback (most recent call last):\n"
+             "RuntimeError: this Step left a Body in more than one piece:\n"
+             "Body: 5 separate solids\n")
+
+
+def test_the_same_failure_twice_is_told_not_to_write_a_third_variation():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"), code_reply("third()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL)])
+
+    third = json.loads(llm.calls[3][-1]["content"])
+    said = third["you_have_failed_this_the_same_way_twice"]
+
+    assert "failed 2 times with the same failure" in said
+    assert "Do not write a third variation" in said
+    assert "Change the *direction* this time" in said
+    assert "Reversed" in said and "ThroughAll" in said
+    assert "not the size of the cut" in said
+
+
+def test_the_directive_matches_the_failure_and_not_some_other_one():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"), code_reply("third()"),
+        verdict_reply("pass"),
+    ], applies=[failed(IN_PIECES), failed(IN_PIECES)])
+
+    said = json.loads(llm.calls[3][-1]["content"])["you_have_failed_this_the_same_way_twice"]
+
+    assert "do not meet" in said
+    assert "share their endpoints" in said
+    assert "Reversed" not in said, "the wrong failure's advice"
+
+
+def test_two_different_failures_in_a_row_are_progress_and_are_left_alone():
+    """
+    The first thing was fixed and a second surfaced. Telling a run that is
+    getting somewhere to change tack would be wrong.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"), code_reply("third()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_MATERIAL), failed(IN_PIECES)])
+
+    third = json.loads(llm.calls[3][-1]["content"])
+
+    assert "you_have_failed_this_the_same_way_twice" not in third
+
+
+def test_one_failure_says_nothing_about_repeating_yourself():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_MATERIAL)])
+
+    assert "you_have_failed_this_the_same_way_twice" not in json.loads(
+        llm.calls[2][-1]["content"])
+
+
+def test_a_failure_nothing_recognises_is_not_given_invented_advice():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"), code_reply("third()"),
+        verdict_reply("pass"),
+    ], applies=[failed("ZeroDivisionError: division by zero"),
+                failed("ZeroDivisionError: division by zero")])
+
+    assert "you_have_failed_this_the_same_way_twice" not in json.loads(
+        llm.calls[3][-1]["content"])
+
+
+def test_the_directive_offers_leaving_the_step_out_rather_than_repeating():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"), code_reply("third()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL)])
+
+    said = json.loads(llm.calls[3][-1]["content"])["you_have_failed_this_the_same_way_twice"]
+
+    assert "leave this Step out" in said
+    assert "Plan is given this one back" in said
+
+
+def test_a_step_that_never_failed_any_other_way_tells_plan_to_change_the_step():
+    """
+    Rewording it sends Execute back at the same wall, which is what the
+    recorded run did: three identical failures, a replan, and three more.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("one()"), code_reply("two()"), code_reply("three()"),
+        plan_reply("Cut the hooks, differently"),
+        code_reply("four()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_MATERIAL)] * 3, budgets=Budgets(attempts_per_step=3))
+
+    to_plan = json.dumps(llm.calls[4])
+
+    assert "failed the same way" in to_plan
+    assert "Rewording it will send Execute back at the same wall" in to_plan
+    assert "Change what the Step asks for" in to_plan
+
+
+def test_a_step_that_failed_variously_does_not_tell_plan_to_change_the_step():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("one()"), code_reply("two()"), code_reply("three()"),
+        plan_reply("Cut the hooks, differently"),
+        code_reply("four()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_MATERIAL), failed(IN_PIECES), failed(NO_MATERIAL)],
+       budgets=Budgets(attempts_per_step=3))
+
+    assert "Rewording it" not in json.dumps(llm.calls[4])
+
+
+# ── one approval, standing (FCC-101) ──────────────────────────────────────────
+#
+# Sixty-nine of a hundred and thirty-five minutes of one recorded session were
+# spent waiting at a Plan Gate, against six seconds of FreeCAD. Four of those
+# waits were revisions of a Plan the user had already read and approved: a Step
+# Execute could not build, checks that did not hold, part of the description
+# nothing planned. A standing approval is the user saying "get on with it" —
+# and it covers the Plan and only the Plan.
+
+
+def gate_that(*answers):
+    """A Gate scripted turn by turn; anything past the script approves once."""
+    from core.loop import APPROVE, Approval
+
+    queued = list(answers)
+    asked = []
+
+    def gate(steps):
+        asked.append(list(steps))
+        return queued.pop(0) if queued else Approval(APPROVE)
+
+    gate.asked = asked
+    return gate
+
+
+def driven_through(gate, turns, **kwargs):
+    llm = ScriptedLLMClient(turns)
+    tools = FakeTools(kwargs.pop("applies", ()), views=kwargs.pop("views", None),
+                      checks=kwargs.pop("checks", ()))
+    events = EventStream()
+    result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
+                 budgets=kwargs.pop("budgets", None) or Budgets(), gate=gate, **kwargs)
+    return result, events, llm, tools
+
+
+def test_a_standing_approval_is_not_asked_again_when_the_plan_is_revised():
+    from core.loop import APPROVE, Approval
+
+    gate = gate_that(Approval(APPROVE, standing=True))
+
+    result, _, _, _ = driven_through(gate, [
+        plan_reply("Build it"),
+        obsolete_reply("The Document already has it"),
+        plan_reply("Build the rest"),
+        code_reply("rest()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert len(gate.asked) == 1, "the revised Plan asked again: %d Gates" % len(gate.asked)
+
+
+def test_without_a_standing_approval_every_plan_still_reaches_the_gate():
+    """FCC-68 unchanged: this is opt-in, and the default is what it always was."""
+    gate = gate_that()
+
+    result, _, _, _ = driven_through(gate, [
+        plan_reply("Build it"),
+        obsolete_reply("The Document already has it"),
+        plan_reply("Build the rest"),
+        code_reply("rest()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert len(gate.asked) == 2
+
+
+def test_a_standing_approval_is_on_the_stream_as_an_approval_not_as_a_silence():
+    from core.loop import APPROVE, Approval
+
+    gate = gate_that(Approval(APPROVE, standing=True))
+
+    _, events, _, _ = driven_through(gate, [
+        plan_reply("Build it"),
+        obsolete_reply("Already done"),
+        plan_reply("Build the rest"),
+        code_reply("rest()"),
+        verdict_reply("pass"),
+    ])
+
+    gates = events.of(GATE)
+
+    assert [g.data.get("decision") for g in gates] == [None, "approve", None, "approve"]
+    assert gates[0].data["asked"] is True
+    assert gates[1].data["standing"] is True
+    assert gates[2].data["asked"] is False, \
+        "a Gate nobody was asked at is not distinguishable from one they were"
+    assert gates[3].data["standing"] is True
+
+
+def test_an_ordinary_approval_does_not_stand():
+    from core.loop import APPROVE, Approval
+
+    gate = gate_that(Approval(APPROVE), Approval(APPROVE))
+
+    _, events, _, _ = driven_through(gate, [
+        plan_reply("Build it"),
+        obsolete_reply("Already done"),
+        plan_reply("Build the rest"),
+        code_reply("rest()"),
+        verdict_reply("pass"),
+    ])
+
+    assert all(g.data.get("standing") in (None, False) for g in events.of(GATE))
+
+
+def test_a_standing_amendment_is_not_a_standing_approval():
+    """
+    Only an approval can stand. An amendment is the user changing the Plan, and
+    the Plan they get back is one they have not read.
+    """
+    from core.loop import AMEND, APPROVE, Approval
+
+    gate = gate_that(Approval(AMEND, "make it 20mm", standing=True))
+
+    result, _, _, _ = driven_through(gate, [
+        plan_reply("Build it 10mm"),
+        plan_reply("Build it 20mm"),
+        code_reply("build()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert len(gate.asked) == 2, "an amendment stood in for an approval"
+
+
+def test_a_standing_approval_still_lets_the_user_be_asked_about_the_result():
+    """
+    It covers the Plan. What to do about a result that did not pass is not the
+    Plan, and neither is deleting the user's own work.
+    """
+    from core.loop import ACCEPT, APPROVE, Approval
+
+    gate = gate_that(Approval(APPROVE, standing=True))
+    decided = []
+
+    result, _, _, _ = driven_through(
+        gate,
+        [design_reply(A_NUT), planning_the_nut("Make it"), code_reply("make()"),
+         assertion_reply(CHECKS)],
+        checks=[assertion_failed(ASSERT_FAILED)],
+        attachments=[RENDER_PNG],
+        decide=lambda failure: decided.append(failure) or ACCEPT,
+    )
+
+    assert result.ok
+    assert decided, "a standing approval swallowed the question about the result"
+
+
+def test_a_standing_approval_does_not_survive_into_another_run():
+    """It is one run's patience, not a setting."""
+    from core.loop import APPROVE, Approval
+
+    driven_through(gate_that(Approval(APPROVE, standing=True)), [
+        plan_reply("Build it"), code_reply("build()"), verdict_reply("pass"),
+    ])
+
+    gate = gate_that()
+    driven_through(gate, [
+        plan_reply("Build it"), code_reply("build()"), verdict_reply("pass"),
+    ])
+
+    assert len(gate.asked) == 1
+
+
+def test_a_rejection_still_stops_a_run_that_had_a_standing_approval_before_it():
+    from core.loop import APPROVE, REJECT, Approval
+
+    gate = gate_that(Approval(REJECT))
+
+    result, _, _, tools = driven_through(gate, [plan_reply("Build it")])
+
+    assert result.blocked
+    assert tools.applied_codes() == []

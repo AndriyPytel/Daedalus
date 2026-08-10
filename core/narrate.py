@@ -18,9 +18,19 @@ from dataclasses import dataclass
 
 from core.design import render
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, TOOL_RESULT,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE,
+    OUTSTANDING, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
+    STEP_STARTED, TOOL_RESULT,
 )
+
+# The Plan Gate's three answers, written out. The words are `core.loop`'s, but
+# importing the loop to narrate it would point the dependency the wrong way.
+_GATE_SAID = {
+    None: "Waiting for you to approve the Plan…",
+    "approve": "Approved — running the Plan.",
+    "amend": "Amending the Plan…",
+    "reject": "Rejected.",
+}
 
 
 @dataclass(frozen=True)
@@ -79,8 +89,33 @@ def narrate(event) -> Narration:
         # is where a misreading is cheap to correct, and a dump is not read.
         return Narration(title="What the part is", body=render(data["model"]))
 
+    if kind == GATE:
+        # A status rather than a line: the panel already puts the question in a
+        # card of its own, and the run is only waiting, not saying anything.
+        # Except where nobody was asked — a standing approval is a decision the
+        # user made once and is having applied again, and it says so rather
+        # than looking like a Gate that was skipped (FCC-101).
+        if data.get("standing") and data.get("decision"):
+            return Narration(status="Approved already — carrying on without asking.")
+        return Narration(status=_GATE_SAID.get(data.get("decision"),
+                                               "The Plan Gate answered: %s"
+                                               % data.get("decision")))
+
+    if kind == OUTSTANDING:
+        entries = data.get("entries") or []
+        return Narration(
+            line="⚠ The last run left %d thing%s wrong with this Document, and this run "
+                 "is told to put %s right." % (len(entries), "" if len(entries) == 1 else "s",
+                                               "it" if len(entries) == 1 else "them"),
+            title="What was still wrong (%d)" % len(entries),
+            body="\n".join("• " + str(entry) for entry in entries))
+
     if kind == PLAN_REVISED:
-        return Narration(line="Revised the Plan: " + data["reason"])
+        # Which revision of how many, and what caused it: the reason alone never
+        # said that the same wall had been hit three times.
+        counted = (" (%d of %d, %s)" % (data["revision"], data["of"], data["because"])
+                   if data.get("of") else "")
+        return Narration(line="Revised the Plan%s: %s" % (counted, data["reason"]))
 
     if kind == STEP_STARTED:
         return Narration(status="Step %d/%d: %s"

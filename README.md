@@ -71,11 +71,53 @@ the `Shape`, grouped so twenty identical holes are one entry with a count. Raw s
 geometry is deliberately not in it.
 
 **A PDF is a full attachment.** Drawings arrive as PDFs, and the "+" button offers them
-beside PNG, JPEG, GIF and WebP. A PDF rides to the Design phase and to Review as a `file`
-content block; there is no page rendering on our side. A model that cannot read one says
-so before the run starts, naming the file and the model, the same way an unreadable
-attachment already does — and every attachment now goes out labelled as what it is rather
-than as a PNG.
+beside PNG, JPEG, GIF and WebP. A model that cannot read one says so before the run
+starts, naming the file and the model, the same way an unreadable attachment already does
+— and every attachment goes out labelled as what it is rather than as a PNG.
+
+**The sheet is rendered here, and it is not sent whole** (FCC-102). It used to ride along
+as an opaque `file` block, with the provider choosing the resolution — and it chose
+against us. Measured on `mm25-p1-1.pdf`: an 11 × 8.5 in sheet arrives at the provider's
+own 1568 px cap, which is 143 DPI, which puts **14 px of ink in a dimension digit**. 14 px
+is not illegible, and that is what makes it expensive — it reads correctly most of the
+time, so misreadings arrive one at a time, already flagged `read`, into a model designed
+never to overwrite them. "108 read as 100" is that failure and not a worse one.
+
+So Design is now shown the sheet for its layout and then **one picture per view**, cut out
+of it and rendered at the DPI its own callouts ask for — 279 for this sheet, set by the
+12.9 pt dimension text and deliberately not by the 4.1 pt confidentiality paragraph in the
+title block, which is 28 of the sheet's 89 words and would put every crop at 492 DPI to
+render something nobody models from. A crop is never wider than the cap it would be
+downscaled to; a region too big to be both whole and legible is sent in overlapping
+pieces.
+
+**What is printed on the sheet is extracted, not read.** A vector PDF carries the
+draughtsman's own strings with their coordinates, so `printed_on_the_sheet` is the file's
+text layer rather than the model's account of what it noticed. That matters because the
+old check could not fail in the one way that counts: a callout nobody saw is missing from
+the sweep *and* from the part, and counting one against the other finds nothing wrong.
+Held against the file, a dropped dimension comes back to Design naming the number, and
+what comes back goes through the same merge as everything else — bounded by the same
+re-read ceiling as a question put to the sheet.
+
+**The extracted list is numerals, not notation.** Measured on the same sheet: `Ø` is drawn
+as geometry and is not in the text layer at all, so a bore printed `Ø35 THRU` extracts as
+`35 THRU`. `R` survives, `(R30)` survives whole. The numbers are exact and what they
+*mean* is still read off the views — which is the boundary this whole phase is built on.
+
+**A leader is followed by arithmetic.** In a vector PDF the hairline is a list of
+endpoints, so where a callout's leader ends is computed rather than judged on a 14 px
+picture of it. On `mm25-p1-1.pdf` the `(R30)` leader starts on the left bore's axis and
+its arrowhead lands on the wall of the central pocket — two features at two ends of one
+line, which is exactly the case the description prompt warns about and exactly the one
+that is hopeless to see. What the far end *is* remains the reading.
+
+**All of it degrades rather than fails.** PyMuPDF is a required package the addon can run
+without: with it missing, or a file it cannot open, or a raster instead of a PDF, the
+attachment goes out exactly as it did before. A raster gets the crops but no text layer,
+off its own ink — and the paper is measured off the edge of the picture rather than
+assumed to be white, because a drawing exported on a black background read as "dark means
+ink" comes back as one crop of the whole sheet.
 
 **An attachment leaves a trace.** The picture stays in the chat beside the Intent after
 the chips clear, and the run records it on the event stream, so the Session's `.jsonl`

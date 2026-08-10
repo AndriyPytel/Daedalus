@@ -16,6 +16,11 @@ REQUIRED_PACKAGES = {
     "litellm": "litellm",
     "numpy": "numpy",
     "Pillow": "PIL",
+    # What makes a PDF a drawing rather than an opaque attachment: the page is
+    # rendered here at the DPI its own callouts ask for, and its text layer is
+    # the exact list of what is printed on it (FCC-102). Missing, `sheet_reader`
+    # says so and the sheet is sent whole, the way it was before.
+    "pymupdf": "pymupdf",
 }
 
 def get_target_directory():

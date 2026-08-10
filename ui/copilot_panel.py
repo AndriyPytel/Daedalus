@@ -297,8 +297,9 @@ class LoopWorker(QtCore.QObject):
         self.pipeline.events = events
         return build_registry(pipeline=self.pipeline)
 
-    @QtCore.Slot(str, object, str)
-    def do_work(self, intent: str, attachments: list, transcript: str):
+    @QtCore.Slot(str, object, str, object)
+    def do_work(self, intent: str, attachments: list, transcript: str,
+                outstanding: list = None):
         from core import events as ev
         from core.events import EventStream
         from core.loop import run
@@ -336,7 +337,8 @@ class LoopWorker(QtCore.QObject):
                          events=events, cancelled=self._stop.is_set,
                          attachments=attachments, gate=self.ask.about_the_plan,
                          ask=self.ask.about_missing_values,
-                         decide=self.ask.about_the_revision)
+                         decide=self.ask.about_the_revision,
+                         outstanding=list(outstanding or ()))
             self.finished.emit(result)
         except Exception as exc:
             events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
@@ -371,7 +373,7 @@ ATTACHMENT_WIDTH = 320
 
 
 class CopilotPanel(QtWidgets.QDockWidget):
-    request_work = QtCore.Signal(str, object, str)
+    request_work = QtCore.Signal(str, object, str, object)
 
     def __init__(self):
         super().__init__("FreeCAD Copilot")
@@ -438,6 +440,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.ask.revision.connect(self.on_revision)
 
         self._running = False
+        # What the last run's acceptance checks left wrong, carried into the
+        # next Intent typed against the same Document. A drawing that amends a
+        # part must not be planned as though the part were sound (FCC-98).
+        self._outstanding: list = []
         self._empty_state = None
         self._sent_attachments: list[str] = []
         self._title_threads = []
@@ -892,7 +898,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._set_running(True)
         self.status_line.setText("Planning…")
         self.status_line.setVisible(True)
-        self.request_work.emit(intent, attachments, session["log"])
+        self.request_work.emit(intent, attachments, session["log"],
+                               list(self._outstanding))
 
     def _name_session(self, index: int, log: str, intent: str):
         """
@@ -980,7 +987,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
             return
 
         if event.kind == ev.PLAN:
-            self._render_plan(data["steps"], "Plan", data.get("acceptance", ()))
+            self._render_plan(data["steps"], "Plan", data.get("acceptance", ()),
+                              data.get("unanswered", ()))
             return
 
         if event.kind == ev.STEP_STARTED:
@@ -999,7 +1007,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         # The revised Steps stand under the line that says they were revised.
         if event.kind == ev.PLAN_REVISED:
-            self._render_plan(data["steps"], "Revised Plan", data.get("acceptance", ()))
+            self._render_plan(data["steps"], "Revised Plan", data.get("acceptance", ()),
+                              data.get("unanswered", ()))
 
     def _say(self, narration):
         """
@@ -1072,12 +1081,19 @@ class CopilotPanel(QtWidgets.QDockWidget):
         how.append_text(narration.body)
         how.toggle_content()
 
-    def _render_plan(self, steps, title, acceptance=()):
+    def _render_plan(self, steps, title, acceptance=(), unanswered=()):
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
         self._plan_widget = PlanWidget(steps, title=title)
         self.add_chat_widget(self._plan_widget)
+        if unanswered:
+            # Above the criteria and open: these Steps carry values the Plan chose
+            # for itself, and the Gate is the only place to overrule them (FCC-96).
+            open_questions = AccordionWidget("Nobody answered these — the Plan chose")
+            self.add_chat_widget(open_questions)
+            open_questions.append_text("\n".join("• " + str(q) for q in unanswered))
+            open_questions.toggle_content()
         if acceptance:
             # Under the Steps and open, for the same reason the reading is: the
             # Gate is the only place a wrong criterion is correctable (FCC-75).
@@ -1113,8 +1129,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
             "Waiting for you to approve the Plan\u2026",
             "Run this Plan? Approving covers all %d Steps \u2014 no Step is confirmed "
             "separately." % len(steps),
-            "To amend it, say what to change in the box below, then Amend.",
+            "To amend it, say what to change in the box below, then Amend. Approve and "
+            "carry on also covers the Plans this one is revised into, so the run does "
+            "not stop here again \u2014 you are still asked before anything of yours is "
+            "deleted, before the model is rebuilt, and about a result that did not pass.",
             (("\u2713  Approve", lambda: Approval(APPROVE)),
+             ("\u23e9  Approve and carry on", lambda: Approval(APPROVE, standing=True)),
              ("\u270e  Amend", lambda: self._from_composer(
                  "Say what to change, then press Amend\u2026",
                  lambda said: Approval(AMEND, said))),
@@ -1285,6 +1305,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
+        # Whatever the run ended as, including a result the user took as it is:
+        # the entries are wrong in the Document either way, and the next Intent
+        # inherits them. A run that passed clears the list.
+        self._outstanding = list(getattr(result, "unmet", None) or ())
         if result is not None and result.ok:
             self.status_line.setVisible(False)
         else:

@@ -36,10 +36,11 @@ from typing import List
 
 from core.design import entries, merge, render
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, PLAN,
-    PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED,
-    THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE,
+    OUTSTANDING, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
+    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
+from core import sheet_reader
 from core.freecad_tools import TRAPS
 from core.llm import REASONING, ProviderRefused
 from core.tools import ToolError
@@ -77,7 +78,10 @@ class Budgets:
     looks_per_turn: int = 2
     # A model that only ever asks would never plan. After this many rounds Plan
     # is told to choose for itself and say what it chose (FCC-25). It counts
-    # what a *person* was asked; the drawing answering is not being asked.
+    # what a *person* was asked; the drawing answering is not being asked. It
+    # bounds the other end too — how many questions may stand unanswered before
+    # the run stops — because being told to choose is only worth repeating
+    # while the question keeps changing (FCC-96).
     questions: int = 2
     # How many of Plan's questions may be put back to the drawing before they
     # are put to the user (FCC-90). A re-read is still a provider call, and
@@ -133,8 +137,15 @@ class _Revisions:
     def spend(self, cause):
         self._spent[cause] += 1
 
+    def spent_total(self) -> int:
+        return sum(self._spent.values())
+
+    def named(self, cause) -> str:
+        """The cause in words, without the count `breakdown` puts on it."""
+        return (dict(self._SAID)[cause] % "").strip()
+
     def exhausted(self, budgets, steps) -> bool:
-        return sum(self._spent.values()) >= revisions_ceiling(budgets, steps)
+        return self.spent_total() >= revisions_ceiling(budgets, steps)
 
     def _causes_spent(self) -> list:
         return [cause for cause, _ in self._SAID if self._spent[cause]]
@@ -178,10 +189,23 @@ class Approval:
     The Plan Gate's answer.
 
     Approval covers every Step in the Plan; there is no per-Step approval.
+
+    `standing` is approval that also covers the Plans this one turns into. A
+    Plan is revised for six reasons and five of them are the run correcting
+    itself — a Step Execute could not build, checks that did not hold, a part
+    of the description nothing planned — and each revision stopped at the Gate
+    for an approval the user had, in substance, already given. In a recorded
+    session that came to sixty-nine minutes of a hundred and thirty-five spent
+    waiting at a Gate, against six seconds of FreeCAD (FCC-101). A standing
+    approval says "get on with it": the run stops asking about revisions of
+    this Plan, and every other question it can put to the user — the user's own
+    objects, a rebuild of the model, what to do about a result that did not
+    pass — is untouched, because those are the ones that are not about the Plan.
     """
 
     decision: str = APPROVE
     feedback: str = ""
+    standing: bool = False
 
 
 def auto_approve(steps):
@@ -210,6 +234,15 @@ START_OVER = "start_over"   # revise, and it may delete what was built
 
 DECISIONS = (ACCEPT, REVISE, START_OVER)
 
+_WHAT_NOW = ("The result did not pass, and what to do about it is yours to say — take it "
+             "as it is, have it revised, or start over.\n\n%s")
+
+_DECIDED = {
+    ACCEPT: "You took the result as it is.",
+    REVISE: "You asked for it to be revised.",
+    START_OVER: "You asked it to start over, which lets it delete what was built.",
+}
+
 _MAY_START_AGAIN = (
     "\n\nThe user has decided you may start again: you may delete what was built and "
     "plan the part from nothing."
@@ -233,6 +266,8 @@ _DECIDE = ("The user is not answering. Choose sensible values yourself, and writ
            "value you chose into the prose of the Step that uses it, so a wrong choice is "
            "correctable at the Plan Gate.")
 
+_SAID_NOTHING = "nothing in the views answers it."
+
 
 def nobody_to_ask(question):
     """
@@ -253,6 +288,10 @@ class LoopResult:
     reason: str = ""
     steps_applied: int = 0
     tried: List[dict] = field(default_factory=list)
+    # What the acceptance checks said did not hold when the run ended, whatever
+    # the run ended as. A run the user took as it is still leaves these wrong
+    # in the Document, and the next run is entitled to know (FCC-98).
+    unmet: List[str] = field(default_factory=list)
 
     @property
     def awaiting_user(self) -> bool:
@@ -351,6 +390,45 @@ def _pictures(attachments):
     return [picture for picture in map(_as_image, attachments) if picture]
 
 
+def _sheets(attachments):
+    """Every attachment this run could read as a sheet, in the order shown."""
+    return [sheet for sheet in (sheet_reader.read(path) for path in attachments)
+            if sheet is not None]
+
+
+def _the_evidence(attachments):
+    """
+    What Design is shown: the sheet cut up and its text layer extracted.
+
+    A drawing used to go out whole and at whatever resolution the provider chose
+    to keep — 143 DPI for an 11 x 8.5 in sheet, which puts 14 px of ink in a
+    dimension digit and misreads it occasionally rather than reliably. It now
+    goes out as the sheet for the layout plus one picture per view at the DPI
+    its own callouts ask for, with what is printed on it extracted from the file
+    rather than read off the picture (FCC-102).
+
+    An attachment `sheet_reader` cannot open is sent exactly as it was before.
+    That is the whole fallback: no PyMuPDF, no Pillow, a format neither of them
+    knows, and the phase is back to what it did yesterday.
+    """
+    shown = []
+    for path in attachments:
+        sheet = sheet_reader.read(path)
+        if sheet is None:
+            picture = _as_image(path)
+            if picture:
+                shown.append(picture)
+            continue
+        for piece in sheet_reader.shown(sheet):
+            if "say" in piece:
+                shown.append({"type": "text", "text": piece["say"]})
+            else:
+                picture = _as_image(piece["show"])
+                if picture:
+                    shown.append(picture)
+    return shown
+
+
 def design(body, llm, events, attachments=()):
     """
     One Design turn: what it adds to the part, and what it needs a person for.
@@ -375,7 +453,7 @@ def design(body, llm, events, attachments=()):
     """
     reply = _ask(llm, events, DESIGN_PHASE, prompt(DESIGN_PHASE),
                  [{"type": "text", "text": json.dumps(body, indent=2, default=str)}]
-                 + _pictures(attachments))
+                 + _the_evidence(attachments))
     the_part = reply.get("design")
     return (the_part if isinstance(the_part, dict) else {},
             str(reply.get("question") or "").strip())
@@ -577,7 +655,8 @@ class Written:
         return self.steps.get(number) or ExecuteOutcome()
 
 
-def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described=""):
+def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
+            looks=None):
     """
     Write the code for every Step from `start` to the end of the Plan, in one turn.
 
@@ -625,14 +704,25 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             "it — the code you wrote for those assumed objects Step %d never created."
             % (start + 1, start + 1, start + 1)
         )
+        again = _the_same_way_twice(attempts)
+        if again:
+            request["you_have_failed_this_the_same_way_twice"] = again
 
-    looked = []
+    # What the run already knows, handed over before Execute can ask for it
+    # again. This is the whole point of keeping it: a look it does not have to
+    # take is a provider turn it does not have to spend (FCC-99).
+    looked = list(looks.still_true()) if looks is not None else []
     for remaining in range(budgets.looks_per_turn, -1, -1):
         request["tools_you_may_look_with"] = _lookable(tools) if remaining else []
         if not remaining:
             request["this_is_your_last_turn"] = (
-                "You have no looks left. Reply with code for every Step, or with an obsolete "
-                "reason if the Plan can no longer be done. A look now is a failed attempt."
+                "Your looks are spent, so the list above is empty: every Tool still exists "
+                "and none was withheld. Reply with code for every Step you can write. A "
+                "look now is a failed attempt. `obsolete` is for a Plan that no longer "
+                "matches the Document above — never for one Step you could not look a "
+                "value up for, because it throws away the Steps you can build with it. "
+                "Leave that Step out instead: the Steps before it land, and it goes back "
+                "to Plan on its own."
             )
         if looked:
             request["what_you_looked_at"] = looked
@@ -647,9 +737,81 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             return Written(steps=written)
         if not reply.get("look") or not remaining:
             break
-        looked.append(_look(tools, reply["look"], events))
+        # A look still spends the allowance even where the answer was already
+        # here. What it costs is the turn, not the Tool call, and asking again
+        # for something you were handed is the turn wasted either way — the
+        # saving is in not needing to ask, which is what `still_true` is for.
+        looked.append(_look(tools, reply["look"], events, looks))
 
     return Written()
+
+
+# The failures a Step comes back with, and what a *different* attempt at each
+# one would have to change. Keyed on a phrase Preflight itself writes, so a
+# failure this build stops reporting stops being classified rather than being
+# classified wrongly.
+#
+# The point of naming them is FCC-100: a recorded run failed the same Step
+# three times running with the identical "moved no material" traceback, and
+# each rewrite renamed the objects, restructured the loop that built the
+# profiles and changed nothing about the direction of the cut the traceback was
+# describing. Then it replanned, and did it again. The traceback said what to
+# change; what it did not say was that the answer being tried had already been
+# tried.
+_FAILED_THIS_WAY = (
+    ("neither removed nor added any material",
+     "the cut ran the wrong way or missed the solid. It is not the size of the cut "
+     "and it is not how the profile is built: the same shape, extruded the other "
+     "way, is the whole of the fix. Change the *direction* this time — set "
+     "`Reversed`, set `Type='ThroughAll'` or `Midplane`, or put the sketch on the "
+     "opposite face — and check the sign against the Body's BoundBox before you "
+     "commit to it. Rewriting the same extrusion more legibly will fail "
+     "identically."),
+    ("left a Body in more than one piece",
+     "the profiles in one sketch do not meet, so they padded into separate lumps. "
+     "Renaming the features does not join them. Either make the profiles share "
+     "their endpoints so the outline closes as one loop, or build each piece as "
+     "its own feature on the solid that is already there."),
+    ("recompute left these objects in error",
+     "the Document does not rebuild. The object named in the traceback is the one "
+     "to fix, and it is fixed by changing what it references or what it is given "
+     "— not by building the same thing again under another name."),
+    ("is not part of the enumeration",
+     "the spelling is not one this build accepts. Ask `describe_type` for the "
+     "property's enumeration and use a value from it verbatim; guessing a second "
+     "spelling is the same move that failed."),
+    ("end face of tapered extrusion is empty",
+     "the draft angle closes the profile before the extrusion gets to the end of "
+     "it. A smaller angle, a shorter cut, or a larger profile is the change; the "
+     "same three numbers arranged differently is not."),
+)
+
+
+def _the_same_way_twice(attempts):
+    """
+    The directive for a Step that has now failed twice for the same reason, or
+    None.
+
+    Only the *last two* attempts, and only where they are the same kind of
+    failure. Two different failures in a row is progress — the first thing was
+    fixed and a second one surfaced — and telling a run that is getting
+    somewhere to change tack would be wrong.
+    """
+    if len(attempts) < 2:
+        return None
+    latest, before = attempts[-1].traceback or "", attempts[-2].traceback or ""
+    for phrase, directive in _FAILED_THIS_WAY:
+        if phrase in latest and phrase in before:
+            return (
+                "This Step has now failed %d times with the same failure, and the attempts "
+                "differ from each other in ways the traceback never asked about. Do not "
+                "write a third variation of the same approach: %s\n\nIf you cannot see a "
+                "different approach that the Steps as written allow, leave this Step out "
+                "rather than repeating yourself — the Steps before it land and Plan is "
+                "given this one back to write differently."
+                % (sum(1 for a in attempts if phrase in (a.traceback or "")), directive)
+            )
+    return None
 
 
 def _written(replied, start):
@@ -683,11 +845,22 @@ def _lookable(tools):
             if described["name"] not in NOT_A_LOOK]
 
 
-def _emit_plan(events, kind, planned, reason=None):
-    """A Plan on the stream, in one place — the panel reads both kinds alike."""
+def _emit_plan(events, kind, planned, reason=None, unanswered=(), **counted):
+    """
+    A Plan on the stream, in one place — the panel reads both kinds alike.
+
+    `unanswered` rides with it because a Plan that chose its own values is the
+    only place those choices are correctable, and the Gate cannot show what it
+    was never handed (FCC-96).
+
+    `counted` is which revision this is, of how many, and what caused it. A
+    revised Plan used to carry the reason alone, so three Revised Plans running
+    into the same wall read as three fresh starts and the run looked like it
+    had stalled for no reason.
+    """
     extra = {"reason": reason} if reason is not None else {}
-    events.emit(kind, steps=list(planned.steps),
-                acceptance=list(planned.acceptance), **extra)
+    events.emit(kind, steps=list(planned.steps), acceptance=list(planned.acceptance),
+                unanswered=list(unanswered), **extra, **counted)
 
 
 def _review_views(tools, events):
@@ -712,13 +885,101 @@ def _review_views(tools, events):
     return list(result.get("views") or ())
 
 
-def _look(tools, look, events):
-    """Run one read-only Tool for Execute and hand back what it said."""
+class Looks:
+    """
+    Every look this run has taken, so none of them is paid for twice (FCC-99).
+
+    A look is not expensive because the Tool is slow — the Tool answers in
+    milliseconds. It is expensive because it costs a whole turn: Execute
+    replies with a question instead of code, the loop answers it, and Execute
+    is asked again. A recorded run asked what the same scratch object had eight
+    times and what `PartDesign::Pocket` has five, across the regenerations of
+    one Plan, and each of those thirteen answers had already been given. At two
+    minutes a turn that is most of half an hour spent re-reading a property
+    list that had not changed.
+
+    So the answers are kept and handed to Execute *before* it asks. Which of
+    them are still true is the only real question here, and it has two answers.
+    What a *type* has is a fact about this build: it cannot change while
+    FreeCAD is running, so it is true for the whole run. What an *object* has
+    is a fact about the Document, and every applied Step is a chance for it to
+    have changed — so those are kept only until the next Step lands, and after
+    that they are dropped rather than repeated as though they still held.
+    """
+
+    #: Looks whose answer is a property of the build and not of the Document.
+    ABOUT_THE_BUILD = ("describe_type", "supported_types", "materials")
+
+    #: How many looks Execute is handed unasked. Beyond this the oldest go:
+    #: what was looked at most recently is what the Steps being written now are
+    #: about, and an unbounded list would grow a request the whole run long.
+    CARRIED = 8
+
+    def __init__(self):
+        self._taken = []
+        self._step = 0
+
+    def a_step_landed(self):
+        """A Step applied, so what was read off the Document may have moved."""
+        self._step += 1
+
+    def _key(self, name, arguments):
+        return name, json.dumps(arguments, sort_keys=True, default=str)
+
+    def _current(self, name):
+        return None if name in self.ABOUT_THE_BUILD else self._step
+
+    def remember(self, name, arguments, result):
+        key = self._key(name, arguments)
+        self._taken = [taken for taken in self._taken if taken["key"] != key]
+        self._taken.append({"key": key, "step": self._current(name), "tool": name,
+                            "arguments": arguments, "result": result})
+
+    def answer(self, name, arguments):
+        """
+        What this run already knows about this exact look, or None.
+
+        Only where it is still true: an answer read off a Document two Steps
+        ago is not an answer about this one.
+        """
+        key = self._key(name, arguments)
+        current = self._current(name)
+        for taken in reversed(self._taken):
+            if taken["key"] == key and taken["step"] == current:
+                return taken["result"]
+        return None
+
+    def still_true(self):
+        """
+        What Execute is given without having to ask, most recent last.
+
+        Everything about the build, and everything read off the Document since
+        the last Step landed.
+        """
+        standing = [taken for taken in self._taken
+                    if taken["step"] is None or taken["step"] == self._step]
+        return [{"tool": taken["tool"], "arguments": taken["arguments"],
+                 "result": taken["result"]}
+                for taken in standing[-self.CARRIED:]]
+
+
+def _look(tools, look, events, looks=None):
+    """
+    Run one read-only Tool for Execute and hand back what it said.
+
+    A look this run has already taken and still holds is answered from what it
+    said then, without calling the Tool again. It is still narrated, because a
+    transcript that showed the question and not the answer would read as a look
+    that went nowhere.
+    """
     name = str(look.get("tool") or "")
     arguments = look.get("arguments") or {}
 
     events.emit(TOOL_CALL, name=name, arguments=dict(arguments))
-    if name in NOT_A_LOOK or name not in tools:
+    remembered = looks.answer(name, arguments) if looks is not None else None
+    if remembered is not None:
+        result = remembered
+    elif name in NOT_A_LOOK or name not in tools:
         result = {"error": "%r is not a Tool you can look with. Reply with code instead." % name}
     else:
         try:
@@ -726,9 +987,13 @@ def _look(tools, look, events):
         except ToolError as exc:
             # A bad look is a thing to correct, not a reason to lose the Step.
             result = {"error": str(exc)}
-    events.emit(TOOL_RESULT, name=name, result=result)
+        if looks is not None and "error" not in result:
+            looks.remember(name, arguments, result)
+    events.emit(TOOL_RESULT, name=name, result=result,
+                already_known=remembered is not None)
 
-    return {"tool": name, "arguments": arguments, "result": result}
+    return {"tool": name, "arguments": arguments, "result": result,
+            "answered_from": "what you were already told" if remembered is not None else None}
 
 
 @dataclass
@@ -746,6 +1011,10 @@ class Checked:
     traceback: str = ""
     confirmed: list = field(default_factory=list)
     uncovered: list = field(default_factory=list)
+    # The entries that did not hold, named one by one. The traceback says the
+    # same thing in prose, and prose is what Plan reads; this is what survives
+    # the end of the run (FCC-98).
+    unmet: list = field(default_factory=list)
 
 
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None):
@@ -800,9 +1069,11 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
         traceback = result.get("traceback") or "The checks failed without saying why."
         if _the_model_failed(traceback):
+            unmet = _unmet_in(traceback) or list(acceptance)
             events.emit(ASSERTION, ok=False, code=code, confirmed=[],
-                        uncovered=uncovered, traceback=traceback)
-            return Checked(failed=True, traceback=traceback, uncovered=uncovered)
+                        uncovered=uncovered, traceback=traceback, unmet=unmet)
+            return Checked(failed=True, traceback=traceback, uncovered=uncovered,
+                           unmet=unmet)
 
         attempts.append({"code": code, "traceback": traceback})
 
@@ -816,21 +1087,49 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
 _MODEL_IS_INVALID = "recompute left these objects in error"
 
+_DID_NOT_HOLD = "these did not hold: "
+
+
+def _unmet_in(traceback):
+    """
+    The acceptance entries a failed check named, one per entry.
+
+    The checks end in a single assert whose message lists every entry that did
+    not hold, separated by semicolons — the Assertion prompt specifies that
+    shape, so this reads it rather than guessing at one. A Document that does
+    not recompute has no entry list at all: nothing was measured, so nothing
+    can be named, and the caller falls back to the whole list.
+
+    Parsed rather than returned as data because the checks are code the model
+    writes and runs in another process; what comes back is a traceback.
+    """
+    for line in traceback.strip().splitlines():
+        if _DID_NOT_HOLD not in line:
+            continue
+        listed = line.split(_DID_NOT_HOLD, 1)[1]
+        return [entry.strip() for entry in listed.split(";") if entry.strip()]
+    return []
+
 
 def _the_model_failed(traceback):
     """
     Whether this traceback is about the part or about the code that checked it.
 
-    Two ways the part is at fault. An `AssertionError` on the last line is an
-    entry of the list that did not hold. A Document the copy cannot recompute
-    is a part already broken before anything was measured — that one has to
-    read differently in the feedback, or Plan is told a dimension is wrong
-    when the model is in error.
+    Two ways the part is at fault. An `AssertionError` is an entry of the list
+    that did not hold. A Document the copy cannot recompute is a part already
+    broken before anything was measured — that one has to read differently in
+    the feedback, or Plan is told a dimension is wrong when the model is in
+    error.
+
+    Any line rather than the last one, because the checks now end in a single
+    assert naming every entry that failed, and a message listing forty of them
+    is not going to stay on one line. A traceback's own frames are indented, so
+    the only line that can begin with the exception name is the exception.
     """
     if _MODEL_IS_INVALID in traceback:
         return True
-    lines = [line for line in traceback.strip().splitlines() if line.strip()]
-    return bool(lines) and lines[-1].startswith("AssertionError")
+    return any(line.startswith("AssertionError")
+               for line in traceback.strip().splitlines())
 
 
 def _why_the_checks_failed(traceback):
@@ -919,8 +1218,53 @@ class _OutOfRevisions(Exception):
         self.tried = tried
 
 
+class _NobodyAnswered(Exception):
+    """
+    Plan will not plan without a value, and there is nobody left to get it
+    from. A stop, not a fault: it carries the questions that stayed open so the
+    block says what to answer, rather than reporting an error nobody can act on
+    (FCC-96).
+    """
+
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
+class _Asking:
+    """
+    What has been asked in this run, and of whom.
+
+    Run-wide rather than per Plan. Every counter here used to be a local of
+    `_plan_once_it_knows_enough`, so a re-plan — which is a new Plan but not a
+    new run — reset the lot: the same question went to the user twice, the
+    re-read ceiling refilled, and "asked again after being told to choose"
+    meant one thing on the first Plan and something else on the fourth
+    (FCC-96).
+    """
+
+    def __init__(self):
+        # The questions nobody answered, in the order they were raised. Plan is
+        # handed all of them every time, and the Plan Gate is shown them beside
+        # the Steps that chose without them.
+        self.unanswered = []
+        self.asked_the_user = 0
+        self.read_again = 0
+
+    def spent(self, budgets) -> bool:
+        """
+        Nothing left to try. Being told to choose is worth repeating only while
+        the question keeps changing; past this the run is going in circles.
+        """
+        return len(self.unanswered) >= budgets.questions
+
+    def outstanding(self) -> str:
+        return "; ".join(self.unanswered)
+
+
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
-        gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default) -> LoopResult:
+        gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
+        outstanding=()) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
 
@@ -934,28 +1278,54 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
 
     `attachments` are files the user showed with the Intent; the Design phase
     sees them, and Review sees them again at the end.
+
+    `outstanding` is what the acceptance checks of an earlier run on this same
+    Document said did not hold and nobody fixed. A run that inherits it is told
+    so before it plans anything, and carries it in its own acceptance list, so
+    a second drawing is not built on top of a part that already failed its
+    first (FCC-98). It comes back out on the result, still outstanding or not,
+    for whoever drives the next run.
     """
     events = events if events is not None else EventStream()
     budgets = budgets or Budgets()
-    progress = {"applied": 0, "tried": []}
+    progress = {"applied": 0, "tried": [], "unmet": list(outstanding)}
+
+    def outcome(result):
+        """
+        Stamp what is still wrong with the Document onto whatever the run
+        returned.
+
+        Every exit carries it, including the ones that raised: a run stopped
+        halfway leaves the Document exactly as wrong as the last check found
+        it, and that is the state the next run inherits. Done in one place
+        because there are nine ways out of `_run` and the eight that are not
+        the happy one are the ones that matter here.
+        """
+        result.unmet = list(progress["unmet"])
+        return result
 
     try:
-        return _run(intent, llm, tools, events, budgets, cancelled or (lambda: False), gate,
-                    progress, attachments, ask, decide)
+        return outcome(_run(intent, llm, tools, events, budgets,
+                            cancelled or (lambda: False), gate, progress, attachments,
+                            ask, decide, list(outstanding)))
     except Stopped:
-        return _block(events, "Stopped by you. Everything applied so far is still in the "
-                              "Document; undo it Step by Step if you want it gone.", [],
-                      progress["applied"])
+        return outcome(_block(events, "Stopped by you. Everything applied so far is still in "
+                                      "the Document; undo it Step by Step if you want it "
+                                      "gone.", [], progress["applied"]))
     except _OutOfRevisions as spent:
-        return _block(events, spent.reason, spent.tried, progress["applied"])
+        return outcome(_block(events, spent.reason, spent.tried, progress["applied"]))
+    except _NobodyAnswered as open_question:
+        return outcome(_block(events, open_question.reason, progress["tried"],
+                              progress["applied"]))
     except ProviderRefused as exc:
-        return _block(events, str(exc), progress["tried"], progress["applied"], said=exc.said)
+        return outcome(_block(events, str(exc), progress["tried"], progress["applied"],
+                              said=exc.said))
     except PhaseError as exc:
         events.emit(ERROR, message=str(exc))
-        return LoopResult(ok=False, reason=str(exc))
+        return outcome(LoopResult(ok=False, reason=str(exc)))
     except Exception as exc:
         events.emit(ERROR, message="%s: %s" % (type(exc).__name__, exc))
-        return LoopResult(ok=False, reason=str(exc))
+        return outcome(LoopResult(ok=False, reason=str(exc)))
 
 
 def _answered(question, ask, events):
@@ -1015,13 +1385,73 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
         the_part, question = _written_in(the_part, question, answer, llm, events,
                                          attachments)
 
+    the_part = _every_callout_accounted_for(the_part, attachments, llm, events,
+                                            budgets, cancelled)
+
     if the_part:
         events.emit(DESIGN, model=the_part)
     return the_part
 
 
+def _every_callout_accounted_for(the_part, attachments, llm, events, budgets,
+                                 cancelled):
+    """
+    The sweep of the sheet, checked against the sheet instead of against itself.
+
+    The description is required to account for every callout printed on the
+    drawing — each one becomes a value or is named in `not_defined` with a
+    reason — and until now the list it was checked against was the model's own
+    list of what it had noticed. That check cannot fail in the one way that
+    matters: a callout nobody saw is missing from the sweep and from the part,
+    and counting one against the other finds nothing wrong.
+
+    Held against the text layer it does fail, and it fails naming the number.
+    What comes back goes through the same merge as everything else, so a value
+    already read stays read and this can only fill what was empty.
+
+    Only where there is a text layer. A raster attachment supplies no list, and
+    this then does nothing at all rather than inventing something to check.
+    """
+    missed = _uncited(attachments, the_part)
+    looked = 0
+    while missed and looked < budgets.rereads:
+        if cancelled():
+            raise Stopped()
+        looked += 1
+        grew, _ = design({"the_part_as_you_described_it": the_part,
+                          "the_question": _look_again_at(missed)},
+                         llm, events, attachments)
+        if not grew:
+            break
+        the_part = merge(the_part, grew)
+        still = _uncited(attachments, the_part)
+        if len(still) >= len(missed):
+            break  # a look that changed nothing will not change anything
+        missed = still
+    return the_part
+
+
+def _uncited(attachments, the_part):
+    missed = []
+    for sheet in _sheets(attachments):
+        missed.extend(sheet_reader.uncited(sheet, the_part))
+    return missed
+
+
+def _look_again_at(missed):
+    return (
+        "These callouts are printed on the sheet's own text layer and no value "
+        "in your model uses them: %s. Each one is a dimension the draughtsman "
+        "put there, so each one belongs somewhere — on a feature, on the "
+        "envelope, or in `not_defined` with the views you looked in and the "
+        "reason it could not be used. Look at the views again and follow each "
+        "leader to the feature its arrowhead touches. Where a number is already "
+        "on your model under a different reading, leave it: reply only with "
+        "what is missing." % ", ".join(sorted(set(missed))))
+
+
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
-                               ask, cancelled, feedback=None, attachments=()):
+                               ask, cancelled, asking, feedback=None, attachments=()):
     """
     Plan, letting it ask for what the description did not carry (FCC-25).
 
@@ -1036,26 +1466,32 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     the description before the next Plan is made. FCC-90 was an interception for
     the drawing's sake; it is now the general rule, for the description's.
 
+    Every question reaches the sheet first, including one raised after Plan was
+    told to choose for itself. That question is a *new* obstacle — the run that
+    found the outer profile self-contradictory found it on the third try — and
+    the sheet very often settles it. Asking the drawing used to be skipped there,
+    because the run stopped one line above it (FCC-96).
+
     A question is not an approval: the Plan Gate is still the single point of
-    approval, and it still sees every Step. `budgets.questions` bounds how much
-    a *person* is asked, because a model that only asks would never plan; a
-    drawing answering is not a person being asked, and spends `budgets.rereads`
-    instead.
+    approval, and it still sees every Step — and now the questions nobody
+    answered, beside the Steps that chose without them. `budgets.questions`
+    bounds how much a *person* is asked, because a model that only asks would
+    never plan; a drawing answering is not a person being asked, and spends
+    `budgets.rereads` instead.
 
     Every Plan comes through here, first or revised: a re-plan is a new Plan and
-    may ask the same way, or it invents the value it was missing (FCC-67).
+    may ask the same way, or it invents the value it was missing (FCC-67). What
+    has been asked is `asking`, and it belongs to the run rather than to this
+    call, so a re-plan does not start the questioning over.
+
     Hands back the description as it now stands, because it grew on the way.
     """
     grown = the_part
-    unanswered = []
-    asked_the_user = 0
-    read_again = 0
-    told_to_choose = False
     while True:
         if cancelled():
             raise Stopped()
         planned = plan(intent, snapshot, llm, events, feedback=feedback,
-                       the_part=grown, unanswered=unanswered)
+                       the_part=grown, unanswered=asking.unanswered)
         if not planned.question:
             if grown != the_part:
                 # The Gate stands over the description the Plan was made from.
@@ -1063,12 +1499,17 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             return planned, grown
 
         events.emit(QUESTION, text=planned.question)
-        if told_to_choose:
-            raise PhaseError("Plan asked again after being told to choose for itself, so "
-                             "there is no Plan and no way to get one.")
 
-        if read_again < budgets.rereads and _pictures(attachments):
-            read_again += 1
+        if planned.question in asking.unanswered:
+            # The same question, already put to the sheet, already answered by
+            # nobody, already handed back with "choose and say what you chose".
+            # Nothing has changed since, so asking it again cannot end.
+            raise _NobodyAnswered(
+                "Plan asked for the same value again rather than choosing one, so there is "
+                "no Plan. Answer this and run it again: " + planned.question)
+
+        if asking.read_again < budgets.rereads and _pictures(attachments):
+            asking.read_again += 1
             from_the_drawing, _ = design({"the_part_as_you_described_it": grown,
                                           "the_question": planned.question},
                                          llm, events, attachments)
@@ -1076,30 +1517,43 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                 grown = merge(grown, from_the_drawing)
                 events.emit(ANSWER, text=render(from_the_drawing), by="drawing")
                 continue
+            # A sheet that answered nothing is still a sheet that was asked. Said
+            # out loud because the transcript could not otherwise tell a re-read
+            # that found nothing from a re-read that never happened, which is the
+            # first thing anybody reading a stalled run wants to know (FCC-96).
+            events.emit(ANSWER, text=_SAID_NOTHING, by="drawing")
 
-        if asked_the_user >= budgets.questions:
-            # Asked enough. Not an error — the run goes on with Plan choosing
-            # and saying, in each Step, what it chose.
-            unanswered.append(planned.question)
+        if asking.asked_the_user < budgets.questions:
+            asking.asked_the_user += 1
+            answer = _answered(planned.question, ask, events)
+            if answer:
+                # Whatever Design would ask next waits for its own turn: the
+                # questioning here is Plan's, and it is Plan's budget being spent.
+                grown, _ = _written_in(grown, planned.question, answer, llm, events,
+                                       attachments)
+                continue
+        elif asking.spent(budgets):
+            raise _NobodyAnswered(
+                "Plan will not plan without values nobody has, and it went on asking after "
+                "it was told to choose for itself. Answer these and run it again: "
+                + asking.outstanding() + "; " + planned.question)
+        else:
             events.emit(ANSWER, text=_DECIDE, by="budget")
-            told_to_choose = True
-            continue
 
-        asked_the_user += 1
-        answer = _answered(planned.question, ask, events)
-        if not answer:
-            unanswered.append(planned.question)
-            told_to_choose = True
-            continue
-        # Whatever Design would ask next waits for its own turn: the questioning
-        # here is Plan's, and it is Plan's budget being spent.
-        grown, _ = _written_in(grown, planned.question, answer, llm, events, attachments)
+        # Nobody answered, so the run goes on with Plan choosing and saying, in
+        # each Step, what it chose. Not an error — but it is carried to the Gate.
+        asking.unanswered.append(planned.question)
 
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
-         decide=revise_by_default):
+         decide=revise_by_default, outstanding=()):
     if cancelled():
         raise Stopped()
+    # Before the drawing is even read: what the last run left wrong is a fact
+    # about the Document this one starts from, and it belongs at the top of the
+    # transcript rather than nowhere (FCC-98).
+    if outstanding:
+        events.emit(OUTSTANDING, entries=list(outstanding))
     # What the run was shown, before anything is done with it. Nothing recorded
     # it at all: the chips came off the bar and the transcript could not say the
     # run had a picture, live or replayed (FCC-88). The name rides beside the
@@ -1116,10 +1570,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     part = {"the_part": _describe_the_part(intent, llm, events, budgets, ask, cancelled,
                                            attachments)}
 
+    # One record of the questioning for the whole run, not one per Plan (FCC-96).
+    asking = _Asking()
+
     def replan(feedback=None):
         planned, part["the_part"] = _plan_once_it_knows_enough(
             intent, tools.call("snapshot"), llm, events, budgets, part["the_part"],
-            ask, cancelled, feedback, attachments)
+            ask, cancelled, asking, feedback, attachments)
         return planned
 
     def decided(why, applied):
@@ -1130,18 +1587,35 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         minutes and seventeen Steps in is not the agent's, but with nothing
         applied there is nothing to decide about. Anything unrecognised is the
         default — the panel is what turns "nobody answered" into a stop.
+
+        Asked and answered on the stream. It is the last thing that happens in
+        a run that did not pass and it used to happen entirely inside the
+        panel, so a Session read back showed a red `assertion` event and then
+        nothing: no record that the user had been offered the choice, none of
+        which one they took, and a Document carried into the next run with six
+        entries still wrong and nothing anywhere saying so (FCC-98).
         """
         if not applied:
             return REVISE
+        events.emit(QUESTION, text=_WHAT_NOW % why)
         answer = decide({"why": why, "applied": applied})
-        return answer if answer in DECISIONS else REVISE
+        answer = answer if answer in DECISIONS else REVISE
+        events.emit(ANSWER, by="user", text=_DECIDED[answer])
+        return answer
 
-    planned = replan()
-    _emit_plan(events, PLAN, planned)
+    planned = replan(_still_wrong(outstanding) if outstanding else None)
+    _emit_plan(events, PLAN, planned, unanswered=asking.unanswered)
 
     rejections = 0
     revisions = _Revisions()
     described = {}
+    # Whether the user has said they do not want to be asked about the Plans
+    # this one turns into. A dict because `rewrite` closes over it (FCC-101).
+    standing = {"approval": False}
+    # One record of what has been looked at for the whole run, not one per
+    # Execute turn and not one per Plan: a regeneration is where the same look
+    # used to be taken again (FCC-99).
+    looks = Looks()
 
     def rewrite(cause, refused, feedback, tried, reason=None):
         """
@@ -1157,7 +1631,9 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                 revisions.block_reason(budgets, steps, cause, refused), tried)
         revisions.spend(cause)
         revised = replan(feedback)
-        _emit_plan(events, PLAN_REVISED, revised, reason=reason or feedback)
+        _emit_plan(events, PLAN_REVISED, revised, reason=reason or feedback,
+                   unanswered=asking.unanswered, revision=revisions.spent_total(),
+                   of=revisions_ceiling(budgets, steps), because=revisions.named(cause))
         return revised
 
     # One loop, so every Plan reaches the Gate before any of its Steps runs — a
@@ -1177,7 +1653,22 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               reason="no Step accounted for " + ", ".join(unconsumed))
             continue
 
-        approval = gate(list(steps)) or Approval(APPROVE)
+        # Both ends of the wait, because the wait is the longest silence in a
+        # run and the stream used to say nothing about it: a session read back
+        # could not tell a user thinking for half an hour from a provider
+        # taking half an hour.
+        events.emit(GATE, steps=len(steps), asked=not standing["approval"])
+        if standing["approval"]:
+            # Not a Gate that was skipped quietly: it is on the stream as an
+            # approval, and it says which one it is standing on.
+            approval = Approval(APPROVE, standing=True)
+            events.emit(GATE, decision=APPROVE, standing=True)
+        else:
+            approval = gate(list(steps)) or Approval(APPROVE)
+            standing["approval"] = bool(getattr(approval, "standing", False)
+                                        and approval.decision == APPROVE)
+            events.emit(GATE, decision=approval.decision,
+                        standing=standing["approval"])
 
         if approval.decision == REJECT:
             applied = progress["applied"]
@@ -1204,7 +1695,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                   "apply and nothing to review.", progress["tried"],
                           progress["applied"])
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
-                                progress, render(part["the_part"]))
+                                progress, render(part["the_part"]), looks)
         applied = progress["applied"]
 
         # Both go back to Plan from a fresh Snapshot and spend the same budget:
@@ -1225,9 +1716,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         # Once the run is over, before Review: what is checked is the finished
         # Document, and a failure here is a rejection (FCC-76). No acceptance
         # list means no phase at all, not a phase that checks nothing.
-        checked = (assertion(planned.acceptance, described, tools, llm, events, budgets,
+        acceptance = _also_check(planned.acceptance, outstanding)
+        checked = (assertion(acceptance, described, tools, llm, events, budgets,
                              cancelled)
-                   if planned.acceptance else None)
+                   if acceptance else None)
+        # What is wrong with the Document right now, whatever happens next. A
+        # pass clears it, including the entries inherited from the run before.
+        progress["unmet"] = list(checked.unmet) if checked is not None else []
         if checked is not None and checked.failed:
             feedback = _why_the_checks_failed(checked.traceback)
             answer = decided(feedback, applied)
@@ -1278,8 +1773,36 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                           feedback, outcome["tried"] + [{"review": reason}])
 
 
+def _still_wrong(outstanding):
+    """What the first Plan of an inheriting run is told, before it plans anything."""
+    return (
+        "This Document was left by an earlier run whose acceptance checks did not pass, "
+        "and nobody fixed what they found. These entries were wrong then and are wrong "
+        "now:\n"
+        + "\n".join("  - " + entry for entry in outstanding)
+        + "\nPlan the part the drawing asks for, and put right what is listed above as "
+          "part of it. Do not plan around it and do not assume the existing features are "
+          "correct where this list says they are not."
+    )
+
+
+def _also_check(acceptance, outstanding):
+    """
+    The acceptance list, with anything an earlier run left wrong added to it.
+
+    A second drawing describes the part it wants and says nothing about what
+    the run before it got wrong, so its acceptance list cannot see the six
+    entries that were already failing. Adding them is what makes the checks at
+    the end of this run an answer about the whole Document rather than about
+    the changes it happened to make (FCC-98).
+    """
+    listed = list(acceptance)
+    known = set(listed)
+    return listed + [entry for entry in outstanding if entry not in known]
+
+
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
-                  as_described=""):
+                  as_described="", looks=None):
     """
     One pass over the Plan: written in one call, applied one Step at a time.
 
@@ -1301,7 +1824,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     described = {}
     attempts = []
     index = 0
-    written = execute(steps, tools, llm, events, budgets=budgets, as_described=as_described)
+    looks = looks if looks is not None else Looks()
+    written = execute(steps, tools, llm, events, budgets=budgets, as_described=as_described,
+                      looks=looks)
 
     while index < len(steps):
         if cancelled():
@@ -1332,6 +1857,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             described = result.get("description") or described
             events.emit(APPLIED, step=index + 1, label=outcome.label,
                         created=result.get("created", []))
+            # Anything read off the Document was read off the Document as it
+            # was before this Step; from here it is history, not knowledge.
+            looks.a_step_landed()
             index += 1
             attempts = []
             continue
@@ -1348,19 +1876,45 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             # to Plan the way `obsolete` does (ADR-0013).
             return {
                 "handback": "Step %d of %d could not be built after %d attempts: %s\n"
-                            "The last traceback was:\n%s"
+                            "The last traceback was:\n%s%s"
                             % (index + 1, len(steps), len(attempts), step,
-                               attempts[-1].traceback),
+                               attempts[-1].traceback, _always_the_same_way(attempts)),
                 "tried": [_tried(step, a) for a in attempts],
                 "obsolete": None, "description": described,
             }
 
         if cancelled():
             raise Stopped()
-        written = execute(steps, tools, llm, events, index, attempts, budgets, as_described)
+        written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
+                          looks)
 
     return {"obsolete": None, "handback": None,
             "description": described, "tried": []}
+
+
+def _always_the_same_way(attempts):
+    """
+    What Plan is told when every attempt at a Step failed for the same reason.
+
+    Rewriting the same Step in other words sends Execute back at the same wall,
+    which is what a recorded run did: three identical failures, a replan, and
+    then the same three again (FCC-100). Where the failure never varied, the
+    Step itself is what has to change — a different operation, a different
+    order, or the Step split so the part that cannot be built is on its own.
+    """
+    if len(attempts) < 2:
+        return ""
+    for phrase, _ in _FAILED_THIS_WAY:
+        if all(phrase in (attempt.traceback or "") for attempt in attempts):
+            return (
+                "\n\nEvery one of those %d attempts failed the same way, so this is not a "
+                "Step that was written down badly and coded worse — as written, it asks for "
+                "something this approach cannot do. Rewording it will send Execute back at "
+                "the same wall. Change what the Step asks for: a different operation, a "
+                "different order, or the Step split so that the part of it that cannot be "
+                "built stands alone." % len(attempts)
+            )
+    return ""
 
 
 def _tried(step, attempt):

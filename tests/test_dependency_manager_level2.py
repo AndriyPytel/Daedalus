@@ -17,13 +17,30 @@ def dependency_manager():
 
 
 def test_the_preflight_workers_imports_are_all_required(dependency_manager):
-    assert set(dependency_manager.REQUIRED_PACKAGES) == {"litellm", "numpy", "Pillow"}
+    assert set(dependency_manager.REQUIRED_PACKAGES) == {
+        "litellm", "numpy", "Pillow", "pymupdf"}
 
 
 def test_a_missing_package_is_named_by_its_pip_name(dependency_manager, monkeypatch):
     monkeypatch.setattr(dependency_manager, "check_package", lambda module: False)
 
-    assert dependency_manager.missing_packages() == ["litellm", "numpy", "Pillow"]
+    assert dependency_manager.missing_packages() == [
+        "litellm", "numpy", "Pillow", "pymupdf"]
+
+
+def test_the_sheet_reader_says_so_rather_than_failing_without_pymupdf():
+    """
+    The one required package the addon can run without. PyMuPDF is what renders
+    a PDF here instead of leaving the resolution to the provider (FCC-102); with
+    it gone `sheet_reader` reports that it cannot read a sheet and the
+    attachment goes out whole, the way it did before. A dependency that is
+    wanted and a dependency that is load-bearing are different things, and this
+    is the line between them.
+    """
+    from core import sheet_reader
+
+    assert hasattr(sheet_reader, "available")
+    assert sheet_reader.read(__file__) is None
 
 
 def test_pillow_is_looked_up_under_its_import_name(dependency_manager):

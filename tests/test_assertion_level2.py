@@ -95,6 +95,46 @@ def test_a_check_that_does_not_hold_names_the_entry_it_came_from(worker):
     assert "17 mm across the flats" in result.traceback
 
 
+def test_an_entry_that_fails_does_not_hide_the_entries_under_it(worker):
+    """
+    Every entry is measured before anything is reported (FCC-103).
+
+    A recorded run wrote one assert per entry, put the material third, got it
+    wrong, and stopped there — the forty geometric entries below it were never
+    measured, so Plan revised the material and sent back a part whose five
+    bores had cut nothing. Both entries here are wrong, and both have to be
+    named, or the second failure is invisible behind the first.
+    """
+    both_wrong = """
+faces = [f for f in doc.getObject('NutBlank').Shape.Faces
+         if f.Surface.__class__.__name__ == 'Plane']
+upright = [f for f in faces if abs(f.Surface.Axis.z) < 1e-6]
+gaps = [a.Surface.Position.distanceToPlane(b.Surface.Position, b.Surface.Axis)
+        for a in upright for b in upright
+        if a.Surface.Axis.dot(b.Surface.Axis) < -0.999]
+across = max(abs(gap) for gap in gaps)
+cylinders = [f for f in doc.getObject('NutBlank').Shape.Faces
+             if f.Surface.__class__.__name__ == 'Cylinder']
+radius = min(f.Surface.Radius for f in cylinders)
+
+failed = []
+if not abs(across - 17.0) < 1e-6:
+    failed.append("17 mm across the flats")
+if not abs(radius - 9.0) < 1e-6:
+    failed.append("9.0 mm bore radius")
+assert not failed, "these did not hold:\\n" + "\\n".join(failed)
+"""
+
+    result = check(worker, both_wrong)
+
+    assert not result.ok
+    assert "17 mm across the flats" in result.traceback
+    assert "9.0 mm bore radius" in result.traceback, "the second entry went unmeasured"
+    # A message this long does not stay on one line, and a failure of the part
+    # misread as a broken check would spend the phase's attempts rewriting it.
+    assert _the_model_failed(result.traceback)
+
+
 @pytest.mark.parametrize("angle", [0, 17, 30, 45, 137])
 def test_the_flats_measure_13_however_the_nut_is_turned(worker, angle):
     """

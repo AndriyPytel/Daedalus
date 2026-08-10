@@ -327,8 +327,18 @@ def test_materials_unfiltered_is_a_page_and_says_so(tools):
         assert "filter by name" in answer["truncated"]
 
 
-def test_a_name_that_matches_nothing_is_an_empty_list_not_an_error(tools):
-    assert tools.call("materials", {"name": "unobtainium"}) == {"materials": [], "count": 0}
+def test_a_name_that_matches_nothing_hands_back_the_shelf_rather_than_nothing(tools):
+    """
+    The recorded run asked for "plain carbon steel"; the cards are named
+    "Steel-Generic". An empty list reads as "this build has no materials", and
+    Execute spent three replans on that reading rather than picking a card.
+    """
+    answer = tools.call("materials", {"name": "unobtainium"})
+
+    assert answer["count"], "a name off a title block came back with nothing to choose from"
+    assert "unobtainium" in answer["nothing_matched"]
+    assert any("steel" in card["name"].lower() for card in answer["materials"]), \
+        "the whole shelf was promised and the steels are not on it"
 
 
 # ── The Description Review judges by (FCC-81) ─────────────────────────────────
@@ -449,6 +459,39 @@ def test_the_named_driving_constraints_are_described_and_the_geometry_is_not(des
 def test_a_document_with_nothing_modelled_is_still_described(doc):
     assert description(doc) == {"features": [],
                                 "geometry": {"solids": 0, "volume_mm3": 0.0, "surfaces": []}}
+
+
+# ── BoundBox ──────────────────────────────────────────────────────────────────
+
+
+def test_a_bound_box_read_after_tessellation_lands_inside_the_curved_face():
+    """
+    `Shape.BoundBox` is taken off the triangulation where there is one, so on a
+    curved face it reports the mesh's chords and not the surface — inside the
+    true extreme, by the sagitta. In the GUI the ViewProvider tessellates every
+    shape it draws, while Preflight loads the Document fresh off disk and has
+    no triangulation at all: the same Step's code then reads two different
+    numbers in the two places, which is how a part came out with every cut
+    0.18 mm off X while Preflight saw it exact.
+
+    The face is exact either way, and so is `optimalBoundingBox()`.
+    """
+    import Part
+
+    shape = Part.makeCylinder(25, 10)
+    assert shape.BoundBox.YMax == pytest.approx(25.0, abs=1e-9)
+
+    shape.tessellate(1.0)
+
+    # Where the mesh happens to put a vertex the reading is exact, which is why
+    # this is a trap and not a constant: it is wrong on the sides the chords
+    # cut across, and only there.
+    assert shape.BoundBox.YMax < 25.0 - 1e-3, \
+        "this build no longer reads the BoundBox off the mesh; the trap can go"
+    assert shape.optimalBoundingBox().YMax == pytest.approx(25.0, abs=1e-6)
+    assert shape.cleaned().BoundBox.YMax == pytest.approx(25.0, abs=1e-9)
+    faces = [f for f in shape.Faces if type(f.Surface).__name__ == "Cylinder"]
+    assert faces[0].Surface.Radius == pytest.approx(25.0, abs=1e-9)
 
 
 # ── No Document ───────────────────────────────────────────────────────────────

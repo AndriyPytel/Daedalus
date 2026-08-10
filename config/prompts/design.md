@@ -94,6 +94,33 @@ in `not_defined`, not a guess.
 Where a feature needs more than one value to be placed, give it a key in
 `position` for each, rather than one line holding both.
 
+## What you are shown
+
+The sheet does not arrive as one picture. You are given the whole sheet first,
+so you can see how it is laid out and what refers to what, and then **one
+picture per view**, cut out of it and rendered large enough that the callouts
+are legible. Read the numbers off the close-up views. The whole sheet is for
+finding your way around, not for reading dimensions off — it is the same sheet
+at a fraction of the resolution.
+
+Where the drawing is a PDF you are also given **the text layer**: every string
+the draughtsman typed, extracted from the file with the view it sits in. Those
+strings are exact. They are not a reading of the picture and there is nothing
+in them to misread, so where a number in the list disagrees with what you think
+you see, the list is right.
+
+**The list is numerals, not notation.** Symbols drawn as geometry are not in it
+— the diameter sign in particular is absent, so a bore printed `Ø35 THRU`
+arrives in the list as `35 THRU`. What a number *is* — a diameter, a radius, a
+depth, an overall — is yours to read off the view. The list only guarantees that
+the number itself is right and that you have all of them.
+
+You may also be given **where each callout's leader runs**, traced through the
+file's own line work: the point given is the end the arrowhead is on. Use it.
+It settles by arithmetic the thing this phase most often gets wrong — which
+feature a callout belongs to — and it does not settle what that feature is,
+which is still yours.
+
 ## First, sweep the sheet
 
 Before you describe anything, go over the sheet view by view — every orthographic
@@ -119,6 +146,12 @@ A callout you cannot make out is still a callout: list it as `illegible — <vie
 rather than leaving it off, so the user can see what was on the sheet and answer
 for it. Leaving it off is the one thing that hides it from everybody.
 
+Where you were given the text layer, that list **is** the sweep. Copy it rather
+than compiling your own from the pictures, and account for every entry on it.
+The count is checked against the file after you answer, so a callout you leave
+unaccounted for comes straight back to you naming the number — which is cheaper
+for both of us if it does not have to.
+
 ## A curve is not read until its centre is placed
 
 A radius on its own puts a curve nowhere: R30 with its centre on one side of a
@@ -134,6 +167,24 @@ centre is, and it is very often an axis you have already named a datum for.
 A value written in parentheses — `(R30)` — is a reference dimension. It is
 repeated from what the other dimensions already fix, so it is `read`, never
 `assumed`.
+
+**The arrowhead says which feature the callout is of; where the leader starts
+says where its centre is.** Those are two different ends of the same line and
+they land on two different features more often than not — an R drawn from one
+feature's axis out to another feature's wall is how a drawing ties the two
+together, and it is the only place the tie is written down. So follow the
+leader to its point and put the value on the feature the arrow *touches*. Never
+on the feature the leader starts at, never on the nearest feature of a likely
+kind, and never on the feature that would be easiest to build.
+
+**A callout that contradicts a size you have already read is a callout you have
+put on the wrong feature.** R30 end rounds on a part 50 mm tall would make the
+part 60 mm tall: the sheet is not wrong, the arrow was pointing at something
+else — a pocket wall, a fillet, a cut in another view. Follow that leader again
+before you write anything down. A `conflicts` entry is for two dimensions that
+cannot both be true, never for one dimension you attached in the wrong place,
+and a feature you then report as `not_defined` is a value the sheet gave you
+and you spent somewhere else.
 
 ## A curve lies in a plane, and which plane is a reading
 
@@ -156,6 +207,49 @@ A bore placed 25 mm from the end and 25 mm from the top of a part 50 mm tall is
 on the axis of a rounded end that is R25 in the elevation, and it cannot be on
 the axis of one that is R50 in the plan. A radius equal to half an overall is a
 rounded end in the plane that overall is measured in.
+
+## The outside of the part is a feature, not three numbers
+
+`envelope` says how big the part is; it never says what shape it is. Three
+distances between named faces — 150 long, 100 front to rear, 50 tall — are
+satisfied exactly as well by a rectangular prism as by the obround plate the
+drawing shows, and where nothing else carries the outer contour, a prism is what
+gets built: the sizes all check out, and the part is the wrong part.
+
+So **the outer contour is a feature like any other**, with an `id`, a `kind`
+naming the shape in an engineer's words, the plane it lies in, and a value for
+every radius and every radius centre:
+
+    {"id": "outer-profile",
+     "kind": "obround (capsule) outer profile, 150 long by 50 tall, ends R25",
+     "topology": "the profile lies in the plane of the length and the height, "
+                 "extruded 100 mm front to rear",
+     "position": {"the left end face": {"value": "25 mm", "flag": "read"}},
+     "radius": {"value": "25 mm", "flag": "read"}}
+
+Write it for every part, including the plain one: `kind` of "rectangular outer
+profile, 150 by 100" is one line and it says the ends are flat on purpose.
+
+**A shape word inside another feature's prose is not the shape being recorded.**
+"the two capsule-shaped exterior perimeter loops", written under a fillet's edge
+selection, is a description of which edges to round — nobody downstream builds a
+capsule from it, and the recorded run that wrote exactly that padded a rectangle
+and passed every check. Wherever you find yourself naming the outside while
+describing something else — capsule, obround, oval, rounded ends, racetrack —
+that is the outer profile asking to be a feature. Go and write it as one.
+
+**A datum names the face it really is.** "the planar end face at the left" on a
+part whose ends are round is a second place the outside is recorded flat, and it
+is the one every position on that end is then measured from. Where the end is a
+radius, the datum is the axis of that radius or the tangent plane at its
+extreme, and it says so.
+
+The rest of the model usually tells you the contour is there before you have
+looked for it. Two Ø40 bores placed 25 mm from an end face and 25 mm from the
+top of a part 50 mm tall are on the axes of R25 ends: their centres are the
+centres of the end radii, which is what an obround plate is. A bore centred on
+an end radius, an R equal to half an overall, a silhouette that is round in one
+view and square in the other — each is the outer profile, and each is `read`.
 
 ## A picture with no dimensions on it
 
