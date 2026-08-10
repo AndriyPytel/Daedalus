@@ -389,6 +389,51 @@ def _bodies_in_pieces(doc):
     return scattered
 
 
+# A feature is a step the user would recognise as cutting or adding metal; a
+# Sketch, a datum or a Body itself is not, and neither is anything outside
+# PartDesign.
+_MOVES_MATERIAL = "PartDesign::Feature"
+
+_VOLUME_TOLERANCE = 1e-9
+
+
+def _volume_of(obj):
+    shape = getattr(obj, "Shape", None)
+    if shape is None or shape.isNull():
+        return 0.0
+    return shape.Volume
+
+
+def _features_that_moved_no_material(doc, created):
+    """
+    Features this Step created that came out the same volume they went in
+    (FCC-96).
+
+    The silent failure this exists for: a Pocket sketched on the face at YMin
+    with its normal pointing into the part cuts along -Y, away from the solid,
+    intersects nothing, and hands back its base shape untouched. FreeCAD calls
+    it 'Up-to-date' and 'Valid', Preflight passed it on that, and five bores in
+    a row went missing from a part every phase reported as applied.
+
+    Read off `BaseFeature` rather than off the Body, because that is the one
+    comparison that names the feature at fault: a feature's base is exactly the
+    solid it was handed, so the difference is exactly what it did, whatever
+    else the same Step built around it.
+    """
+    idle = []
+    for name in sorted(created):
+        obj = doc.getObject(name)
+        if obj is None or not obj.isDerivedFrom(_MOVES_MATERIAL):
+            continue
+        base = getattr(obj, "BaseFeature", None)
+        before = _volume_of(base) if base is not None else 0.0
+        now = _volume_of(obj)
+        if abs(now - before) <= _VOLUME_TOLERANCE * max(1.0, abs(before)):
+            idle.append("%s (%s): %s mm3 before, %s mm3 after"
+                        % (obj.Name, obj.TypeId, round(before, 6), round(now, 6)))
+    return idle
+
+
 def preflight(request):
     import FreeCAD
 
@@ -407,6 +452,21 @@ def preflight(request):
                 for o in doc.Objects if o.State and "Invalid" in o.State]
     if failures:
         raise RuntimeError("recompute left these objects in error:\n" + "\n".join(failures))
+
+    idle = _features_that_moved_no_material(doc, touched.created)
+    if idle:
+        raise RuntimeError(
+            "this Step added a feature that neither removed nor added any material:\n"
+            + "\n".join(idle)
+            + "\nA Pad, Pocket, Hole or Fillet that leaves the Body's volume exactly as it "
+              "found it did not happen, and FreeCAD reports it up-to-date and valid all the "
+              "same: a Pocket whose profile is extruded away from the solid cuts nothing.\n"
+              "A Pocket travels along the *negative* of its sketch normal unless Reversed is "
+              "True, so the sketch has to sit on the face the cut starts from with its normal "
+              "pointing out of the material, or carry Reversed=True when it does not. Check "
+              "the sign against the Body's BoundBox and use Type='ThroughAll' or Midplane for "
+              "a through hole rather than a length that may run the wrong way."
+        )
 
     scattered = _bodies_in_pieces(doc)
     if scattered:

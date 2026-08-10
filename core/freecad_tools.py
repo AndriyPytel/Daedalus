@@ -50,6 +50,19 @@ TRAPS = [
     "or PartDesign::Hole with Threaded set; this build has both, and PartDesign::Helix "
     "and PartDesign::AdditivePipe besides. Lofting one V-section per turn builds a "
     "stack of flats that is not a helical surface, and nothing downstream reports it.",
+    "A Pocket travels along the *negative* of its sketch normal, and a Pad along the "
+    "positive, unless Reversed is True. A Pocket whose sketch normal points into the "
+    "material therefore cuts away from the solid, meets nothing, and hands back the "
+    "shape it was given — and FreeCAD reports it Up-to-date and Valid, because a Cut "
+    "with nothing to cut is not an error. Check the sign against the Body's BoundBox: "
+    "the sketch sits on the face the cut starts from with its normal pointing out of "
+    "the material, or it carries Reversed=True. For a hole that goes through, "
+    "Type='ThroughAll' says so and cannot run short or run the wrong way, where "
+    "Length=bb.YLength is a distance in a direction you have to have got right.",
+    "PartDesign::Fillet with UseAllEdges set rounds every edge of the base feature, "
+    "which is a different part from one with the edges the drawing marks rounded. "
+    "Where only some edges are meant, select them by computing which — off face "
+    "normals, edge length, the plane an edge lies in — and pass that list in Base.",
     "A sketched curve that is not a line, an arc or a circle is a Part.BSplineCurve "
     "through points computed from its own equation — an involute flank, a cam profile, "
     "a cycloid. A chain of Part.LineSegment approximates it, and the approximation is "
@@ -290,19 +303,21 @@ def _dimension(constraint):
 
 def _inventory(doc):
     """
-    The geometry as it came out, one entry per family of surfaces.
+    The geometry as it came out: how much material there is, and one entry per
+    family of surfaces.
 
     Grouping by kind, diameter and axis is what keeps this a description: on a
     real part twenty identical holes are one entry with a count, and ungrouped
     they are twenty. Only what nothing else uses is measured, so this is the
     part as it stands and not every intermediate feature it was built from.
     """
-    solids, seats = 0, {}
+    solids, volume, seats = 0, 0.0, {}
     for obj in doc.Objects:
         if getattr(obj, "InList", None) or _measurable(obj) is None:
             continue
         shape = obj.Shape
         solids += len(shape.Solids)
+        volume += shape.Volume
         for face in shape.Faces:
             family, seat = _family(face.Surface)
             seats.setdefault(family, []).append(seat)
@@ -318,7 +333,11 @@ def _inventory(doc):
         # Two faces of one bore share a seat on the axis; six flats share nothing.
         entry["count"] = len(set(seated)) if all(seated) else len(seated)
         surfaces.append(entry)
-    return {"solids": solids, "surfaces": surfaces}
+    # Volume is how a Step that removed nothing is told from one that worked
+    # (FCC-96). A Pocket extruded away from the solid cuts nothing, and every
+    # other reading here — the feature tree, the face families, the overall
+    # size — comes out identical whether it cut or not.
+    return {"solids": solids, "volume_mm3": round(volume, 6), "surfaces": surfaces}
 
 
 def _family(surface):

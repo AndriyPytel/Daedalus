@@ -69,7 +69,7 @@ def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline):
     assert result.ok, result.traceback
     described = {f["name"]: f for f in result.description["features"]}
     assert described["Box"]["parameters"]["Length"] == "10.0 mm"
-    assert result.description["geometry"] == {"solids": 1,
+    assert result.description["geometry"] == {"solids": 1, "volume_mm3": 1000.0,
                                               "surfaces": [{"kind": "Plane", "count": 6}]}
 
 
