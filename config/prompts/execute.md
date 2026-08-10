@@ -57,6 +57,17 @@ feature that performs the operation — a helix for a thread, a hole for a hole 
 not a `Part` boolean wearing a PartDesign name. If the shape genuinely belongs
 outside a Body, build it as a `Part::Feature` and say that is what it is.
 
+**A feature that moved no material did not happen.** Preflight refuses a Step
+whose new PartDesign feature came out the same volume as the feature it was
+built on, because that is the one failure FreeCAD does not report: a Pocket
+extruded away from the solid meets nothing, hands back the shape it was given,
+and is reported Up-to-date and Valid. The traceback names the feature and the
+volume either side of it. Do not answer it by making the cut bigger — the size
+was right and the direction was wrong. Read the sign off the Body's `BoundBox`
+at execution time, and prefer the property that states the intent: `ThroughAll`
+for a through hole, `Midplane` for one cut symmetrically, `Reversed` where the
+sketch has to sit on the far face.
+
 Let a Step fail. Do not wrap its code in a bare `except` and do not catch an
 exception only to carry on: the traceback is what comes back to you, and a
 Step that quietly applies none of the twelve edges it meant to has no way of

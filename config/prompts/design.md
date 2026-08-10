@@ -135,6 +135,28 @@ A value written in parentheses — `(R30)` — is a reference dimension. It is
 repeated from what the other dimensions already fix, so it is `read`, never
 `assumed`.
 
+## A curve lies in a plane, and which plane is a reading
+
+A radius says how tight a curve is and nothing about which way it faces. "Rounded
+left and right ends" on a part 150 long, 100 deep and 50 tall is two different
+parts: ends rounded R50 in the plan, seen from above, or ends rounded R25 in the
+elevation, seen from the front. Both are "rounded ends", both are round in one
+view and square in the other, and no radius on the sheet distinguishes them —
+**the view the arc is drawn in does**, and it is the view you read it in.
+
+So every arc, round and rounded end carries the plane it lies in, named by the
+two datums it is measured between — "the plane of the length and the height",
+"the plane of the length and the depth" — the same way an envelope entry is
+named by what it lies between. `seen_in` is not that plane: it says where you
+looked, and a rounded end drawn in one view is visible as a straight edge in the
+other two.
+
+The rest of the model usually settles it for you, and where it does, say so.
+A bore placed 25 mm from the end and 25 mm from the top of a part 50 mm tall is
+on the axis of a rounded end that is R25 in the elevation, and it cannot be on
+the axis of one that is R50 in the plan. A radius equal to half an overall is a
+rounded end in the plane that overall is measured in.
+
 ## A picture with no dimensions on it
 
 Never stop to ask for dimensions. A photo or a sketch carrying no numbers still

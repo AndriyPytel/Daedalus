@@ -6,6 +6,7 @@ against a fixture. A fixture would happily agree that `sketch.Support` exists;
 this build will not (ADR-0006, ADR-0007).
 """
 import json
+import math
 
 import pytest
 
@@ -411,6 +412,18 @@ def test_a_hole_reads_off_the_shape_although_nobody_asked_for_it(described):
         {"kind": "Cylinder", "diameter_mm": 8.0, "axis": [0.0, 0.0, 1.0], "count": 1}]
 
 
+def test_the_inventory_reports_how_much_material_there_is(doc):
+    """
+    A Pocket extruded away from the solid cuts nothing, and the feature tree,
+    the face families and the overall size all come out identical whether it
+    cut or not. Volume is the one reading that tells the two apart. FCC-96.
+    """
+    plate = description(_plate(doc))["geometry"]
+
+    # 20 x 20 x 10 less one 8mm bore through it.
+    assert plate["volume_mm3"] == pytest.approx(20 * 20 * 10 - math.pi * 4 ** 2 * 10, rel=1e-3)
+
+
 def test_twenty_identical_holes_are_one_entry_rather_than_twenty(doc):
     """Without grouping, the inventory of a real part is a dump."""
     surfaces = description(_plate(doc, holes=20))["geometry"]["surfaces"]
@@ -434,7 +447,8 @@ def test_the_named_driving_constraints_are_described_and_the_geometry_is_not(des
 
 
 def test_a_document_with_nothing_modelled_is_still_described(doc):
-    assert description(doc) == {"features": [], "geometry": {"solids": 0, "surfaces": []}}
+    assert description(doc) == {"features": [],
+                                "geometry": {"solids": 0, "volume_mm3": 0.0, "surfaces": []}}
 
 
 # ── No Document ───────────────────────────────────────────────────────────────
