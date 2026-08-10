@@ -44,7 +44,11 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
 - **`datums`** are what everything else is measured from, named the way the
   drawing names them. Every position on the part points at one of these names.
 - **`envelope`** is how big the part is overall, one entry per direction, each
-  one named in words rather than as X, Y, Z.
+  one named in words rather than as X, Y, Z — and named by what it is measured
+  **between**: "depth front to rear", "length between the end faces". An
+  envelope entry is checked on the finished part the same way a wall thickness
+  is, between the two faces it names, so an entry that names neither cannot be
+  checked at all.
 - **`features`** is everything on the part — every hole, fillet, chamfer,
   pocket, boss, thread. Each one carries an `id` you choose and never reuse, a
   `kind` in the words an engineer would use, a `topology` (`through`, `blind`,

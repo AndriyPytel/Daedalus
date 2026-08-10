@@ -19,7 +19,7 @@ from core.events import (
 )
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
-from core.design import render
+from core.design import entries, merge, render
 from core.loop import (
     PROMPTS, Budgets, prompt, revisions_ceiling, run,
 )
@@ -69,6 +69,12 @@ def read(value):
 # happened at all.
 A_CUBE = {"envelope": {"length": read("10 mm")}}
 
+# A description carrying no value at all: nothing for a Step to cite and nothing
+# for the checks to measure, so a run over it has neither a coverage duty nor an
+# Assertion phase. What the prompt tests want, which is a Design turn and
+# nothing else (FCC-94).
+A_DATUM = {"datums": [{"name": "the left end face", "is": "the flat face at the left"}]}
+
 A_PART = {
     "datums": [{"name": "the left end face", "is": "the flat face at the left"}],
     "envelope": {"length": read("80 mm"), "width": read("40 mm"),
@@ -83,12 +89,44 @@ A_PART = {
 # ── scripted phase replies ────────────────────────────────────────────────────
 
 
-def plan_reply(*steps, thinking=None, acceptance=None):
-    reply = {"steps": list(steps)}
-    if acceptance is not None:
-        reply["acceptance"] = list(acceptance)
-    body = json.dumps(reply)
+def plan_reply(*steps, thinking=None, satisfies=None):
+    """
+    One Plan turn. `satisfies` is what the *first* Step cites.
+
+    Coverage is checked over the Plan and not over a Step, so one Step citing
+    every entry is a Plan that leaves none of them to nobody — which is what
+    most of these tests want, since what they are about is somewhere else.
+    """
+    written = list(steps)
+    if satisfies and written:
+        written[0] = (dict(written[0], satisfies=list(satisfies))
+                      if isinstance(written[0], dict)
+                      else {"do": written[0], "satisfies": list(satisfies)})
+    body = json.dumps({"steps": written})
     return {"reasoning": thinking, "text": body} if thinking else body
+
+
+def _grown(models):
+    grown = {}
+    for model in models:
+        grown = merge(grown, model)
+    return grown
+
+
+def everything(*models):
+    """
+    Every entry a Plan over this description has to account for.
+
+    More than one model where the description grows mid-run: a Plan is checked
+    against the model as it stands when it is planned, so the test merges in the
+    order the run does.
+    """
+    return [entry["about"] for entry in entries(_grown(models)) if entry["flag"] == "read"]
+
+
+def acceptance_of(*models):
+    """What a run over this description is checked against — derived, not written."""
+    return [entry["says"] for entry in entries(_grown(models))]
 
 
 def design_reply(model=None, question="", thinking=None):
@@ -245,9 +283,9 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
     """
     _, _, llm, _ = drive([
         design_reply(A_CUBE),
-        plan_reply("Add a box", acceptance=["10 mm on a side"]),
+        plan_reply("Add a box", satisfies=everything(A_CUBE)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        assertion_reply("assert True, '10 mm on a side'"),
+        assertion_reply("assert True, 'the length'"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -335,7 +373,7 @@ def test_the_reading_rules_moved_to_the_design_phase_whole():
     FCC-93.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
+        design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
@@ -365,7 +403,7 @@ def test_a_value_carries_a_named_datum_and_a_read_or_assumed_flag():
     the datum the value is measured from. FCC-87, FCC-93.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
+        design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
@@ -393,7 +431,7 @@ def test_a_curve_is_not_read_until_its_centre_is_placed():
     between them. FCC-87.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
+        design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
@@ -416,7 +454,7 @@ def test_the_views_decide_what_no_dimension_arrow_says():
     "Not dimensioned" is not "not defined". FCC-87.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
+        design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
@@ -440,7 +478,7 @@ def test_every_callout_printed_on_the_sheet_has_to_be_accounted_for():
     counting. FCC-87.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
+        design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
@@ -463,7 +501,7 @@ def test_a_fraction_of_a_named_overall_is_a_value_on_equal_terms_with_millimetre
     shape, which nothing corrects. FCC-87.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
+        design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
@@ -476,27 +514,29 @@ def test_a_fraction_of_a_named_overall_is_a_value_on_equal_terms_with_millimetre
     assert "Exactly one assumption in the whole model" in design_system
 
 
-def test_the_acceptance_inherits_the_datum_and_the_flag():
+def test_the_datum_and_the_flag_reach_the_checks_without_anyone_rewriting_them():
     """
-    The hole `34.5` and `50.5` came through: the requirement to write an assumed
-    value into the prose of a Step exists and was obeyed, and there was no
-    matching requirement on the Acceptance — so invented numbers stood in the
-    list as fact, and Assertion would measure the part against them and report
-    a pass. FCC-87.
+    FCC-87 asked Plan, in copy, to carry the datum and the flag into every
+    Acceptance entry, and the hole `34.5` and `50.5` came through all the same:
+    a rule in a prompt is a rule a phase can miss. There is no rewrite left to
+    miss it. Plan is told it does not write the list, and Assertion is told what
+    the entries it is handed are. FCC-87, FCC-94.
     """
     _, _, llm, _ = drive([
-        plan_reply("Add a box"),
+        design_reply(A_CUBE),
+        plan_reply("Add a box", satisfies=everything(A_CUBE)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
+        assertion_reply("assert True, 'the length'"),
         verdict_reply("pass"),
-    ])
-    plan_system, _, review_system = (
+    ], attachments=[RENDER_PNG])
+    _, plan_system, _, assertion_system, _ = (
         " ".join(text.split()) for text in _system_messages(llm))
 
-    assert "Every entry names what it is measured from" in plan_system
-    assert "whether that came off the drawing or was assumed" in plan_system
-    assert "an unmarked assumption is measured against the part" in plan_system
-    # Assertion is untouched: it still writes asserts from the Acceptance text.
-    assert "Every entry names what it is measured from" not in review_system
+    assert "You do not write the acceptance list" in plan_system
+    assert "there is no list for you to write" in plan_system
+    assert "The list is not somebody's paraphrase of the drawing" in assertion_system
+    assert "carrying the datum it is measured from and how it was arrived at" \
+        in assertion_system
 
 
 def test_the_part_travels_as_a_structure_and_reaches_the_gate_laid_out():
@@ -508,8 +548,9 @@ def test_the_part_travels_as_a_structure_and_reaches_the_gate_laid_out():
     """
     _, events, llm, _ = drive([
         design_reply(A_PART),
-        plan_reply("Add a box"),
+        plan_reply("Add a box", satisfies=everything(A_PART)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
+        assertion_reply("assert True"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -531,7 +572,7 @@ def test_plan_is_handed_a_finished_description_and_not_the_picture():
     be weighed against it. FCC-86, FCC-93.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
+        design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
@@ -957,15 +998,16 @@ def test_review_and_assertion_are_both_given_the_whole_description():
     a list of type names. FCC-81.
     """
     _, _, llm, _ = drive([
-        plan_reply("Only", acceptance=["10 mm on a side"]),
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        assertion_reply("assert True, '10 mm on a side'"),
+        assertion_reply("assert True, 'the length'"),
         verdict_reply("pass"),
-    ])
+    ], attachments=[RENDER_PNG])
 
-    to_assertion = json.loads(llm.calls[2][-1]["content"])
+    to_assertion = json.loads(llm.calls[3][-1]["content"])
     # The prose about the views is appended after the JSON, past a blank line.
-    to_review = json.loads(llm.calls[3][-1]["content"][0]["text"].split("\n\n")[0])
+    to_review = json.loads(llm.calls[4][-1]["content"][0]["text"].split("\n\n")[0])
 
     assert to_assertion["the_document_as_it_now_stands"] == DESCRIPTION
     assert to_review["the_document_as_it_now_stands"] == DESCRIPTION
@@ -1010,7 +1052,7 @@ def test_an_attachment_reaches_the_design_phase_as_a_picture():
     user showed the assistant a photo it never saw. FCC-4. The phase that
     receives it is the Design phase since FCC-86; Plan never sees a picture.
     """
-    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools().registry, attachments=[RENDER_PNG])
@@ -1033,7 +1075,7 @@ def test_a_pdf_goes_out_as_a_file_block_and_not_as_a_picture():
     page rendering on our side. FCC-89.
     """
     drawing = _a_real_pdf()
-    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools().registry, attachments=[drawing])
@@ -1052,7 +1094,7 @@ def test_a_jpeg_reaches_the_provider_labelled_as_a_jpeg():
     WebP was already going out labelled as a PNG. FCC-89.
     """
     photo = _a_real_png(suffix=".jpg")
-    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[photo])
@@ -1081,7 +1123,7 @@ def test_a_pdf_rides_into_review_beside_the_render():
     step. FCC-89.
     """
     drawing = _a_real_pdf()
-    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
@@ -1094,7 +1136,7 @@ def test_a_pdf_rides_into_review_beside_the_render():
 
 
 def test_several_attachments_all_reach_the_design_phase():
-    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
     second = _a_real_png()
 
@@ -1116,7 +1158,7 @@ def test_an_intent_with_no_attachments_sends_what_it_always_did():
 
 
 def test_an_attachment_that_has_been_moved_is_dropped_not_fatal():
-    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools().registry,
@@ -1133,7 +1175,7 @@ def test_a_run_that_had_an_attachment_says_so_on_the_stream():
     per-Session log could not say the run had one, so a replayed transcript
     could not either. FCC-88.
     """
-    _, events, _, _ = drive([design_reply(A_PART), plan_reply("Only"),
+    _, events, _, _ = drive([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")],
                             attachments=[RENDER_PNG])
 
@@ -1148,7 +1190,7 @@ def test_the_attachment_is_recorded_even_where_the_file_has_gone():
     A clipboard paste is a temp file the panel deletes when the run ends, so
     the record has to survive its file — the name is in the event. FCC-88.
     """
-    _, events, _, _ = drive([design_reply(A_PART), plan_reply("Only"),
+    _, events, _, _ = drive([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")],
                             attachments=["/nowhere/gone.png", RENDER_PNG])
 
@@ -1173,8 +1215,10 @@ def test_the_description_is_an_event_of_its_own_standing_before_the_plan():
     the order it was actually produced. It carries the model, so the Session log
     holds the structure and not somebody's rendering of it. FCC-47, FCC-86.
     """
-    _, events, _, _ = drive([design_reply(A_PART), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")],
+    _, events, _, _ = drive([design_reply(A_PART),
+                             plan_reply("Only", satisfies=everything(A_PART)),
+                             code_reply("box()"), assertion_reply("assert True"),
+                             verdict_reply("pass")],
                             attachments=[RENDER_PNG])
 
     kinds = [event.kind for event in events]
@@ -1232,8 +1276,10 @@ def test_the_description_is_carried_into_execute_as_text():
     Execute stays on text deliberately — it is called per Step and again per
     look, so the picture would multiply across dozens of calls.
     """
-    _, _, llm, _ = drive([design_reply(A_PART), plan_reply("Only"),
-                          code_reply("box()"), verdict_reply("pass")],
+    _, _, llm, _ = drive([design_reply(A_PART),
+                          plan_reply("Only", satisfies=everything(A_PART)),
+                          code_reply("box()"), assertion_reply("assert True"),
+                          verdict_reply("pass")],
                          attachments=[RENDER_PNG])
 
     asked = llm.calls[2][-1]["content"]
@@ -1246,8 +1292,10 @@ def test_the_description_reaches_plan_under_one_key():
     One key, one source. Two were how the 100 mm was lost: the description and
     the answers arrived separately and Plan preferred the newer. FCC-93.
     """
-    _, _, llm, _ = drive([design_reply(A_PART), plan_reply("Only"),
-                          code_reply("box()"), verdict_reply("pass")],
+    _, _, llm, _ = drive([design_reply(A_PART),
+                          plan_reply("Only", satisfies=everything(A_PART)),
+                          code_reply("box()"), assertion_reply("assert True"),
+                          verdict_reply("pass")],
                          attachments=[RENDER_PNG])
 
     request = json.loads(llm.calls[1][-1]["content"])
@@ -1269,12 +1317,14 @@ def test_a_revision_plans_from_the_same_description_and_does_not_read_again():
     """
     _, events, llm, _ = drive([
         design_reply(A_PART),
-        plan_reply("v1"), code_reply("v1()"), verdict_reply("fail", "not right"),
-        plan_reply("v2"), code_reply("v2()"), verdict_reply("pass"),
+        plan_reply("v1", satisfies=everything(A_PART)), code_reply("v1()"),
+        assertion_reply("assert True"), verdict_reply("fail", "not right"),
+        plan_reply("v2", satisfies=everything(A_PART)), code_reply("v2()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert len(events.of(DESIGN)) == 1
-    replan = json.loads(llm.calls[4][-1]["content"])
+    replan = json.loads(llm.calls[5][-1]["content"])
     assert replan["what_the_part_is"] == render(A_PART)
     assert replan["what_went_wrong_last_time"] == "not right"
 
@@ -1284,7 +1334,7 @@ def test_review_is_shown_the_drawing_beside_the_render():
     Review compared a render against a sentence: the picture never reached it,
     so "does this resemble what I was shown" was not a question it could ask.
     """
-    llm = ScriptedLLMClient([design_reply(A_PART), plan_reply("Only"),
+    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
@@ -1395,25 +1445,24 @@ def test_the_acceptance_list_rides_with_the_plan_it_belongs_to():
     criterion they cannot correct. FCC-75.
     """
     _, events, _, _ = drive([
-        plan_reply("Sketch the hex profile", "Pad it 6.5 mm",
-                   acceptance=["13.0 mm across the flats",
-                               "6.5 mm tall",
-                               "an M8 through hole, 4.0 mm bore radius"]),
+        design_reply(A_PART),
+        plan_reply("Sketch the profile", "Pad it 10 mm", satisfies=everything(A_PART)),
         code_reply("sketch()"), code_reply("pad()"),
-        verdict_reply("pass"),
-    ])
+        assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
 
     plan = events.first(PLAN)
-    assert plan.data["steps"] == ["Sketch the hex profile", "Pad it 6.5 mm"]
-    assert plan.data["acceptance"] == ["13.0 mm across the flats", "6.5 mm tall",
-                                       "an M8 through hole, 4.0 mm bore radius"]
+    assert plan.data["steps"][1] == "Pad it 10 mm"
+    assert plan.data["acceptance"] == acceptance_of(A_PART)
 
 
-def test_a_plan_without_acceptance_is_still_a_plan():
+def test_a_run_with_nothing_described_still_plans_and_shows_an_empty_acceptance():
     """
-    An empty list is not fatal: the run goes on and Review judges alone, as it
-    did before there was a list at all. Making it fatal would kill runs over a
-    prompt regression, and the one fatal answer stays "no Steps". FCC-75.
+    An empty list is not fatal and never was: the run goes on and Review judges
+    alone, as it did before there was a list at all. Making it fatal would kill
+    runs over a prompt regression, and the one fatal answer stays "no Steps".
+    Derived rather than written, it is now the shape of a run with no drawing
+    and no answers — which still plans. FCC-75, FCC-94.
     """
     result, events, _, _ = drive([
         plan_reply("Add a box"),
@@ -1464,12 +1513,13 @@ def test_review_is_no_longer_told_the_bounding_box():
     assert not any(name == "overall_size" for name, _ in tools.calls)
 
 
-def test_plan_is_told_how_to_write_an_acceptance_list():
+def test_plan_is_told_to_cite_and_told_it_does_not_write_the_list():
     """
-    A hybrid vocabulary, not a closed one — a fixed list of allowed
-    measurements would bound too tightly what can be measured. What goes in the
-    prompt is the rule: what may be checked and how to approach checking it.
-    FCC-75.
+    Plan gets smaller: it owns the path and nothing else. What replaces the copy
+    about writing a list is the copy about citing one — the identity of a
+    feature is settled before Plan is called, so the same cavity read off three
+    views is one Step and Plan is told outright it may not decide that again.
+    FCC-75, FCC-94.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -1479,19 +1529,20 @@ def test_plan_is_told_how_to_write_an_acceptance_list():
     # The prompts are wrapped copy; a sentence crosses line breaks.
     plan_system = " ".join(_system_messages(llm)[0].split())
 
-    assert "One list for the whole Plan" in plan_system
-    assert "control points" in plan_system
-    assert "twenty is the ceiling" in plan_system
-    assert "measurable off the Shape" in plan_system
-    assert "bounding box is not a measurement" in plan_system
+    assert "what_the_plan_must_satisfy" in plan_system
+    assert "Every entry marked `(read)` must be cited by at least one Step" in plan_system
+    assert "Coverage, not exclusivity" in plan_system
+    assert "it is not yours to decide again" in plan_system
+    assert "You do not write the acceptance list" in plan_system
 
     # `Part.LineSegment` alone still appears in the traps, where it is a fact
     # about this build; what goes is Plan being asked to write it as a parameter.
     for cancelled in ("Every Step carries its **parameters**",
                       '"parameters": {"type": "PartDesign::Pad"',
-                      '{"type": "Part.LineSegment"', '"properties": {"Length": 10}'):
+                      '{"type": "Part.LineSegment"', '"properties": {"Length": 10}',
+                      "twenty is the ceiling"):
         assert cancelled not in plan_system, \
-            "plan.md still carries the parameters copy this ticket removes: " + cancelled
+            "plan.md still carries copy that has been removed: " + cancelled
 
 
 def test_the_named_parameters_mechanism_is_gone_from_the_code():
@@ -1807,14 +1858,15 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
     a Step's does. FCC-76.
     """
     _, events, _, _ = drive([
-        plan_reply("Only", acceptance=["10 mm on a side"]),
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        assertion_reply("assert True, '10 mm on a side'"),
+        assertion_reply("assert True, 'the length'"),
         verdict_reply("pass", "Good."),
-    ])
+    ], attachments=[RENDER_PNG])
 
     assert [e.kind for e in events] == [
-        PLAN,
+        ATTACHED, DESIGN, PLAN,
         STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
         TOOL_CALL, TOOL_RESULT, ASSERTION,
         REVIEW_VERDICT,
@@ -2033,7 +2085,7 @@ def test_plan_can_ask_instead_of_planning():
     result, events, _, tools = drive(
         [question_reply(MISSING), design_reply(GEAR_AS_TOLD),
          plan_reply("Sketch the blank", "Pad it"), code_reply("a()"), code_reply("b()"),
-         verdict_reply("pass")],
+         assertion_reply("assert True"), verdict_reply("pass")],
         intent=GEAR, ask=lambda question: asked.append(question) or "module 2, 20 teeth")
 
     assert asked == [MISSING], "Plan did not ask, or asked something else: %s" % asked
@@ -2147,7 +2199,9 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
         design_reply(A_PART),
         question_reply(THROUGH_OR_NOT),
         design_reply(OFF_THE_SECTION),
-        plan_reply("Pocket both faces 20 mm"), code_reply("a()"), verdict_reply("pass"),
+        plan_reply("Pocket both faces 20 mm",
+                   satisfies=everything(A_PART, OFF_THE_SECTION)),
+        code_reply("a()"), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "")
 
     assert result.ok
@@ -2182,7 +2236,8 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
         question_reply("Where is the Ø8 hole?"),
         design_reply({"features": [{"id": "hole-8-left",
                                     "position": {"the left end face": read("25 mm")}}]}),
-        plan_reply("Sketch it"), code_reply("a()"), verdict_reply("pass"),
+        plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     grown = events.last(DESIGN).data["model"]
@@ -2204,7 +2259,8 @@ def test_a_question_the_sheet_does_not_answer_still_reaches_the_user():
         design_reply(),                         # not on the sheet
         design_reply({"not_defined": [{"what": "the general tolerance",
                                        "looked_in": ["the notes"]}]}),
-        plan_reply("Sketch it"), code_reply("a()"), verdict_reply("pass"),
+        plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG],
         ask=lambda q: asked.append(q) or "±0.1 mm")
 
@@ -2226,7 +2282,8 @@ def test_the_drawing_answering_does_not_spend_the_users_question_budget():
         question_reply("q2"), design_reply({"datums": [{"name": "d2"}]}),
         question_reply("q3"), design_reply(),          # not on the sheet
         design_reply({"datums": [{"name": "d3"}]}),    # the person's answer, written in
-        plan_reply("Sketch it"), code_reply("a()"), verdict_reply("pass"),
+        plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(questions=2),
         ask=lambda q: asked.append(q) or "an answer")
 
@@ -2262,11 +2319,11 @@ def test_with_no_attachment_a_question_goes_straight_to_the_user():
 
     _, _, llm, _ = drive(
         [question_reply(MISSING), design_reply(GEAR_AS_TOLD), plan_reply("Sketch it"),
-         code_reply("a()"), verdict_reply("pass")],
+         code_reply("a()"), assertion_reply("assert True"), verdict_reply("pass")],
         intent=GEAR, ask=lambda q: asked.append(q) or "module 2")
 
     assert asked == [MISSING]
-    assert len(llm.calls) == 5, "a turn was spent re-reading a drawing that is not there"
+    assert len(llm.calls) == 6, "a turn was spent re-reading a drawing that is not there"
     # The one Design turn there was had no picture with it.
     written_in = llm.calls[1][-1]["content"]
     assert len(written_in) == 1 and written_in[0]["type"] == "text"
@@ -2304,6 +2361,7 @@ def test_a_replan_after_a_handback_asks_rather_than_planning_blind():
             question_reply(MISSING), design_reply(GEAR_AS_TOLD),
             plan_reply("Possible"),
             code_reply("yes()"),
+            assertion_reply("assert True"),
             verdict_reply("pass"),
         ],
         applies=[failed("one"), failed("two"), failed("three")],
@@ -2325,7 +2383,8 @@ def test_a_replan_after_a_rejected_verdict_asks_too():
         [
             plan_reply("Make it"), code_reply("make()"), verdict_reply("fail", "20mm, not 10mm"),
             question_reply(MISSING), design_reply(GEAR_AS_TOLD),
-            plan_reply("Make it 10mm"), code_reply("fix()"), verdict_reply("pass"),
+            plan_reply("Make it 10mm"), code_reply("fix()"),
+            assertion_reply("assert True"), verdict_reply("pass"),
         ],
         ask=lambda question: asked.append(question) or "10mm across the flats",
     )
@@ -2376,7 +2435,22 @@ def test_no_plan_without_steps_ever_reaches_execute(monkeypatch):
 # ── the Assertion phase ───────────────────────────────────────────────────────
 
 
-ACCEPTANCE = ["13.0 mm across the flats", "6.5 mm tall"]
+# A nut described, and the Acceptance derived from it. The list is no longer
+# written by Plan, so a run that has something to check is a run that had
+# something described (FCC-94).
+A_NUT = {"envelope": {"across the flats": read("13.0 mm"), "height": read("6.5 mm")}}
+
+ACCEPTANCE = acceptance_of(A_NUT)
+
+
+def a_run_over_the_nut(*turns, **kwargs):
+    """The nut described, then whatever the test scripts after it."""
+    return drive([design_reply(A_NUT)] + list(turns),
+                 attachments=[RENDER_PNG], **kwargs)
+
+
+def planning_the_nut(*steps):
+    return plan_reply(*steps, satisfies=everything(A_NUT))
 
 CHECKS = ("flats = [f for f in doc.Objects[0].Shape.Faces]\n"
           "assert abs(13.0 - across(flats)) < 1e-6, '13.0 mm across the flats'\n")
@@ -2402,12 +2476,12 @@ def test_the_assertion_phase_runs_after_the_last_step_and_before_review():
     ready yet. Read-only, so it goes through a Tool of its own rather than
     through apply. FCC-76.
     """
-    _, events, llm, tools = drive([
-        plan_reply("Sketch it", "Pad it", acceptance=ACCEPTANCE),
+    _, events, llm, tools = a_run_over_the_nut(
+        planning_the_nut("Sketch it", "Pad it"),
         code_reply("sketch()"), code_reply("pad()"),
         assertion_reply(CHECKS),
         verdict_reply("pass"),
-    ])
+    )
 
     assert [name for name, _ in tools.calls
             if name in ("apply_step", "check_assertions")] == [
@@ -2443,23 +2517,24 @@ def test_failed_assertions_return_to_plan_and_never_to_execute():
     new Plan Gate. The traceback is what Plan is told, and Execute is told
     none of it — the mirror of a failed verdict. FCC-76.
     """
-    _, events, llm, _ = drive([
-        plan_reply("Make it", acceptance=ACCEPTANCE),
+    _, events, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"),
         code_reply("make()"),
         assertion_reply(CHECKS),
-        plan_reply("Make it 13 mm across the flats", acceptance=ACCEPTANCE),
+        planning_the_nut("Make it 13 mm across the flats"),
         code_reply("fix()"),
         assertion_reply(CHECKS),
         verdict_reply("pass"),
-    ], checks=[assertion_failed(ASSERT_FAILED), None])
+        checks=[assertion_failed(ASSERT_FAILED), None])
 
-    to_plan = json.dumps(llm.calls[3])
-    to_execute = json.dumps(llm.calls[4])
+    to_plan = json.dumps(llm.calls[4])
+    to_execute = json.dumps(llm.calls[5])
 
     assert "13.0 mm across the flats" in to_plan
     assert "AssertionError" in to_plan
     assert "AssertionError" not in to_execute, "the failed check reached Execute"
-    assert events.first(PLAN_REVISED).data["steps"] == ["Make it 13 mm across the flats"]
+    assert events.first(PLAN_REVISED).data["steps"][0].startswith(
+        "Make it 13 mm across the flats")
     assert events.first(ASSERTION).data["ok"] is False
 
 
@@ -2468,9 +2543,8 @@ def test_a_run_out_of_revisions_names_the_assertions_not_review():
     FCC-22's separate accounting, extended: a run stopped by failed checks must
     not tell the user Review kept rejecting the result. FCC-76.
     """
-    result, _, _, _ = drive(
-        [plan_reply("Make it", acceptance=ACCEPTANCE), code_reply("make()"),
-         assertion_reply(CHECKS)] * 5,
+    result, _, _, _ = a_run_over_the_nut(
+        *[planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS)] * 5,
         budgets=Budgets(revisions=2),
         checks=[assertion_failed(ASSERT_FAILED)] * 5,
     )
@@ -2487,17 +2561,19 @@ def test_review_is_told_the_facts_the_checks_confirmed():
     not cover rather than re-judging what they did. The views do not go
     (ADR-0015). FCC-76.
     """
-    _, _, llm, _ = drive([
-        plan_reply("Make it", acceptance=ACCEPTANCE),
+    _, events, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"),
         code_reply("make()"),
-        assertion_reply(CHECKS, uncovered=["6.5 mm tall"]),
+        assertion_reply(CHECKS, uncovered=[ACCEPTANCE[1]]),
         verdict_reply("pass"),
-    ], views=[RENDER_PNG] * 4)
+        views=[RENDER_PNG] * 4)
 
     review_request = json.loads(llm.calls[-1][1]["content"][0]["text"].split("\n\n")[0])
 
-    assert review_request["facts_the_checks_confirmed"] == ["13.0 mm across the flats"]
-    assert review_request["what_the_checks_could_not_cover"] == ["6.5 mm tall"]
+    assert review_request["facts_the_checks_confirmed"] == [ACCEPTANCE[0]]
+    assert review_request["what_the_checks_could_not_cover"] == [ACCEPTANCE[1]]
+    # And it is visible as uncovered rather than dropped or asserted as passing.
+    assert events.first(ASSERTION).data["uncovered"] == [ACCEPTANCE[1]]
 
 
 def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
@@ -2507,19 +2583,19 @@ def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
     so it is handed back to the phase that wrote it, on the same attempts
     budget Execute uses. FCC-76.
     """
-    result, events, llm, tools = drive([
-        plan_reply("Make it", acceptance=ACCEPTANCE),
+    result, events, llm, tools = a_run_over_the_nut(
+        planning_the_nut("Make it"),
         code_reply("make()"),
         assertion_reply("bad_check()"),
         assertion_reply(CHECKS),
         verdict_reply("pass"),
-    ], checks=[assertion_failed(CHECK_IS_BROKEN), None])
+        checks=[assertion_failed(CHECK_IS_BROKEN), None])
 
     assert result.ok
     assert events.first(PLAN_REVISED) is None, "a broken check sent Plan to rebuild"
     assert len([c for c in tools.calls if c[0] == "check_assertions"]) == 2
     # The traceback came back to the phase that wrote the check, not to Plan.
-    assert "AttributeError" in json.dumps(llm.calls[3])
+    assert "AttributeError" in json.dumps(llm.calls[4])
 
 
 def test_a_check_that_cannot_be_written_lets_review_judge_alone():
@@ -2528,14 +2604,14 @@ def test_a_check_that_cannot_be_written_lets_review_judge_alone():
     model, and not a reason to lose a finished run either: the phase gives up,
     says so, and everything it failed to cover goes to Review. FCC-76.
     """
-    result, events, _, _ = drive([
-        plan_reply("Make it", acceptance=ACCEPTANCE),
+    result, events, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"),
         code_reply("make()"),
         assertion_reply("bad_check()"),
         assertion_reply("bad_check()"),
         assertion_reply("bad_check()"),
         verdict_reply("pass"),
-    ], checks=[assertion_failed(CHECK_IS_BROKEN)] * 3)
+        checks=[assertion_failed(CHECK_IS_BROKEN)] * 3)
 
     assert result.ok
     assert events.first(PLAN_REVISED) is None
@@ -2548,7 +2624,8 @@ def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
     long enough that a run which ignored it there would feel hung. FCC-76.
     """
     llm = ScriptedLLMClient([
-        plan_reply("Make it", acceptance=ACCEPTANCE),
+        design_reply(A_NUT),
+        planning_the_nut("Make it"),
         code_reply("make()"),
         assertion_reply("bad_check()"),
         assertion_reply("bad_check()"),
@@ -2563,8 +2640,217 @@ def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
         return any(name == "check_assertions" for name, _ in tools.calls)
 
     result = run("Make a nut", llm=llm, tools=tools.registry, events=events,
-                 cancelled=cancelled)
+                 cancelled=cancelled, attachments=[RENDER_PNG])
 
     assert result.blocked
     assert "Stopped by you" in result.reason
     assert len([c for c in tools.calls if c[0] == "check_assertions"]) == 1
+
+
+# ── the Plan consumes the description (FCC-94) ────────────────────────────────
+
+
+# One physical cavity, seen in three views and reconciled into one feature by
+# the phase that owns the description. Steps 4, 5 and 6 of the recorded run cut
+# it three times, once per view.
+THE_CAVITY = {
+    "envelope": {"depth front to rear": read("100 mm")},
+    "features": [{"id": "central-opening", "kind": "hourglass pocket",
+                  "topology": "two opposed blind pockets, 10 mm web",
+                  "position": {"the front face": read("20 mm")},
+                  "seen_in": ["front view", "SECTION A-A", "SECTION B-B"]}],
+}
+
+CAVITY_DEPTH = "envelope → depth front to rear"
+CAVITY_POCKET = "features → central-opening → position → the front face"
+
+
+def test_the_acceptance_is_the_descriptions_own_entries_and_not_plans_paraphrase():
+    """
+    Between the sheet and the assert there were two rewrites, and in the run
+    that named this defect both lied: every entry claimed `(read)` although the
+    values came out of a re-read, and the depth entry carried 50 mm, so
+    Assertion would have measured 50 mm on the built part and reported a pass on
+    a part the drawing never showed. Derived, there is nothing to rewrite.
+    FCC-94.
+    """
+    _, events, llm, _ = drive([
+        design_reply(THE_CAVITY),
+        plan_reply("Pad the blank", "Cut the central opening",
+                   satisfies=everything(THE_CAVITY)),
+        code_reply("pad()"), code_reply("cut()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    shown = events.first(PLAN).data["acceptance"]
+    assert shown == ["envelope → depth front to rear: 100 mm (read)",
+                     "features → central-opening → position → the front face: 20 mm (read)"]
+    # And the checks are written from that same list, not from a Plan's version.
+    assert json.loads(llm.calls[4][-1]["content"])["acceptance"] == shown
+
+
+def test_a_value_the_user_assumed_is_still_marked_assumed_in_the_acceptance():
+    """
+    The kind of value most likely to be wrong is the one somebody settled, so it
+    is a criterion and it says at the Gate that it is theirs to correct. FCC-94.
+    """
+    told = {"envelope": {"length": {"value": "150 mm", "flag": "assumed"}}}
+
+    _, events, _, _ = drive([
+        design_reply(told),
+        plan_reply("Pad it 150 mm"), code_reply("pad()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert events.first(PLAN).data["acceptance"] == ["envelope → length: 150 mm (assumed)"]
+
+
+def test_a_step_says_at_the_gate_which_part_of_the_part_it_is_for():
+    """
+    A reader who cannot tell from the Gate which entry a Step is for cannot tell
+    that one cavity has been planned three times, which is what Steps 4, 5 and 6
+    of the recorded run were. FCC-94.
+    """
+    _, events, _, _ = drive([
+        design_reply(THE_CAVITY),
+        plan_reply({"do": "Pad the blank 100 mm front to rear",
+                    "satisfies": [CAVITY_DEPTH]},
+                   {"do": "Cut the central opening, both faces",
+                    "satisfies": [CAVITY_POCKET]}),
+        code_reply("pad()"), code_reply("cut()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert events.first(PLAN).data["steps"] == [
+        "Pad the blank 100 mm front to rear (satisfies: envelope → depth front to rear)",
+        "Cut the central opening, both faces (satisfies: features → central-opening → "
+        "position → the front face)",
+    ]
+
+
+def test_a_plan_that_leaves_a_read_entry_unconsumed_is_planned_again():
+    """
+    The headline defect: the revised Plan dropped the 100 mm front to rear and
+    no rule, prompt or judgement noticed. A set difference over addresses
+    notices, and the run says which entry went missing. FCC-94.
+    """
+    result, events, llm, _ = drive([
+        design_reply(THE_CAVITY),
+        plan_reply({"do": "Cut the central opening", "satisfies": [CAVITY_POCKET]}),
+        plan_reply({"do": "Pad the blank 100 mm front to rear",
+                    "satisfies": [CAVITY_DEPTH, CAVITY_POCKET]}),
+        code_reply("pad()"), assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert result.ok
+    revised = events.first(PLAN_REVISED)
+    assert revised is not None, "a Plan that dropped the depth reached the user as final"
+    assert CAVITY_DEPTH in revised.data["reason"]
+
+    # And Plan was told which entry, verbatim, so it can cite it back.
+    told = json.loads(llm.calls[2][-1]["content"])["what_went_wrong_last_time"]
+    assert CAVITY_DEPTH in told
+    assert CAVITY_POCKET not in told, "an entry that was cited was reported as missing"
+
+
+def test_a_plan_that_leaves_nothing_unconsumed_is_never_replanned():
+    """Coverage, not exclusivity: one Step may satisfy several entries."""
+    _, events, _, _ = drive([
+        design_reply(THE_CAVITY),
+        plan_reply({"do": "Pad the blank and cut the opening",
+                    "satisfies": [CAVITY_DEPTH, CAVITY_POCKET]}),
+        code_reply("build()"), assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert events.first(PLAN_REVISED) is None
+
+
+def test_a_plan_citing_the_whole_line_it_was_handed_has_cited_the_entry():
+    """
+    `what_the_plan_must_satisfy` gives the address and the value on one line,
+    and a Plan copying that line means the entry the line is. Refusing it would
+    make the check fail on the one Plan that did exactly as it was told, and
+    every run would replan to a block. FCC-94.
+    """
+    _, events, _, _ = drive([
+        design_reply(THE_CAVITY),
+        plan_reply({"do": "Pad the blank and cut the opening",
+                    "satisfies": [CAVITY_DEPTH + ": 100 mm (read)",
+                                  CAVITY_POCKET + ": 20 mm (read)"]}),
+        code_reply("build()"), assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert events.first(PLAN_REVISED) is None
+
+
+def test_one_entry_may_feed_several_steps():
+    """
+    An overall height feeds both the base solid and a through hole's depth, and
+    citing it twice is right. What may not happen is an entry feeding no Step.
+    FCC-94.
+    """
+    _, events, _, _ = drive([
+        design_reply(THE_CAVITY),
+        plan_reply({"do": "Pad the blank 100 mm front to rear",
+                    "satisfies": [CAVITY_DEPTH]},
+                   {"do": "Cut the opening 100 mm deep, front to rear",
+                    "satisfies": [CAVITY_DEPTH, CAVITY_POCKET]}),
+        code_reply("pad()"), code_reply("cut()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert events.first(PLAN_REVISED) is None
+
+
+def test_an_assumed_entry_is_not_something_a_plan_can_be_refused_over():
+    """
+    A Plan cannot be refused for failing to build a number nobody supplied. The
+    entry is still checked; it is not a coverage duty. FCC-94.
+    """
+    told = {"envelope": {"length": {"value": "150 mm", "flag": "assumed"}}}
+
+    result, events, _, _ = drive([
+        design_reply(told),
+        plan_reply("Pad it"), code_reply("pad()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert result.ok
+    assert events.first(PLAN_REVISED) is None
+
+
+def test_a_plan_that_never_learns_to_cite_stops_the_run_and_says_why():
+    """
+    The coverage re-plan spends the same shared ceiling as every other cause, so
+    a prompt regression stops the run with a reason instead of looping — and
+    FCC-22's separate accounting names the right cause. FCC-94.
+    """
+    result, _, _, tools = drive(
+        [design_reply(THE_CAVITY)] + [plan_reply("Cut it")] * 5,
+        attachments=[RENDER_PNG], budgets=Budgets(revisions=2),
+    )
+
+    assert result.blocked
+    assert "left part of the description unplanned" in result.reason
+    assert "Review rejected" not in result.reason
+    assert tools.applied_codes() == [], "a Plan that dropped an entry built something"
+
+
+def test_a_run_with_no_attachment_still_plans_and_still_shows_an_acceptance():
+    """
+    With no drawing the description holds only what the user's answers supplied,
+    and where it holds nothing at all an empty Acceptance means no Assertion
+    phase rather than a phase that checks nothing — the behaviour from before
+    there was a list. FCC-94.
+    """
+    told = {"envelope": {"length": {"value": "150 mm", "flag": "assumed"}}}
+
+    result, events, _, tools = drive(
+        [question_reply(MISSING), design_reply(told),
+         plan_reply("Pad it 150 mm"), code_reply("pad()"),
+         assertion_reply("assert True"), verdict_reply("pass")],
+        ask=lambda _: "150 mm long")
+
+    assert result.ok
+    assert events.first(PLAN).data["acceptance"] == ["envelope → length: 150 mm (assumed)"]
+    assert any(name == "check_assertions" for name, _ in tools.calls)

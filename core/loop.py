@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List
 
-from core.design import merge, render
+from core.design import entries, merge, render
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, PLAN,
     PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED,
@@ -68,7 +68,7 @@ class Budgets:
     attempts_per_step: int = 3
     review_cycles: int = 2
     # Without this, Execute declaring Step after Step obsolete never terminates.
-    # One ceiling over all five causes of a replan (see `_Revisions`): separate
+    # One ceiling over all six causes of a replan (see `_Revisions`): separate
     # budgets would let them cycle into each other and would raise the
     # worst-case number of Plan calls in a run. This is the floor under
     # `revisions_ceiling`, which scales the allowance with the Plan's length.
@@ -91,7 +91,7 @@ def revisions_ceiling(budgets, steps) -> int:
 
     A four-Step Plan and a forty-Step Plan cannot have the same allowance: a
     long Plan has more places to hand back from, and every Execute -> Plan
-    handback spends one. Still a single ceiling over all five causes, for the
+    handback spends one. Still a single ceiling over all six causes, for the
     reason recorded on `Budgets`; only its size is computed.
     """
     return max(budgets.revisions, len(steps) // 5)
@@ -101,15 +101,16 @@ class _Revisions:
     """
     How many times the Plan has been rewritten, and why (FCC-22).
 
-    Five unrelated things replan: the user amends at the Plan Gate, Execute
-    finds a Step out of date, Execute cannot build one, the acceptance checks
-    fail, and Review rejects the result. They share one ceiling, which is
-    deliberate — but they used to share one *counter* too, so whichever branch
-    spent the last unit was reported as the cause of all of them, and a run
-    stopped by two amendments told the user Execute kept finding the Plan out
-    of date.
+    Six unrelated things replan: the Plan leaves part of the description
+    unplanned, the user amends at the Plan Gate, Execute finds a Step out of
+    date, Execute cannot build one, the acceptance checks fail, and Review
+    rejects the result. They share one ceiling, which is deliberate — but they
+    used to share one *counter* too, so whichever branch spent the last unit was
+    reported as the cause of all of them, and a run stopped by two amendments
+    told the user Execute kept finding the Plan out of date.
     """
 
+    UNCOVERED = "uncovered"
     AMENDED = "amended"
     OBSOLETE = "obsolete"
     UNBUILDABLE = "unbuildable"
@@ -117,6 +118,7 @@ class _Revisions:
     REJECTED = "rejected"
 
     _SAID = (
+        (UNCOVERED, "the Plan left part of the description unplanned %s"),
         (AMENDED, "you amended the Plan %s"),
         (OBSOLETE, "Execute found the Plan out of date %s"),
         (UNBUILDABLE, "Execute could not build a Step %s"),
@@ -388,8 +390,14 @@ class Plan:
     question: str = ""
     # What has to be true of the finished part, once for the whole Plan rather
     # than per Step: the checks run when the run is over, against the Document
-    # that was asked for, not against an intermediate state (FCC-75).
+    # that was asked for, not against an intermediate state (FCC-75). Derived
+    # from the description rather than written here (ADR-0020).
     acceptance: list = field(default_factory=list)
+    # Every entry of the description the Plan's Steps cite between them, flat:
+    # the check is whether an entry is accounted for by *any* Step, so which
+    # Step accounted for it is a thing the Gate shows and the loop does not
+    # need (FCC-94).
+    satisfies: list = field(default_factory=list)
 
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered=()):
@@ -405,10 +413,17 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
     consistently preferred the newer, so a value read off SECTION B-B vanished
     without ever being overruled. Every answer is now merged into the
     description before Plan sees it, and there is nothing left to adjudicate.
+
+    Beside the rendering, the same description entry by entry, addressed. That
+    is the vocabulary a Step cites from and it is the Acceptance the finished
+    part is checked against, and it is one list rather than two so that what
+    Plan is asked to account for and what the run measures cannot differ
+    (ADR-0020).
     """
     request = {"intent": intent, "document": snapshot}
     if the_part:
         request["what_the_part_is"] = render(the_part)
+        request["what_the_plan_must_satisfy"] = _acceptance_of(the_part)
     if feedback:
         request["what_went_wrong_last_time"] = feedback
     if unanswered:
@@ -419,43 +434,114 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
 
     reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
                  json.dumps(request, indent=2, default=str))
-    steps = _steps_of(reply.get("steps", []))
+    steps, satisfies = _steps_of(reply.get("steps", []))
     question = str(reply.get("question") or "").strip()
     if not steps and question:
         return Plan(steps=[], question=question)
     if not steps:
         raise PhaseError("Plan produced no Steps for this Intent.")
-    return Plan(steps=steps, acceptance=_acceptance_of(reply))
+    return Plan(steps=steps, satisfies=satisfies, acceptance=_acceptance_of(the_part))
 
 
 def _steps_of(planned):
     """
-    The prose of each Step.
+    The prose of each Step, and every entry of the description the Plan cites.
 
-    A Step is `{"do": "..."}` or the bare string it has always been. Both
-    spellings are accepted; what the Step builds is checked against ADR-0010
-    and FCC-27, which is the whole floor beneath a Step.
+    A Step is `{"do": …, "satisfies": [...]}`, or the bare string it has always
+    been. What a Step satisfies goes into its own prose rather than beside it,
+    because the Plan Gate shows prose: a reader who cannot tell from the Gate
+    which part of the part a Step is for cannot tell that one physical cavity
+    has been planned three times, which is what Steps 4, 5 and 6 of the recorded
+    run were (FCC-94).
+
+    A Step citing nothing is not refused here. The rule is coverage over the
+    whole Plan — no entry may be left to no Step — and a Plan is the only thing
+    that can be judged against it; a Step may legitimately carry work no entry
+    of the description names.
     """
-    steps = []
+    steps, satisfies = [], []
     for step in planned:
-        prose = (str(step.get("do") or step.get("step") or "").strip()
-                 if isinstance(step, dict) else str(step).strip())
-        if prose:
-            steps.append(prose)
-    return steps
+        if isinstance(step, dict):
+            prose = str(step.get("do") or step.get("step") or "").strip()
+            cited = [_as_written(entry) for entry in (step.get("satisfies") or ())
+                     if _as_written(entry)]
+        else:
+            prose, cited = str(step).strip(), []
+        if not prose:
+            continue
+        steps.append(prose + (" (satisfies: %s)" % ", ".join(cited) if cited else ""))
+        satisfies.extend(cited)
+    return steps, satisfies
 
 
-def _acceptance_of(reply):
+def _as_written(entry):
+    """An address as one line, because it is matched by the words it is written in."""
+    return " ".join(str(entry).split())
+
+
+def _acceptance_of(the_part):
     """
-    The acceptance list as strings, or empty where Plan wrote none.
+    What the finished part has to satisfy: the description's own entries.
 
-    Empty is not an error: the run goes on and Review judges alone, as it did
-    before there was a list. The one fatal answer stays "no Steps" (FCC-75).
+    Plan used to write this list, and between the sheet and the assert there
+    were two rewrites. In the run that named the defect both lied — every entry
+    said `(read)` although the values came out of a re-read answering questions
+    the first pass had marked not defined, and the depth entry carried 50 mm, so
+    Assertion would have measured 50 mm on the built part and reported a pass on
+    a part the drawing never showed. Derived, there is nothing left to rewrite:
+    each entry *is* a value of the model, with the datum it sits under and the
+    flag it was recorded with (ADR-0020).
+
+    Empty is not an error and never was. A description holding nothing means no
+    Assertion phase at all, which is exactly what a Plan that wrote no list
+    produced (FCC-75), and it is what a run with no drawing and no answers gets.
+
+    An assumed value is a criterion too, and marked assumed. Leaving it out
+    would hide from the checks the kind of value most likely to be wrong, and
+    from the user at the Gate the fact that it is theirs to correct.
     """
-    written = reply.get("acceptance")
-    if not isinstance(written, (list, tuple)):
-        return []
-    return [str(entry).strip() for entry in written if str(entry).strip()]
+    return [entry["says"] for entry in entries(the_part)]
+
+
+def _unconsumed(the_part, satisfies):
+    """
+    The entries of the description that no Step of the Plan accounts for.
+
+    The mechanical catch for the defect the epic is named after: the revised
+    Plan of the recorded run dropped the 100 mm front to rear and no rule,
+    prompt or judgement noticed. Checked over addresses and not over prose, so
+    it is a set difference rather than a comparison of sentences.
+
+    Coverage, not exclusivity. One entry may legitimately feed several Steps —
+    an overall height feeds both the base solid and a through hole's depth — but
+    no entry may feed none.
+
+    Only what was `read`. An assumed value is still a criterion and is still
+    measured, but a Plan may not be refused for failing to build a number
+    nobody supplied.
+
+    Matched as written, and never by prefix of an address — a Plan allowed to
+    cite `features` and cover everything beneath it would be the check defeating
+    itself. What is allowed is the value trailing the address, because the list
+    Plan cites from carries both on one line (`envelope → length: 150 mm
+    (read)`), and a Plan that copies the line it was handed means the entry that
+    line is. Refusing it would make the check fail on the one Plan that did
+    exactly as it was told.
+    """
+    cited = {_as_written(entry) for entry in satisfies}
+    return [entry["about"] for entry in entries(the_part)
+            if entry["flag"] == "read"
+            and not any(said == entry["about"] or said.startswith(entry["about"] + ":")
+                        for said in cited)]
+
+
+def _plan_the_rest(unconsumed) -> str:
+    """What Plan is told about the entries it left to nobody."""
+    return ("No Step of your Plan cited these entries of the description, so nothing in "
+            "the Plan builds them:\n"
+            + "\n".join("- " + entry for entry in unconsumed)
+            + "\nPlan them, and name each one in the `satisfies` of the Step that "
+              "satisfies it, written exactly as it is above.")
 
 
 @dataclass
@@ -1018,6 +1104,19 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     # revised Plan is a new Plan and used to go straight into the work (FCC-68).
     while True:
         steps = planned.steps
+
+        # Before the Gate, because a Plan that leaves part of the description to
+        # nobody must not reach the user as a finished Plan. It spends the same
+        # ceiling as every other cause, so a prompt that never learns to cite
+        # stops the run with a reason instead of looping (FCC-94).
+        unconsumed = _unconsumed(part["the_part"], planned.satisfies)
+        if unconsumed:
+            planned = rewrite(_Revisions.UNCOVERED,
+                              "The Plan still leaves part of the description unplanned.",
+                              _plan_the_rest(unconsumed), progress["tried"],
+                              reason="no Step accounted for " + ", ".join(unconsumed))
+            continue
+
         approval = gate(list(steps)) or Approval(APPROVE)
 
         if approval.decision == REJECT:

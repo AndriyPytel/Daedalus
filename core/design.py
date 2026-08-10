@@ -27,6 +27,11 @@ model comes back from a provider, so a schema hard-coded here would be one more
 thing to drift; what is enforced is the rule — filled stays, empty fills,
 different becomes a conflict — and identity, which is `id` on a feature and
 `name` on a datum.
+
+The same structure is what the run is checked against. `entries` addresses every
+value on it by the path it sits under, and that one enumeration is both the
+Acceptance the finished part is measured against and the set the loop takes a
+Plan's citations away from (ADR-0020).
 """
 
 # The order the Plan Gate reads them in: what was on the sheet, what the part is
@@ -34,6 +39,11 @@ different becomes a conflict — and identity, which is `id` on a feature and
 # itself, what nobody agrees on and what nobody supplied.
 SECTIONS = ("printed_on_the_sheet", "datums", "envelope", "features", "conflicts",
             "not_defined")
+
+# What separates one step of an address from the next. One notation for the
+# path a conflict is recorded under and the path an entry is cited by, because
+# two would be two things for a reader to learn and one for a Plan to get wrong.
+UNDER = " → "
 
 _HEADINGS = {"printed_on_the_sheet": "Printed on the sheet", "datums": "Datums",
              "envelope": "Envelope", "features": "Features",
@@ -47,6 +57,12 @@ _IDENTITY = ("id", "name")
 # read by what it is about and a gap by what is missing, and neither is a thing
 # the merge has to recognise again.
 _HEADED_BY = _IDENTITY + ("about", "what")
+
+# What the part is, as against what is said about the reading of it. A conflict
+# holds two values of which neither is settled, and a criterion derived from one
+# would assert whichever half the merge happened to keep; a gap is nothing to
+# measure; the sweep of the sheet is callouts, not values.
+_NOT_THE_PART = ("conflicts", "not_defined", "printed_on_the_sheet")
 
 
 def merge(held, offered):
@@ -93,6 +109,53 @@ def render(model) -> str:
         written.append(_HEADINGS.get(section, str(section).replace("_", " ").capitalize()))
         written.extend(_lines(model[section], "  "))
     return "\n".join(written)
+
+
+def entries(model) -> list:
+    """
+    Every value the part carries, addressed by where it sits and said in words.
+
+    One enumeration doing two jobs, and deliberately not two functions. The
+    Acceptance the finished part is checked against *is* this list — the
+    description's own entries, with their datums and their flags, instead of
+    Plan's paraphrase of them — and the coverage the loop checks over a Plan is
+    this same list with the Plan's citations taken away. Two enumerations would
+    be two things to drift apart, and the drift would be silent: a Plan could
+    cover every address of one and leave an entry of the other unmeasured
+    (ADR-0020).
+
+    The address is the merge's own path, so an entry is cited by exactly the
+    words it is recorded under, and an envelope entry is as citable as a
+    feature's. That is not a detail: the value the recorded run lost between the
+    description and the Plan was the 100 mm front to rear, which is an envelope
+    entry and not a feature.
+
+    Each entry is `{"about": …, "flag": …, "says": …}` — where it sits, whether
+    it was read or assumed, and the whole of it on one line for a person and for
+    the assert message that has to name it.
+    """
+    return _addressed(model, "")
+
+
+# ── the entries ───────────────────────────────────────────────────────────────
+
+
+def _addressed(node, path):
+    if _a_value(node):
+        return [{"about": path, "flag": str(node.get("flag") or ""),
+                 "says": "%s: %s" % (path, _one_value(node) or node.get("value"))}]
+
+    if isinstance(node, dict):
+        return [entry for key, value in node.items() if key not in _NOT_THE_PART
+                for entry in _addressed(value, _under(path, key))]
+
+    if isinstance(node, list):
+        # By identity where an entry has one, so an address survives a feature
+        # being added ahead of another — the same rule the merge matches by.
+        return [entry for at, value in enumerate(node, start=1)
+                for entry in _addressed(value, _under(path, _named(value, _IDENTITY) or at))]
+
+    return []
 
 
 # ── the merge ─────────────────────────────────────────────────────────────────
@@ -155,7 +218,7 @@ def _named(entry, keys):
 
 
 def _under(path, key):
-    return "%s → %s" % (path, key) if path else str(key)
+    return path + UNDER + str(key) if path else str(key)
 
 
 def _filled(value):
