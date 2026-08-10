@@ -198,6 +198,75 @@ def test_supported_types_does_not_report_a_confident_wrong_absence(tools, doc):
     assert reported >= raw
 
 
+# ── Describing a type nothing has been built from yet ─────────────────────────
+
+
+def test_a_type_is_describable_before_any_object_of_it_exists(tools, doc):
+    """
+    The gap `supported_types` and `describe_object` leave between them: one
+    reports that PartDesign::Pocket exists, the other needs a Pocket to already
+    be in the Document. FCC-95.
+    """
+    described = tools.call("describe_type", {"type_id": "PartDesign::Pocket"})
+
+    assert described["type"] == "PartDesign::Pocket"
+    names = {p["name"] for p in described["properties"]}
+    assert {"Type", "Length", "Reversed", "Midplane"} <= names
+    assert not doc.Objects, "describing a type put something in the Document"
+
+
+def test_an_enumeration_reports_the_spellings_this_build_accepts(tools):
+    """
+    `'Through all'` is not one of them, and assigning it is what killed Step 2
+    of the recorded run. FCC-95.
+    """
+    properties = {p["name"]: p for p in
+                  tools.call("describe_type", {"type_id": "PartDesign::Pocket"})["properties"]}
+
+    assert "ThroughAll" in properties["Type"]["enumeration"]
+    assert "Through all" not in properties["Type"]["enumeration"]
+    # A length is a number, not a choice, and has nothing to spell.
+    assert "enumeration" not in properties["Length"]
+
+
+def test_describing_a_type_leaves_the_document_and_the_session_as_they_were(tools, part, doc):
+    """
+    The Tool instantiates the type somewhere, and it may not be here. A scratch
+    Document left open, or the user's Document no longer the active one, is the
+    same defect as writing to theirs. FCC-95.
+    """
+    import FreeCAD
+
+    before = [o.Name for o in doc.Objects]
+    documents = set(FreeCAD.listDocuments())
+    FreeCAD.setActiveDocument(doc.Name)
+
+    tools.call("describe_type", {"type_id": "PartDesign::Pad"})
+
+    assert [o.Name for o in doc.Objects] == before
+    assert set(FreeCAD.listDocuments()) == documents
+    assert FreeCAD.ActiveDocument is doc
+
+
+def test_a_type_this_build_does_not_have_says_so_rather_than_inventing_it(tools):
+    with pytest.raises(ToolError) as raised:
+        tools.call("describe_type", {"type_id": "PartDesign::Pocketing"})
+
+    assert "PartDesign::Pocketing" in str(raised.value)
+    assert "supported_types" in str(raised.value)
+
+
+def test_describe_type_cannot_be_used_to_apply_anything(tools, doc):
+    """
+    Read-only in the only sense that matters: there is no argument through
+    which code, a value or a Document could be passed. FCC-95.
+    """
+    schema = {described["name"]: described for described in tools.describe()}["describe_type"]
+
+    assert set(schema["parameters"]["properties"]) == {"type_id"}
+    assert schema["parameters"]["properties"]["type_id"]["type"] == "string"
+
+
 # ── Dependencies ──────────────────────────────────────────────────────────────
 
 

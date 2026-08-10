@@ -3,13 +3,14 @@ The Design -> Plan -> Execute -> Assertion -> Review loop.
 
 Fixed order, deterministic routing (ADR-0003). No LLM-chosen speaker
 selection: Design says what the part is and has nothing to build with it
-(ADR-0019), Plan produces Steps and the list they have to satisfy, Execute works
-through the Steps one at a time, Assertion measures the finished Document
-against that list once the run is over (ADR-0017), Review judges the outcome,
-and a failure from either of the last two returns to Plan — never to Execute.
-Within its turn Execute may spend a bounded number of read-only looks at the
-Document before it writes code (ADR-0009); that is one phase reading its input,
-not a negotiation between phases.
+(ADR-0019), Plan produces Steps and the list they have to satisfy, Execute
+writes the code for every Step of the Plan in one call and the loop applies
+them one at a time (ADR-0021), Assertion measures the finished Document against
+that list once the run is over (ADR-0017), Review judges the outcome, and a
+failure from either of the last two returns to Plan — never to Execute. Within
+its turn Execute may spend a bounded number of read-only looks at the Document
+before it writes code (ADR-0009); that is one phase reading its input, not a
+negotiation between phases.
 
 There is one edge back from Execute to Plan and it carries no geometry: a Step
 that is out of date, or that cannot be built after its attempts are spent, goes
@@ -73,7 +74,7 @@ class Budgets:
     # worst-case number of Plan calls in a run. This is the floor under
     # `revisions_ceiling`, which scales the allowance with the Plan's length.
     revisions: int = 3
-    looks_per_step: int = 2
+    looks_per_turn: int = 2
     # A model that only ever asks would never plan. After this many rounds Plan
     # is told to choose for itself and say what it chose (FCC-25). It counts
     # what a *person* was asked; the drawing answering is not being asked.
@@ -552,44 +553,86 @@ class Attempt:
 
 @dataclass
 class ExecuteOutcome:
+    """The code for one Step, and the name its undo entry gets."""
+
     code: str = None
     label: str = "Copilot Step"
+
+
+@dataclass
+class Written:
+    """
+    What one Execute turn produced: the code for every Step it was asked about.
+
+    Keyed by the Step's number in the Plan rather than by position in the
+    reply. A regeneration is asked about a tail, and a reply that leaves a Step
+    out has to leave a hole at that Step — shifting every Step after it onto
+    the wrong code is the silent failure this ticket exists to remove (FCC-95).
+    """
+
+    steps: dict = field(default_factory=dict)
     obsolete: str = None
 
+    def for_step(self, number) -> ExecuteOutcome:
+        return self.steps.get(number) or ExecuteOutcome()
 
-def execute(step, tools, llm, events, attempts, budgets=None, as_described=""):
+
+def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described=""):
     """
-    Write the code for one Step, after asking the Document whatever it needs.
+    Write the code for every Step from `start` to the end of the Plan, in one turn.
 
-    Execute is the phase that hallucinates API, and it was the one phase that
-    could not ask: it replied with code in one shot while `describe_object` and
-    `supported_types` sat in the registry with no caller. It may now spend a
-    bounded number of *looks* on the read-only Tools first (ADR-0009).
+    Execute used to be called once per Step, and that is where the run's cost
+    was: 22 of roughly 29 provider calls for six applied Steps, and all fifteen
+    looks were API discovery rather than geometry — not one returned a
+    coordinate the code then used. Every coordinate was derived at runtime
+    inside the Step's own code, off `Shape.BoundBox`, off `Shape.Faces`, off
+    `base.Length.Value`. That is what makes one call possible: a Step does not
+    need the Document its predecessor will leave behind, because it reads it
+    when it runs (ADR-0021, superseding ADR-0009 in part).
 
-    `attempts` are the failures **for this Step only**. A Step is not told what
-    went wrong elsewhere in the Plan; that is noise it cannot act on.
+    A regeneration is the same call with `start` at the Step that failed. Step
+    N and every Step after it are written again, because the code for N+1 was
+    written assuming objects Step N was going to create — regenerating N alone
+    breaks at the *next* Step's Preflight, silently and one Step late. The
+    Snapshot is read here, so the new code is written against the Document as
+    it actually stands: the Steps before the failure applied, that one did not.
+
+    `attempts` are the failures at the Step `start` names, and only that Step's.
+    A Step that landed carries none of its history forward.
+
+    It may still spend a bounded number of *looks* on the read-only Tools first
+    (ADR-0009, kept). What is gone is the repetition: identical looks used to
+    recur because nothing carried across Steps, and there are no longer
+    separate Steps for them to recur between.
 
     `as_described` is the part Design holds, rendered. Execute stays on text
-    deliberately: it is called per Step and again per look, so the picture would
-    multiply across dozens of calls, and a Step concerns one feature for which
-    the rest of the drawing is noise.
+    deliberately — the whole drawing is noise against code that is written from
+    the Steps and read back off the geometry.
     """
     budgets = budgets or Budgets()
-    request = {"step": step, "document": tools.call("snapshot")}
+    request = {"steps": [{"step": number, "do": prose}
+                         for number, prose in enumerate(steps[start:], start=start + 1)],
+               "document": tools.call("snapshot")}
     if as_described:
         request["what_the_part_is"] = as_described
     if attempts:
         request["your_failed_attempts_at_this_step"] = [
             {"code": a.code, "traceback": a.traceback} for a in attempts
         ]
+        request["what_to_do_now"] = (
+            "Step %d failed and is not in the Document; the Steps before it are, and the "
+            "Document above is how they left it. Write Step %d again, and every Step after "
+            "it — the code you wrote for those assumed objects Step %d never created."
+            % (start + 1, start + 1, start + 1)
+        )
 
     looked = []
-    for remaining in range(budgets.looks_per_step, -1, -1):
+    for remaining in range(budgets.looks_per_turn, -1, -1):
         request["tools_you_may_look_with"] = _lookable(tools) if remaining else []
         if not remaining:
             request["this_is_your_last_turn"] = (
-                "You have no looks left. Reply with code, or with an obsolete reason if the "
-                "Step can no longer be done. A look now is a failed attempt."
+                "You have no looks left. Reply with code for every Step, or with an obsolete "
+                "reason if the Plan can no longer be done. A look now is a failed attempt."
             )
         if looked:
             request["what_you_looked_at"] = looked
@@ -598,15 +641,32 @@ def execute(step, tools, llm, events, attempts, budgets=None, as_described=""):
                      json.dumps(request, indent=2, default=str))
 
         if reply.get("obsolete"):
-            return ExecuteOutcome(obsolete=str(reply["obsolete"]))
-        if reply.get("code"):
-            return ExecuteOutcome(code=str(reply["code"]),
-                                  label=str(reply.get("label") or "Copilot Step"))
+            return Written(obsolete=str(reply["obsolete"]))
+        written = _written(reply.get("steps"), start)
+        if written:
+            return Written(steps=written)
         if not reply.get("look") or not remaining:
             break
         looked.append(_look(tools, reply["look"], events))
 
-    return ExecuteOutcome()
+    return Written()
+
+
+def _written(replied, start):
+    """
+    The reply's Steps, by Step number, dropping anything without code.
+
+    The number the reply carries wins over its position, and the position is
+    only the fallback for a reply that numbered nothing.
+    """
+    written = {}
+    for position, entry in enumerate(replied or (), start=start + 1):
+        if not isinstance(entry, dict) or not entry.get("code"):
+            continue
+        number = entry.get("step")
+        written[number if isinstance(number, int) else position] = ExecuteOutcome(
+            code=str(entry["code"]), label=str(entry.get("label") or "Copilot Step"))
+    return written
 
 
 def _lookable(tools):
@@ -1220,60 +1280,84 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described=""):
-    """One pass over the Plan. Returns why it stopped."""
-    described = {}
+    """
+    One pass over the Plan: written in one call, applied one Step at a time.
 
-    for index, step in enumerate(steps, start=1):
+    The code for every Step arrives together and then lands the way it always
+    did — `apply_step` per Step, one Step one undoable unit, `step_started` and
+    `applied` per Step with what each one created. What changed is where the
+    code came from, not how it lands (ADR-0021).
+
+    An attempt is one writing of a Step, and a failure spends one: the first
+    call is every Step's first attempt, and each regeneration is another
+    attempt at the Step it starts from and a first attempt at every Step after
+    it. `budgets.attempts_per_step` still bounds one Step, the counter resets
+    when a Step lands, and a Step that runs out still hands back to Plan
+    (ADR-0013). The worst case — every Step failing every time — costs one call
+    more than the per-Step loop did, which is the shape this replaced.
+    """
+    if cancelled():
+        raise Stopped()
+    described = {}
+    attempts = []
+    index = 0
+    written = execute(steps, tools, llm, events, budgets=budgets, as_described=as_described)
+
+    while index < len(steps):
         if cancelled():
             raise Stopped()
-        events.emit(STEP_STARTED, index=index, total=len(steps), description=step)
+        step = steps[index]
 
-        attempts = []
-        while True:
-            if cancelled():
-                raise Stopped()
-            outcome = execute(step, tools, llm, events, attempts, budgets, as_described)
+        if written.obsolete:
+            return {"obsolete": written.obsolete, "handback": None,
+                    "description": described,
+                    "tried": [_tried(step, a) for a in attempts]}
 
-            if outcome.obsolete:
-                return {"obsolete": outcome.obsolete, "handback": None,
-                        "description": described,
-                        "tried": [_tried(step, a) for a in attempts]}
+        if not attempts:
+            events.emit(STEP_STARTED, index=index + 1, total=len(steps), description=step)
 
-            if outcome.code:
-                arguments = {"code": outcome.code, "label": outcome.label}
-                events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
-                result = tools.call("apply_step", arguments)
-                events.emit(TOOL_RESULT, name="apply_step", result=result)
-            else:
-                result = {"status": "failed", "traceback":
-                          "You had no looks left and replied with neither code nor an "
-                          "obsolete reason. Write the code for this Step."}
+        outcome = written.for_step(index + 1)
+        if outcome.code:
+            arguments = {"code": outcome.code, "label": outcome.label}
+            events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
+            result = tools.call("apply_step", arguments)
+            events.emit(TOOL_RESULT, name="apply_step", result=result)
+        else:
+            result = {"status": "failed", "traceback":
+                      "You replied with no code for Step %d. Write it, and every Step "
+                      "after it." % (index + 1)}
 
-            if result.get("status") == "applied":
-                progress["applied"] += 1
-                described = result.get("description") or described
-                events.emit(APPLIED, step=index, label=outcome.label,
-                            created=result.get("created", []))
-                break
+        if result.get("status") == "applied":
+            progress["applied"] += 1
+            described = result.get("description") or described
+            events.emit(APPLIED, step=index + 1, label=outcome.label,
+                        created=result.get("created", []))
+            index += 1
+            attempts = []
+            continue
 
-            traceback = result.get("traceback", "The Step failed without saying why.")
-            attempts.append(Attempt(code=outcome.code or "", traceback=traceback))
-            progress["tried"] = [_tried(step, a) for a in attempts]
-            events.emit(PREFLIGHT_FAILED, step=index, attempt=len(attempts),
-                        traceback=traceback)
+        traceback = result.get("traceback", "The Step failed without saying why.")
+        attempts.append(Attempt(code=outcome.code or "", traceback=traceback))
+        progress["tried"] = [_tried(step, a) for a in attempts]
+        events.emit(PREFLIGHT_FAILED, step=index + 1, attempt=len(attempts),
+                    traceback=traceback)
 
-            if len(attempts) >= budgets.attempts_per_step:
-                # Not the end of the run: the Plan is a precise instruction
-                # while it is buildable and advisory the moment it is not, so
-                # this goes back to Plan the way `obsolete` does (ADR-0013).
-                return {
-                    "handback": "Step %d of %d could not be built after %d attempts: %s\n"
-                                "The last traceback was:\n%s"
-                                % (index, len(steps), len(attempts), step,
-                                   attempts[-1].traceback),
-                    "tried": [_tried(step, a) for a in attempts],
-                    "obsolete": None, "description": described,
-                }
+        if len(attempts) >= budgets.attempts_per_step:
+            # Not the end of the run: the Plan is a precise instruction while it
+            # is buildable and advisory the moment it is not, so this goes back
+            # to Plan the way `obsolete` does (ADR-0013).
+            return {
+                "handback": "Step %d of %d could not be built after %d attempts: %s\n"
+                            "The last traceback was:\n%s"
+                            % (index + 1, len(steps), len(attempts), step,
+                               attempts[-1].traceback),
+                "tried": [_tried(step, a) for a in attempts],
+                "obsolete": None, "description": described,
+            }
+
+        if cancelled():
+            raise Stopped()
+        written = execute(steps, tools, llm, events, index, attempts, budgets, as_described)
 
     return {"obsolete": None, "handback": None,
             "description": described, "tried": []}

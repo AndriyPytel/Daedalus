@@ -123,11 +123,15 @@ def scripted_model():
             "Fillet the top edges with a %gmm radius, finding them from the geometry" % RADIUS,
             "Drill a %gmm hole through it on the centreline" % BORE,
         ]}),
-        json.dumps({"code": STEP_SKETCH, "label": "Sketch the square"}),
-        json.dumps({"code": STEP_PAD, "label": "Pad the sketch"}),
-        json.dumps({"code": STEP_PARAMETER, "label": "Change the pad length"}),
-        json.dumps({"code": STEP_FILLET, "label": "Fillet the top edges"}),
-        json.dumps({"code": STEP_HOLE, "label": "Drill the hole"}),
+        # One Execute turn for the whole Plan, which is what the phase now is
+        # (FCC-95). Each Step still lands on its own, through its own apply.
+        json.dumps({"steps": [
+            {"step": 1, "code": STEP_SKETCH, "label": "Sketch the square"},
+            {"step": 2, "code": STEP_PAD, "label": "Pad the sketch"},
+            {"step": 3, "code": STEP_PARAMETER, "label": "Change the pad length"},
+            {"step": 4, "code": STEP_FILLET, "label": "Fillet the top edges"},
+            {"step": 5, "code": STEP_HOLE, "label": "Drill the hole"},
+        ]}),
         json.dumps({"verdict": "pass",
                     "reason": "A %gmm square padded to %gmm, top edges filleted, "
                               "drilled Ø%g." % (SQUARE, PAD_CHANGED, BORE)}),

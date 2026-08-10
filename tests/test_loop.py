@@ -141,8 +141,15 @@ def design_reply(model=None, question="", thinking=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
-def code_reply(code, label="Step", thinking=None):
-    body = json.dumps({"code": code, "label": label})
+def code_reply(*codes, label="Step", thinking=None, first=1):
+    """
+    One Execute turn: the code for every Step it was asked to write (FCC-95).
+
+    `first` is the number of the Step the first code belongs to, which is 1 for
+    the whole Plan and N for a regeneration of Step N and the tail after it.
+    """
+    body = json.dumps({"steps": [{"step": first + offset, "code": code, "label": label}
+                                 for offset, code in enumerate(codes)]})
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
@@ -185,6 +192,9 @@ class FakeTools:
 
     def __init__(self, applies=(), views=None, checks=()):
         self.applies = list(applies)
+        # What is in the Document by now. A Snapshot frozen at empty could not
+        # show that a regeneration is written against the Steps that did apply.
+        self.created = []
         # What the end-of-run capture answers. None means a registry that has
         # no `review_views` at all, which is the same case as headless.
         self.views = views
@@ -199,7 +209,8 @@ class FakeTools:
         @registry.tool("snapshot", "State right now.")
         def snapshot():
             self.calls.append(("snapshot", {}))
-            return dict(SNAPSHOT)
+            return dict(SNAPSHOT, objects=[{"name": name} for name in self.created],
+                        object_count=len(self.created))
 
         @registry.tool("overall_size", "How big the part came out.")
         def overall_size():
@@ -213,6 +224,16 @@ class FakeTools:
             self.calls.append(("supported_types", {"prefix": prefix}))
             return {"types": ["Sketcher::SketchObject"], "count": 1}
 
+        @registry.tool("describe_type", "What a type has, before one exists.", {
+            "type": "object", "properties": {"type_id": {"type": "string"}},
+            "required": ["type_id"],
+        })
+        def describe_type(type_id):
+            self.calls.append(("describe_type", {"type_id": type_id}))
+            return {"type": type_id, "properties": [
+                {"name": "Type", "type": "App::PropertyEnumeration",
+                 "enumeration": ["Length", "ThroughAll", "UpToFirst"]}]}
+
         @registry.tool("apply_step", "Apply one Step.", {
             "type": "object",
             "properties": {"code": {"type": "string"}, "label": {"type": "string"}},
@@ -222,7 +243,10 @@ class FakeTools:
             self.calls.append(("apply_step", {"code": code, "label": label}))
             # A None entry, or running off the end, means "this one worked".
             queued = self.applies.pop(0) if self.applies else None
-            return queued if queued is not None else dict(self.APPLIED)
+            result = queued if queued is not None else dict(self.APPLIED)
+            if result.get("status") == "applied":
+                self.created.extend(result.get("created", ()))
+            return result
 
         @registry.tool("check_assertions", "Run read-only checks against a copy.", {
             "type": "object", "properties": {"code": {"type": "string"}},
@@ -268,6 +292,13 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
 def _system_messages(llm):
     """The system message of every turn, in order, as the provider saw it."""
     return [call[0]["content"] for call in llm.calls]
+
+
+def _turns_of(llm, phase):
+    """Every request body that phase was sent, in order — one entry per provider call."""
+    system = prompt(phase)
+    return [json.loads(call[-1]["content"]) for call in llm.calls
+            if call[0]["content"] == system]
 
 
 @pytest.mark.parametrize("turn, phase",
@@ -732,8 +763,7 @@ def test_a_missing_prompt_file_raises_rather_than_sending_an_empty_prompt():
 def test_plan_produces_an_ordered_list_of_steps_from_the_intent_and_a_snapshot():
     result, events, llm, tools = drive([
         plan_reply("Create a 10mm box", "Fillet the top edge"),
-        code_reply("doc.addObject('Part::Box', 'Box')"),
-        code_reply("pass"),
+        code_reply("doc.addObject('Part::Box', 'Box')", "pass"),
         verdict_reply("pass", "Looks like a 10mm box."),
     ])
 
@@ -758,9 +788,7 @@ def test_plan_is_given_the_intent_and_the_snapshot():
 def test_the_steps_run_in_the_order_the_plan_gave_them():
     _, events, _, tools = drive([
         plan_reply("First", "Second", "Third"),
-        code_reply("first()"),
-        code_reply("second()"),
-        code_reply("third()"),
+        code_reply("first()", "second()", "third()"),
         verdict_reply("pass"),
     ])
 
@@ -810,7 +838,7 @@ def test_looking_is_budgeted_and_the_last_turn_offers_nothing_to_look_with():
         look_reply("supported_types"),
         code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
         verdict_reply("pass"),
-    ], budgets=Budgets(looks_per_step=2))
+    ], budgets=Budgets(looks_per_turn=2))
 
     assert result.ok
     assert len([c for c in tools.calls if c[0] == "supported_types"]) == 2
@@ -833,7 +861,7 @@ def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run()
     """
     result, events, _, _ = drive(
         [plan_reply("Add a sketch")] + [look_reply("supported_types")] * 9,
-        budgets=Budgets(looks_per_step=2, attempts_per_step=3, revisions=0),
+        budgets=Budgets(looks_per_turn=2, attempts_per_step=3, revisions=0),
     )
 
     assert not result.ok
@@ -842,7 +870,7 @@ def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run()
     assert blocked is not None
     assert "Step 1 of 1" in blocked.data["reason"]
     assert len(blocked.data["tried"]) == 3
-    assert all("no looks left" in t["traceback"] for t in blocked.data["tried"])
+    assert all("no code for Step 1" in t["traceback"] for t in blocked.data["tried"])
 
 
 def test_execute_cannot_apply_its_own_code_through_a_look():
@@ -856,6 +884,30 @@ def test_execute_cannot_apply_its_own_code_through_a_look():
 
     assert result.ok
     assert tools.applied_codes() == ["doc.addObject('Part::Box', 'Box')"]
+
+
+def test_execute_can_ask_what_a_type_has_before_any_object_of_it_exists():
+    """
+    `describe_object` needs an object that is already there and
+    `supported_types` reports names only, so the properties of a type nothing
+    has been built from yet were unreachable — which is how `'Through all'`
+    reached `PartDesign::Pocket.Type` and failed Preflight. FCC-95.
+    """
+    result, _, llm, tools = drive([
+        plan_reply("Pocket the plate through"),
+        look_reply("describe_type", type_id="PartDesign::Pocket"),
+        code_reply("pocket.Type = 'ThroughAll'"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert ("describe_type", {"type_id": "PartDesign::Pocket"}) in tools.calls
+
+    offered = _turns_of(llm, "execute")[0]["tools_you_may_look_with"]
+    assert "describe_type" in [described["name"] for described in offered]
+
+    answered = _turns_of(llm, "execute")[1]["what_you_looked_at"][0]
+    assert "ThroughAll" in answered["result"]["properties"][0]["enumeration"]
 
 
 def test_a_look_at_a_tool_that_does_not_exist_is_answered_not_fatal():
@@ -874,37 +926,172 @@ def test_a_look_at_a_tool_that_does_not_exist_is_answered_not_fatal():
 # ── Execute ───────────────────────────────────────────────────────────────────
 
 
-def test_execute_runs_one_step_at_a_time():
+def test_the_whole_plan_is_written_in_one_call():
+    """
+    Execute cost 22 of roughly 29 provider calls in the recorded run, for six
+    applied Steps. It is asked once, with every Step of the Plan in front of it,
+    and answers with the code for all of them. FCC-95.
+    """
+    result, _, llm, tools = drive([
+        plan_reply("First", "Second", "Third"),
+        code_reply("first()", "second()", "third()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert tools.applied_codes() == ["first()", "second()", "third()"]
+
+    turns = _turns_of(llm, "execute")
+    assert len(turns) == 1, "Execute was asked more than once for a Plan that built"
+    assert [s["step"] for s in turns[0]["steps"]] == [1, 2, 3]
+    assert [s["do"] for s in turns[0]["steps"]] == ["First", "Second", "Third"]
+
+
+def test_a_plan_that_needs_no_look_costs_no_look():
+    """A Plan whose Steps are all buildable is one Execute call and nothing else."""
+    _, events, _, tools = drive([
+        plan_reply("First", "Second"),
+        code_reply("first()", "second()"),
+        verdict_reply("pass"),
+    ])
+
+    looked = [e.data["name"] for e in events.of(TOOL_CALL)]
+    assert set(looked) == {"apply_step"}
+    assert not [name for name, _ in tools.calls if name in ("supported_types", "describe_type")]
+
+
+def test_each_step_still_gets_its_own_started_event():
+    """
+    The code arrives in one call; it still lands one Step at a time. The panel
+    is unchanged and so is the undo history. FCC-95.
+    """
     _, events, _, _ = drive([
         plan_reply("First", "Second"),
-        code_reply("first()"),
-        code_reply("second()"),
+        code_reply("first()", "second()"),
         verdict_reply("pass"),
     ])
 
     started = events.of(STEP_STARTED)
     assert [(e.data["index"], e.data["total"]) for e in started] == [(1, 2), (2, 2)]
+    assert [e.data["step"] for e in events.of(APPLIED)] == [1, 2]
 
 
-def test_execute_sees_only_that_steps_own_failed_attempts():
+def test_a_preflight_failure_rewrites_the_failing_step_and_the_whole_tail():
+    """
+    The code for Step N+1 was written assuming objects Step N was going to
+    create. Regenerating Step N alone breaks silently — at the *next* Step's
+    Preflight, not at this one. FCC-95.
+    """
+    result, _, llm, tools = drive(
+        [
+            plan_reply("First", "Second", "Third"),
+            code_reply("first()", "second()", "third()"),
+            code_reply("second_again()", "third_again()", first=2),
+            verdict_reply("pass"),
+        ],
+        applies=[None, failed("AttributeError: no Length on this")],
+    )
+
+    assert result.ok
+    assert tools.applied_codes() == ["first()", "second()", "second_again()", "third_again()"]
+
+    regeneration = _turns_of(llm, "execute")[1]
+    assert [s["step"] for s in regeneration["steps"]] == [2, 3], \
+        "the tail after the failing Step was not written again"
+    assert regeneration["your_failed_attempts_at_this_step"] == [
+        {"code": "second()", "traceback": "AttributeError: no Length on this"}]
+    assert "Step 2" in regeneration["what_to_do_now"]
+
+
+def test_the_regeneration_is_written_against_the_document_as_it_stands():
+    """
+    Not against the Plan's assumption of it: the Steps before the failure are
+    applied and the failing one is not, and the Snapshot is re-read so the code
+    is written over what is actually there. FCC-95.
+    """
+    _, _, llm, tools = drive(
+        [
+            plan_reply("First", "Second"),
+            code_reply("first()", "second()"),
+            code_reply("second_again()", first=2),
+            verdict_reply("pass"),
+        ],
+        applies=[None, failed("boom")],
+    )
+
+    regeneration = _turns_of(llm, "execute")[1]
+    assert regeneration["document"]["objects"] == [{"name": "Box"}]
+    assert regeneration["document"]["object_count"] == 1
+
+    # Re-read rather than remembered: the Snapshot was asked for again.
+    last_failure = max(index for index, (name, args) in enumerate(tools.calls)
+                       if name == "apply_step" and args["code"] == "second()")
+    assert "snapshot" in [name for name, _ in tools.calls[last_failure:]]
+
+
+def test_a_failure_at_every_step_costs_no_more_than_it_costs_today():
+    """
+    The worst case degrades to the old shape and no further: one call up front,
+    then one per failure. Six Steps that each fail once is seven Execute calls,
+    where the per-Step loop spent twelve. FCC-95.
+    """
+    _, _, llm, _ = drive(
+        [
+            plan_reply("First", "Second", "Third"),
+            code_reply("a1()", "b1()", "c1()"),
+            code_reply("a2()", "b2()", "c2()"),
+            code_reply("b3()", "c3()", first=2),
+            code_reply("c4()", first=3),
+            verdict_reply("pass"),
+        ],
+        applies=[failed("a"), None, failed("b"), None, failed("c"), None],
+    )
+
+    assert len(_turns_of(llm, "execute")) == 4
+
+
+def test_a_step_that_applied_carries_none_of_its_failures_into_the_next_writing():
+    """
+    `your_failed_attempts_at_this_step` is the failures of the Step being
+    written again, and a Step that applied has none. What used to keep Step 2
+    from seeing Step 1's traceback was that they were different calls; what
+    keeps it now is that the attempts reset when a Step lands. FCC-95.
+    """
     _, _, llm, _ = drive(
         [
             plan_reply("First", "Second"),
-            code_reply("first_bad()"),
-            code_reply("first_good()"),
-            code_reply("second()"),
+            code_reply("first_bad()", "second()"),
+            code_reply("first_good()", "second()"),
+            code_reply("second_good()", first=2),
             verdict_reply("pass"),
         ],
-        applies=[failed("AttributeError: no Length on this"), None],
+        applies=[failed("AttributeError: no Length on this"), None, failed("a different boom")],
     )
 
-    retry_of_first = json.dumps(llm.calls[2])
-    first_of_second = json.dumps(llm.calls[3])
+    retry_of_first, retry_of_second = _turns_of(llm, "execute")[1:]
 
-    assert "AttributeError: no Length on this" in retry_of_first
-    assert "AttributeError: no Length on this" not in first_of_second, \
+    assert "AttributeError: no Length on this" in json.dumps(retry_of_first)
+    assert "AttributeError: no Length on this" not in json.dumps(retry_of_second), \
         "Step 2 was shown Step 1's failure"
-    assert "first_bad()" not in first_of_second
+    assert retry_of_second["your_failed_attempts_at_this_step"] == [
+        {"code": "second()", "traceback": "a different boom"}]
+
+
+def test_a_step_the_reply_left_out_fails_that_step_and_not_the_run():
+    """A Step with no code is an attempt spent, the same as one that failed."""
+    result, events, _, _ = drive(
+        [
+            plan_reply("First", "Second"),
+            code_reply("first()"),
+            code_reply("second()", first=2),
+            verdict_reply("pass"),
+        ],
+    )
+
+    assert result.ok
+    failure = events.first(PREFLIGHT_FAILED)
+    assert failure.data["step"] == 2
+    assert "no code for Step 2" in failure.data["traceback"]
 
 
 def test_the_reason_a_recompute_failed_reaches_the_next_attempts_request():
@@ -1447,7 +1634,7 @@ def test_the_acceptance_list_rides_with_the_plan_it_belongs_to():
     _, events, _, _ = drive([
         design_reply(A_PART),
         plan_reply("Sketch the profile", "Pad it 10 mm", satisfies=everything(A_PART)),
-        code_reply("sketch()"), code_reply("pad()"),
+        code_reply("sketch()", "pad()"),
         assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -1638,8 +1825,8 @@ def test_the_replan_after_a_handback_reads_the_document_as_it_is():
     _, _, _, tools = drive(
         [
             plan_reply("First", "Impossible"),
-            code_reply("first()"),
-            code_reply("nope1()"), code_reply("nope2()"), code_reply("nope3()"),
+            code_reply("first()", "nope1()"),
+            code_reply("nope2()", first=2), code_reply("nope3()", first=2),
             plan_reply("Possible"),
             code_reply("yes()"),
             verdict_reply("pass"),
@@ -1698,8 +1885,9 @@ def test_the_attempt_budget_is_per_step_not_per_run():
     result, _, _, tools = drive(
         [
             plan_reply("First", "Second"),
-            code_reply("a1()"), code_reply("a2()"),
-            code_reply("b1()"), code_reply("b2()"),
+            code_reply("a1()", "b1()"),
+            code_reply("a2()", "b1()"),
+            code_reply("b2()", first=2),
             verdict_reply("pass"),
         ],
         applies=[failed("a"), None, failed("b"), None],
@@ -1844,9 +2032,13 @@ def test_the_event_stream_of_a_clean_run():
         verdict_reply("pass", "Good.", thinking="The render shows a cube."),
     ])
 
+    # Execute's reasoning stands before the first Step starts rather than
+    # inside it: it is reasoning about the whole Plan, and it is spent before
+    # any Step runs (FCC-95). What a Step still has of its own is
+    # `step_started`, the apply and `applied`.
     assert [e.kind for e in events] == [
         THOUGHT, PLAN,
-        STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, APPLIED,
+        THOUGHT, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
         THOUGHT, REVIEW_VERDICT,
     ]
 
@@ -2060,7 +2252,7 @@ def test_two_loops_can_run_over_different_dependencies_without_touching_each_oth
 def test_a_run_reports_what_it_did():
     result, _, _, _ = drive([
         plan_reply("First", "Second"),
-        code_reply("a()"), code_reply("b()"),
+        code_reply("a()", "b()"),
         verdict_reply("pass", "Both done."),
     ])
 
@@ -2084,7 +2276,7 @@ def test_plan_can_ask_instead_of_planning():
 
     result, events, _, tools = drive(
         [question_reply(MISSING), design_reply(GEAR_AS_TOLD),
-         plan_reply("Sketch the blank", "Pad it"), code_reply("a()"), code_reply("b()"),
+         plan_reply("Sketch the blank", "Pad it"), code_reply("a()", "b()"),
          assertion_reply("assert True"), verdict_reply("pass")],
         intent=GEAR, ask=lambda question: asked.append(question) or "module 2, 20 teeth")
 
@@ -2478,7 +2670,7 @@ def test_the_assertion_phase_runs_after_the_last_step_and_before_review():
     """
     _, events, llm, tools = a_run_over_the_nut(
         planning_the_nut("Sketch it", "Pad it"),
-        code_reply("sketch()"), code_reply("pad()"),
+        code_reply("sketch()", "pad()"),
         assertion_reply(CHECKS),
         verdict_reply("pass"),
     )
@@ -2678,7 +2870,7 @@ def test_the_acceptance_is_the_descriptions_own_entries_and_not_plans_paraphrase
         design_reply(THE_CAVITY),
         plan_reply("Pad the blank", "Cut the central opening",
                    satisfies=everything(THE_CAVITY)),
-        code_reply("pad()"), code_reply("cut()"),
+        code_reply("pad()", "cut()"),
         assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -2686,7 +2878,7 @@ def test_the_acceptance_is_the_descriptions_own_entries_and_not_plans_paraphrase
     assert shown == ["envelope → depth front to rear: 100 mm (read)",
                      "features → central-opening → position → the front face: 20 mm (read)"]
     # And the checks are written from that same list, not from a Plan's version.
-    assert json.loads(llm.calls[4][-1]["content"])["acceptance"] == shown
+    assert _turns_of(llm, "assertion")[0]["acceptance"] == shown
 
 
 def test_a_value_the_user_assumed_is_still_marked_assumed_in_the_acceptance():
@@ -2717,7 +2909,7 @@ def test_a_step_says_at_the_gate_which_part_of_the_part_it_is_for():
                     "satisfies": [CAVITY_DEPTH]},
                    {"do": "Cut the central opening, both faces",
                     "satisfies": [CAVITY_POCKET]}),
-        code_reply("pad()"), code_reply("cut()"),
+        code_reply("pad()", "cut()"),
         assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -2795,7 +2987,7 @@ def test_one_entry_may_feed_several_steps():
                     "satisfies": [CAVITY_DEPTH]},
                    {"do": "Cut the opening 100 mm deep, front to rear",
                     "satisfies": [CAVITY_DEPTH, CAVITY_POCKET]}),
-        code_reply("pad()"), code_reply("cut()"),
+        code_reply("pad()", "cut()"),
         assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 

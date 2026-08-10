@@ -342,6 +342,86 @@ def _along(axis):
     return tuple(value * flip + 0.0 for value in direction)
 
 
+# ── Introspecting a type ──────────────────────────────────────────────────────
+
+_SCRATCH = "CopilotTypeProbe"
+
+
+def _inventoried(obj):
+    """
+    Every property the object has, as the running FreeCAD reports it.
+
+    Shared by `describe_object` and `describe_type` because the question is the
+    same one — what does this thing actually have — and only where the object
+    came from differs. An enumeration is named where there is one: a property
+    whose value is a choice between spellings is the case where knowing the
+    property exists is not enough, and `'Through all'` for `ThroughAll` is a
+    Preflight failure that no property list would have caught.
+    """
+    inventory = []
+    for prop in obj.PropertiesList:
+        entry = {
+            "name": prop,
+            "type": obj.getTypeIdOfProperty(prop),
+            "group": obj.getGroupOfProperty(prop),
+            "documentation": obj.getDocumentationOfProperty(prop),
+        }
+        try:
+            entry["value"] = _readable(getattr(obj, prop))
+        except Exception as exc:
+            entry["value"] = "<unreadable: %s>" % type(exc).__name__
+        spellings = _enumerations(obj, prop)
+        if spellings:
+            entry["enumeration"] = spellings
+        inventory.append(entry)
+    return inventory
+
+
+def _enumerations(obj, prop):
+    """The spellings an enumeration property accepts, or None where it is not one."""
+    try:
+        return obj.getEnumerationsOfProperty(prop) or None
+    except Exception:
+        return None
+
+
+def _described_type(type_id):
+    """
+    What a type has, asked of a throwaway Document and never of the user's.
+
+    Before the first object of a type exists its properties are unreachable:
+    `describe_object` needs the Name of an object that is already there and
+    `supported_types` reports type names and nothing else. So the type is
+    instantiated where nobody can see it, read, and the Document destroyed
+    (FCC-95). Still ADR-0006 — this is the running build answering about
+    itself, not a documentation corpus mixed across versions.
+
+    The active Document is put back by hand. `newDocument` makes its Document
+    the active one and `closeDocument` leaves none active, so a Tool that only
+    asked a question would have left the addon with nowhere to write. The
+    scratch Document is closed by the name FreeCAD gave it, not by the one it
+    was asked for, since FreeCAD uniquifies a name that is already taken.
+    """
+    import FreeCAD
+
+    _load_geometry_modules()
+    was_active = FreeCAD.ActiveDocument
+    scratch = FreeCAD.newDocument(_SCRATCH, hidden=True, temp=True)
+    try:
+        try:
+            obj = scratch.addObject(type_id, "Probe")
+        except Exception as exc:
+            raise ToolError(
+                "This build cannot create %r: %s. Call supported_types to see what it has."
+                % (type_id, exc)
+            )
+        return {"type": obj.TypeId, "properties": _inventoried(obj)}
+    finally:
+        FreeCAD.closeDocument(scratch.Name)
+        if was_active is not None:
+            FreeCAD.setActiveDocument(was_active.Name)
+
+
 def build_registry(document=None, pipeline=None) -> ToolRegistry:
     """
     Build the registry against a Document.
@@ -419,26 +499,12 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
                 )
             obj = by_label[0]
 
-        properties = []
-        for prop in obj.PropertiesList:
-            entry = {
-                "name": prop,
-                "type": obj.getTypeIdOfProperty(prop),
-                "group": obj.getGroupOfProperty(prop),
-                "documentation": obj.getDocumentationOfProperty(prop),
-            }
-            try:
-                entry["value"] = _readable(getattr(obj, prop))
-            except Exception as exc:
-                entry["value"] = "<unreadable: %s>" % type(exc).__name__
-            properties.append(entry)
-
         described = {
             "name": obj.Name,
             "label": obj.Label,
             "type": obj.TypeId,
             "state": list(obj.State or []),
-            "properties": properties,
+            "properties": _inventoried(obj),
         }
 
         shape = getattr(obj, "Shape", None)
@@ -453,6 +519,22 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
                               (box.XMin, box.YMin, box.ZMin, box.XMax, box.YMax, box.ZMax)],
             }
         return described
+
+    @registry.tool(
+        "describe_type",
+        "Every property a type has, before any object of it exists — with the "
+        "spellings this build accepts where a property is a choice between named "
+        "values. Use this to check a type you are about to create; use "
+        "describe_object for one that is already in the Document.",
+        {
+            "type": "object",
+            "properties": {"type_id": {"type": "string",
+                                       "description": "The full type, e.g. 'PartDesign::Pocket'."}},
+            "required": ["type_id"],
+        },
+    )
+    def describe_type(type_id):
+        return _described_type(type_id)
 
     @registry.tool(
         "supported_types",
