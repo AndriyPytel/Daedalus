@@ -72,7 +72,7 @@ def test_the_gate_sees_the_plan_it_is_approving():
     gate = Gate(Approval(APPROVE))
 
     drive([plan_reply("First", "Second", "Third"),
-           code_reply("a()"), code_reply("b()"), code_reply("c()"),
+           code_reply("a()", "b()", "c()"),
            verdict_reply("pass")], gate)
 
     assert gate.shown == [["First", "Second", "Third"]]
@@ -85,7 +85,7 @@ def test_approval_covers_every_step_so_there_is_no_per_step_approval():
     gate = Gate(Approval(APPROVE))
 
     _, _, tools = drive([plan_reply("First", "Second", "Third"),
-                         code_reply("a()"), code_reply("b()"), code_reply("c()"),
+                         code_reply("a()", "b()", "c()"),
                          verdict_reply("pass")], gate)
 
     assert len(gate.shown) == 1, "the user was asked more than once"
@@ -185,7 +185,7 @@ def test_the_user_can_amend_a_plan_before_it_runs():
     result, events, tools = drive([
         plan_reply("Add a Part::Box"),
         plan_reply("Create a Body", "Sketch a 10mm square", "Pad it"),
-        code_reply("a()"), code_reply("b()"), code_reply("c()"),
+        code_reply("a()", "b()", "c()"),
         verdict_reply("pass"),
     ], gate)
 
