@@ -285,3 +285,179 @@ def test_only_an_explicit_yes_is_consent():
         built = pipeline(touching(deleted=["UserBox"]), confirm=lambda kinds: answer)
 
         assert not built.apply("delete()").ok, "%r was taken for consent" % (answer,)
+
+
+# ── the rebuild rule (FCC-97) ─────────────────────────────────────────────────
+#
+# The Owned Object rule asks about the user's objects. It has nothing to say
+# about the assistant's own, and a run asked to amend an existing part cleared
+# every feature the earlier phase of the same Session had built and started
+# again. What it threw away was a finished part the user had watched being
+# made, so the size of the deletion is its own question.
+
+
+class Feature(FakeObject):
+    """A PartDesign feature, which is a piece of the model."""
+
+    def __init__(self, name, type_id="PartDesign::Pad", derives=("PartDesign::Feature",)):
+        super().__init__(name)
+        self.TypeId = type_id
+        self._derives = derives
+
+    def isDerivedFrom(self, kind):
+        return kind in self._derives or kind == self.TypeId
+
+
+class Sketch(Feature):
+    def __init__(self, name):
+        super().__init__(name, "Sketcher::SketchObject", ("Part::Part2DObject",))
+
+
+class Tree(FakeDocument):
+    """A Document that can be asked what an object is, as a real one can."""
+
+    def __init__(self, objects=()):
+        super().__init__()
+        self.Objects = list(objects)
+
+    def getObject(self, name):
+        return next((o for o in self.Objects if o.Name == name), None)
+
+
+def modelled(worker, objects, confirm=None, owned=None, events=None):
+    doc = Tree(objects)
+
+    def transaction(document, code, label):
+        pass
+
+    return ApplyPipeline(document=doc, worker=worker,
+                         dispatch=lambda func, timeout=None: func(),
+                         transaction=transaction, confirm=confirm,
+                         owned=owned, events=events)
+
+
+THE_TREE = [Sketch("SketchOuterProfile"), Feature("PadOuterProfile"),
+            Sketch("SketchBoreLeft"), Feature("PocketBoreLeft", "PartDesign::Pocket"),
+            Sketch("SketchBoreRight"), Feature("PocketBoreRight", "PartDesign::Pocket"),
+            Feature("FilletRedEdges", "PartDesign::Fillet")]
+
+EVERYTHING = [o.Name for o in THE_TREE]
+
+OURS = set(EVERYTHING)
+
+
+def test_clearing_the_feature_tree_asks_even_when_the_assistant_built_it():
+    asked = Asked(answer=True)
+
+    result = modelled(touching(deleted=EVERYTHING), THE_TREE,
+                      confirm=asked, owned=OURS).apply("wipe()")
+
+    assert result.ok
+    assert asked.asks, "the assistant deleted the whole model without asking"
+    assert asked.asks[-1] == {"rebuild": ["FilletRedEdges", "PadOuterProfile",
+                                          "PocketBoreLeft", "PocketBoreRight"]}
+
+
+def test_refusing_the_rebuild_stops_the_step_and_says_edit_instead():
+    result = modelled(touching(deleted=EVERYTHING), THE_TREE,
+                      confirm=Asked(answer=False), owned=OURS).apply("wipe()")
+
+    assert not result.ok
+    assert "rebuild of a model that is already there" in result.traceback
+    assert "Edit the features that exist" in result.traceback
+    assert "add a feature to the end of it" in result.traceback
+
+
+def test_replacing_one_feature_and_its_sketch_is_a_correction_not_a_rebuild():
+    """
+    A Pad padded the wrong way comes out with the sketch it was drawn on. That
+    is one change to the part, and asking about it is asking the user to
+    approve every ordinary correction.
+    """
+    asked = Asked(answer=True)
+
+    result = modelled(touching(deleted=["SketchBoreLeft", "PocketBoreLeft"]), THE_TREE,
+                      confirm=asked, owned=OURS).apply("redo_the_bore()")
+
+    assert result.ok
+    assert asked.asks == []
+
+
+def test_deleting_sketches_alone_is_not_counted_as_a_rebuild():
+    asked = Asked(answer=True)
+
+    modelled(touching(deleted=["SketchBoreLeft", "SketchBoreRight"]), THE_TREE,
+             confirm=asked, owned=OURS).apply("tidy()")
+
+    assert asked.asks == []
+
+
+def test_deleting_the_body_is_a_rebuild_by_itself():
+    """One name from Preflight, every feature in the Document gone with it."""
+    body = Feature("Body", "PartDesign::Body", ("PartDesign::Body",))
+    asked = Asked(answer=False)
+
+    result = modelled(touching(deleted=["Body", "PadOuterProfile"]), THE_TREE + [body],
+                      confirm=asked, owned=OURS | {"Body"}).apply("del_body()")
+
+    assert not result.ok
+    assert asked.asks == [{"rebuild": ["Body", "PadOuterProfile"]}]
+
+
+def test_measurements_and_scratch_objects_do_not_count_towards_a_rebuild():
+    asked = Asked(answer=True)
+    scratch = [FakeObject("Length"), FakeObject("Measurements"),
+               FakeObject("Phase1CutoutReference")]
+    doc = THE_TREE + scratch
+    ours = OURS | {"Length", "Measurements", "Phase1CutoutReference"}
+
+    modelled(touching(deleted=["Length", "Measurements", "Phase1CutoutReference"]), doc,
+             confirm=asked, owned=ours).apply("tidy()")
+
+    assert asked.asks == [], "a Measurement is not a piece of the model"
+
+
+def test_the_rebuild_question_is_on_the_stream_like_every_other():
+    from core.events import ANSWER, QUESTION, EventStream
+
+    events = EventStream()
+    built = modelled(touching(deleted=EVERYTHING), THE_TREE,
+                     confirm=Asked(True), owned=OURS, events=events)
+
+    assert built.apply("wipe()").ok
+
+    assert [event.kind for event in events] == [QUESTION, ANSWER]
+    assert "4 features of the existing model" in events.first(QUESTION).data["text"]
+    assert events.first(ANSWER).data["by"] == "user"
+
+
+def test_a_rebuild_with_nobody_to_ask_is_refused():
+    result = modelled(touching(deleted=EVERYTHING), THE_TREE, owned=OURS).apply("wipe()")
+
+    assert not result.ok, "wiped the model with nobody to ask"
+
+
+def test_both_questions_are_asked_when_a_step_does_both():
+    """The user's own object, and the model — two different reasons to stop."""
+    theirs = Feature("UserPad")
+    asked = Asked(answer=True)
+
+    result = modelled(touching(deleted=EVERYTHING + ["UserPad"]), THE_TREE + [theirs],
+                      confirm=asked, owned=OURS).apply("wipe()")
+
+    assert result.ok
+    assert asked.asks == [{"delete": ["UserPad"]},
+                          {"rebuild": ["FilletRedEdges", "PadOuterProfile", "PocketBoreLeft",
+                                       "PocketBoreRight", "UserPad"]}]
+
+
+def test_refusing_the_first_question_never_reaches_the_second():
+    asked = Asked(answer=False)
+    theirs = Feature("UserPad")
+
+    result = modelled(touching(deleted=EVERYTHING + ["UserPad"]), THE_TREE + [theirs],
+                      confirm=asked, owned=OURS).apply("wipe()")
+
+    assert not result.ok
+    assert asked.asks == [{"delete": ["UserPad"]}]
+    assert "you created rather than I did" in result.traceback

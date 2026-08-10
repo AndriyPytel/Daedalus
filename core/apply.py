@@ -157,6 +157,37 @@ def run_in_transaction(doc, code, label="Copilot Step"):
 # ── the pipeline ──────────────────────────────────────────────────────────────
 
 
+# One deleted feature is the assistant replacing something it just got wrong —
+# a Pad it padded the wrong way, taken out with the sketch it was built on.
+# More than one is it clearing the board.
+_A_CORRECTION = 1
+
+# What the count is of: the steps of the tree a person would name if asked what
+# the part is made of. A Body is one of them because deleting the Body takes
+# every feature in it, and Preflight reports that as a single name.
+_MOVES_MATERIAL = "PartDesign::Feature"
+_A_BODY = "PartDesign::Body"
+
+
+def _is_modelling(obj):
+    """
+    Whether deleting this object takes a piece of the model with it.
+
+    A sketch is deliberately not one. A Pad and the sketch under it are one
+    change to the part and they go together, so counting both would make every
+    single-feature correction look like a rebuild. The feature is the piece;
+    the sketch is how it was drawn.
+    """
+    derived = getattr(obj, "isDerivedFrom", None)
+    if derived is not None:
+        try:
+            return bool(derived(_MOVES_MATERIAL) or derived(_A_BODY))
+        except Exception:
+            pass
+    type_id = getattr(obj, "TypeId", "") or ""
+    return type_id == _A_BODY or type_id.startswith("PartDesign::")
+
+
 def refuse_without_asking(kinds):
     """
     The default answer when nothing is wired up to ask the user.
@@ -244,7 +275,7 @@ class ApplyPipeline:
         if not preflighted.ok:
             return ApplyResult(ok=False, traceback=preflighted.traceback)
 
-        declined = self._not_ours(preflighted)
+        declined = self._refused(preflighted, doc)
         if declined:
             return ApplyResult(ok=False, traceback=declined)
 
@@ -326,6 +357,91 @@ class ApplyPipeline:
         if self.events is not None:
             self.events.emit(kind, **data)
 
+    def _refused(self, preflighted, doc):
+        """
+        The reason this Step may not be applied, or None.
+
+        Two questions, in the order the user would ask them. Is it deleting
+        something that is theirs, and is it deleting the model? They are
+        separate because ownership does not cover the second one: everything
+        the assistant built earlier in the same Session is its own by the
+        Owned Object rule, so wiping a finished part it had built itself was
+        the one deletion nothing asked about (FCC-97).
+        """
+        return self._not_ours(preflighted) or self._a_rebuild(preflighted, doc)
+
+    def _a_rebuild(self, preflighted, doc):
+        """
+        Ask before deleting the feature tree, whoever built it.
+
+        A run asked to *amend* an existing part deleted every Sketch and every
+        PartDesign feature in the Body and started again from an empty one —
+        having first copied seven numbers off the sketches it was about to
+        destroy into a scratch object, which is the shape of a rebuild that
+        knows it is losing something. Nothing stopped it: the assistant had
+        created those features earlier in the same Session, so the Owned Object
+        rule read the Document as its own to clear.
+
+        So ownership is not the question here; how much of the model goes is.
+        Deleting one feature is a correction — the assistant replacing
+        something it just got wrong, which the Plan Gate approved the prose of.
+        Deleting several is a rebuild, and a rebuild is the user's decision to
+        make, because what it throws away is a part they have been watching get
+        built.
+
+        The types come off the live Document rather than off Preflight, which
+        reports names. The objects are still there to ask: this runs before the
+        Step is applied, which is the whole point of it.
+        """
+        modelling = self._modelling(doc, preflighted.deleted)
+        if len(modelling) <= _A_CORRECTION:
+            return None
+
+        wanted = "delete %d features of the existing model: %s" % (
+            len(modelling), ", ".join(modelling))
+        if self._allowed(wanted, {"rebuild": modelling}):
+            return None
+
+        return (
+            "This Step would %s, which is a rebuild of a model that is already there rather "
+            "than a change to it, and that was not approved. Edit the features that exist — "
+            "a sketch's geometry and constraints, a feature's parameters, its Length, its "
+            "Type, its profile — instead of deleting them and building the part again. Where "
+            "a Step genuinely needs something the existing tree cannot express, add a feature "
+            "to the end of it and leave the rest standing." % wanted
+        )
+
+    def _modelling(self, doc, names):
+        """
+        Which of *names* are the model, in the order they are given.
+
+        A PartDesign feature is the part; a sketch, a Measurement, a datum, a
+        spreadsheet or a scratch object is not, and deleting those is not on
+        its own a rebuild. Read through the dispatcher because it touches the
+        Document.
+        """
+        if not names:
+            return []
+
+        def read():
+            found = []
+            for name in sorted(names):
+                obj = doc.getObject(name) if hasattr(doc, "getObject") else None
+                if obj is not None and _is_modelling(obj):
+                    found.append(name)
+            return found
+
+        return self._dispatch(read)
+
+    def _allowed(self, wanted, kinds):
+        """Put one deletion question to the user, and record both halves of it."""
+        self._narrate(QUESTION, text="The assistant wants to " + wanted + ".")
+        allowed = self._confirm(kinds) is True
+        self._narrate(ANSWER, by="user",
+                      text=("You allowed it to " if allowed else "You refused to let it ")
+                           + wanted + ".")
+        return allowed
+
     def _not_ours(self, preflighted):
         """
         Ask before deleting anything the assistant did not create this Session.
@@ -347,18 +463,11 @@ class ApplyPipeline:
         if not deletes:
             return None
 
-        wanted = "delete " + ", ".join(deletes)
-        self._narrate(QUESTION, text="The assistant wants to " + wanted + ".")
-
         # Only an explicit yes is one. Whoever asks releases waiting questions
         # somehow when a run is stopped, and the panel releases this one with
         # the Plan Gate's answer — an object, and so truthy. Read as consent,
         # that let Stop delete the user's own work.
-        allowed = self._confirm({"delete": deletes}) is True
-        self._narrate(ANSWER, by="user",
-                      text=("You allowed it to " if allowed else "You refused to let it ")
-                           + wanted + ".")
-        if allowed:
+        if self._allowed("delete " + ", ".join(deletes), {"delete": deletes}):
             return None
 
         return (
