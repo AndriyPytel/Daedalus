@@ -73,6 +73,17 @@ TRAPS = [
     "a coordinate a feature is placed at. Shape.optimalBoundingBox() is exact where a "
     "box is genuinely what is wanted, and the face that carries the number — "
     "Surface.Center, Surface.Radius, a Vertex Point — is better still.",
+    "App.Vector's methods are not all alike about the vector they are called on: "
+    "multiply, normalize, scale and projectToPlane change it in place and hand it "
+    "back, while add, sub and cross return a new one and leave it alone. So "
+    "v.multiply(k) is not v scaled into a result, it is v scaled, and every later "
+    "reader of v gets the scaled one. A recorded run's acceptance checks wrote "
+    "unit(v) as v.multiply(1.0/n) and projected with zdir.multiply(dot(raw, zdir)): "
+    "the projection zeroed zdir where the dot was 0 and left xdir 51.5 times too "
+    "long, and 28 of 34 entries came back unmet on a part that met them. Where a "
+    "vector is needed again, do the arithmetic with the operators — v * k, a - b, "
+    "a + b — or build a new App.Vector; never call one of the in-place methods on a "
+    "vector something else still reads.",
     "A sketched curve that is not a line, an arc or a circle is a Part.BSplineCurve "
     "through points computed from its own equation — an involute flank, a cam profile, "
     "a cycloid. A chain of Part.LineSegment approximates it, and the approximation is "

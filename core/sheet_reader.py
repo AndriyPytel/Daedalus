@@ -108,6 +108,33 @@ INK = 40
 # every view on the sheet, so left in it joins all of them into one region.
 A_RULE = 0.7
 
+# A strip of untouched paper this many cells wide, inside a region, is a gutter
+# between two rows or columns of the drawing rather than a gap inside one view.
+# Two cells is eight points, and it cannot be wider and still be inside a region
+# at all: the reach above is three cells, so anything the flood fill joined
+# across is at most two cells of blank paper. Measured on the 2023 sheet, where
+# the elevation's last dimension line is at y=376 and the bottom view's first
+# mark at y=388, with the bottom view's own extension lines running out under
+# the elevation to hold the two together.
+GUTTER = 2
+
+# The least a piece of a cut region can measure and still be a view, in points.
+# Measured off the placed pictures on these sheets, which are the view bodies:
+# the smallest of them is the 2025 section at 167 x 95 pt. Without a floor the
+# cutting runs on into the title block, whose rules stand eight points of blank
+# paper apart, and hands back four strips of one line each.
+A_VIEW = 90.0
+
+# How much of a region a placed picture has to hold before the region is part
+# of the view that picture is. Measured on the 2023 sheet, where the top view's
+# body is a picture at (79, 27)-(410, 137) and the flood fill breaks that view
+# in two: the picture holds 49% of the right-hand fragment — the rest of the
+# fragment is the `HEX 11 6` callout printed beside the view — while the
+# isometric's picture reaches over from the far corner and clips 35% of the
+# same fragment. Two fifths is the line between holding a view and clipping
+# one, and a fragment goes to whichever picture holds most of it in any case.
+HELD_BY_A_PICTURE = 0.4
+
 
 @dataclass(frozen=True)
 class Crop:
@@ -221,16 +248,17 @@ def _from_pdf(path, into, legible_px, max_edge):
     dpi = _dpi_for(words, legible_px, notes)
 
     overview = _render(page, page.rect, _fits(page.rect, max_edge), into, "sheet")
-    regions = _regions(_ink_grid(page, words), page.rect)
+    grid = _ink_grid(page, words)
+    regions = _cut_on_gutters(_regions(grid, page.rect), grid)
+    regions = _one_view_one_picture(regions, page.get_image_info())
     regions = _covering(regions, [tuple(w[:4]) for w in words], page.rect)
 
     crops = []
-    for at, rect in enumerate(regions, start=1):
-        # The region is named once and its tiles are named after it. A tile is
-        # not a view — naming each one on its own gave two crops both called
-        # `SECTION A-A`, and a third called `SECTION` because the label's second
-        # word fell the other side of the cut.
-        name = _name_of(rect, words, page.rect, at)
+    # The region is named once and its tiles are named after it. A tile is not
+    # a view — naming each one on its own gave two crops both called
+    # `SECTION A-A`, and a third called `SECTION` because the label's second
+    # word fell the other side of the cut.
+    for name, rect in zip(_names_for(regions, words, page.rect), regions):
         parts = _tiled(rect, dpi, max_edge)
         for part_at, part in enumerate(parts, start=1):
             crops.append(Crop(name=_part_named(name, part_at, len(parts)),
@@ -440,6 +468,131 @@ def _covers(outer, inner):
     return area and (overlap.width * overlap.height) / area > 0.8
 
 
+def _cut_on_gutters(regions, grid):
+    """
+    A region holding several views, cut apart on the sheet's own blank paper.
+
+    The reach that makes the flood fill work is also what makes this necessary.
+    A dimension stands off its view and has to be brought back to it, so the
+    fill reaches three cells; but a dimension is also drawn *between* two views,
+    and on the 2023 sheet the bottom view's 14 and 7 run their extension lines
+    from x=194 out to x=31, straight under the elevation above them. Three cells
+    of reach then chains the elevation to the bottom view and the chain never
+    breaks. What arrived was one region over the whole main drawing, cut 2x2 on
+    nothing but coordinates: a crop of the elevation's 65.5 and 108 lying on the
+    left half of the bottom view, and no crop on the sheet that was one view.
+
+    Cutting on the paper instead of on a grid is the difference between a rule
+    the drawing supplies and a rule imposed on it. Views are laid out in rows
+    and columns — that is what third-angle projection means, and the sheet
+    prints the symbol saying so — so between two of them there is a strip the
+    draughtsman left blank, and the strip runs the whole way across the region.
+    Density is the honest signal and not colour: an extension line crossing a
+    strip is a hairline that inks one cell of it, a view's body inks all of
+    them, and blank is blank on a black drawing exactly as it is on this one.
+
+    The cut is taken at the widest strip and then taken again on both halves,
+    because a sheet is rows of columns and not one or the other.
+    """
+    cut = []
+    for region in regions:
+        cut.extend(_cut(region, grid))
+    return cut
+
+
+def _cut(rect, grid):
+    first_column = max(0, int(rect.x0 / CELL))
+    last_column = min(len(grid[0]), int(rect.x1 / CELL) + 1)
+    first_row = max(0, int(rect.y0 / CELL))
+    last_row = min(len(grid), int(rect.y1 / CELL) + 1)
+    down = [any(grid[row][first_column:last_column])
+            for row in range(first_row, last_row)]
+    across = [any(grid[row][column] for row in range(first_row, last_row))
+              for column in range(first_column, last_column)]
+
+    at = _widest_gutter(down, first_row, rect.y0, rect.y1)
+    if at is not None:
+        return (_cut(pymupdf.Rect(rect.x0, rect.y0, rect.x1, at), grid)
+                + _cut(pymupdf.Rect(rect.x0, at, rect.x1, rect.y1), grid))
+    at = _widest_gutter(across, first_column, rect.x0, rect.x1)
+    if at is not None:
+        return (_cut(pymupdf.Rect(rect.x0, rect.y0, at, rect.y1), grid)
+                + _cut(pymupdf.Rect(at, rect.y0, rect.x1, rect.y1), grid))
+    return [rect]
+
+
+def _widest_gutter(marked, first, low, high):
+    """
+    Where to cut a region, or None when there is nowhere honest to cut it.
+
+    The strip has to be inside the region — a run of blank cells at either end
+    is the padding every region carries — and both sides of the cut have to be
+    big enough to be a view.
+    """
+    best, widest = None, GUTTER - 1
+    start = None
+    for at, inked in enumerate(list(marked) + [True]):
+        if not inked:
+            if start is None:
+                start = at
+            continue
+        if start is not None and start > 0 and at < len(marked):
+            middle = (first + (start + at) / 2.0) * CELL
+            if (at - start > widest and middle - low >= A_VIEW
+                    and high - middle >= A_VIEW):
+                best, widest = middle, at - start
+        start = None
+    return best
+
+
+def _one_view_one_picture(regions, pictures):
+    """
+    The fragments of one view, put back together by the picture the view is.
+
+    A shaded view on these sheets is exported as a placed raster: measured on
+    the 2023 sheet, the file carries six pictures and the sheet carries six
+    views, and the top view's outline is not in the vector content at all. The
+    flood fill therefore had that view's centrelines and one callout to work
+    from and returned it as two fragments sixty-eight points square and a
+    hundred and fifty points apart — each a crop of part of a view, neither of
+    them the view, and a dimension read in one of them belonging to a projection
+    that had no name.
+
+    A placed picture is a view's body, which is the same density argument as
+    everywhere else here and not a colour one; an ordinary black drawing carries
+    its bodies as line work, has no pictures, and comes through this untouched.
+    """
+    boxes = [pymupdf.Rect(*picture["bbox"]) for picture in pictures]
+    held, loose = {}, []
+    for region in regions:
+        at = _the_picture_holding(boxes, region)
+        if at is None:
+            loose.append(region)
+            continue
+        held.setdefault(at, pymupdf.Rect(boxes[at]))
+        held[at] |= region
+    return loose + list(held.values())
+
+
+def _the_picture_holding(boxes, region):
+    """Which picture a region is part of, which is the one holding most of it."""
+    best, most = None, HELD_BY_A_PICTURE
+    for at, box in enumerate(boxes):
+        share = _share_of(box, region)
+        if share > most:
+            best, most = at, share
+    return best
+
+
+def _share_of(box, region):
+    """How much of a region a box holds, as a fraction of the region."""
+    overlap = pymupdf.Rect(region) & box
+    if overlap.is_empty:
+        return 0.0
+    area = region.width * region.height
+    return (overlap.width * overlap.height) / area if area else 0.0
+
+
 def _covering(regions, boxes, page_rect):
     """
     Every printed word inside some region, whatever the flood fill decided.
@@ -489,21 +642,122 @@ def _tiled(rect, dpi, max_edge):
 
 _LABELS = ("SECTION", "DETAIL", "VIEW")
 
+# How far apart two words can be and still be the same printed line, in points.
+# Measured on the 2023 sheet: `SECTION` and `A-A` stand 3.1 pt apart, and the
+# nearest thing sharing that baseline anywhere else on the sheet is a hundred
+# points away. Wide enough for a word space, far short of a second column.
+SAME_LINE = 12.0
 
-def _name_of(rect, words, page_rect, ordinal):
+# How far below its own view a label is printed, in points. Measured on the
+# 2023 sheet: `SECTION A-A` begins 0.3 pt under the bottom edge of the region
+# holding the section it names. Kept short deliberately — the next thing down
+# the sheet from a section is the title block, and a tolerance generous enough
+# to be safe would reach it, which is the misnaming this replaces.
+LABEL_STANDS_UNDER = 24.0
+
+
+def _names_for(regions, words, page_rect):
     """
-    What to call a crop: the sheet's own label where it prints one.
+    What to call each region: the sheet's own label where the sheet prints one.
 
     `SECTION A-A` is what the description's `seen_in` says and what the user
     says back at the Plan Gate, so a crop that carries the label should be
-    called by it rather than by a position somebody has to translate.
+    called by it rather than by a position somebody has to translate. Taking
+    the first `_LABELS` word printed anywhere inside a region gets that wrong
+    twice over on the 2023 sheet, and both ways are expensive: a note naming a
+    view somewhere else names the region it sits in, and a label printed under
+    its view names whatever region it lands in instead.
+
+    So the labels are found first, on the sheet, and then handed to the views
+    they belong to — rather than each region asking what text happens to fall
+    inside it. A region that collects two labels is called by both of them,
+    because a region holding two labelled views is a fact worth saying and
+    naming it after one of them is a lie about where a dimension was read.
     """
-    inside = [str(word[4]).strip() for word in words
-              if pymupdf.Rect(*word[:4]).intersects(rect)]
-    for at, text in enumerate(inside):
-        if text.upper() in _LABELS:
-            return " ".join(inside[at:at + 2])
-    return "%s of the sheet" % _where(rect, page_rect, ordinal)
+    held = [[] for _ in regions]
+    for label, box in _captions(words):
+        at = _the_view_labelled_by(regions, box)
+        if at is not None:
+            held[at].append(label)
+
+    corners = [None if labels else _where(regions[at], page_rect, 0)
+               for at, labels in enumerate(held)]
+    named = []
+    for at, labels in enumerate(held):
+        if labels:
+            named.append(" and ".join(labels))
+            continue
+        sharing = sorted((other for other, corner in enumerate(corners)
+                          if corner == corners[at]),
+                         key=lambda other: (regions[other].y0, regions[other].x0))
+        named.append(_where(regions[at], page_rect,
+                            0 if len(sharing) == 1 else sharing.index(at) + 1))
+    return named
+
+
+def _captions(words):
+    """
+    The labels the draughtsman printed, told apart from the notes that name one.
+
+    A label is set on a line of its own — `SECTION A-A`, `VIEW B`, `DETAIL A`,
+    the label word and its designator and nothing else beside them. Measured on
+    the 2023 sheet, `SEE VIEW B FOR CLARITY OF CUTOUT` is six words on three
+    lines, with `SEE` printed in front of `VIEW` on the first of them, and that
+    word in front is the whole difference between a label and a note. Read as a
+    label it named all four crops of the main drawing after a view 500 pt away
+    on the other edge of the sheet.
+    """
+    lines = {}
+    for word in words:
+        lines.setdefault(round(float(word[1]), 1), []).append(word)
+    for line in lines.values():
+        for run in _runs(sorted(line, key=lambda word: float(word[0]))):
+            if not 1 <= len(run) <= 2:
+                continue
+            if str(run[0][4]).strip().upper() not in _LABELS:
+                continue
+            yield (" ".join(str(word[4]).strip() for word in run),
+                   pymupdf.Rect(min(float(word[0]) for word in run),
+                                min(float(word[1]) for word in run),
+                                max(float(word[2]) for word in run),
+                                max(float(word[3]) for word in run)))
+
+
+def _runs(line):
+    """One baseline as the separate pieces of text set on it."""
+    run = []
+    for word in line:
+        if run and float(word[0]) - float(run[-1][2]) > SAME_LINE:
+            yield run
+            run = []
+        run.append(word)
+    if run:
+        yield run
+
+
+def _the_view_labelled_by(regions, box):
+    """
+    Which region a label is the name of: the view it is printed under.
+
+    A section label is set below its section, and on the 2023 sheet that puts
+    `SECTION A-A` 0.3 pt outside the region holding the section and 8 pt inside
+    the title block's — so the region enclosing the label is the wrong answer,
+    and it is the wrong answer on the drawing that matters. The view above the
+    label is preferred. Enclosure is the fallback, for the sheets that set the
+    label inside the view's own box, which `mm25-p1-1.pdf` does for both of
+    its sections.
+    """
+    middle = (box.x0 + box.x1) / 2
+    above = [at for at, region in enumerate(regions)
+             if region.x0 <= middle <= region.x1
+             and 0 <= box.y0 - region.y1 <= LABEL_STANDS_UNDER]
+    if above:
+        return max(above, key=lambda at: regions[at].y1)
+    inside = [at for at, region in enumerate(regions)
+              if region.intersects(box)]
+    if inside:
+        return max(inside, key=lambda at: regions[at].width * regions[at].height)
+    return None
 
 
 def _part_named(name, at, of):
@@ -511,14 +765,39 @@ def _part_named(name, at, of):
     return name if of == 1 else "%s, part %d of %d" % (name, at, of)
 
 
+# What to call each of several regions in one corner of the sheet, in the order
+# a page is read. Words rather than a number because the name is read aloud at
+# the Plan Gate and cited in a sentence.
+_IN_ORDER = ("the first one", "the second one", "the third one",
+             "the fourth one", "the fifth one", "the sixth one")
+
+
 def _where(rect, page_rect, ordinal):
+    """
+    A region with no label of its own: where it is, and which one it is there.
+
+    A crop's name is what `seen_in` cites, so two crops with one name is a
+    citation that names two pictures and settles nothing. Measured on the 2023
+    sheet: the bottom view lands at (20, 384)-(524, 600) and the notes beside
+    it at (396, 540)-(616, 608), and both of them are the lower centre; on
+    `mm25-p1-1.pdf` the top view and the fillet note are both the upper left.
+
+    The ordinal is the region's place among the ones that share its corner,
+    counted the way a page is read, and nought means it is the only one there
+    and wants no number.
+    """
     middle_x = (rect.x0 + rect.x1) / 2 - page_rect.x0
     middle_y = (rect.y0 + rect.y1) / 2 - page_rect.y0
     down = ("the upper", "the middle", "the lower")[
         min(2, int(3 * middle_y / max(1.0, page_rect.height)))]
     across = ("left", "centre", "right")[
         min(2, int(3 * middle_x / max(1.0, page_rect.width)))]
-    return "%s %s" % (down, across) if across != "centre" else "%s centre" % down
+    corner = "%s %s" % (down, across) if across != "centre" else "%s centre" % down
+    if not ordinal:
+        return "%s of the sheet" % corner
+    return "%s of the sheet, %s" % (corner, _IN_ORDER[ordinal - 1]
+                                    if ordinal <= len(_IN_ORDER)
+                                    else "number %d of them" % ordinal)
 
 
 def _showing(crops, word):

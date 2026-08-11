@@ -4,31 +4,15 @@ ProviderManager – Singleton that derives the live model list from the API keys
 currently stored in SettingsManager.
 
 The list each key really entitles you to is fetched from the provider by
-``core.model_catalog`` on a worker thread; ``config/models.json`` is the
-offline fallback and the registry of which providers exist at all.
+``core.model_catalog`` on a worker thread, which is also the registry of which
+providers exist at all.
 
 Emits ``models_changed`` whenever the key list or a fetched list changes so the
 Chat UI can refresh its model combo without a restart.
 """
-import os
-import json
 from functools import lru_cache
 
 from PySide.QtCore import QObject, QThread, Signal
-
-
-def _load_model_map() -> dict:
-    """Load config/models.json from the addon root."""
-    config_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), "config", "models.json"
-    )
-    try:
-        with open(config_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as exc:
-        import FreeCAD
-        FreeCAD.Console.PrintWarning(f"[FreeCadCopilot] Could not load models.json: {exc}\n")
-        return {}
 
 
 class _FetchThread(QThread):
@@ -61,7 +45,8 @@ class _ProviderManager(QObject):
 
     def __init__(self):
         super().__init__()
-        self._model_map: dict = _load_model_map()
+        from core import model_catalog
+        self._providers: list = model_catalog.providers()
         # ponytail: session-lifetime cache; a disk cache with a TTL is the
         # upgrade path if one fetch per provider per session becomes noticeable.
         self._fetched: dict = {}   # provider -> [{id, display}]
@@ -102,7 +87,7 @@ class _ProviderManager(QObject):
 
     def _ensure_fetched(self, provider: str):
         """Start a background fetch the first time a provider is asked for."""
-        if provider in self._fetched or provider in self._threads or provider not in self._model_map:
+        if provider in self._fetched or provider in self._threads or provider not in self._providers:
             return
         credentials = self._configured(provider)
         if credentials is None:
@@ -149,8 +134,8 @@ class _ProviderManager(QObject):
         )
 
     def _known(self, provider: str) -> list:
-        """Fetched entries when they have landed, models.json otherwise."""
-        return self._fetched.get(provider) or self._model_map.get(provider, [])
+        """What the provider last reported, or nothing until it has."""
+        return self._fetched.get(provider, [])
 
     def _entries_for(self, provider: str) -> list:
         self._ensure_fetched(provider)
@@ -167,7 +152,7 @@ class _ProviderManager(QObject):
         carries the whole map rather than which entry moved — so the check is
         against what each list was fetched with (FCC-53).
         """
-        for provider in list(self._model_map):
+        for provider in list(self._providers):
             if self._fetched_with.get(provider) == self._configured(provider):
                 continue
             self._fetched.pop(provider, None)
@@ -184,7 +169,7 @@ class _ProviderManager(QObject):
         ``id``, ``display``, ``provider``.
         """
         result = []
-        for provider in self._model_map:
+        for provider in self._providers:
             if self._configured(provider) is None:
                 continue
             for m in self._entries_for(provider):
@@ -200,7 +185,7 @@ class _ProviderManager(QObject):
         its own is gone.
         """
         return any(provider not in self._fetched
-                   for provider in self._model_map
+                   for provider in self._providers
                    if self._configured(provider) is not None)
 
     def get_model_entry(self, model_id: str) -> dict | None:
@@ -212,7 +197,7 @@ class _ProviderManager(QObject):
         every fetched-only model is unresolvable between a key change and the
         new list landing, and the run ends in a crash report (FCC-53).
         """
-        for provider in self._model_map:
+        for provider in self._providers:
             # Deliberately does not trigger a fetch: this runs on the Step thread.
             for m in self._known(provider):
                 if m["id"] == model_id:
@@ -225,8 +210,8 @@ class _ProviderManager(QObject):
         return None
 
     def get_all_providers(self) -> list:
-        """Return list of all provider names from models.json."""
-        return list(self._model_map.keys())
+        """Return list of all provider names the addon can reach."""
+        return list(self._providers)
 
     def get_models_for_provider(self, provider: str) -> list:
         """Return [{id, display}] for a given provider."""

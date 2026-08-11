@@ -20,6 +20,12 @@ from core import sheet_reader
 
 SHEET = os.path.join(os.path.dirname(__file__), "modelmania", "mm25-p1-1.pdf")
 RASTER = os.path.join(os.path.dirname(__file__), "modelmania", "mm2025-phase1.png")
+# The 2023 sheet is the one that named the two defects below. It is the same
+# competition and the same draughtsman, and it lays its labels out differently:
+# a note that mentions a view, and a section label printed below the section
+# instead of inside it.
+SHEET_2023 = os.path.join(os.path.dirname(__file__), "modelmania",
+                          "model-mania_-in-person-2023 copy.pdf")
 
 needs_pymupdf = pytest.mark.skipif(not sheet_reader.available(),
                                    reason="PyMuPDF is not installed")
@@ -30,6 +36,26 @@ def sheet(tmp_path_factory):
     if not sheet_reader.available():
         pytest.skip("PyMuPDF is not installed")
     return sheet_reader.read(SHEET, into=str(tmp_path_factory.mktemp("sheet")))
+
+
+@pytest.fixture(scope="module")
+def sheet_2023(tmp_path_factory):
+    if not sheet_reader.available():
+        pytest.skip("PyMuPDF is not installed")
+    return sheet_reader.read(SHEET_2023,
+                             into=str(tmp_path_factory.mktemp("sheet-2023")))
+
+
+def _shown_in(sheet, at):
+    """Which crop the callout printed at these coordinates arrives in."""
+    return [entry.seen_in for entry in sheet.printed if entry.at == at]
+
+
+def _overlapping(sheet, box):
+    """The crops that show any part of a patch of the page, by their view's name."""
+    return {crop.name.split(", part")[0] for crop in sheet.crops
+            if crop.rect[0] < box[2] and box[0] < crop.rect[2]
+            and crop.rect[1] < box[3] and box[1] < crop.rect[3]}
 
 
 # ── the resolution ────────────────────────────────────────────────────────────
@@ -129,6 +155,119 @@ def test_a_view_is_called_what_the_sheet_calls_it(sheet):
 
     assert any(name.startswith("SECTION A-A") for name in named), named
     assert any(name.startswith("SECTION B-B") for name in named), named
+
+
+@needs_pymupdf
+def test_a_note_that_mentions_a_view_does_not_name_the_region_it_sits_in(sheet_2023):
+    """
+    `SEE VIEW B FOR CLARITY OF CUTOUT` is printed at (83, 210) on the 2023
+    sheet, in the middle of the front elevation, and it points at a view over
+    500 pt away on the right-hand edge. Read as a label it named every crop of
+    the main drawing `VIEW B`, and a dimension taken off the bottom view was
+    then recorded as though it had been read in a view the sheet does not have.
+
+    A label is set on a line of its own — `VIEW B`, two words and nothing else.
+    This note is six words on three lines with `SEE` in front of the first of
+    them, and the word in front is the whole difference.
+    """
+    named = _shown_in(sheet_2023, (100.5, 210.5))
+
+    assert named, "the note is printed on the sheet and arrives in no crop"
+    assert not any(name.startswith("VIEW B") for name in named), named
+
+
+@needs_pymupdf
+def test_a_label_below_its_view_names_the_view_and_not_the_block_it_lands_in(sheet_2023):
+    """
+    `SECTION A-A` is printed at (573.8, 520.3) on the 2023 sheet: below the
+    section it labels, whose hatching runs to y=523, and inside the title
+    block, which starts at y=512. Given to whichever region encloses it, the
+    label named the title block — a crop of `MODEL MANIA 2023`, `Phase 1` and
+    `SCALE: 1:1` — while the section arrived as `the lower right of the sheet`.
+
+    On an orthographic sheet the name of a view is the only carrier of
+    direction, so a crop called `SECTION A-A` that is not the section is worse
+    than a crop with no name at all.
+    """
+    called_the_section = [crop for crop in sheet_2023.crops
+                          if crop.name.startswith("SECTION A-A")]
+
+    assert len(called_the_section) == 1, [crop.name for crop in sheet_2023.crops]
+    section = called_the_section[0]
+    assert section.rect[0] < 600 < section.rect[2], section.rect
+    assert section.rect[1] < 460 < section.rect[3], \
+        "the crop called SECTION A-A does not show the section's own hatching"
+    assert "SECTION A-A" not in _shown_in(sheet_2023, (600.3, 591.2)), \
+        "the scale in the title block is being shown as part of the section"
+
+
+# ── where the views are ─────────────────────────────────────────────────────
+
+
+@needs_pymupdf
+def test_no_two_crops_arrive_under_the_same_name(sheet_2023):
+    """
+    A crop's name is what `seen_in` cites and what the user is asked about at
+    the Plan Gate, so two crops with one name is a citation that names two
+    pictures and settles nothing — the same defect as a crop named after the
+    wrong view, arriving by the other door.
+
+    Measured on the 2023 sheet: the bottom view lands at (20, 384)-(524, 600)
+    and the notes beside it at (396, 540)-(616, 608), and by thirds of the page
+    both of them are the lower centre.
+    """
+    named = [crop.name for crop in sheet_2023.crops]
+
+    assert len(set(named)) == len(named), sorted(named)
+
+
+@needs_pymupdf
+def test_two_views_a_gutter_of_paper_apart_are_two_crops(sheet_2023):
+    """
+    The front elevation's last dimension line is at y=376 on the 2023 sheet and
+    the bottom view's first mark is at y=388. Twelve points of blank paper, and
+    the flood fill's reach is twelve points, so the two views chained into one
+    region — helped by the bottom view's 14 and 7, whose extension lines run
+    from x=194 out to x=31, straight under the elevation above them — and the
+    region was then cut on a bare 2x2 grid. One crop held the lower half of the
+    elevation's 65.5 and 108 lying on the left half of the bottom view.
+
+    On an orthographic sheet the view a number is printed in is the only thing
+    that says which face it is measured from, so a crop straddling two views is
+    a crop whose dimensions have no direction. `108` at (236.8, 363.3) is the
+    elevation's overall; `14` at (31.4, 461.7) is the fork slot's width in the
+    bottom view. No crop may show both.
+    """
+    the_elevation = {name.split(", part")[0]
+                     for name in _shown_in(sheet_2023, (236.8, 363.3))}
+    the_bottom_view = {name.split(", part")[0]
+                       for name in _shown_in(sheet_2023, (31.4, 461.7))}
+
+    assert the_elevation and the_bottom_view, "one of the two is shown nowhere"
+    assert not the_elevation & the_bottom_view, \
+        "one crop shows the elevation's 108 and the bottom view's 14: %s" % (
+            the_elevation & the_bottom_view,)
+
+
+@needs_pymupdf
+def test_a_view_whose_body_is_not_in_the_line_work_still_arrives_as_one_view(sheet_2023):
+    """
+    The top view's body is a picture placed at (79, 27)-(410, 137): on these
+    SolidWorks sheets a shaded view is exported as a raster and its outline is
+    not in the file's vector content at all. The flood fill therefore has the
+    centrelines and the `HEX 11 6` callout to go on and nothing else, and it
+    returned the view as two fragments that do not touch — (100, 48)-(168, 116),
+    sixty-eight points square, and (316, 36)-(508, 132) — each of them a crop
+    of part of a view and neither of them the view.
+
+    A picture is one view, so the fragments that lie in one belong to one crop.
+    The patch asked about here is well inside the picture and clear of the
+    elevation's own region, which begins at y=136.
+    """
+    the_top_view = _overlapping(sheet_2023, (100, 40, 400, 130))
+
+    assert len(the_top_view) == 1, \
+        "the top view arrives as %d views: %s" % (len(the_top_view), the_top_view)
 
 
 # ── the leaders ───────────────────────────────────────────────────────────────

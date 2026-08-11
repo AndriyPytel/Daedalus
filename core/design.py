@@ -81,21 +81,24 @@ def merge(held, offered):
     `_acceptance_of` makes about an acceptance list nobody wrote.
 
     What the merge cannot see it is told: `silhouette` reads the grown model for
-    an outside described in words and carried by nothing, and its findings join
-    the same `conflicts` the disagreements go to.
+    an outside described in words and carried by nothing, `direction` for a
+    feature that points somewhere and says nowhere, `pointing` for one placed
+    along the very direction its axis points, and `placement` for one sized in
+    a direction it is placed in nowhere. Their findings join the same
+    `conflicts` the disagreements go to.
     """
     if not isinstance(offered, dict):
-        return _with_silhouette(dict(held or {}))
+        return _with_the_findings(dict(held or {}))
 
     conflicts = []
     merged = _written(dict(held or {}), offered, "", conflicts)
     if conflicts:
         merged["conflicts"] = _appended(merged.get("conflicts"), conflicts)
-    return _with_silhouette(merged)
+    return _with_the_findings(merged)
 
 
-def _with_silhouette(model):
-    found = silhouette(model)
+def _with_the_findings(model):
+    found = silhouette(model) + direction(model) + pointing(model) + placement(model)
     if found:
         model["conflicts"] = _appended(model.get("conflicts"), found)
     return model
@@ -171,6 +174,244 @@ def silhouette(model) -> list:
                 "about": _under("datums", datum.get("name") or "an end face"),
                 "stands": datum.get("is") or datum.get("name"),
                 "was_also_said": "%s: %s" % (where, why),
+            })
+    return found
+
+
+# ── which way a feature points ────────────────────────────────────────────────
+
+# The kinds of feature that have an axis — the direction the hole is drilled,
+# the slot cut, the pocket sunk. Short and literal, because a word that also
+# describes a face would raise this on every model.
+_HAS_AN_AXIS = ("hole", "bore", "slot", "pocket")
+
+# What a feature says when it has no face it starts from. A blind pocket is
+# placed along its own axis by the face it is sunk from and that is the whole
+# of its placement there; one that goes through is placed there by nothing.
+_GOES_THROUGH = "through"
+
+# The kinds that are a curve rather than a hole. What a radius means depends on
+# the plane it is drawn in and on nothing else on the sheet, so these carry a
+# plane the way a hole carries an axis. Fillets and chamfers are deliberately
+# not here: they follow the edges they are put on, and asking them for a plane
+# would raise a finding on every part that has any.
+_LIES_IN_A_PLANE = ("profile", "arc", "rounded", "radiused")
+
+
+def _what_it_is(feature):
+    """The fields that say what a feature is, rather than what is said about it."""
+    return " ".join(str(feature.get(key) or "")
+                    for key in ("id", "kind", "topology")).lower()
+
+
+def direction(model) -> list:
+    """
+    A feature that has a direction and no field carrying it.
+
+    The recorded run (`logs/sessions/8d07a842d06b487d8e7729ecba27ce4b.jsonl`,
+    the 2023 pipe clamp) built both M6 holes parallel to the ring axis out of
+    one sketch in the elevation plane. Both are drawn as circles in the plan, so
+    both axes are perpendicular to that ring axis, and SECTION A-A shows the
+    right-hand one crossing the split it exists to pinch — the built screw
+    missed the split and the part could not clamp.
+
+    Nothing was overruled: `position` is magnitudes keyed by datum and says how
+    far, never which way, and direction survived only as prose in `topology`,
+    which nothing downstream reads. So the right reading had nowhere to be
+    written, the wrong one could not be contradicted, and `entries` could not
+    derive a check for it. The same argument that made the outer contour a
+    feature rather than three numbers: what is not a field is not built and not
+    checked.
+
+    A hole, bore, slot or pocket therefore carries `axis`, and a profile, arc or
+    rounded end carries `plane`, both as ordinary values — named by the datums
+    they are measured against, so the acceptance measures a direction the same
+    way it measures a distance. Where one is missing this is a conflict, in the
+    same list `silhouette` writes to and settled the same way: by the user at
+    the Plan Gate, or by Design filling in the field it left out.
+    """
+    found = []
+    for feature in _features(model):
+        where = _under("features", _named(feature, _IDENTITY) or "a feature")
+        text = _what_it_is(feature)
+        for words, field, missing in (
+                (_HAS_AN_AXIS, "axis", "which way its axis points"),
+                (_LIES_IN_A_PLANE, "plane", "which plane it lies in")):
+            if any(word in text for word in words) and not _filled(feature.get(field)):
+                found.append({
+                    "about": _under(where, field),
+                    "stands": "nothing records %s, so it is built along the base "
+                              "profile like everything else" % missing,
+                    "was_also_said": str(feature.get("kind")
+                                         or feature.get("topology") or ""),
+                })
+    return found
+
+
+# ── a size in a direction, and where it sits in that direction ────────────────
+
+# The directions a part is measured in, in the words the envelope uses for them.
+# A feature carrying one of these carries a size along a direction; a diameter
+# and a radius are not here, because neither is a size along anything named.
+_A_DIRECTION = ("length", "width", "height", "depth", "thickness")
+
+# The two of them a feature spends on itself: a blind pocket's depth is 6 mm
+# down its own axis and a boss's thickness is what it stands proud by, neither
+# of them 6 mm of the part's depth. Measured on the ordinary part they are what
+# every blind hole, pocket and counterbore carries.
+_ALONG_ITS_OWN_AXIS = ("depth", "thickness")
+
+
+def _has_an_axis(feature):
+    return any(word in _what_it_is(feature) for word in _HAS_AN_AXIS)
+
+
+def _which_way_each_datum_fixes(model):
+    """
+    Datum name → the one direction of the part it fixes, where it fixes one.
+
+    A datum that fixes two — an axis runs front to rear and so fixes the length
+    and the height both — is left out: a magnitude keyed by it names no single
+    direction, and neither `placement` nor `pointing` may attribute one.
+    """
+    fixed = {}
+    for datum in (model or {}).get("datums") or ():
+        if not isinstance(datum, dict) or not datum.get("name"):
+            continue
+        fixes = str(datum.get("fixes") or "").lower()
+        named = [way for way in _A_DIRECTION if way in fixes]
+        if len(named) == 1:
+            fixed[str(datum["name"])] = named[0]
+    return fixed
+
+
+def pointing(model) -> list:
+    """
+    A feature located along the very direction its own axis points.
+
+    Nothing is ever positioned along its own axis: a through hole's axis is
+    placed in the two directions across it and in neither of them is it the
+    axis. So a feature whose `axis` runs in the depth and whose `position`
+    names a datum that fixes the depth has one of the two wrong, and which one
+    is not something the description can settle — it is a conflict, in the same
+    list `silhouette` and `direction` write to.
+
+    A blind feature is the exception that proves it: a pocket 6 mm deep starting
+    at the top face *is* placed along its own axis, by the face it is sunk from,
+    and asking otherwise would raise a finding on every blind hole, pocket and
+    counterbore there is. So the finding is for a feature that goes through —
+    which starts at no face at all — and for one placed along its axis twice
+    over, since even a blind one starts only once.
+
+    The recorded run (`logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl`,
+    the 2023 pipe clamp) is both halves of it. Both M6 holes were written
+    `axis: perpendicular to the front face` — along the depth — while carrying
+    `position → the longitudinal centre plane: coincident`, and that datum
+    fixes the depth. The axis was the wrong one: the holes are drawn as circles
+    in the plan and drilled through the height, and built along the depth the
+    right-hand screw missed the split it exists to pinch. The same run wrote
+    the central cutout `axis: parallel to the depth front to rear` and then
+    placed it 6 mm from the front face and 6 mm from the rear face — two
+    positions along its own axis, taken off the `(6)` and `(6)` of SECTION A-A,
+    which are the depths of the counterbore and the hex recess and belong to
+    the mounting hole. Neither could be contradicted: `direction` is satisfied
+    by an `axis` that is merely present, and a wrong direction reads exactly
+    like a right one.
+    """
+    fixed = _which_way_each_datum_fixes(model)
+
+    found = []
+    for feature in _features(model):
+        axis = _one_value(feature["axis"]) if isinstance(feature.get("axis"), dict) \
+            else str(feature.get("axis") or "")
+        if not axis:
+            continue
+        along = {way for way in _A_DIRECTION if way in axis.lower()}
+        along |= {fixed[name] for name in fixed if name in axis}
+        if len(along) != 1:
+            continue
+        way = along.pop()
+
+        placed = [datum for datum in feature.get("position") or ()
+                  if fixed.get(str(datum)) == way]
+        if not placed:
+            continue
+        if _GOES_THROUGH in _what_it_is(feature):
+            why = ("the feature goes through, so it starts at no face and is placed in "
+                   "the %s by nothing — and its axis points along the %s" % (way, way))
+        elif len(placed) > 1:
+            why = ("the feature is placed in the %s %d times over, and its axis points "
+                   "along the %s — it can only start at one face" % (way, len(placed), way))
+        else:
+            continue
+
+        where = _under("features", _named(feature, _IDENTITY) or "a feature")
+        for datum in placed:
+            found.append({
+                "about": _under(_under(where, "position"), datum),
+                "stands": why + ", so either the axis or this position was read off the "
+                                "wrong view",
+                "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
+            })
+    return found
+
+
+def placement(model) -> list:
+    """
+    A feature with a size in a direction and nothing placing it in that one.
+
+    The recorded run (`logs/sessions/8d07a842d06b487d8e7729ecba27ce4b.jsonl`,
+    the 2023 pipe clamp) built the left mounting foot symmetric about the ring
+    axis, `arm_top = 32.5` and `arm_bottom = 17.5`, where the drawing has it
+    flush with the ring's lowest tangent. Nothing was overruled: the description
+    named "the lower tangent plane of the ring" a datum and then never wrote a
+    value against it. The arm carried `height: 15 mm`, a length from the
+    leftmost tangent plane and a length to the cutout's closed end — a size in
+    the height and no position in the height at all. The prompt has said for as
+    long as it has existed that a position nobody named degrades into "somewhere
+    sensible" and that "sensible" defaults to centred, and centred is what came
+    out.
+
+    Silence had to stop being an option, because the Acceptance is derived from
+    the entries the description holds: a placement nobody recorded owns no
+    check, so the run measured 108, 50, 15 and the fillets and went green on a
+    part wrong in the way the drawing is loudest about.
+
+    A direction is attributed through the datum a position is keyed by, which is
+    why a datum says which direction it fixes. A datum that fixes two of them
+    places nothing: the ring axis runs front to rear, so 30 mm from it is 30 mm
+    along the length or 30 mm up the height and the magnitude does not say
+    which — which is exactly how the arm came to look placed and was not.
+
+    A depth or a thickness on a feature that has an axis is not a size in one of
+    the part's directions at all: it runs along the feature's own axis, and
+    whatever placed that axis has already placed it. A blind pocket 6 mm deep,
+    20 mm from the left end face and starting at the top face, is described
+    whole — asked for a position in the depth as well it would raise a finding
+    on every blind hole, pocket and counterbore there is, and a check that fires
+    on work that is right is a check nobody keeps. That turns on the *kind* of
+    feature and not on the field being filled in: a pocket's depth runs along
+    its own axis whether or not anybody wrote the axis down, so the pocket that
+    never said which way is short of its axis and of nothing else, and
+    `direction` is where that is said.
+    """
+    fixed = _which_way_each_datum_fixes(model)
+
+    found = []
+    for feature in _features(model):
+        where = _under("features", _named(feature, _IDENTITY) or "a feature")
+        placed = {fixed.get(str(datum)) for datum in (feature.get("position") or ())}
+        along_its_own = _ALONG_ITS_OWN_AXIS if _has_an_axis(feature) else ()
+        for way in _A_DIRECTION:
+            if not _filled(feature.get(way)) or way in placed or way in along_its_own:
+                continue
+            found.append({
+                "about": _under(_under(where, "position"), "the " + way),
+                "stands": "the feature has a size in the %s and no position in the %s "
+                          "against a datum that fixes it, and a position nobody named "
+                          "defaults to centred" % (way, way),
+                "was_also_said": "%s: %s" % (_under(where, way),
+                                             _one_value(feature[way]) or feature[way]),
             })
     return found
 

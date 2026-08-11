@@ -81,6 +81,7 @@ A_PART = {
     "envelope": {"length": read("80 mm"), "width": read("40 mm"),
                  "thickness": read("10 mm")},
     "features": [{"id": "hole-8-left", "kind": "Ø8 hole", "topology": "through",
+                  "axis": read("perpendicular to the top face"),
                   "position": {"the left end face": read("15 mm")},
                   "seen_in": ["top view"]}],
     "not_defined": [{"what": "the material", "looked_in": ["the title block"]}],
@@ -833,6 +834,25 @@ def test_the_constraint_spellings_are_a_trap_not_prompt_copy():
         with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
             assert "Concentric" not in handle.read(), \
                 "a build-specific spelling was written into %s.md" % phase
+
+
+def test_the_in_place_vector_methods_are_a_trap_and_reach_the_checks():
+    """
+    That `App.Vector.multiply` scales the vector it is called on rather than
+    returning a scaled copy is knowledge about this build, so it lands through
+    TRAPS — and it has to reach Assertion, which is where it was paid for.
+
+    A recorded run's checks projected with `zdir.multiply(dot(raw, zdir))`,
+    which zeroed `zdir` and left `xdir` 51.5 times too long, and reported 28 of
+    34 entries unmet on a part that met them.
+    """
+    vectors = [trap for trap in TRAPS if "in place" in trap and "App.Vector" in trap]
+
+    assert len(vectors) == 1, "the in-place Vector methods are not a single trap"
+    assert "multiply" in vectors[0] and "sub" in vectors[0]
+    assert "{{traps}}" not in prompt("assertion")
+    assert vectors[0] in prompt("assertion"), \
+        "the checks are not told which Vector methods mutate"
 
 
 def test_a_missing_prompt_file_raises_rather_than_sending_an_empty_prompt():
@@ -4024,6 +4044,73 @@ def test_a_standing_approval_still_lets_the_user_be_asked_about_the_result():
 
     assert result.ok
     assert decided, "a standing approval swallowed the question about the result"
+
+
+def test_a_standing_approval_does_not_cover_an_assumption_the_user_has_not_read():
+    """
+    FCC-101, corrected. The value nobody supplied is the one thing a standing
+    approval cannot stand over: it is remade from nothing on every revision,
+    and the Step's prose is the only place it is visible before the geometry.
+
+    The recorded run had an undimensioned cutout approved as a rectangle, come
+    back as a semicircular R15 and then as a circular R30 that swallowed the
+    ring the clamp exists to close, with the user shown only the rectangle.
+    """
+    from core.loop import APPROVE, Approval
+
+    gate = gate_that(Approval(APPROVE, standing=True))
+
+    result, events, _, _ = driven_through(gate, [
+        plan_reply("Cut an assumed rectangular pocket 30 wide"),
+        obsolete_reply("The Document already has it"),
+        plan_reply("Cut an assumed circular R30 pocket"),
+        code_reply("cut()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert len(gate.asked) == 2, "a new assumption went past a standing approval"
+    assert [g.data.get("assumed") for g in events.of(GATE)] == [None, None, 1, None], \
+        "the stream does not say why the Gate was asked at again"
+
+
+def test_a_standing_approval_still_covers_a_revision_that_assumes_nothing_new():
+    """
+    What stands is approval of the path, and FCC-101 is the whole reason it
+    stands: a revision that only rewrites how the part is built asks nobody.
+    """
+    from core.loop import APPROVE, Approval
+
+    gate = gate_that(Approval(APPROVE, standing=True))
+
+    result, _, _, _ = driven_through(gate, [
+        plan_reply("Cut an assumed rectangular pocket 30 wide"),
+        obsolete_reply("The Document already has it"),
+        plan_reply("Cut an assumed rectangular pocket 30 wide"),
+        code_reply("cut()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert len(gate.asked) == 1, "a Plan assuming nothing new was put to the user again"
+
+
+def test_a_plan_that_assumes_nothing_is_covered_by_a_standing_approval():
+    """The ordinary revision — no invented value in it at all — is untouched."""
+    from core.loop import APPROVE, Approval
+
+    gate = gate_that(Approval(APPROVE, standing=True))
+
+    result, _, _, _ = driven_through(gate, [
+        plan_reply("Pad the profile 30 mm"),
+        obsolete_reply("The Document already has it"),
+        plan_reply("Pocket the bore through all"),
+        code_reply("cut()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert len(gate.asked) == 1
 
 
 def test_a_standing_approval_does_not_survive_into_another_run():

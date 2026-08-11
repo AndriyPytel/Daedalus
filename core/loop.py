@@ -201,6 +201,19 @@ class Approval:
     this Plan, and every other question it can put to the user — the user's own
     objects, a rebuild of the model, what to do about a result that did not
     pass — is untouched, because those are the ones that are not about the Plan.
+
+    What it does not cover is a value nobody supplied that the user has not
+    read. A Step states what it assumed precisely so a wrong guess is
+    correctable at the Gate, and the guess is made again from nothing every
+    time the Plan is revised. In a recorded session
+    (`logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl`, the 2023 pipe
+    clamp) an undimensioned cutout was approved as a rectangle, came back from
+    the first revision as a semicircular R15 and from the second as a circular
+    R30 that swallowed the ring the clamp exists to close — and the user saw
+    only the rectangle, because the approval stood. So a revision carrying an
+    assumption they have not read reaches the Gate however standing the
+    approval is: what stands is approval of the path, and an invented value is
+    not the path.
     """
 
     decision: str = APPROVE
@@ -1610,8 +1623,9 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     revisions = _Revisions()
     described = {}
     # Whether the user has said they do not want to be asked about the Plans
-    # this one turns into. A dict because `rewrite` closes over it (FCC-101).
-    standing = {"approval": False}
+    # this one turns into, and which assumed Steps they have read. A dict
+    # because `rewrite` closes over it (FCC-101).
+    standing = {"approval": False, "read": set()}
     # One record of what has been looked at for the whole run, not one per
     # Execute turn and not one per Plan: a regeneration is where the same look
     # used to be taken again (FCC-99).
@@ -1657,8 +1671,14 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         # run and the stream used to say nothing about it: a session read back
         # could not tell a user thinking for half an hour from a provider
         # taking half an hour.
-        events.emit(GATE, steps=len(steps), asked=not standing["approval"])
-        if standing["approval"]:
+        # An approval stands over the path, never over a number nobody supplied:
+        # a Step stating an assumption the user has not read is asked about,
+        # standing approval or not.
+        unread = _assumed(steps) - standing["read"]
+        overruled = {"assumed": len(unread)} if standing["approval"] and unread else {}
+        events.emit(GATE, steps=len(steps),
+                    asked=bool(unread) or not standing["approval"], **overruled)
+        if standing["approval"] and not unread:
             # Not a Gate that was skipped quietly: it is on the stream as an
             # approval, and it says which one it is standing on.
             approval = Approval(APPROVE, standing=True)
@@ -1667,6 +1687,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             approval = gate(list(steps)) or Approval(APPROVE)
             standing["approval"] = bool(getattr(approval, "standing", False)
                                         and approval.decision == APPROVE)
+            if approval.decision == APPROVE:
+                standing["read"] |= _assumed(steps)
             events.emit(GATE, decision=approval.decision,
                         standing=standing["approval"])
 
@@ -1771,6 +1793,26 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         # budget as well — invisibly, until FCC-22.
         planned = rewrite(_Revisions.REJECTED, "Review has rejected the result again.",
                           feedback, outcome["tried"] + [{"review": reason}])
+
+
+# What a Step says when the value it builds came from nobody. Plan is told to
+# write every value it chose into the prose that uses it — "assumed module 2" —
+# so the word is where an invented number is visible, and it is the only place
+# it is visible before the geometry.
+_INVENTED = "assum"
+
+
+def _assumed(steps):
+    """
+    The prose of every Step that states a value nobody supplied.
+
+    Compared as text and whole, rather than by the number inside it: what the
+    Gate shows the user is the sentence, and a sentence they have not read is
+    one they cannot correct — whether it changed the radius, the shape it is a
+    radius of, or the datum it is measured from.
+    """
+    return {" ".join(str(step).split()) for step in steps
+            if _INVENTED in str(step).lower()}
 
 
 def _still_wrong(outstanding):

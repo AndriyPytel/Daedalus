@@ -38,6 +38,20 @@ def test_no_vendor_sdk_imports(module):
     )
 
 
+def test_no_model_list_is_bundled_with_the_addon():
+    """
+    Every model comes from the provider's own /models. `config/models.json` was
+    a second answer to the same question that could only go stale — it still
+    offered GPT-4o and Claude 3 Opus long after both were superseded, and a
+    provider it did not name could not be configured at all.
+    """
+    assert not os.path.exists(os.path.join(ROOT, "config", "models.json"))
+
+    with open(os.path.join(ROOT, "utils", "provider_manager.py"), encoding="utf-8") as handle:
+        source = handle.read()
+    assert "models.json" not in source
+
+
 # ── the window between a key change and the list landing (FCC-53) ─────────────
 
 
@@ -51,8 +65,7 @@ def manager():
     from utils.provider_manager import _ProviderManager
 
     built = _ProviderManager()
-    built._model_map = {"openai": [{"id": "gpt-4o", "display": "GPT-4o"}],
-                        "anthropic": [{"id": "claude-x", "display": "Claude X"}]}
+    built._providers = ["openai", "anthropic"]
     return built
 
 
@@ -71,7 +84,7 @@ def test_a_fetched_only_model_still_resolves_after_a_key_change(manager):
     """
     The reported bug. `_on_keys_changed` cleared `_fetched`; `get_model_entry`
     deliberately does not fetch — it runs on the Step thread — so it fell back
-    to models.json, which cannot know about a model only the provider reports.
+    to a bundled list, which cannot know about a model only the provider reports.
     Changing a key and sending straight away is what a user does after topping
     up a quota. FCC-53.
     """

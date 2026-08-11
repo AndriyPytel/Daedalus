@@ -19,7 +19,8 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
 
     {
       "datums": [
-        {"name": "the left end face", "is": "the flat face at the left of the part"}
+        {"name": "the left end face", "is": "the flat face at the left of the part",
+         "fixes": "the length"}
       ],
       "envelope": {
         "length": {"value": "150 mm", "flag": "read"},
@@ -30,6 +31,7 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
           "id": "bore-left",
           "kind": "Ø40 bore",
           "topology": "through",
+          "axis": {"value": "perpendicular to the top face", "flag": "read"},
           "position": {"the left end face": {"value": "20 mm", "flag": "read"},
                        "the top face": {"value": "25 mm", "flag": "read"}},
           "seen_in": ["front view", "SECTION B-B"]
@@ -43,6 +45,11 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
 
 - **`datums`** are what everything else is measured from, named the way the
   drawing names them. Every position on the part points at one of these names.
+  Each one says in `fixes` which direction it fixes, in the words the envelope
+  uses for that direction — "the length", "the height", "the depth front to
+  rear" — so a magnitude measured from it is a magnitude in a known direction.
+  An axis fixes two of them and says so: 30 mm from the ring axis is 30 mm along
+  the length or 30 mm up the height, and the number does not choose.
 - **`envelope`** is how big the part is overall, one entry per direction, each
   one named in words rather than as X, Y, Z — and named by what it is measured
   **between**: "depth front to rear", "length between the end faces". An
@@ -53,7 +60,10 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   pocket, boss, thread. Each one carries an `id` you choose and never reuse, a
   `kind` in the words an engineer would use, a `topology` (`through`, `blind`,
   `to a depth of …`), a `position` keyed by the datum each value is measured
-  from, and `seen_in`, the views you read it in.
+  from, and `seen_in`, the views you read it in. One that has an axis — a hole,
+  a bore, a slot, a pocket — carries that axis in `axis`, and one that is a
+  profile, an arc or a rounded end carries `plane`; both are values like any
+  other, so a direction is checked on the finished part the way a distance is.
 - **`conflicts`** is where two things that cannot both be true are recorded.
   Record them and leave them there.
 - **`not_defined`** is what nothing supplies, each entry naming the views you
@@ -81,11 +91,14 @@ value.
   you. A value out of `the_answer_you_were_given` is **assumed**; a value off
   the views is **read**.
 
-**A magnitude without its datum is the defect this phase exists for.** A drawing
-that gives 7 from the top face to the near cheek and 14 from the top face to the
-hole axis, over an overall 30, is showing a mounting offset to one side. Read as
-"two cheeks 7 mm wide with 16 mm between them" it becomes a symmetric pair: the
-number was right and the position was invented. A position with no named datum
+**A magnitude without its datum is the defect this phase exists for.** 7 and 14
+over an overall 30 are two different parts: a slot 14 wide with 7 from its
+mid-plane out to each cheek, sitting symmetric on that mid-plane, or a cheek 7
+from one outer face and a hole axis 14 from the same face, offset to one side.
+The numbers are identical in both and neither reading is a misreading of the
+other — what decides is the face each arrow lands on, and the view shows it
+plainly. Write the datum down and the part is settled; leave it out and the
+number survives while the position is invented. A position with no named datum
 degrades into "somewhere sensible", and "sensible" defaults to centred — so the
 error runs both ways, the symmetric comes out offset and the offset comes out
 centred. Where the drawing gives you no datum for a position, that is an entry
@@ -93,6 +106,13 @@ in `not_defined`, not a guess.
 
 Where a feature needs more than one value to be placed, give it a key in
 `position` for each, rather than one line holding both.
+
+**A size in a direction is placed in that direction.** A feature 15 mm tall says
+how tall it is and never how high it sits, so it carries a position in the
+height too, keyed by a datum that fixes the height — the lower tangent plane of
+the ring, the bottom face. A mounting foot given its 15 mm and nothing against
+that plane is the foot that comes out centred on the ring axis instead of flush
+with the bottom of it, and no check the description owns can tell.
 
 ## What you are shown
 
@@ -168,6 +188,29 @@ A value written in parentheses — `(R30)` — is a reference dimension. It is
 repeated from what the other dimensions already fix, so it is `read`, never
 `assumed`.
 
+**A circle drawn in the annotation is not a circle on the part.** A detail
+callout is a balloon — a thin dash-dot circle or rectangle drawn around a
+region, with a leader to "SEE VIEW B", "DETAIL C" — and it is drawn in whatever
+colour and line style the sheet reserves for its notes, alongside the section
+arrows, the view titles and the projection symbol. It has no dimension on it
+and it bounds nothing: it says *where to look*, and the part inside it is drawn
+at size in the view it names. A recorded run
+(`logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl`, the 2023 pipe clamp)
+took the balloon of "SEE VIEW B FOR CLARITY OF CUTOUT" for the cutout, cut a
+circle of that radius through the part, and swallowed the ring the clamp exists
+to close. So before a curve becomes geometry, ask what line drew it: the part
+is drawn in the line style the rest of the part is in, and a leader, an arrow,
+a centre mark, a hatch boundary, a cutting line and a detail balloon are none
+of them contours.
+
+**A pointer is a place to look, not a gap in the sheet.** "SEE VIEW B",
+"DETAIL A", "SECTION A-A" is the draughtsman saying outright that the shape is
+somewhere you have not looked yet, and the view it names is on the sheet. Read
+that view and take the shape off it. A feature the sheet points you at and you
+report as `not_defined` is the one gap you can always close yourself, and it is
+the most expensive to leave open: nobody downstream can invent that shape, and
+what gets built instead is whatever the number nearest to hand happened to be.
+
 **The arrowhead says which feature the callout is of; where the leader starts
 says where its centre is.** Those are two different ends of the same line and
 they land on two different features more often than not — an R drawn from one
@@ -195,12 +238,12 @@ elevation, seen from the front. Both are "rounded ends", both are round in one
 view and square in the other, and no radius on the sheet distinguishes them —
 **the view the arc is drawn in does**, and it is the view you read it in.
 
-So every arc, round and rounded end carries the plane it lies in, named by the
-two datums it is measured between — "the plane of the length and the height",
-"the plane of the length and the depth" — the same way an envelope entry is
-named by what it lies between. `seen_in` is not that plane: it says where you
-looked, and a rounded end drawn in one view is visible as a straight edge in the
-other two.
+So every arc, round and rounded end carries `plane`, the plane it lies in,
+named by the two datums it is measured between — "the plane of the length and
+the height", "the plane of the length and the depth" — the same way an envelope
+entry is named by what it lies between. `seen_in` is not that plane: it says
+where you looked, and a rounded end drawn in one view is visible as a straight
+edge in the other two.
 
 The rest of the model usually settles it for you, and where it does, say so.
 A bore placed 25 mm from the end and 25 mm from the top of a part 50 mm tall is
@@ -289,9 +332,27 @@ curving out.
 
 Read every plane the drawing uses. A feature whose axis is not the normal of the
 base profile — a hole through a side face, a slot in an end — is placed from a
-datum on that face, and where the drawing shows two features perpendicular to
-one another, say so. A model that puts everything in one profile plans a flat
-part, and nothing downstream can tell that a plane went missing.
+datum on that face, and its `axis` says which way it points, named by the datums
+it is measured against and never as X, Y or Z: "perpendicular to the ring axis,
+crossing the split". A hole drawn as a circle in a view is a hole whose axis is
+perpendicular to that view, and that is a reading, so it is written down; where
+the drawing shows two features perpendicular to one another, say so. A model
+that puts everything in one profile plans a flat part, and nothing downstream
+can tell that a plane went missing.
+
+**Nothing is positioned along its own axis, so the axis and the positions check
+each other.** A through hole is placed in the two directions across it and in
+neither of them is it the axis: name the axis along the depth and the positions
+that remain are one in the length and one in the height. So a feature written
+`axis: perpendicular to the front face` and then placed against the centre plane
+of that same depth has one of the two read off the wrong view, and you can see
+which before anybody else does — the view the circle is drawn in decides the
+axis, and the positions follow from it. The same run that built the clamp's M6
+screws parallel to the ring axis had them dimensioned in the plan, drawn round
+in the plan, and carrying a position in the depth they were supposedly drilled
+along; the screw came out perpendicular to the split it exists to pinch. Check
+every feature that has an axis against its own `position` keys, and where they
+disagree, go back to the views rather than writing both down.
 
 ## What is genuinely not defined
 

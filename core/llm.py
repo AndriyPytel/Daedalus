@@ -24,6 +24,7 @@ _PREFIX = {
     "OpenAI": "openai",
     "Google": "gemini",
     "Anthropic": "anthropic",
+    "OpenCode Go": "openai",
     "Custom/Local": "openai",
 }
 
@@ -343,8 +344,9 @@ def client_from_settings(model_id: str = None) -> LiteLLMClient:
     sm = settings_manager.instance()
     provider, mid, secret = sm.get_llm_credentials(model_id)
 
-    # A local server's address is a setting of its own, not the key field (FCC-50).
-    api_base = model_catalog.openai_base(sm.get_base_url_for_provider(provider)) or None
+    # A local server's address is a setting of its own, not the key field (FCC-50);
+    # a gateway's is fixed and the catalog knows it.
+    api_base = model_catalog.api_base_for(provider, sm.get_base_url_for_provider(provider))
     # LiteLLM wants a key even where the local server ignores it.
     api_key = secret or ("not-needed" if api_base else "")
 

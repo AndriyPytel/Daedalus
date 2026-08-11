@@ -13,7 +13,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from core.model_catalog import fetch
+from core.model_catalog import api_base_for, fetch, needs_base_url, providers
 
 RECORDED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recorded")
 
@@ -168,3 +168,58 @@ def test_a_rejected_key_raises_rather_than_returning_a_partial_list(provider_end
 def test_an_unreachable_host_raises():
     with pytest.raises(Exception):
         fetch("OpenAI", "sk-test", base_url="http://127.0.0.1:1")
+
+
+# ── OpenCode Go, a hosted gateway at an address of its own ──────────
+
+
+def test_the_registry_names_every_provider_the_addon_can_reach():
+    """
+    The list of providers is this table now, not a file in the repo: what a key
+    entitles you to is asked of the provider, so the file held nothing but the
+    names and a fallback list that went stale.
+    """
+    assert providers() == ["OpenAI", "Anthropic", "Google", "OpenCode Go", "Custom/Local"]
+
+
+def test_opencode_go_is_configured_by_a_key_alone():
+    """Its address is fixed and published; only a local server's is the user's to type."""
+    assert needs_base_url("OpenCode Go") is False
+
+
+def test_opencode_go_is_reached_at_the_zen_go_endpoint():
+    assert api_base_for("OpenCode Go") == "https://opencode.ai/zen/go/v1"
+
+
+def test_a_vendor_litellm_names_itself_is_given_no_address():
+    """Passing an api_base for OpenAI, Anthropic or Google overrides what LiteLLM knows."""
+    assert api_base_for("OpenAI") is None
+    assert api_base_for("Anthropic") is None
+    assert api_base_for("Google") is None
+
+
+def test_a_local_server_is_still_reached_where_the_user_said():
+    assert api_base_for("Custom/Local", "http://localhost:11434") == "http://localhost:11434/v1"
+    assert api_base_for("Custom/Local", "") is None
+
+
+def test_opencode_go_lists_what_the_gateway_sells(provider_endpoint):
+    server, base = provider_endpoint
+    server.payload = _recorded("opencode_go_models.json")
+
+    models = fetch("OpenCode Go", "sk-zen", base_url=base + "/v1")
+
+    assert models[:2] == [
+        {"id": "minimax-m3", "display": "minimax-m3"},
+        {"id": "minimax-m2.7", "display": "minimax-m2.7"},
+    ]
+    assert {m["id"] for m in models} >= {"kimi-k3", "qwen3.8-max", "grok-4.5"}
+
+
+def test_opencode_go_sends_its_key_as_a_bearer_token(provider_endpoint):
+    server, base = provider_endpoint
+    server.payload = _recorded("opencode_go_models.json")
+
+    fetch("OpenCode Go", "sk-zen", base_url=base + "/v1")
+
+    assert server.last_headers.get("authorization") == "Bearer sk-zen"

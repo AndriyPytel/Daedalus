@@ -362,6 +362,7 @@ def test_cache_control_on_a_message_is_passed_through_untouched():
     ("OpenAI", "gpt-4o", "openai/gpt-4o"),
     ("Google", "gemini-2.5-pro", "gemini/gemini-2.5-pro"),
     ("Custom/Local", "llama3", "openai/llama3"),
+    ("OpenCode Go", "kimi-k3", "openai/kimi-k3"),
     ("Anthropic", "anthropic/claude-3-opus-20240229", "anthropic/claude-3-opus-20240229"),
     ("Something The User Typed", "vendor/model", "vendor/model"),
 ])

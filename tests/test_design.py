@@ -16,6 +16,7 @@ def _read(value):
 DEPTH_OFF_THE_SECTION = {
     "envelope": {"depth front to rear": _read("100 mm")},
     "features": [{"id": "hole-40-left", "kind": "Ø40 hole", "topology": "through",
+                  "axis": _read("front to rear, perpendicular to the front face"),
                   "position": {"the left end face": _read("20 mm")},
                   "seen_in": ["front view"]}],
 }
@@ -62,7 +63,8 @@ def test_an_empty_field_is_filled_and_a_new_feature_is_added():
         "features": [
             {"id": "hole-40-left", "position": {"the top face": _read("25 mm")},
              "seen_in": ["SECTION B-B"]},
-            {"id": "hole-35", "kind": "Ø35 hole", "topology": "through"},
+            {"id": "hole-35", "kind": "Ø35 hole", "topology": "through",
+             "axis": _read("front to rear")},
         ],
     })
 
@@ -135,7 +137,8 @@ THE_CAPSULE_SAID_IN_PASSING = {
     "envelope": {"length between the end faces": _read("150 mm"),
                  "height between the top and bottom faces": _read("50 mm")},
     "features": [
-        {"id": "left-end-bore", "kind": "one of two Ø40 bores", "topology": "through the depth"},
+        {"id": "left-end-bore", "kind": "one of two Ø40 bores", "topology": "through the depth",
+         "axis": _read("front to rear, perpendicular to the top face")},
         {"id": "red-edge-fillets", "kind": "R2 fillets on all edges shown red",
          "radius": _read("2 mm"),
          "edge_selection": [{"what": "the two closed capsule-shaped exterior perimeter loops",
@@ -185,6 +188,7 @@ def test_a_feature_that_carries_the_outer_contour_settles_it():
         "envelope": {"length between the end faces": _read("150 mm")},
         "features": [{"id": "outer-profile",
                       "kind": "obround (capsule) outer profile, 150 x 50, ends R25",
+                      "plane": _read("the plane of the length and the height"),
                       "topology": "extruded 100 mm front to rear"}],
     })
 
@@ -199,13 +203,15 @@ def test_a_part_with_a_boxed_outside_raises_nothing():
 THE_PART_AS_A_BOX = {
     "datums": [{"name": "the left end face", "is": "the planar end face at the left"}],
     "envelope": {"length between the end faces": _read("150 mm")},
-    "features": [{"id": "bore", "kind": "Ø40 bore", "topology": "through"}],
+    "features": [{"id": "bore", "kind": "Ø40 bore", "topology": "through",
+                  "axis": _read("front to rear, perpendicular to the left end face")}],
 }
 
 
 def test_the_finding_does_not_pile_up_over_a_run():
     """Design is called again and again; one reading is one conflict."""
-    grown = merge(merge({}, THE_CAPSULE_SAID_IN_PASSING), {"features": [{"id": "hole-35"}]})
+    grown = merge(merge({}, THE_CAPSULE_SAID_IN_PASSING),
+                  {"features": [{"id": "hole-35", "axis": _read("front to rear")}]})
 
     assert len(grown["conflicts"]) == len(merge({}, THE_CAPSULE_SAID_IN_PASSING)["conflicts"])
 
@@ -215,6 +221,333 @@ def test_a_conflict_the_merge_did_not_see_is_still_not_a_criterion():
     grown = merge({}, THE_CAPSULE_SAID_IN_PASSING)
 
     assert not [entry for entry in entries(grown) if "the shape of the outside" in entry["about"]]
+
+
+# ── which way a feature points ────────────────────────────────────────────────
+
+
+THE_CLAMP_AS_ONE_FLAT_PROFILE = {
+    "datums": [{"name": "the ring axis",
+                "is": "the front-to-rear axis common to the Ø50 ring and the Ø42 bore"}],
+    "envelope": {"length between the leftmost and rightmost tangent planes": _read("108 mm"),
+                 "front-to-rear depth at the sectioned right lug": _read("30 mm")},
+    "features": [
+        {"id": "right-fastener-hole",
+         "kind": "Ø6.6 clearance bore with hexagonal recess for an M6 fastener",
+         "topology": "Ø6.6 through all, with an 11 mm hexagonal recess 6 mm deep",
+         "position": {"the ring axis": _read("70.5 mm")},
+         "seen_in": ["plan view on the sheet", "SECTION A-A"]},
+        {"id": "right-rounded-lug-end", "kind": "rounded outer end of the right-hand lug",
+         "radius": _read("12.5 mm"),
+         "seen_in": ["VIEW B", "plan view on the sheet"]},
+    ],
+}
+
+
+def test_a_hole_that_never_says_which_way_its_axis_points_is_a_conflict():
+    """
+    The recorded run
+    (`logs/sessions/8d07a842d06b487d8e7729ecba27ce4b.jsonl`, the 2023 pipe
+    clamp): both M6 holes are drawn as circles in the plan, so both axes run
+    perpendicular to the ring axis, and SECTION A-A shows the right-hand one
+    crossing the split it is there to pinch. Both were built out of one sketch
+    in the elevation plane, parallel to the ring axis, and the clamp screw no
+    longer crossed the split. Direction had nowhere to be written but
+    `topology`, which nothing reads, so the right reading could not be recorded
+    and the wrong one could not be contradicted.
+    """
+    grown = merge({}, THE_CLAMP_AS_ONE_FLAT_PROFILE)
+    found = [conflict for conflict in grown["conflicts"]
+             if "right-fastener-hole" in conflict["about"]]
+
+    assert found, "a bore was described with no axis and nothing said so"
+    assert "axis" in found[0]["about"]
+    assert "Ø6.6 clearance bore" in found[0]["was_also_said"], \
+        "the conflict does not say what it read the axis off"
+
+
+def test_a_curve_that_never_says_which_plane_it_lies_in_is_a_conflict():
+    """
+    The same defect on the other kind of feature, and the prompt already argues
+    it in words: rounded ends R12.5 in the plan and R12.5 in the elevation are
+    two different parts, and no radius on the sheet decides between them. A
+    radius carried alone is a curve facing whichever way the base profile does.
+    """
+    grown = merge({}, THE_CLAMP_AS_ONE_FLAT_PROFILE)
+    found = [conflict for conflict in grown["conflicts"]
+             if "right-rounded-lug-end" in conflict["about"]]
+
+    assert found and "plane" in found[0]["about"]
+
+
+def test_a_direction_the_feature_carries_settles_it_and_is_checked_like_a_length():
+    """
+    The fix the conflict asks for, and the reason it has to be a field: an axis
+    written as a value is an entry like any other, so the acceptance derived
+    from the description measures the direction the same way it measures the
+    108 mm — named by the datums it is measured against, never as X, Y or Z.
+    """
+    grown = merge({}, {
+        "datums": [{"name": "the ring axis", "is": "the front-to-rear axis of the Ø42 bore"}],
+        "features": [
+            {"id": "right-fastener-hole", "kind": "Ø6.6 clearance bore for an M6 fastener",
+             "axis": _read("perpendicular to the ring axis, crossing the split")},
+            {"id": "right-rounded-lug-end", "kind": "rounded outer end of the right-hand lug",
+             "radius": _read("12.5 mm"),
+             "plane": _read("the plane of the length and the depth front to rear")},
+        ],
+    })
+
+    assert "conflicts" not in grown
+    said = [entry["says"] for entry in entries(grown)]
+    assert "features → right-fastener-hole → axis: perpendicular to the ring axis, " \
+           "crossing the split (read)" in said
+
+
+def test_a_feature_with_neither_an_axis_nor_a_curve_is_left_alone():
+    """A fillet follows the edges it is put on, and a datum points nowhere at
+    all; raising either would be noise at every Gate."""
+    grown = merge({}, {
+        "datums": [{"name": "the left end face", "is": "the flat face at the left"}],
+        "features": [{"id": "red-edge-fillets", "kind": "R2 fillets on all edges shown red",
+                      "radius": _read("2 mm")}],
+    })
+
+    assert "conflicts" not in grown
+
+
+# ── a size in a direction, and where it sits in that direction ────────────────
+
+
+THE_FOOT_NOBODY_PLACED = {
+    "datums": [
+        {"name": "the leftmost tangent plane of the part",
+         "is": "the plane tangent to the rounded left end", "fixes": "the length"},
+        {"name": "the lower tangent plane of the ring",
+         "is": "the horizontal plane tangent to the lowest point of the Ø50 ring",
+         "fixes": "the height"},
+        {"name": "the ring axis",
+         "is": "the front-to-rear axis common to the Ø50 ring and the Ø42 bore",
+         "fixes": "the length and the height"},
+    ],
+    "envelope": {"length between the leftmost and rightmost tangent planes": _read("108 mm"),
+                 "height between the uppermost and lowermost extents": _read("50 mm")},
+    "features": [
+        {"id": "left-arm-and-fork-profile",
+         "kind": "left-hand mounting arm joining tangentially to the outer ring",
+         "plane": _read("the plane of the length and the height"),
+         "height": _read("15 mm"),
+         "position": {"the leftmost tangent plane of the part": _read("0 mm"),
+                      "the ring axis": _read("30 mm")},
+         "seen_in": ["VIEW B", "plan view on the sheet"]},
+    ],
+}
+
+
+def test_a_feature_sized_in_a_direction_and_placed_in_none_of_it_is_a_conflict():
+    """
+    The recorded run
+    (`logs/sessions/8d07a842d06b487d8e7729ecba27ce4b.jsonl`, the 2023 pipe
+    clamp): the drawing puts the left mounting foot flush with the bottom of the
+    ring, 15 mm tall with the ring axis 25 mm above its underside, and it was
+    built `arm_top = 32.5`, `arm_bottom = 17.5` — symmetric about that axis.
+    Nothing was overruled. The description declared "the lower tangent plane of
+    the ring" a datum and never wrote a value against it: the arm carries
+    `height: 15 mm`, a length from the left tangent plane and a length to the
+    cutout's closed end, and no position in the height at all. The prompt
+    predicts the rest — "sensible" defaults to centred — and the acceptance,
+    derived from the entries the description holds, had nothing to measure it
+    with, so a part wrong in the way the drawing is loudest about came back
+    green.
+    """
+    grown = merge({}, THE_FOOT_NOBODY_PLACED)
+    found = [conflict for conflict in grown["conflicts"]
+             if "left-arm-and-fork-profile" in conflict["about"]]
+
+    assert found, "a feature 15 mm tall was placed nowhere in the height and nothing said so"
+    assert found[0]["about"] == \
+        "features → left-arm-and-fork-profile → position → the height"
+    assert "15 mm (read)" in found[0]["was_also_said"], \
+        "the conflict does not say which size went unplaced"
+
+
+def test_a_datum_that_fixes_two_directions_places_the_feature_in_neither():
+    """
+    The one this run turns on. 30 mm from the ring axis is 30 mm along the
+    length or 30 mm up the height and the magnitude does not say which: an axis
+    runs front to rear, so every distance from it lies in the plane of the
+    length and the height. A datum fixing two directions is why the arm looked
+    placed and was not, and naming the lower tangent plane — which fixes one —
+    is what places it.
+    """
+    arm = dict(THE_FOOT_NOBODY_PLACED["features"][0])
+    arm["position"] = dict(arm["position"],
+                           **{"the lower tangent plane of the ring": _read("0 mm")})
+    grown = merge({}, dict(THE_FOOT_NOBODY_PLACED, features=[arm]))
+
+    assert not [conflict for conflict in grown.get("conflicts") or ()
+                if "left-arm-and-fork-profile" in conflict["about"]]
+
+
+def test_a_feature_with_no_size_in_a_direction_is_asked_for_no_position_in_it():
+    """
+    A Ø42 bore is a diameter and a radius is a radius: neither is a size along a
+    named direction, and demanding a position for one would raise a finding on
+    every hole on every part.
+    """
+    grown = merge({}, {
+        "datums": [{"name": "the ring axis", "is": "the axis of the Ø42 bore",
+                    "fixes": "the length and the height"}],
+        "features": [{"id": "ring-bore", "kind": "Ø42 bore through the ring",
+                      "axis": _read("along the ring axis, front to rear"),
+                      "diameter": _read("42 mm")}],
+    })
+
+    assert "conflicts" not in grown
+
+
+A_BLIND_POCKET_DESCRIBED_WHOLE = {
+    "datums": [
+        {"name": "the left end face", "is": "the flat face at the left", "fixes": "the length"},
+        {"name": "the top face", "is": "the flat face at the top", "fixes": "the height"},
+    ],
+    "envelope": {"length": _read("80 mm"), "height": _read("20 mm")},
+    "features": [
+        {"id": "pocket-1", "kind": "Ø20 pocket", "topology": "blind",
+         "axis": _read("perpendicular to the top face"),
+         "depth": _read("6 mm"),
+         "diameter": _read("20 mm"),
+         "position": {"the left end face": _read("20 mm"), "the top face": _read("0 mm")},
+         "seen_in": ["top view", "SECTION A-A"]},
+    ],
+}
+
+
+def test_a_size_running_along_the_features_own_axis_raises_nothing():
+    """
+    A blind pocket 6 mm deep is 6 mm along its own axis, not 6 mm of the part's
+    depth, and the position that placed the axis — 20 mm from the left end face,
+    starting at the top face — has already placed it. Nothing about this pocket
+    is missing, and a check that fires on work that is right is a check nobody
+    keeps: the same argument that leaves fillets out of the plane words. Read
+    the other way, this would raise a finding on every blind hole, pocket and
+    counterbore on every part there is.
+    """
+    assert "conflicts" not in merge({}, A_BLIND_POCKET_DESCRIBED_WHOLE)
+
+
+A_THROUGH_HOLE_PLACED_ALONG_ITS_OWN_AXIS = {
+    "datums": [
+        {"name": "the left end face", "is": "the flat face at the left", "fixes": "the length"},
+        {"name": "the top face", "is": "the flat face at the top", "fixes": "the height"},
+        {"name": "the front face", "is": "one of the two outer faces",
+         "fixes": "the depth front to rear"},
+        {"name": "the longitudinal centre plane", "is": "the plane through the centreline",
+         "fixes": "the depth front to rear"},
+    ],
+    "envelope": {"length": _read("80 mm"), "height": _read("20 mm"),
+                 "depth front to rear": _read("30 mm")},
+    "features": [
+        {"id": "hole-1", "kind": "Ø6.6 mounting hole", "topology": "through all",
+         "axis": _read("perpendicular to the front face"),
+         "position": {"the left end face": _read("14 mm"),
+                      "the top face": _read("7 mm"),
+                      "the longitudinal centre plane": _read("coincident")},
+         "seen_in": ["top view", "bottom view"]},
+    ],
+}
+
+
+def test_a_through_feature_placed_along_its_own_axis_is_a_conflict():
+    """
+    FCC-106, the half of it a present `axis` cannot answer. Nothing is
+    positioned along its own axis, and a feature that goes through starts at no
+    face — so an axis in the depth and a position keyed by a datum that fixes
+    the depth cannot both be right.
+
+    The recorded run (`logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl`,
+    the 2023 pipe clamp) wrote both M6 holes `perpendicular to the front face`
+    while placing them on the centre plane of that same depth. The holes are
+    drawn round in the plan and drilled through the height; built along the
+    depth, the right-hand screw came out perpendicular to the split it exists
+    to pinch. Nothing could contradict it: an `axis` that is merely present
+    satisfies `direction`, and a wrong direction reads like a right one.
+    """
+    conflicts = merge({}, A_THROUGH_HOLE_PLACED_ALONG_ITS_OWN_AXIS)["conflicts"]
+
+    assert [entry["about"] for entry in conflicts] == \
+        ["features → hole-1 → position → the longitudinal centre plane"]
+    assert "goes through" in conflicts[0]["stands"]
+    assert "perpendicular to the front face" in conflicts[0]["was_also_said"]
+
+
+def test_a_feature_placed_twice_over_along_its_own_axis_is_a_conflict():
+    """
+    Even a blind feature starts at one face only. The same run placed the
+    central cutout 6 mm from the front face *and* 6 mm from the rear face, both
+    along the axis it said the cutout runs on — two numbers taken off the `(6)`
+    and `(6)` of SECTION A-A, which are the depths of the counterbore and the
+    hex recess and belong to the mounting hole.
+    """
+    described = {
+        "datums": [
+            {"name": "the front face", "is": "one of the two outer faces",
+             "fixes": "the depth front to rear"},
+            {"name": "the rear face", "is": "the face opposite the front face",
+             "fixes": "the depth front to rear"},
+        ],
+        "features": [
+            {"id": "cutout-1", "kind": "central cutout", "topology": "open at the bottom",
+             "axis": _read("parallel to the depth front to rear"),
+             "position": {"the front face": _read("6 mm"), "the rear face": _read("6 mm")},
+             "seen_in": ["VIEW B"]},
+        ],
+    }
+
+    conflicts = merge({}, described)["conflicts"]
+
+    assert [entry["about"] for entry in conflicts] == \
+        ["features → cutout-1 → position → the front face",
+         "features → cutout-1 → position → the rear face"]
+    assert "can only start at one face" in conflicts[0]["stands"]
+
+
+def test_an_axis_that_names_no_single_direction_places_nothing():
+    """
+    A datum that fixes two directions attributes neither — the ring axis runs
+    front to rear, so a feature measured from it is measured along the length
+    or up the height and the magnitude does not say which. An axis named only
+    against one of those is an axis this cannot reason about, and a check that
+    guesses is worse than no check.
+    """
+    described = {
+        "datums": [{"name": "the ring axis", "is": "the axis through the ring",
+                    "fixes": "the length and the height"}],
+        "features": [
+            {"id": "split-1", "kind": "split slot", "topology": "through",
+             "axis": _read("perpendicular to the ring axis"),
+             "position": {"the ring axis": _read("2 mm below")},
+             "seen_in": ["front view"]},
+        ],
+    }
+
+    assert "conflicts" not in merge({}, described)
+
+
+def test_the_pocket_that_never_said_which_way_is_short_of_its_axis_and_nothing_else():
+    """
+    The same pocket with its axis taken off. A pocket's depth runs along its own
+    axis whether or not anybody wrote that axis down, so the depth is still not
+    a size in one of the part's directions and the one thing missing is the axis.
+    Two findings for one gap is the check saying the same thing twice, and the
+    second of them names something that was never wrong.
+    """
+    pocket = {key: value for key, value in A_BLIND_POCKET_DESCRIBED_WHOLE["features"][0].items()
+              if key != "axis"}
+    grown = merge({}, dict(A_BLIND_POCKET_DESCRIBED_WHOLE, features=[pocket]))
+
+    assert [conflict["about"] for conflict in grown["conflicts"]] == \
+        ["features → pocket-1 → axis"]
 
 
 # ── what the Plan Gate shows ──────────────────────────────────────────────────

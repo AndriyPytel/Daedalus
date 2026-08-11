@@ -246,14 +246,15 @@ default model.
 
 ### Providers
 
-OpenAI, Google, Anthropic, and a Custom/Local OpenAI-compatible endpoint. Access goes
-through LiteLLM (ADR-0004) — one client for every provider, carrying Anthropic thinking
-blocks and `cache_control` through the stream. Keys are yours and stay in your FreeCAD
-settings; there is no service in the middle.
+OpenAI, Google, Anthropic, OpenCode Go, and a Custom/Local OpenAI-compatible endpoint.
+Access goes through LiteLLM (ADR-0004) — one client for every provider, carrying Anthropic
+thinking blocks and `cache_control` through the stream. Keys are yours and stay in your
+FreeCAD settings; there is no service in the middle.
 
-`config/models.json` is the offline fallback and the registry of which providers exist.
-The real list is fetched from the provider on a worker thread as soon as a key is
-present, so the model picker shows what your key actually entitles you to.
+`core/model_catalog.py` is the registry of which providers exist and where each one
+lives. There is no bundled model list: the real one is fetched from the provider on a
+worker thread as soon as a key is present, so the model picker shows what your key
+actually entitles you to and nothing it does not.
 
 ---
 

@@ -12,16 +12,42 @@ import httpx
 
 TIMEOUT = 10.0
 
+# Every provider the addon can reach, and where it lives. This table is the
+# registry: what a key entitles you to is asked of the provider itself, so a
+# bundled model list was a second answer to the same question that could only
+# go stale.
 _DEFAULT_BASE = {
     "OpenAI": "https://api.openai.com/v1",
     "Anthropic": "https://api.anthropic.com/v1",
     "Google": "https://generativelanguage.googleapis.com/v1beta",
+    "OpenCode Go": "https://opencode.ai/zen/go/v1",
+    "Custom/Local": "",
 }
+
+# The ones LiteLLM names itself, and so already knows the address of.
+_VENDORS = ("OpenAI", "Anthropic", "Google")
+
+
+def providers() -> list[str]:
+    """Every provider the Preferences page offers, in the order it offers them."""
+    return list(_DEFAULT_BASE)
 
 
 def needs_base_url(provider: str) -> bool:
     """True for a provider whose address only the user knows — a local server."""
-    return provider not in _DEFAULT_BASE
+    return not _DEFAULT_BASE.get(provider)
+
+
+def api_base_for(provider: str, base_url: str = "") -> str | None:
+    """
+    The address LiteLLM must be told, or None when it knows it already.
+
+    A gateway speaks the OpenAI shape at an address of its own; naming one to
+    LiteLLM as `openai/...` without it would send the request to OpenAI.
+    """
+    if provider in _VENDORS:
+        return None
+    return openai_base(base_url or _DEFAULT_BASE.get(provider, "")) or None
 
 
 def openai_base(base_url: str) -> str:
@@ -48,7 +74,7 @@ def fetch(provider: str, api_key: str, base_url: str | None = None) -> list[dict
     base = (base_url or _DEFAULT_BASE.get(provider, "")).rstrip("/")
     params = {}
 
-    if provider == "OpenAI":
+    if provider in ("OpenAI", "OpenCode Go"):
         headers = {"Authorization": "Bearer %s" % api_key}
     elif provider == "Anthropic":
         headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
