@@ -23,6 +23,10 @@ ALLOWED = {
     # Resolves the Document to hand to the transaction; reached only through
     # the apply_step Tool.
     "core/apply.py",
+    # Builds the reading as a sketch in a document of its own, to ask the solver
+    # whether what was read can be true at once, and closes it in a `finally`.
+    # It reads a drawing and never the user's Document.
+    "core/sketch_check.py",
 }
 
 # Reaching the live Document means one of these.
