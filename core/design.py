@@ -83,9 +83,10 @@ def merge(held, offered):
     What the merge cannot see it is told: `silhouette` reads the grown model for
     an outside described in words and carried by nothing, `direction` for a
     feature that points somewhere and says nowhere, `pointing` for one placed
-    along the very direction its axis points, and `placement` for one sized in
-    a direction it is placed in nowhere. Their findings join the same
-    `conflicts` the disagreements go to.
+    along the very direction its axis points, `placement` for one sized in
+    a direction it is placed in nowhere, and `twice_over` for a cavity nothing
+    places, which is how one cavity comes to be two features. Their findings
+    join the same `conflicts` the disagreements go to.
     """
     if not isinstance(offered, dict):
         return _with_the_findings(dict(held or {}))
@@ -98,7 +99,8 @@ def merge(held, offered):
 
 
 def _with_the_findings(model):
-    found = silhouette(model) + direction(model) + pointing(model) + placement(model)
+    found = (silhouette(model) + direction(model) + pointing(model)
+             + crosswise(model) + placement(model) + twice_over(model))
     if found:
         model["conflicts"] = _appended(model.get("conflicts"), found)
     return model
@@ -119,6 +121,30 @@ _FLAT = ("planar", "flat")
 
 # A datum only contradicts a rounded outside where it is about the ends.
 _AN_END = ("end face", "end faces", "end of", "left end", "right end")
+
+
+# What a conflict is about when the part is described as round on the outside
+# and no feature carries that contour. Named here because the loop has to
+# recognise this one finding: it is the only one that says the *shape* of the
+# part is nobody's, and a run that goes on past it builds a box.
+THE_OUTSIDE = "envelope → the shape of the outside"
+
+
+def nobody_carries_the_outside(model) -> str:
+    """
+    The standing finding that the outside of the part is nobody's, or "".
+
+    A conflict is settled by the user at the Plan Gate — that is what the
+    docstrings here have said since the finding existed, and what the recorded
+    run (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`) showed nobody
+    doing. It stood in `conflicts`, the Gate showed the Steps, the Plan padded
+    the profile it had, and the part came out the wrong shape. So the loop asks
+    this before it plans, and this is the question it asks with.
+    """
+    for finding in silhouette(model):
+        if finding["about"] == THE_OUTSIDE:
+            return str(finding["was_also_said"])
+    return ""
 
 
 def silhouette(model) -> list:
@@ -156,10 +182,17 @@ def silhouette(model) -> list:
         return []
 
     found = []
-    where, why = rounded[0]
+    # Quoted from the description's own words where it has any. The sweep of the
+    # sheet is in `_said` too, and quoted from there the finding reads as the
+    # draughtsman's callout — `R12.5 — plan view (rounded ends)` — rather than
+    # as the reading the user is being asked to settle. The sweep is still the
+    # fallback: a sheet that prints rounded ends the description never wrote
+    # down is the same finding, and it is the evidence there is.
+    where, why = next((entry for entry in rounded
+                       if not entry[0].startswith("printed_on_the_sheet")), rounded[0])
     if not any(_carries_the_outside(feature) for feature in _features(model)):
         found.append({
-            "about": "envelope → the shape of the outside",
+            "about": THE_OUTSIDE,
             "stands": "no feature carries the outer contour, so the outside of the part is "
                       "whatever profile the envelope's overall sizes are padded into",
             "was_also_said": "%s: %s" % (where, why),
@@ -322,8 +355,7 @@ def pointing(model) -> list:
 
     found = []
     for feature in _features(model):
-        axis = _one_value(feature["axis"]) if isinstance(feature.get("axis"), dict) \
-            else str(feature.get("axis") or "")
+        axis = _said_of(feature, "axis")
         if not axis:
             continue
         along = {way for way in _A_DIRECTION if way in axis.lower()}
@@ -354,6 +386,131 @@ def pointing(model) -> list:
                 "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
             })
     return found
+
+
+# The field that says which view a feature was seen round in — the one thing a
+# drawing states about direction outright, and the one an axis can be checked
+# against without knowing what any view is called.
+ROUND_IN = "round_in"
+
+
+def _said_of(feature, field):
+    """
+    What one of a feature's fields says, whatever is recorded beside it.
+
+    `_one_value` gives up on a record carrying anything other than a value and
+    a flag, which is right for rendering — the rest of it would be dropped —
+    and wrong for a check: an `axis` that also says which view it was seen
+    round in is still an axis, and a check that cannot read it is a check that
+    stops working the moment the reading gets better.
+    """
+    said = feature.get(field)
+    if isinstance(said, dict):
+        said = said.get("value")
+    return " ".join(str(said or "").split())
+
+
+def _seen_round_in(feature):
+    """The view a feature is round in, where the reading says which one."""
+    for field in ("axis", "plane"):
+        said = feature.get(field)
+        if isinstance(said, dict) and str(said.get(ROUND_IN) or "").strip():
+            return " ".join(str(said[ROUND_IN]).split())
+    return ""
+
+
+def crosswise(model) -> list:
+    """
+    Two features round in different views, built along the same direction.
+
+    A feature is round in the view its axis points at, and nowhere else: that
+    is what a projection is. So two features round in *different* views have
+    axes that are not parallel, whatever either axis was written as — and the
+    check needs no map of which view is which, which is the reason it can run
+    at all. The reader names views after where they sit on the sheet and the
+    description names them after what they show; nothing reconciles the two,
+    and nothing has to.
+
+    The recorded run (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`,
+    the 2023 pipe clamp) is the whole argument. The Ø42 bore is round in the
+    elevation. Both M6 holes are round in the plan — the reader traces them
+    there, `traced circle Ø6.10 centred (19.40, 19.27)` — and SECTION A-A shows
+    the right-hand one crossing the split it is there to pinch. All three were
+    written `axis: perpendicular to the front face, along the depth front to
+    rear`, all three were built parallel, and the clamp screw ended up running
+    alongside the split instead of through it.
+
+    Its mirror is the same rule read the other way: two features round in one
+    view whose axes were written differently cannot both be right either.
+    """
+    along = {}
+    for feature in _features(model):
+        view, axis = _seen_round_in(feature), _said_of(feature, "axis")
+        if not view or not axis:
+            continue
+        where = _under("features", _named(feature, _IDENTITY) or "a feature")
+        along.setdefault(axis, []).append((view, where))
+
+    found = []
+    for axis, seen in along.items():
+        views = {view for view, _ in seen}
+        if len(views) < 2:
+            continue
+        for view, where in seen:
+            found.append({
+                "about": _under(where, "axis"),
+                "stands": "this is round in %s, and %s is round in %s — two views, so "
+                          "the two axes cross, and these were written the same way"
+                          % (view, _elsewhere(seen, view), _other_than(views, view)),
+                "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
+            })
+
+    for view, seen in _by_view(model).items():
+        axes = {axis for axis, _ in seen}
+        if len(axes) < 2:
+            continue
+        for axis, where in seen:
+            found.append({
+                "about": _under(where, "axis"),
+                "stands": "everything round in %s has the one axis, and the features "
+                          "round in it here were given %d different ones"
+                          % (view, len(axes)),
+                "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
+            })
+    return found
+
+
+def _by_view(model):
+    """Which features are round in each view, with the axis each was given."""
+    seen = {}
+    for feature in _features(model):
+        view, axis = _seen_round_in(feature), _said_of(feature, "axis")
+        if view and axis:
+            seen.setdefault(view, []).append(
+                (axis, _under("features", _named(feature, _IDENTITY) or "a feature")))
+    return seen
+
+
+def _elsewhere(seen, view):
+    """The first entry of *seen* that is not in *view*, named."""
+    return next((where.split(UNDER)[-1] for at, where in seen if at != view), "another")
+
+
+def _other_than(views, view):
+    return next((at for at in sorted(views) if at != view), "another view")
+
+
+def read_off_the_wrong_view(model) -> list:
+    """
+    Every finding that says a direction on this part cannot be right.
+
+    The two of them are one question asked from either side: `pointing` catches
+    a feature placed along the very direction it points, `crosswise` catches two
+    features round in two views pointing the same way. Both mean the same thing
+    — a view was read for something it does not show — and neither can be
+    settled by anything downstream, which is why the loop stops on them (FCC-110).
+    """
+    return pointing(model) + crosswise(model)
 
 
 def placement(model) -> list:
@@ -414,6 +571,66 @@ def placement(model) -> list:
                                              _one_value(feature[way]) or feature[way]),
             })
     return found
+
+
+# ── one cavity, one feature ───────────────────────────────────────────────────
+
+# The words a description uses for a hole in the material that is not a drilled
+# one. A cavity is what a detail view is usually drawn for, and a detail view is
+# the second picture a cavity gets described from.
+_A_CAVITY = ("cutout", "cut-out", "cut out", "slot", "pocket", "recess",
+             "relief", "notch", "opening", "scallop")
+
+
+def twice_over(model) -> list:
+    """
+    A cavity nothing places, which is how one cavity becomes two features.
+
+    The recorded run (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`,
+    the 2023 pipe clamp) described the one cavity in the web twice: `slot-arm`,
+    30 mm long, off the plan, and `cutout-web`, "profile as drawn in VIEW B",
+    off the detail the sheet points at with `SEE VIEW B FOR CLARITY OF CUTOUT`.
+    One physical cavity, two features, and the second carried `position: {}` —
+    nothing at all. Plan then built both: a slot 8 mm wide it invented, and an
+    R10 circle it invented, and the circle cut the Body into two solids and
+    ended the run.
+
+    The finding is the empty `position`, because that is what is checkable and
+    what is wrong on its own: a cavity nobody placed is built wherever the
+    builder likes. `placement` cannot reach it — that one asks whether a size in
+    a direction has a position in that direction, and this feature had no sizes
+    either. Where another cavity is drawn in a view this one is also drawn in,
+    the finding says so as well: two cavities sharing a view, one of them
+    placed by nothing, is the shape this defect arrives in.
+    """
+    cavities = [feature for feature in _features(model)
+                if any(word in _what_it_is(feature) for word in _A_CAVITY)]
+
+    found = []
+    for feature in cavities:
+        if _filled(feature.get("position")):
+            continue
+        where = _under("features", _named(feature, _IDENTITY) or "a feature")
+        stands = ("nothing places this cavity — it has no position against any datum, so "
+                  "it is built wherever the profile happens to allow")
+        alongside = [_named(other, _IDENTITY) for other in cavities
+                     if other is not feature and _drawn_in_common(feature, other)]
+        if alongside:
+            stands += (", and %s is a cavity drawn in a view this one is drawn in — one "
+                       "cavity described twice is two cavities built"
+                       % ", ".join(name for name in alongside if name))
+        found.append({
+            "about": _under(where, "position"),
+            "stands": stands,
+            "was_also_said": str(feature.get("kind") or feature.get("topology") or ""),
+        })
+    return found
+
+
+def _drawn_in_common(one, other):
+    """Whether two features name a view between them that both were read in."""
+    return bool({str(view) for view in one.get("seen_in") or ()}
+                & {str(view) for view in other.get("seen_in") or ()})
 
 
 def _features(model):

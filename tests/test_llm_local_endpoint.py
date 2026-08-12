@@ -64,3 +64,18 @@ def test_a_local_openai_compatible_endpoint_streams(local_endpoint):
     assert reply.text == "A 10mm box."
     assert server.last_body["stream"] is True
     assert server.last_body["messages"] == [{"role": "user", "content": "Describe it."}]
+
+
+def test_how_hard_to_think_reaches_a_model_litellm_has_no_entry_for(local_endpoint):
+    """
+    The gateway model kimi-k3 runs on is one LiteLLM has never heard of, and it
+    drops unknown params rather than sending them. What the server received is
+    the only proof the effort was not dropped on the way out (FCC-108).
+    """
+    server, base = local_endpoint
+    client = LiteLLMClient(model="openai/local-model", api_key="not-needed", api_base=base)
+
+    collect(client.stream([{"role": "user", "content": "Describe it."}]))
+
+    assert server.last_body["reasoning_effort"] == "low"
+    assert "allowed_openai_params" not in server.last_body, "our plumbing leaked into the request"

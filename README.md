@@ -112,6 +112,58 @@ its arrowhead lands on the wall of the central pocket — two features at two en
 line, which is exactly the case the description prompt warns about and exactly the one
 that is hopeless to see. What the far end *is* remains the reading.
 
+**The line work goes out too, in millimetres of the part** — every line and arc of each
+view, chained out of the file and fitted, x to the right of the view's left edge and y up
+from its bottom. A drawing says most of what it says in lines, and none of that was ever
+handed over. Measured on the 2023 pipe clamp: the run asked the user how high the arm
+meets the ring, was told the views do not answer, and assumed it centred on the ring axis
+— while the elevation carries the ring's centre line at y=48.01 mm and the arm's own two
+faces at 37.99 and 23.00, an arm 10.0 mm *below* the axis and flush with the ring's lowest
+tangent. The part was built 17.5 mm out on a distance the file gives to a hundredth of a
+millimetre. A centre line is an axis, a dimension's extension lines are drawn from the
+faces that dimension measures, and a contour is the part; where a view's body was placed
+as a raster the outline is not in the line work and that view says so.
+
+**A value the geometry settles is `derived`, not a guess and not a gap.** The description
+had two flags — `read` for what is printed and `assumed` for what a person supplied — so
+anything the views fix without a callout, a tangency, a silhouette drawn to scale, had
+nowhere legal to live and fell into `not_defined`, out to the user, and back as an
+invention. `derived` carries `from`, one line naming what fixes it, and the coverage check
+counts it exactly as it counts a printed number.
+
+**Every page is read, and the pages are not one sheet.** The reader took page 1 and said
+so in a note. Page 2 of the 2023 file prints `6.6 X 8.0 THRU ALL` — the width of the slot
+the recorded run asked the user about and then invented as 8 mm. But page 2 of these
+drawings is a *revision* of the same part, so the sheet now says so in the file's own
+words, and the description is the part as the last page leaves it: what the later page
+changes comes from it, what it does not mention stays as the earlier page had it, and a
+disagreement between them is a conflict for the Gate. A description holding both
+revisions at once — a Phase 1 hole and the Phase 2 slot that replaces it — is a part no
+Plan can build.
+
+**A revision of a Plan is shown the Plan it is revising.** The coverage check told Plan
+which entries nothing built and then asked for a new Plan without showing it the one it
+had written, so Plan answered the complaint alone: two Steps for the two entries named,
+dropping the nine that covered the rest. Told those nine were now unplanned, it wrote them
+again and dropped the two. Four rewrites, the whole revision budget, and not one Step ever
+ran. `the_plan_you_wrote` rides with every rewrite now, and the instruction is to amend it
+rather than replace it.
+
+**The outside being nobody's stops the run** (ADR-0019's oldest finding, finally acted
+on). "No feature carries the outer contour" has been raised for as long as the check has
+existed, and in the recorded run it stood in `conflicts` while the Gate showed eight
+Steps, the user approved, and the Plan padded a profile it made up. It is now put to the
+drawing, then to the user, and a run that still cannot say what shape the part is does not
+plan one. Every other conflict rides to the Gate as before: this is the only one that says
+the *outside* is missing, and no later phase can notice it.
+
+**One cavity is one feature.** The same hole in the material is drawn in the plan,
+sectioned, and blown up in a detail, and the recorded run wrote two features out of one —
+the second with an empty `position`, because its place was already on the first. Plan built
+both, inventing a width for one and an R10 circle for the other, and the circle cut the
+Body into two solids and ended the run. A cavity nothing places is now a conflict, and it
+names the other cavity that shares its view.
+
 **All of it degrades rather than fails.** PyMuPDF is a required package the addon can run
 without: with it missing, or a file it cannot open, or a raster instead of a PDF, the
 attachment goes out exactly as it did before. A raster gets the crops but no text layer,

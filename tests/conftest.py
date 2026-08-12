@@ -98,6 +98,19 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
+@pytest.fixture(autouse=True)
+def readings_go_to_a_temporary_directory(tmp_path, monkeypatch):
+    """
+    Where a run writes the part it read, for the length of one test.
+
+    Every run with an attachment writes one, and the default is the directory a
+    user opens to find their own readings.
+    """
+    from core import part_file
+
+    monkeypatch.setattr(part_file, "WHERE", str(tmp_path / "parts"))
+
+
 @dataclass
 class Reply:
     """A whole streamed reply, accumulated. Only the tests ever need one."""

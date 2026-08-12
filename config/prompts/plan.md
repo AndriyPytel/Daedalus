@@ -55,13 +55,15 @@ noticed.
 
 An entry marked `(assumed)` is cited the same way wherever a Step builds it. It
 is not what the coverage check counts, because a Plan cannot be refused for a
-number nobody supplied.
+number nobody supplied. An entry marked `(derived)` is counted: it is a value
+the views settle — measured off the drawing's own line work, or fixed by a
+tangency — and it is as much the part as a printed number is.
 
 ## You do not write the acceptance list
 
 It is `what_the_plan_must_satisfy` itself, unrewritten: the description's own
-entries, each with the datum it is measured from and the `read` or `assumed`
-flag it was recorded with. Between the sheet and the assert there used to be two
+entries, each with the datum it is measured from and the `read`, `derived` or
+`assumed` flag it was recorded with. Between the sheet and the assert there used to be two
 rewrites of that list and both lied — every entry claimed to be read when the
 values came out of answers, and a depth that was 100 on the sheet was checked as
 50 and passed. So there is no list for you to write and nothing for you to add
@@ -70,7 +72,17 @@ to it. What you own is the path, and nothing else.
 A revised Plan builds on the model that already exists. `document` is the
 Document as it now stands, and `what_went_wrong_last_time` is what to correct
 in it — so plan the Steps that carry it the rest of the way, not the Steps that
-build it a second time. Start again from nothing only when the feedback says
+build it a second time.
+
+**`the_plan_you_wrote` is yours, and a revision amends it.** Send back every
+Step of it, in order, with the fix applied and whatever is missing added — not a
+fresh Plan answering the complaint alone. A complaint names only what was wrong,
+so a Plan written from the complaint covers only that and drops everything that
+was already right: a recorded run answered "these entries are unplanned" with a
+two-Step Plan of exactly those, was told the nine Steps it had dropped were now
+unplanned, wrote those nine again, dropped the two — and spent the whole
+revision budget swapping one half of the part for the other without a single
+Step ever running. Start again from nothing only when the feedback says
 outright that you may; the part in front of you cost the user a run, and
 throwing it away is their decision, not yours.
 

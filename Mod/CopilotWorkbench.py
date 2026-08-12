@@ -5,7 +5,7 @@ import FreeCADGui as Gui
 import FreeCAD as App
 import os
 
-from ui.copilot_panel import CopilotPanel
+from ui import copilot_dock
 
 logo_icon = os.path.join(os.path.dirname(__file__), '../Resources/icons/copilot.svg')
 
@@ -18,31 +18,28 @@ class CopilotWorkbench(Gui.Workbench):
         self.__class__.MenuText = "FreeCad Copilot"
         self.__class__.ToolTip = "AI-powered command execution for FreeCAD"
         self.__class__.Icon = logo_icon
-        self.copilot_panel = None
-        self.dock_area = None
 
     def Activated(self):
-        """Called when workbench is activated."""
-        from PySide import QtCore
-        import FreeCAD
+        """
+        Called when workbench is activated.
 
-        mw = Gui.getMainWindow()
-        if mw is None:
+        The chat is the main window's, installed at start-up, so all this does
+        is make sure it is on screen for the user who came looking for it here.
+        """
+        panel = copilot_dock.install(Gui.getMainWindow())
+        if panel is None:
             from utils.logger import logger
             logger.error("Cannot get main window")
             return
-
-        if self.copilot_panel is None:
-            self.copilot_panel = CopilotPanel()
-
-        # Add dock widget to the main window
-        mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.copilot_panel)
-        self.copilot_panel.show()
+        panel.show()
 
     def Deactivated(self):
-        """Called when workbench is deactivated."""
-        if self.copilot_panel:
-            self.copilot_panel.hide()
+        """
+        Called when workbench is deactivated.
+
+        Deliberately nothing: hiding the panel here is what tied the chat to
+        this one workbench.
+        """
 
     def Initialize(self):
         """Called when workbench is first loaded."""

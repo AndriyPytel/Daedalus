@@ -6,7 +6,7 @@ logic in FCC-93, so it is tested on its own rather than only through a run. The
 numbers are the ones from the run that named the defect
 (`logs/sessions/daefe57b593448e9baf83422fc37af1e.jsonl`, mm25-p1-1.pdf).
 """
-from core.design import entries, merge, render
+from core.design import crosswise, entries, merge, render
 
 
 def _read(value):
@@ -667,3 +667,171 @@ def test_a_part_nobody_has_described_carries_no_entries():
     """No description means an empty Acceptance, which means no Assertion phase."""
     assert entries({}) == []
     assert entries(None) == []
+
+
+# ── one cavity, one feature ───────────────────────────────────────────────────
+
+
+THE_CAVITY_DESCRIBED_TWICE = {
+    "envelope": {"length between the end faces": _read("108 mm")},
+    "features": [
+        {"id": "slot-arm",
+         "kind": "slot through the 15 mm arm, 30 mm long in the length direction",
+         "topology": "through the arm thickness",
+         "position": {"the ring axis": _read("30 mm to the left of the ring axis")},
+         "seen_in": ["plan view", "front view"]},
+        {"id": "cutout-web",
+         "kind": "curved cutout in the web between the top of the arm and the ring",
+         "topology": "through the depth; profile as drawn in VIEW B",
+         "position": {},
+         "seen_in": ["front view", "VIEW B"]},
+    ],
+}
+
+
+def test_a_cavity_nothing_places_is_a_conflict():
+    """
+    The recorded run
+    (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`, the 2023 pipe
+    clamp) described the web's one cavity twice — once off the plan as a 30 mm
+    slot and once off the detail the sheet points at — and the second carried
+    `position: {}`. Plan built both, inventing a width for one and an R10 circle
+    for the other, and the circle cut the Body in two.
+
+    `placement` cannot reach this: it asks whether a size in a direction has a
+    position in that direction, and this feature had no sizes either.
+    """
+    grown = merge({}, THE_CAVITY_DESCRIBED_TWICE)
+    said = [conflict for conflict in grown["conflicts"]
+            if conflict["about"] == "features → cutout-web → position"]
+
+    assert said, [conflict["about"] for conflict in grown["conflicts"]]
+    assert "slot-arm" in said[0]["stands"], \
+        "the finding does not say which other cavity shares the view: %s" % said[0]["stands"]
+
+
+def test_a_cavity_the_drawing_places_raises_nothing():
+    """Silence on the ordinary pocket, or the finding is noise at every Gate."""
+    grown = merge({}, {"features": [
+        {"id": "pocket", "kind": "rectangular pocket", "topology": "6 mm deep",
+         "axis": _read("perpendicular to the top face"),
+         "position": {"the left end face": _read("20 mm")},
+         "seen_in": ["top view"]}]})
+
+    assert "conflicts" not in grown
+
+
+# ── the outside nobody carries ────────────────────────────────────────────────
+
+
+def test_the_outside_being_nobody_s_is_answerable_rather_than_only_recorded():
+    """
+    The finding stood in `conflicts` for the whole of the recorded run and
+    nothing acted on it. The loop asks the drawing and then the user before it
+    plans, so it needs the finding as a question rather than as a list entry —
+    and it needs it to stop being true the moment a feature carries the contour.
+    """
+    from core.design import nobody_carries_the_outside
+
+    said_in_passing = merge({}, THE_CAPSULE_SAID_IN_PASSING)
+    assert "capsule" in nobody_carries_the_outside(said_in_passing)
+
+    carried = merge(said_in_passing, {"features": [
+        {"id": "outer-profile",
+         "kind": "obround (capsule) outer profile, 150 x 50, ends R25",
+         "plane": _read("the plane of the length and the height")}]})
+    assert nobody_carries_the_outside(carried) == ""
+
+
+def test_the_finding_quotes_the_description_rather_than_the_sheet():
+    """
+    `printed_on_the_sheet` is the draughtsman's own callouts, and quoted back as
+    evidence the finding reads as `R12.5 — plan view (rounded ends)` — the
+    sheet, not the reading the user is being asked to settle. The description's
+    own words are preferred; the sweep is what is left when it has none.
+    """
+    from core.design import nobody_carries_the_outside
+
+    both = merge({}, dict(THE_CAPSULE_SAID_IN_PASSING,
+                          printed_on_the_sheet=["R12.5 — plan view (rounded ends)"]))
+
+    assert "R12.5" not in nobody_carries_the_outside(both)
+    assert "capsule" in nobody_carries_the_outside(both)
+
+
+# ── two views, two axes (FCC-109) ─────────────────────────────────────────────
+
+
+def _round_in(view, axis):
+    return {"value": axis, "flag": "traced", "round_in": view}
+
+
+THE_CLAMP_READ_OFF_ONE_VIEW = {
+    "features": [
+        {"id": "clamp-bore", "kind": "Ø42 bore through the clamp ring",
+         "topology": "through", "axis": _round_in("the front elevation", "the depth")},
+        {"id": "right-mounting-hole", "kind": "Ø6.6 through hole",
+         "topology": "through", "axis": _round_in("the upper plan", "the depth")},
+    ],
+}
+
+
+def test_two_features_round_in_different_views_may_not_share_an_axis():
+    """
+    The 2023 pipe clamp. The bore is round in the elevation and both M6 holes
+    are round in the plan; all three were written along the depth, all three
+    were built parallel, and the screw missed the split it exists to pinch.
+    """
+    found = crosswise(THE_CLAMP_READ_OFF_ONE_VIEW)
+
+    assert [entry["about"] for entry in found] == [
+        "features → clamp-bore → axis", "features → right-mounting-hole → axis"]
+    assert "two views" in found[0]["stands"]
+
+
+def test_the_finding_names_the_other_view_so_the_reader_can_go_and_look():
+    found = crosswise(THE_CLAMP_READ_OFF_ONE_VIEW)
+
+    assert "the upper plan" in found[0]["stands"]
+    assert "the front elevation" in found[1]["stands"]
+
+
+def test_features_round_in_different_views_with_different_axes_are_right():
+    read_properly = {"features": [
+        {"id": "clamp-bore", "kind": "Ø42 bore", "topology": "through",
+         "axis": _round_in("the front elevation", "the depth")},
+        {"id": "right-mounting-hole", "kind": "Ø6.6 through hole",
+         "topology": "through", "axis": _round_in("the upper plan", "the height")},
+    ]}
+
+    assert crosswise(read_properly) == []
+
+
+def test_two_features_round_in_one_view_may_not_have_two_axes():
+    disagreeing = {"features": [
+        {"id": "left-mounting-hole", "kind": "Ø6.6 hole", "topology": "through",
+         "axis": _round_in("the upper plan", "the height")},
+        {"id": "right-mounting-hole", "kind": "Ø6.6 hole", "topology": "through",
+         "axis": _round_in("the upper plan", "the depth")},
+    ]}
+
+    found = crosswise(disagreeing)
+
+    assert len(found) == 2
+    assert "round in the upper plan has the one axis" in found[0]["stands"]
+
+
+def test_a_reading_that_never_says_which_view_raises_nothing_here():
+    """`direction` is what asks for the field; this only reads it."""
+    assert crosswise({"features": [
+        {"id": "clamp-bore", "kind": "Ø42 bore", "topology": "through",
+         "axis": {"value": "the depth", "flag": "read"}},
+        {"id": "right-mounting-hole", "kind": "Ø6.6 hole", "topology": "through",
+         "axis": {"value": "the depth", "flag": "read"}},
+    ]}) == []
+
+
+def test_the_finding_arrives_through_the_merge_like_every_other():
+    grown = merge({}, THE_CLAMP_READ_OFF_ONE_VIEW)
+
+    assert any("two views" in str(entry.get("stands")) for entry in grown["conflicts"])

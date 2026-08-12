@@ -17,6 +17,9 @@ QUESTION = "question"
 ANSWER = "answer"
 ATTACHED = "attached"
 DESIGN = "design"
+# Where the reading Design settled on was written down, so a run can be pointed
+# at the file it was planned from (FCC-108).
+PART = "part"
 PLAN = "plan"
 PLAN_REVISED = "plan_revised"
 GATE = "gate"
@@ -34,7 +37,7 @@ BLOCKED = "blocked"
 ERROR = "error"
 
 KINDS = (
-    THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PLAN, PLAN_REVISED, GATE,
+    THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED, GATE,
     STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED, ASSERTION,
     OUTSTANDING, REVIEW_VERDICT, BLOCKED, ERROR,
 )

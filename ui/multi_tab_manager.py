@@ -56,9 +56,13 @@ class ChatSessionManager(QtWidgets.QWidget):
         
         container = QtWidgets.QWidget()
         vl = QtWidgets.QVBoxLayout(container)
-        vl.setAlignment(QtCore.Qt.AlignTop)
         vl.setSpacing(2)
         vl.setContentsMargins(0, 0, 0, 0)
+        # A stretch, not AlignTop: an aligned item is given its sizeHint and
+        # nothing else, and a wrapped label's sizeHint is a guess made at a
+        # width this column does not have — every message came out short of
+        # its own text, clipped, with the reserved space left blank.
+        vl.addStretch(1)
         scroll.setWidget(container)
 
         vbar = scroll.verticalScrollBar()
@@ -67,13 +71,30 @@ class ChatSessionManager(QtWidgets.QWidget):
         anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
         scroll._scroll_anim = anim  # prevent GC
 
+        # Follow the run only from the bottom. Scrolled back to read, the user
+        # keeps their place — the transcript used to yank itself away on the
+        # next event. "At the bottom" is measured against the range the user
+        # last saw, not the one the new message just created.
+        scroll._last_max = vbar.maximum()
+
+        def _is_following():
+            return (scroll._scroll_anim.state() == QtCore.QAbstractAnimation.Running
+                    or vbar.value() >= scroll._last_max - 4)
+
         def _on_range_changed(min_val, max_val):
-            if max_val > min_val:
+            following = _is_following()
+            scroll._last_max = max_val
+            if max_val > min_val and following:
                 scroll._scroll_anim.stop()
                 scroll._scroll_anim.setStartValue(vbar.value())
                 scroll._scroll_anim.setEndValue(max_val)
                 scroll._scroll_anim.start()
 
+        def _the_user_took_over(_action):
+            """A wheel, a drag or a key beats the animation still chasing the end."""
+            scroll._scroll_anim.stop()
+
+        vbar.actionTriggered.connect(_the_user_took_over)
         vbar.rangeChanged.connect(_on_range_changed)
 
         scroller = QtWidgets.QScroller.scroller(scroll.viewport())

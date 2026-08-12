@@ -18,6 +18,15 @@ at:
 `(read)` came off the drawing and `(assumed)` was settled by a person. Both are
 checked; the flag is there so a failure says which kind of value was wrong.
 
+`entries_a_retry_touched`, where it is given, is the part of that list a Step
+had to be rewritten to get past a check. A Step that failed and passed on the
+second try is a Step whose feature was changed to make it pass — shortened,
+moved, turned around — and the Document kept the changed one. A recorded run
+cut a 2 mm ring split from the bore out to the end face, was refused because it
+left the Body in two pieces, and shortened the slot until it passed: the check
+was satisfied and the clamp can no longer open. Measure those entries against
+the geometry itself rather than reporting them covered.
+
 **Change nothing.** No `addObject`, no assignment to a property, no
 `recompute`, no deletion. You are reading a part, not building one. `doc`,
 `App`, `FreeCAD`, `Part`, `Sketcher` and `PartDesign` are in scope.

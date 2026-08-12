@@ -405,6 +405,168 @@ def test_closing_the_panel_takes_the_unsent_images_with_it(panel, tmp_path):
     panel.closeEvent(QtGui.QCloseEvent())
 
     assert not os.path.exists(left_behind), "closing with an image attached leaked it"
+
+
+# ── The transcript's own height and scroll position ───────────────────────────
+
+
+def _a_long_message(panel, times=8):
+    from ui.chat_widgets import AssistantMessageWidget
+
+    text = ("A wrapped sentence long enough that the panel has to break it over "
+            "several lines before it fits. ") * times
+    widget = panel.add_chat_widget(AssistantMessageWidget(text))
+    for _ in range(6):
+        QT_APP.processEvents()
+    return widget
+
+
+def test_a_wrapped_message_gets_the_height_its_text_needs(panel):
+    """
+    The transcript laid its messages out at `sizeHint`, which for a wrapped
+    QLabel is a guess made at a width the panel does not have. Every message
+    was then too short for its own text — the text was clipped and the space
+    the column had already reserved for it was left blank, which is the
+    "empty space, and the real text somewhere above" the user sees.
+    """
+    panel.resize(360, 700)
+    QT_APP.processEvents()
+
+    message = _a_long_message(panel)
+
+    needed = message.heightForWidth(message.width())
+    assert message.height() == needed, (
+        "a message laid out %dpx tall needs %dpx for its wrapped text"
+        % (message.height(), needed))
+
+
+def test_the_transcript_stays_where_the_user_scrolled_it(panel):
+    """
+    Reading back through a run must survive the next event. Following the
+    bottom unconditionally yanked the transcript away mid-sentence.
+    """
+    from conftest import QtWidgets
+
+    for _ in range(6):
+        _a_long_message(panel)
+    scroll = panel.chat_sessions.get_current_chat_history()
+    bar = scroll.verticalScrollBar()
+    assert bar.maximum() > 0, "the transcript never grew past one screen"
+
+    bar.triggerAction(QtWidgets.QAbstractSlider.SliderToMinimum)
+    QT_APP.processEvents()
+
+    _a_long_message(panel)
+
+    assert bar.value() == 0, "adding a message dragged the transcript off where it was left"
+
+
+def test_the_transcript_follows_the_run_when_it_is_at_the_bottom(panel):
+    """The other half: not scrolled away, it keeps up with what arrives."""
+    from conftest import QtWidgets
+
+    scroll = panel.chat_sessions.get_current_chat_history()
+    bar = scroll.verticalScrollBar()
+    bar.triggerAction(QtWidgets.QAbstractSlider.SliderToMaximum)
+    QT_APP.processEvents()
+
+    _a_long_message(panel)
+    scroll._scroll_anim.setCurrentTime(scroll._scroll_anim.duration())
+    QT_APP.processEvents()
+
+    assert bar.value() == bar.maximum(), "the transcript stopped following a live run"
+
+
+# ── Shutting down (the freeze on quit) ────────────────────────────────────────
+
+
+def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_the_tests_own):
+    """
+    A run parked on the Plan Gate blocks its thread on an Event. `quit()` does
+    not touch a thread that is inside a call, so waiting on it without first
+    releasing the question is FreeCAD hanging on exit with no window left to
+    answer from.
+    """
+    import time
+
+    from conftest import QtCore
+    from ui.copilot_panel import CopilotPanel
+
+    built = CopilotPanel()
+    blocked = QtCore.QTimer()
+    blocked.moveToThread(built.thread)
+    blocked.setSingleShot(True)
+    blocked.timeout.connect(lambda: built.ask.about_the_plan(["a step"]),
+                            QtCore.Qt.DirectConnection)
+    QtCore.QMetaObject.invokeMethod(blocked, "start", QtCore.Qt.QueuedConnection,
+                                    QtCore.Q_ARG(int, 0))
+    deadline = time.time() + 5
+    while not built.ask._answered.is_set() and built.ask._answer is None and time.time() < deadline:
+        QT_APP.processEvents()
+        time.sleep(0.02)
+
+    # In its own daemon thread: the defect under test is a wait that never
+    # returns, and a test that hangs says nothing to whoever runs the suite.
+    import threading
+
+    done = threading.Event()
+    threading.Thread(target=lambda: (built._cleanup_thread(), done.set()),
+                     daemon=True).start()
+
+    assert done.wait(5), "shutdown is still waiting on a run parked at the Plan Gate"
+    assert not built.thread.isRunning(), "the worker thread outlived the panel"
+
+
+# ── The panel belongs to the window, not to a workbench ───────────────────────
+
+
+def test_the_panel_docks_on_the_main_window_once(sessions_are_the_tests_own):
+    """
+    Like the Tasks panel: it is a fixture of the window, so it is there on
+    whatever workbench the user is working in. Installing twice — two
+    workbench switches — must not build a second panel.
+    """
+    from conftest import QtWidgets
+    from ui import copilot_dock
+
+    window = QtWidgets.QMainWindow()
+    copilot_dock.forget()
+    try:
+        panel = copilot_dock.install(window)
+        again = copilot_dock.install(window)
+
+        assert again is panel, "a second install built a second panel"
+        assert panel.parent() is window, "the panel is not docked on the main window"
+        assert window.findChildren(type(panel)) == [panel]
+    finally:
+        panel._cleanup_thread()
+        copilot_dock.forget()
+        window.deleteLater()
+
+
+def test_leaving_the_copilot_workbench_does_not_take_the_chat_away():
+    """
+    Hiding the panel on `Deactivated` is what tied the chat to one workbench.
+    Read from the source: `Deactivated` needs a running FreeCAD GUI to call.
+    """
+    import ast
+    import os
+
+    from ui import copilot_dock
+
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(copilot_dock.__file__))),
+                        "Mod", "CopilotWorkbench.py")
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), path)
+    deactivated = [node for node in ast.walk(tree)
+                   if isinstance(node, ast.FunctionDef) and node.name == "Deactivated"]
+
+    assert deactivated, "CopilotWorkbench lost its Deactivated hook"
+    hides = [node for node in ast.walk(deactivated[0])
+             if isinstance(node, ast.Attribute) and node.attr in ("hide", "setVisible", "close")]
+    assert hides == [], "leaving the workbench still hides the chat"
+
+
 # ── The Session picker (FCC-43) ───────────────────────────────────────────────
 
 

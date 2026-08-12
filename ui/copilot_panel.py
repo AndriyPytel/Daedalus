@@ -1323,19 +1323,38 @@ class CopilotPanel(QtWidgets.QDockWidget):
             
         container = chat_history.widget()
         if container and container.layout():
-            container.layout().addWidget(widget)
-            
-        QtCore.QTimer.singleShot(10, lambda: chat_history.verticalScrollBar().setValue(
-            chat_history.verticalScrollBar().maximum()
-        ))
-        
+            # Before the trailing stretch, which is what keeps a short
+            # transcript from being spread down the whole panel. Following the
+            # bottom is the scroll area's own business now, and only when the
+            # user has not scrolled back to read.
+            layout = container.layout()
+            layout.insertWidget(max(layout.count() - 1, 0), widget)
+
         return widget
 
+    # What a run in flight is given to notice it was stopped before the thread
+    # is ended from outside. Long enough for a request already sent to unwind.
+    SHUTDOWN_GRACE_MS = 3000
+
     def _cleanup_thread(self):
-        """Safely stops the background worker thread."""
+        """
+        Stop the worker, whatever it is in the middle of.
+
+        `quit()` only asks a thread's event loop to end, and a run is not
+        waiting for events — it is inside a call: parked on a question, or on
+        a request in flight. Waiting on that without first releasing the
+        question is FreeCAD hanging on exit, with no window left to answer
+        from. The headless FreeCAD behind Preflight is this panel's child
+        process and goes with it.
+        """
+        self.worker.stop()
+        if self.worker.pipeline is not None:
+            self.worker.pipeline.shutdown()
         if hasattr(self, 'thread') and self.thread.isRunning():
             self.thread.quit()
-            self.thread.wait()
+            if not self.thread.wait(self.SHUTDOWN_GRACE_MS):
+                self.thread.terminate()
+                self.thread.wait(1000)
 
     def closeEvent(self, event):
         self.upload_widget.discard_temporary()

@@ -34,13 +34,16 @@ import re
 from dataclasses import dataclass, field
 from typing import List
 
-from core.design import entries, merge, render
+from core.design import (
+    UNDER, entries, merge, nobody_carries_the_outside, read_off_the_wrong_view,
+    render,
+)
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE,
-    OUTSTANDING, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
-    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
+    OUTSTANDING, PART, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
+    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
-from core import sheet_reader
+from core import part_file, sheet_reader
 from core.freecad_tools import TRAPS
 from core.llm import REASONING, ProviderRefused
 from core.tools import ToolError
@@ -346,16 +349,70 @@ def _ask(llm, events, phase, system, user):
 
     Reasoning is emitted chunk by chunk rather than aggregated at the end, so the
     user can tell early whether the assistant has understood them.
+
+    A reply carrying no object is asked once more, quoting what it said. Every
+    phase here answers in JSON and some models will not, or will not
+    consistently: measured on the gateway, kimi-k3 replied to Execute with "I
+    need to check the Hole feature's properties before writing the counterbore
+    steps" — which is a *look*, and a look is a key of the object Execute
+    replies with, so the model had the answer and wrote it as a sentence
+    (`logs/sessions/ea390959745a453488138fddcc879635.jsonl`). One re-ask costs a
+    turn; the alternative cost the run, ten approved Steps into it.
+
+    Exactly one, and the second refusal is the phase failing as it did before.
+    A model that will not answer in the shape twice is not going to on the
+    third, and a loop of re-asks would spend the run proving it.
     """
-    text = []
+    body, thought = _streamed(llm, events, phase, system, user)
+    if not isinstance(_object_of(body), dict):
+        body, thought = _streamed(llm, events, phase, system,
+                                  _in_the_shape_this_time(user, body))
+
+    if thought and not body.strip():
+        # Measured against the gateway: kimi-k3 ends such a stream on "stop",
+        # under its own cap, having written reasoning and no answer. Running out
+        # of room is the other case and arrives as a refusal, not as this.
+        raise PhaseError(
+            "%s streamed its reasoning and then stopped without answering. Send the "
+            "Intent again, or pick a model that thinks less before it commits." % phase
+        )
+    return _as_json(body, phase)
+
+
+def _streamed(llm, events, phase, system, user):
+    """One turn, as the text it wrote and whether it reasoned before writing it."""
+    text, thought = [], False
     for chunk in llm.stream([{"role": "system", "content": system},
                              {"role": "user", "content": user}]):
         if chunk.kind == REASONING:
+            thought = True
             events.emit(THOUGHT, phase=phase, text=chunk.text)
         else:
             text.append(chunk.text)
+    return "".join(text), thought
 
-    return _as_json("".join(text), phase)
+
+# What a phase is told when it answered in prose. It quotes the model back to
+# itself, because a directive about JSON in general is one the last reply
+# already disobeyed, and names the one thing that is nearly always what
+# happened: the sentence *is* the answer, in the wrong clothes.
+_IN_THE_SHAPE = (
+    "Your last reply carried no JSON object, so nothing could be done with it. "
+    "You said:\n%s\n\n"
+    "Answer again, and put the JSON object this phase takes in the reply. Whatever you "
+    "said above is either one of that object's own keys or it is not the answer: a phase "
+    "that needs to look something up first asks for the look *in* the JSON, and a phase "
+    "that wants to say why does it inside the object, not instead of it. Prose beside the "
+    "object is read; prose without one is not."
+)
+
+
+def _in_the_shape_this_time(user, said):
+    """The same request again, with what came back quoted and the shape restated."""
+    directive = _IN_THE_SHAPE % (said or "").strip()[:400]
+    if isinstance(user, list):
+        return list(user) + [{"type": "text", "text": directive}]
+    return "%s\n\n%s" % (user, directive)
 
 
 def _as_image(path):
@@ -386,17 +443,71 @@ def _as_image(path):
 
 
 def _as_json(text, phase):
-    fenced = _FENCE.search(text)
-    candidate = (fenced.group(1) if fenced else text).strip()
-    try:
-        parsed = json.loads(candidate)
-    except ValueError:
+    """
+    The reply as the object it carries, wherever in the reply that object is.
+
+    A phase that answered correctly and then explained itself used to end the
+    run. Measured on `logs/sessions/6fbd31e98fb540818086611841fa9aff.jsonl`:
+    Design replied `{"design": {}, "question": ""}` and then a paragraph saying
+    why the two strings it was asked about are the item numbers of a notes list
+    and not dimensions — a right answer, a useful explanation, and a dead run,
+    because the whole reply had to parse or none of it did.
+
+    So the fence is tried, then the whole reply, then the first balanced object
+    in it. Only an object: a reply with no JSON in it at all is still a phase
+    that did not do its job, and it still says so quoting what was said.
+    """
+    parsed = _object_of(text)
+    if parsed is None:
         raise PhaseError(
             "%s did not reply with JSON. It said: %s" % (phase, (text or "").strip()[:400])
         )
     if not isinstance(parsed, dict):
         raise PhaseError("%s replied with JSON that is not an object: %r" % (phase, parsed))
     return parsed
+
+
+def _object_of(text):
+    """The object a reply carries, by any of the three routes, or None."""
+    fenced = _FENCE.search(text or "")
+    candidate = (fenced.group(1) if fenced else (text or "")).strip()
+    try:
+        return json.loads(candidate)
+    except ValueError:
+        return _the_object_in(candidate)
+
+
+def _the_object_in(text):
+    """
+    The first balanced `{...}` in a reply, parsed, or None.
+
+    Balanced rather than greedy: the last `}` in the reply belongs to whatever
+    the model wrote last, which on a reply that ends in prose is a sentence with
+    a brace quoted in it. Strings are stepped over so a brace inside one does
+    not close the object.
+    """
+    start = text.find("{")
+    while start != -1:
+        depth, at, in_string, escaped = 0, start, False, False
+        while at < len(text):
+            character = text[at]
+            if in_string:
+                in_string = not (character == '"' and not escaped)
+                escaped = character == "\\" and not escaped
+            elif character == '"':
+                in_string, escaped = True, False
+            elif character == "{":
+                depth += 1
+            elif character == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        return json.loads(text[start:at + 1])
+                    except ValueError:
+                        break
+            at += 1
+        start = text.find("{", start + 1)
+    return None
 
 
 def _pictures(attachments):
@@ -490,9 +601,14 @@ class Plan:
     # Step accounted for it is a thing the Gate shows and the loop does not
     # need (FCC-94).
     satisfies: list = field(default_factory=list)
+    # The same citations kept Step by Step, which one check does need: a Step
+    # builds in one plane, so the entries it cites have to agree about which
+    # one that is (FCC-111).
+    cites: list = field(default_factory=list)
 
 
-def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered=()):
+def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered=(),
+         revising=()):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
 
@@ -513,6 +629,17 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
     (ADR-0020).
     """
     request = {"intent": intent, "document": snapshot}
+    if revising:
+        # The Plan being rewritten, in its own words. Without it a revision is
+        # written from nothing but the complaint, and a complaint names only
+        # what was missing: the recorded run
+        # (`logs/sessions/9958ccdc8e324a74ade9b08405be465b.jsonl`) answered
+        # "these entries are unplanned" with a two-Step Plan covering exactly
+        # those and dropping the nine Steps that covered the rest, was told the
+        # nine were now unplanned, wrote them again and dropped the two, and
+        # spent the whole revision budget swapping one half of the part for the
+        # other without a single Step ever running.
+        request["the_plan_you_wrote"] = list(revising)
     if the_part:
         request["what_the_part_is"] = render(the_part)
         request["what_the_plan_must_satisfy"] = _acceptance_of(the_part)
@@ -526,13 +653,31 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
 
     reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
                  json.dumps(request, indent=2, default=str))
-    steps, satisfies = _steps_of(reply.get("steps", []))
+    steps, satisfies, cites = _steps_of(reply.get("steps", []))
+
     question = str(reply.get("question") or "").strip()
     if not steps and question:
         return Plan(steps=[], question=question)
     if not steps:
         raise PhaseError("Plan produced no Steps for this Intent.")
-    return Plan(steps=steps, satisfies=satisfies, acceptance=_acceptance_of(the_part))
+    return Plan(steps=steps, satisfies=satisfies, cites=cites,
+                acceptance=_acceptance_of(the_part))
+
+
+def _addressed(acceptance):
+    """
+    {address: what it says} — the description as something to look a value up in.
+
+    The acceptance is already one line per entry, `address: value (flag)`, and
+    the address is what a Step cites. Split apart it is the lookup Execute
+    needs; left as prose it is one more thing to read a number out of.
+    """
+    addressed = {}
+    for entry in acceptance or ():
+        address, _, value = str(entry).partition(": ")
+        if value:
+            addressed[address.strip()] = value.strip()
+    return addressed
 
 
 def _steps_of(planned):
@@ -551,7 +696,7 @@ def _steps_of(planned):
     that can be judged against it; a Step may legitimately carry work no entry
     of the description names.
     """
-    steps, satisfies = [], []
+    steps, satisfies, cites = [], [], []
     for step in planned:
         if isinstance(step, dict):
             prose = str(step.get("do") or step.get("step") or "").strip()
@@ -563,7 +708,8 @@ def _steps_of(planned):
             continue
         steps.append(prose + (" (satisfies: %s)" % ", ".join(cited) if cited else ""))
         satisfies.extend(cited)
-    return steps, satisfies
+        cites.append(cited)
+    return steps, satisfies, cites
 
 
 def _as_written(entry):
@@ -608,9 +754,11 @@ def _unconsumed(the_part, satisfies):
     an overall height feeds both the base solid and a through hole's depth — but
     no entry may feed none.
 
-    Only what was `read`. An assumed value is still a criterion and is still
-    measured, but a Plan may not be refused for failing to build a number
-    nobody supplied.
+    Only what the drawing fixes — `read` or `derived`. An assumed value is still
+    a criterion and is still measured, but a Plan may not be refused for failing
+    to build a number nobody supplied. A derived one is not that: it is a value
+    the views settle, measured off the line work or off a tangency instead of
+    off a callout, and it is as much the part as a printed number is.
 
     Matched as written, and never by prefix of an address — a Plan allowed to
     cite `features` and cover everything beneath it would be the check defeating
@@ -622,7 +770,7 @@ def _unconsumed(the_part, satisfies):
     """
     cited = {_as_written(entry) for entry in satisfies}
     return [entry["about"] for entry in entries(the_part)
-            if entry["flag"] == "read"
+            if entry["flag"] in ("read", "derived")
             and not any(said == entry["about"] or said.startswith(entry["about"] + ":")
                         for said in cited)]
 
@@ -633,7 +781,13 @@ def _plan_the_rest(unconsumed) -> str:
             "the Plan builds them:\n"
             + "\n".join("- " + entry for entry in unconsumed)
             + "\nPlan them, and name each one in the `satisfies` of the Step that "
-              "satisfies it, written exactly as it is above.")
+              "satisfies it, written exactly as it is above.\n"
+              "Your Plan is in `the_plan_you_wrote`. Send it back with these Steps added "
+              "— every Step you already wrote, unchanged, and the new ones beside them. A "
+              "Plan of only the entries listed here drops the Steps that built the rest, "
+              "and the same check then names those instead: a recorded run swapped one "
+              "half of the part for the other four times over and spent the whole revision "
+              "budget without running a single Step.")
 
 
 @dataclass
@@ -663,13 +817,17 @@ class Written:
 
     steps: dict = field(default_factory=dict)
     obsolete: str = None
+    # Why a Step was left out, from a reply that wrote code for the others. A
+    # complaint that arrives beside working code is about that Step and no
+    # more, and it is the only thing that lets Plan write it differently.
+    unbuildable: str = None
 
     def for_step(self, number) -> ExecuteOutcome:
         return self.steps.get(number) or ExecuteOutcome()
 
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
-            looks=None):
+            looks=None, entries=()):
     """
     Write the code for every Step from `start` to the end of the Plan, in one turn.
 
@@ -700,6 +858,14 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     `as_described` is the part Design holds, rendered. Execute stays on text
     deliberately — the whole drawing is noise against code that is written from
     the Steps and read back off the geometry.
+
+    `entries` is that same description addressed — the address a Step cites
+    against the value it resolves to. A Step names what it satisfies and the
+    value it needs is then a lookup rather than a reading of prose. In the run
+    that named this the lookup was missing and the values were invented from
+    the geometry to hand: `arm_z = sum((g.StartPoint.y + g.EndPoint.y) * 0.5
+    for g in arm_lines) / len(arm_lines)` for a hole the description places on
+    the longitudinal centre plane (FCC-115).
     """
     budgets = budgets or Budgets()
     request = {"steps": [{"step": number, "do": prose}
@@ -707,6 +873,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                "document": tools.call("snapshot")}
     if as_described:
         request["what_the_part_is"] = as_described
+    if entries:
+        request["what_each_entry_says"] = _addressed(entries)
     if attempts:
         request["your_failed_attempts_at_this_step"] = [
             {"code": a.code, "traceback": a.traceback} for a in attempts
@@ -734,8 +902,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                 "look now is a failed attempt. `obsolete` is for a Plan that no longer "
                 "matches the Document above — never for one Step you could not look a "
                 "value up for, because it throws away the Steps you can build with it. "
-                "Leave that Step out instead: the Steps before it land, and it goes back "
-                "to Plan on its own."
+                "Leave that Step out instead and say why in `unbuildable`: the Steps "
+                "before it land, and it goes back to Plan on its own."
             )
         if looked:
             request["what_you_looked_at"] = looked
@@ -743,11 +911,20 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         reply = _ask(llm, events, EXECUTE_PHASE, prompt(EXECUTE_PHASE),
                      json.dumps(request, indent=2, default=str))
 
-        if reply.get("obsolete"):
-            return Written(obsolete=str(reply["obsolete"]))
         written = _written(reply.get("steps"), start)
         if written:
-            return Written(steps=written)
+            # A reply that wrote code is not a verdict on the Plan: whatever it
+            # objects to, it objects to about the Steps it left out, and those
+            # go back to Plan one at a time. Voiding the whole Plan here is how
+            # a recorded run threw away Steps nobody had attempted and
+            # replanned three times over with nothing applied.
+            return Written(steps=written,
+                           unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
+                           if (reply.get("unbuildable") or reply.get("obsolete")) else None)
+        if reply.get("obsolete"):
+            return Written(obsolete=str(reply["obsolete"]))
+        if reply.get("unbuildable"):
+            return Written(unbuildable=str(reply["unbuildable"]))
         if not reply.get("look") or not remaining:
             break
         # A look still spends the allowance even where the answer was already
@@ -1030,7 +1207,71 @@ class Checked:
     unmet: list = field(default_factory=list)
 
 
-def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None):
+
+# What a size is, in the words the envelope writes them in, and how close a
+# built one has to be. Half a millimetre: a drawing this reads is dimensioned
+# to a tenth, and the fillets on an outer contour move a bounding box by less
+# than that.
+_A_SIZE = re.compile(r"(-?\d+(?:\.\d+)?)\s*mm")
+_TRUE_TO = 0.5
+
+
+def the_envelope_measured(acceptance):
+    """
+    The check nobody had to write: the part's three overall sizes.
+
+    Preflight measures topology — objects in error, a feature that moved no
+    material, a Body in pieces — and never a dimension, so a lug built 25 mm
+    tall where the drawing says 30, and a split that stops 16 mm short of the
+    end face it has to reach, both came back as success
+    (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`).
+
+    Sorted against sorted, deliberately. Which way round the part was built is
+    not something anything in this codebase knows — the description names its
+    directions in words and the Document has X, Y and Z — and a check that had
+    to know would be a check that guessed. What it can say without guessing is
+    that a part 108 x 30 x 30 has been built and not one 108 x 30 x 50, which
+    is the failure worth catching and the one an assertion written by a
+    provider is least likely to cover.
+
+    Empty where the envelope does not carry three plain sizes: a part described
+    in two directions, or in words with no millimetres in them, is not one this
+    can measure, and inventing a third would fail every run that has one.
+    """
+    sizes = []
+    for entry in acceptance or ():
+        address, _, value = str(entry).partition(": ")
+        if address.strip().startswith("envelope" + UNDER):
+            found = _A_SIZE.findall(value)
+            if len(found) == 1:
+                sizes.append(float(found[0]))
+    if len(sizes) != 3:
+        return ""
+    return _ENVELOPE_CHECK % (sorted(sizes), _TRUE_TO, sorted(sizes), _TRUE_TO)
+
+
+# Written out rather than built up, because it is read by whoever reads a
+# failed run. `optimalBoundingBox` because a triangulated one lands inside the
+# true extreme on a curved face, which is the whole of ADR-0022's argument.
+_ENVELOPE_CHECK = """
+solids = [o for o in doc.Objects if getattr(o, 'Shape', None) is not None
+          and o.Shape.Solids and not o.Shape.isNull()]
+assert solids, 'the acceptance names an envelope and the Document has no solid'
+shape = max(solids, key=lambda o: o.Shape.Volume).Shape
+box = shape.optimalBoundingBox()
+built = sorted([box.XLength, box.YLength, box.ZLength])
+asked = %s
+assert all(abs(a - b) <= %s for a, b in zip(built, asked)), (
+    'these did not hold: the envelope. The description asks for a part measuring '
+    + ' x '.join('%%.2f' %% one for one in %s) + ' mm overall and the one built '
+    'measures ' + ' x '.join('%%.2f' %% one for one in built) + ' mm, which is more '
+    'than %s mm out. The sizes are sorted, so this says nothing about which way '
+    'round it was built - only that it is not that part.')
+"""
+
+
+def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
+              after_a_retry=()):
     """
     Write checks for the acceptance list and run them against the result.
 
@@ -1048,8 +1289,30 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     budgets = budgets or Budgets()
     request = {"acceptance": list(acceptance),
                "the_document_as_it_now_stands": described}
+    if after_a_retry:
+        # A Step that failed a check and passed on the retry is a Step whose
+        # feature was changed to get past it — shortened, moved, turned around
+        # — and passing the second time says the workaround was legal, never
+        # that it is still the feature the drawing asked for. These entries are
+        # the ones to measure rather than to take on trust (FCC-114).
+        request["entries_a_retry_touched"] = list(after_a_retry)
 
     cancelled = cancelled or (lambda: False)
+
+    # The envelope first, and without asking anybody: three sizes against three
+    # sizes is arithmetic, and a run that built the wrong part should not have
+    # to wait for a provider to say so (FCC-114).
+    measured = the_envelope_measured(acceptance)
+    if measured:
+        events.emit(TOOL_CALL, name="check_assertions", arguments={"code": measured})
+        result = tools.call("check_assertions", {"code": measured})
+        events.emit(TOOL_RESULT, name="check_assertions", result=result)
+        if not result.get("ok"):
+            traceback = result.get("traceback") or "The envelope check failed."
+            unmet = _unmet_in(traceback) or ["the envelope"]
+            events.emit(ASSERTION, ok=False, code=measured, confirmed=[],
+                        uncovered=[], traceback=traceback, unmet=unmet)
+            return Checked(failed=True, traceback=traceback, unmet=unmet)
 
     attempts = []
     for _ in range(budgets.attempts_per_step):
@@ -1263,6 +1526,10 @@ class _Asking:
         self.unanswered = []
         self.asked_the_user = 0
         self.read_again = 0
+        # How many times a Plan has been sent back for building two directions
+        # in one Step. Run-wide like the rest: a Plan that keeps mixing them
+        # would otherwise be sent back for ever (FCC-111).
+        self.re_aimed = 0
 
     def spent(self, budgets) -> bool:
         """
@@ -1400,10 +1667,168 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
 
     the_part = _every_callout_accounted_for(the_part, attachments, llm, events,
                                             budgets, cancelled)
+    the_part = _the_outside_is_carried(the_part, attachments, llm, events, budgets,
+                                       ask, cancelled)
 
     if the_part:
         events.emit(DESIGN, model=the_part)
+    the_part = _the_sweep_is_the_sheets(the_part, attachments)
+    the_part, reading = _written_down(the_part, attachments, events)
+    _every_direction_settled(the_part, reading)
     return the_part
+
+
+def _every_direction_settled(the_part, reading):
+    """
+    The one class of finding a run may not walk past: a direction read off the
+    wrong view.
+
+    It was detected all along and acted on by nobody. In the recorded run
+    (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`, the 2023 pipe
+    clamp) `pointing` fired eight times — both M6 holes, the bore and the ring
+    split, every one of them "either the axis or this position was read off the
+    wrong view" — the Gate was approved, and all of them were built along the
+    ring axis. The screw that exists to pinch the split came out parallel to it.
+
+    Not a question put to the provider, because the answer is not the
+    provider's to give twice: the merge fills what is empty and never overrules
+    what is written, so a phase that has already said `along the depth` cannot
+    be talked out of it. The reading is a file now, and the file is the
+    requirement — the run stops, names the findings, and says which file to
+    correct (FCC-108, FCC-110).
+    """
+    found = read_off_the_wrong_view(the_part)
+    if not found:
+        return
+    raise _NobodyAnswered(
+        "This part cannot be built as it is read: %d direction%s on it %s read off "
+        "the wrong view, and nothing downstream can tell which way to drill.\n%s\n"
+        "The reading is written down at %s. Correct the axis there — a feature is "
+        "round in the view its axis points at, and in no other — and run it again."
+        % (len(found), "" if len(found) == 1 else "s",
+           "was" if len(found) == 1 else "were",
+           "\n".join("  - %s: %s" % (entry["about"], entry["stands"])
+                      for entry in found),
+           reading or "no file, because there was no drawing to read"))
+
+
+def _the_sweep_is_the_sheets(the_part, attachments):
+    """
+    `printed_on_the_sheet` put back to what the sheet prints.
+
+    The phase is shown the text layer and asked to account for it; what it
+    writes under this key is its account, and an account is a paraphrase. The
+    list itself is deterministic, exact, and carries what the sheet's own
+    dimension lines measure at each number — so it is written here, over
+    whatever came back, and the description keeps the arithmetic that catches a
+    misread digit (FCC-112).
+
+    After the re-read loop, never before: that check counts the part against
+    the sheet, and it would find every callout accounted for by having been
+    copied in.
+    """
+    swept = [entry for path in attachments
+             for entry in sheet_reader.printed_on_the_sheet(sheet_reader.read(path))]
+    if not the_part or not swept:
+        return the_part
+    return dict(the_part, printed_on_the_sheet=swept)
+
+
+def _written_down(the_part, attachments, events):
+    """
+    The reading saved as a file, and read back out of it.
+
+    Read back rather than passed on, because a file nothing downstream uses is
+    a file nobody keeps true. From here on the run is planned, checked and
+    built out of what is on disk, so a user who opens it and corrects an axis
+    has corrected the run — and two readings of one sheet are two files to
+    diff rather than two transcripts to compare (FCC-108).
+    """
+    source = next((path for path in attachments if sheet_reader.read(path)),
+                  attachments[0] if attachments else "")
+    path = part_file.saved(the_part, source,
+                           read_from=_how_it_was_read(sheet_reader.read(source)))
+    if not path:
+        return the_part, ""
+    events.emit(PART, path=path)
+    return part_file.read(path), path
+
+
+def _how_it_was_read(sheet):
+    """What the sheet was measured with, so the reading carries its own terms."""
+    if sheet is None:
+        return None
+    seen = []
+    for crop in sheet.crops:
+        name = crop.name.split(", part ")[0]
+        if name not in seen:
+            seen.append(name)
+    return {"views": seen, "notes": list(sheet.notes)}
+
+
+def _the_outside_is_carried(the_part, attachments, llm, events, budgets, ask,
+                            cancelled):
+    """
+    The one finding a run may not walk past: the shape of the part is nobody's.
+
+    `silhouette` has raised it since it existed and nothing has ever acted on
+    it. In the recorded run
+    (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`, the 2023 pipe
+    clamp) it stood in `conflicts` saying "no feature carries the outer contour,
+    so the outside of the part is whatever profile the envelope's overall sizes
+    are padded into" — the Gate showed eight Steps, the user approved them, and
+    the Plan padded a profile it invented. A conflict settled by nobody is a
+    conflict that decided for itself.
+
+    So it is put to the drawing first, which is where the contour is, and then
+    to the user, and a run that still cannot say what shape the part is does not
+    plan one. Every other conflict rides to the Gate as it always has: this is
+    the only one that says the *outside* is missing, and it is the only one no
+    later phase can notice.
+    """
+    why = nobody_carries_the_outside(the_part)
+    looked = 0
+    while why and looked < budgets.rereads:
+        if cancelled():
+            raise Stopped()
+        looked += 1
+        grew, _ = design({"the_part_as_you_described_it": the_part,
+                          "the_question": _the_outer_profile(why)},
+                         llm, events, attachments)
+        if not grew:
+            break
+        the_part = merge(the_part, grew)
+        still = nobody_carries_the_outside(the_part)
+        if still == why:
+            break  # a look that changed nothing will not change anything
+        why = still
+
+    if not nobody_carries_the_outside(the_part):
+        return the_part
+
+    question = _the_outer_profile(nobody_carries_the_outside(the_part))
+    events.emit(QUESTION, text=question)
+    answer = _answered(question, ask, events)
+    if answer:
+        the_part, _ = _written_in(the_part, question, answer, llm, events, attachments)
+    if not nobody_carries_the_outside(the_part):
+        return the_part
+
+    raise _NobodyAnswered(
+        "The part is described as round on the outside and no feature carries that "
+        "contour, so the only shape anything downstream could build is the box the "
+        "overall sizes make. Say what the outer profile is — the view it is drawn in, "
+        "its radii and where their centres are — and run it again: " + question)
+
+
+def _the_outer_profile(why):
+    return (
+        "The description says the outside of this part is not square — %s — and no "
+        "feature carries that contour, so what would be built is a prism of the overall "
+        "sizes. The outer profile is a feature like any other: give it an `id`, a `kind` "
+        "naming the shape in an engineer's words, the plane it lies in, a radius for "
+        "every arc and a position for every one of those radius centres against a named "
+        "datum. Read it off the view the silhouette is drawn in." % why)
 
 
 def _every_callout_accounted_for(the_part, attachments, llm, events, budgets,
@@ -1463,8 +1888,71 @@ def _look_again_at(missed):
         "what is missing." % ", ".join(sorted(set(missed))))
 
 
+
+# The two fields of an entry that name a direction rather than a distance. An
+# address ends in one of them, and what follows the colon is the direction
+# itself, in the description's own words.
+_A_DIRECTION_FIELD = (UNDER + "plane", UNDER + "axis")
+
+
+def _two_directions_in_one_step(planned):
+    """
+    A Step whose own citations disagree about which way it is building.
+
+    A Step is one sketch in one plane, extruded one way. So the entries it says
+    it satisfies have to agree about that plane — and where they do not, the
+    Step is wrong before it is written, without anybody having to run it or
+    know which plane of the part is which.
+
+    Step 1 of the recorded run
+    (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`) cites
+    `features → outer-profile → plane: the plane of the length and the height`
+    and `features → right-mounting-lug → plane: the plane of the length and the
+    depth` in the one Step, and built both in the elevation. The R12.5 rounded
+    end belongs to the plan view; drawn in the elevation it turned the flat
+    30 mm end face at 108 into a round nose, made the lug 25 mm tall where the
+    Step's own prose says 30, and destroyed the datum every right-hand
+    dimension on the part is measured from.
+    """
+    # A Step may cite an entry by its address alone or with the value written
+    # out; the acceptance carries both, so the direction is looked up there and
+    # the check does not depend on which way the citation was written.
+    of = {}
+    for entry in planned.acceptance or ():
+        address, _, value = str(entry).partition(": ")
+        of[address.strip()] = value.strip()
+
+    found = []
+    for at, cited in enumerate(planned.cites or (), start=1):
+        for field in _A_DIRECTION_FIELD:
+            said = {}
+            for entry in cited:
+                address, _, value = str(entry).partition(": ")
+                address = address.strip()
+                value = value.strip() or of.get(address, "")
+                if address.endswith(field) and value:
+                    said.setdefault(value, address)
+            if len(said) > 1:
+                found.append((at, field[len(UNDER):], said))
+    return found
+
+
+def _one_direction_per_step(mixed):
+    """What to tell Plan about a Step that is building two ways at once."""
+    return "\n".join(
+        "Step %d says it satisfies %d different values of `%s`: %s. A Step is one "
+        "sketch in one plane extruded one way, so it cannot satisfy two of them — "
+        "the entries it cites have to agree about the direction. Split it into one "
+        "Step per plane, each citing only the entries that lie in that one, and say "
+        "in the prose of each which plane it sketches in."
+        % (at, len(said), field, "; ".join("`%s` (%s)" % (value, address)
+                                           for value, address in said.items()))
+        for at, field, said in mixed)
+
+
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
-                               ask, cancelled, asking, feedback=None, attachments=()):
+                               ask, cancelled, asking, feedback=None, attachments=(),
+                               revising=()):
     """
     Plan, letting it ask for what the description did not carry (FCC-25).
 
@@ -1504,7 +1992,15 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
         if cancelled():
             raise Stopped()
         planned = plan(intent, snapshot, llm, events, feedback=feedback,
-                       the_part=grown, unanswered=asking.unanswered)
+                       the_part=grown, unanswered=asking.unanswered, revising=revising)
+        mixed = _two_directions_in_one_step(planned)
+        if mixed and asking.re_aimed < budgets.revisions:
+            # Not a question and not a block: the Plan disagrees with itself and
+            # the description already says which way each entry goes, so what it
+            # needs is telling, not asking (FCC-111).
+            asking.re_aimed += 1
+            feedback, revising = _one_direction_per_step(mixed), planned.steps
+            continue
         if not planned.question:
             if grown != the_part:
                 # The Gate stands over the description the Plan was made from.
@@ -1586,10 +2082,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     # One record of the questioning for the whole run, not one per Plan (FCC-96).
     asking = _Asking()
 
-    def replan(feedback=None):
+    def replan(feedback=None, revising=()):
         planned, part["the_part"] = _plan_once_it_knows_enough(
             intent, tools.call("snapshot"), llm, events, budgets, part["the_part"],
-            ask, cancelled, asking, feedback, attachments)
+            ask, cancelled, asking, feedback, attachments, revising)
         return planned
 
     def decided(why, applied):
@@ -1639,12 +2135,17 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         way: spend one unit of the shared ceiling, plan again from a fresh
         Snapshot, and say on the stream why. Only the cause, the sentence and
         what had been tried differ, so only those are arguments.
+
+        The Plan being rewritten goes with the complaint. A revision is an
+        amendment of a Plan that exists, and Plan was being asked for one
+        without being shown it — so it wrote from the complaint alone, which
+        names only what was wrong.
         """
         if revisions.exhausted(budgets, steps):
             raise _OutOfRevisions(
                 revisions.block_reason(budgets, steps, cause, refused), tried)
         revisions.spend(cause)
-        revised = replan(feedback)
+        revised = replan(feedback, revising=list(steps))
         _emit_plan(events, PLAN_REVISED, revised, reason=reason or feedback,
                    unanswered=asking.unanswered, revision=revisions.spent_total(),
                    of=revisions_ceiling(budgets, steps), because=revisions.named(cause))
@@ -1717,7 +2218,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                   "apply and nothing to review.", progress["tried"],
                           progress["applied"])
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
-                                progress, render(part["the_part"]), looks)
+                                progress, render(part["the_part"]), looks,
+                                planned.acceptance, planned.cites)
         applied = progress["applied"]
 
         # Both go back to Plan from a fresh Snapshot and spend the same budget:
@@ -1740,7 +2242,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         # list means no phase at all, not a phase that checks nothing.
         acceptance = _also_check(planned.acceptance, outstanding)
         checked = (assertion(acceptance, described, tools, llm, events, budgets,
-                             cancelled)
+                             cancelled, after_a_retry=outcome.get("retried"))
                    if acceptance else None)
         # What is wrong with the Document right now, whatever happens next. A
         # pass clears it, including the entries inherited from the run before.
@@ -1844,7 +2346,7 @@ def _also_check(acceptance, outstanding):
 
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
-                  as_described="", looks=None):
+                  as_described="", looks=None, entries=(), cites=()):
     """
     One pass over the Plan: written in one call, applied one Step at a time.
 
@@ -1866,9 +2368,14 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     described = {}
     attempts = []
     index = 0
+    # Which Steps only landed on a second or third try. A retry is where a
+    # feature gets talked into passing: the ring split of the recorded run was
+    # shortened until the Body stayed in one piece, and the shortened one is
+    # what the Document kept (FCC-114).
+    retried = set()
     looks = looks if looks is not None else Looks()
     written = execute(steps, tools, llm, events, budgets=budgets, as_described=as_described,
-                      looks=looks)
+                      looks=looks, entries=entries)
 
     while index < len(steps):
         if cancelled():
@@ -1884,6 +2391,17 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             events.emit(STEP_STARTED, index=index + 1, total=len(steps), description=step)
 
         outcome = written.for_step(index + 1)
+        if not outcome.code and written.unbuildable and not attempts:
+            # The Step Execute was told to leave out, and why. Asking for it
+            # again is asking for the same omission: the reason is what Plan
+            # has to act on, and it goes back the moment it arrives rather than
+            # after the same reply three times over (ADR-0013).
+            return {
+                "handback": "Step %d of %d could not be built as written: %s\n%s"
+                            % (index + 1, len(steps), step, written.unbuildable),
+                "tried": [], "obsolete": None, "description": described,
+            }
+
         if outcome.code:
             arguments = {"code": outcome.code, "label": outcome.label}
             events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
@@ -1896,6 +2414,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         if result.get("status") == "applied":
             progress["applied"] += 1
+            if attempts:
+                retried.add(index)
             described = result.get("description") or described
             events.emit(APPLIED, step=index + 1, label=outcome.label,
                         created=result.get("created", []))
@@ -1928,10 +2448,12 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         if cancelled():
             raise Stopped()
         written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
-                          looks)
+                          looks, entries)
 
-    return {"obsolete": None, "handback": None,
-            "description": described, "tried": []}
+    return {"obsolete": None, "handback": None, "description": described,
+            "tried": [], "retried": sorted(
+                {cited for at in retried for cited in (cites[at] if at < len(cites)
+                                                       else ())})}
 
 
 def _always_the_same_way(attempts):

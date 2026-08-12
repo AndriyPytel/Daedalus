@@ -18,14 +18,14 @@ def dependency_manager():
 
 def test_the_preflight_workers_imports_are_all_required(dependency_manager):
     assert set(dependency_manager.REQUIRED_PACKAGES) == {
-        "litellm", "numpy", "Pillow", "pymupdf"}
+        "litellm", "numpy", "Pillow", "pymupdf", "PyYAML"}
 
 
 def test_a_missing_package_is_named_by_its_pip_name(dependency_manager, monkeypatch):
     monkeypatch.setattr(dependency_manager, "check_package", lambda module: False)
 
     assert dependency_manager.missing_packages() == [
-        "litellm", "numpy", "Pillow", "pymupdf"]
+        "litellm", "numpy", "Pillow", "pymupdf", "PyYAML"]
 
 
 def test_the_sheet_reader_says_so_rather_than_failing_without_pymupdf():

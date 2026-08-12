@@ -9,7 +9,7 @@ import pytest
 
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, KINDS,
-    OUTSTANDING, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
+    OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, Event,
 )
 from core.narrate import Narration, narrate
@@ -24,6 +24,7 @@ SAMPLES = {
     ANSWER: {"text": "the pockets go through", "by": "drawing"},
     ATTACHED: {"files": [{"name": "sheet.pdf", "path": "/tmp/sheet.pdf"}]},
     DESIGN: {"model": {"envelope": {"length": {"value": "40 mm", "flag": "read"}}}},
+    PART: {"path": "/tmp/parts/model-mania 2023-c8a24f60-20260812-134925-000001.yaml"},
     PLAN: {"steps": ["Sketch the base"], "acceptance": []},
     PLAN_REVISED: {"steps": ["Sketch the base"], "reason": "the pocket was too deep",
                    "revision": 2, "of": 3, "because": "Execute could not build a Step"},

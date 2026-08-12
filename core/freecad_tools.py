@@ -84,6 +84,11 @@ TRAPS = [
     "vector is needed again, do the arithmetic with the operators — v * k, a - b, "
     "a + b — or build a new App.Vector; never call one of the in-place methods on a "
     "vector something else still reads.",
+    "Body.addObject hands back a *list* of what it added, not the object. "
+    "`sk = body.addObject(doc.addObject('Sketcher::SketchObject','S'))` therefore binds a "
+    "list, and the next line — sk.AttachmentSupport, sk.addGeometry — dies on "
+    "'list' object has no attribute. Add in one statement and keep the object in "
+    "another: `sk = doc.addObject(...)` then `body.addObject(sk)`.",
     "A sketched curve that is not a line, an arc or a circle is a Part.BSplineCurve "
     "through points computed from its own equation — an involute flank, a cam profile, "
     "a cycloid. A chain of Part.LineSegment approximates it, and the approximation is "

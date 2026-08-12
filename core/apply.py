@@ -237,6 +237,16 @@ class ApplyPipeline:
             self._worker = PreflightWorker()
         return self._worker
 
+    def shutdown(self):
+        """
+        Let the headless FreeCAD go.
+
+        It is a child process of the addon's, and nothing else ever ends it —
+        left running, it outlives the FreeCAD the user just closed.
+        """
+        if self._worker is not None:
+            self._worker.kill()
+
     def _active(self):
         doc = self._document() if callable(self._document) else self._document
         if doc is not None:

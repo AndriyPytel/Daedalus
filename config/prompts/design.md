@@ -31,7 +31,8 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
           "id": "bore-left",
           "kind": "Ø40 bore",
           "topology": "through",
-          "axis": {"value": "perpendicular to the top face", "flag": "read"},
+          "axis": {"value": "perpendicular to the top face", "flag": "read",
+                   "round_in": "the top view"},
           "position": {"the left end face": {"value": "20 mm", "flag": "read"},
                        "the top face": {"value": "25 mm", "flag": "read"}},
           "seen_in": ["front view", "SECTION B-B"]
@@ -64,6 +65,11 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   a bore, a slot, a pocket — carries that axis in `axis`, and one that is a
   profile, an arc or a rounded end carries `plane`; both are values like any
   other, so a direction is checked on the finished part the way a distance is.
+  Both also carry `round_in`, the one view the feature is drawn round in — the
+  view whose circle gave you the direction — named as the drawing names it. It
+  is what the axis is checked against: two features drawn round in two
+  different views cannot have been drilled the same way, and that is arithmetic
+  rather than an opinion.
 - **`conflicts`** is where two things that cannot both be true are recorded.
   Record them and leave them there.
 - **`not_defined`** is what nothing supplies, each entry naming the views you
@@ -86,10 +92,25 @@ value.
 - **the value** is either a length in millimetres, or a fraction of a named
   overall — `0.47 of the overall length`. The two are equal: a fraction is a
   full record, not a fallback.
-- **the flag** is `read` if the value is printed on the sheet or follows from
-  numbers that are, and `assumed` if you settled it yourself or a person told
-  you. A value out of `the_answer_you_were_given` is **assumed**; a value off
-  the views is **read**.
+- **the flag** is one of three, and the third is not a softer `assumed`:
+  - `read` — printed on the sheet, or following from numbers that are.
+  - `derived` — settled by the geometry rather than by a callout: measured off
+    the line work you were given, or fixed by a tangency, a silhouette drawn to
+    scale, a face two views share. A `derived` value carries `from` beside it,
+    one line saying what fixes it — `{"value": "10 mm below the ring axis",
+    "flag": "derived", "from": "the front view's line work: the arm's faces at
+    y=37.99 and 23.00, the ring's centre line at 48.01"}`. It is as much the
+    part as a printed number is, and everything downstream builds it and checks
+    it the same way.
+  - `assumed` — you settled it yourself, or a person told you. A value out of
+    `the_answer_you_were_given` is **assumed**.
+
+  **The drawing not printing a number is not the drawing failing to say.** Most
+  of what a draughtsman draws to scale he does not dimension, because the view
+  says it: an arm flush with the bottom of a ring, a cutout whose profile is
+  tangent to the two faces it runs between, an end radius that is half a depth.
+  Each of those is `derived`, with `from` saying what settled it — never
+  `not_defined`, and never a question put to the user.
 
 **A magnitude without its datum is the defect this phase exists for.** 7 and 14
 over an overall 30 are two different parts: a slot 14 wide with 7 from its
@@ -129,17 +150,95 @@ strings are exact. They are not a reading of the picture and there is nothing
 in them to misread, so where a number in the list disagrees with what you think
 you see, the list is right.
 
-**The list is numerals, not notation.** Symbols drawn as geometry are not in it
-— the diameter sign in particular is absent, so a bore printed `Ø35 THRU`
-arrives in the list as `35 THRU`. What a number *is* — a diameter, a radius, a
-depth, an overall — is yours to read off the view. The list only guarantees that
-the number itself is right and that you have all of them.
+**Where a number carries a diameter sign, the sign is given to you.** It is
+never in the text layer — it is drawn as geometry — so it is recovered from the
+line work it is drawn as and printed in front of the number, exactly where the
+sheet puts it. A number arriving without one has no sign drawn against it, and
+what such a number *is* — a radius, a depth, an overall — is still yours to read
+off the view.
+
+**Where the sheet measures its own number, you are told what it measures.** A
+dimension line is drawn between the two faces it measures and broken where the
+number sits, so its length is the distance in the part's own millimetres, at the
+sheet's own scale. Both are given: `108 — the sheet measures 108.0 mm between
+the faces this one's dimension line is drawn across`. Nobody read either of
+them. **A value you write that contradicts this is wrong** — an overall recorded
+as 100 against a dimension line the sheet draws 108 mm long is the defect this
+phase exists for, and it is now arithmetic rather than eyesight.
 
 You may also be given **where each callout's leader runs**, traced through the
 file's own line work: the point given is the end the arrowhead is on. Use it.
 It settles by arithmetic the thing this phase most often gets wrong — which
 feature a callout belongs to — and it does not settle what that feature is,
 which is still yours.
+
+Where the drawing is a vector PDF you are also given **the line work of each
+view** — every line and every arc the draughtsman drew it with, converted to
+millimetres of the part, x to the right of the view's left edge and y *up* from
+its bottom edge. It is exact in the same way the text layer is: it is the file,
+not a picture of it.
+
+**Measure it.** A centre line is an axis. A dimension's extension lines are
+drawn from the very faces that dimension measures, so the faces are at those
+coordinates whether or not anything was printed between them. A contour is the
+part. Two entities and a subtraction settle most of what looks undimensioned:
+in the recorded run
+(`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`, the 2023 pipe clamp)
+the height at which the arm meets the ring was reported `not_defined`, put to
+the user, and then invented — while the elevation's line work carried the ring's
+centre line at y=48.01 and the arm's two faces at 37.99 and 23.00, which is an
+arm 10.0 mm below the axis and flush with the ring's lowest tangent. The part
+was built 17.5 mm wrong on a distance the file gives to a hundredth of a
+millimetre. A value you measure there is `derived`, with `from` naming the
+entities you measured.
+
+Where a view says its **body was placed as a picture**, its outline is not in
+the line work and what is listed is its annotation only — measure the axes and
+the faces off it, and read the shape off the picture.
+
+A centre line is listed as `centre line` or `centre arc` rather than as one more
+line, because it is an axis or a plane of symmetry and not an edge. A `centre
+arc` is a bolt circle: its radius is a dimension of the part whether or not the
+view prints one.
+
+**Where a view's body is a picture, its outline is traced out of the picture and
+given to you as `traced` lines, arcs and circles, in the same millimetres.**
+That is the *shape* — the silhouette the view draws, the holes through it, the
+pockets in it — and it is the one thing on the sheet that no text layer carries.
+Read the shape off it rather than off the picture: `traced arc R25.16 centred
+(159.39, 40.87)` is a radiused end, and the two of them with their centres 99.9
+apart are a plate 150 long.
+
+`traced` is measured, not printed, and the difference matters in one direction
+only. It is taken at the picture's own resolution and to the inside of the line
+that draws an edge, so it runs about a millimetre under the drawn size, and a
+shallow curve is given as the line between its ends rather than as a radius it
+might not have. So: **shape from `traced`, numbers from the text layer.** It can
+tell you a bore called 25 is drawn 34 across; it can never tell you a bore is 35.
+
+## A drawing of several pages is several sheets
+
+Every page is read and every view and callout says which page it is on. That is
+not one big sheet: on a competition drawing page 2 is usually a **revision** of
+the same part — "Phase 2", "MAKE CHANGES AS INDICATED IN RED REVISION CLOUDS",
+"ALL OTHER DIMENSIONS REMAIN THE SAME AS IN PHASE 1" — and the two pages
+disagree on purpose.
+
+So describe the part **as the last page leaves it**: everything the later page
+changes comes from the later page, and everything it does not mention stays as
+the earlier one had it — which is what these sheets say outright in their own
+notes. Where the two pages give the same value differently, the later one is the
+part and the earlier one is a `conflicts` entry naming both pages, for the user
+to settle at the Plan Gate.
+
+**One part, not one model of two parts.** A feature the later page replaces is
+gone: it is not a second feature with `phase1` in its `id` standing beside a
+`phase2` one. A recorded run described both revisions at once — a Phase 1
+mounting hole *and* the Phase 2 slot that replaces it, a Phase 1 ear *and* the
+Phase 2 angled arm — and no Plan can build that: every Plan covering one half
+left the other half unbuilt, and the run spent its whole revision budget
+swapping between them without running a Step. If which revision the user wants
+is genuinely unclear, ask; never describe both.
 
 ## First, sweep the sheet
 
@@ -210,6 +309,24 @@ that view and take the shape off it. A feature the sheet points you at and you
 report as `not_defined` is the one gap you can always close yourself, and it is
 the most expensive to leave open: nobody downstream can invent that shape, and
 what gets built instead is whatever the number nearest to hand happened to be.
+
+**A detail view is another picture of a feature, not another feature.** The
+same cavity is drawn in the plan, sectioned in SECTION A-A and blown up in
+VIEW B, and each of those is where you *look* at it; there is one hole in the
+material. In the recorded run
+(`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`, the 2023 pipe clamp)
+the one cavity in the web became `slot-arm`, 30 mm long off the plan, and
+`cutout-web`, "profile as drawn in VIEW B" — and the second was written with an
+empty `position`, because there was nothing left to place: its place was already
+on the first. Plan built both, inventing a width for one and a radius for the
+other, and the second cut the part into two pieces.
+
+So before you write a second feature, ask whether the sheet is showing you the
+same one twice: one feature, one `id`, every view it is drawn in listed in
+`seen_in`, and every value it has — from whichever view shows it best — under
+that one feature. **A feature with an empty `position` is the shape this defect
+arrives in**: nothing places it, so either it is another view of a feature you
+have already written, or its position is what you have not read yet.
 
 **The arrowhead says which feature the callout is of; where the leader starts
 says where its centre is.** Those are two different ends of the same line and
@@ -335,8 +452,11 @@ base profile — a hole through a side face, a slot in an end — is placed from
 datum on that face, and its `axis` says which way it points, named by the datums
 it is measured against and never as X, Y or Z: "perpendicular to the ring axis,
 crossing the split". A hole drawn as a circle in a view is a hole whose axis is
-perpendicular to that view, and that is a reading, so it is written down; where
-the drawing shows two features perpendicular to one another, say so. A model
+perpendicular to that view, and that is a reading, so it is written down — in
+`round_in`, naming that view — and where the drawing shows two features
+perpendicular to one another, say so. The reader tells you which view it traced
+each round thing in; a `round_in` that disagrees with the trace is a conflict,
+and two features with one axis and two `round_in` views is one too. A model
 that puts everything in one profile plans a flat part, and nothing downstream
 can tell that a plane went missing.
 
@@ -364,6 +484,16 @@ are where the rest of it is.
 Every entry must name the views you looked in, in `looked_in`. If you cannot
 name them, you have not looked yet. Naming them also lets the user point at the view you missed, which
 is the fastest correction there is.
+
+**Before any entry goes in, measure.** A value the views settle geometrically is
+`derived` and never a gap: the line work of the views is given to you in the
+part's own millimetres, and a subtraction between two of its entities is the
+whole of what "nothing supplies" would otherwise have hidden. The three gaps of
+the recorded run — how high the arm meets the ring, how wide the slot through
+it is, what the cutout in the web looks like — went to the user as
+`not_defined`, and the first was in the file to a hundredth of a millimetre, the
+second was printed on the drawing's second page, and the third is drawn to scale
+in the view the sheet points at.
 
 Two dimensions that cannot both be true is a `conflicts` entry, not a
 `not_defined` one. Put it there and leave it there. Never bridge the gap with an

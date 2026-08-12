@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from core.design import render
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE,
-    OUTSTANDING, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
+    OUTSTANDING, PART, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
     STEP_STARTED, TOOL_RESULT,
 )
 
@@ -88,6 +88,12 @@ def narrate(event) -> Narration:
         # The structure, laid out, rather than the JSON it travels as: the Gate
         # is where a misreading is cheap to correct, and a dump is not read.
         return Narration(title="What the part is", body=render(data["model"]))
+
+    if kind == PART:
+        # The path, because the file is the point: a reading is corrected by
+        # opening it, and a run is compared with the last one by diffing two of
+        # them (FCC-108).
+        return Narration(line="The part as read: %s" % data.get("path", ""))
 
     if kind == GATE:
         # A status rather than a line: the panel already puts the question in a

@@ -36,6 +36,14 @@ def initialize():
         Gui.addWorkbench(CopilotWorkbench())
         App.Console.PrintMessage("[SUCCESS] CopilotWorkbench loaded into FreeCAD GUI.\n")
 
+        # 6. Dock the chat on the main window, so it is there on every
+        #    workbench rather than only on ours. FreeCAD may not have built
+        #    the window yet at this point; the timer runs once it has.
+        from ui import copilot_dock
+        if copilot_dock.install(Gui.getMainWindow()) is None:
+            from PySide import QtCore
+            QtCore.QTimer.singleShot(0, lambda: copilot_dock.install(Gui.getMainWindow()))
+
     except Exception:
         App.Console.PrintError("=" * 50 + "\n")
         App.Console.PrintError("An error occurred during FreeCadCopilot initialization.\n")

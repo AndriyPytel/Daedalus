@@ -20,6 +20,16 @@ from typing import Callable, Iterable, Iterator, List
 REASONING = "reasoning"
 TEXT = "text"
 
+# A reasoning model left on the provider's default cap spends it all on thought
+# and answers with nothing (FCC-108). Read like the Anthropic thinking budget:
+# the request may cost four times this.
+_OUTPUT_BUDGET = 8192
+
+# Told nothing, kimi-k3 circled one drawing for ten minutes and never left its
+# own reasoning; "medium" bought no less of it. The cap turns that into an
+# error; this is the only dial we have against reaching it (FCC-108).
+_REASONING_EFFORT = "low"
+
 _PREFIX = {
     "OpenAI": "openai",
     "Google": "gemini",
@@ -78,7 +88,17 @@ class LiteLLMClient:
             kwargs["api_base"] = self.api_base
         if self.thinking_budget:
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
-            kwargs.setdefault("max_tokens", self.thinking_budget * 4)
+        elif _may_reason(self.model):
+            kwargs.setdefault("reasoning_effort", _REASONING_EFFORT)
+            # LiteLLM refuses to send a param it has no table entry for, and a
+            # gateway's model is exactly what it has no entry for.
+            kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
+        kwargs.setdefault("max_tokens",
+                          _output_cap(self.model, (self.thinking_budget or _OUTPUT_BUDGET) * 4))
+        # An OpenAI-compatible gateway that is not asked for usage can end a
+        # stream without a word about why; a cut-off reply then looks complete.
+        if self.model.startswith("openai/"):
+            kwargs.setdefault("stream_options", {"include_usage": True})
 
         try:
             for raw in completion(**kwargs):
@@ -93,6 +113,40 @@ class LiteLLMClient:
             if refusal is None:
                 raise
             raise refusal from exc
+
+
+def _may_reason(model) -> bool:
+    """
+    Whether to tell *model* how hard to think.
+
+    A model LiteLLM knows answers for itself. One it has never heard of is a
+    gateway's — kimi-k3 is — and those are the ones that need telling; a local
+    server that does not reason ignores the key rather than refusing it.
+    """
+    import litellm
+
+    if litellm.supports_reasoning(model):
+        return True
+    try:
+        litellm.get_model_info(model)
+    except Exception:
+        return True
+    return False
+
+
+def _output_cap(model, wanted) -> int:
+    """
+    *wanted*, or the model's own ceiling where LiteLLM knows one: asking for
+    more output than a model can write is rejected outright, and a gateway
+    model LiteLLM has never heard of has no ceiling to read.
+    """
+    import litellm
+
+    try:
+        known = litellm.get_model_info(model).get("max_output_tokens")
+    except Exception:
+        known = None
+    return min(wanted, known) if known else wanted
 
 
 def _deltas(raw) -> Iterator[Chunk]:
@@ -129,6 +183,12 @@ _RETRY_AFTER = re.compile(
     r"retry[-_ ]?(?:delay|after)\"?\s*[:=]?\s*\"?(\d+(?:\.\d+)?\s*[smh]?)", re.I)
 _OUT_OF_CREDIT = ("insufficient_quota", "credit balance", "out of credit", "billing_hard_limit")
 _OUT_OF_QUOTA = ("quota", "resource_exhausted", "resource has been exhausted")
+# A plan's own ceiling rather than a rate: a gateway answers it with 429 too,
+# and telling the user to wait a moment is telling them to wait ten days.
+# Measured on the opencode gateway, which refused kimi-k3 mid-run with
+# "Monthly usage limit reached. Resets in 10 days."
+_USED_UP = ("usage limit", "monthly limit", "limit reached", "spend limit",
+            "spending limit")
 # Google answers a per-minute limit with the same RESOURCE_EXHAUSTED body as a
 # spent daily quota; only the violated metric says whether the wait is seconds
 # or a day.
@@ -160,6 +220,10 @@ def _translate(exc, model):
             return ProviderRefused(
                 refused + ": the account is out of credit. Top it up in your provider's "
                 "billing dashboard.", said)
+        if any(word in low for word in _USED_UP):
+            return ProviderRefused(
+                refused + ": the plan's usage limit for this model is reached, and waiting "
+                "a moment will not clear it. The provider said: %s" % said, said)
         if any(word in low for word in _OUT_OF_QUOTA) and not any(
                 word in low for word in _PER_MINUTE):
             return ProviderRefused(

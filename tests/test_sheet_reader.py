@@ -51,10 +51,11 @@ def _shown_in(sheet, at):
     return [entry.seen_in for entry in sheet.printed if entry.at == at]
 
 
-def _overlapping(sheet, box):
-    """The crops that show any part of a patch of the page, by their view's name."""
+def _overlapping(sheet, box, page=1):
+    """The crops of one page that show any part of a patch of it, by view name."""
     return {crop.name.split(", part")[0] for crop in sheet.crops
-            if crop.rect[0] < box[2] and box[0] < crop.rect[2]
+            if crop.page == page
+            and crop.rect[0] < box[2] and box[0] < crop.rect[2]
             and crop.rect[1] < box[3] and box[1] < crop.rect[3]}
 
 
@@ -117,16 +118,20 @@ def test_what_is_printed_is_extracted_rather_than_read(sheet):
 
 
 @needs_pymupdf
-def test_the_diameter_sign_is_missing_and_the_module_says_so(sheet):
+def test_the_diameter_sign_is_missing_from_the_text_layer_and_supplied_anyway(
+        sheet):
     """
     Measured, and load-bearing: `Ø` is drawn as geometry on this sheet and is
     not in the text layer, so the bore printed `Ø35 THRU` extracts as `35` and
-    `THRU`. A module that quietly handed that list on as the callouts would be
-    teaching Design that the sheet has no diameters on it.
+    `THRU`. Handing that list on as the callouts teaches Design that the sheet
+    has no diameters on it — so the sign stays out of `text`, which is the
+    draughtsman's own, and arrives beside it in `notation`, which is this
+    module's reading of the line work he drew it as.
     """
     printed = [entry.text for entry in sheet.printed]
 
     assert "35" in printed and "\u00d835" not in printed
+    assert "\u00d8" in {entry.notation for entry in sheet.printed}
     assert any("\u00d8" in note for note in sheet.notes), \
         "the missing diameter sign is not mentioned anywhere the model would see it"
 
@@ -358,7 +363,7 @@ def test_the_sheet_is_shown_whole_before_it_is_shown_close_up(sheet):
     pictures = [piece["show"] for piece in told if "show" in piece]
 
     assert pictures[0] == sheet.overview
-    assert len(pictures) == len(sheet.crops) + 1
+    assert len(pictures) == len(sheet.crops) + len(sheet.wholes) + 1
 
 
 @needs_pymupdf
@@ -435,3 +440,509 @@ def test_a_raster_is_still_cut_up_and_still_says_it_has_no_text_layer(tmp_path):
     assert sheet is not None and sheet.crops, "a raster sheet produced no crops"
     assert sheet.printed == []
     assert any("no text layer" in note for note in sheet.notes)
+
+
+# ── the line work ─────────────────────────────────────────────────────────────
+
+
+@needs_pymupdf
+def test_a_second_page_is_read_rather_than_mentioned(sheet_2023):
+    """
+    The 2023 file is two pages and the reader used to take the first and say so
+    in a note. Page 2 prints `6.6 X 8.0 THRU ALL`, and the recorded run
+    (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`) asked the user how
+    wide that slot is, was answered by nobody, and assumed 8 mm — the number
+    printed on the page nobody read.
+    """
+    printed = [entry.text for entry in sheet_2023.printed]
+
+    assert "8.0" in printed, "page 2's slot width is still not in the text layer"
+    assert not any("only the first" in note for note in sheet_2023.notes)
+    assert any(crop.page == 2 for crop in sheet_2023.crops),         "page 2 arrives with no crop of its own"
+    assert all(entry.seen_in for entry in sheet_2023.printed),         "a callout on one of the pages is shown in no crop"
+
+
+@needs_pymupdf
+def test_a_view_is_measured_in_the_millimetres_of_the_part(sheet_2023):
+    """
+    The defect this exists for, in the numbers it was measured in.
+
+    The elevation's ring is centred on a centre line drawn at y=247.9 pt, and
+    the `15` that gives the arm its thickness has its extension lines on the
+    arm's own faces, at 276.3 and 318.8 pt. In the view's own millimetres the
+    centre line is at y=48.01 and the faces at 37.99 and 23.00 — the arm's top
+    face 10.0 mm *below* the ring axis and its bottom face 25.0 mm below, flush
+    with the ring's lowest tangent. The recorded run asked the user for that
+    height, was told the views do not answer, and assumed the arm centred on the
+    axis, 7.5 mm above it: the part came out 17.5 mm wrong on a distance the
+    file carries to a hundredth of a millimetre.
+    """
+    elevation = [view for view in sheet_2023.drawn
+                 if view.view.startswith("the middle centre")][0]
+
+    def at_height(height):
+        return [said for said in elevation.entities
+                if said.startswith(("line", "centre line"))
+                and said.count("%.2f)" % height) == 2]
+
+    assert at_height(48.01), "the ring's own centre line is not in the line work"
+    assert at_height(37.99), "the arm's top face is not in the line work"
+    assert at_height(23.00), "the arm's bottom face is not in the line work"
+
+
+@needs_pymupdf
+def test_an_arc_is_given_its_radius_and_its_centre(sheet_2023):
+    """
+    A PDF carries no arcs — every curve is flattened into very short straight
+    pieces — so a radius exists only once the pieces are chained and a circle is
+    fitted through them. A radius without its centre places nothing, which is
+    what the description says about a radius on a sheet, so both are reported.
+    """
+    said = [entity for view in sheet_2023.drawn for entity in view.entities
+            if entity.startswith("arc")]
+
+    assert said, "not one arc was recovered from the whole drawing"
+    assert all("centred (" in entity for entity in said), said[:3]
+
+
+@needs_pymupdf
+def test_a_view_whose_body_is_a_picture_says_so_rather_than_passing_off_its_dimensions(
+        sheet_2023):
+    """
+    A shaded view on these sheets is exported as a raster: the outline is not in
+    the file's vector content at all, and what is left in the view is its
+    dimension and centre lines. Handed over as "the line work of this view" that
+    would be a drawing of the annotation offered as the part.
+    """
+    elevation = [view for view in sheet_2023.drawn
+                 if view.view.startswith("the middle centre")][0]
+
+    assert elevation.from_a_picture
+    assert "not its outline" in sheet_reader._the_drawn_list(sheet_2023)
+
+
+@needs_pymupdf
+def test_the_scale_the_sheet_prints_is_what_the_millimetres_are_in(sheet):
+    """
+    A page is in points at 72 to the inch, so a drawing plotted 1:1 puts
+    0.3528 mm of the part in each of them — and a sheet plotted 1:2 puts twice
+    that. The ratio in the title block is the only thing that says which, so it
+    is read rather than assumed, and said out loud in the notes.
+    """
+    assert any("the scale the sheet prints" in note for note in sheet.notes),         sheet.notes
+
+
+def test_a_notes_item_number_is_not_a_callout_the_part_has_to_account_for():
+    """
+    `1.` and `2.` enumerate the notes on every one of these sheets, and page 2
+    adds `3.` and `4.`. Counted as dimensions they are numbers no description
+    can ever use, so every run ends with Design being sent back to the sheet to
+    explain that a full stop is a full stop —
+    `logs/sessions/6fbd31e98fb540818086611841fa9aff.jsonl` is that run, and it
+    died in the explanation.
+    """
+    assert not sheet_reader._a_dimension("3.")
+    assert not sheet_reader._a_dimension("1.")
+    assert sheet_reader._a_dimension("30")
+    assert sheet_reader._a_dimension("42.5")
+    assert sheet_reader._a_dimension("(R30)")
+
+
+@needs_pymupdf
+def test_a_second_page_is_said_to_be_a_second_sheet_and_maybe_a_revision(sheet_2023):
+    """
+    Reading every page brought a hazard with it. Page 1 of this file has the
+    part 25 mm deep and page 2 has it 30: a run took the 30 off page 2 and the
+    108 off page 1 and described a part neither page shows
+    (`logs/sessions/172369d7389a4a4f9c3c2ae8b5aded91.jsonl`). The pages are
+    labelled everywhere; what was missing was what to do about it.
+    """
+    said = [note for note in sheet_2023.notes if "2 pages" in note]
+
+    assert said, sheet_2023.notes
+    assert "conflicts" in said[0], "nothing says what a disagreement between pages is"
+    assert "PHASE" in said[0].upper(), \
+        "the sheet says it is a revision in its own words and the note does not quote it"
+
+
+@needs_pymupdf
+def test_the_number_that_named_the_defect_is_measured_by_its_own_dimension_line(
+        sheet_2023):
+    """
+    ADR-0019 as arithmetic. The sheet prints 108 and the run recorded 100.
+
+    Nothing here reads the digits — the string comes out of the text layer, and
+    the millimetres come out of the span its own dimension line is drawn
+    between. They agree to a hundredth, so a description that writes 100 is
+    contradicted by 8 mm of evidence the sheet supplied about itself.
+    """
+    entries = [entry for entry in sheet_2023.printed if entry.text == "108"]
+    assert entries, "the sheet prints 108"
+    assert entries[0].measures == pytest.approx(108.0, abs=0.1)
+    assert entries[0].off_by == pytest.approx(0.0, abs=0.1)
+
+
+@needs_pymupdf
+def test_a_dimension_line_broken_by_its_own_text_is_still_one_measurement(
+        sheet_2023):
+    """
+    The span bridges the gap the text sits in — the whole reason `_chained`
+    cannot do this job. `_chained` breaks a run at a junction because a corner
+    is not a curve continuing; a dimension line is drawn as two pieces either
+    side of the number, and the two pieces are one measurement.
+    """
+    measured = [entry for entry in sheet_2023.printed
+                if entry.measures is not None]
+    assert len(measured) >= 8
+    assert all(abs(entry.off_by) < 0.6 for entry in measured)
+
+
+@needs_pymupdf
+def test_a_string_no_dimension_line_measures_says_nothing_rather_than_a_number(
+        sheet):
+    """
+    Silence, not a guess. A drawing number, a note, a view label — nothing on
+    the sheet measures them, and an entry that invented a millimetre for them
+    would be worse than one that says nothing.
+    """
+    unmeasured = [entry for entry in sheet.printed if entry.measures is None]
+    assert unmeasured
+    assert all(entry.off_by is None for entry in unmeasured)
+
+
+@needs_pymupdf
+def test_the_scale_is_confirmed_by_the_lines_and_not_taken_on_trust(sheet):
+    """
+    The title block prints 1:2 and the module used to believe it. The sheet's
+    own dimension lines vote on it independently — printed value over span —
+    and on this sheet the vote agrees to four figures. Agreement is worth
+    saying; the point is that disagreement would now be sayable at all.
+    """
+    said = " ".join(sheet.notes)
+    assert "its own dimension lines" in said
+    assert "0.7055" in said or "0.7054" in said
+
+
+@needs_pymupdf
+def test_a_centre_line_arrives_as_an_axis_and_not_as_one_more_line(sheet):
+    """
+    The dash pattern is in the file and was being thrown away. A long-dash-dot
+    line is a centre line, which is to say an axis or a plane of symmetry —
+    exactly the thing `design.py` asks every feature with an axis to carry, and
+    exactly the thing the model was left to guess off a picture.
+
+    Measured on `mm25-p1-1.pdf`: six dashed paths, none of which said anything
+    about itself before this.
+    """
+    said = [entity for view in sheet.drawn for entity in view.entities
+            if entity.startswith("centre ")]
+    assert said, "the sheet draws centre lines"
+    assert any(entity.startswith("centre line") for entity in said)
+
+
+@needs_pymupdf
+def test_a_centre_line_drawn_as_a_circle_is_reported_as_the_circle_it_is(
+        sheet_2023):
+    """
+    The 2023 sheet draws one centre line as a full circle 78.4 pt across — a
+    bolt circle, whose diameter is a dimension of the part that no callout on
+    that view prints. Chained and fitted as ordinary line work it was 165
+    anonymous fragments competing for room in the list.
+    """
+    said = [entity for view in sheet_2023.drawn for entity in view.entities
+            if entity.startswith("centre arc")]
+    assert said, "the bolt circle's centre line is drawn as a circle"
+
+
+@needs_pymupdf
+def test_a_centre_line_is_never_the_entity_that_gets_left_out(sheet_2023):
+    """
+    The list is capped at the longest `ENOUGH`, and a centre line is short. It
+    is also the most informative thing in the list, so it is not what the cap
+    takes off.
+    """
+    for view in sheet_2023.drawn:
+        centres = [at for at, entity in enumerate(view.entities)
+                   if entity.startswith("centre ")]
+        assert centres == list(range(len(centres))), (
+            "centre lines come first, ahead of the cap")
+
+
+@needs_pymupdf
+def test_the_diameter_sign_is_recovered_from_the_line_work_it_is_drawn_as(sheet):
+    """
+    The module already says the sign is missing from the text layer. Saying so
+    is not the same as supplying it: `35 THRU` and `Ø35 THRU` are a bore and a
+    length, and the difference was left for the model to see in a picture.
+
+    It is not a picture. On `mm25-p1-1.pdf` the sign is a path of 47 flattened
+    segments, 6.3 × 7.7 pt, whose right edge sits 2 pt from the numeral's left
+    edge, inside the numeral's own line of text. That is arithmetic, and it is
+    the same arithmetic on the 40 and on the 35.
+    """
+    signed = {entry.text for entry in sheet.printed if entry.notation == "\u00d8"}
+    assert "35 THRU" in signed or "35" in signed
+    assert any(entry.text.startswith("40") for entry in sheet.printed
+               if entry.notation == "\u00d8")
+
+
+@needs_pymupdf
+def test_a_radius_is_not_mistaken_for_a_diameter(sheet):
+    """
+    `(R30)` carries its own letter in the text layer and no sign is drawn
+    against it. A rule that marked it a diameter would turn a 30 mm radius into
+    a 15 mm one, which is worse than saying nothing.
+    """
+    assert not [entry for entry in sheet.printed
+                if entry.text == "(R30)" and entry.notation]
+
+
+@needs_pymupdf
+def test_the_sign_is_shown_against_the_number_it_was_drawn_against(sheet):
+    """What the model is told has the sign in front of the number, as the sheet has."""
+    said = sheet_reader._the_printed_list(sheet)
+    assert "\u00d835" in said
+
+
+@needs_pymupdf
+def test_a_crop_is_never_resized_at_the_far_end_for_costing_too_many_patches(sheet):
+    """
+    The cap that matters is not the long edge, and getting that wrong gave away
+    the resolution this module exists to protect.
+
+    Anthropic tokenises an image in 28 x 28 patches and costs it
+    `ceil(w/28) * ceil(h/28)` visual tokens, capped at 1568 on the standard
+    tier — so a 1400 x 1400 crop, well inside every edge limit, costs 2500 and
+    is silently downscaled to 1092 x 1092. 22% of the linear resolution, taken
+    back after the module went to the trouble of tiling for it.
+    """
+    import math as _math
+
+    from PIL import Image
+
+    def costs(path):
+        width, height = Image.open(path).size
+        return _math.ceil(width / sheet_reader.A_PATCH) * _math.ceil(
+            height / sheet_reader.A_PATCH)
+
+    for crop in sheet.crops:
+        assert costs(crop.path) <= sheet_reader.THE_BUDGET, (
+            "%s costs %d visual tokens and will be resized"
+            % (crop.name, costs(crop.path)))
+
+    # The layout picture is where this was actually being paid: 1400 x 1081 is
+    # 1950 patches, so the one picture that says where the views are was the one
+    # arriving smaller than it was rendered.
+    for overview in sheet.overviews:
+        assert costs(overview) <= sheet_reader.THE_BUDGET, costs(overview)
+
+
+@needs_pymupdf
+def test_a_raster_crop_is_not_enlarged_past_what_the_file_holds(tmp_path):
+    """
+    An upscale adds pixels and no information, and every one of them is billed.
+    The raster path used to enlarge any crop smaller than half the cap on the
+    grounds that bigger is more legible; it is not, because the ink it enlarges
+    is the ink the file has.
+    """
+    from PIL import Image
+
+    sheet = sheet_reader.read(RASTER, into=str(tmp_path))
+    original = Image.open(RASTER).size
+    for crop in sheet.crops:
+        width, height = Image.open(crop.path).size
+        x0, y0, x1, y1 = crop.rect
+        assert width <= int(x1 - x0) + 1 and height <= int(y1 - y0) + 1, crop.name
+    assert original
+
+
+# ── the picture the view is ───────────────────────────────────────────────────
+
+
+@needs_pymupdf
+def test_a_bore_drawn_only_as_pixels_is_measured_in_millimetres(sheet):
+    """
+    The shape the sheet never wrote down.
+
+    Every view on these sheets is a placed raster at 186 DPI, so the outline
+    is not in the vector content at any DPI the page is rendered at — this
+    module has always said so and stopped there. It does not have to: the
+    picture is at a known scale, so a hole in it is a circle whose diameter is
+    arithmetic. `mm25-p1-1.pdf` prints Ø35 and Ø40, and the pixels measure 33.9
+    and 38.9 — low by a millimetre, because a hole is measured to the inside of
+    the line that draws it, and that is a bias rather than a mistake.
+
+    Traced, never trusted: this is a second opinion about a number the text
+    layer already carries exactly, and it exists to contradict a misreading. It
+    is well inside the 8 mm that ADR-0019 lost and nowhere near able to supply
+    the 35 itself.
+    """
+    circles = [entity for view in sheet.drawn for entity in view.entities
+               if entity.startswith("traced circle")]
+    assert circles, "not one circle was recovered from the pictures"
+    diameters = [float(entity.split("\u00d8")[1].split()[0]) for entity in circles]
+    assert any(-1.5 <= across - 35.0 <= 0 for across in diameters), diameters
+    assert any(-1.5 <= across - 40.0 <= 0 for across in diameters), diameters
+
+
+@needs_pymupdf
+def test_a_callout_that_disagrees_with_the_pixels_it_points_at_is_a_conflict(sheet):
+    """
+    The whole point of tracing. A leader ends inside a hole; the hole has a
+    measured diameter; the callout says what the draughtsman meant it to be.
+    Where the two agree the sheet is confirming itself, and where they do not
+    the disagreement is put on the record rather than settled here.
+    """
+    said = " ".join(sheet.notes) + sheet_reader._the_drawn_list(sheet)
+    assert "\u00d835" in said or "35" in said
+    assert not [entity for view in sheet.drawn for entity in view.entities
+                if "disagrees" in entity], (
+        "this sheet agrees with itself; a disagreement here is a defect")
+
+
+def test_a_bore_called_one_thing_and_drawn_another_is_put_on_the_record():
+    """
+    The join, exercised where a real sheet cannot exercise it: these four sheets
+    agree with themselves, so the disagreement has to be built to be seen.
+
+    A callout of Ø25 whose leader ends inside a hole the pixels measure at 34 is
+    9 mm apart, which is the size of the error ADR-0019 lost. It is recorded in
+    the words of both, and it is not resolved — that is the Plan Gate's job and
+    the user's, not this module's.
+    """
+    printed = [sheet_reader.Printed(text="25", at=(10.0, 10.0), notation="\u00d8")]
+    leaders = [{"callout": "25", "printed_at": (10.0, 10.0),
+                "its_leader_reaches": (100.0, 100.0)}]
+    circles = [((100.0, 100.0), 24.0, 34.0)]
+    notes = []
+
+    sheet_reader._the_pixels_disagree(circles, printed, leaders, notes)
+
+    assert notes and "9.0 mm" in notes[0]
+    assert "nothing here settles which is meant" in notes[0]
+
+
+def test_a_callout_whose_leader_lands_nowhere_near_a_hole_is_left_alone():
+    """A leader that ends on a face is not evidence about a bore."""
+    printed = [sheet_reader.Printed(text="25", at=(10.0, 10.0), notation="\u00d8")]
+    leaders = [{"callout": "25", "printed_at": (10.0, 10.0),
+                "its_leader_reaches": (400.0, 400.0)}]
+    notes = []
+
+    sheet_reader._the_pixels_disagree([((100.0, 100.0), 24.0, 34.0)], printed,
+                                      leaders, notes)
+
+    assert notes == []
+
+
+@needs_pymupdf
+def test_the_outline_of_a_view_placed_as_a_picture_is_read_as_lines_and_arcs(
+        sheet):
+    """
+    The shape itself, which is what was missing.
+
+    Holes alone are not a part. `mm25-p1-1.pdf`'s top view is a plate 150 long
+    and 50 deep with a radiused end at each end, and none of that is anywhere in
+    the file: the view is a placed raster and the vector content around it is
+    dimension lines. Walked round and fitted whole, the silhouette comes back as
+    two straight edges 50.3 mm apart and two R25.1 ends whose centres are 99.9
+    apart — 150.1 over the part, against a sheet that prints 150.
+
+    Fitted whole rather than greedily, and an arc only where the run actually
+    turns: a straight edge on a rendered view wanders a pixel or two, and a
+    circle will always fit that wander at a radius of half a metre.
+    """
+    view = [entity for shown in sheet.drawn for entity in shown.entities
+            if shown.view.startswith("the middle left")]
+
+    ends = [entity for entity in view if entity.startswith("traced arc R25")]
+    assert len(ends) == 2, view
+
+    centres = sorted(float(entity.split("centred (")[1].split(",")[0])
+                     for entity in ends)
+    assert abs((centres[1] - centres[0]) + 25.1 + 25.1 - 150.0) < 1.0, centres
+
+    edges = sorted(float(entity.split(") to (")[1].split(", ")[1].rstrip(")"))
+                   for entity in view if entity.startswith("traced line"))
+    assert abs((edges[-1] - edges[0]) - 50.0) < 1.0, edges
+
+
+@needs_pymupdf
+def test_a_straight_edge_is_never_reported_as_an_arc_of_half_a_metre(sheet):
+    """
+    The failure mode of fitting circles to pixels, named. A radius the part does
+    not have is worse than no radius at all: it is a number a reader can write
+    down.
+    """
+    radii = [float(entity.split("traced arc R")[1].split(" ")[0])
+             for shown in sheet.drawn for entity in shown.entities
+             if entity.startswith("traced arc")]
+    assert radii
+    assert max(radii) < 200.0, sorted(radii)[-3:]
+
+
+# ── which view a thing is round in (FCC-109) ─────────────────────────────────
+
+
+@needs_pymupdf
+def test_the_view_each_round_thing_is_round_in_is_reported(sheet_2023):
+    """
+    The two M6 holes of the 2023 clamp are round in the plan and nowhere else.
+    Their axes are therefore not the bore's, which is round in the elevation —
+    the run that named this built all three parallel and the clamp screw ended
+    up alongside the split it exists to pinch.
+    """
+    round_here = sheet_reader.round_in(sheet_2023)
+
+    holes = [view for view, wide in round_here.items()
+             if any(6.0 <= one <= 6.6 for one in wide)]
+    assert holes, "the Ø6.6 holes were traced round in no view at all"
+    assert all("upper" in view for view in holes), holes
+
+
+@needs_pymupdf
+def test_what_a_view_is_round_in_is_said_to_the_reader_of_the_sheet(sheet_2023):
+    said = "\n".join(piece.get("say", "") for piece in sheet_reader.shown(sheet_2023))
+
+    assert "round in the view its axis points at" in said
+    assert "round_in" in said
+
+
+def test_a_sheet_nobody_could_read_is_round_in_nothing():
+    assert sheet_reader.round_in(None) == {}
+
+
+@needs_pymupdf
+def test_a_view_too_big_for_one_crop_is_still_shown_whole_once(sheet_2023):
+    """
+    A view cut into three is three pictures holding a third of a projection
+    each, and relating a circle in the plan to the two lines in the elevation
+    that are the same hole was being done across them (FCC-113).
+    """
+    tiled = {crop.name.split(", part ")[0] for crop in sheet_2023.crops
+             if ", part " in crop.name}
+
+    assert tiled, "nothing on this sheet was tiled, so this proves nothing"
+    assert {whole.name for whole in sheet_2023.wholes} == tiled
+    assert all(whole.rect[2] - whole.rect[0] > 0 for whole in sheet_2023.wholes)
+
+
+@needs_pymupdf
+def test_the_whole_view_is_shown_before_its_pieces(sheet_2023):
+    told = sheet_reader.shown(sheet_2023)
+    whole = sheet_2023.wholes[0]
+    at = [n for n, piece in enumerate(told) if piece.get("show") == whole.path]
+
+    assert len(at) == 1, "the view whole was shown %d times" % len(at)
+    first_piece = next(n for n, piece in enumerate(told)
+                       if piece.get("show", "").endswith(".png")
+                       and n > at[0])
+    assert first_piece > at[0]
+    assert "how the pieces fit together" in told[at[0] - 1]["say"]
+
+
+@needs_pymupdf
+def test_a_view_that_fits_in_one_crop_is_not_sent_twice(sheet_2023):
+    whole = {crop.name for crop in sheet_2023.crops if ", part " not in crop.name}
+
+    assert whole & {one.name for one in sheet_2023.wholes} == set()

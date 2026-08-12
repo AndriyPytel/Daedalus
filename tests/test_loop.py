@@ -13,7 +13,7 @@ import tempfile
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, PLAN,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, PART, PLAN,
     PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
     STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
@@ -1299,6 +1299,58 @@ def test_the_plan_gate_leaves_both_ends_of_its_wait_on_the_stream():
     assert kinds.index(PLAN) < kinds.index(GATE) < kinds.index(STEP_STARTED)
 
 
+def test_obsolete_beside_code_does_not_throw_that_code_away():
+    """
+    A complaint about a Step is not a verdict on the Plan.
+
+    A recorded run replanned three times and applied nothing: Execute read the
+    whole Plan, found one late Step it did not like, and declared the lot
+    obsolete before writing a line — so Steps nobody had attempted died with
+    it. Where a reply carries code, what it could not do is what it left out,
+    and only that goes back to Plan.
+    """
+    result, events, _, tools = drive([
+        plan_reply("Pad the outline", "Fillet the marked edges"),
+        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "obsolete": "Step 2 does not say which edges are marked."}),
+        plan_reply("Fillet the four corner edges"),
+        code_reply("fillet()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert tools.applied_codes() == ["pad()", "fillet()"]
+    revised = events.first(PLAN_REVISED)
+    assert "which edges are marked" in revised.data["reason"]
+    assert revised.data["because"] == "Execute could not build a Step"
+
+
+def test_a_step_left_out_with_a_reason_hands_back_without_spending_attempts():
+    """
+    Leaving a Step out is what Execute is told to do with one it cannot build,
+    so it must not cost three identical regenerations to say so. The reason is
+    the only thing that lets Plan write the Step differently: without it Plan
+    hears "no code for Step 2" three times over and learns nothing.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Pad the outline", "Pocket the hex recess"),
+        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": "Step 2 cuts a hex inside a bore of the same "
+                                   "diameter, so it moves no material."}),
+        plan_reply("Pocket a wider hex recess"),
+        code_reply("hex()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    assert tools.applied_codes() == ["pad()", "hex()"]
+    assert len(_turns_of(llm, "execute")) == 2, "the left-out Step was written again"
+    assert events.first(PREFLIGHT_FAILED) is None
+    revised = events.first(PLAN_REVISED)
+    assert "moves no material" in revised.data["reason"]
+    assert revised.data["because"] == "Execute could not build a Step"
+
+
 def test_an_obsolete_step_is_never_applied():
     _, _, _, tools = drive([
         plan_reply("Obsolete one"),
@@ -1404,6 +1456,327 @@ def test_an_attachment_reaches_the_design_phase_as_a_picture():
 
 MODEL_MANIA = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "modelmania", "mm25-p1-1.pdf")
+
+
+# ── the reading, written down (FCC-108) ───────────────────────────────────────
+
+
+def test_the_part_design_read_is_written_to_a_file_the_run_names():
+    """
+    The reading used to exist only as prose in the Plan request and one line in
+    the transcript, so it could be neither diffed nor corrected.
+    """
+    from core import part_file
+
+    _, events, _, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    written = events.last(PART).data["path"]
+    assert os.path.isfile(written)
+    assert part_file.read(written) == events.first(DESIGN).data["model"]
+
+
+def test_the_file_says_which_sheet_the_part_was_read_from():
+    from core import part_file
+
+    _, events, _, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[MODEL_MANIA])
+
+    read_from = part_file.provenance(events.last(PART).data["path"])
+    assert read_from["sheet"] == os.path.basename(MODEL_MANIA)
+    assert read_from["views"], "the views it was read from are not recorded"
+
+
+# ── the envelope is measured, not asked about (FCC-114) ───────────────────────
+
+
+A_CLAMP_ENVELOPE = ["envelope → length between the ends: 108 mm (read)",
+                    "envelope → depth front to rear: 30 mm (read)",
+                    "envelope → height of the right lug: 30 mm (read)"]
+
+
+def test_the_three_overall_sizes_are_checked_before_anybody_writes_a_check():
+    from core.loop import the_envelope_measured
+
+    code = the_envelope_measured(A_CLAMP_ENVELOPE)
+
+    assert "optimalBoundingBox" in code
+    assert "[30.0, 30.0, 108.0]" in code
+    assert "these did not hold: the envelope" in code
+
+
+def test_an_envelope_of_anything_but_three_plain_sizes_is_not_measured_here():
+    from core.loop import the_envelope_measured
+
+    assert the_envelope_measured(A_CLAMP_ENVELOPE[:2]) == ""
+    assert the_envelope_measured(
+        ["envelope → length: as long as the arm reaches (assumed)"]) == ""
+
+
+def test_the_envelope_check_runs_against_the_document_and_can_fail_it():
+    """A part of the wrong overall size fails before a provider is asked."""
+    A_PART_WITH_AN_ENVELOPE = {
+        "envelope": {"length between the ends": {"value": "108 mm", "flag": "read"},
+                     "depth front to rear": {"value": "30 mm", "flag": "read"},
+                     "height of the right lug": {"value": "30 mm", "flag": "read"}},
+    }
+    _, events, llm, tools = drive([
+        design_reply(A_PART_WITH_AN_ENVELOPE),
+        plan_reply("Pad the outline", satisfies=everything(A_PART_WITH_AN_ENVELOPE)),
+        code_reply("pad()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG],
+        checks=[{"ok": False, "traceback": "AssertionError: these did not hold: "
+                                           "the envelope. ... measures 108.00 x 30.00 "
+                                           "x 50.00 mm"}],
+        decide=lambda why: "accept")
+
+    ran = [args["code"] for name, args in tools.calls if name == "check_assertions"]
+    assert "optimalBoundingBox" in ran[0], "the envelope was not measured first"
+    assert events.first(ASSERTION).data["unmet"], "nothing was reported unmet"
+    assert not any(call[0]["content"] == prompt("assertion") for call in llm.calls), \
+        "a provider was asked to write checks for a part already known to be wrong"
+
+
+def test_a_step_that_only_passed_on_the_retry_is_named_to_the_checks():
+    """
+    The ring split of the recorded run was shortened until the Body stayed in
+    one piece and the shortened one is what the Document kept: passing the
+    second time says the workaround was legal, not that it is still the feature
+    the drawing asked for.
+    """
+    A_SPLIT = {"features": [{"id": "ring-split", "kind": "2 mm split",
+                             "width": {"value": "2 mm", "flag": "read"}}]}
+
+    _, _, llm, _ = drive([
+        design_reply(A_SPLIT),
+        plan_reply("Pocket the split", satisfies=everything(A_SPLIT)),
+        code_reply("split_through()"),
+        code_reply("split_shortened()"),
+        assertion_reply("assert True, 'the split'"),
+        verdict_reply("pass"),
+    ], applies=[failed("this Step left a Body in more than one piece"), None],
+        attachments=[RENDER_PNG])
+
+    touched = _turns_of(llm, "assertion")[0]["entries_a_retry_touched"]
+    assert "features → ring-split → width" in touched
+
+
+def test_a_step_that_landed_first_time_names_nothing_to_the_checks():
+    _, _, llm, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert "entries_a_retry_touched" not in _turns_of(llm, "assertion")[0]
+
+
+# ── Execute is given the values, not asked to derive them (FCC-115) ───────────
+
+
+def test_execute_is_handed_every_entry_against_the_value_it_resolves_to():
+    """
+    A Step cites an address; the value it needs is then a lookup. Without it
+    the run that named this wrote `arm_z = sum(...) / len(arm_lines)` for a
+    hole the description places on the longitudinal centre plane.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_PART),
+        plan_reply("Sketch the profile", satisfies=everything(A_PART)),
+        code_reply("sketch()"),
+        assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    addressed = _turns_of(llm, "execute")[0]["what_each_entry_says"]
+    assert addressed, "Execute was given the prose and no addresses"
+    assert all(": " not in address for address in addressed)
+    assert any(value for value in addressed.values())
+
+
+# ── one Step, one plane (FCC-111) ─────────────────────────────────────────────
+
+
+THE_CLAMP_OUTLINE = {
+    "envelope": {"length": {"value": "108 mm", "flag": "read"}},
+    "features": [
+        {"id": "outer-profile", "kind": "compound outer profile",
+         "plane": {"value": "the plane of the length and the height", "flag": "read"}},
+        {"id": "right-mounting-lug", "kind": "R12.5 rounded end lug",
+         "plane": {"value": "the plane of the length and the depth", "flag": "read"}},
+    ],
+}
+
+
+def _both_planes_in_one_step():
+    return plan_reply("Pad the compound outer profile 30 mm",
+                      satisfies=everything(THE_CLAMP_OUTLINE))
+
+
+def _one_plane_each():
+    return json.dumps({"steps": [
+        {"do": "Pad the outer profile in the plane of the length and the height",
+         "satisfies": ["envelope → length", "features → outer-profile → plane"]},
+        {"do": "Pad the lug in the plane of the length and the depth",
+         "satisfies": ["features → right-mounting-lug → plane"]},
+    ]})
+
+
+def test_a_step_citing_two_planes_is_sent_back_before_it_is_ever_built():
+    """
+    Step 1 of the run that named this cited the outer profile in the elevation
+    and the R12.5 lug in the plan, and drew both in the elevation: the flat end
+    face at 108 became a round nose and the lug came out 25 mm tall where its
+    own Step says 30.
+    """
+    _, _, llm, tools = drive([
+        design_reply(THE_CLAMP_OUTLINE),
+        _both_planes_in_one_step(),
+        _one_plane_each(),
+        code_reply("profile()", "lug()"),
+        assertion_reply("assert True, 'the outline'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    told = [turn.get("what_went_wrong_last_time", "")
+            for turn in _turns_of(llm, "plan")]
+    assert any("2 different values of `plane`" in said for said in told), told
+    assert any("the plane of the length and the depth" in said for said in told)
+    assert tools.applied_codes()[:2] == ["profile()", "lug()"]
+
+
+def test_a_plan_that_keeps_mixing_them_is_not_sent_back_for_ever():
+    drive([design_reply(THE_CLAMP_OUTLINE)] + [_both_planes_in_one_step()] * 4
+          + [code_reply("profile()"), assertion_reply("assert True, 'the outline'"),
+             verdict_reply("pass")],
+          attachments=[RENDER_PNG], budgets=Budgets(revisions=2))
+
+
+def test_a_step_whose_citations_agree_is_planned_once():
+    one_plane = {"envelope": {"length": {"value": "108 mm", "flag": "read"}},
+                 "features": [THE_CLAMP_OUTLINE["features"][0]]}
+
+    _, _, llm, tools = drive([
+        design_reply(one_plane),
+        plan_reply("Pad the outer profile", satisfies=everything(one_plane)),
+        code_reply("profile()"),
+        assertion_reply("assert True, 'the outline'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert len(_turns_of(llm, "plan")) == 1
+    assert tools.applied_codes() == ["profile()"]
+
+
+# ── the sweep is the sheet's, not the model's account of it (FCC-112) ─────────
+
+
+def test_what_is_printed_on_the_sheet_is_written_by_the_reader_not_the_model():
+    """
+    230 exact entries came back from one run as 22 sentences, and `off_by` —
+    the arithmetic that catches 108 read as 100 — went with them.
+    """
+    from core import part_file
+
+    _, events, _, _ = drive([
+        design_reply(dict(A_CUBE, printed_on_the_sheet=["Page 1: some numbers, "
+                                                        "two locations"])),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[MODEL_MANIA])
+
+    swept = part_file.read(events.last(PART).data["path"])["printed_on_the_sheet"]
+    assert {entry["callout"] for entry in swept} != {"Page 1: some numbers, two locations"}
+    assert any(entry.get("off_by") is not None for entry in swept), \
+        "what the sheet measures of its own numbers did not survive"
+
+
+# ── a direction read off the wrong view stops the run (FCC-110) ───────────────
+
+
+THE_CLAMP_READ_OFF_ONE_VIEW = {
+    "envelope": {"length": {"value": "108 mm", "flag": "read"}},
+    "features": [
+        {"id": "clamp-bore", "kind": "Ø42 bore through the clamp ring",
+         "topology": "through",
+         "axis": {"value": "the depth", "flag": "read",
+                  "round_in": "the front elevation"}},
+        {"id": "right-mounting-hole", "kind": "Ø6.6 through hole",
+         "topology": "through",
+         "axis": {"value": "the depth", "flag": "read",
+                  "round_in": "the upper plan"}},
+    ],
+}
+
+
+def test_two_holes_read_off_the_wrong_view_never_reach_the_plan():
+    """
+    The 2023 clamp. Both were built along the ring axis, and the screw that
+    exists to pinch the split came out parallel to it. Every finding needed to
+    stop it was in the model already.
+    """
+    result, events, llm, tools = drive([
+        design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
+        plan_reply("Pad the outer profile"),
+        code_reply("pad()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert not result.ok
+    assert not tools.applied_codes(), "it built a part it could not read"
+    assert "read off the wrong view" in events.first(BLOCKED).data["reason"]
+
+
+def test_the_run_that_stops_says_which_file_to_correct():
+    """The reading is a file now: the remedy is an edit, not another opinion."""
+    _, events, _, _ = drive([
+        design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
+        plan_reply("Pad the outer profile"),
+    ], attachments=[RENDER_PNG])
+
+    assert events.last(PART).data["path"] in events.first(BLOCKED).data["reason"]
+
+
+THE_CLAMP_READ_PROPERLY = {
+    "envelope": {"length": {"value": "108 mm", "flag": "read"}},
+    "features": [dict(THE_CLAMP_READ_OFF_ONE_VIEW["features"][1],
+                      axis={"value": "the height", "flag": "read",
+                            "round_in": "the upper plan"})],
+}
+
+
+def test_a_reading_whose_directions_agree_carries_on():
+    result, _, _, tools = drive([
+        design_reply(THE_CLAMP_READ_PROPERLY),
+        plan_reply("Pocket the hole", satisfies=everything(THE_CLAMP_READ_PROPERLY)),
+        code_reply("pocket()"),
+        assertion_reply("assert True, 'the hole'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert result.ok
+    assert tools.applied_codes() == ["pocket()"]
+
+
+def test_a_run_with_nothing_to_read_writes_no_reading():
+    """A run without a drawing describes no part, and a file saying so is a
+    file to mistake for a reading later."""
+    _, events, _, _ = drive([plan_reply("Only"), code_reply("box()"),
+                             verdict_reply("pass")])
+
+    assert not events.of(PART)
 
 
 def _pictures_shown(llm, at=0):
@@ -2272,10 +2645,28 @@ def test_a_refusal_during_plan_ends_the_same_way_as_one_during_execute():
 
 
 def test_a_genuinely_malformed_reply_still_says_it_was_malformed():
-    result, events, _, _ = drive([plan_reply("Only"), "not JSON at all"])
+    """Twice, because the first prose reply is asked again rather than fatal."""
+    result, events, _, _ = drive([plan_reply("Only"), "not JSON at all",
+                                  "still not JSON"])
 
     assert not result.blocked
     assert "did not reply with JSON" in result.reason
+    assert events.first(ERROR) is not None
+
+
+def test_a_reply_that_is_all_reasoning_and_no_answer_is_not_called_malformed():
+    """
+    Kimi-k3 spent a whole design turn thinking and stopped without answering.
+    "did not reply with JSON. It said: " with nothing after it told the user
+    nothing about what went wrong (FCC-108).
+    """
+    result, events, _, _ = drive([{"reasoning": "The centreline should be around y=247."},
+                                  {"reasoning": "Still thinking about the centreline."}],
+                                 attachments=[RENDER_PNG])
+
+    assert "did not reply with JSON" not in result.reason
+    assert "reasoning" in result.reason and "design" in result.reason
+    assert "output tokens" not in result.reason, "a cap it never reached is the wrong advice"
     assert events.first(ERROR) is not None
 
 
@@ -2315,7 +2706,7 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
     ], attachments=[RENDER_PNG])
 
     assert [e.kind for e in events] == [
-        ATTACHED, DESIGN, PLAN, GATE, GATE,
+        ATTACHED, DESIGN, PART, PLAN, GATE, GATE,
         STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
         TOOL_CALL, TOOL_RESULT, ASSERTION,
         REVIEW_VERDICT,
@@ -2407,7 +2798,8 @@ def test_the_stream_can_be_watched_live():
 
 
 def test_a_reply_that_is_not_json_is_an_error_the_user_is_told_about():
-    result, events, _, _ = drive(["I would love to help but here is prose instead."])
+    result, events, _, _ = drive(["I would love to help but here is prose instead.",
+                                  "Still prose, I am afraid."])
 
     assert not result.ok
     error = events.first(ERROR)
@@ -4138,3 +4530,228 @@ def test_a_rejection_still_stops_a_run_that_had_a_standing_approval_before_it():
 
     assert result.blocked
     assert tools.applied_codes() == []
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_a_part_whose_outside_nobody_carries_goes_back_to_the_drawing():
+    """
+    `silhouette` has raised "no feature carries the outer contour" for as long
+    as it has existed and nothing ever acted on it. In the recorded run
+    (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`) it stood in
+    `conflicts`, the Gate showed the Steps, the user approved, and the Plan
+    padded a profile it invented.
+
+    So the drawing is asked before anything is planned, and a Design turn that
+    writes the outer profile in settles it — the run goes on and never troubles
+    the user with it.
+    """
+    said_in_passing = {
+        "datums": [{"name": "the left end face",
+                    "is": "the planar end face at the left"}],
+        "envelope": {"length between the end faces": read("150 mm")},
+        "features": [{"id": "fillets", "kind": "R2 fillets on all edges shown red",
+                      "radius": read("2 mm"),
+                      "edge_selection": [{"what": "the capsule-shaped exterior loops",
+                                          "value": "each loop", "flag": "read"}]}],
+    }
+    the_contour = {"features": [
+        {"id": "outer-profile",
+         "kind": "obround (capsule) outer profile, 150 x 50, ends R25",
+         "plane": read("the plane of the length and the height"),
+         "position": {"the left end face": read("25 mm")},
+         "radius": read("25 mm")}]}
+
+    result, events, llm, _ = drive(
+        [design_reply(said_in_passing), design_reply(the_contour),
+         plan_reply("Pad the profile",
+                    satisfies=everything(said_in_passing, the_contour)),
+         code_reply("box()"), assertion_reply("assert True, 'the length'"),
+         verdict_reply("pass")],
+        attachments=[RENDER_PNG])
+
+    assert result.ok, result.reason
+    asked = json.loads(llm.calls[1][-1]["content"][0]["text"])
+    assert "outer profile" in asked["the_question"], asked.get("the_question")
+    assert events.first(QUESTION) is None, \
+        "the user was asked about a contour the drawing settled"
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_a_run_that_still_cannot_say_what_shape_the_part_is_does_not_plan_one():
+    """
+    The block this replaces was a part built as a box with every check green.
+    Where neither the drawing nor a person will say what the outer contour is,
+    there is nothing to build but the prism the overall sizes make — so the run
+    stops and says what to answer, rather than planning one.
+    """
+    said_in_passing = {
+        "envelope": {"length between the end faces": read("150 mm")},
+        "features": [{"id": "fillets", "kind": "R2 fillets on all edges shown red",
+                      "radius": read("2 mm"),
+                      "edge_selection": [{"what": "the rounded end surfaces",
+                                          "value": "each loop", "flag": "read"}]}],
+    }
+
+    result, events, _, _ = drive(
+        [design_reply(said_in_passing)] + [design_reply({})] * 4,
+        attachments=[RENDER_PNG], ask=lambda question: "")
+
+    assert result.blocked, result.reason
+    assert "outer profile" in result.reason or "outside" in result.reason, result.reason
+    assert events.first(QUESTION) is not None, \
+        "the run blocked without ever putting the question to the user"
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_design_is_given_the_line_work_of_the_views_in_millimetres():
+    """
+    The text layer told Design what the sheet *says*; a drawing says most of
+    what it says in lines. Without them a distance nobody dimensioned — the
+    height at which an arm meets a ring, an end flush with a tangent — has no
+    evidence behind it at all, and the recorded run put three such values to the
+    user and then invented them.
+
+    So the geometry goes out beside the strings, in the part's own millimetres,
+    said to be measurable rather than decorative.
+    """
+    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
+                             code_reply("box()"), verdict_reply("pass")])
+
+    run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
+
+    said = _said_to_design(llm)
+    assert "line work" in said, "the views' own geometry never reached Design"
+    assert "arc R" in said or "line (" in said, "the line work arrived with no entities"
+    assert "derived" in said, \
+        "nothing told Design that a value measured off the line work is not a guess"
+
+
+def test_a_phase_that_answered_and_then_explained_itself_is_still_an_answer():
+    """
+    The recorded run (`logs/sessions/6fbd31e98fb540818086611841fa9aff.jsonl`)
+    died on a correct reply: Design answered `{"design": {}, "question": ""}`
+    and then wrote a paragraph explaining that the two strings it was asked
+    about are the item numbers of a notes list. The whole reply had to parse or
+    none of it did, so the object that was right there was thrown away and the
+    run ended with an error the user could do nothing about.
+    """
+    from core.loop import _as_json
+
+    said = ('{"design": {}, "question": ""}\n\nThe two unaccounted strings, `3.` and '
+            '`4.`, are the item numbers of the NOTES list on page 2.')
+
+    assert _as_json(said, "design") == {"design": {}, "question": ""}
+
+
+def test_a_reply_with_no_json_in_it_is_still_a_phase_that_did_not_answer():
+    """
+    Reaching into a reply for an object must not turn prose into an answer: a
+    phase that never replied with JSON is a phase that did not do its job, and
+    the error quotes what it said instead.
+    """
+    from core.loop import PhaseError, _as_json
+
+    with pytest.raises(PhaseError) as raised:
+        _as_json("I would rather describe this in words.", "design")
+
+    assert "did not reply with JSON" in str(raised.value)
+
+
+def test_a_phase_that_answered_in_prose_is_asked_once_more_rather_than_ending_the_run():
+    """
+    Measured on the gateway
+    (`logs/sessions/ea390959745a453488138fddcc879635.jsonl`): ten Steps approved
+    at the Gate, and Execute replied "I need to check the Hole feature's
+    properties before writing the counterbore steps" — which is a look, and a
+    look is a key of the object Execute answers with. The model had the answer
+    and wrote it as a sentence, and the run died on it.
+    """
+    result, _, llm, tools = drive([
+        plan_reply("Add a box"),
+        "I need to check the Hole feature's properties first.",
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["doc.addObject('Part::Box', 'Box')"]
+
+
+def test_the_re_ask_quotes_what_the_phase_said_and_names_the_shape():
+    """
+    A directive about JSON in general is one the last reply already disobeyed.
+    What makes the second turn different is the model's own sentence handed
+    back to it, with the one thing that is nearly always true of it: the
+    sentence is the answer, in the wrong clothes.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        "I need to check the Hole feature's properties first.",
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ])
+
+    asked_again = llm.calls[2][-1]["content"]
+
+    assert "I need to check the Hole feature's properties first." in asked_again
+    assert "asks for the look *in* the JSON" in asked_again
+
+
+def test_the_re_ask_of_a_phase_that_is_shown_pictures_keeps_the_pictures():
+    """
+    Design's request is content blocks, not a string. A re-ask that flattened
+    it would take the drawing away in the turn the phase is being asked to read
+    it more carefully.
+    """
+    _, _, llm, _ = drive([
+        "Let me describe this part in words instead.",
+        design_reply(A_CUBE),
+        plan_reply("Add a box", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert _pictures_shown(llm, at=1), "the re-ask went out without the drawing"
+    assert "carried no JSON object" in _said_to_design(llm, at=1)
+
+
+def test_a_revision_is_shown_the_plan_it_is_revising():
+    """
+    The harness defect behind
+    `logs/sessions/9958ccdc8e324a74ade9b08405be465b.jsonl`: the coverage check
+    told Plan which entries nothing built, and Plan was asked for a new Plan
+    without being shown the one it had written. It answered the complaint alone
+    — two Steps for the two named entries — was told the nine Steps it had just
+    dropped were now unplanned, wrote those again, dropped the two, and spent
+    the whole revision budget without a single Step running.
+    """
+    part = {"envelope": {"length": read("80 mm"), "width": read("40 mm")}}
+    both = everything(part)
+
+    _, _, llm, _ = drive([
+        design_reply(part),
+        plan_reply("Pad the length", satisfies=both[:1]),
+        plan_reply("Pad the length", "Pad the width", satisfies=both),
+        code_reply("box()"),
+        assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    revised = _turns_of(llm, "plan")[1]
+
+    assert "the_plan_you_wrote" in revised, \
+        "Plan was asked to rewrite a Plan it was not shown"
+    assert revised["the_plan_you_wrote"][0].startswith("Pad the length")
+    assert "every Step you already wrote" in revised["what_went_wrong_last_time"]
+
+
+def test_the_first_plan_of_a_run_is_not_a_revision_of_anything():
+    """A key that is there on every turn stops meaning anything on the turn it matters."""
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ])
+
+    assert "the_plan_you_wrote" not in _turns_of(llm, "plan")[0]

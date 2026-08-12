@@ -21,6 +21,11 @@ REQUIRED_PACKAGES = {
     # the exact list of what is printed on it (FCC-102). Missing, `sheet_reader`
     # says so and the sheet is sent whole, the way it was before.
     "pymupdf": "pymupdf",
+    # What the part Design read is written down as (FCC-108). litellm already
+    # pulls it in, so it is here to be named rather than to be new: a reading
+    # that silently stopped being written because a transitive dependency moved
+    # would be discovered by its absence, months later.
+    "PyYAML": "yaml",
 }
 
 def get_target_directory():

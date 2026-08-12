@@ -322,6 +322,96 @@ def test_thinking_budget_is_requested_when_configured():
     assert completion.kwargs["max_tokens"] >= 1024
 
 
+def test_a_reasoning_model_is_told_how_hard_to_think():
+    """
+    Uncapped, kimi-k3 spent ten minutes circling one dimension and never left
+    its own reasoning, and "medium" bought no less of it (FCC-108).
+    """
+    client, completion = client_replaying(openai_chunks())
+    client.model = "openai/kimi-k3"
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert completion.kwargs["reasoning_effort"] == "low"
+
+
+def test_a_model_that_does_not_reason_is_not_told_how_hard_to_think():
+    """gpt-4o has no reasoning to spend, and rejects what it was not asked for."""
+    client, completion = client_replaying(openai_chunks())
+    client.model = "openai/gpt-4o"
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "reasoning_effort" not in completion.kwargs
+
+
+def test_a_thinking_budget_is_how_hard_to_think_where_there_is_one():
+    """Anthropic takes a budget in tokens; the two ways of saying it never both go."""
+    client, completion = client_replaying(anthropic_chunks())
+    client.model = "anthropic/claude-3-7-sonnet-20250219"
+    client.thinking_budget = 2048
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "reasoning_effort" not in completion.kwargs
+    assert completion.kwargs["thinking"]["budget_tokens"] == 2048
+
+
+def test_a_caller_s_own_reasoning_effort_wins():
+    client, completion = client_replaying(openai_chunks())
+    client.model = "openai/kimi-k3"
+
+    collect(client.stream([{"role": "user", "content": "hi"}], reasoning_effort="high"))
+
+    assert completion.kwargs["reasoning_effort"] == "high"
+
+
+def test_a_reply_gets_an_output_cap_even_where_no_thinking_budget_is_configured():
+    """A reasoning model with no cap spends the gateway default on thought alone (FCC-108)."""
+    client, completion = client_replaying(openai_chunks())
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert completion.kwargs["max_tokens"] >= 16000
+
+
+def test_the_cap_never_exceeds_what_the_model_can_write():
+    """A model asked for more output than it has is rejected outright."""
+    client, completion = client_replaying(openai_chunks())
+    client.model = "openai/gpt-4o"
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert completion.kwargs["max_tokens"] == 16384
+
+
+def test_a_caller_s_own_output_cap_wins():
+    client, completion = client_replaying(openai_chunks())
+
+    collect(client.stream([{"role": "user", "content": "hi"}], max_tokens=64))
+
+    assert completion.kwargs["max_tokens"] == 64
+
+
+def test_an_openai_compatible_gateway_is_asked_to_report_what_it_spent():
+    """Without usage the gateway's stream ends silently and a cut-off looks complete."""
+    client, completion = client_replaying(openai_chunks())
+    client.model = "openai/kimi-k3"
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert completion.kwargs["stream_options"] == {"include_usage": True}
+
+
+def test_a_provider_that_is_not_openai_compatible_is_not_sent_stream_options():
+    client, completion = client_replaying(anthropic_chunks())
+    client.model = "anthropic/claude-3-7-sonnet-20250219"
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "stream_options" not in completion.kwargs
+
+
 def test_no_thinking_key_when_the_provider_has_no_reasoning():
     client, completion = client_replaying(openai_chunks())
 
@@ -502,3 +592,27 @@ def test_every_unusable_attachment_gets_its_own_reason(tmp_path):
 
 def test_no_attachment_never_complains_about_the_model():
     assert unusable_attachments([], "openai/gpt-3.5-turbo") == []
+
+
+def test_a_plan_s_usage_limit_does_not_read_as_a_moment_s_rate_limit():
+    """
+    Measured mid-run on the opencode gateway
+    (`logs/sessions/172369d7389a4a4f9c3c2ae8b5aded91.jsonl`): kimi-k3 was
+    refused with "Monthly usage limit reached. Resets in 10 days", and the user
+    was told they were sending requests too quickly and should wait and send the
+    Intent again. Waiting is ten days, and the remedy is somewhere else.
+    """
+    import litellm
+
+    spent = client_refused_by(litellm.RateLimitError(
+        message=("Monthly usage limit reached. Resets in 10 days. To continue using this "
+                 "model now, enable usage from your available balance."),
+        llm_provider="openai", model="openai/kimi-k3"))
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(spent.stream([{"role": "user", "content": "hi"}]))
+
+    said = str(refusal.value)
+    assert "usage limit" in said
+    assert "too many requests too quickly" not in said
+    assert "Resets in 10 days" in said, "the provider said when it clears and the user was not told"
