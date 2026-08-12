@@ -4931,3 +4931,53 @@ def test_without_a_freecad_to_build_in_the_description_is_untouched(
 
     assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"]) == {
         "features": []}
+
+
+# ── a number on no sheet (FCC-124) ────────────────────────────────────────────
+
+
+def test_a_number_on_no_sheet_is_put_to_the_drawing_and_then_left_as_a_conflict(
+        monkeypatch):
+    """
+    The other direction of the sweep, which is the shape of ADR-0019. Asked
+    once, and then recorded — the number may be right and derived from
+    something this cannot see, so the Gate is where a person says so.
+    """
+    monkeypatch.setattr(loop, "_off_the_sheet", lambda attachments, part: [1234.0])
+    asked = []
+
+    def design(payload, llm, events, attachments):
+        asked.append(payload["the_question"])
+        return {}, None
+
+    monkeypatch.setattr(loop, "design", design)
+
+    grown = loop._every_number_is_the_sheets(
+        {"features": []}, ["a.pdf"], None, None, loop.Budgets(), lambda: False)
+
+    assert asked and "1234" in asked[0]
+    assert len(grown["conflicts"]) == 1
+    assert "1234" in str(grown["conflicts"][0])
+
+
+def test_a_number_the_look_accounted_for_is_not_a_conflict(monkeypatch):
+    """Where the re-read points at where it came from, there is nothing to record."""
+    answers = iter([[1234.0], []])
+    monkeypatch.setattr(loop, "_off_the_sheet",
+                        lambda attachments, part: next(answers))
+    monkeypatch.setattr(loop, "design",
+                        lambda payload, llm, events, attachments: ({}, None))
+
+    grown = loop._every_number_is_the_sheets(
+        {"features": []}, ["a.pdf"], None, None, loop.Budgets(), lambda: False)
+
+    assert "conflicts" not in grown
+
+
+def test_a_description_whose_numbers_are_all_the_sheets_is_left_alone(monkeypatch):
+    monkeypatch.setattr(loop, "_off_the_sheet", lambda attachments, part: [])
+    monkeypatch.setattr(loop, "design", lambda *a, **kw: 1 / 0)
+
+    assert loop._every_number_is_the_sheets(
+        {"features": []}, ["a.pdf"], None, None, loop.Budgets(),
+        lambda: False) == {"features": []}

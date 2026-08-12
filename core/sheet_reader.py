@@ -1263,6 +1263,13 @@ def _distance(one, other):
 # this is inside the line the draughtsman drew.
 A_HAIR = 0.05
 
+# How far a number in a description may be from something the tracing measured
+# and still be that thing, in mm. The same band the tracing is reported with
+# everywhere else: a face is measured to the inside of the line that draws it,
+# so it reads about a millimetre under, and half a millimetre of fit sits
+# around that.
+A_TRACED_NUMBER = 1.5
+
 # The shortest entity worth reporting, in mm. Below it are arrowheads, the
 # ticks on a centre line and the ends of hatch strokes — thousands of them on
 # a sheet, and none of them a face, an axis or a contour.
@@ -3023,6 +3030,70 @@ def uncited(sheet, model):
                         if key != "printed_on_the_sheet"})
     return [entry.text for entry in dimensions(sheet)
             if _number_of(entry.text) not in said]
+
+
+def invented(sheet, model):
+    """
+    Every number in the description that is on no sheet: printed, measured or drawn.
+
+    `uncited` asks which of the sheet's numbers the description never used.
+    This asks the other direction, and it is the one ADR-0019 is named after: a
+    run read a depth of 100 off a section and planned 150 x 50 x 50 two turns
+    later, and the 50 was on nothing. Every other check in the pipeline reads
+    one reading against another reading.
+
+    Three citations, none of them anybody's reading: the text layer, which is
+    exact; a distance the sheet measures between two faces, checked against
+    what it prints; and the tracing, to within its own slack — a face is
+    measured to the inside of the line that draws it, so a millimetre and a
+    half is the band the tracing has always been reported with.
+
+    Loose in the same direction `uncited` is loose. A false alarm costs one
+    more look at the sheet and a miss costs the part.
+    """
+    if sheet is None or not model:
+        return []
+    # Not the sweep: it is this module's own list written back over the model's
+    # own account (FCC-112), so counting it would cite every number by having
+    # copied it in.
+    said = _numbers_in({key: value for key, value in model.items()
+                        if key != "printed_on_the_sheet"})
+    cited = {_number_of(entry.text) for entry in dimensions(sheet)}
+    cited |= {_a_number(entry.text) for entry in sheet.printed}
+    cited |= {entry.printed for entry in sheet.between}
+    drawn = sorted({round(measured, 2) for view in sheet.drawn
+                    for entity in view.entities
+                    for measured in (entity.size, entity.diameter,
+                                     entity.radius)
+                    if measured})
+    return sorted(number for number in said
+                  if isinstance(number, float) and number >= A_MARK
+                  and number not in cited
+                  and not _near(number, drawn)
+                  and not _derived_from(number, cited))
+
+
+def _near(number, drawn):
+    """Whether the tracing measured something this size, within its own slack."""
+    return any(abs(number - measured) <= A_TRACED_NUMBER for measured in drawn)
+
+
+def _derived_from(number, cited):
+    """
+    Whether one number is two of the sheet's own put together.
+
+    A distance nobody printed is `derived` and the description is told to say
+    so rather than call it undefined, and deriving it is subtraction: measured
+    on the recorded runs, `95.5 mm to the bore axis` is the 2023 sheet's 108
+    less its 12.5, and `125 mm` is the 2025 sheet's 150 less its 25. A check
+    that called those inventions would fire on every correct reading of a
+    drawing that dimensions from one end.
+    """
+    numbers = [one for one in cited if isinstance(one, float)]
+    return any(abs(number - abs(one - other)) < 0.01
+               or abs(number - (one + other)) < 0.01
+               for at, one in enumerate(numbers)
+               for other in numbers[at:])
 
 
 def _numbers_in(node):

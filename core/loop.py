@@ -1674,10 +1674,71 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
     the_part = _the_sweep_is_the_sheets(the_part, attachments)
     the_part = _the_directions_are_the_drawings(the_part, attachments, llm, events,
                                                 budgets, ask, cancelled)
+    the_part = _every_number_is_the_sheets(the_part, attachments, llm, events,
+                                           budgets, cancelled)
     the_part = merge(the_part, _the_geometry_disagrees(the_part, attachments))
     the_part, reading = _written_down(the_part, attachments, events)
     _every_direction_settled(the_part, reading, _round_evidence(attachments))
     return the_part
+
+
+def _every_number_is_the_sheets(the_part, attachments, llm, events, budgets,
+                                cancelled):
+    """
+    A number on the description that is on no sheet, put back to the drawing.
+
+    `_every_callout_accounted_for` asks which of the sheet's numbers the
+    description never used. This asks the other direction, which is the one
+    ADR-0019 is named after: the run that read a depth of 100 off a section
+    planned 150 x 50 x 50 two turns later, and the 50 was on nothing.
+
+    Measured over the 30 descriptions recorded in `logs/sessions`, each against
+    the sheet its own run was given: one fires, and it is a position — 125 mm
+    to a bore on a sheet that prints 150, 100, 50 and 40 and no 25 — that was
+    reasoned rather than read.
+
+    Put to the drawing once and then left on the part as a conflict. Nothing is
+    settled and no run stops: the number may be right and derived from
+    something this cannot see, and the Gate is where a person says so.
+    """
+    found = _off_the_sheet(attachments, the_part)
+    if not found:
+        return the_part
+
+    if budgets.rereads:
+        if cancelled():
+            raise Stopped()
+        grew, _ = design({"the_part_as_you_described_it": the_part,
+                          "the_question": _where_is_this_number(found)},
+                         llm, events, attachments)
+        if grew:
+            the_part = merge(the_part, grew)
+        found = _off_the_sheet(attachments, the_part)
+
+    return merge(the_part, {"conflicts": [
+        {"about": "the value %g on this part" % number,
+         "stands": "no callout prints it, no dimension line measures it and "
+                   "nothing traced is that size",
+         "was_also_said": "the drawing"}
+        for number in found]}) if found else the_part
+
+
+def _off_the_sheet(attachments, the_part):
+    found = []
+    for sheet in _sheets(attachments):
+        found.extend(sheet_reader.invented(sheet, the_part))
+    return sorted(set(found))
+
+
+def _where_is_this_number(found):
+    return (
+        "These numbers are on your model and on no sheet: %s. Each one is "
+        "either printed somewhere you can point at, or measured between two "
+        "faces the drawing dimensions, or worked out from numbers that are — "
+        "in which case say which, and mark it `derived`. Where it is none of "
+        "those, it was assumed, and an assumption belongs in `not_defined` "
+        "with what you looked in. Reply with those fields only."
+        % ", ".join("%g" % number for number in found))
 
 
 def _the_geometry_disagrees(the_part, attachments):

@@ -1285,3 +1285,52 @@ def test_what_a_picture_holds_and_what_it_is_traced_from_are_two_questions(
     assert {one.view for one in bodied} <= {one.view for one in traced}
     assert len(traced) > len(bodied), (
         "a view can be traced without its body being called a picture")
+
+
+@needs_pymupdf
+def test_a_number_the_sheet_never_printed_and_never_drew_is_reported(sheet):
+    """
+    The other direction, and the shape of ADR-0019. A run read a depth of 100
+    off SECTION B-B and planned 150 x 50 x 50 two turns later: the 50 was on
+    nothing, and every check in the pipeline reads one reading against another.
+    """
+    invented = sheet_reader.invented(sheet, {"envelope": {
+        "the depth front to rear": {"value": "1234 mm", "flag": "read"}}})
+
+    assert invented == [1234.0], invented
+
+
+@needs_pymupdf
+def test_a_number_the_sheet_prints_is_cited(sheet):
+    """`mm25-p1-1.pdf` prints 150 across its top view."""
+    assert sheet_reader.invented(sheet, {"envelope": {
+        "the length": {"value": "150 mm", "flag": "read"}}}) == []
+
+
+@needs_pymupdf
+def test_a_number_the_tracing_measured_is_cited(sheet):
+    """
+    A distance nobody printed is `derived` and not invented, which is what the
+    drawn list already tells the reader to do. The tracing is the citation.
+    """
+    traced = [entity.size for view in sheet.drawn for entity in view.entities
+              if entity.source == "traced" and entity.kind == "line"
+              and entity.size > 10.0]
+
+    assert traced
+    assert sheet_reader.invented(sheet, {"features": [
+        {"id": "a face", "kind": "%.0f mm long" % traced[0]}]}) == []
+
+
+@needs_pymupdf
+def test_the_sweep_is_not_what_makes_a_number_cited(sheet):
+    """
+    `printed_on_the_sheet` is this module's own list written back over the
+    model's paraphrase (FCC-112), so counting it would cite every number by
+    having copied it in — the same failure `uncited` was built to avoid.
+    """
+    invented = sheet_reader.invented(sheet, {
+        "printed_on_the_sheet": [{"text": "1234"}],
+        "envelope": {"the length": {"value": "1234 mm"}}})
+
+    assert invented == [1234.0]
