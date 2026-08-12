@@ -43,7 +43,7 @@ from core.events import (
     OUTSTANDING, PART, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
-from core import part_file, sheet_reader
+from core import part_file, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
 from core.llm import REASONING, ProviderRefused
 from core.tools import ToolError
@@ -1674,9 +1674,67 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
     the_part = _the_sweep_is_the_sheets(the_part, attachments)
     the_part = _the_directions_are_the_drawings(the_part, attachments, llm, events,
                                                 budgets, ask, cancelled)
+    the_part = merge(the_part, _the_geometry_disagrees(the_part, attachments))
     the_part, reading = _written_down(the_part, attachments, events)
     _every_direction_settled(the_part, reading, _round_evidence(attachments))
     return the_part
+
+
+def _the_geometry_disagrees(the_part, attachments):
+    """
+    What the sheet prints against what the sheet draws, as conflicts.
+
+    The reading is a closed walk of lines and arcs in millimetres now
+    (FCC-118), the sheet's own distances reach the faces they measure
+    (FCC-121), and `sketch_check` builds the one against the other. Nothing
+    consumed the verdict: a sheet whose digit was misread by 8 mm arrived at
+    the Plan Gate exactly as silent as a sheet that agrees with itself.
+
+    Recorded, never settled, and no ladder. Which of the two is wrong — the
+    digit, or a face the tracer took to the inside of its own line — is not
+    something a re-read can be asked and not something this can decide, so it
+    goes on the part in the words of both and the user settles it at the Gate.
+    That is what `conflicts` is, and it is the only phase that has both numbers
+    in front of it.
+
+    Measured on `tests/modelmania`: 13 printed distances reach a traced outline
+    across the four sheets and every one agrees to within 1.08 mm, so a run
+    against them gains nothing here. That is the right answer and not a weak
+    check: the sheets agree with themselves.
+
+    And it is a floor rather than a net. A dimension reaches the geometry
+    through the feet of its own extension lines, so a tracing further out than
+    `sketch_check.A_FOOT` has no face for the foot to name and there is nothing
+    to compare — this cannot catch a digit misread by 8 mm, and widening the
+    band to reach one writes wrong faces instead: measured, a band of a tenth
+    of the printed value produces three disagreements of 4.5 to 4.9 mm on
+    sheets known to agree with themselves. The misread digit is caught where it
+    needs no correspondence at all, by the sheet measuring its own numbers
+    (`Printed.measures`) and by `uncited`.
+    """
+    if not sketch_check.available():
+        return the_part
+
+    found = []
+    for path in attachments:
+        sheet = sheet_reader.read(path)
+        if sheet is None:
+            continue
+        for view in sheet.drawn:
+            for outline in view.outlines:
+                verdict = sketch_check.checked(outline, view.view, sheet.between)
+                if verdict is None:
+                    continue
+                found.extend(
+                    {"about": "%s, in %s" % (trouble.said, view.view),
+                     "stands": "the sheet prints it",
+                     "was_also_said": "the view draws it otherwise"}
+                    for trouble in verdict.disagrees)
+                found.extend(
+                    {"about": "%s, in %s" % (trouble.said, view.view),
+                     "stands": "the solver cannot satisfy this reading"}
+                    for trouble in verdict.conflicts)
+    return dict(the_part, conflicts=found) if found else the_part
 
 
 def _round_evidence(attachments):

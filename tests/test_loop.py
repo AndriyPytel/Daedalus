@@ -17,7 +17,7 @@ from core.events import (
     PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
     STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
-from core import part_file, sheet_reader
+from core import loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
 from core.design import UNDER, entries, merge, render
@@ -4825,3 +4825,109 @@ def test_a_re_read_that_settles_nothing_still_stops_the_run():
     assert not result.ok
     assert not tools.applied_codes()
     assert "read off the wrong view" in events.first(BLOCKED).data["reason"]
+
+
+# ── the geometry contradicts the sheet (FCC-122) ──────────────────────────────
+
+
+def _a_sheet_that_contradicts_itself(tmp_path, wide=98.2, printed=100.0):
+    """
+    A traced plate that does not measure what is printed across it.
+
+    1.8 mm by default, and that is not a free choice: the tracing has to be
+    near enough to the drawing for a dimension's foot to find the face it names
+    at all. Past `sketch_check.A_FOOT` the foot reaches nothing, and there is
+    no comparison to make — see the test below, which holds that ceiling in
+    place on purpose.
+    """
+    from core import sheet_reader
+
+    corners = [(0.0, 0.0), (wide, 0.0), (wide, 30.0), (0.0, 30.0)]
+    entities = [
+        sheet_reader.Entity(kind="line", source="traced", role="contour",
+                            size=sheet_reader._distance(corners[at],
+                                                        corners[(at + 1) % 4]),
+                            start=corners[at], end=corners[(at + 1) % 4])
+        for at in range(4)]
+    outline = sheet_reader.Outline(entities=entities, closed=True, area=3000.0)
+    return sheet_reader.Sheet(
+        source=str(tmp_path / "a.pdf"),
+        drawn=[sheet_reader.Drawn(view="the front view", entities=entities,
+                                  outlines=[outline])],
+        between=[sheet_reader.Between(printed=printed, text="%g" % printed,
+                                      view="the front view",
+                                      first=(0.0, 15.0),
+                                      second=(printed, 15.0))])
+
+
+def test_a_sheet_that_contradicts_its_own_tracing_says_so_on_the_part(
+        tmp_path, monkeypatch):
+    """
+    The whole of FCC-116 to FCC-121 arriving somewhere. `100` printed across a
+    plate the pixels measure at 98.2 is two things that cannot both be true, and
+    that is a conflict — not a correction, because which of the two is wrong is
+    exactly what this cannot know.
+    """
+    sheet = _a_sheet_that_contradicts_itself(tmp_path)
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+
+    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"])
+
+    assert len(grown["conflicts"]) == 1
+    said = str(grown["conflicts"][0])
+    assert "100" in said and "98.2" in said
+    assert "the front view" in said
+
+
+def test_a_reading_too_far_out_is_past_what_this_check_can_see(
+        tmp_path, monkeypatch):
+    """
+    The ceiling, held in place deliberately. A dimension reaches the geometry
+    through the feet of its own extension lines, so a tracing further out than
+    `sketch_check.A_FOOT` from the drawing has no face for the foot to name and
+    there is nothing to compare.
+
+    Widening the band does not fix that, it breaks it: measured on the four
+    sheets, a band of a tenth of the printed value writes 16 distances of which
+    3 then disagree by 4.5 to 4.9 mm, and an unambiguity rule instead of a band
+    writes 25 of which 13 disagree — including a 150 matched to faces 98.77
+    apart. Those sheets agree with themselves, so every one of those is a wrong
+    face, not a finding.
+
+    So this is a floor: it proves the tracing, the printed sizes and the
+    printed distances agree. A misread digit is caught by the arithmetic that
+    needs no correspondence at all — the sheet measuring its own numbers
+    (`Printed.measures`), and a number nobody printed (`uncited`).
+    """
+    sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=108.0)
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+
+    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"]) == {
+        "features": []}
+
+
+def test_a_sheet_that_agrees_with_itself_adds_nothing(tmp_path, monkeypatch):
+    """
+    Measured on the four sheets in `tests/modelmania`: 13 printed distances
+    reach a traced outline and every one of them agrees within 1.08 mm, which
+    is the tracing's own bias. So a run against a real sheet gains nothing
+    here, and that is the right answer rather than a weak check.
+    """
+    from core import sheet_reader
+
+    sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=100.0)
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+
+    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"]) == {
+        "features": []}
+
+
+def test_without_a_freecad_to_build_in_the_description_is_untouched(
+        tmp_path, monkeypatch):
+    """Degrades the way the rest of the reading does: silently and completely."""
+    sheet = _a_sheet_that_contradicts_itself(tmp_path)
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(loop.sketch_check, "available", lambda: False)
+
+    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"]) == {
+        "features": []}
