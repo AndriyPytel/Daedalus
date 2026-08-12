@@ -179,6 +179,16 @@ A_VIEW = 90.0
 # one, and a fragment goes to whichever picture holds most of it in any case.
 HELD_BY_A_PICTURE = 0.4
 
+# How much of a picture has to lie inside a region for the region to be where
+# it is measured. A different question from the one above and it had been
+# sharing its answer: `HELD_BY_A_PICTURE` asks whether a view's *body* is a
+# raster, which is about the region; this asks whether there is a picture here
+# to measure, which is about the picture. Measured on the four sheets, every
+# view body sits wholly inside its own region and a picture that straddles two
+# has 0.55 of itself in one of them — so this keeps a picture in the region
+# that holds it and out of the one it merely reaches into.
+IN_THE_REGION = 0.9
+
 
 @dataclass(frozen=True)
 class Crop:
@@ -905,6 +915,15 @@ def _share_of(box, region):
     if overlap.is_empty:
         return 0.0
     area = region.width * region.height
+    return (overlap.width * overlap.height) / area if area else 0.0
+
+
+def _share_of_the_picture(box, region):
+    """How much of a picture lies inside a region, as a fraction of the picture."""
+    overlap = pymupdf.Rect(region) & box
+    if overlap.is_empty:
+        return 0.0
+    area = box.width * box.height
     return (overlap.width * overlap.height) / area if area else 0.0
 
 
@@ -1968,7 +1987,8 @@ def _traced(document, page, rect, millimetres_per_point):
     said, circles = [], []
     for picture in page.get_image_info(xrefs=True):
         box = pymupdf.Rect(*picture["bbox"])
-        if _share_of(box, rect) < HELD_BY_A_PICTURE or not picture.get("xref"):
+        if _share_of_the_picture(box, rect) < IN_THE_REGION \
+                or not picture.get("xref"):
             continue
         pixels = _pixels_of(document, picture["xref"])
         if pixels is None:

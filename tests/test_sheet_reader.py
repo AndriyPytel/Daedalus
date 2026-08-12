@@ -903,7 +903,11 @@ def test_the_view_each_round_thing_is_round_in_is_reported(sheet_2023):
     holes = [view for view, wide in round_here.items()
              if any(6.0 <= one <= 6.6 for one in wide)]
     assert holes, "the Ø6.6 holes were traced round in no view at all"
-    assert all("upper" in view for view in holes), holes
+    # The plan of the arm is drawn twice on this sheet — once at the top and
+    # once, larger and shaded, below — and both draw these holes as circles.
+    # What matters is the view that does not: the elevation, where the Ø42
+    # bore is the round thing and these two are a pair of parallel lines.
+    assert not any("middle centre" in view for view in holes), holes
 
 
 @needs_pymupdf
@@ -1249,3 +1253,35 @@ def test_the_distances_are_said_the_way_the_leaders_are(sheet):
 
     assert "measures" in said
     assert "still yours to read" in said
+
+
+@needs_pymupdf
+def test_a_view_dimensioned_on_four_sides_is_still_traced(sheet_2023):
+    """
+    A section 40 mm across, dimensioned all round, is one fifth of its own
+    region and it is still a section. Measured before this: `VIEW C-C` on page
+    2 of the 2023 sheet holds a picture wholly inside it covering 0.33 of the
+    region, and the tracer refused to look at it, so the three printed
+    distances that reach that view reached nothing.
+    """
+    view = [one for one in sheet_2023.drawn
+            if one.view.startswith("VIEW C-C")][0]
+
+    assert view.outlines, "the view holds a picture and it is traced"
+
+
+@needs_pymupdf
+def test_what_a_picture_holds_and_what_it_is_traced_from_are_two_questions(
+        sheet_2023):
+    """
+    `from_a_picture` warns that a view's *body* is a raster, so the vector list
+    beside it is annotation and not the outline. That is a question about the
+    region. Whether there is a picture here to measure is a question about the
+    picture, and sharing one threshold cost ten of the twenty-six distances.
+    """
+    traced = [one for one in sheet_2023.drawn if one.outlines]
+    bodied = [one for one in sheet_2023.drawn if one.from_a_picture]
+
+    assert {one.view for one in bodied} <= {one.view for one in traced}
+    assert len(traced) > len(bodied), (
+        "a view can be traced without its body being called a picture")
