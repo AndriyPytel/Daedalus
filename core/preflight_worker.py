@@ -7,10 +7,17 @@ Two things are imported *out* of it, by name, and both deliberately: `SENTINEL`
 by `core/preflight.py`, and `step_namespace` by `core/apply.py`, so that
 Preflight and Apply cannot build different namespaces for the same Step.
 
+One thing is imported *in*, by `reading` alone and for the same reason in the
+other direction: `core.sketch_check`, so that the check and its tests cannot
+build different sketches out of the same reading. It costs a `sys.path` entry
+and it buys the one thing this process exists for — the solver runs where its
+death is survivable (FCC-126).
+
 One JSON request per line on stdin, one tagged JSON response per line on
 stdout. FreeCAD writes its own banner to stdout, so responses carry a
 sentinel prefix and the parent ignores everything else. What a reply means is
-read in exactly one place, `PreflightResult.from_response`.
+read in exactly one place per kind of request: `PreflightResult.from_response`
+for a Step, `sketch_check.from_response` for a reading.
 
 Death is a normal outcome here. If the code under test takes the C++ core
 down, this process goes with it and the parent restarts a new one — which is
@@ -490,6 +497,31 @@ def preflight(request):
     return result
 
 
+def reading(request):
+    """
+    One outline off a drawing, built as a sketch and put to the solver.
+
+    Here rather than in the addon's process because this is the process whose
+    death is a normal outcome: the phases that read a sheet run on the loop's
+    worker thread, and `Sketcher.Constraint` is the call that segfaults
+    (FCC-19, FCC-126).
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    from core import sketch_check
+
+    outline, view, between = sketch_check.from_request(request)
+    answer = {"ok": True}
+    answer.update(sketch_check.as_response(sketch_check.checked(outline, view, between)))
+    return answer
+
+
+# What this process will do, by the `do` of the request. A request that does not
+# say is a Step, which is what every request was before there were two.
+_ASKED_FOR = {"step": preflight, "reading": reading}
+
+
 def serve(stdin=None, respond=respond):
     stdin = stdin or sys.stdin
     respond({"ready": True, "pid": os.getpid()})
@@ -504,7 +536,7 @@ def serve(stdin=None, respond=respond):
             respond({"ok": False, "traceback": "malformed request: " + str(exc)})
             continue
         try:
-            respond(preflight(request))
+            respond(_ASKED_FOR[request.get("do") or "step"](request))
         except BaseException as exc:
             # Anything Python can still catch comes back as a correction.
             # Anything it cannot takes this process down instead of FreeCAD.

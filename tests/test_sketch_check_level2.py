@@ -248,3 +248,50 @@ def test_a_disagreement_is_reported_and_never_resolved(sheet):
         verdict = sketch_check.checked(outline, view, sheet.between)
 
         assert verdict.disagrees == [], (view, verdict.disagrees)
+
+
+# ── through the child, which is where it actually runs (FCC-126) ──────────────
+
+
+def test_the_child_answers_the_same_thing_this_process_does(sheet):
+    """
+    The move that keeps FreeCAD open has to cost the verdict nothing. Same
+    outlines, same sheet, one built here and one built in the Preflight child,
+    and the answer is the answer either way.
+    """
+    from core.preflight import PreflightWorker
+
+    with PreflightWorker() as worker:
+        for view, outline in _outlines(sheet)[:4]:
+            here = sketch_check.checked(outline, view, sheet.between)
+            there = sketch_check.checked_by(worker, outline, view, sheet.between)
+
+            assert there is not None, view
+            assert (there.entities, there.geometry, there.solved, there.dof,
+                    there.distances) == (here.entities, here.geometry,
+                                         here.solved, here.dof, here.distances), view
+            assert [t.said for t in there.disagrees] == \
+                   [t.said for t in here.disagrees], view
+            assert [t.said for t in there.shifted] == \
+                   [t.said for t in here.shifted], view
+            # Not the same float: the solver settles a slack fit slightly
+            # differently run to run, and 0.44 against 0.57 mm on one section is
+            # that, not a difference of process. What may not differ is the
+            # finding, and `shifted` above is the finding.
+            assert abs(there.moved - here.moved) < sketch_check.A_SHIFT / 2, view
+
+
+def test_a_reading_the_solver_cannot_take_does_not_take_the_caller_with_it():
+    """
+    The whole arrangement, exercised: the child is fed the bore read as two
+    different sizes, and whatever the solver makes of it, this process is still
+    here to read the verdict.
+    """
+    from core.preflight import PreflightWorker
+
+    with PreflightWorker() as worker:
+        verdict = sketch_check.checked_by(
+            worker, _a_bore_in_two_pieces(42.0, 50.0), "middle centre view")
+
+        assert verdict.moved > 5.0, verdict.moved
+        assert worker.alive

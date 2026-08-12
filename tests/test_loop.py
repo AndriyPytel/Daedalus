@@ -4871,7 +4871,7 @@ def test_a_sheet_that_contradicts_its_own_tracing_says_so_on_the_part(
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
-    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"])
+    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
 
     assert len(grown["conflicts"]) == 1
     said = str(grown["conflicts"][0])
@@ -4902,7 +4902,7 @@ def test_a_reading_too_far_out_is_past_what_this_check_can_see(
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=108.0)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"]) == {
+    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream()) == {
         "features": []}
 
 
@@ -4918,19 +4918,98 @@ def test_a_sheet_that_agrees_with_itself_adds_nothing(tmp_path, monkeypatch):
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=100.0)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"]) == {
+    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream()) == {
         "features": []}
 
 
 def test_without_a_freecad_to_build_in_the_description_is_untouched(
         tmp_path, monkeypatch):
     """Degrades the way the rest of the reading does: silently and completely."""
+    def no_headless_freecad(*_, **__):
+        raise RuntimeError("No headless FreeCAD found.")
+
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.sketch_check, "available", lambda: False)
+    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"]) == {
+    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream()) == {
         "features": []}
+
+
+def test_the_reading_is_never_built_in_the_addon_s_own_process(
+        tmp_path, monkeypatch):
+    """
+    The bug this arrangement exists for: `_describe_the_part` runs on the
+    loop's worker thread, and a Document made there takes FreeCAD down with it
+    — the window went in the middle of a run and the transcript stopped at the
+    event before this check (FCC-126).
+
+    So the outline goes down the pipe, and what comes back is the child's.
+    """
+    asked = []
+
+    class _AChildThatAnswered:
+        def start(self):
+            pass
+
+        def kill(self):
+            asked.append("killed")
+
+        def reading(self, request, timeout=None):
+            from core.sketch_check import Trouble, Verdict, as_response
+
+            asked.append(request)
+            return dict(as_response(Verdict(
+                view=request["view"],
+                disagrees=[Trouble(
+                    at=0, printed=100.0,
+                    said="the sheet prints 100 between these two faces and the "
+                         "pixels put 98.20 mm between them")])), ok=True)
+
+    sheet = _a_sheet_that_contradicts_itself(tmp_path)
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(loop.sketch_check, "checked", _never_called)
+    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+                        lambda *_, **__: _AChildThatAnswered())
+
+    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
+
+    assert [entry["do"] for entry in asked if isinstance(entry, dict)] == ["reading"]
+    assert asked[-1] == "killed", "the child outlived the sweep"
+    assert "98.20" in grown["conflicts"][0]["about"]
+
+
+def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
+        tmp_path, monkeypatch):
+    """
+    Death is the normal outcome here (ADR-0002). A verdict nobody could reach
+    is no conflict, the sweep goes on to the next outline, and the run does not
+    know anything happened.
+    """
+    class _AChildThatDied:
+        def start(self):
+            pass
+
+        def kill(self):
+            pass
+
+        def reading(self, request, timeout=None):
+            return None
+
+    sheet = _a_sheet_that_contradicts_itself(tmp_path)
+    events = EventStream()
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+                        lambda *_, **__: _AChildThatDied())
+
+    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events) == {
+        "features": []}
+    assert "the front view" in events.last(ERROR).data["message"], \
+        "an unchecked reading is indistinguishable from a clean one"
+
+
+def _never_called(*_, **__):
+    raise AssertionError("the reading was built in the addon's own process")
 
 
 # ── a number on no sheet (FCC-124) ────────────────────────────────────────────

@@ -40,8 +40,18 @@ of the reading this exists to catch — moves 9.88 mm.
 Disposable throughout. The document is made here, closed here, and never the
 user's; nothing here writes a Step, and nothing here reaches the feature tree.
 What comes back is a verdict about a *reading*.
+
+**And it is made in the Preflight child, never in the addon's own process.**
+`checked` runs where it is called; every caller upstream goes through
+`checked_by`, which sends the outline down the pipe and reads the verdict back.
+Two reasons, and either alone is enough (FCC-126): the phases that read a sheet
+run on the loop's worker thread, where a Document mutation is how FreeCAD gets
+taken down (`core/apply.py`); and `Sketcher.Constraint` is the call that
+segfaults (FCC-19), fed here with geometry measured off a drawing. A verdict is
+worth a child process. It is not worth the user's FreeCAD.
 """
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 # The two ends of a piece of sketch geometry, as the Sketcher numbers them.
 START, END = 1, 2
@@ -111,7 +121,13 @@ def available():
 
 
 def checked(outline, view="", between=()):
-    """One traced outline built as a sketch, and the solver's verdict on it."""
+    """
+    One traced outline built as a sketch, and the solver's verdict on it.
+
+    Builds in the process that calls it, which is the Preflight child and
+    nothing else. `checked_by` is the entry point for everybody upstream —
+    see the note at the top of this module.
+    """
     if not available() or not outline.entities:
         return None
 
@@ -147,6 +163,95 @@ def checked(outline, view="", between=()):
             shifted=[trouble for away, trouble in shifted if away > A_SHIFT])
     finally:
         FreeCAD.closeDocument(document.Name)
+
+
+# ── across the pipe ───────────────────────────────────────────────────────────
+
+# The fields of a traced entity this check reads. Named rather than dumped
+# wholesale, so what crosses is what is used and a new field on `Entity` does
+# not silently become part of the contract between two processes.
+_OF_AN_ENTITY = ("kind", "size", "printed", "start", "end", "centre", "radius",
+                 "diameter")
+_OF_A_DISTANCE = ("printed", "first", "second", "view", "text")
+# Every one of those that is a point on the sheet. JSON has no tuple, and the
+# reporting formats a point with `%` — a list there is a TypeError, not a
+# rounding difference.
+_A_POINT = ("start", "end", "centre", "first", "second")
+_OF_A_TROUBLE = ("at", "printed", "said")
+
+
+def checked_by(worker, outline, view="", between=()):
+    """
+    One outline built in the Preflight child, and the solver's verdict on it.
+
+    None where there was no verdict to be had — an outline with nothing in it,
+    or a child that died or hung on this reading. Nothing checked and nothing
+    passed are the same answer here: the description simply gains no conflict.
+    """
+    if not outline.entities:
+        return None
+    return from_response(worker.reading(as_request(outline, view, between)))
+
+
+def as_request(outline, view="", between=()):
+    """The outline, the view it was traced in, and the sheet's distances, as JSON."""
+    # `do` is what the child dispatches on: a Step, or one of these. The two
+    # halves are separate processes and this word is the whole of their
+    # agreement about which is which.
+    return {"do": "reading", "view": view,
+            "outline": {"closed": bool(outline.closed),
+                        "entities": [_written(entity, _OF_AN_ENTITY)
+                                     for entity in outline.entities]},
+            "between": [_written(entry, _OF_A_DISTANCE) for entry in between]}
+
+
+def from_request(request):
+    """The same three back, as plain objects with the same attribute names."""
+    outline = request.get("outline") or {}
+    return (SimpleNamespace(closed=bool(outline.get("closed")),
+                            entities=[_read(entity)
+                                      for entity in outline.get("entities") or ()]),
+            request.get("view") or "",
+            [_read(entry) for entry in request.get("between") or ()])
+
+
+def as_response(verdict):
+    """The verdict as JSON, or nothing where there was no verdict."""
+    if verdict is None:
+        return {"verdict": None}
+    said = dict(vars(verdict))
+    for named in ("conflicts", "redundant", "disagrees", "shifted"):
+        said[named] = [_written(trouble, _OF_A_TROUBLE) for trouble in said[named]]
+    return {"verdict": said}
+
+
+def from_response(response):
+    """
+    The child's reply as a Verdict, or None.
+
+    A Trouble arrives without the `entity` it was raised against: the entity is
+    the caller's own object, it does not cross a pipe, and nothing upstream
+    reads it — what a Trouble is read for is `said`.
+    """
+    said = (response or {}).get("verdict")
+    if not said:
+        return None
+    said = dict(said)
+    for named in ("conflicts", "redundant", "disagrees", "shifted"):
+        said[named] = [Trouble(**trouble) for trouble in said[named]]
+    return Verdict(**said)
+
+
+def _written(what, fields):
+    return {named: list(value) if named in _A_POINT and value is not None else value
+            for named, value in ((named, getattr(what, named, None))
+                                 for named in fields)}
+
+
+def _read(said):
+    return SimpleNamespace(**{
+        named: tuple(value) if named in _A_POINT and value is not None else value
+        for named, value in said.items()})
 
 
 # How far a dimension's foot may be from the face it names, in mm, measured in

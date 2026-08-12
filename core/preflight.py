@@ -173,10 +173,37 @@ class PreflightWorker:
         Returns a PreflightResult. Never raises for anything the code did —
         a crash and a timeout are results, not exceptions.
         """
+        response, why = self._ask(
+            {"code": code, "document": document, "render_path": render_path},
+            timeout or self.timeout, "the Step")
+        if response is None:
+            return PreflightResult(ok=False, traceback=why)
+        return PreflightResult.from_response(response)
+
+    def reading(self, request, timeout=None):
+        """
+        Put one traced outline to the solver in the worker, and hand back its reply.
+
+        None where the worker could not answer — it died on this reading, or it
+        hung — because a reading nobody could check and a reading with nothing
+        wrong come to the same thing upstream: no conflict on the description.
+        The dying is the point. `Sketcher.Constraint` is what segfaults
+        (FCC-19), and here it is fed geometry measured off a drawing rather
+        than code the model wrote (FCC-126).
+        """
+        response, _ = self._ask(request, timeout or self.timeout, "the reading")
+        return response if response and response.get("ok") else None
+
+    def _ask(self, request, timeout, doing):
+        """
+        One request down the pipe, one reply back, and a dead worker replaced.
+
+        Hands back the reply, or None and the sentence saying why there is
+        none — which the caller phrases as whatever its own result is.
+        """
         if not self.alive:
             self.start()
 
-        request = {"code": code, "document": document, "render_path": render_path}
         try:
             self._process.stdin.write(json.dumps(request) + "\n")
             self._process.stdin.flush()
@@ -185,24 +212,20 @@ class PreflightWorker:
             # words before restart() replaces them with a live worker's silence.
             died = self._died_message("before it could start")
             self.restart()
-            return PreflightResult(ok=False, traceback=died)
+            return None, died
 
-        response = self._await_response(timeout or self.timeout)
+        response = self._await_response(timeout)
+        if response is not None:
+            return response, None
 
-        if response is None:
-            timed_out = self.alive
-            died = None if timed_out else self._died_message("while running the Step")
-            self.restart()
-            if timed_out:
-                return PreflightResult(
-                    ok=False,
-                    traceback="Preflight timed out after %ss. The Step did not finish — "
-                              "an unbounded loop or a runaway recompute is the usual cause."
-                              % (timeout or self.timeout),
-                )
-            return PreflightResult(ok=False, traceback=died)
-
-        return PreflightResult.from_response(response)
+        timed_out = self.alive
+        died = None if timed_out else self._died_message("while running " + doing)
+        self.restart()
+        if timed_out:
+            return None, ("Preflight timed out after %ss — %s did not finish. An "
+                          "unbounded loop or a runaway recompute is the usual cause."
+                          % (timeout, doing))
+        return None, died
 
     # ── plumbing ─────────────────────────────────────────────────────────────
 

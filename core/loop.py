@@ -43,7 +43,7 @@ from core.events import (
     OUTSTANDING, PART, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
-from core import part_file, sheet_reader, sketch_check
+from core import part_file, preflight, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
 from core.llm import REASONING, ProviderRefused
 from core.tools import ToolError
@@ -1676,7 +1676,7 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
                                                 budgets, ask, cancelled)
     the_part = _every_number_is_the_sheets(the_part, attachments, llm, events,
                                            budgets, cancelled)
-    the_part = merge(the_part, _the_geometry_disagrees(the_part, attachments))
+    the_part = merge(the_part, _the_geometry_disagrees(the_part, attachments, events))
     the_part, reading = _written_down(the_part, attachments, events)
     _every_direction_settled(the_part, reading, _round_evidence(attachments))
     return the_part
@@ -1741,7 +1741,7 @@ def _where_is_this_number(found):
         % ", ".join("%g" % number for number in found))
 
 
-def _the_geometry_disagrees(the_part, attachments):
+def _the_geometry_disagrees(the_part, attachments, events):
     """
     What the sheet prints against what the sheet draws, as conflicts.
 
@@ -1773,29 +1773,71 @@ def _the_geometry_disagrees(the_part, attachments):
     needs no correspondence at all, by the sheet measuring its own numbers
     (`Printed.measures`) and by `uncited`.
     """
-    if not sketch_check.available():
+    worker = _a_freecad_of_our_own()
+    if worker is None:
         return the_part
 
-    found = []
-    for path in attachments:
-        sheet = sheet_reader.read(path)
-        if sheet is None:
-            continue
-        for view in sheet.drawn:
-            for outline in view.outlines:
-                verdict = sketch_check.checked(outline, view.view, sheet.between)
-                if verdict is None:
-                    continue
-                found.extend(
-                    {"about": "%s, in %s" % (trouble.said, view.view),
-                     "stands": "the sheet prints it",
-                     "was_also_said": "the view draws it otherwise"}
-                    for trouble in verdict.disagrees)
-                found.extend(
-                    {"about": "%s, in %s" % (trouble.said, view.view),
-                     "stands": "the solver cannot satisfy this reading"}
-                    for trouble in verdict.conflicts)
+    found, unchecked = [], []
+    try:
+        for path in attachments:
+            sheet = sheet_reader.read(path)
+            if sheet is None:
+                continue
+            for view in sheet.drawn:
+                for outline in view.outlines:
+                    found.extend(_what_the_solver_said(worker, outline, view.view,
+                                                       sheet.between, unchecked))
+    finally:
+        worker.kill()
+    if unchecked:
+        # Said out loud, for the same reason a re-read that found nothing says
+        # so (FCC-96): a sheet nothing was wrong with and a sheet nobody could
+        # check both arrive at the Gate with no conflict on them, and only one
+        # of the two is a verdict.
+        events.emit(ERROR, message="The solver could not be asked about %d of the "
+                                   "outlines read off these sheets: %s. The run goes "
+                                   "on; those outlines are unchecked."
+                                   % (len(unchecked), ", ".join(sorted(set(unchecked)))))
     return dict(the_part, conflicts=found) if found else the_part
+
+
+def _what_the_solver_said(worker, outline, view, between, unchecked):
+    """One outline's verdict, as the conflicts it puts on the description."""
+    verdict = sketch_check.checked_by(worker, outline, view, between)
+    if verdict is None:
+        if outline.entities:
+            unchecked.append(view)
+        return ()
+    found = [{"about": "%s, in %s" % (trouble.said, view),
+              "stands": "the sheet prints it",
+              "was_also_said": "the view draws it otherwise"}
+             for trouble in verdict.disagrees]
+    found.extend({"about": "%s, in %s" % (trouble.said, view),
+                  "stands": "the solver cannot satisfy this reading"}
+                 for trouble in verdict.conflicts)
+    return found
+
+
+def _a_freecad_of_our_own():
+    """
+    A headless FreeCAD to build the reading in, or nothing.
+
+    Never the live one, and never this thread. `sketch_check` makes a Document,
+    writes Sketcher constraints into it and solves — and `_describe_the_part`
+    runs on the loop's worker thread, where a Document mutation takes FreeCAD
+    down with it (`core/apply.py`, FCC-126). One warm child for the whole
+    sweep: four sheets are 96 outlines, and a process each is a process each.
+
+    Nothing to start is not an error. A machine with no headless FreeCAD reads
+    its drawing exactly as it does today, which is what every other rung of the
+    reading does when what it needs is not there.
+    """
+    try:
+        worker = preflight.PreflightWorker()
+        worker.start()
+        return worker
+    except Exception:
+        return None
 
 
 def _round_evidence(attachments):
