@@ -443,61 +443,41 @@ def crosswise(model) -> list:
     Its mirror is the same rule read the other way: two features round in one
     view whose axes were written differently cannot both be right either.
     """
-    along = {}
+    seen = []
     for feature in _features(model):
         view, axis = _seen_round_in(feature), _said_of(feature, "axis")
-        if not view or not axis:
-            continue
-        where = _under("features", _named(feature, _IDENTITY) or "a feature")
-        along.setdefault(axis, []).append((view, where))
+        if view and axis:
+            seen.append((view, axis,
+                         _under("features", _named(feature, _IDENTITY) or "a feature")))
 
     found = []
-    for axis, seen in along.items():
-        views = {view for view, _ in seen}
-        if len(views) < 2:
+    for axis in {said for _, said, _ in seen}:
+        along = [(view, where) for view, said, where in seen if said == axis]
+        if len({view for view, _ in along}) < 2:
             continue
-        for view, where in seen:
+        for view, where in along:
             found.append({
                 "about": _under(where, "axis"),
                 "stands": "this is round in %s, and %s is round in %s — two views, so "
                           "the two axes cross, and these were written the same way"
-                          % (view, _elsewhere(seen, view), _other_than(views, view)),
+                          % ((view,) + next((other.split(UNDER)[-1], at)
+                                            for at, other in along if at != view)),
                 "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
             })
 
-    for view, seen in _by_view(model).items():
-        axes = {axis for axis, _ in seen}
-        if len(axes) < 2:
+    for view in {at for at, _, _ in seen}:
+        here = [(said, where) for at, said, where in seen if at == view]
+        if len({said for said, _ in here}) < 2:
             continue
-        for axis, where in seen:
+        for axis, where in here:
             found.append({
                 "about": _under(where, "axis"),
                 "stands": "everything round in %s has the one axis, and the features "
                           "round in it here were given %d different ones"
-                          % (view, len(axes)),
+                          % (view, len({said for said, _ in here})),
                 "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
             })
     return found
-
-
-def _by_view(model):
-    """Which features are round in each view, with the axis each was given."""
-    seen = {}
-    for feature in _features(model):
-        view, axis = _seen_round_in(feature), _said_of(feature, "axis")
-        if view and axis:
-            seen.setdefault(view, []).append(
-                (axis, _under("features", _named(feature, _IDENTITY) or "a feature")))
-    return seen
-
-
-def _elsewhere(seen, view):
-    """The first entry of *seen* that is not in *view*, named."""
-    return next((where.split(UNDER)[-1] for at, where in seen if at != view), "another")
-
-
-def _other_than(views, view):
-    return next((at for at in sorted(views) if at != view), "another view")
 
 
 def read_off_the_wrong_view(model) -> list:

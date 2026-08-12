@@ -390,6 +390,12 @@ def _a_page(page, at, of_pages, into, legible_px, max_edge,
                               rect=_as_tuple(part), dpi=dpi, page=at))
 
     on_this_page = [crop for crop in crops if crop.page == at]
+    # Where this page's own printing and leaders start, because what is compared
+    # with the pixels of this page has to be the text and the leaders of this
+    # page: both accumulators are the whole document's, both carry page-local
+    # coordinates, and a page-2 hole would otherwise be matched to a page-1
+    # leader that happens to reach the same point.
+    printed_before, leaders_before = len(printed), len(leaders)
     scale, voters, measured = _measured(page, words)
     notation = _notation(page, words)
     printed.extend(Printed(text=str(w[4]).strip(),
@@ -404,7 +410,8 @@ def _a_page(page, at, of_pages, into, legible_px, max_edge,
     _the_scale_the_lines_vote_for(scale, voters, printed_scale, notes)
     circles = []
     drawn.extend(_drawn(page, named, printed_scale, page.parent, circles))
-    _the_pixels_disagree(circles, printed, leaders, notes)
+    _the_pixels_disagree(circles, printed[printed_before:], leaders[leaders_before:],
+                         notes)
 
 
 # What a later page says when it is a revision of an earlier one rather than

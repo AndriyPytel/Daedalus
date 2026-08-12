@@ -30,10 +30,10 @@ from core.design import SECTIONS
 # apart from one this code understands.
 SCHEMA = "fcc.part/1"
 
-# How the reading's time is written into the name. Sortable, so the latest
-# reading of a sheet is the last one by name — and down to the microsecond, so
-# that two readings taken inside one second are still two names and the sort
-# still holds. A counter would not: `-1` sorts before `.yaml`.
+# How the reading's time is written into the name. Sortable, so a sheet's
+# readings list in the order they were taken — and down to the microsecond, so
+# that two taken inside one second are still two names and the sort still
+# holds. A counter would not: `-1` sorts before `.yaml`.
 WHEN = "%Y%m%d-%H%M%S-%f"
 
 # Enough of the sheet's digest to tell two drawings of the same name apart, and
@@ -49,7 +49,7 @@ WHERE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The two keys the file carries that are not the part.
 _PROVENANCE = "read_from"
-_SCHEMA = "schema"
+_SCHEMA_KEY = "schema"
 
 
 def saved(model, source, into=None, read_from=None) -> str:
@@ -70,35 +70,22 @@ def saved(model, source, into=None, read_from=None) -> str:
         datetime.datetime.now().strftime(WHEN)))
 
     with open(path, "w", encoding="utf-8") as handle:
-        yaml.safe_dump(_head(source, read_from), handle, sort_keys=False,
-                       allow_unicode=True, default_flow_style=False)
-        yaml.safe_dump(_ordered(model), handle, sort_keys=False,
-                       allow_unicode=True, default_flow_style=False)
+        yaml.safe_dump(dict(_head(source, read_from), **_ordered(model)), handle,
+                       sort_keys=False, allow_unicode=True, default_flow_style=False)
     return path
 
 
 def read(path) -> dict:
     """The part in *path*, or {} where there is no readable file there."""
     return {key: value for key, value in _whole(path).items()
-            if key not in (_SCHEMA, _PROVENANCE)}
+            if key not in (_SCHEMA_KEY, _PROVENANCE)}
 
 
 def provenance(path) -> dict:
     """Which sheet this reading was taken from, and what it was taken with."""
     whole = _whole(path)
-    return dict(whole.get(_PROVENANCE) or {}, **{_SCHEMA: whole.get(_SCHEMA, "")})
-
-
-def latest(source, into=None) -> str:
-    """The most recent reading of *source*, or None where there is none."""
-    into = into or WHERE
-    if not os.path.isdir(into):
-        return None
-    stem = "%s-%s-" % (os.path.splitext(os.path.basename(source))[0],
-                       _digest_of(source))
-    readings = sorted(name for name in os.listdir(into)
-                      if name.startswith(stem) and name.endswith(".yaml"))
-    return os.path.join(into, readings[-1]) if readings else None
+    return dict(whole.get(_PROVENANCE) or {},
+                **{_SCHEMA_KEY: whole.get(_SCHEMA_KEY, "")})
 
 
 def _whole(path):
@@ -113,7 +100,7 @@ def _whole(path):
 
 
 def _head(source, read_from):
-    return {_SCHEMA: SCHEMA,
+    return {_SCHEMA_KEY: SCHEMA,
             _PROVENANCE: dict({"sheet": os.path.basename(source),
                                "digest": _digest_of(source),
                                "read_at": datetime.datetime.now().isoformat(

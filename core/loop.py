@@ -1239,9 +1239,8 @@ def the_envelope_measured(acceptance):
     can measure, and inventing a third would fail every run that has one.
     """
     sizes = []
-    for entry in acceptance or ():
-        address, _, value = str(entry).partition(": ")
-        if address.strip().startswith("envelope" + UNDER):
+    for address, value in _addressed(acceptance).items():
+        if address.startswith("envelope" + UNDER):
             found = _A_SIZE.findall(value)
             if len(found) == 1:
                 sizes.append(float(found[0]))
@@ -1915,12 +1914,8 @@ def _two_directions_in_one_step(planned):
     dimension on the part is measured from.
     """
     # A Step may cite an entry by its address alone or with the value written
-    # out; the acceptance carries both, so the direction is looked up there and
-    # the check does not depend on which way the citation was written.
-    of = {}
-    for entry in planned.acceptance or ():
-        address, _, value = str(entry).partition(": ")
-        of[address.strip()] = value.strip()
+    # out, so the direction is looked up in the acceptance, which carries both.
+    of = _addressed(planned.acceptance)
 
     found = []
     for at, cited in enumerate(planned.cites or (), start=1):

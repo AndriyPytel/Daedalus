@@ -69,7 +69,6 @@ def test_a_second_reading_of_one_sheet_is_a_second_file(sheet, tmp_path):
 
     assert first != second
     assert len(os.listdir(into)) == 2
-    assert part_file.latest(sheet, into=into) == second
 
 
 def test_what_was_written_is_what_comes_back(sheet, tmp_path):
@@ -127,7 +126,6 @@ def test_a_hand_edited_file_is_what_comes_back(sheet, tmp_path):
 
 def test_nothing_is_read_from_a_file_that_is_not_one(tmp_path):
     assert part_file.read(str(tmp_path / "nowhere.yaml")) == {}
-    assert part_file.latest(str(tmp_path / "nowhere.pdf"), into=str(tmp_path)) is None
 
 
 def test_an_empty_part_is_not_written_at_all(sheet, tmp_path):
