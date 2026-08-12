@@ -6,7 +6,11 @@ logic in FCC-93, so it is tested on its own rather than only through a run. The
 numbers are the ones from the run that named the defect
 (`logs/sessions/daefe57b593448e9baf83422fc37af1e.jsonl`, mm25-p1-1.pdf).
 """
-from core.design import crosswise, entries, merge, render
+from core import design
+from core.design import (
+    corrected, crosswise, entries, grounded, merge, read_off_the_wrong_view,
+    render,
+)
 
 
 def _read(value):
@@ -835,3 +839,164 @@ def test_the_finding_arrives_through_the_merge_like_every_other():
     grown = merge({}, THE_CLAMP_READ_OFF_ONE_VIEW)
 
     assert any("two views" in str(entry.get("stands")) for entry in grown["conflicts"])
+
+
+# ── only a round thing is round in a view (FCC-110) ──────────────────────────
+
+
+THE_SPLIT_AND_THE_CUTOUT = {
+    "features": [
+        {"id": "clamp-ring-bore", "kind": "\u00d842 circular clamp bore",
+         "diameter": {"value": "42 mm", "flag": "read"},
+         "axis": _round_in("the middle centre of the sheet, on page 1", "the depth")},
+        {"id": "ring-split", "kind": "right-side split through the clamp ring",
+         "topology": "open split continuing from the \u00d842 clamp bore to the right end face",
+         "axis": _round_in("the middle centre of the sheet, on page 1", "the length")},
+        {"id": "web-cutout", "kind": "through cutout between the lower arm and the ring",
+         "axis": _round_in("VIEW B, page 1", "the depth")},
+    ],
+}
+
+
+def test_a_saw_cut_and_a_cutout_are_round_in_nothing():
+    """
+    The run that stopped before the Plan Gate
+    (`logs/sessions/daa17fb149474317840ef98439cfef6f.jsonl`). The prompt asks
+    every feature for `round_in`, so a split and an open cutout got one, and
+    `crosswise` then judged a saw cut against a bore — four findings, none of
+    them about anything that has a circle.
+    """
+    assert crosswise(THE_SPLIT_AND_THE_CUTOUT) == []
+
+
+def test_a_bore_named_in_the_topology_of_something_else_does_not_make_it_round():
+    """`ring-split` says it continues from the Ø42 bore. That is the bore's."""
+    assert not design._is_round(THE_SPLIT_AND_THE_CUTOUT["features"][1])
+
+
+def test_two_holes_are_still_judged_against_each_other():
+    """Narrowed to what is round, not switched off."""
+    assert len(crosswise(THE_CLAMP_READ_OFF_ONE_VIEW)) == 2
+
+
+# ── the reading held against the trace (FCC-110) ─────────────────────────────
+
+
+A_TRACE = {
+    "the middle centre of the sheet, on page 1": [41.64, 24.74],
+    "VIEW C-C, on page 2": [5.68, 19.52],
+}
+
+
+def _a_bore(view, wide="42 mm"):
+    return {"features": [
+        {"id": "clamp-ring-bore", "kind": "\u00d842 clamp bore", "topology": "through",
+         "diameter": {"value": wide, "flag": "read"},
+         "axis": _round_in(view, "the depth")}]}
+
+
+def test_a_circle_traced_in_another_view_names_that_view():
+    found = grounded(_a_bore("VIEW C-C, on page 2"), A_TRACE)
+
+    assert [entry["about"] for entry in found] == ["features → clamp-ring-bore → axis"]
+    assert "the middle centre of the sheet, on page 1" in found[0]["stands"]
+    assert found[0]["instead"] == "the middle centre of the sheet, on page 1"
+
+
+def test_a_reading_the_trace_agrees_with_raises_nothing():
+    assert grounded(_a_bore("the middle centre of the sheet, on page 1"), A_TRACE) == []
+
+
+def test_the_view_is_matched_however_the_two_of_them_say_it():
+    """The reader writes "VIEW C-C, on page 2" and the description "VIEW C-C, page 2"."""
+    assert grounded({"features": [
+        {"id": "left-mounting-slot", "kind": "\u00d86.6 obround mounting slot",
+         "diameter": {"value": "6.6 mm", "flag": "read"},
+         "axis": _round_in("VIEW C-C, page 2", "the depth")}]}, A_TRACE) == []
+
+
+def test_a_circle_traced_nowhere_at_all_is_no_evidence_against_the_reading():
+    """
+    The tracer misses circles constantly. Absence of a trace is not absence of
+    a bore, and a check that read it that way would fire on a correct reading.
+    """
+    assert grounded(_a_bore("VIEW C-C, on page 2", wide="88 mm"), A_TRACE) == []
+
+
+def test_with_no_sheet_to_hold_it_against_the_check_says_nothing():
+    assert grounded(_a_bore("VIEW C-C, on page 2"), {}) == []
+
+
+def test_the_drawing_settles_which_of_two_disagreeing_features_is_wrong():
+    """
+    The stopped run's own case: the bore is confirmed Ø42 in the view it names,
+    the other is not, and `crosswise` cannot tell which of the two is misread.
+    Holding the confirmed one to account is what stopped a correct reading.
+    """
+    two = {"features": _a_bore("the middle centre of the sheet, on page 1")["features"]
+           + [{"id": "a-hole", "kind": "\u00d86.6 through hole",
+               "diameter": {"value": "6.6 mm", "flag": "read"},
+               "axis": _round_in("the upper centre of the sheet, on page 1", "the depth")}]}
+
+    assert len(crosswise(two)) == 2
+
+    about = [entry["about"] for entry in read_off_the_wrong_view(two, A_TRACE)]
+    assert "features → clamp-ring-bore → axis" not in about
+    assert "features → a-hole → axis" in about
+
+
+def test_where_the_drawing_confirms_them_all_the_disagreement_is_the_drawings():
+    both = {"features": _a_bore("the middle centre of the sheet, on page 1")["features"]
+            + [{"id": "a-slot", "kind": "\u00d86.6 obround slot",
+                "diameter": {"value": "6.6 mm", "flag": "read"},
+                "axis": _round_in("VIEW C-C, on page 2", "the depth")}]}
+
+    assert len(read_off_the_wrong_view(both, A_TRACE)) == 2
+
+
+# ── the one write that overrules (FCC-110) ───────────────────────────────────
+
+
+def test_a_correction_lands_at_the_address_and_keeps_what_it_displaced():
+    model = _a_bore("VIEW C-C, on page 2")
+
+    corrected(model, "features → clamp-ring-bore → axis", "the height",
+              "\u00d842 was traced in the middle centre view")
+
+    axis = model["features"][0]["axis"]
+    assert axis["value"] == "the height"
+    assert axis["was"] == "the depth"
+    assert "traced" in axis["because"]
+
+
+def test_a_correction_may_carry_the_whole_record_including_the_view():
+    model = _a_bore("VIEW C-C, on page 2")
+
+    corrected(model, "features → clamp-ring-bore → axis",
+              _round_in("the middle centre of the sheet, on page 1", "the height"),
+              "the trace")
+
+    assert design.said_at(model, "features → clamp-ring-bore → axis") == "the height"
+    assert grounded(model, A_TRACE) == []
+
+
+def test_an_address_nobody_filled_is_not_a_correction():
+    """This overrules; it does not create. An empty field is the merge's."""
+    model = _a_bore("VIEW C-C, on page 2")
+
+    corrected(model, "features → clamp-ring-bore → plane", "the plan", "the trace")
+    corrected(model, "features → nothing-of-the-sort → axis", "the plan", "the trace")
+
+    assert "plane" not in model["features"][0]
+    assert len(model["features"]) == 1
+
+
+def test_the_merge_still_refuses_everything_that_is_not_a_correction():
+    """The rule the phase rests on is untouched: this is the one exception."""
+    second = _a_bore("VIEW C-C, on page 2")
+    second["features"][0]["axis"] = _round_in("VIEW C-C, on page 2", "the height")
+
+    grown = merge(_a_bore("VIEW C-C, on page 2"), second)
+
+    assert design.said_at(grown, "features → clamp-ring-bore → axis") == "the depth"
+    assert any("the height" in str(entry) for entry in grown["conflicts"])

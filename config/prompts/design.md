@@ -65,11 +65,16 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   a bore, a slot, a pocket — carries that axis in `axis`, and one that is a
   profile, an arc or a rounded end carries `plane`; both are values like any
   other, so a direction is checked on the finished part the way a distance is.
-  Both also carry `round_in`, the one view the feature is drawn round in — the
-  view whose circle gave you the direction — named as the drawing names it. It
-  is what the axis is checked against: two features drawn round in two
-  different views cannot have been drilled the same way, and that is arithmetic
-  rather than an opinion.
+  A round one — a hole, a bore, a counterbore, a circular boss — also carries
+  `round_in`, the one view it is drawn round in, the view whose circle gave you
+  the direction. Name that view exactly as the reader names it in the list of
+  views it hands you, because it is looked up in that list: a name of your own
+  finds nothing. Only a round feature has one — a slot that is not obround, a
+  saw cut, a tapered cutout is round in nothing, and writing a view there says
+  something false about a feature that has no circle to be checked. It is what
+  the axis is checked against: two features drawn round in two different views
+  cannot have been drilled the same way, and that is arithmetic rather than an
+  opinion.
 - **`conflicts`** is where two things that cannot both be true are recorded.
   Record them and leave them there.
 - **`not_defined`** is what nothing supplies, each entry naming the views you
@@ -453,10 +458,14 @@ datum on that face, and its `axis` says which way it points, named by the datums
 it is measured against and never as X, Y or Z: "perpendicular to the ring axis,
 crossing the split". A hole drawn as a circle in a view is a hole whose axis is
 perpendicular to that view, and that is a reading, so it is written down — in
-`round_in`, naming that view — and where the drawing shows two features
-perpendicular to one another, say so. The reader tells you which view it traced
-each round thing in; a `round_in` that disagrees with the trace is a conflict,
-and two features with one axis and two `round_in` views is one too. A model
+`round_in`, naming that view exactly as the reader names it — and where the
+drawing shows two features perpendicular to one another, say so. The reader
+tells you which view it traced each round thing in; a `round_in` that disagrees
+with the trace is a conflict, and two features with one axis and two `round_in`
+views is one too. The trace is evidence and not a census: it misses circles,
+particularly in a view that came through as a picture, so a view it reports
+nothing round in may still show your bore — read the view, not the list. What
+it does report, it measured. A model
 that puts everything in one profile plans a flat part, and nothing downstream
 can tell that a plane went missing.
 

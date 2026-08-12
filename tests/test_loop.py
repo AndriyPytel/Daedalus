@@ -17,10 +17,10 @@ from core.events import (
     PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
     STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
-from core import sheet_reader
+from core import part_file, sheet_reader
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
-from core.design import entries, merge, render
+from core.design import UNDER, entries, merge, render
 from core.loop import (
     PROMPTS, Budgets, prompt, revisions_ceiling, run,
 )
@@ -4755,3 +4755,73 @@ def test_the_first_plan_of_a_run_is_not_a_revision_of_anything():
     ])
 
     assert "the_plan_you_wrote" not in _turns_of(llm, "plan")[0]
+
+
+# ── a direction is put back to the drawing before it stops the run (FCC-110) ──
+
+
+# The re-read that says which of the two was misread, and the Plan that follows
+# from it: two axes are two planes, so they are two Steps (FCC-111).
+_THE_AXIS_PUT_RIGHT = [
+    design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
+    design_reply({"features": [{"id": "right-mounting-hole",
+                                "axis": {"value": "the height", "flag": "read",
+                                         "round_in": "the upper plan"}}]}),
+    plan_reply({"do": "Bore the clamp ring",
+                "satisfies": ["envelope → length", "features → clamp-bore → axis"]},
+               {"do": "Pocket the mounting hole",
+                "satisfies": ["features → right-mounting-hole → axis"]}),
+    code_reply("bore()", "pocket()"),
+    assertion_reply("assert True, 'the hole'"),
+    verdict_reply("pass"),
+]
+
+
+def test_a_re_read_that_corrects_the_axis_reaches_the_plan_instead_of_stopping():
+    """
+    The stop was the only move the loop had. The recorded run
+    (`logs/sessions/daa17fb149474317840ef98439cfef6f.jsonl`) died before the
+    Plan Gate on four findings that were the check's own fault, with nothing
+    between "something is wrong" and "stop". Now the finding goes back to
+    Design first, and a re-read that corrects it is a run that carries on.
+    """
+    result, events, _, tools = drive(
+        _THE_AXIS_PUT_RIGHT, attachments=[RENDER_PNG])
+
+    assert result.ok, events.first(BLOCKED) and events.first(BLOCKED).data["reason"]
+    assert tools.applied_codes() == ["bore()", "pocket()"]
+
+
+def test_the_re_read_is_told_what_the_finding_is():
+    _, _, llm, _ = drive([
+        design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
+        design_reply({}),
+    ], attachments=[RENDER_PNG])
+
+    asked = json.loads(_said_to_design(llm, at=1))["the_question"]
+
+    assert "round in the view its axis points at" in asked
+    assert ("features" + UNDER + "clamp-bore" + UNDER + "axis") in asked
+
+
+def test_what_the_correction_displaced_is_kept_in_the_reading():
+    """A value is never lost — it is superseded, in writing, in the file."""
+    _, events, _, _ = drive(_THE_AXIS_PUT_RIGHT, attachments=[RENDER_PNG])
+
+    axis = part_file.read(events.last(PART).data["path"])["features"][1]["axis"]
+    assert axis["value"] == "the height"
+    assert axis["was"] == "the depth"
+    assert axis["because"]
+
+
+def test_a_re_read_that_settles_nothing_still_stops_the_run():
+    """The stop stays. It is the last rung now, not the first."""
+    result, events, _, tools = drive([
+        design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
+        design_reply({}),
+        plan_reply("Pad the outer profile"),
+    ], attachments=[RENDER_PNG])
+
+    assert not result.ok
+    assert not tools.applied_codes()
+    assert "read off the wrong view" in events.first(BLOCKED).data["reason"]

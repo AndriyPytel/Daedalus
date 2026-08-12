@@ -33,6 +33,7 @@ value on it by the path it sits under, and that one enumeration is both the
 Acceptance the finished part is measured against and the set the loop takes a
 Plan's citations away from (ADR-0020).
 """
+import re
 
 # The order the Plan Gate reads them in: what was on the sheet, what the part is
 # measured from, how big it is, what is on it, and then, apart from the part
@@ -96,6 +97,75 @@ def merge(held, offered):
     if conflicts:
         merged["conflicts"] = _appended(merged.get("conflicts"), conflicts)
     return _with_the_findings(merged)
+
+
+def corrected(model, address, value, because):
+    """
+    The one write that overrules what is already on the model, and its receipt.
+
+    Everything above this line rests on the merge only ever filling what is
+    empty, and that rule is right: it is what keeps a second opinion from
+    quietly replacing a reading, and it is the whole of FCC-59. But it is also
+    why a check that finds something wrong has exactly two moves — say nothing,
+    or stop the run. Nothing can be *repaired*, because repair is a write over
+    something written. The recorded run
+    (`logs/sessions/daa17fb149474317840ef98439cfef6f.jsonl`) stopped before the
+    Plan Gate for four findings, of which four were wrong, and the loop had no
+    third move to make.
+
+    So there is one, and it is narrow on purpose. A correction lands at one
+    address, which a check has to have named; it carries *because*, which is
+    the evidence off the drawing that earns the overrule; and it leaves the
+    value it displaced behind it under `was`, in the reading, which is a file.
+    A value is therefore never lost — it is superseded, in writing, by
+    something the sheet was measured for. What may not do this is a phase
+    changing its mind: prose is not evidence, and a caller with nothing
+    measured to cite has nothing to pass here.
+    """
+    if not address or not _filled(value):
+        return model
+
+    steps = str(address).split(UNDER)
+    node = model
+    for step in steps[:-1]:
+        node = _the_entry(node, step)
+        if node is None:
+            return model
+
+    last = steps[-1]
+    if not isinstance(node, dict) or not _filled(node.get(last)):
+        return model
+
+    held = node[last]
+    was = held.get("value") if isinstance(held, dict) and _a_value(held) else held
+    node[last] = (dict(value, was=was, because=because) if isinstance(value, dict)
+                  else {"value": value, "was": was, "because": because})
+    return model
+
+
+def entry_at(model, address):
+    """The record sitting at *address* on this model, whole, or None."""
+    node = model
+    for step in str(address).split(UNDER):
+        node = _the_entry(node, step)
+        if node is None:
+            return None
+    return node
+
+
+def said_at(model, address):
+    """What sits at *address* on this model, as a value, or None."""
+    node = entry_at(model, address)
+    return node.get("value") if isinstance(node, dict) and _a_value(node) else node
+
+
+def _the_entry(node, step):
+    """One step of an address, through a mapping or a list of identified things."""
+    if isinstance(node, dict):
+        return node.get(step)
+    if isinstance(node, list):
+        return next((entry for entry in node if _named(entry, _IDENTITY) == step), None)
+    return None
 
 
 def _with_the_findings(model):
@@ -410,8 +480,52 @@ def _said_of(feature, field):
     return " ".join(str(said or "").split())
 
 
+# What makes a feature a round one, so that being drawn round in a view is a
+# thing that can be true of it at all. A diameter or a radius says it outright;
+# the words are for the feature that carries neither.
+_IS_ROUND = ("hole", "bore", "circle", "circular", "round", "cylind",
+             "counterbore", "countersink", "thread", "tapped", "boss", "shaft",
+             "spotface")
+
+_A_DIAMETER = ("diameter", "outer_diameter", "outside_diameter", "bore_diameter")
+
+_A_RADIUS = ("radius", "outer_radius")
+
+
+def _what_it_is_called(feature):
+    """The two fields that say what a feature is, without what it is next to."""
+    return " ".join(str(feature.get(key) or "") for key in ("id", "kind")).lower()
+
+
+def _is_round(feature):
+    """
+    Whether this feature is the kind of thing a view can draw round.
+
+    `round_in` is only ever a reading of a circle, and only a round feature has
+    one. The recorded run
+    (`logs/sessions/daa17fb149474317840ef98439cfef6f.jsonl`, the 2023 pipe
+    clamp) put `round_in` on `ring-split` — a saw cut — and on `web-cutout`, an
+    open cutout with a tapering profile, because the prompt asks for the field
+    and neither of them is round in anything. Two of the four findings that
+    stopped that run were `crosswise` judging a split against a bore, which is
+    two things that were never comparable.
+
+    So the check reads the field where it means something and ignores it where
+    it cannot: a feature with a diameter or a radius, or one whose own words
+    say it is round. A split is a split whatever was written beside it.
+    """
+    if any(_filled(feature.get(key)) for key in _A_DIAMETER + _A_RADIUS):
+        return True
+    # `topology` is left out of it, because a feature is described there by what
+    # it runs into: the split's topology is "continuing from the \u00d842 clamp bore",
+    # which names a bore that belongs to something else and made a saw cut round.
+    return any(word in _what_it_is_called(feature) for word in _IS_ROUND)
+
+
 def _seen_round_in(feature):
     """The view a feature is round in, where the reading says which one."""
+    if not _is_round(feature):
+        return ""
     for field in ("axis", "plane"):
         said = feature.get(field)
         if isinstance(said, dict) and str(said.get(ROUND_IN) or "").strip():
@@ -480,17 +594,145 @@ def crosswise(model) -> list:
     return found
 
 
-def read_off_the_wrong_view(model) -> list:
+# How far a traced diameter may sit from the one the description read and still
+# be the same circle. The tracer measures to the inside of the line that draws
+# it, so it reads about a millimetre under; the rest is the raster.
+_THE_SAME_CIRCLE = 1.5
+
+_A_NUMBER = re.compile(r"([0-9]+(?:\.[0-9]+)?)")
+
+
+def _how_wide(feature):
+    """The diameter this feature was read at, in millimetres, or None."""
+    for keys, across in ((_A_DIAMETER, 1.0), (_A_RADIUS, 2.0)):
+        for key in keys:
+            found = _A_NUMBER.search(_said_of(feature, key))
+            if found:
+                return float(found.group(1)) * across
+    found = re.search(r"\u00d8\s*([0-9]+(?:\.[0-9]+)?)", _what_it_is_called(feature))
+    return float(found.group(1)) if found else None
+
+
+# What is left of a view's name once the difference between two ways of saying
+# it is gone. The reader names a view after where it sits — "VIEW C-C, on page
+# 2" — and the description writes down what it read, "VIEW C-C, page 2", and
+# the two are the same view. Compared as they stand they are not, and the check
+# then reads a view it was never given as a view with nothing in it.
+_HOW_A_VIEW_IS_SAID = re.compile(r"[^a-z0-9]+")
+
+_SAID_EITHER_WAY = ("the", "on", "of", "sheet")
+
+
+def _as_a_view(name):
+    return "".join(word for word in _HOW_A_VIEW_IS_SAID.split(str(name).lower())
+                   if word and word not in _SAID_EITHER_WAY)
+
+
+def _traced_round_at(round_here, view, wide):
+    """Whether *view* was traced curved at something the width of *wide*."""
+    said = _as_a_view(view)
+    return any(abs(seen - wide) <= _THE_SAME_CIRCLE
+               for at, seen_here in round_here.items() if _as_a_view(at) == said
+               for seen in seen_here)
+
+
+def grounded(model, round_here) -> list:
+    """
+    A round feature whose circle the tracer found, and found somewhere else.
+
+    The description says which view a feature is drawn round in and that is a
+    reading; the tracer says what it saw curved in each view and at what radius,
+    and that is a measurement. Where the two disagree the measurement wins, and
+    it wins *naming the view the circle is actually in* — which is the whole
+    point, because a finding that says only "this is wrong" can be answered
+    with another guess and one that says "your Ø42 is in the middle centre
+    view, not in VIEW B" can only be answered by looking there.
+
+    Only ever a disagreement, never a silence. The tracer misses circles
+    constantly — a raster view hands back the arcs it could follow and drops
+    the rest — so a view that shows no evidence of a Ø42 is not a view without
+    a Ø42, and a check that read it that way would fire on most of a correct
+    reading. Evidence found elsewhere and nowhere here is a different claim: the
+    circle exists on the sheet, it is measured, and it is not where the
+    description put it.
+    """
+    if not round_here:
+        return []
+
+    found = []
+    for feature in _features(model):
+        view, wide = _seen_round_in(feature), _how_wide(feature)
+        if not view or wide is None or _traced_round_at(round_here, view, wide):
+            continue
+        instead = [at for at in round_here if _traced_round_at(round_here, at, wide)]
+        if not instead:
+            continue
+        where = _under("features", _named(feature, _IDENTITY) or "a feature")
+        found.append({
+            # Addressed to the field the direction is written in and not to
+            # `round_in` beside it: the view is the evidence, the axis is the
+            # thing that is wrong, and the address is what a correction lands on.
+            "about": _under(where, _which_field_is_round(feature)),
+            "stands": "nothing \u00d8%g was traced in %s, and something \u00d8%g was "
+                      "traced in %s \u2014 so that is the view it is round in, and this "
+                      "points at a view its circle is not in"
+                      % (wide, view, wide, " and ".join(instead)),
+            "was_also_said": "%s: %s" % (_under(where, ROUND_IN), view),
+            "instead": instead[0],
+        })
+    return found
+
+
+def _which_field_is_round(feature):
+    """Which of `axis` and `plane` is the one carrying `round_in`."""
+    for field in ("axis", "plane"):
+        said = feature.get(field)
+        if isinstance(said, dict) and str(said.get(ROUND_IN) or "").strip():
+            return field
+    return "axis"
+
+
+def read_off_the_wrong_view(model, round_here=None) -> list:
     """
     Every finding that says a direction on this part cannot be right.
 
-    The two of them are one question asked from either side: `pointing` catches
-    a feature placed along the very direction it points, `crosswise` catches two
-    features round in two views pointing the same way. Both mean the same thing
-    — a view was read for something it does not show — and neither can be
-    settled by anything downstream, which is why the loop stops on them (FCC-110).
+    Three now, and they are one question asked from three sides: `pointing`
+    catches a feature placed along the very direction it points, `crosswise`
+    catches two features round in two views pointing the same way, `grounded`
+    catches a circle the tracer found in a view other than the one claimed.
+    All three mean a view was read for something it does not show.
+
+    The first two read the model against itself and the third reads it against
+    the sheet, which is why the third also settles the first two. `crosswise`
+    knows that two of these features disagree and cannot know which one is
+    wrong; where the drawing confirms one of them — the circle is there, at that
+    width, in that view — the wrong one is the other, and holding the confirmed
+    one to account is how the run that read the bore correctly came to be
+    stopped for it. So a crosswise finding about a feature the tracer confirms
+    is dropped, unless the tracer confirms them all, in which case the drawing
+    itself is what disagrees and every one of them stands.
     """
-    return pointing(model) + crosswise(model)
+    off = grounded(model, round_here)
+    crossed = crosswise(model)
+    confirmed = _confirmed(model, round_here)
+    if confirmed and not all(_about(entry) in confirmed for entry in crossed):
+        crossed = [entry for entry in crossed if _about(entry) not in confirmed]
+    return pointing(model) + crossed + off
+
+
+def _about(finding):
+    """The feature a finding is about, without the field it ends in."""
+    return str(finding.get("about") or "").rsplit(UNDER, 1)[0]
+
+
+def _confirmed(model, round_here):
+    """The features whose claimed view the tracer found their circle in."""
+    if not round_here:
+        return set()
+    return {_under("features", _named(feature, _IDENTITY) or "a feature")
+            for feature in _features(model)
+            for view, wide in [(_seen_round_in(feature), _how_wide(feature))]
+            if view and wide is not None and _traced_round_at(round_here, view, wide)}
 
 
 def placement(model) -> list:

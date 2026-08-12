@@ -35,8 +35,8 @@ from dataclasses import dataclass, field
 from typing import List
 
 from core.design import (
-    UNDER, entries, merge, nobody_carries_the_outside, read_off_the_wrong_view,
-    render,
+    UNDER, corrected, entries, entry_at, merge, nobody_carries_the_outside,
+    read_off_the_wrong_view, render, said_at,
 )
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE,
@@ -1672,12 +1672,111 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
     if the_part:
         events.emit(DESIGN, model=the_part)
     the_part = _the_sweep_is_the_sheets(the_part, attachments)
+    the_part = _the_directions_are_the_drawings(the_part, attachments, llm, events,
+                                                budgets, ask, cancelled)
     the_part, reading = _written_down(the_part, attachments, events)
-    _every_direction_settled(the_part, reading)
+    _every_direction_settled(the_part, reading, _round_evidence(attachments))
     return the_part
 
 
-def _every_direction_settled(the_part, reading):
+def _round_evidence(attachments):
+    """What every attached sheet was traced curved at, view by view."""
+    found = {}
+    for path in attachments:
+        found.update(sheet_reader.round_evidence(sheet_reader.read(path)))
+    return found
+
+
+def _the_directions_are_the_drawings(the_part, attachments, llm, events, budgets,
+                                     ask, cancelled):
+    """
+    A direction read off the wrong view put back to the drawing before it stops
+    the run.
+
+    The hard stop below was right about the finding and wrong about the remedy.
+    The recorded run (`logs/sessions/daa17fb149474317840ef98439cfef6f.jsonl`,
+    the 2023 pipe clamp) was stopped before the Plan Gate by four findings, and
+    all four were the check's own fault: two judged a saw cut and an open
+    cutout as though they were round, and two held the Ø42 bore to account for
+    a view whose circle the tracer had in pieces. The description had read the
+    sheet correctly and the run died for it, with nothing between "something is
+    wrong" and "stop".
+
+    So the finding is worked before it is fatal, the way the outer contour is:
+    put back to Design with what the sheet actually measures — the view each
+    circle was traced in and at what width — because that is a thing a re-read
+    can act on and "one of these is wrong" is not. Then to the user. The stop
+    stays, at the bottom, where it costs a run that nobody and nothing could
+    settle.
+
+    A re-read may overrule here, which nothing else in the phase may do. It is
+    the merge's rule that made this unfixable — filled stays filled, so a wrong
+    axis cannot be talked out of itself — and the exception is exactly as wide
+    as the evidence: one address, named by a finding, carrying the measurement
+    that earned it, with the displaced value kept beside it (`corrected`).
+    """
+    round_here = _round_evidence(attachments)
+    found = read_off_the_wrong_view(the_part, round_here)
+    looked = 0
+    while found and looked < budgets.rereads:
+        if cancelled():
+            raise Stopped()
+        looked += 1
+        grew, _ = design({"the_part_as_you_described_it": the_part,
+                          "the_question": _look_at_the_view_again(found)},
+                         llm, events, attachments)
+        if not grew:
+            break
+        the_part = _corrected_by(the_part, grew, found)
+        the_part = merge(the_part, grew)
+        still = read_off_the_wrong_view(the_part, round_here)
+        if len(still) >= len(found):
+            break  # a look that changed nothing will not change anything
+        found = still
+
+    if not read_off_the_wrong_view(the_part, round_here):
+        return the_part
+
+    question = _look_at_the_view_again(read_off_the_wrong_view(the_part, round_here))
+    events.emit(QUESTION, text=question)
+    answer = _answered(question, ask, events)
+    if answer:
+        the_part, _ = _written_in(the_part, question, answer, llm, events, attachments)
+    return the_part
+
+
+def _corrected_by(the_part, grew, found):
+    """
+    The re-read written over the addresses the findings named, and only those.
+
+    Every other field of the fragment goes through the ordinary merge and fills
+    only what is empty. These were named by a check that measured the sheet, so
+    a different answer at one of them is the correction that was asked for
+    rather than a second opinion arriving late.
+    """
+    for finding in found:
+        address = str(finding.get("about") or "")
+        offered = said_at(grew, address)
+        if offered is None or offered == said_at(the_part, address):
+            continue
+        the_part = corrected(the_part, address, entry_at(grew, address),
+                             finding.get("stands"))
+    return the_part
+
+
+def _look_at_the_view_again(found):
+    return (
+        "These directions cannot be right as they are written:\n%s\nA feature is "
+        "round in the view its axis points at and in no other, so where the trace "
+        "names the view a circle of that width is actually in, that is the view — "
+        "say which way the axis points given that view, and correct `round_in` to "
+        "it. Where the finding is that two features disagree, one of the two is "
+        "misread: say which, and what it should be. Reply with those fields only."
+        % "\n".join("  - %s: %s" % (entry["about"], entry["stands"])
+                     for entry in found))
+
+
+def _every_direction_settled(the_part, reading, round_here=None):
     """
     The one class of finding a run may not walk past: a direction read off the
     wrong view.
@@ -1689,14 +1788,16 @@ def _every_direction_settled(the_part, reading):
     wrong view" — the Gate was approved, and all of them were built along the
     ring axis. The screw that exists to pinch the split came out parallel to it.
 
-    Not a question put to the provider, because the answer is not the
-    provider's to give twice: the merge fills what is empty and never overrules
-    what is written, so a phase that has already said `along the depth` cannot
-    be talked out of it. The reading is a file now, and the file is the
-    requirement — the run stops, names the findings, and says which file to
-    correct (FCC-108, FCC-110).
+    The last rung and not the first. It used to be the only one — a question put
+    back to the provider could not settle this, because the merge fills what is
+    empty and never overrules what is written, so a phase that had already said
+    `along the depth` could not be talked out of it. That is now what
+    `corrected` is for, and `_the_directions_are_the_drawings` has been to the
+    drawing and to the user before anything reaches here. What reaches here is
+    a direction nobody and nothing could settle, and the reading is a file, so
+    the remedy is an edit to that file (FCC-108, FCC-110).
     """
-    found = read_off_the_wrong_view(the_part)
+    found = read_off_the_wrong_view(the_part, round_here)
     if not found:
         return
     raise _NobodyAnswered(
