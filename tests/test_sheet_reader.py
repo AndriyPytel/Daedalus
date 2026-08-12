@@ -1208,3 +1208,44 @@ def test_a_number_is_never_snapped_onto_a_hole_by_being_the_nearest_number():
 
     assert notes == []
     assert view.entities[0].printed is None
+
+
+@needs_pymupdf
+def test_a_printed_distance_reaches_the_two_points_it_measures(sheet):
+    """
+    The span says how far apart two faces are; the extension lines say where
+    they are, and an extension line is drawn from the very face its dimension
+    measures. Measured on `mm25-p1-1.pdf`: the 150 comes back as two points
+    150.00 mm apart in the view's own millimetres.
+    """
+    assert sheet.between
+
+    hundred_and_fifty = [entry for entry in sheet.between
+                         if entry.printed == 150.0]
+    assert hundred_and_fifty
+    apart = sheet_reader._distance(hundred_and_fifty[0].first,
+                                   hundred_and_fifty[0].second)
+    assert abs(apart - 150.0) < sheet_reader.THE_FEET_AGREE, apart
+
+
+@needs_pymupdf
+def test_a_pair_of_feet_that_does_not_measure_what_is_printed_is_not_reported(
+        sheet_2023):
+    """
+    The check on the follow. Of 40 printed numbers a span measures across the
+    four sheets, 26 pairs of feet come back measuring what the sheet prints and
+    14 are 1.7 to 25 mm out — those are the wrong lines, and the module says
+    nothing rather than reporting a point of the part it cannot stand behind.
+    """
+    for entry in sheet_2023.between:
+        apart = sheet_reader._distance(entry.first, entry.second)
+        assert abs(apart - entry.printed) <= sheet_reader.THE_FEET_AGREE, entry
+
+
+@needs_pymupdf
+def test_the_distances_are_said_the_way_the_leaders_are(sheet):
+    """Reported, never concluded: where the points are, not what they are."""
+    said = sheet_reader._the_between_list(sheet)
+
+    assert "measures" in said
+    assert "still yours to read" in said

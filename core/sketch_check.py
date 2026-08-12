@@ -21,13 +21,21 @@ verdict is how far it had to move: build the walk where the pixels put it,
 constrain it with what the sheet prints, solve, and measure the distance
 between the two.
 
-Measured across all four sheets in `tests/modelmania`, 96 outlines: the median
-moves 0.27 mm, nine in ten move under 0.62 mm and the worst moves 1.21 mm —
-that is the slack in a fit through pixels 0.2 mm across, and it is what
-agreement looks like. The \u00d840 hole of `mm25-p1-1.pdf`, whose callout the
-tracing reads a millimetre under, moves 0.54 mm onto the printed size. A bore
-traced in two arcs and snapped to two different callouts — 42 against 50, which
-is the shape of the reading this exists to catch — moves 9.88 mm.
+What the sheet prints is two things and the second one is most of a drawing. A
+diameter arrives where a callout's leader reached a traced hole, which happens
+once on four sheets; a **distance** arrives wherever a dimension's two
+extension lines reach two faces of the outline, which is 13 of them across 12
+outlines. `108` read as `100` is a distance, and until they were written there
+was nothing in the sketch for it to be wrong about.
+
+Measured across all four sheets in `tests/modelmania`, 96 outlines, with every
+size and every distance the sheets could reach them with: the median moves
+0.27 mm, nine in ten move under 0.75 mm and the worst moves 1.07 mm — that is
+the slack in a fit through pixels 0.2 mm across, and it is what agreement looks
+like. The \u00d840 hole of `mm25-p1-1.pdf`, whose callout the tracing reads a
+millimetre under, moves 0.54 mm onto the printed size. A bore traced in two
+arcs and snapped to two different callouts — 42 against 50, which is the shape
+of the reading this exists to catch — moves 9.88 mm.
 
 Disposable throughout. The document is made here, closed here, and never the
 user's; nothing here writes a Step, and nothing here reaches the feature tree.
@@ -76,6 +84,14 @@ class Verdict:
     redundant: list = field(default_factory=list)
     # The sizes written from the sheet's own text rather than from the pixels.
     printed: int = 0
+    # The printed distances that reached two points of this outline. Every
+    # other number on a sheet is one of these, so until they arrive the check
+    # has almost nothing of the drawing to hold the tracing against.
+    distances: int = 0
+    # Each of those the tracing does not agree with, before any solving. This
+    # is the plainest thing here: what the sheet prints between two faces
+    # against what the pixels put between them.
+    disagrees: list = field(default_factory=list)
     # How far the furthest entity had to move to satisfy them, in mm.
     moved: float = 0.0
     # Each entity that moved further than the fit can account for, which is the
@@ -94,7 +110,7 @@ def available():
     return True
 
 
-def checked(outline, view=""):
+def checked(outline, view="", between=()):
     """One traced outline built as a sketch, and the solver's verdict on it."""
     if not available() or not outline.entities:
         return None
@@ -108,6 +124,8 @@ def checked(outline, view=""):
             sketch.addGeometry(_as_geometry(entity), False)
         _joined(sketch, outline)
         written = _sized(sketch, outline)
+        across, disagrees = _measured_across(sketch, outline, view, between)
+        written.update(across)
         document.recompute()
         solved = sketch.solve()
         sketch.recompute()
@@ -122,10 +140,148 @@ def checked(outline, view=""):
             redundant=_troubles(sketch.RedundantConstraints, written, outline),
             printed=sum(1 for entity in outline.entities
                         if entity.printed is not None),
+            distances=sum(1 for at in written
+                          if written[at][0] == "distance"),
+            disagrees=disagrees,
             moved=max([away for away, _ in shifted] or [0.0]),
             shifted=[trouble for away, trouble in shifted if away > A_SHIFT])
     finally:
         FreeCAD.closeDocument(document.Name)
+
+
+# How far a dimension's foot may be from the face it names, in mm, measured in
+# the direction the dimension measures. It cannot be wider than the movement
+# that counts as a finding below, or a match at the edge of the band is
+# indistinguishable from the thing this exists to report — and measured, that
+# is exactly what happens: at 2.6 mm four more dimensions find a face, and all
+# four of them then cost the tracing 3.6 mm and one of them contradicts another
+# dimension outright. At 2.0 the same sheets write 13 distances across 12
+# outlines and the worst movement is 1.07 mm.
+A_FOOT = 2.0
+
+# How square to the sheet a dimension and the face it measures to have to be
+# drawn, as the cosine of the angle between them. A drawing is plotted square;
+# this is rounding in the file rather than a second direction.
+A_SQUARE_ON = 0.99
+
+# How far the pixels may be from what the sheet prints between two faces, in
+# mm, before that is a fact about the reading. Measured on the four sheets: the
+# 13 distances that reach a traced outline are 0.07 to 1.08 mm out, and the
+# 1.08 is the bias itself — a face is traced to the inside of the line that
+# draws it, so a width reads about a millimetre under. The reading this exists
+# to catch is 8 mm out.
+A_DISTANCE = 1.5
+
+
+def _measured_across(sketch, outline, view, between):
+    """
+    Every printed distance that reaches two faces of this outline, written.
+
+    This is the drawing arriving in the sketch. Until it does, the only number
+    the check holds the tracing against is a diameter a leader happened to
+    reach — one of them on four sheets — and every other thing a drawing says
+    is a distance.
+
+    Written between two *faces* and never between two corners. A face is drawn
+    with a chamfer at each end, so which corner a foot is nearest is a lottery:
+    measured on SECTION A-A of `mm25-p1-1.pdf`, corner matching turns a 50 mm
+    dimension into 47.01 mm of traced geometry and reports 2.07 mm of movement
+    the sheet never asked for, and matching along the dimension alone lets a
+    foot reach a face on the far side of the part and reports 34 mm. So the
+    foot names the line it stands on, and the constraint holds those two lines
+    apart in the one direction the dimension is measured in.
+
+    Which is why only a dimension drawn square to the sheet is written: a
+    diagonal one measures between two points and this cannot tell which.
+
+    The value written is the printed one, always. The two faces are the
+    tracing's; how far apart they have to be is the sheet's.
+    """
+    import Sketcher
+
+    written, disagrees = {}, []
+    for entry in between:
+        if entry.view and view and entry.view != view:
+            continue
+        squarely = _squarely(entry)
+        if squarely is None:
+            continue
+        named, way = squarely
+        first = _the_face_at(outline, entry.first, way)
+        second = _the_face_at(outline, entry.second, way)
+        if first is None or second is None or first == second:
+            continue
+        how_far = ((entry.second[0] - entry.first[0]) * way[0]
+                   + (entry.second[1] - entry.first[1]) * way[1])
+        try:
+            at = sketch.addConstraint(Sketcher.Constraint(
+                named, first, START, second, START,
+                entry.printed if how_far > 0 else -entry.printed))
+        except (ValueError, RuntimeError):  # the sketch already says this
+            continue
+        written[at] = ("distance", entry, entry.printed)
+        traced = _across(outline.entities[first].start,
+                         outline.entities[second].start, way)
+        if abs(traced - entry.printed) > A_DISTANCE:
+            disagrees.append(Trouble(
+                at=at, printed=entry.printed,
+                said="the sheet prints %s between these two faces and the "
+                     "pixels put %.2f mm between them"
+                     % (entry.text or entry.printed, traced)))
+    return written, disagrees
+
+
+def _across(one, other, way):
+    """How far apart two points are in the direction a dimension measures."""
+    return abs((other[0] - one[0]) * way[0] + (other[1] - one[1]) * way[1])
+
+
+def _squarely(entry):
+    """
+    The constraint one printed distance is, where it is drawn square, or None.
+
+    A dimension drawn along the sheet measures in one direction only, and the
+    other coordinate of the two faces it measures is not its business — which
+    is what makes a face rather than a corner enough to write it against.
+    """
+    import math
+
+    across = (entry.second[0] - entry.first[0], entry.second[1] - entry.first[1])
+    long_enough = math.hypot(*across) or 1.0
+    way = (across[0] / long_enough, across[1] / long_enough)
+    if abs(way[0]) > A_SQUARE_ON:
+        return "DistanceX", (1.0, 0.0)
+    if abs(way[1]) > A_SQUARE_ON:
+        return "DistanceY", (0.0, 1.0)
+    return None
+
+
+def _the_face_at(outline, foot, way):
+    """
+    The traced line a dimension's foot stands on, or None.
+
+    The face has to be square to the dimension — a line the dimension measures
+    *to* is a line it measures *across* — and the foot has to be on it, which
+    is a point-to-segment distance and not a distance to either end of it.
+
+    None is the usual answer and the honest one: a foot on a view whose body is
+    not traced, or on a face the tracer only got part of, names nothing here.
+    """
+    best, best_gap = None, A_FOOT
+    for at, entity in enumerate(outline.entities):
+        if entity.kind != "line":
+            continue
+        along = (entity.end[0] - entity.start[0], entity.end[1] - entity.start[1])
+        long_enough = (along[0] ** 2 + along[1] ** 2) ** 0.5
+        if not long_enough:
+            continue
+        if abs((along[0] * way[0] + along[1] * way[1]) / long_enough) > 1 - A_SQUARE_ON:
+            continue
+        gap = abs((foot[0] - entity.start[0]) * way[0]
+                  + (foot[1] - entity.start[1]) * way[1])
+        if gap < best_gap:
+            best, best_gap = at, gap
+    return best
 
 
 def _how_far_it_moved(sketch, outline):
@@ -160,6 +316,10 @@ def _how_far_it_moved(sketch, outline):
                     "\u00d8%g printed on the sheet" % entity.printed
                     if entity.printed is not None else "the walk"))))
     return found
+
+
+def _spelt(point):
+    return "(%.2f, %.2f)" % point
 
 
 def _measured(entity):
@@ -239,7 +399,7 @@ def _sized(sketch, outline):
         else:
             continue
         written[sketch.addConstraint(
-            Sketcher.Constraint(named, at, wide))] = (at, entity, wide)
+            Sketcher.Constraint(named, at, wide))] = ("size", entity, wide)
     return written
 
 
@@ -247,15 +407,21 @@ def _troubles(indices, written, outline):
     """Each index the solver objected to, back at the entity it was written for."""
     found = []
     for at in indices:
-        if at in written:
-            index, entity, wide = written[at]
+        kind, what, wide = written.get(at, (None, None, None))
+        if kind == "distance":
             found.append(Trouble(
-                at=at, entity=entity,
-                printed=entity.printed,
+                at=at, printed=what.printed,
+                said="the %s the sheet prints between %s and %s"
+                     % (what.text or what.printed, _spelt(what.first),
+                        _spelt(what.second))))
+        elif kind == "size":
+            found.append(Trouble(
+                at=at, entity=what,
+                printed=what.printed,
                 said="the %s the sheet prints \u00d8%g against"
-                     % (entity.kind, entity.printed) if entity.printed is not None
+                     % (what.kind, what.printed) if what.printed is not None
                      else "the traced %s measured %.2f"
-                          % (entity.kind, wide * (2 if entity.kind == "arc" else 1))))
+                          % (what.kind, wide * (2 if what.kind == "arc" else 1))))
         else:
             found.append(Trouble(
                 at=at,

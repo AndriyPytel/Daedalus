@@ -143,3 +143,108 @@ def test_nothing_is_left_in_the_user_s_own_documents(sheet):
         sketch_check.checked(outline, view)
 
     assert set(FreeCAD.listDocuments()) == before
+
+
+def _a_plate(wide, tall):
+    """A traced rectangle, walked round, as the tracer hands one over."""
+    corners = [(0.0, 0.0), (wide, 0.0), (wide, tall), (0.0, tall)]
+    entities = [
+        sheet_reader.Entity(kind="line", source="traced", role="contour",
+                            size=sheet_reader._distance(corners[at],
+                                                        corners[(at + 1) % 4]),
+                            start=corners[at], end=corners[(at + 1) % 4])
+        for at in range(4)]
+    return sheet_reader.Outline(entities=entities, closed=True,
+                                area=wide * tall)
+
+
+def test_a_printed_distance_reaches_two_faces_of_the_outline(sheet):
+    """
+    The drawing arriving in the sketch. A diameter arrives where a leader
+    reached a hole — once on four sheets — and everything else a drawing says
+    is a distance.
+    """
+    carried = [sketch_check.checked(outline, view, sheet.between)
+               for view, outline in _outlines(sheet)]
+
+    assert sum(verdict.distances for verdict in carried), (
+        "this sheet dimensions its own views")
+
+
+def test_a_face_traced_where_the_sheet_does_not_put_it_is_a_shift():
+    """
+    What the check is for, in the shape the defect actually comes in: a
+    distance, not a diameter. A plate traced 48 mm wide against a sheet that
+    prints 50 moves 2 mm, and the shift names the dimension that moved it.
+    """
+    plate = _a_plate(48.0, 30.0)
+    between = [sheet_reader.Between(printed=50.0, text="50", view="a view",
+                                    first=(0.0, 15.0), second=(48.0, 15.0))]
+
+    verdict = sketch_check.checked(plate, "a view", between)
+
+    assert verdict.distances == 1
+    assert verdict.disagrees
+    assert "48.00" in verdict.disagrees[0].said, verdict.disagrees[0].said
+    assert verdict.disagrees[0].printed == 50.0
+
+
+def test_a_plate_traced_where_the_sheet_puts_it_costs_nothing():
+    """The check is silent where the tracing and the drawing agree."""
+    plate = _a_plate(50.0, 30.0)
+    between = [sheet_reader.Between(printed=50.0, text="50", view="a view",
+                                    first=(0.0, 15.0), second=(50.0, 15.0))]
+
+    verdict = sketch_check.checked(plate, "a view", between)
+
+    assert verdict.distances == 1
+    assert verdict.moved < 0.01, verdict.moved
+    assert verdict.shifted == []
+    assert verdict.disagrees == []
+
+
+def test_a_dimension_drawn_across_the_sheet_is_not_written():
+    """
+    A diagonal dimension measures between two points, and a foot on a face
+    cannot say which — so it is left out rather than guessed at.
+    """
+    plate = _a_plate(50.0, 30.0)
+    between = [sheet_reader.Between(printed=58.3, text="58.3", view="a view",
+                                    first=(0.0, 0.0), second=(50.0, 30.0))]
+
+    assert sketch_check.checked(plate, "a view", between).distances == 0
+
+
+def test_a_foot_that_reaches_no_face_of_this_outline_writes_nothing():
+    """Most feet reach nothing here: the view was not traced, or the face was not."""
+    plate = _a_plate(50.0, 30.0)
+    between = [sheet_reader.Between(printed=50.0, text="50", view="a view",
+                                    first=(0.0, 15.0), second=(90.0, 15.0))]
+
+    assert sketch_check.checked(plate, "a view", between).distances == 0
+
+
+def test_the_distances_of_another_view_are_not_written_into_this_one(sheet):
+    """A view's own millimetres are its own: the same numbers name other places."""
+    for view, outline in _outlines(sheet):
+        mine = sketch_check.checked(outline, view, sheet.between)
+        theirs = sketch_check.checked(
+            outline, view, [entry for entry in sheet.between
+                            if entry.view != view])
+
+        assert theirs.distances == 0, view
+        assert mine.distances >= theirs.distances
+
+
+def test_a_disagreement_is_reported_and_never_resolved(sheet):
+    """
+    Measured on the four sheets: the 13 printed distances that reach a traced
+    outline sit 0.07 to 1.08 mm from what the pixels put between the same two
+    faces, and the 1.08 is the bias itself — a face is traced to the inside of
+    the line that draws it. So the sheets agree with themselves, and nothing
+    here is reported against them.
+    """
+    for view, outline in _outlines(sheet):
+        verdict = sketch_check.checked(outline, view, sheet.between)
+
+        assert verdict.disagrees == [], (view, verdict.disagrees)

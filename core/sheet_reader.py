@@ -314,6 +314,26 @@ class Printed:
 
 
 @dataclass(frozen=True)
+class Between:
+    """
+    One printed distance and the two points on the part it is measured between.
+
+    A dimension line is drawn across the two faces its number measures, and an
+    extension line runs to it from the very face it is drawn off. Followed to
+    its far end, that is a point on the part — arithmetic, and not eyesight.
+
+    Reported and never concluded, the same way the leaders are: what those two
+    points *are* — a face, an axis, a shoulder — stays with whoever can see the
+    view.
+    """
+    printed: float
+    first: tuple
+    second: tuple
+    view: str = ""
+    text: str = ""
+
+
+@dataclass(frozen=True)
 class Sheet:
     """What one attachment turned out to be."""
 
@@ -328,6 +348,8 @@ class Sheet:
     leaders: list = field(default_factory=list)
     # One entry per view, the geometry the draughtsman drew it with.
     drawn: list = field(default_factory=list)
+    # Each printed distance against the two points on the part it measures.
+    between: list = field(default_factory=list)
     # The layout picture of every page, the first of which is `overview`.
     overviews: list = field(default_factory=list)
     # What could not be done and why, in the words the user would need. A sheet
@@ -413,9 +435,10 @@ def _from_pdf(path, into, legible_px, max_edge):
     document = pymupdf.open(path)
     notes = []
     overviews, crops, wholes, printed, leaders, drawn = [], [], [], [], [], []
+    between = []
     for at, page in enumerate(document, start=1):
         _a_page(page, at, len(document), into, legible_px, max_edge,
-                overviews, crops, wholes, printed, leaders, drawn, notes)
+                overviews, crops, wholes, printed, leaders, drawn, between, notes)
 
     notes = list(dict.fromkeys(notes))
     if len(overviews) > 1:
@@ -434,11 +457,11 @@ def _from_pdf(path, into, legible_px, max_edge):
 
     return Sheet(source=path, overview=overviews[0] if overviews else "",
                  overviews=overviews, crops=crops, wholes=wholes, printed=printed,
-                 leaders=leaders, drawn=drawn, notes=notes)
+                 leaders=leaders, drawn=drawn, between=between, notes=notes)
 
 
 def _a_page(page, at, of_pages, into, legible_px, max_edge,
-            overviews, crops, wholes, printed, leaders, drawn, notes):
+            overviews, crops, wholes, printed, leaders, drawn, between, notes):
     """One page of the drawing, added to what the whole document has given."""
     words = [w for w in page.get_text("words") if str(w[4]).strip()]
     dpi = _dpi_for(words, legible_px, notes)
@@ -502,6 +525,8 @@ def _a_page(page, at, of_pages, into, legible_px, max_edge,
     _the_pixels_against_the_callouts(circles, printed[printed_before:],
                                      leaders[leaders_before:], notes,
                                      drawn[drawn_before:])
+    between.extend(_measured_between(page, words, measuring, named,
+                                     printed_scale))
 
 
 # What a later page says when it is a revision of an earlier one rather than
@@ -2303,6 +2328,105 @@ def _the_millimetre(into_millimetres):
     return abs(into_millimetres((1.0, 0.0))[0] - origin[0])
 
 
+# How far past its dimension line an extension line runs, in points. It does:
+# a draughtsman draws it through and a little beyond, and 5.6 pt is what the
+# `150` on `mm25-p1-1.pdf` overshoots by. Twelve is loose enough for another
+# draughtsman and tight enough that a line merely crossing the span's end is
+# not taken for the extension line standing at it.
+AN_OVERSHOOT = 12.0
+
+# How far off perpendicular an extension line may be drawn, as a share of its
+# own length. An extension line is drawn square to the dimension it serves;
+# this is rounding in the file, not a second angle.
+A_SQUARE = 0.2
+
+# How far the two feet may be from measuring what the sheet prints, in mm,
+# before the pair is discarded. Where they disagree the module has followed the
+# wrong line, and it says nothing rather than writing a point of the part it
+# cannot stand behind. Measured on the four sheets: of 40 numbers a span
+# measures, 26 pairs land inside a tenth of this and the rest are 1.7 to 25 mm
+# out — there is nothing in between to cut through.
+THE_FEET_AGREE = 0.5
+
+
+def _measured_between(page, words, measuring, named, millimetres_per_point):
+    """
+    Each printed distance against the two points on the part it measures.
+
+    The span says how far apart the two faces are; the extension lines say
+    *where* they are. One is a number the module already has and the other is
+    the thing every reading of a drawing turns on, and it is the same line work.
+
+    Checked against itself: two feet that do not measure what the sheet prints
+    are the wrong two feet, and nothing is reported for that number. Measured
+    on the four sheets, 26 of 40 pairs come back and the 14 discarded are 1.7
+    to 25 mm out — the band cuts through nothing.
+    """
+    limit = FRAME * page.rect.width * page.rect.height
+    segments = _segments_in(page, page.rect, limit, dashed=False)
+    found = []
+    for word in words:
+        printed = _a_number(word[4])
+        if printed is None:
+            continue
+        span = _the_span_measuring(measuring, word)
+        if span is None:
+            continue
+        feet = _the_feet_of(span, segments)
+        if not all(feet):
+            continue
+        apart = _distance(*feet) * millimetres_per_point
+        if abs(apart - printed) > THE_FEET_AGREE:
+            continue
+        view, rect = _the_view_holding(named, feet[0])
+        found.append(Between(
+            printed=printed, view=view, text=str(word[4]).strip(),
+            first=_in_millimetres(feet[0], rect, millimetres_per_point),
+            second=_in_millimetres(feet[1], rect, millimetres_per_point)))
+    return found
+
+
+def _the_feet_of(span, segments):
+    """
+    Where the two extension lines at a span's ends stand on the part.
+
+    An extension line is square to the dimension it serves, passes through the
+    end of it, and overshoots a little. So the end nearer the dimension line is
+    the overshoot and the far end is the foot — the face itself.
+    """
+    along, forward, start = span
+    ends = (start, (start[0] + forward[0] * along, start[1] + forward[1] * along))
+    feet = []
+    for corner in ends:
+        best, best_gap = None, AN_OVERSHOOT
+        for one, other in segments:
+            reach = (other[0] - one[0], other[1] - one[1])
+            long_enough = math.hypot(*reach)
+            if long_enough < A_MARK:
+                continue
+            if abs((reach[0] * forward[0] + reach[1] * forward[1])
+                   / long_enough) > A_SQUARE:
+                continue
+            if abs((one[0] - corner[0]) * forward[0]
+                   + (one[1] - corner[1]) * forward[1]) > ON_THE_SPAN:
+                continue
+            near, far = ((one, other) if _distance(one, corner)
+                         < _distance(other, corner) else (other, one))
+            gap = _distance(near, corner)
+            if gap < best_gap:
+                best, best_gap = far, gap
+        feet.append(best)
+    return feet
+
+
+def _the_view_holding(named, point):
+    """The view a point of the page falls in, and its rectangle."""
+    for name, rect in named:
+        if _holds(_as_tuple(rect), point):
+            return name, rect
+    return "", named[0][1] if named else pymupdf.Rect(0, 0, 1, 1)
+
+
 def _the_pixels_against_the_callouts(circles, printed, leaders, notes,
                                      drawn=()):
     """
@@ -2603,6 +2727,8 @@ def shown(sheet):
         told.append({"say": _the_printed_list(sheet)})
     if sheet.leaders:
         told.append({"say": _the_leader_list(sheet)})
+    if sheet.between:
+        told.append({"say": _the_between_list(sheet)})
     if sheet.drawn:
         told.append({"say": _the_drawn_list(sheet)})
     for note in sheet.notes:
@@ -2633,6 +2759,23 @@ def _the_leader_list(sheet):
         lines.append("  %s printed at %s — its leader reaches %s"
                      % (entry["callout"], entry["printed_at"],
                         entry["its_leader_reaches"]))
+    return "\n".join(lines)
+
+
+def _the_between_list(sheet):
+    lines = ["Each printed distance against the two points on the part it is "
+             "measured between, in the same millimetres as the line work below. "
+             "A dimension line is drawn across the two faces its number "
+             "measures and an extension line runs to it from the very face it "
+             "is drawn off, so these two points are arithmetic and not a "
+             "reading. Only the pairs that measure what the sheet prints are "
+             "here; where they did not, the line was followed wrong and nothing "
+             "is said. What each point *is* — a face, an axis, a shoulder — is "
+             "still yours to read."]
+    for entry in sheet.between:
+        lines.append("  %s measures %s to %s — %s"
+                     % (entry.text, _at(entry.first), _at(entry.second),
+                        entry.view))
     return "\n".join(lines)
 
 
