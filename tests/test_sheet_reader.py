@@ -481,9 +481,10 @@ def test_a_view_is_measured_in_the_millimetres_of_the_part(sheet_2023):
                  if view.view.startswith("the middle centre")][0]
 
     def at_height(height):
-        return [said for said in elevation.entities
-                if said.startswith(("line", "centre line"))
-                and said.count("%.2f)" % height) == 2]
+        return [entity for entity in elevation.entities
+                if entity.kind == "line" and entity.source != "traced"
+                and abs(entity.start[1] - height) < 0.005
+                and abs(entity.end[1] - height) < 0.005]
 
     assert at_height(48.01), "the ring's own centre line is not in the line work"
     assert at_height(37.99), "the arm's top face is not in the line work"
@@ -499,10 +500,10 @@ def test_an_arc_is_given_its_radius_and_its_centre(sheet_2023):
     what the description says about a radius on a sheet, so both are reported.
     """
     said = [entity for view in sheet_2023.drawn for entity in view.entities
-            if entity.startswith("arc")]
+            if entity.kind == "arc" and entity.source == "vector"]
 
     assert said, "not one arc was recovered from the whole drawing"
-    assert all("centred (" in entity for entity in said), said[:3]
+    assert all(entity.radius and entity.centre for entity in said), said[:3]
 
 
 @needs_pymupdf
@@ -635,9 +636,9 @@ def test_a_centre_line_arrives_as_an_axis_and_not_as_one_more_line(sheet):
     about itself before this.
     """
     said = [entity for view in sheet.drawn for entity in view.entities
-            if entity.startswith("centre ")]
+            if entity.source == "centre"]
     assert said, "the sheet draws centre lines"
-    assert any(entity.startswith("centre line") for entity in said)
+    assert any(entity.kind == "line" for entity in said)
 
 
 @needs_pymupdf
@@ -650,7 +651,7 @@ def test_a_centre_line_drawn_as_a_circle_is_reported_as_the_circle_it_is(
     anonymous fragments competing for room in the list.
     """
     said = [entity for view in sheet_2023.drawn for entity in view.entities
-            if entity.startswith("centre arc")]
+            if entity.source == "centre" and entity.kind == "arc"]
     assert said, "the bolt circle's centre line is drawn as a circle"
 
 
@@ -663,7 +664,7 @@ def test_a_centre_line_is_never_the_entity_that_gets_left_out(sheet_2023):
     """
     for view in sheet_2023.drawn:
         centres = [at for at, entity in enumerate(view.entities)
-                   if entity.startswith("centre ")]
+                   if entity.source == "centre"]
         assert centres == list(range(len(centres))), (
             "centre lines come first, ahead of the cap")
 
@@ -778,9 +779,9 @@ def test_a_bore_drawn_only_as_pixels_is_measured_in_millimetres(sheet):
     the 35 itself.
     """
     circles = [entity for view in sheet.drawn for entity in view.entities
-               if entity.startswith("traced circle")]
+               if entity.kind == "circle" and entity.source == "traced"]
     assert circles, "not one circle was recovered from the pictures"
-    diameters = [float(entity.split("\u00d8")[1].split()[0]) for entity in circles]
+    diameters = [entity.diameter for entity in circles]
     assert any(-1.5 <= across - 35.0 <= 0 for across in diameters), diameters
     assert any(-1.5 <= across - 40.0 <= 0 for across in diameters), diameters
 
@@ -796,7 +797,7 @@ def test_a_callout_that_disagrees_with_the_pixels_it_points_at_is_a_conflict(she
     said = " ".join(sheet.notes) + sheet_reader._the_drawn_list(sheet)
     assert "\u00d835" in said or "35" in said
     assert not [entity for view in sheet.drawn for entity in view.entities
-                if "disagrees" in entity], (
+                if "disagrees" in sheet_reader._said(entity)], (
         "this sheet agrees with itself; a disagreement here is a defect")
 
 
@@ -813,10 +814,13 @@ def test_a_bore_called_one_thing_and_drawn_another_is_put_on_the_record():
     printed = [sheet_reader.Printed(text="25", at=(10.0, 10.0), notation="\u00d8")]
     leaders = [{"callout": "25", "printed_at": (10.0, 10.0),
                 "its_leader_reaches": (100.0, 100.0)}]
-    circles = [((100.0, 100.0), 24.0, 34.0)]
+    hole = sheet_reader.Entity(kind="circle", source="traced", role="contour",
+                               size=34.0, diameter=34.0, centre=(0.0, 0.0))
+    circles = [((100.0, 100.0), 24.0, 34.0, hole)]
     notes = []
 
-    sheet_reader._the_pixels_disagree(circles, printed, leaders, notes)
+    sheet_reader._the_pixels_against_the_callouts(circles, printed, leaders,
+                                                  notes)
 
     assert notes and "9.0 mm" in notes[0]
     assert "nothing here settles which is meant" in notes[0]
@@ -829,8 +833,10 @@ def test_a_callout_whose_leader_lands_nowhere_near_a_hole_is_left_alone():
                 "its_leader_reaches": (400.0, 400.0)}]
     notes = []
 
-    sheet_reader._the_pixels_disagree([((100.0, 100.0), 24.0, 34.0)], printed,
-                                      leaders, notes)
+    hole = sheet_reader.Entity(kind="circle", source="traced", role="contour",
+                               size=34.0, diameter=34.0, centre=(0.0, 0.0))
+    sheet_reader._the_pixels_against_the_callouts(
+        [((100.0, 100.0), 24.0, 34.0, hole)], printed, leaders, notes)
 
     assert notes == []
 
@@ -855,15 +861,15 @@ def test_the_outline_of_a_view_placed_as_a_picture_is_read_as_lines_and_arcs(
     view = [entity for shown in sheet.drawn for entity in shown.entities
             if shown.view.startswith("the middle left")]
 
-    ends = [entity for entity in view if entity.startswith("traced arc R25")]
+    ends = [entity for entity in view if entity.kind == "arc"
+            and entity.source == "traced" and 25.0 <= entity.radius < 26.0]
     assert len(ends) == 2, view
 
-    centres = sorted(float(entity.split("centred (")[1].split(",")[0])
-                     for entity in ends)
+    centres = sorted(entity.centre[0] for entity in ends)
     assert abs((centres[1] - centres[0]) + 25.1 + 25.1 - 150.0) < 1.0, centres
 
-    edges = sorted(float(entity.split(") to (")[1].split(", ")[1].rstrip(")"))
-                   for entity in view if entity.startswith("traced line"))
+    edges = sorted(entity.end[1] for entity in view
+                   if entity.kind == "line" and entity.source == "traced")
     assert abs((edges[-1] - edges[0]) - 50.0) < 1.0, edges
 
 
@@ -874,9 +880,9 @@ def test_a_straight_edge_is_never_reported_as_an_arc_of_half_a_metre(sheet):
     not have is worse than no radius at all: it is a number a reader can write
     down.
     """
-    radii = [float(entity.split("traced arc R")[1].split(" ")[0])
-             for shown in sheet.drawn for entity in shown.entities
-             if entity.startswith("traced arc")]
+    radii = [entity.radius for shown in sheet.drawn
+             for entity in shown.entities
+             if entity.kind == "arc" and entity.source == "traced"]
     assert radii
     assert max(radii) < 200.0, sorted(radii)[-3:]
 
@@ -946,3 +952,259 @@ def test_a_view_that_fits_in_one_crop_is_not_sent_twice(sheet_2023):
     whole = {crop.name for crop in sheet_2023.crops if ", part " not in crop.name}
 
     assert whole & {one.name for one in sheet_2023.wholes} == set()
+
+
+# ── a circle in pieces is still a circle (FCC-110) ───────────────────────────
+
+
+@needs_pymupdf
+def test_a_bore_the_tracer_could_only_get_part_of_is_still_evidence(sheet_2023):
+    """
+    The Ø42 clamp bore is drawn in the middle centre view and the tracer never
+    closed it — the centre lines crossing it leave arcs. `round_in` reports
+    nothing there at all, and the run that read the bore correctly was stopped
+    for having no evidence its own reader had thrown away.
+    """
+    assert "the middle centre of the sheet, on page 1" not in sheet_reader.round_in(sheet_2023)
+
+    evidence = sheet_reader.round_evidence(sheet_2023)["the middle centre of the sheet, on page 1"]
+
+    assert any(abs(wide - 42.0) <= 1.5 for wide in evidence), sorted(evidence)
+
+
+@needs_pymupdf
+def test_the_evidence_carries_the_circles_the_statement_does(sheet_2023):
+    """Weaker, never narrower: every full circle is in it too."""
+    evidence = sheet_reader.round_evidence(sheet_2023)
+
+    for view, wide in sheet_reader.round_in(sheet_2023).items():
+        assert set(wide) <= set(evidence[view])
+
+
+def test_a_sheet_nobody_could_read_is_evidence_of_nothing():
+    assert sheet_reader.round_evidence(None) == {}
+
+
+@needs_pymupdf
+def test_an_entity_carries_its_geometry_rather_than_a_sentence_about_it(sheet):
+    """
+    What the tracer measured is a circle with a centre and a diameter. Written
+    down as `traced circle \u00d86.11 centred (102.77, 19.31)` it is a sentence,
+    and the only way back to the number is a regex over this module's own prose
+    — which is exactly what `round_evidence` used to be.
+    """
+    circles = [entity for view in sheet.drawn for entity in view.entities
+               if entity.kind == "circle"]
+
+    assert circles, "not one circle was recovered from the pictures"
+    assert all(entity.source == "traced" for entity in circles)
+    assert all(isinstance(entity.diameter, float)
+               and isinstance(entity.centre, tuple) for entity in circles)
+
+
+@needs_pymupdf
+def test_a_line_and_an_arc_carry_their_ends_and_their_centre(sheet_2023):
+    """The same for the two kinds the draughtsman's own line work comes in."""
+    entities = [entity for view in sheet_2023.drawn for entity in view.entities]
+
+    lines = [entity for entity in entities if entity.kind == "line"]
+    arcs = [entity for entity in entities if entity.kind == "arc"]
+
+    assert lines and arcs
+    assert all(len(entity.start) == 2 and len(entity.end) == 2
+               for entity in lines)
+    assert all(isinstance(entity.radius, float) and entity.centre
+               for entity in arcs)
+    assert {entity.source for entity in entities} <= {"vector", "traced",
+                                                      "centre"}
+
+
+def test_nothing_here_reads_this_module_s_own_prose():
+    """
+    The rule the representation exists for. A sentence is written in one place,
+    for the reader of the sheet, and nothing downstream parses it back.
+    """
+    assert not hasattr(sheet_reader, "_A_CIRCLE")
+    assert not hasattr(sheet_reader, "_AN_ARC")
+
+
+@needs_pymupdf
+def test_the_line_work_reads_as_it_was_recorded_reading(sheet_2023):
+    """
+    The drawn list is what the reader of the sheet is actually shown, and it is
+    long enough that a change anywhere in it is easy to make and hard to see.
+    The recording is what it reads as; a diff against it is a decision.
+    """
+    recorded = os.path.join(os.path.dirname(__file__), "recorded",
+                            "drawn_list_2023.txt")
+    with open(recorded, encoding="utf-8") as f:
+        assert sheet_reader._the_drawn_list(sheet_2023) == f.read()
+
+
+@needs_pymupdf
+def test_every_entity_says_what_the_module_can_prove_it_is(sheet_2023):
+    """
+    A view arrives as line work, and three quarters of that line work is the
+    draughtsman's measuring apparatus. Measured on page 2 of the 2023 sheet:
+    2824 solid segments, 201 chains, 170 of them a single segment 3.1 mm long,
+    and 125 dimension spans. Listed together under a heading whose last clause
+    is "a contour is the part", a 40 mm extension line reads as a 40 mm edge.
+    """
+    roles = {entity.role for view in sheet_2023.drawn
+             for entity in view.entities}
+
+    assert roles <= {"contour", "dimension", "leader", "centre", "unclassified"}
+    assert "dimension" in roles, "the sheet is covered in dimension lines"
+
+
+@needs_pymupdf
+def test_a_contour_is_only_ever_something_that_was_traced(sheet_2023):
+    """
+    Every view body on these sheets is a placed picture, so the vector layer
+    holds no outline at all — the largest open chain on page 2 measures
+    15.6 x 2.3 mm. Nothing in it may be called the part.
+    """
+    contours = [entity for view in sheet_2023.drawn for entity in view.entities
+                if entity.role == "contour"]
+
+    assert contours
+    assert all(entity.source == "traced" for entity in contours)
+
+
+@needs_pymupdf
+def test_a_line_a_printed_number_was_measured_against_is_a_dimension(sheet):
+    """
+    Not a guess: `_measured` already pairs a printed number with the span it is
+    printed against, and a run lying along one of those spans is that span's
+    dimension line. A line lying along no measured span stays `unclassified`,
+    which is honest where naming it would not be.
+    """
+    dimensions = [entity for view in sheet.drawn for entity in view.entities
+                  if entity.role == "dimension"]
+
+    assert dimensions
+    assert all(entity.source == "vector" for entity in dimensions)
+
+
+@needs_pymupdf
+def test_the_reader_is_told_which_line_is_which(sheet_2023):
+    """The list says what each entity is, rather than naming three kinds once."""
+    said = sheet_reader._the_drawn_list(sheet_2023)
+
+    assert "dimension line" in said
+    assert "a contour is the part" not in said
+
+
+@needs_pymupdf
+def test_a_traced_outline_arrives_as_the_walk_it_was_measured_along(sheet):
+    """
+    A silhouette is walked round in order, and the order is the only thing that
+    says these two edges meet. Sorted by length it is a bag of pieces, and a
+    closed profile cannot be recovered from a bag.
+    """
+    outlines = [outline for view in sheet.drawn for outline in view.outlines]
+
+    assert outlines
+    walked = max(outlines, key=lambda outline: len(outline.entities))
+    ends = [entity.end or entity.centre for entity in walked.entities]
+    starts = [entity.start or entity.centre for entity in walked.entities]
+    assert all(sheet_reader._distance(end, start) < 1.0
+               for end, start in zip(ends, starts[1:])), (
+        "each entity of a walk starts where the one before it ended")
+
+
+@needs_pymupdf
+def test_an_outline_that_closes_says_it_closes(sheet):
+    """
+    The one fact a sketch needs and a list of pieces cannot carry. The top view
+    of `mm25-p1-1.pdf` is a plate with a radiused end at each end: one closed
+    silhouette, and a hole is another.
+    """
+    outlines = [outline for view in sheet.drawn for outline in view.outlines]
+
+    assert any(outline.closed for outline in outlines)
+
+
+@needs_pymupdf
+def test_what_the_cap_takes_off_a_traced_outline_is_counted(sheet_2023):
+    """
+    Measured before this: `_shaped` returned 51 and 41 entities for the two
+    largest silhouettes on the 2023 sheet and both were cut to 24, so 44 pieces
+    of the two biggest outlines on the sheet went missing and nothing said so.
+    The vector list has always counted what it dropped; this did not.
+    """
+    for view in sheet_2023.drawn:
+        kept = sum(len(outline.entities) for outline in view.outlines)
+        assert kept == len([entity for entity in view.entities
+                            if entity.source == "traced"])
+        if view.traced_left_out:
+            assert "left out" in sheet_reader._the_drawn_list(sheet_2023)
+
+
+@needs_pymupdf
+def test_the_biggest_silhouette_on_the_sheet_is_not_the_one_that_is_cut(sheet_2023):
+    """An outline is kept or dropped whole, and the biggest is never dropped."""
+    traced = {view.view: sum(1 for entity in view.entities
+                             if entity.source == "traced")
+              for view in sheet_2023.drawn}
+
+    assert max(traced.values()) >= 51, traced
+
+
+@needs_pymupdf
+def test_a_hole_the_sheet_agrees_with_carries_the_number_the_sheet_prints(sheet):
+    """
+    The join the tracing exists for, made rather than reported. `mm25-p1-1.pdf`
+    prints \u00d840 against a hole its pixels measure at 38.93 — the millimetre
+    under that a traced hole always reads — so the two are the same feature seen
+    twice, and the exact one of them is the printed one.
+    """
+    snapped = [entity for view in sheet.drawn for entity in view.entities
+               if entity.kind == "circle" and entity.printed is not None]
+
+    assert snapped, "one callout on this sheet reaches a traced hole"
+    assert any(entity.printed == 40.0 and abs(entity.diameter - 38.93) < 0.1
+               for entity in snapped), snapped
+    assert "the sheet prints" in sheet_reader._the_drawn_list(sheet)
+
+
+def test_a_bore_the_pixels_contradict_is_a_conflict_and_never_a_value():
+    """
+    Outside the band nothing is carried. A callout of \u00d825 whose leader ends
+    in a hole the pixels measure at 34 is 9 mm apart, which is the size of the
+    error ADR-0019 lost.
+    """
+    hole = sheet_reader.Entity(kind="circle", source="traced", role="contour",
+                               size=34.0, diameter=34.0, centre=(0.0, 0.0))
+    view = sheet_reader.Drawn(view="a view", entities=[hole])
+    printed = [sheet_reader.Printed(text="25", at=(10.0, 10.0), notation="\u00d8")]
+    leaders = [{"callout": "25", "printed_at": (10.0, 10.0),
+                "its_leader_reaches": (100.0, 100.0)}]
+    notes = []
+
+    sheet_reader._the_pixels_against_the_callouts(
+        [((100.0, 100.0), 24.0, 34.0, hole)], printed, leaders, notes, [view])
+
+    assert notes and "9.0 mm" in notes[0]
+    assert view.entities[0].printed is None
+
+
+def test_a_number_is_never_snapped_onto_a_hole_by_being_the_nearest_number():
+    """
+    Why the join has to be the leader and not the nearest value. The 2023 sheet
+    prints \u00d86.6 for its M6 clearance holes, in a view of its own, and prints
+    a bare `6` in four other places. The traced circles measure 6.10, so the
+    nearest printed number is the `6` — the wrong number, from the wrong view,
+    by the depth of the counterbore.
+    """
+    hole = sheet_reader.Entity(kind="circle", source="traced", role="contour",
+                               size=6.10, diameter=6.10, centre=(0.0, 0.0))
+    view = sheet_reader.Drawn(view="a view", entities=[hole])
+    printed = [sheet_reader.Printed(text="6", at=(10.0, 10.0), notation="")]
+    notes = []
+
+    sheet_reader._the_pixels_against_the_callouts(
+        [((100.0, 100.0), 3.05, 6.10, hole)], printed, [], notes, [view])
+
+    assert notes == []
+    assert view.entities[0].printed is None

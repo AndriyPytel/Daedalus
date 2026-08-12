@@ -92,7 +92,7 @@ try:
 except ImportError:  # pragma: no cover
     Image = None
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 # What a callout's text box has to measure in the crop it arrives in. Measured
 # rather than chosen: on `mm25-p1-1.pdf` a dimension's box is 12.9 pt, which at
@@ -194,14 +194,101 @@ class Crop:
 
 
 @dataclass(frozen=True)
+class Entity:
+    """
+    One piece of a view's line work, as what it measures rather than as a
+    sentence about it.
+
+    Written down it reads `traced circle \u00d86.11 centred (102.77, 19.31)`, and
+    the only way back from that to 6.11 is a regex over this module's own prose
+    — which is what `round_evidence` was, and what every consumer after it would
+    have had to be. `size` is what the entity is ranked by: a length for a line,
+    the swept length for an arc, a diameter for a circle.
+
+    `source` says whose measurement it is, and the three are not
+    interchangeable: `vector` is the draughtsman's own path out of the file,
+    `centre` is a dashed one, and `traced` is this module's fit through the
+    pixels of a placed picture, which reads about a millimetre under the drawn
+    size and may never supply a number.
+    """
+    kind: str
+    source: str
+    size: float
+    # What the sheet prints for this entity, where a callout's leader reaches
+    # into it and the two agree. The trace found the feature and the text layer
+    # supplies its size, which is the only direction that arithmetic runs: a
+    # traced diameter reads about a millimetre under the drawn one and can
+    # never supply a number, and a printed one is the draughtsman's own.
+    printed: float = None
+    # What the module can prove this is: `contour` where it was traced off the
+    # picture the view was placed as, `dimension` where it lies along a span a
+    # printed number was measured against, `leader` where `_leaders` followed it
+    # from a callout, `centre` for a dashed path, and `unclassified` where none
+    # of those hold — which is most of a sheet, and is the honest answer.
+    role: str = "unclassified"
+    start: tuple = None
+    end: tuple = None
+    centre: tuple = None
+    radius: float = None
+    diameter: float = None
+
+
+# What each source calls itself in front of the entity it measured.
+_WHOSE = {"vector": "", "centre": "centre ", "traced": "traced "}
+
+
+def _said(entity):
+    """One entity as the sentence the reader of the sheet is shown."""
+    whose = _WHOSE[entity.source] + ("%s " % entity.role
+                                     if entity.role in ("dimension", "leader")
+                                     else "")
+    if entity.kind == "line":
+        return "%sline %s to %s" % (whose, _at(entity.start), _at(entity.end))
+    if entity.kind == "circle":
+        said = "%scircle \u00d8%.2f centred %s" % (whose, entity.diameter,
+                                                 _at(entity.centre))
+        if entity.printed is None:
+            return said
+        return "%s — the sheet prints \u00d8%g against it, and that is the size" \
+               % (said, entity.printed)
+    said = "%sarc R%.2f centred %s" % (whose, entity.radius, _at(entity.centre))
+    if entity.start is None:
+        return said
+    return "%s, from %s to %s" % (said, _at(entity.start), _at(entity.end))
+
+
+@dataclass(frozen=True)
+class Outline:
+    """
+    One silhouette or one hole boundary, as the walk it was measured along.
+
+    Order is the information. The boundary is walked round in sequence, and
+    that sequence is the only thing that says these two edges meet; sorted by
+    length it is a bag of pieces, and a closed profile cannot be recovered from
+    a bag of the longest pieces of one — the pieces a cap takes off are the
+    short ones, which are the fillets and the steps that close it.
+    """
+    entities: list = field(default_factory=list)
+    closed: bool = False
+    # What it encloses, in mm², which is what outlines are ranked by. The
+    # picture's own noise is small; a silhouette is not.
+    area: float = 0.0
+
+
+@dataclass(frozen=True)
 class Drawn:
     """One view's own line work, in millimetres of the part."""
 
     view: str
     entities: list = field(default_factory=list)
+    # The traced entities again, grouped into the walks they were measured
+    # along. Same objects, in walk order.
+    outlines: list = field(default_factory=list)
     # How many were dropped for being the shorter ones, so a view whose list
     # was cut says so rather than looking complete.
     left_out: int = 0
+    # The same for the traced walks, which used to be cut without saying so.
+    traced_left_out: int = 0
     # Whether the body of this view was placed as a picture, in which case the
     # outline is not in the line work and the list is the annotation only.
     from_a_picture: bool = False
@@ -396,7 +483,7 @@ def _a_page(page, at, of_pages, into, legible_px, max_edge,
     # coordinates, and a page-2 hole would otherwise be matched to a page-1
     # leader that happens to reach the same point.
     printed_before, leaders_before = len(printed), len(leaders)
-    scale, voters, measured = _measured(page, words)
+    scale, voters, measured, measuring = _measured(page, words)
     notation = _notation(page, words)
     printed.extend(Printed(text=str(w[4]).strip(),
                            at=(round(w[0], 1), round(w[1], 1)),
@@ -409,9 +496,12 @@ def _a_page(page, at, of_pages, into, legible_px, max_edge,
     printed_scale = _millimetres_per_point(words, notes)
     _the_scale_the_lines_vote_for(scale, voters, printed_scale, notes)
     circles = []
-    drawn.extend(_drawn(page, named, printed_scale, page.parent, circles))
-    _the_pixels_disagree(circles, printed[printed_before:], leaders[leaders_before:],
-                         notes)
+    drawn_before = len(drawn)
+    drawn.extend(_drawn(page, named, printed_scale, page.parent, circles,
+                        measuring, leaders[leaders_before:]))
+    _the_pixels_against_the_callouts(circles, printed[printed_before:],
+                                     leaders[leaders_before:], notes,
+                                     drawn[drawn_before:])
 
 
 # What a later page says when it is a revision of an earlier one rather than
@@ -1140,7 +1230,64 @@ A_MARK = 2.0
 ENOUGH = 120
 
 
-def _drawn(page, named, millimetres_per_point, document=None, circles=None):
+# How far off a span's own line a point may sit and still be on it, in points.
+# One point is what `_spans` itself groups by, so anything wider than it was
+# never one drawn line to begin with.
+ON_THE_SPAN = 1.0
+
+# How near a run's end has to come to where a leader was traced to, in points,
+# for the run to be that leader. `_leaders` rounds its report to a tenth.
+THE_SAME_END = 1.0
+
+
+def _the_role_of(run, measuring, leaders):
+    """
+    What this run can be proved to be, before it is measured into millimetres.
+
+    Proved, not guessed. A dimension line is one a printed number was measured
+    against — `_measured` did that pairing and this is the same span. A leader
+    is one `_leaders` already followed from a callout to a feature. Everything
+    else is an extension line, a hatch stroke, a piece of the frame or an edge,
+    and the module cannot tell which, so it says so.
+    """
+    for along, forward, start in measuring:
+        if all(_on_the_span(point, along, forward, start) for point in run):
+            return "dimension"
+    for leader in leaders:
+        reaches = leader["its_leader_reaches"]
+        if any(_distance(end, reaches) <= THE_SAME_END for end in (run[0], run[-1])):
+            return "leader"
+    return "unclassified"
+
+
+def _on_the_span(point, along, forward, start):
+    away = (point[0] - start[0], point[1] - start[1])
+    standoff = abs(-forward[1] * away[0] + forward[0] * away[1])
+    down = forward[0] * away[0] + forward[1] * away[1]
+    return standoff <= ON_THE_SPAN and -ON_THE_SPAN <= down <= along + ON_THE_SPAN
+
+
+def _the_outlines_worth_reporting(outlines):
+    """
+    The traced walks that fit in one view's budget, largest first, kept whole.
+
+    Cutting an outline to its longest pieces took the fillets and the steps off
+    it — measured on the 2023 sheet, 51 and 41 pieces cut to 24, so 44 pieces of
+    the two biggest silhouettes on the sheet went missing and, unlike the vector
+    list, nothing counted them.
+    """
+    kept, left_out, room = [], 0, A_SHAPE
+    for outline in sorted(outlines, key=lambda one: -one.area):
+        if len(outline.entities) <= room:
+            kept.append(outline)
+            room -= len(outline.entities)
+        else:
+            left_out += len(outline.entities)
+    return kept, left_out
+
+
+def _drawn(page, named, millimetres_per_point, document=None, circles=None,
+           measuring=(), leaders=()):
     """
     Each view's own geometry, in millimetres of the part rather than in points.
 
@@ -1176,21 +1323,23 @@ def _drawn(page, named, millimetres_per_point, document=None, circles=None):
         for run in _chained(_segments_in(page, rect, limit, dashed=False)):
             found.extend(_fitted([_in_millimetres(point, rect,
                                                   millimetres_per_point)
-                                  for point in run]))
-        traced, found_circles = _traced(document, page, rect,
-                                        millimetres_per_point) \
+                                  for point in run],
+                                 role=_the_role_of(run, measuring, leaders)))
+        outlines, found_circles = _traced(document, page, rect,
+                                          millimetres_per_point) \
             if document is not None else ([], [])
         if circles is not None:
             circles.extend(found_circles)
-        found.sort(key=lambda entity: -entity[0])
-        centres.sort(key=lambda entity: -entity[0])
-        traced.sort(key=lambda entity: -entity[0])
+        outlines, traced_left_out = _the_outlines_worth_reporting(outlines)
+        traced = [entity for outline in outlines for entity in outline.entities]
+        found.sort(key=lambda entity: -entity.size)
+        centres.sort(key=lambda entity: -entity.size)
         drawn.append(Drawn(
             view=name,
-            entities=[said for _, said in centres]
-                     + [said for _, said in traced]
-                     + [said for _, said in found[:ENOUGH]],
+            entities=centres + traced + found[:ENOUGH],
+            outlines=outlines,
             left_out=max(0, len(found) - ENOUGH),
+            traced_left_out=traced_left_out,
             from_a_picture=any(_share_of(box, rect) > HELD_BY_A_PICTURE
                                for box in pictures)))
     return drawn
@@ -1229,14 +1378,14 @@ def _centres_in(page, rect, limit, millimetres_per_point):
             circle = _circle_through(numpy.array(into, dtype=float))
             if circle:
                 (x, y), radius = circle
-                said.append((2 * radius, "centre arc R%.2f centred %s"
-                             % (radius, _at((x, y)))))
+                said.append(Entity(kind="arc", source="centre", role="centre",
+                                   size=2 * radius, radius=radius,
+                                   centre=(x, y)))
                 continue
         ends = max(((one, other) for at, one in enumerate(into)
                     for other in into[at + 1:]),
                    key=lambda pair: _distance(*pair))
-        said.append((_distance(*ends),
-                     "centre line %s to %s" % (_at(ends[0]), _at(ends[1]))))
+        said.append(_a_line(ends[0], ends[1], source="centre", role="centre"))
     return said
 
 
@@ -1327,7 +1476,7 @@ def _chained(segments, snap=0.05):
     return chains
 
 
-def _fitted(points, tolerance=A_HAIR):
+def _fitted(points, tolerance=A_HAIR, role="unclassified"):
     """
     One polyline as the lines and arcs it is, longest run first.
 
@@ -1345,27 +1494,27 @@ def _fitted(points, tolerance=A_HAIR):
                 for step in range(at + 1, end + 1)):
             end += 1
         if end - at >= 2:
-            found.append(_a_line(points[at], points[end]))
+            found.append(_a_line(points[at], points[end], role=role))
             at = end
             continue
 
-        arc = _an_arc(points, at, tolerance)
+        arc = _an_arc(points, at, tolerance, role)
         if arc:
             found.append(arc[0])
             at = arc[1]
             continue
 
-        found.append(_a_line(points[at], points[at + 1]))
+        found.append(_a_line(points[at], points[at + 1], role=role))
         at += 1
-    return [entity for entity in found if entity[0] >= A_MARK]
+    return [entity for entity in found if entity.size >= A_MARK]
 
 
-def _a_line(start, end):
-    return (_distance(start, end),
-            "line %s to %s" % (_at(start), _at(end)))
+def _a_line(start, end, source="vector", role="unclassified"):
+    return Entity(kind="line", source=source, role=role,
+                  size=_distance(start, end), start=start, end=end)
 
 
-def _an_arc(points, at, tolerance):
+def _an_arc(points, at, tolerance, role="unclassified"):
     """The arc starting at *at*, as far as one circle carries it, or None."""
     if at + 2 >= len(points):
         return None
@@ -1386,8 +1535,9 @@ def _an_arc(points, at, tolerance):
     if end - at < 2:
         return None
     swept = radius * abs(_angle(centre, points[at]) - _angle(centre, points[end]))
-    return ((swept, "arc R%.2f centred %s, from %s to %s"
-             % (radius, _at(centre), _at(points[at]), _at(points[end]))), end)
+    return (Entity(kind="arc", source="vector", role=role, size=swept,
+                   radius=radius, centre=centre, start=points[at],
+                   end=points[end]), end)
 
 
 def _through(one, two, three):
@@ -1600,12 +1750,13 @@ def _the_span_measuring(spans, word):
     """
     middle = ((word[0] + word[2]) / 2.0, (word[1] + word[3]) / 2.0)
     best, best_at = None, BESIDE
-    for along, forward, start in spans:
+    for span in spans:
+        along, forward, start = span
         away = (middle[0] - start[0], middle[1] - start[1])
         standoff = abs(-forward[1] * away[0] + forward[0] * away[1])
         down = forward[0] * away[0] + forward[1] * away[1]
         if standoff <= best_at and WITHIN * along <= down <= (1 - WITHIN) * along:
-            best, best_at = along, standoff
+            best, best_at = span, standoff
     return best
 
 
@@ -1620,20 +1771,23 @@ def _measured(page, words):
     number nobody had to see.
 
     Returns the millimetres one point is worth, the number of pairings that
-    voted for it, and each measured word's own millimetres.
+    voted for it, each measured word's own millimetres, and the spans that
+    measured them — which are the only lines on the sheet this module can prove
+    are dimension lines rather than edges.
     """
     spans = _spans(page)
-    votes = []
+    votes, measuring = [], []
     for at, word in enumerate(words):
         worth = _a_number(word[4])
         if worth is None:
             continue
-        along = _the_span_measuring(spans, word)
-        if along:
-            votes.append((at, worth, along, worth / along))
+        span = _the_span_measuring(spans, word)
+        if span:
+            measuring.append(span)
+            votes.append((at, worth, span[0], worth / span[0]))
 
     if not votes:
-        return None, 0, {}
+        return None, 0, {}, []
 
     agreed = max((([vote for vote in votes
                     if abs(vote[3] - one[3]) <= AGREED * one[3]])
@@ -1645,7 +1799,7 @@ def _measured(page, words):
         millimetres = along * scale
         if abs(millimetres - worth) <= TRUE_TO:
             measured[at] = (round(millimetres, 2), round(millimetres - worth, 2))
-    return scale, len(agreed), measured
+    return scale, len(agreed), measured, measuring
 
 
 def _the_scale_the_lines_vote_for(scale, voters, printed_scale, notes):
@@ -1802,20 +1956,24 @@ def _traced(document, page, rect, millimetres_per_point):
                                     box.y0 + point[1] * down),
                                    rect, millimetres_per_point)
 
-        said.extend(_shaped(_outline(pixels), in_millimetres))
+        said.append(_shaped(_outline(pixels), in_millimetres))
         for hole, walked in _the_holes_in(pixels):
             circle = _circle_through(hole)
             if circle is None:
-                said.extend(_shaped(walked, in_millimetres))
+                said.append(_shaped(walked, in_millimetres))
                 continue
             (x, y), radius = circle
             on_the_page = (box.x0 + x * across, box.y0 + y * down)
             wide = 2 * radius * across * millimetres_per_point
-            said.append((wide, "traced circle \u00d8%.2f centred %s"
-                         % (wide, _at(_in_millimetres(on_the_page, rect,
-                                                      millimetres_per_point)))))
-            circles.append((on_the_page, radius * across, wide))
-    return said, circles
+            said.append(Outline(entities=[Entity(
+                kind="circle", source="traced", role="contour", size=wide,
+                diameter=wide,
+                centre=_in_millimetres(on_the_page, rect,
+                                       millimetres_per_point))],
+                closed=True, area=math.pi * (wide / 2.0) ** 2))
+            circles.append((on_the_page, radius * across, wide,
+                            said[-1].entities[0]))
+    return [outline for outline in said if outline.entities], circles
 
 
 def _numpy():
@@ -1944,9 +2102,13 @@ A_STEP = 2.0
 # larger and a real corner is missed and a line and an arc are fitted as one.
 A_CORNER = 1.5
 
-# How many entities one traced outline is reported by. A silhouette is a few
-# edges and their fillets; anything past this is the picture's own noise.
-A_SHAPE = 24
+# How many traced entities one view is reported by. An outline is kept or
+# dropped whole and never cut, because what a cut takes off is the short pieces
+# and the short pieces are what close it; this is the budget the whole outlines
+# are fitted into, largest area first. Measured uncapped on the four sheets, the
+# heaviest view traces 115 entities, so nothing real is dropped here and a
+# picture that traces into noise still is.
+A_SHAPE = 120
 
 # How far round a circle a run has to go before it is an arc rather than a
 # line, in degrees. A straight edge on a rendered view is not perfectly
@@ -2078,7 +2240,7 @@ def _shaped(outline, into_millimetres):
     comes back as thirty fragments with radii it never had.
     """
     if outline is None or len(outline) < 8:
-        return []
+        return Outline()
 
     cuts = _corners(outline, A_CORNER)
     runs = [outline[first:last + 1] for first, last in zip(cuts, cuts[1:])]
@@ -2101,29 +2263,38 @@ def _shaped(outline, into_millimetres):
         line = _straight(run, A_STEP)
         if line:
             span, start, end = line
-            start, end = into_millimetres(start), into_millimetres(end)
-            said.append((_distance(start, end),
-                         "traced line %s to %s" % (_at(start), _at(end))))
+            said.append(_a_line(into_millimetres(start), into_millimetres(end),
+                                source="traced", role="contour"))
             continue
         arc = _curved(run, A_STEP)
         if arc:
             centre, radius = arc
-            wide = _distance(into_millimetres(run[0]), into_millimetres(run[-1]))
-            said.append((wide, "traced arc R%.2f centred %s, from %s to %s"
-                         % (radius * _the_millimetre(into_millimetres),
-                            _at(into_millimetres(centre)),
-                            _at(into_millimetres(run[0])),
-                            _at(into_millimetres(run[-1])))))
+            start, end = into_millimetres(run[0]), into_millimetres(run[-1])
+            said.append(Entity(kind="arc", source="traced", role="contour",
+                               size=_distance(start, end),
+                               radius=radius * _the_millimetre(into_millimetres),
+                               centre=into_millimetres(centre),
+                               start=start, end=end))
             continue
         # Neither, at the precision the picture has: said as the two ends it
         # runs between, which is true, rather than as a radius it does not have.
-        said.append((_distance(into_millimetres(run[0]),
-                               into_millimetres(run[-1])),
-                     "traced line %s to %s"
-                     % (_at(into_millimetres(run[0])),
-                        _at(into_millimetres(run[-1])))))
-    said.sort(key=lambda entity: -entity[0])
-    return said[:A_SHAPE]
+        said.append(_a_line(into_millimetres(run[0]),
+                            into_millimetres(run[-1]), source="traced",
+                            role="contour"))
+    a_pixel = _the_millimetre(into_millimetres)
+    return Outline(entities=said,
+                   closed=bool(said) and _distance(
+                       said[-1].end or said[-1].centre,
+                       said[0].start or said[0].centre) <= A_STEP * a_pixel,
+                   area=_encloses(outline) * a_pixel ** 2)
+
+
+def _encloses(outline):
+    """What a walked outline encloses, in the pixels it was walked in."""
+    numpy = _numpy()
+    across, down = outline[:, 0], outline[:, 1]
+    return abs(float(numpy.dot(across, numpy.roll(down, -1))
+                     - numpy.dot(down, numpy.roll(across, -1)))) / 2.0
 
 
 def _the_millimetre(into_millimetres):
@@ -2132,21 +2303,33 @@ def _the_millimetre(into_millimetres):
     return abs(into_millimetres((1.0, 0.0))[0] - origin[0])
 
 
-def _the_pixels_disagree(circles, printed, leaders, notes):
+def _the_pixels_against_the_callouts(circles, printed, leaders, notes,
+                                     drawn=()):
     """
-    Where a bore's callout and the hole its leader points into do not match.
+    A bore's callout against the hole its leader points into: agreed, or not.
 
     This is the join the whole exercise is for. The callout is exact and comes
     out of the text layer; the hole is measured off the picture the view was
     placed as; the leader, traced through the file's own line work, says which
-    hole the callout is about. Three pieces of evidence, none of them a reading,
-    and a disagreement between them is a fact about the sheet.
+    hole the callout is about. Three pieces of evidence and not a reading among
+    them.
 
-    Recorded, never settled — the same rule the conflicts in `design.py` follow.
-    A traced diameter is measured to the inside of the line that draws the hole
-    and so reads about a millimetre under the drawn size, which is why the band
-    is set where it is: wide enough that the sheet agreeing with itself is
-    silent, narrow enough that a digit read wrong is not.
+    Where they agree, the two are one feature seen twice and the hole is given
+    the printed size — the shape decided by the picture and the number by the
+    text layer, which is the only direction that arithmetic runs. Where they
+    disagree it stays a disagreement, recorded and never settled, the same rule
+    the conflicts in `design.py` follow.
+
+    The join is the leader and never the nearest number. Measured on the 2023
+    sheet: the M6 clearance holes are printed \u00d86.6, in a view of their own,
+    and a bare `6` is printed in four other places; the circles trace at 6.10,
+    so the nearest printed number is the wrong number from the wrong view.
+
+    The band is the same `TOO_FAR` the disagreement uses, and for the same
+    measured reason: a hole is measured to the inside of the line that draws it,
+    so the tracing reads about a millimetre under — \u00d838.93 against a printed
+    \u00d840 on `mm25-p1-1.pdf` — and the band is wide enough for that bias and
+    far too narrow for a digit read wrong.
     """
     for leader in leaders:
         reaches = leader["its_leader_reaches"]
@@ -2158,15 +2341,29 @@ def _the_pixels_disagree(circles, printed, leaders, notes):
         across = _a_number(said[0].text)
         if across is None:
             continue
-        for centre, radius, wide in circles:
-            if _distance(centre, reaches) <= radius and abs(wide - across) > TOO_FAR:
+        for centre, radius, wide, entity in circles:
+            if _distance(centre, reaches) > radius:
+                continue
+            if abs(wide - across) > TOO_FAR:
                 notes.append(
                     "The callout \u00d8%s points into a hole whose pixels measure "
                     "\u00d8%.1f mm — a difference of %.1f mm. The callout is the "
                     "draughtsman's own text and the measurement is this module's; "
                     "nothing here settles which is meant."
                     % (said[0].text, wide, abs(wide - across)))
-                break
+            else:
+                _the_printed_size(drawn, entity, across)
+            break
+
+
+def _the_printed_size(drawn, entity, across):
+    """The traced hole, again, carrying the size the draughtsman printed."""
+    carrying = replace(entity, printed=across)
+    for view in drawn:
+        for held in [view.entities] + [one.entities for one in view.outlines]:
+            for at, one in enumerate(held):
+                if one is entity:
+                    held[at] = carrying
 
 
 # ── a raster ──────────────────────────────────────────────────────────────────
@@ -2444,15 +2641,25 @@ def _the_drawn_list(sheet):
              "converted to millimetres of the part. Coordinates are millimetres "
              "inside the view itself: x to the right of the view's left edge, y "
              "*up* from its bottom edge. This is the draughtsman's own geometry "
-             "and not a reading of a picture — a centre line marks an axis, a "
-             "dimension's extension lines are drawn from the very faces that "
-             "dimension measures, and a contour is the part. So a distance "
-             "nobody printed is measured here rather than assumed, and a value "
-             "measured off it is `derived`, never `not_defined`. An entity "
-            "marked `traced` is not the draughtsman's: it is measured off the "
-            "picture the view was placed as, to the inside of the line that "
-            "draws it, so it reads about a millimetre under the drawn size. "
-            "Use it to check a number, never to supply one."]
+             "and not a reading of a picture, so a distance nobody printed is "
+             "measured here rather than assumed, and a value measured off it is "
+             "`derived`, never `not_defined`. Each entity says what it could be "
+             "proved to be, and most of a sheet is line work nothing can prove "
+             "anything about:\n"
+             "  `contour` — traced off the picture the view was placed as, and "
+             "the only thing here that is the part itself.\n"
+             "  `dimension` — a line a printed number was measured against.\n"
+             "  `leader` — followed from a callout to the feature it is of.\n"
+             "  `centre` — drawn dashed, which marks an axis or a plane of "
+             "symmetry.\n"
+             "  unmarked — an extension line, a hatch stroke or an edge, and "
+             "nothing here says which. An extension line is drawn from the very "
+             "face its dimension measures, so it is worth reading and it is not "
+             "an outline.\n"
+             "An entity marked `traced` is not the draughtsman's: it is measured "
+             "off the picture, to the inside of the line that draws it, so it "
+             "reads about a millimetre under the drawn size. Use it to check a "
+             "number, never to supply one."]
     round_here = round_in(sheet)
     if round_here:
         lines.append(
@@ -2472,15 +2679,13 @@ def _the_drawn_list(sheet):
             " — its body was placed as a picture, so what follows is its "
             "dimension and centre lines and not its outline"
             if view.from_a_picture else ""))
-        lines.extend("    %s" % said for said in view.entities)
+        lines.extend("    %s" % _said(entity) for entity in view.entities)
         if view.left_out:
             lines.append("    (and %d shorter entities, left out)" % view.left_out)
+        if view.traced_left_out:
+            lines.append("    (and %d traced entities of the smaller outlines, "
+                         "left out)" % view.traced_left_out)
     return "\n".join(lines)
-
-
-# What a round entity looks like once it has been written down, so the one
-# statement a drawing makes about direction can be read back off the list.
-_A_CIRCLE = re.compile(r"circle \u00d8([0-9]+(?:\.[0-9]+)?)")
 
 
 def round_in(sheet):
@@ -2499,10 +2704,54 @@ def round_in(sheet):
         return {}
     found = {}
     for view in sheet.drawn:
-        round_here = [float(match.group(1)) for said in view.entities
-                      for match in [_A_CIRCLE.search(said)] if match]
+        round_here = [_as_reported(entity.diameter) for entity in view.entities
+                      if entity.kind == "circle"]
         if round_here:
             found[view.view] = sorted(round_here)
+    return found
+
+
+def _as_reported(measurement):
+    """A measurement at the precision it is written down at, and no finer."""
+    return round(measurement, 2)
+
+
+def round_evidence(sheet):
+    """
+    {view: [diameter, …]} — every diameter a view was traced round at, arcs too.
+
+    `round_in` is the drawing's own statement and stays what it is: a full
+    circle, traced whole, in a view that shows one. This is the weaker thing —
+    what the tracer *saw* curved in a view, at whatever radius — and it is
+    weaker on purpose, because it is asked a different question.
+
+    The run that named this (`logs/sessions/daa17fb149474317840ef98439cfef6f.jsonl`,
+    the 2023 pipe clamp again) is why. The Ø42 clamp bore is drawn in the middle
+    centre view, the description read it there and said so, and `round_in` found
+    no circle in that view at all — the view is a raster, and the bore came back
+    as `traced arc R20.82` with the rest of it eaten by the centre lines
+    crossing it. The reading was right, the evidence for it was on the sheet,
+    and the extractor threw it away because it was in pieces. The run was
+    stopped for reading the drawing correctly.
+
+    So a piece of a circle counts as evidence of one. It is evidence and not a
+    statement: an arc of R20.8 in a view is reason to believe a Ø42 bore is
+    round there, and the absence of one is no reason to believe it is not,
+    because this tracer misses things constantly. Whoever reads it has to hold
+    both halves of that.
+    """
+    if sheet is None:
+        return {}
+    found = {}
+    for view in sheet.drawn:
+        seen = set()
+        for entity in view.entities:
+            if entity.kind == "circle":
+                seen.add(_as_reported(entity.diameter))
+            elif entity.kind == "arc":
+                seen.add(2 * _as_reported(entity.radius))
+        if seen:
+            found[view.view] = sorted(seen)
     return found
 
 
