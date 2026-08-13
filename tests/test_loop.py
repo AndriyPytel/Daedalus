@@ -3151,25 +3151,61 @@ def test_with_nobody_to_ask_the_run_does_not_stall():
     assert "Choose sensible values yourself" in json.dumps(llm.calls[1])
 
 
-def test_a_plan_that_answers_every_telling_with_another_question_is_bounded():
+SETTLED = {
+    "envelope": {"length": read("80 mm")},
+    "features": [{"id": "outer-profile", "kind": "obround outer profile",
+                  "radius": {"value": "25 mm", "flag": "assumed",
+                             "because": "half the 50 mm height, from the silhouette"}}],
+}
+
+
+def test_a_run_nobody_answered_at_all_reaches_the_gate_rather_than_a_block():
     """
-    Told to choose, and asking again, and again about something new. Not a
-    value that went unanswered — every one of these was answered, with "choose
-    it yourself" — but a Plan that will not plan, and nothing further along can
-    end that. `budgets.rereads` is the ceiling now (FCC-96, ADR-0022).
+    Every question put to the sheet, the sheet saying nothing to any of them,
+    and Plan told to choose each time. That is the run FCC-127 was written for:
+    the model settles the value and `because` says who settled it, so the Gate
+    is where it is read. A count of unanswered questions is not a reason to end
+    a run (FCC-133).
     """
     asked = []
 
-    result, _, _, tools = drive(
-        [question_reply("q1"), question_reply("q2"), question_reply("q3")],
-        intent=GEAR, ask=lambda q: asked.append(q) or "some answer",
-        budgets=Budgets(rereads=2))
+    result, events, _, tools = drive([
+        design_reply(SETTLED),
+        question_reply("q1"), design_reply({}),
+        question_reply("q2"), design_reply({}),
+        question_reply("q3"),
+        plan_reply("Pad the profile", satisfies=everything(SETTLED)),
+        code_reply("pad()"), assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(rereads=2),
+        ask=lambda q: asked.append(q) or "some answer")
 
+    assert result.ok, result.reason
     assert asked == [], "the user was asked for a value: %s" % asked
-    assert result.blocked
-    assert "q1; q2" in result.reason and "q3" in result.reason, \
-        "the block did not say what it went on asking for"
-    assert tools.applied_codes() == []
+    assert events.of(GATE), "the run never reached the Plan Gate"
+    assert events.first(PLAN).data["unanswered"] == ["q1", "q2", "q3"]
+    assert "half the 50 mm height" in json.dumps(events.first(PLAN).data["decided"]), \
+        "the value the model settled reached the Gate without its evidence"
+    assert tools.applied_codes() == ["pad()"]
+
+
+def test_rereads_counts_re_reads_of_the_drawing_and_nothing_else():
+    """
+    One budget, one job. With one re-read allowed the sheet is asked once, and
+    the three questions nobody answered cost nothing further (FCC-133).
+    """
+    result, events, llm, _ = drive([
+        design_reply(SETTLED),
+        question_reply("q1"), design_reply({}),
+        question_reply("q2"),
+        question_reply("q3"),
+        plan_reply("Pad the profile", satisfies=everything(SETTLED)),
+        code_reply("pad()"), assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
+
+    assert result.ok, result.reason
+    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    assert len(design_turns) == 2, "the sheet was read past its ceiling"
+    assert events.first(PLAN).data["unanswered"] == ["q1", "q2", "q3"]
 
 
 # ── the question goes back to the description, never to the user (FCC-90) ─────
@@ -3349,22 +3385,24 @@ def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
     assert [b for b in re_read if b.get("type") == "image_url"], "it re-read without the sheet"
 
 
-def test_the_same_question_twice_is_a_block_naming_it_and_not_an_error():
+def test_the_same_question_twice_is_listed_once_and_does_not_end_the_run():
     """
-    Nothing has changed since the last time it was asked, so asking again
-    cannot end. That is a stop with the question in it, not an error nobody can
-    act on. FCC-96.
+    Nothing has changed since the last time it was asked, so asking again says
+    nothing new — but it is still not a reason to end a run, and the Gate is
+    shown the question once rather than once per asking (FCC-133).
     """
     result, events, _, tools = drive([
         design_reply(A_PART),
         question_reply("q1"), design_reply(),          # not on the sheet
-        question_reply("q1"),
+        question_reply("q1"), design_reply(),
+        plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda _: "")
 
-    assert result.blocked
-    assert "q1" in result.reason
+    assert result.ok, result.reason
     assert events.of(ERROR) == []
-    assert tools.applied_codes() == []
+    assert events.first(PLAN).data["unanswered"] == ["q1"]
+    assert tools.applied_codes() == ["a()"]
 
 
 def test_the_questions_nobody_answered_are_shown_beside_the_plan():
@@ -3484,25 +3522,6 @@ def test_a_replan_after_a_rejected_verdict_may_ask_too():
     assert asked == []
     assert result.ok, result.reason
     assert events.first(PLAN_REVISED).data["unanswered"] == [MISSING]
-
-
-def test_a_replan_that_only_ever_asks_stops_the_run_rather_than_looping():
-    asked = []
-
-    result, _, _, _ = drive(
-        [
-            plan_reply("Impossible"), code_reply("nope1()"),
-            question_reply("q1"), question_reply("q2"), question_reply("q3"),
-        ],
-        applies=[failed("one")],
-        budgets=Budgets(attempts_per_step=1, rereads=2),
-        ask=lambda question: asked.append(question) or "some answer",
-    )
-
-    assert asked == [], "the user was asked for a value: %s" % asked
-    assert result.blocked
-    assert "q1; q2" in result.reason and "q3" in result.reason, \
-        "the block did not say what it went on asking for"
 
 
 def test_no_plan_without_steps_ever_reaches_execute(monkeypatch):
