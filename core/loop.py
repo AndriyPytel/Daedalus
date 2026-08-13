@@ -34,6 +34,7 @@ import re
 from dataclasses import dataclass, field
 from typing import List
 
+from core.arithmetic import wrong_sums
 from core.design import (
     ROUND_IN, UNDER, corrected, decided_for_you, entries, entry_at, merge,
     nobody_carries_the_outside, read_off_the_wrong_view, render, said_at,
@@ -106,16 +107,17 @@ class _Revisions:
     """
     How many times the Plan has been rewritten, and why (FCC-22).
 
-    Six unrelated things replan: the Plan leaves part of the description
-    unplanned, the user amends at the Plan Gate, Execute finds a Step out of
-    date, Execute cannot build one, the acceptance checks fail, and Review
-    rejects the result. They share one ceiling, which is deliberate — but they
+    Seven unrelated things replan: the Plan leaves part of the description
+    unplanned, a sum it states does not come out, the user amends at the Plan
+    Gate, Execute finds a Step out of date, Execute cannot build one, the
+    acceptance checks fail, and Review rejects the result. They share one ceiling, which is deliberate — but they
     used to share one *counter* too, so whichever branch spent the last unit was
     reported as the cause of all of them, and a run stopped by two amendments
     told the user Execute kept finding the Plan out of date.
     """
 
     UNCOVERED = "uncovered"
+    MISCOUNTED = "miscounted"
     AMENDED = "amended"
     OBSOLETE = "obsolete"
     UNBUILDABLE = "unbuildable"
@@ -124,6 +126,7 @@ class _Revisions:
 
     _SAID = (
         (UNCOVERED, "the Plan left part of the description unplanned %s"),
+        (MISCOUNTED, "the Plan's own arithmetic did not come out %s"),
         (AMENDED, "you amended the Plan %s"),
         (OBSOLETE, "Execute found the Plan out of date %s"),
         (UNBUILDABLE, "Execute could not build a Step %s"),
@@ -815,6 +818,22 @@ def _plan_the_rest(unconsumed) -> str:
               "and the same check then names those instead: a recorded run swapped one "
               "half of the part for the other four times over and spent the whole revision "
               "budget without running a single Step.")
+
+
+def _do_the_sums(miscounted) -> str:
+    """What Plan is told about the arithmetic it stated and did not do."""
+    return ("These sums are in your Steps and they do not come out:\n"
+            + "\n".join("- " + said for said in miscounted)
+            + "\nWork each one out again and send the Plan back with the right number in "
+              "the Step that uses it — every Step you already wrote, with these corrected. "
+              "Angles are in degrees, and a distance along a direction is the distance "
+              "along the geometry times the cosine of the angle between them.\n"
+              "If the number that does come out contradicts an entry of the description, "
+              "that is two `read` values that cannot both be true and it is not yours to "
+              "settle: say so in `question` rather than choosing a third number. A "
+              "recorded run assumed one, was refused by Execute for the arithmetic, "
+              "assumed another, was refused in the same words, and ended with an empty "
+              "Document.")
 
 
 @dataclass
@@ -2522,6 +2541,14 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               "The Plan still leaves part of the description unplanned.",
                               _plan_the_rest(unconsumed), progress["tried"],
                               reason="no Step accounted for " + ", ".join(unconsumed))
+            continue
+
+        miscounted = [sum_ for step in steps for sum_ in wrong_sums(step)]
+        if miscounted:
+            planned = rewrite(_Revisions.MISCOUNTED,
+                              "The Plan's arithmetic still does not come out.",
+                              _do_the_sums(miscounted), progress["tried"],
+                              reason="; ".join(miscounted))
             continue
 
         unread = _assumed(steps) - standing["read"]

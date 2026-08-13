@@ -730,6 +730,28 @@ def test_a_step_is_an_action_a_user_would_perform_not_a_call():
     assert "an action a user would perform" not in review_system
 
 
+def test_plan_is_told_to_write_the_sum_and_not_only_the_answer():
+    """
+    The sum is checked before the Gate, so it has to be there to check: a Step
+    that states only the answer states nothing anybody can work out. And the
+    remedy for a sum that will not come out is a question, not a third number —
+    which is what the recorded run tried, twice. FCC-127.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    plan_system = " ".join(_system_messages(llm)[0].split())
+
+    assert "A number you worked out is written as the sum that worked it out" \
+        in plan_system
+    assert "Write the sum, not only the answer" in plan_system
+    assert "Angles are in degrees" in plan_system
+    assert "A sum that will not come out is a disagreement between two entries" \
+        in plan_system
+
+
 def test_the_granularity_rules_this_reverses_are_gone_from_plan():
     """
     Asserted as a reversal, because copy is only cancelled when it is absent:
@@ -3833,6 +3855,51 @@ def test_a_plan_that_never_learns_to_cite_stops_the_run_and_says_why():
     assert "left part of the description unplanned" in result.reason
     assert "Review rejected" not in result.reason
     assert tools.applied_codes() == [], "a Plan that dropped an entry built something"
+
+
+# ── the Plan's own arithmetic (FCC-127) ───────────────────────────────────────
+
+
+def test_a_step_whose_sum_does_not_come_out_never_reaches_the_gate():
+    """
+    The recorded run's Plan assumed an 80.5 mm station for a 45° arm "to place
+    the left extreme at the 0 mm tangent plane". It places it at 8.58, and the
+    only thing in the run that multiplied by the cosine was Execute — after the
+    Gate, after the user had approved it, and at the cost of a revision each
+    time. The sum is worked out where the number is still cheap. FCC-127.
+    """
+    result, events, _, tools = drive([
+        plan_reply("Pad the arm to an assumed 80.5 mm station, so the left extreme "
+                   "is at 65.5 - 80.5 * cos(45°) = 0 mm"),
+        plan_reply("Pad the arm to an assumed 92.63 mm station, so the left extreme "
+                   "is at 65.5 - 92.63 * cos(45°) = 0 mm"),
+        code_reply("arm()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok
+    revised = events.first(PLAN_REVISED)
+    assert revised is not None
+    assert "and it is 8.58" in revised.data["reason"]
+    assert revised.data["because"] == "the Plan's own arithmetic did not come out"
+    # The Gate saw the Plan that adds up, and only that one.
+    assert len(events.of(GATE)) == 2, "the wrong sum was put to the user"
+    assert tools.applied_codes() == ["arm()"]
+
+
+def test_a_plan_whose_arithmetic_never_comes_out_stops_the_run():
+    """
+    The same shared ceiling as every other cause, so a Plan that keeps writing
+    sums that do not come out stops with a reason instead of looping. FCC-127.
+    """
+    result, _, _, tools = drive(
+        [plan_reply("Pad it to 65.5 - 80.5 * cos(45°) = 0 mm")] * 5,
+        budgets=Budgets(revisions=2),
+    )
+
+    assert result.blocked
+    assert "arithmetic did not come out" in result.reason
+    assert tools.applied_codes() == []
 
 
 def test_a_run_with_no_attachment_still_plans_and_still_shows_an_acceptance():
