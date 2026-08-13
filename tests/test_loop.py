@@ -513,6 +513,25 @@ def test_a_value_carries_a_named_datum_and_a_read_or_assumed_flag():
     assert "Every value carries its datum and its flag" not in review_system
 
 
+def test_a_value_the_model_settled_says_who_settled_it_and_on_what():
+    """
+    After decide-then-show, a user's answer and the model's own choice would be
+    the same record on the part — which is the disease ADR-0019 was written
+    against. So `assumed` carries `because`, the way `derived` carries `from`.
+    ADR-0022.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_DATUM), plan_reply("Add a box"), code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    design_system = " ".join(_system_messages(llm)[0].split())
+
+    assert "An `assumed` value carries `because` beside it" in design_system
+    assert "who settled it and on what" in design_system
+    assert "`assumed` without `because` is invalid" in design_system
+    assert "settle it yourself" in design_system
+
+
 def test_a_curve_is_not_read_until_its_centre_is_placed():
     """
     On the Model Mania 2025 Phase 1 sheet, `(R30)` places the central pocket's
@@ -1703,7 +1722,7 @@ def test_what_is_printed_on_the_sheet_is_written_by_the_reader_not_the_model():
         "what the sheet measures of its own numbers did not survive"
 
 
-# ── a direction read off the wrong view stops the run (FCC-110) ───────────────
+# ── a direction read off the wrong view (FCC-110, ADR-0022) ──────────────────
 
 
 THE_CLAMP_READ_OFF_ONE_VIEW = {
@@ -1721,32 +1740,49 @@ THE_CLAMP_READ_OFF_ONE_VIEW = {
 }
 
 
-def test_two_holes_read_off_the_wrong_view_never_reach_the_plan():
+def test_two_holes_that_disagree_and_nothing_to_settle_them_reach_the_gate():
     """
     The 2023 clamp. Both were built along the ring axis, and the screw that
-    exists to pinch the split came out parallel to it. Every finding needed to
-    stop it was in the model already.
+    exists to pinch the split came out parallel to it — so the run grew a stop,
+    and the stop killed runs that had read the sheet correctly.
+
+    Neither now. There is no measurement here saying which of the two is
+    misread — nothing was traced round anywhere — so the disagreement is what
+    it is: a conflict, in the words of both, settled by nobody, riding to the
+    Gate where a person reads it. ADR-0019's sentence about a model that picks
+    between two disagreeing readings stands (ADR-0022).
     """
-    result, events, llm, tools = drive([
+    result, events, _, tools = drive([
         design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
-        plan_reply("Pad the outer profile"),
+        design_reply({}),                       # the sheet settles neither of them
+        plan_reply("Pad the outer profile",
+                   satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
         code_reply("pad()"),
+        assertion_reply("assert True, 'the length'"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert not result.ok
-    assert not tools.applied_codes(), "it built a part it could not read"
-    assert "read off the wrong view" in events.first(BLOCKED).data["reason"]
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["pad()"]
+    assert events.first(BLOCKED) is None
+    conflicts = json.dumps(events.last(DESIGN).data["model"]["conflicts"])
+    assert "the two axes cross" in conflicts
 
 
-def test_the_run_that_stops_says_which_file_to_correct():
-    """The reading is a file now: the remedy is an edit, not another opinion."""
+def test_the_disagreement_nobody_settled_is_in_the_reading():
+    """The reading is a file: what could not be settled is readable in it."""
     _, events, _, _ = drive([
         design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
-        plan_reply("Pad the outer profile"),
+        design_reply({}),
+        plan_reply("Pad the outer profile",
+                   satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
+        code_reply("pad()"),
+        assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert events.last(PART).data["path"] in events.first(BLOCKED).data["reason"]
+    written = part_file.read(events.last(PART).data["path"])
+    assert "the two axes cross" in json.dumps(written["conflicts"])
 
 
 THE_CLAMP_READ_PROPERLY = {
@@ -2920,20 +2956,19 @@ MISSING = "I need the module, the tooth count, the thickness and the bore diamet
 def test_plan_can_ask_instead_of_planning():
     """
     The in-process half of FCC-25: with a value the part cannot be built
-    without missing, Plan answers with a question and no Plan is shown.
+    without missing, Plan answers with a question and no Plan is shown. That it
+    may ask is unchanged; who answers it is not — nobody does, and Plan chooses
+    and says in the Step what it chose (ADR-0022).
     """
-    asked = []
-
     result, events, _, tools = drive(
-        [question_reply(MISSING), design_reply(GEAR_AS_TOLD),
-         plan_reply("Sketch the blank", "Pad it"), code_reply("a()", "b()"),
-         assertion_reply("assert True"), verdict_reply("pass")],
-        intent=GEAR, ask=lambda question: asked.append(question) or "module 2, 20 teeth")
+        [question_reply(MISSING),
+         plan_reply("Sketch the blank, assumed module 2", "Pad it"),
+         code_reply("a()", "b()"), verdict_reply("pass")],
+        intent=GEAR)
 
-    assert asked == [MISSING], "Plan did not ask, or asked something else: %s" % asked
     question = events.first(QUESTION)
     assert question is not None and question.data["text"] == MISSING
-    # The question came before any Plan reached the user.
+    # The question was said out loud before any Plan reached the user.
     kinds = [e.kind for e in events]
     assert kinds.index(QUESTION) < kinds.index(PLAN)
     assert result.ok
@@ -2947,20 +2982,22 @@ GEAR_AS_TOLD = {"features": [{"id": "teeth", "kind": "20 teeth of module 2",
 
 def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan():
     """
-    A person's answer goes back through Design and lands in the same model by
-    the same merge, so what Plan is handed next is the description grown — never
-    an answer standing beside it, which is the arrangement that lost the 100 mm.
-    The user supplied it, so it is `assumed`. FCC-25, FCC-93.
+    A person's answer — Design's own surviving question, the only one left —
+    goes back through Design and lands in the same model by the same merge, so
+    what Plan is handed next is the description grown, never an answer standing
+    beside it, which is the arrangement that lost the 100 mm. The user supplied
+    it, so it is `assumed`. FCC-25, FCC-93, ADR-0022.
     """
     llm = ScriptedLLMClient([
-        question_reply(MISSING),
+        design_reply({}, question=MISSING),
         design_reply(GEAR_AS_TOLD),
         plan_reply("Sketch a 20-tooth module-2 blank"), code_reply("a()"),
         verdict_reply("pass"),
     ])
     tools = FakeTools()
 
-    run(GEAR, llm=llm, tools=tools.registry, ask=lambda _: "module 2, 20 teeth, 10 thick, ⌀8 bore")
+    run(GEAR, llm=llm, tools=tools.registry, attachments=[RENDER_PNG],
+        ask=lambda _: "module 2, 20 teeth, 10 thick, ⌀8 bore")
 
     # The answer went to Design first, with the question it answers.
     told = json.loads(llm.calls[1][-1]["content"][0]["text"])
@@ -2972,12 +3009,12 @@ def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan
     assert "you_asked_and_were_answered" not in described
 
 
-def test_a_user_who_declines_gets_a_plan_that_chose_for_them():
+def test_a_run_nobody_is_watching_gets_a_plan_that_chose_for_them():
     result, events, llm, _ = drive(
         [question_reply(MISSING),
          plan_reply("Sketch the blank, assumed module 2 and 20 teeth"), code_reply("a()"),
          verdict_reply("pass")],
-        intent=GEAR, ask=lambda _: "")
+        intent=GEAR)
 
     assert result.ok
     told = json.dumps(llm.calls[1])
@@ -2996,24 +3033,24 @@ def test_with_nobody_to_ask_the_run_does_not_stall():
     assert "Choose sensible values yourself" in json.dumps(llm.calls[1])
 
 
-def test_a_plan_that_only_ever_asks_is_bounded():
+def test_a_plan_that_answers_every_telling_with_another_question_is_bounded():
     """
-    The user is asked at most `questions` times, and at most `questions` may
-    stand unanswered. Past that the run stops rather than looping — as a block
-    naming what to answer, not an error (FCC-96).
+    Told to choose, and asking again, and again about something new. Not a
+    value that went unanswered — every one of these was answered, with "choose
+    it yourself" — but a Plan that will not plan, and nothing further along can
+    end that. `budgets.rereads` is the ceiling now (FCC-96, ADR-0022).
     """
     asked = []
 
     result, _, _, tools = drive(
-        [question_reply("q1"), design_reply(),
-         question_reply("q2"), design_reply(),
-         question_reply("q3"), question_reply("q4"), question_reply("q5")],
+        [question_reply("q1"), question_reply("q2"), question_reply("q3")],
         intent=GEAR, ask=lambda q: asked.append(q) or "some answer",
-        budgets=Budgets(questions=2))
+        budgets=Budgets(rereads=2))
 
-    assert asked == ["q1", "q2"], "the user was asked past the budget: %s" % asked
+    assert asked == [], "the user was asked for a value: %s" % asked
     assert result.blocked
-    assert "q3; q4; q5" in result.reason, "the block did not say what to answer"
+    assert "q1; q2" in result.reason and "q3" in result.reason, \
+        "the block did not say what it went on asking for"
     assert tools.applied_codes() == []
 
 
@@ -3092,13 +3129,14 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
     assert "In conflict" in shown, "the disagreement never reached the Plan Gate"
 
 
-def test_a_question_the_sheet_does_not_answer_still_reaches_the_user():
+def test_a_question_the_sheet_does_not_answer_is_settled_by_the_model():
     """
-    A tolerance nobody printed is not on the sheet, and the person is asked.
+    A tolerance nobody printed is not on the sheet, and nobody is asked for it
+    either: Plan chooses and says in the Step what it chose (ADR-0022).
 
-    The sheet saying nothing is on the stream too. Without it a stalled run
-    cannot be told from one where the drawing was never looked at, which is the
-    first thing anybody reading the log asks (FCC-96).
+    The sheet saying nothing is on the stream. Without it a stalled run cannot
+    be told from one where the drawing was never looked at, which is the first
+    thing anybody reading the log asks (FCC-96).
     """
     asked = []
 
@@ -3106,58 +3144,59 @@ def test_a_question_the_sheet_does_not_answer_still_reaches_the_user():
         design_reply(A_PART),
         question_reply("What general tolerance applies?"),
         design_reply(),                         # not on the sheet
-        design_reply({"not_defined": [{"what": "the general tolerance",
-                                       "looked_in": ["the notes"]}]}),
-        plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
-        assertion_reply("assert True"), verdict_reply("pass"),
+        plan_reply("Sketch it, assumed ±0.1 mm", satisfies=everything(A_PART)),
+        code_reply("a()"), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG],
         ask=lambda q: asked.append(q) or "±0.1 mm")
 
-    assert result.ok
-    assert asked == ["What general tolerance applies?"]
-    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "user"]
+    assert result.ok, result.reason
+    assert asked == [], "the user was asked for a value: %s" % asked
+    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "nobody"]
     assert "nothing in the views" in events.first(ANSWER).data["text"]
 
 
-def test_the_drawing_answering_does_not_spend_the_users_question_budget():
+def test_a_drawing_that_keeps_answering_is_never_a_question_for_anybody():
     """
-    `budgets.questions` bounds how much a person is asked, and the drawing
-    answering is not a person being asked. FCC-90.
+    Every answer off the sheet is a question that never had to be settled by
+    anybody, and it costs a re-read and nothing else. FCC-90, ADR-0022.
     """
     asked = []
 
-    result, _, _, _ = drive([
+    result, events, _, _ = drive([
         design_reply(A_PART),
         question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
         question_reply("q2"), design_reply({"datums": [{"name": "d2"}]}),
-        question_reply("q3"), design_reply(),          # not on the sheet
-        design_reply({"datums": [{"name": "d3"}]}),    # the person's answer, written in
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
         assertion_reply("assert True"), verdict_reply("pass"),
-    ], attachments=[RENDER_PNG], budgets=Budgets(questions=2),
-        ask=lambda q: asked.append(q) or "an answer")
+    ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "an answer")
 
-    assert result.ok
-    assert asked == ["q3"], "two drawing answers ate the user's budget: %s" % asked
+    assert result.ok, result.reason
+    assert asked == [], "the user was asked what the drawing answered: %s" % asked
+    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "drawing"]
+    assert events.first(PLAN).data["unanswered"] == []
 
 
 def test_the_re_reads_have_a_ceiling_of_their_own():
     """
     A Plan that keeps asking and a drawing that keeps answering would never
-    terminate. Past the ceiling the question reaches the user as it did before.
+    terminate. Past the ceiling the question is not put to the sheet again, and
+    Plan is told to choose (ADR-0022).
     """
     asked = []
 
-    drive([
+    result, events, llm, _ = drive([
         design_reply(A_PART),
         question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
         question_reply("q2"),
-        design_reply({"datums": [{"name": "d2"}]}),    # the person's answer, written in
-        plan_reply("Sketch it"), code_reply("a()"), verdict_reply("pass"),
+        plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1),
         ask=lambda q: asked.append(q) or "an answer")
 
-    assert asked == ["q2"], "the second question was put to the sheet past the ceiling"
+    assert result.ok, result.reason
+    assert asked == []
+    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "nobody"], \
+        "the second question was put to the sheet past the ceiling"
 
 
 # ── the questioning belongs to the run, not to one Plan (FCC-96) ─────────────
@@ -3181,11 +3220,10 @@ def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
         question_reply("q2"), design_reply(off_the_sheet),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
         assertion_reply("assert True"), verdict_reply("pass"),
-    ], attachments=[RENDER_PNG], budgets=Budgets(questions=1),
-        ask=lambda q: asked.append(q) or "")
+    ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "")
 
     assert result.ok, "the second question killed the run: %s" % result.reason
-    assert asked == ["q1"]
+    assert asked == []
     assert [answer.data["by"] for answer in events.of(ANSWER)] \
         == ["drawing", "nobody", "drawing"]
     re_read = llm.calls[4][-1]["content"]
@@ -3233,7 +3271,7 @@ def test_a_replan_does_not_refill_the_re_read_ceiling():
     """
     asked = []
 
-    drive([
+    _, events, _, _ = drive([
         design_reply(A_PART),
         question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
         plan_reply("Impossible", satisfies=everything(A_PART)), code_reply("nope()"),
@@ -3244,26 +3282,27 @@ def test_a_replan_does_not_refill_the_re_read_ceiling():
         budgets=Budgets(rereads=1, attempts_per_step=1),
         ask=lambda q: asked.append(q) or "an answer")
 
-    assert asked == ["q2"], "the re-plan refilled the re-read ceiling: %s" % asked
+    assert asked == []
+    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "nobody"], \
+        "the re-plan refilled the re-read ceiling"
 
 
-def test_with_no_attachment_a_question_goes_straight_to_the_user():
+def test_with_no_attachment_a_question_is_settled_by_plan_itself():
     """
-    No sheet to ask, so no turn is spent asking one. The answer still comes back
-    through Design, because merge is the only way the description grows. FCC-93.
+    No sheet to ask and nobody to ask either, so no turn is spent on either:
+    Plan is told to choose and the run costs exactly what it costs without a
+    drawing. FCC-93, ADR-0022.
     """
     asked = []
 
-    _, _, llm, _ = drive(
-        [question_reply(MISSING), design_reply(GEAR_AS_TOLD), plan_reply("Sketch it"),
-         code_reply("a()"), assertion_reply("assert True"), verdict_reply("pass")],
+    result, _, llm, _ = drive(
+        [question_reply(MISSING), plan_reply("Sketch it, assumed module 2"),
+         code_reply("a()"), verdict_reply("pass")],
         intent=GEAR, ask=lambda q: asked.append(q) or "module 2")
 
-    assert asked == [MISSING]
-    assert len(llm.calls) == 6, "a turn was spent re-reading a drawing that is not there"
-    # The one Design turn there was had no picture with it.
-    written_in = llm.calls[1][-1]["content"]
-    assert len(written_in) == 1 and written_in[0]["type"] == "text"
+    assert result.ok, result.reason
+    assert asked == []
+    assert len(llm.calls) == 4, "a turn was spent re-reading a drawing that is not there"
 
 
 def test_a_question_alongside_steps_is_still_a_plan():
@@ -3283,53 +3322,50 @@ def test_a_question_alongside_steps_is_still_a_plan():
 # ── a re-plan is a Plan: it may ask, and never comes back empty (FCC-67) ──────
 
 
-def test_a_replan_after_a_handback_asks_rather_than_planning_blind():
+def test_a_replan_after_a_handback_may_ask_rather_than_planning_blind():
     """
     A re-plan that needs a value nobody gave it used to answer with a question
     and no Steps, and the loop took `planned.steps` blind: the question was
-    dropped and the revised Plan was empty. FCC-67.
+    dropped and the revised Plan was empty. It may still ask; what it gets back
+    is "choose it yourself", and the Plan that follows is a Plan. FCC-67.
     """
     asked = []
 
-    result, events, llm, _ = drive(
+    result, events, _, _ = drive(
         [
             plan_reply("Impossible"),
             code_reply("nope1()"), code_reply("nope2()"), code_reply("nope3()"),
-            question_reply(MISSING), design_reply(GEAR_AS_TOLD),
-            plan_reply("Possible"),
+            question_reply(MISSING),
+            plan_reply("Possible, assumed module 2"),
             code_reply("yes()"),
-            assertion_reply("assert True"),
             verdict_reply("pass"),
         ],
         applies=[failed("one"), failed("two"), failed("three")],
         ask=lambda question: asked.append(question) or "module 2, 20 teeth",
     )
 
-    assert asked == [MISSING], "the re-plan planned without asking: %s" % asked
-    assert result.ok
-    assert events.first(PLAN_REVISED).data["steps"] == ["Possible"]
-    # The answer reached the revised Plan, through the description it grew.
-    revised = json.loads(llm.calls[6][-1]["content"])
-    assert "20 teeth (assumed)" in revised["what_the_part_is"]
+    assert asked == [], "the re-plan put its question to a person: %s" % asked
+    assert result.ok, result.reason
+    assert events.first(PLAN_REVISED).data["steps"] == ["Possible, assumed module 2"]
+    assert events.first(PLAN_REVISED).data["unanswered"] == [MISSING]
 
 
-def test_a_replan_after_a_rejected_verdict_asks_too():
+def test_a_replan_after_a_rejected_verdict_may_ask_too():
     asked = []
 
-    result, _, llm, _ = drive(
+    result, events, _, _ = drive(
         [
             plan_reply("Make it"), code_reply("make()"), verdict_reply("fail", "20mm, not 10mm"),
-            question_reply(MISSING), design_reply(GEAR_AS_TOLD),
-            plan_reply("Make it 10mm"), code_reply("fix()"),
-            assertion_reply("assert True"), verdict_reply("pass"),
+            question_reply(MISSING),
+            plan_reply("Make it 10mm across the flats"), code_reply("fix()"),
+            verdict_reply("pass"),
         ],
         ask=lambda question: asked.append(question) or "10mm across the flats",
     )
 
-    assert asked == [MISSING]
-    assert result.ok
-    assert "10mm across the flats" in json.dumps(llm.calls[4])
-    assert "20 teeth (assumed)" in json.loads(llm.calls[5][-1]["content"])["what_the_part_is"]
+    assert asked == []
+    assert result.ok, result.reason
+    assert events.first(PLAN_REVISED).data["unanswered"] == [MISSING]
 
 
 def test_a_replan_that_only_ever_asks_stops_the_run_rather_than_looping():
@@ -3338,17 +3374,17 @@ def test_a_replan_that_only_ever_asks_stops_the_run_rather_than_looping():
     result, _, _, _ = drive(
         [
             plan_reply("Impossible"), code_reply("nope1()"),
-            question_reply("q1"), design_reply(),
-            question_reply("q2"), question_reply("q3"),
+            question_reply("q1"), question_reply("q2"), question_reply("q3"),
         ],
         applies=[failed("one")],
-        budgets=Budgets(attempts_per_step=1, questions=1),
+        budgets=Budgets(attempts_per_step=1, rereads=2),
         ask=lambda question: asked.append(question) or "some answer",
     )
 
-    assert asked == ["q1"], "the user was asked past the budget: %s" % asked
+    assert asked == [], "the user was asked for a value: %s" % asked
     assert result.blocked
-    assert "q2; q3" in result.reason, "the block did not say what to answer"
+    assert "q1; q2" in result.reason and "q3" in result.reason, \
+        "the block did not say what it went on asking for"
 
 
 def test_no_plan_without_steps_ever_reaches_execute(monkeypatch):
@@ -3720,6 +3756,32 @@ def test_a_plan_citing_the_whole_line_it_was_handed_has_cited_the_entry():
     assert events.first(PLAN_REVISED) is None
 
 
+def test_a_step_carries_the_address_it_cites_and_not_the_paragraph_behind_it():
+    """
+    What the Gate shows is prose, and a citation pasted whole drags the
+    description's own paragraphs into it: Step 1 of the Model Mania run reached
+    the user as 3553 characters, of which 1000 were the Step and the rest were
+    twenty-two entries repeated with their values — values Execute is handed
+    separately, addressed, in `what_each_entry_says`. The address says which
+    part of the part the Step is for, which is what the citation is in the prose
+    for; the flag stays, because an assumed value is the one thing the Gate must
+    not let past unread. FCC-127.
+    """
+    _, events, _, _ = drive([
+        design_reply(THE_CAVITY),
+        plan_reply({"do": "Pad the blank and cut the opening",
+                    "satisfies": [CAVITY_DEPTH + ": 100 mm (read)",
+                                  CAVITY_POCKET + ": 20 mm (read)"]}),
+        code_reply("build()"), assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    step = events.first(PLAN).data["steps"][0]
+
+    assert step == ("Pad the blank and cut the opening (satisfies: %s (read), %s (read))"
+                    % (CAVITY_DEPTH, CAVITY_POCKET))
+    assert "100 mm" not in step and "20 mm" not in step
+
+
 def test_one_entry_may_feed_several_steps():
     """
     An overall height feeds both the base solid and a through hole's depth, and
@@ -3783,10 +3845,10 @@ def test_a_run_with_no_attachment_still_plans_and_still_shows_an_acceptance():
     told = {"envelope": {"length": {"value": "150 mm", "flag": "assumed"}}}
 
     result, events, _, tools = drive(
-        [question_reply(MISSING), design_reply(told),
-         plan_reply("Pad it 150 mm"), code_reply("pad()"),
+        [design_reply(told, question=MISSING), design_reply(),
+         plan_reply("Pad it 150 mm", satisfies=everything(told)), code_reply("pad()"),
          assertion_reply("assert True"), verdict_reply("pass")],
-        ask=lambda _: "150 mm long")
+        attachments=[RENDER_PNG], ask=lambda _: "150 mm long")
 
     assert result.ok
     assert events.first(PLAN).data["acceptance"] == ["envelope → length: 150 mm (assumed)"]
@@ -4577,12 +4639,13 @@ def test_a_part_whose_outside_nobody_carries_goes_back_to_the_drawing():
 
 
 @pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
-def test_a_run_that_still_cannot_say_what_shape_the_part_is_does_not_plan_one():
+def test_a_shape_the_drawing_will_not_say_is_settled_and_shown_at_the_gate():
     """
-    The block this replaces was a part built as a box with every check green.
-    Where neither the drawing nor a person will say what the outer contour is,
-    there is nothing to build but the prism the overall sizes make — so the run
-    stops and says what to answer, rather than planning one.
+    Neither the box the block replaced nor the block itself. Where the sheet
+    will not say what the outer contour is, Design is told to settle it and to
+    write down what it settled it off — and the choice stands above the Steps,
+    where FCC-96's actual defect was that a padded profile was invisible
+    (ADR-0022).
     """
     said_in_passing = {
         "envelope": {"length between the end faces": read("150 mm")},
@@ -4591,15 +4654,30 @@ def test_a_run_that_still_cannot_say_what_shape_the_part_is_does_not_plan_one():
                       "edge_selection": [{"what": "the rounded end surfaces",
                                           "value": "each loop", "flag": "read"}]}],
     }
+    settled = {"features": [
+        {"id": "outer-profile", "kind": "obround (capsule) outer profile",
+         "plane": {"value": "the plane of the length and the height",
+                   "flag": "assumed",
+                   "because": "nothing on the sheet carries the contour; it is "
+                              "read off the silhouette and the 150 mm overall"},
+         "radius": {"value": "25 mm", "flag": "assumed",
+                    "because": "half the 50 mm height, from the silhouette"}}]}
+    asked = []
 
-    result, events, _, _ = drive(
-        [design_reply(said_in_passing)] + [design_reply({})] * 4,
-        attachments=[RENDER_PNG], ask=lambda question: "")
+    result, events, llm, _ = drive(
+        [design_reply(said_in_passing), design_reply({}), design_reply(settled),
+         plan_reply("Pad the profile",
+                    satisfies=everything(said_in_passing, settled)),
+         code_reply("pad()"), assertion_reply("assert True, 'the length'"),
+         verdict_reply("pass")],
+        attachments=[RENDER_PNG], ask=lambda question: asked.append(question) or "")
 
-    assert result.blocked, result.reason
-    assert "outer profile" in result.reason or "outside" in result.reason, result.reason
-    assert events.first(QUESTION) is not None, \
-        "the run blocked without ever putting the question to the user"
+    assert result.ok, result.reason
+    assert asked == [], "the user was asked for the contour: %s" % asked
+    told = json.loads(llm.calls[2][-1]["content"][0]["text"])["the_question"]
+    assert "settle it yourself" in told and "because" in told
+    decided = json.dumps(events.first(PLAN).data["decided"])
+    assert "read off the silhouette" in decided
 
 
 @pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
@@ -4814,17 +4892,25 @@ def test_what_the_correction_displaced_is_kept_in_the_reading():
     assert axis["because"]
 
 
-def test_a_re_read_that_settles_nothing_still_stops_the_run():
-    """The stop stays. It is the last rung now, not the first."""
+def test_a_re_read_that_settles_nothing_no_longer_stops_the_run():
+    """
+    The stop is gone (ADR-0022). A finding the drawing would not settle and no
+    measurement can settle either is a conflict the Gate is shown, not a block
+    telling the user to hand-edit `logs/parts/*.yaml`.
+    """
     result, events, _, tools = drive([
         design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
         design_reply({}),
-        plan_reply("Pad the outer profile"),
+        plan_reply("Pad the outer profile",
+                   satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
+        code_reply("pad()"),
+        assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    assert not result.ok
-    assert not tools.applied_codes()
-    assert "read off the wrong view" in events.first(BLOCKED).data["reason"]
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["pad()"]
+    assert events.first(BLOCKED) is None
 
 
 # ── the geometry contradicts the sheet (FCC-122) ──────────────────────────────
@@ -5060,3 +5146,114 @@ def test_a_description_whose_numbers_are_all_the_sheets_is_left_alone(monkeypatc
     assert loop._every_number_is_the_sheets(
         {"features": []}, ["a.pdf"], None, None, loop.Budgets(),
         lambda: False) == {"features": []}
+
+
+# ── nobody answers and the run does not die (FCC-127) ─────────────────────────
+
+THE_CLAMP_POINTED_AT_THE_WRONG_VIEW = {
+    "envelope": {"length": read("108 mm")},
+    "features": [
+        {"id": "clamp-bore", "kind": "\u00d842 bore through the clamp ring",
+         "topology": "through", "diameter": read("42 mm"),
+         "axis": {"value": "the depth", "flag": "read",
+                  "round_in": "the front elevation"}},
+    ],
+}
+
+TRACED_IN_THE_PLAN = {"the upper plan": [42.0]}
+
+# The run the correction rescues: a bore pointed at a view its circle is not in,
+# a sheet that will not settle it, and a Plan over the part as corrected.
+_THE_BORE_PUT_RIGHT = [
+    design_reply(THE_CLAMP_POINTED_AT_THE_WRONG_VIEW),
+    design_reply(),                             # the sheet does not settle it
+    plan_reply("Bore the ring",
+               satisfies=everything(THE_CLAMP_POINTED_AT_THE_WRONG_VIEW)),
+    code_reply("bore()"),
+    assertion_reply("assert True, 'the bore'"),
+    verdict_reply("pass"),
+]
+
+
+def _traced(monkeypatch, round_here):
+    """What the tracer saw curved, view by view, whatever the attachment is."""
+    monkeypatch.setattr(loop, "_round_evidence", lambda attachments: dict(round_here))
+
+
+def test_a_direction_the_sheet_settles_is_corrected_rather_than_stopping_the_run(monkeypatch):
+    """
+    The 2026-08-13 run stopped here and told the user to correct the axis in
+    `logs/parts/*.yaml` and run it again. The view the circle was traced round
+    in is the answer, and the loop is holding it. FCC-127.
+    """
+    _traced(monkeypatch, TRACED_IN_THE_PLAN)
+
+    result, events, _, tools = drive(_THE_BORE_PUT_RIGHT, attachments=[RENDER_PNG])
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["bore()"]
+    assert events.first(BLOCKED) is None
+
+
+def test_the_direction_it_displaced_is_beside_it_in_the_reading(monkeypatch):
+    """
+    A correction is never a deletion: the axis it overruled stays under `was`,
+    in the file, where the user reads what was decided for them.
+    """
+    _traced(monkeypatch, TRACED_IN_THE_PLAN)
+
+    _, events, _, _ = drive(_THE_BORE_PUT_RIGHT, attachments=[RENDER_PNG])
+
+    axis = part_file.read(events.last(PART).data["path"])["features"][0]["axis"]
+    assert "the upper plan" in axis["value"]
+    assert axis["was"] == "the depth"
+    assert axis["because"], "the correction carries no evidence"
+
+
+def test_what_was_decided_for_the_user_stands_above_the_steps(monkeypatch):
+    """
+    The Gate is the single point of interaction now, so a decision the model
+    made is read there or it is not read at all. FCC-127.
+    """
+    _traced(monkeypatch, TRACED_IN_THE_PLAN)
+
+    _, events, _, _ = drive(_THE_BORE_PUT_RIGHT, attachments=[RENDER_PNG])
+
+    decided = events.first(PLAN).data["decided"]
+    assert any("the upper plan" in line and "the depth" in line for line in decided), \
+        "the Gate was not told what was decided, or not what it was decided against"
+
+
+def test_nothing_is_asked_between_the_attachment_and_the_gate(monkeypatch):
+    """
+    A user answering "You decide" got a block twice. Nobody is asked for a
+    value any more: the drawing is read, the model settles the rest, and the
+    Gate shows it. FCC-127.
+    """
+    _traced(monkeypatch, TRACED_IN_THE_PLAN)
+    asked = []
+
+    result, _, _, _ = drive(_THE_BORE_PUT_RIGHT, attachments=[RENDER_PNG],
+                            ask=lambda question: asked.append(question) or "")
+
+    assert result.ok, result.reason
+    assert asked == [], "the run asked a person: %s" % asked
+
+
+def test_a_plan_that_asks_for_a_value_is_told_to_choose_and_never_the_user():
+    """
+    Plan's question used to reach the panel and block the run on a
+    `threading.Event`. It reaches the sheet, and past that the model chooses
+    and says in the Step what it chose. FCC-127.
+    """
+    asked = []
+
+    result, events, _, tools = drive(
+        [question_reply(MISSING), plan_reply("Sketch the blank, assumed module 2"),
+         code_reply("a()"), verdict_reply("pass")],
+        intent=GEAR, ask=lambda question: asked.append(question) or "module 2, 20 teeth")
+
+    assert result.ok, result.reason
+    assert asked == [], "the user was asked for a value: %s" % asked
+    assert tools.applied_codes() == ["a()"]
+    assert events.first(PLAN).data["unanswered"] == [MISSING]

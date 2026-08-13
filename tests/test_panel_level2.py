@@ -1510,3 +1510,32 @@ def test_stop_disables_an_open_decision_card(panel):
 
     assert panel._question_card is None
     assert not card.isEnabled()
+
+
+def test_what_was_decided_for_the_user_stands_above_the_steps(panel):
+    """
+    Nothing is asked between the attachment and the Gate now, so a value the
+    model settled for itself is read here or nowhere. Above the Steps, because
+    a decision the Steps were built on is read before them or it is not read.
+    FCC-127.
+    """
+    from core.events import PLAN, Event
+
+    from ui.accordion_widget import AccordionWidget
+    from ui.plan_widget import PlanWidget
+
+    panel.on_event(Event(PLAN, {
+        "steps": ["Bore the ring"], "acceptance": [],
+        "decided": ["features \u2192 clamp-bore \u2192 axis: perpendicular to the "
+                    "plane of the upper plan, not the depth"]}))
+    QT_APP.processEvents()
+
+    widgets = _widgets_in(panel)
+    decided_at, decided = max((i, w) for i, w in enumerate(widgets)
+                              if isinstance(w, AccordionWidget)
+                              and "Decided for you" in w.toggle_button.text())
+    plan_at = max(i for i, w in enumerate(widgets) if isinstance(w, PlanWidget))
+
+    assert decided_at < plan_at, "the decisions rendered below the Steps they were made for"
+    assert decided.content_area.isVisible(), "one click away is not read"
+    assert "not the depth" in _said_in(panel)

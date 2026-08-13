@@ -209,20 +209,23 @@ def test_the_amendment_reaches_plan():
     assert "Use PartDesign, not Part primitives" in json.dumps(llm.calls[1])
 
 
-def test_a_replan_after_an_amendment_asks_rather_than_planning_blind():
-    """The third re-plan site, and it had the same hole as the other two. FCC-67."""
+def test_a_replan_after_an_amendment_may_ask_rather_than_planning_blind():
+    """
+    The third re-plan site, and it had the same hole as the other two. What its
+    question gets back is "choose it yourself", never a person (FCC-67,
+    ADR-0022).
+    """
     asked = []
     gate = Gate(Approval(AMEND, "Use PartDesign, not Part primitives"), Approval(APPROVE))
 
     result, _, tools = drive([
         plan_reply("Add a Part::Box"),
         question_reply("Which thickness?"),
-        design_reply({"envelope": {"thickness": {"value": "10 mm", "flag": "assumed"}}}),
         plan_reply("Create a 10mm Body"), code_reply("a()"),
-        assertion_reply("check()"), verdict_reply("pass"),
+        verdict_reply("pass"),
     ], gate, ask=lambda question: asked.append(question) or "10mm")
 
-    assert asked == ["Which thickness?"]
+    assert asked == []
     assert result.ok
     assert gate.shown[-1] == ["Create a 10mm Body"]
     assert tools.applied_codes() == ["a()"]
@@ -572,3 +575,36 @@ def test_plan_is_told_to_build_on_the_model_that_already_exists():
 
     assert "builds on the model that already exists" in plan_system
     assert "only when the feedback says outright that you may" in plan_system
+
+
+def test_amending_over_a_decision_replans_without_asking_it_again():
+    """
+    The Gate is the single point of interaction now, so rejecting a decision the
+    model made for the user has to be a re-plan carrying that rejection — and
+    the decision is on the description, so nothing asks for it a second time.
+    ADR-0022.
+    """
+    settled = {"features": [{"id": "outer-profile", "kind": "obround outer profile",
+                             "radius": {"value": "25 mm", "flag": "assumed",
+                                        "because": "half the 50 mm height, off "
+                                                   "the silhouette"}}]}
+    asked = []
+    gate = Gate(Approval(AMEND, "the R25 you decided is wrong — the ends are R30"),
+                Approval(APPROVE))
+
+    events = EventStream()
+    result = run("Build this", llm=ScriptedLLMClient([
+        design_reply(settled),
+        plan_reply({"do": "Pad the R25 profile",
+                    "satisfies": ["features \u2192 outer-profile \u2192 radius"]}),
+        plan_reply({"do": "Pad the R30 profile",
+                    "satisfies": ["features \u2192 outer-profile \u2192 radius"]}),
+        code_reply("pad()"), assertion_reply("check()"), verdict_reply("pass"),
+    ]), tools=FakeTools().registry, events=events, gate=gate,
+        attachments=[RENDER_PNG], ask=lambda question: asked.append(question) or "R30")
+
+    assert result.ok, result.reason
+    assert asked == [], "the amendment sent the decision back to the user: %s" % asked
+    revised = events.first(PLAN_REVISED)
+    assert "R30" in revised.data["reason"]
+    assert "half the 50 mm height" in json.dumps(revised.data["decided"])

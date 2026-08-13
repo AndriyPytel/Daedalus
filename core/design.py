@@ -32,37 +32,38 @@ The same structure is what the run is checked against. `entries` addresses every
 value on it by the path it sits under, and that one enumeration is both the
 Acceptance the finished part is measured against and the set the loop takes a
 Plan's citations away from (ADR-0020).
+
+`SECTIONS` is the order the Plan Gate reads them in: what was on the sheet, what
+the part is measured from, how big it is, what is on it, and then, apart from the
+part itself, what nobody agrees on and what nobody supplied. Of those last three,
+none is the part: a conflict holds two values of which neither is settled, and a
+criterion derived from one would assert whichever half the merge happened to
+keep; a gap is nothing to measure; the sweep of the sheet is callouts, not
+values.
+
+One notation, `UNDER`, separates the steps of an address, for the path a conflict
+is recorded under and the path an entry is cited by alike — two would be two
+things for a reader to learn and one for a Plan to get wrong. Identity, which is
+what makes two entries of a list the same thing, is `id` on a feature and `name`
+on a datum. What a rendered entry is headed by is wider than that, because a
+conflict is read by what it is about and a gap by what is missing, and neither is
+a thing the merge has to recognise again.
 """
 import re
 
-# The order the Plan Gate reads them in: what was on the sheet, what the part is
-# measured from, how big it is, what is on it, and then, apart from the part
-# itself, what nobody agrees on and what nobody supplied.
 SECTIONS = ("printed_on_the_sheet", "datums", "envelope", "features", "conflicts",
             "not_defined")
 
-# What separates one step of an address from the next. One notation for the
-# path a conflict is recorded under and the path an entry is cited by, because
-# two would be two things for a reader to learn and one for a Plan to get wrong.
 UNDER = " → "
 
 _HEADINGS = {"printed_on_the_sheet": "Printed on the sheet", "datums": "Datums",
              "envelope": "Envelope", "features": "Features",
              "conflicts": "In conflict", "not_defined": "Not defined"}
 
-# What makes two entries of a list the same thing. A feature is its `id`; a
-# datum is its name.
 _IDENTITY = ("id", "name")
 
-# What a rendered entry is headed by. Wider than identity, because a conflict is
-# read by what it is about and a gap by what is missing, and neither is a thing
-# the merge has to recognise again.
 _HEADED_BY = _IDENTITY + ("about", "what")
 
-# What the part is, as against what is said about the reading of it. A conflict
-# holds two values of which neither is settled, and a criterion derived from one
-# would assert whichever half the merge happened to keep; a gap is nothing to
-# measure; the sweep of the sheet is callouts, not values.
 _NOT_THE_PART = ("conflicts", "not_defined", "printed_on_the_sheet")
 
 
@@ -176,33 +177,26 @@ def _with_the_findings(model):
     return model
 
 
-# ── the outside of the part ───────────────────────────────────────────────────
-
-# Words that say the outside of the part is curved rather than boxed. They are
-# the words a draughtsman and a description both use for it; the list is short
-# on purpose, because a word that also means something inside the part would
-# raise this on every model.
 _ROUNDED_OUTSIDE = ("capsule", "obround", "racetrack", "oval",
                     "rounded end", "semicircular end", "radiused end",
                     "rounded exterior", "rounded end surfaces")
 
-# What a datum says when it has the same face flat.
 _FLAT = ("planar", "flat")
 
-# A datum only contradicts a rounded outside where it is about the ends.
 _AN_END = ("end face", "end faces", "end of", "left end", "right end")
 
 
-# What a conflict is about when the part is described as round on the outside
-# and no feature carries that contour. Named here because the loop has to
-# recognise this one finding: it is the only one that says the *shape* of the
-# part is nobody's, and a run that goes on past it builds a box.
 THE_OUTSIDE = "envelope → the shape of the outside"
 
 
 def nobody_carries_the_outside(model) -> str:
     """
     The standing finding that the outside of the part is nobody's, or "".
+
+    `THE_OUTSIDE` is what that conflict is about, and it is named rather than
+    left to the prose because the loop has to recognise this one finding: it is
+    the only one that says the *shape* of the part is nobody's, and a run that
+    goes on past it builds a box.
 
     A conflict is settled by the user at the Plan Gate — that is what the
     docstrings here have said since the finding existed, and what the recorded
@@ -243,7 +237,20 @@ def silhouette(model) -> list:
     The second finding is the datum that says the same face is flat. "the planar
     end face at the left of the 150 mm overall length" cannot both be true and
     sit beside "rounded end surfaces", and the merge cannot see it because
-    neither was ever written under the same address.
+    neither was ever written under the same address. A datum only contradicts a
+    rounded outside where it is about the ends.
+
+    The words looked for are the ones a draughtsman and a description both use
+    for an outside that is curved rather than boxed, and the list is short on
+    purpose: a word that also means something inside the part would raise this on
+    every model.
+
+    The finding is quoted from the description's own words where it has any. The
+    sweep of the sheet is in `_said` too, and quoted from there it reads as the
+    draughtsman's callout — `R12.5 — plan view (rounded ends)` — rather than as
+    the reading the user is being asked to settle. The sweep is still the
+    fallback: a sheet that prints rounded ends the description never wrote down
+    is the same finding, and it is the evidence there is.
     """
     said = _said(model, "")
     rounded = [(path, text) for path, text in said
@@ -252,12 +259,6 @@ def silhouette(model) -> list:
         return []
 
     found = []
-    # Quoted from the description's own words where it has any. The sweep of the
-    # sheet is in `_said` too, and quoted from there the finding reads as the
-    # draughtsman's callout — `R12.5 — plan view (rounded ends)` — rather than
-    # as the reading the user is being asked to settle. The sweep is still the
-    # fallback: a sheet that prints rounded ends the description never wrote
-    # down is the same finding, and it is the evidence there is.
     where, why = next((entry for entry in rounded
                        if not entry[0].startswith("printed_on_the_sheet")), rounded[0])
     if not any(_carries_the_outside(feature) for feature in _features(model)):
@@ -281,23 +282,10 @@ def silhouette(model) -> list:
     return found
 
 
-# ── which way a feature points ────────────────────────────────────────────────
-
-# The kinds of feature that have an axis — the direction the hole is drilled,
-# the slot cut, the pocket sunk. Short and literal, because a word that also
-# describes a face would raise this on every model.
 _HAS_AN_AXIS = ("hole", "bore", "slot", "pocket")
 
-# What a feature says when it has no face it starts from. A blind pocket is
-# placed along its own axis by the face it is sunk from and that is the whole
-# of its placement there; one that goes through is placed there by nothing.
 _GOES_THROUGH = "through"
 
-# The kinds that are a curve rather than a hole. What a radius means depends on
-# the plane it is drawn in and on nothing else on the sheet, so these carry a
-# plane the way a hole carries an axis. Fillets and chamfers are deliberately
-# not here: they follow the edges they are put on, and asking them for a plane
-# would raise a finding on every part that has any.
 _LIES_IN_A_PLANE = ("profile", "arc", "rounded", "radiused")
 
 
@@ -332,6 +320,15 @@ def direction(model) -> list:
     way it measures a distance. Where one is missing this is a conflict, in the
     same list `silhouette` writes to and settled the same way: by the user at
     the Plan Gate, or by Design filling in the field it left out.
+
+    The kinds that have an axis — the direction the hole is drilled, the slot
+    cut, the pocket sunk — are listed short and literal, because a word that also
+    describes a face would raise this on every model. The kinds that lie in a
+    plane are the curves rather than the holes: what a radius means depends on
+    the plane it is drawn in and on nothing else on the sheet, so they carry a
+    plane the way a hole carries an axis. Fillets and chamfers are deliberately
+    not among them, because they follow the edges they are put on and asking them
+    for a plane would raise a finding on every part that has any.
     """
     found = []
     for feature in _features(model):
@@ -351,17 +348,8 @@ def direction(model) -> list:
     return found
 
 
-# ── a size in a direction, and where it sits in that direction ────────────────
-
-# The directions a part is measured in, in the words the envelope uses for them.
-# A feature carrying one of these carries a size along a direction; a diameter
-# and a radius are not here, because neither is a size along anything named.
 _A_DIRECTION = ("length", "width", "height", "depth", "thickness")
 
-# The two of them a feature spends on itself: a blind pocket's depth is 6 mm
-# down its own axis and a boss's thickness is what it stands proud by, neither
-# of them 6 mm of the part's depth. Measured on the ordinary part they are what
-# every blind hole, pocket and counterbore carries.
 _ALONG_ITS_OWN_AXIS = ("depth", "thickness")
 
 
@@ -404,7 +392,9 @@ def pointing(model) -> list:
     and asking otherwise would raise a finding on every blind hole, pocket and
     counterbore there is. So the finding is for a feature that goes through —
     which starts at no face at all — and for one placed along its axis twice
-    over, since even a blind one starts only once.
+    over, since even a blind one starts only once. A blind feature is the one
+    that has a face it starts from; what a feature says when it has none is that
+    it goes through.
 
     The recorded run (`logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl`,
     the 2023 pipe clamp) is both halves of it. Both M6 holes were written
@@ -458,9 +448,6 @@ def pointing(model) -> list:
     return found
 
 
-# The field that says which view a feature was seen round in — the one thing a
-# drawing states about direction outright, and the one an axis can be checked
-# against without knowing what any view is called.
 ROUND_IN = "round_in"
 
 
@@ -480,9 +467,6 @@ def _said_of(feature, field):
     return " ".join(str(said or "").split())
 
 
-# What makes a feature a round one, so that being drawn round in a view is a
-# thing that can be true of it at all. A diameter or a radius says it outright;
-# the words are for the feature that carries neither.
 _IS_ROUND = ("hole", "bore", "circle", "circular", "round", "cylind",
              "counterbore", "countersink", "thread", "tapped", "boss", "shaft",
              "spotface")
@@ -512,18 +496,26 @@ def _is_round(feature):
 
     So the check reads the field where it means something and ignores it where
     it cannot: a feature with a diameter or a radius, or one whose own words
-    say it is round. A split is a split whatever was written beside it.
+    say it is round. A split is a split whatever was written beside it. A
+    diameter or a radius says roundness outright; the words are for the feature
+    that carries neither, and `topology` is left out of them because a feature is
+    described there by what it runs into: the split's topology is "continuing
+    from the \u00d842 clamp bore", which names a bore that belongs to something else
+    and made a saw cut round.
     """
     if any(_filled(feature.get(key)) for key in _A_DIAMETER + _A_RADIUS):
         return True
-    # `topology` is left out of it, because a feature is described there by what
-    # it runs into: the split's topology is "continuing from the \u00d842 clamp bore",
-    # which names a bore that belongs to something else and made a saw cut round.
     return any(word in _what_it_is_called(feature) for word in _IS_ROUND)
 
 
 def _seen_round_in(feature):
-    """The view a feature is round in, where the reading says which one."""
+    """
+    The view a feature is round in, where the reading says which one.
+
+    `round_in` is the one thing a drawing states about direction outright, and
+    the one an axis can be checked against without knowing what any view is
+    called.
+    """
     if not _is_round(feature):
         return ""
     for field in ("axis", "plane"):
@@ -594,9 +586,6 @@ def crosswise(model) -> list:
     return found
 
 
-# How far a traced diameter may sit from the one the description read and still
-# be the same circle. The tracer measures to the inside of the line that draws
-# it, so it reads about a millimetre under; the rest is the raster.
 _THE_SAME_CIRCLE = 1.5
 
 _A_NUMBER = re.compile(r"([0-9]+(?:\.[0-9]+)?)")
@@ -613,23 +602,34 @@ def _how_wide(feature):
     return float(found.group(1)) if found else None
 
 
-# What is left of a view's name once the difference between two ways of saying
-# it is gone. The reader names a view after where it sits — "VIEW C-C, on page
-# 2" — and the description writes down what it read, "VIEW C-C, page 2", and
-# the two are the same view. Compared as they stand they are not, and the check
-# then reads a view it was never given as a view with nothing in it.
 _HOW_A_VIEW_IS_SAID = re.compile(r"[^a-z0-9]+")
 
 _SAID_EITHER_WAY = ("the", "on", "of", "sheet")
 
 
 def _as_a_view(name):
+    """
+    What is left of a view's name once the difference between two ways of saying
+    it is gone.
+
+    The reader names a view after where it sits — "VIEW C-C, on page 2" — and the
+    description writes down what it read, "VIEW C-C, page 2", and the two are the
+    same view. Compared as they stand they are not, and the check then reads a
+    view it was never given as a view with nothing in it.
+    """
     return "".join(word for word in _HOW_A_VIEW_IS_SAID.split(str(name).lower())
                    if word and word not in _SAID_EITHER_WAY)
 
 
 def _traced_round_at(round_here, view, wide):
-    """Whether *view* was traced curved at something the width of *wide*."""
+    """
+    Whether *view* was traced curved at something the width of *wide*.
+
+    `_THE_SAME_CIRCLE` is how far a traced diameter may sit from the one the
+    description read and still be the same circle. The tracer measures to the
+    inside of the line that draws it, so it reads about a millimetre under; the
+    rest is the raster.
+    """
     said = _as_a_view(view)
     return any(abs(seen - wide) <= _THE_SAME_CIRCLE
                for at, seen_here in round_here.items() if _as_a_view(at) == said
@@ -655,6 +655,10 @@ def grounded(model, round_here) -> list:
     reading. Evidence found elsewhere and nowhere here is a different claim: the
     circle exists on the sheet, it is measured, and it is not where the
     description put it.
+
+    A finding is addressed to the field the direction is written in and not to
+    the `round_in` beside it: the view is the evidence, the axis is the thing
+    that is wrong, and the address is what a correction lands on.
     """
     if not round_here:
         return []
@@ -669,9 +673,6 @@ def grounded(model, round_here) -> list:
             continue
         where = _under("features", _named(feature, _IDENTITY) or "a feature")
         found.append({
-            # Addressed to the field the direction is written in and not to
-            # `round_in` beside it: the view is the evidence, the axis is the
-            # thing that is wrong, and the address is what a correction lands on.
             "about": _under(where, _which_field_is_round(feature)),
             "stands": "nothing \u00d8%g was traced in %s, and something \u00d8%g was "
                       "traced in %s \u2014 so that is the view it is round in, and this "
@@ -773,6 +774,13 @@ def placement(model) -> list:
     its own axis whether or not anybody wrote the axis down, so the pocket that
     never said which way is short of its axis and of nothing else, and
     `direction` is where that is said.
+
+    The directions are the words the envelope measures the part in, and a feature
+    carrying one of them carries a size along a direction. A diameter and a
+    radius are not among them, because neither is a size along anything named.
+    The two a feature spends on itself are its depth and its thickness: a blind
+    pocket's depth is 6 mm down its own axis and a boss's thickness is what it
+    stands proud by, neither of them 6 mm of the part's depth.
     """
     fixed = _which_way_each_datum_fixes(model)
 
@@ -795,11 +803,6 @@ def placement(model) -> list:
     return found
 
 
-# ── one cavity, one feature ───────────────────────────────────────────────────
-
-# The words a description uses for a hole in the material that is not a drilled
-# one. A cavity is what a detail view is usually drawn for, and a detail view is
-# the second picture a cavity gets described from.
 _A_CAVITY = ("cutout", "cut-out", "cut out", "slot", "pocket", "recess",
              "relief", "notch", "opening", "scallop")
 
@@ -824,6 +827,10 @@ def twice_over(model) -> list:
     either. Where another cavity is drawn in a view this one is also drawn in,
     the finding says so as well: two cavities sharing a view, one of them
     placed by nothing, is the shape this defect arrives in.
+
+    A cavity is a hole in the material that is not a drilled one, in the words a
+    description uses for it. It is what a detail view is usually drawn for, and a
+    detail view is the second picture a cavity gets described from.
     """
     cavities = [feature for feature in _features(model)
                 if any(word in _what_it_is(feature) for word in _A_CAVITY)]
@@ -926,33 +933,87 @@ def entries(model) -> list:
     return _addressed(model, "")
 
 
-# ── the entries ───────────────────────────────────────────────────────────────
+def decided_for_you(model) -> list:
+    """
+    Every value on this part that nobody supplied, said in one line each.
+
+    Walked off the model and never accumulated beside it: a list kept for the
+    run is `you_asked_and_were_answered` rebuilt, which is what downstream
+    started preferring over the description itself (ADR-0019, ADR-0022). The
+    same walk therefore reads the file a user opens tomorrow and the section the
+    Plan Gate showed them today.
+
+    Two kinds are in it and they are the two the model may settle: a value it
+    chose, which is `assumed` and says in `because` what it chose it off, and a
+    reading it overruled, which carries the displaced value under `was`. What
+    the sheet gave — `read`, `derived` — is nobody's decision and is not here.
+
+    Who settled it is read off the line and not off a filter: `because` says it,
+    and every `assumed` is here, including the one a person answered at Design's
+    surviving question. Sniffing that prose for the word "user" would be a
+    guess, and the section is honest either way — these are the values the sheet
+    did not give. An `assumed` value with no `because` at all is a Design turn
+    that did not do its job, and it reads as the model's own, which is the safe
+    way round for a choice nobody claimed.
+    """
+    return [_the_decision(path, node) for path, node in _each_value(model, "")
+            if _filled(node.get("was")) or node.get("flag") == "assumed"]
+
+
+def _the_decision(path, node):
+    written = "%s: %s" % (path, node.get("value"))
+    if _filled(node.get("was")):
+        written += ", not %s" % node["was"]
+    return written + " \u2014 %s" % (node.get("because")
+                                     or node.get("from") or _NOBODY_SAID)
+
+
+_NOBODY_SAID = "nobody supplied it and nothing says what settled it"
 
 
 def _addressed(node, path):
+    return [{"about": at, "flag": str(entry.get("flag") or ""),
+             "says": "%s: %s" % (at, _one_value(entry) or entry.get("value"))}
+            for at, entry in _each_value(node, path)]
+
+
+def _each_value(node, path):
+    """
+    Every value on the model, with the address it sits under.
+
+    Nothing of a feature a later page replaced. It stays on the description,
+    because what the sheet said is what the user checks the reading against at
+    the Gate, but it is not the part any more: the Model Mania run kept the
+    Phase 1 mounting ear beside the Phase 2 arm that deletes it, every entry of
+    it `read`, and so it was measured on the finished part and had to be cited
+    by a Step — a bore the drawing had deleted, planned, and a revision spent
+    being told it had been dropped (FCC-127).
+
+    An entry of a list is addressed by its identity where it has one, so that an
+    address survives a feature being added ahead of another — the same rule the
+    merge matches by.
+    """
     if _a_value(node):
-        return [{"about": path, "flag": str(node.get("flag") or ""),
-                 "says": "%s: %s" % (path, _one_value(node) or node.get("value"))}]
+        return [(path, node)]
 
     if isinstance(node, dict):
-        return [entry for key, value in node.items() if key not in _NOT_THE_PART
-                for entry in _addressed(value, _under(path, key))]
+        return [found for key, value in node.items() if key not in _NOT_THE_PART
+                for found in _each_value(value, _under(path, key))]
 
     if isinstance(node, list):
-        # By identity where an entry has one, so an address survives a feature
-        # being added ahead of another — the same rule the merge matches by.
-        return [entry for at, value in enumerate(node, start=1)
-                for entry in _addressed(value, _under(path, _named(value, _IDENTITY) or at))]
+        return [found for at, value in enumerate(node, start=1)
+                for found in _each_value(value, _under(path, _named(value, _IDENTITY) or at))]
 
     return []
 
 
-# ── the merge ─────────────────────────────────────────────────────────────────
-
-
 def _written(held, offered, path, conflicts):
-    # A value and its flag are one thing: there is no half-filling a value, and
-    # 20 mm read disagreeing with 20 mm assumed is a disagreement worth showing.
+    """
+    *offered* grown into *held* at *path*, a node at a time.
+
+    A value and its flag are one thing: there is no half-filling a value, and
+    20 mm read disagreeing with 20 mm assumed is a disagreement worth showing.
+    """
     if isinstance(held, dict) and isinstance(offered, dict) \
             and not (_a_value(held) or _a_value(offered)):
         grown = dict(held)
@@ -1023,10 +1084,14 @@ def _appended(held, more):
     return grown
 
 
-# ── the rendering ─────────────────────────────────────────────────────────────
-
-
 def _lines(value, indent):
+    """
+    One value of the model as the lines it is rendered on.
+
+    A handful of plain entries — the views a feature was seen in — read better on
+    one line than as a column of bullets. A sweep of the whole sheet does not, so
+    the line has a width.
+    """
     if isinstance(value, dict):
         said = _one_value(value)
         if said:
@@ -1038,9 +1103,6 @@ def _lines(value, indent):
         return written
 
     if isinstance(value, list):
-        # A handful of plain entries — the views a feature was seen in — read
-        # better on one line than as a column of bullets. A sweep of the whole
-        # sheet does not, so the line has a width.
         said = ", ".join(str(entry) for entry in value)
         if value and len(said) <= 72 \
                 and all(not isinstance(entry, (dict, list)) for entry in value):

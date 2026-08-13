@@ -123,21 +123,19 @@ question about the sheet is put back to the sheet before it is put to a person,
 so asking one only spends a turn to be told what the description should already
 have carried.
 
-**Your question does not reach the user.** It goes back to the phase that owns
-the description, which either finds it on the sheet or has a person answer it,
-and either way writes it into `what_the_part_is` before you are asked again. So
-the answer is never handed to you beside the description — it is *in* the
-description, flagged `read` where the sheet said it and `assumed` where a person
-did, and the Acceptance entry it feeds says the same.
+**Your question does not reach the user.** Nobody is asked for a value at all.
+It goes back to the phase that owns the description, which looks for it on the
+sheet and writes what it finds into `what_the_part_is` before you are asked
+again. So the answer is never handed to you beside the description — it is *in*
+the description, flagged `read` where the sheet said it, and the Acceptance
+entry it feeds says the same.
 
-`nobody_answered` means the questions in it got no answer and no more will be
-asked. Choose, and write every value you chose into the prose of the Step that
-uses it.
-
-If the user declines, or tells you to choose, then choose — and write every
-value you chose into the prose of the Step that uses it, as "assumed module 2",
-"assumed 20 teeth". An assumption stated in a Step is correctable at the Plan
-Gate; an assumption that only exists in the code is not.
+`nobody_answered` means the questions in it got no answer and none is coming:
+the sheet was asked and did not settle them. Choose, and write every value you
+chose into the prose of the Step that uses it, as "assumed module 2", "assumed
+20 teeth". An assumption stated in a Step is correctable at the Plan Gate; an
+assumption that only exists in the code is not. Asking again instead of
+choosing ends the run with no Plan at all.
 
 Reply with JSON only, either
 {"steps": [{"do": "...", "satisfies": ["...", "..."]}, {"do": "...", "satisfies": ["..."]}]}

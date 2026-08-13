@@ -1000,3 +1000,52 @@ def test_the_merge_still_refuses_everything_that_is_not_a_correction():
 
     assert design.said_at(grown, "features → clamp-ring-bore → axis") == "the depth"
     assert any("the height" in str(entry) for entry in grown["conflicts"])
+
+
+# ── what was decided for the user (FCC-127) ──────────────────────────────────
+
+
+def test_a_value_the_model_settled_is_read_off_the_model_with_its_reason():
+    """
+    Nothing accumulates a list of decisions beside the description — that is
+    `you_asked_and_were_answered` again, and downstream would prefer the newer
+    of the two. The section the Gate shows is walked off the part itself.
+    """
+    from core.design import decided_for_you
+
+    model = {"envelope": {"length": {"value": "150 mm", "flag": "read"}},
+             "features": [{"id": "outer-profile",
+                           "plane": {"value": "the plane of the elevation",
+                                     "flag": "assumed",
+                                     "because": "nobody carries the outer contour, so "
+                                                "it was read off the silhouette"}}]}
+
+    said = decided_for_you(model)
+
+    assert len(said) == 1
+    assert "features → outer-profile → plane" in said[0]
+    assert "the plane of the elevation" in said[0]
+    assert "read off the silhouette" in said[0]
+
+
+def test_a_correction_says_what_it_was_decided_against():
+    """A displaced value is the other half of the line: this, and not that."""
+    from core.design import decided_for_you
+
+    model = _a_bore("VIEW C-C, on page 2")
+    corrected(model, "features → clamp-ring-bore → axis", "the height",
+              "something Ø42 was traced in the middle centre view")
+
+    said = decided_for_you(model)
+
+    assert len(said) == 1
+    assert "the height" in said[0]
+    assert "the depth" in said[0], "the direction it displaced is not on the line"
+    assert "traced in the middle centre view" in said[0]
+
+
+def test_a_value_the_drawing_gave_is_nobodys_decision():
+    """`read` and `derived` are the sheet's own; only what nobody supplied is here."""
+    from core.design import decided_for_you
+
+    assert decided_for_you(DEPTH_OFF_THE_SECTION) == []

@@ -107,8 +107,15 @@ value.
     y=37.99 and 23.00, the ring's centre line at 48.01"}`. It is as much the
     part as a printed number is, and everything downstream builds it and checks
     it the same way.
-  - `assumed` — you settled it yourself, or a person told you. A value out of
-    `the_answer_you_were_given` is **assumed**.
+  - `assumed` — nobody supplied it, so it was settled without the sheet: by
+    you, or by a person who told you. An `assumed` value carries `because`
+    beside it, one line saying **who settled it and on what** — `{"value": "R25",
+    "flag": "assumed", "because": "nothing carries the outer contour; read off
+    the silhouette, half the 50 mm height"}`. `assumed` without `because` is
+    invalid, exactly as `derived` without `from` is: nothing else on the model
+    can say afterwards where the value came from, and what nobody claimed is
+    read as yours. A value out of `the_answer_you_were_given` is **assumed**,
+    with `because` naming the person.
 
   **The drawing not printing a number is not the drawing failing to say.** Most
   of what a draughtsman draws to scale he does not dimension, because the view
@@ -535,12 +542,18 @@ its `id` and only the fields you are filling in.
   you found the first time, not what is on the sheet: the answer is very often
   there and simply did not make it in. Count the edges, read the section, follow
   the leader. Where the sheet genuinely does not answer, reply with an empty
-  `design` and nothing else, so the question can go to the user instead — and
-  that is earned the same way `not_defined` is earned, by naming the views you
-  searched.
+  `design` and nothing else — and that is earned the same way `not_defined` is
+  earned, by naming the views you searched. Nobody is asked for it: whoever
+  raised the question settles it and says so, and the user reads the decision
+  at the Plan Gate.
 - **With `the_answer_you_were_given` beside it**, a person has answered. Write
   what they said into the model as values flagged `assumed`, under the datums
-  they named.
+  they named, each with `because` saying the user supplied it.
+- **Where the question tells you to settle it yourself**, settle it: choose the
+  values the part cannot be described without, flag every one of them `assumed`,
+  and say in `because` what you read the choice off. A choice the user can see
+  at the Gate is a choice they can correct; one nobody wrote down is the padded
+  profile that turned up in the geometry.
 
 ## Asking for yourself
 
@@ -550,9 +563,10 @@ each thing, and say what it is for. Ask only about what nobody has supplied:
 never about anything the views show, anything the Intent already gave you, or
 anything that concerns how the part is built rather than what it is.
 
-Asking is what `not_defined` is for at the front of the run: the question
-reaches the user before any Plan exists, which is the cheapest moment there is
-to answer it.
+Ask only where the sheet cannot answer it at all — what would go to
+`not_defined` with a reason. It is the one question a person is asked in the
+whole run, so it is asked once, before any Plan exists. Unanswered it is not
+fatal: settle it yourself, `assumed`, with `because`.
 
 Reply with JSON only:
 {"design": { … the model, or the fragment you are adding … }, "question": "..."}
