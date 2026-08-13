@@ -49,8 +49,6 @@ class ToolRegistry:
         for tool in tools:
             self.add(tool)
 
-    # ── building ─────────────────────────────────────────────────────────────
-
     def add(self, tool: Tool) -> Tool:
         if tool.name in self._tools:
             raise ValueError("duplicate Tool: " + tool.name)
@@ -64,8 +62,6 @@ class ToolRegistry:
                           parameters=parameters or dict(NO_PARAMETERS)))
             return func
         return register
-
-    # ── reading ──────────────────────────────────────────────────────────────
 
     def names(self) -> List[str]:
         return list(self._tools)
@@ -85,8 +81,6 @@ class ToolRegistry:
 
     def __iter__(self):
         return iter(self._tools.values())
-
-    # ── calling ──────────────────────────────────────────────────────────────
 
     def call(self, name: str, arguments: dict = None) -> Any:
         """

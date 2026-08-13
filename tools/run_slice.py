@@ -38,6 +38,12 @@ def freecad_lib():
 
 
 def main():
+    """
+    Drive one slice run end to end and report what the Document ended up with.
+
+    The apply pipeline dispatches each callable directly, because this script
+    already runs on the main thread.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", default="anthropic/claude-3-7-sonnet-20250219")
     parser.add_argument("--intent", default=DEFAULT_INTENT)
@@ -81,7 +87,7 @@ def main():
     with PreflightWorker(timeout=180) as worker:
         pipeline = ApplyPipeline(
             document=doc, worker=worker,
-            dispatch=lambda func, timeout=None: func(),   # already the main thread
+            dispatch=lambda func, timeout=None: func(),
             confirm=lambda kinds: args.allow_user_objects is True,
             events=events,
         )

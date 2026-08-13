@@ -9,7 +9,6 @@ except ImportError:
 class UIHelpers:
     """Helper class for SVG icons and common UI styling."""
 
-    # Embedded SVGs as raw strings for convenience and themed coloring
     ICONS = {
         "eye_open": """
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -107,14 +106,14 @@ class UIHelpers:
         the widget the icon will sit on, not QApplication, whose palette is the
         OS's and is light under every FreeCAD theme. A widget only carries the
         global stylesheet's colour once Qt has polished it, which is why the
-        callers re-tint on show rather than trusting construction time.
+        callers re-tint on show rather than trusting construction time. The
+        role read is the widget's own foregroundRole rather than a fixed one: a
+        button's stylesheet colour lands in ButtonText and a list's in Text.
         """
         svg_text = UIHelpers.ICONS.get(name)
         if not svg_text:
             return QtGui.QIcon()
 
-        # foregroundRole, not a fixed role: a button's stylesheet colour lands
-        # in ButtonText and a list's in Text.
         source = QtWidgets.QApplication if on is None else on
         role = QtGui.QPalette.WindowText if on is None else on.foregroundRole()
         color = source.palette().color(role).name()

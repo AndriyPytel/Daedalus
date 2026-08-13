@@ -6,13 +6,14 @@ supported types, real dependencies — not from a documentation corpus that
 mixes versions and would reintroduce the removed API this project exists to
 eliminate (ADR-0006). What these Tools report is true of the user's exact
 build, because it was asked of it.
+
+Introspection reports what exists, not always what is correct. `TRAPS` is the
+cases where the two differ; the prompt carries that list and nothing more.
 """
 import math
 
 from core.tools import NO_PARAMETERS, ToolError, ToolRegistry
 
-# Introspection reports what exists, not always what is correct. These are the
-# cases where the two differ; the prompt carries this list and nothing more.
 TRAPS = [
     "Sketch attachment goes through AttachmentSupport + MapMode, not Placement. "
     "Setting Placement on an attached sketch is silently overridden on recompute.",
@@ -96,17 +97,20 @@ TRAPS = [
 ]
 
 _SNAPSHOT_LIMIT = 200
-# 200 cards ship with FreeCAD 1.1 and the list is the same every call, so the
-# unfiltered answer is a page rather than the lot.
 _MATERIALS_LIMIT = 40
 
-# supportedTypes() only reports types whose module has been imported. Without
-# this, a session where the user never opened PartDesign is told PartDesign::Pad
-# does not exist — introspection reporting a confident, wrong absence.
 _GEOMETRY_MODULES = ("Part", "PartDesign", "Sketcher")
 
 
 def _load_geometry_modules():
+    """
+    Import the geometry modules, so the Document will admit their types.
+
+    `supportedTypes()` only reports types whose module has been imported.
+    Without this, a session where the user never opened PartDesign is told
+    PartDesign::Pad does not exist — introspection reporting a confident, wrong
+    absence.
+    """
     for module in _GEOMETRY_MODULES:
         try:
             __import__(module)
@@ -134,10 +138,6 @@ def _selection():
     ]
 
 
-# Isometric, front, top, right. One view is not enough, and the user's own
-# camera is undetermined as well as single: a mirrored tooth flank reads only
-# from above, and in isometry it is foreshortened — which is why Review passed
-# one (FCC-54). Spellings checked against libFreeCADGui, not recalled (ADR-0015).
 REVIEW_VIEWS = ("viewIsometric", "viewFront", "viewTop", "viewRight")
 
 
@@ -152,6 +152,12 @@ def _active_view():
 def capture_review_views(paths, size=(800, 600)):
     """
     The four views Review judges, captured once, camera put back afterwards.
+
+    Isometric, front, top and right. One view is not enough, and the user's own
+    camera is undetermined as well as single: a mirrored tooth flank reads only
+    from above, and in isometry it is foreshortened, which is how Review came
+    to pass one. The spellings were checked against libFreeCADGui rather than
+    recalled.
 
     Returns the paths actually written — empty with no GUI, which is what
     leaves the headless fallback to the Preflight Worker's rasteriser.
@@ -193,8 +199,6 @@ def _errors(obj):
     return [s for s in (obj.State or []) if s in ("Invalid", "Error", "Touched")]
 
 
-# ponytail: anything bigger than a kilometre is scaffolding, not a part.
-# Widen if someone models a bridge.
 _SCAFFOLDING = 1e6
 
 
@@ -203,7 +207,8 @@ def _measurable(obj):
     The object's bounding box where it is modelled geometry, else None.
 
     A datum plane is a real Shape with a real face and it is 1e100 across, so
-    everything that measures the part has to refuse the same things.
+    everything that measures the part has to refuse the same things. Anything
+    bigger than a kilometre across is scaffolding rather than a part.
     """
     shape = getattr(obj, "Shape", None)
     if shape is None or shape.isNull() or not shape.Faces:
@@ -236,10 +241,6 @@ def _overall_size(doc):
     return [round(box.XLength, 6), round(box.YLength, 6), round(box.ZLength, 6)]
 
 
-# ── the Description ───────────────────────────────────────────────────────────
-
-# A constraint holds an angle in radians; every place a person reads one, it is
-# degrees.
 _ANGULAR = ("Angle", "AngleViaPoint")
 _DIMENSIONAL = ("Distance", "DistanceX", "DistanceY", "Radius", "Diameter")
 
@@ -297,10 +298,14 @@ def _parameters(obj):
 
 
 def _named_value(value):
-    """The property's value where it is a number someone could name, else None."""
+    """
+    The property's value where it is a number someone could name, else None.
+
+    A Quantity is the pair of a Value and a Unit, and reads as "10.0 mm".
+    """
     if isinstance(value, (bool, int, float, str)):
         return value
-    if hasattr(value, "Value") and hasattr(value, "Unit"):      # a Quantity: "10.0 mm"
+    if hasattr(value, "Value") and hasattr(value, "Unit"):
         return str(value)
     return None
 
@@ -320,6 +325,12 @@ def _constraints(obj):
 
 
 def _dimension(constraint):
+    """
+    One constraint as a person reads it.
+
+    A constraint holds an angle in radians, and every place a person reads one
+    it is degrees.
+    """
     if constraint.Type in _ANGULAR:
         return "%.6g deg" % math.degrees(constraint.Value)
     if constraint.Type in _DIMENSIONAL:
@@ -336,6 +347,13 @@ def _inventory(doc):
     real part twenty identical holes are one entry with a count, and ungrouped
     they are twenty. Only what nothing else uses is measured, so this is the
     part as it stands and not every intermediate feature it was built from.
+
+    Two faces of one bore share a seat on the axis, where six flats share
+    nothing, so a family is counted by its distinct seats where it has them.
+    The volume is how a Step that removed nothing is told from one that worked:
+    a Pocket extruded away from the solid cuts nothing, and every other reading
+    here — the feature tree, the face families, the overall size — comes out
+    identical whether it cut or not.
     """
     solids, volume, seats = 0, 0.0, {}
     for obj in doc.Objects:
@@ -356,13 +374,8 @@ def _inventory(doc):
         if diameter is not None:
             entry["diameter_mm"] = diameter
             entry["axis"] = list(axis)
-        # Two faces of one bore share a seat on the axis; six flats share nothing.
         entry["count"] = len(set(seated)) if all(seated) else len(seated)
         surfaces.append(entry)
-    # Volume is how a Step that removed nothing is told from one that worked
-    # (FCC-96). A Pocket extruded away from the solid cuts nothing, and every
-    # other reading here — the feature tree, the face families, the overall
-    # size — comes out identical whether it cut or not.
     return {"solids": solids, "volume_mm3": round(volume, 6), "surfaces": surfaces}
 
 
@@ -379,15 +392,16 @@ def _family(surface):
 
 
 def _along(axis):
-    """An axis is a line: a bore's normal pointing in or out is the same axis."""
+    """
+    An axis is a line: a bore's normal pointing in or out is the same axis.
+
+    The zero is added so that a flipped zero reads as 0.0 rather than -0.0.
+    """
     direction = [round(value, 6) for value in (axis.x, axis.y, axis.z)]
     leading = next((value for value in direction if value), 0.0)
     flip = -1 if leading < 0 else 1
-    # + 0.0 so a flipped zero reads as 0.0 rather than -0.0.
     return tuple(value * flip + 0.0 for value in direction)
 
-
-# ── Introspecting a type ──────────────────────────────────────────────────────
 
 _SCRATCH = "CopilotTypeProbe"
 
@@ -402,14 +416,15 @@ def _inventoried(obj):
     whose value is a choice between spellings is the case where knowing the
     property exists is not enough, and `'Through all'` for `ThroughAll` is a
     Preflight failure that no property list would have caught.
+
+    A key whose value is an empty string is a line of the answer that says
+    nothing, and this answer is read by something that pays by the token: a
+    third of one of these listings was `"group": ""` and `"documentation": ""`.
+    What is absent is absent.
     """
     inventory = []
     for prop in obj.PropertiesList:
         entry = {"name": prop, "type": obj.getTypeIdOfProperty(prop)}
-        # A key whose value is an empty string is a line of the answer that
-        # says nothing, and this answer is read by something that pays by the
-        # token: a third of one of these listings was `"group": ""` and
-        # `"documentation": ""` (FCC-99). What is absent is absent.
         for key, said in (("group", obj.getGroupOfProperty(prop)),
                           ("documentation", obj.getDocumentationOfProperty(prop))):
             if said:
@@ -654,6 +669,17 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
         },
     )
     def materials(name=None):
+        """
+        The material cards this build has, filtered by name where one is given.
+
+        The 200 cards that ship with FreeCAD 1.1 are the same list every call,
+        so the unfiltered answer is a page of them rather than the lot. A title
+        block says "plain carbon steel" where the cards say "Steel-Generic", so
+        a name that matches nothing whole is matched on a word of itself, and
+        failing that gets the whole shelf: an empty list is the one answer that
+        reads as "this build has no material to assign", and a recorded run
+        spent every revision it had on that reading rather than picking a card.
+        """
         try:
             import Materials
         except ImportError:
@@ -669,12 +695,6 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
 
         wanted = (name or "").lower()
         found = listed(lambda card: wanted in card)
-        # A title block says "plain carbon steel"; the cards say "Steel-Generic".
-        # A name that matches nothing whole is matched on a word of itself, and
-        # failing that gets the whole shelf: an empty list is the one answer
-        # that reads as "this build has no material to assign", and a recorded
-        # run spent every revision it had on that reading rather than picking a
-        # card.
         widened = bool(wanted) and not found
         if widened:
             words = [word for word in wanted.split() if len(word) > 2]
@@ -730,8 +750,10 @@ def _register_apply(registry, pipeline, selection):
         },
     )
     def apply_step(code, label="Copilot Step"):
-        # Preflight lives behind this Tool. From here up, a Step was applied or
-        # it was not — there is no third thing to know about.
+        """
+        Preflight lives behind this Tool: from here up, a Step was applied or
+        it was not, and there is no third thing to know about.
+        """
         return pipeline.apply(code, selection=selection(), label=label).as_tool_result()
 
     @registry.tool(

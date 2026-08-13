@@ -7,7 +7,12 @@ from ui.ui_helpers import UIHelpers
 
 
 class TextMessageWidget(QtWidgets.QWidget):
-    """A chat bubble for user text."""
+    """
+    A chat bubble for user text.
+
+    The bubble is a translucent grey rather than a colour: it darkens a light
+    theme and lightens a dark one.
+    """
 
     def __init__(self, text: str = ""):
         super().__init__()
@@ -18,7 +23,6 @@ class TextMessageWidget(QtWidgets.QWidget):
         self.text_label.setWordWrap(True)
         self.text_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         
-        # A translucent grey, not a colour: it darkens a light theme and lightens a dark one.
         self.text_label.setStyleSheet("""
             QLabel {
                 background-color: rgba(127, 127, 127, 40);
@@ -45,7 +49,6 @@ class AssistantMessageWidget(QtWidgets.QWidget):
         self.text_label.setWordWrap(True)
         self.text_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         
-        # Assistant message: No bubble, just clean typography
         self.text_label.setStyleSheet("""
             QLabel {
                 background-color: transparent;
@@ -68,6 +71,8 @@ class CodeBlockWidget(QtWidgets.QWidget):
 
     Read-only: nothing here executes. A Step reaches the Document through the
     apply pipeline after the Plan Gate, never from a button in the transcript.
+
+    Code must never be mistaken for prose, so it keeps its container (ADR-0011).
     """
 
     def __init__(self, script: str):
@@ -78,11 +83,9 @@ class CodeBlockWidget(QtWidgets.QWidget):
         layout.setContentsMargins(12, 6, 36, 6)
         layout.setSpacing(6)
 
-        # ── Code display ──────────────────────────────────────────────────────
         self.code_edit = QtWidgets.QTextEdit()
         self.code_edit.setPlainText(script)
         self.code_edit.setReadOnly(True)
-        # Code must never be mistaken for prose, so this keeps its container (ADR-0011).
         self.code_edit.setStyleSheet(f"""
             QTextEdit {{
                 font-family: {UIHelpers.get_monospace_font()};

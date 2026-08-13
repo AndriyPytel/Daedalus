@@ -23,6 +23,10 @@ Death is a normal outcome here. If the code under test takes the C++ core
 down, this process goes with it and the parent restarts a new one — which is
 the entire point of the arrangement (ADR-0002). That is also why there is no
 shutdown message: the parent kills the process rather than asking it to go.
+
+`freecadcmd` runs a script with `__name__` set to its basename rather than
+"__main__", and importing this module as `core.preflight_worker` for its
+`SENTINEL` must not start serving, so both names are named at the foot.
 """
 import difflib
 import json
@@ -37,11 +41,7 @@ _LIGHT = (0.4, 0.5, 0.76)
 _TESSELLATION = 0.2
 _BACKGROUND = (250, 250, 252)
 _EDGE = (40, 40, 45)
-# Edges lie exactly on the faces they bound, so they lose a strict depth test to
-# their own surface. The bias is a fraction of the scene's depth range, which
-# makes it independent of the part's size.
 _EDGE_BIAS = 0.002
-# The viewport's default: 45° azimuth, 35.264° elevation — exact isometry.
 _AZIMUTH, _ELEVATION = math.radians(45), math.radians(35.264)
 
 
@@ -66,7 +66,12 @@ def load_fresh(path):
 
 
 def _view_matrix():
-    """The isometric view, as rows: right, up, towards the camera."""
+    """
+    The isometric view, as rows: right, up, towards the camera.
+
+    45° azimuth and 35.264° elevation, which is the viewport's default and an
+    exact isometry.
+    """
     import numpy as np
 
     azimuth, elevation = _AZIMUTH, _ELEVATION
@@ -96,7 +101,12 @@ def _is_modelled(shape):
 
 
 def _tessellated(doc):
-    """Every modelled shape's triangles and its real edges, in model space."""
+    """
+    Every modelled shape's triangles and its real edges, in model space.
+
+    A straight edge needs two points; a curve is walked finely enough that the
+    polyline is not the thing you notice.
+    """
     import numpy as np
 
     triangles, polylines = [], []
@@ -110,8 +120,6 @@ def _tessellated(doc):
             triangles.append(points[list(facet[:3])])
         for edge in shape.Edges:
             try:
-                # A straight edge needs two points; a curve is walked finely
-                # enough that the polyline is not the thing you notice.
                 along = edge.discretize(Deflection=_TESSELLATION)
             except Exception:
                 continue
@@ -127,6 +135,8 @@ def _fill_triangle(colour, zbuffer, xy, z, rgb):
     The depth test is what the mean-depth sort could not do: a triangle that
     interpenetrates another is in front over part of itself and behind over the
     rest, and only a per-pixel comparison can say which part is which (FCC-46).
+
+    A triangle of no area is edge-on and has no pixels of its own.
     """
     import numpy as np
 
@@ -141,7 +151,7 @@ def _fill_triangle(colour, zbuffer, xy, z, rgb):
     (ax, ay), (bx, by), (cx, cy) = xy
     area = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
     if abs(area) < 1e-12:
-        return                      # edge-on: it has no pixels of its own
+        return
 
     px, py = np.meshgrid(np.arange(left, right) + 0.5, np.arange(top, bottom) + 0.5)
     u = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) / area
@@ -164,6 +174,12 @@ def _draw_edge(colour, zbuffer, points, depths, bias):
 
     Edges are the larger half of why the render did not look like the viewport:
     two adjacent faces of a similar shade merge into one blob without them.
+
+    An edge lies exactly on the faces it bounds, so it loses a strict depth
+    test to its own surface; the bias against that is a fraction of the scene's
+    depth range, which makes it independent of the part's size. The sampling is
+    capped, so that a segment running far off-screen is sampled for the part
+    that can land somewhere rather than along its whole length.
     """
     import numpy as np
 
@@ -174,8 +190,6 @@ def _draw_edge(colour, zbuffer, points, depths, bias):
         z0, z1 = depths[start], depths[start + 1]
         if not all(math.isfinite(v) for v in (x0, y0, x1, y1, z0, z1)):
             continue
-        # Capped: a segment that runs far off-screen is sampled for the part
-        # that can land somewhere, not along its whole length.
         steps = min(int(max(abs(x1 - x0), abs(y1 - y0))) + 1, longest)
         along = np.linspace(0.0, 1.0, steps * 2 + 2)
         xs = np.rint(x0 + (x1 - x0) * along).astype(int)
@@ -259,20 +273,24 @@ def summarise(doc):
     ]
 
 
-# Derived by recompute rather than assigned by the Step. An object whose only
-# changed property is one of these was recalculated, not modified — otherwise
-# every dependent object downstream of a legitimate change would look touched.
-# ponytail: one property; widen if a cascade still trips the Owned Object rule.
 DERIVED = {"Shape"}
 
 
 class _Touched:
-    """What the Step did, straight from FreeCAD rather than from reading the code."""
+    """
+    What the Step did, straight from FreeCAD rather than from reading the code.
+
+    `changed` holds one (name, property) pair per notification. The properties
+    in `DERIVED` are derived by recompute rather than assigned by the Step, so
+    an object whose only changed property is one of those was recalculated
+    rather than modified — counting them would make every dependent object
+    downstream of a legitimate change look touched.
+    """
 
     def __init__(self):
         self.created = set()
         self.deleted = set()
-        self.changed = set()     # (name, property)
+        self.changed = set()
 
     def slotCreatedObject(self, obj):
         self.created.add(obj.Name)
@@ -296,15 +314,6 @@ class _Touched:
 
 _HINT_LIMIT = 60
 
-# Sketch geometry is spelled Part.Circle / Part.LineSegment in every version of
-# FreeCAD; the Sketcher module holds none of it. Leaving these out of the
-# namespace turned correct code into a NameError, which the assistant read as
-# "Part does not exist here" and answered by inventing Sketcher.Circle.
-#
-# Materials is in for the same reason: ShapeMaterial accepts only a
-# Materials.Material, and the one source of those is Materials.MaterialManager
-# (FCC-38). Left out, the correct code is a NameError and the assistant answers
-# by inventing an App.Material that has no Name or Density.
 STEP_MODULES = ("Part", "Sketcher", "PartDesign", "Materials")
 
 
@@ -315,6 +324,16 @@ def step_namespace(doc):
     Preflight and Apply must build this identically or they are running
     different programs and Preflight stops meaning anything (ADR-0002), so both
     call this rather than each spelling it out.
+
+    Sketch geometry is spelled Part.Circle and Part.LineSegment in every
+    version of FreeCAD and the Sketcher module holds none of it, so leaving
+    Part out turns correct code into a NameError, which the assistant reads as
+    "Part does not exist here" and answers by inventing Sketcher.Circle.
+    Materials is here for the same reason: ShapeMaterial accepts only a
+    Materials.Material and the one source of those is
+    Materials.MaterialManager, so left out the correct code is a NameError and
+    the assistant answers by inventing an App.Material that has no Name or
+    Density.
     """
     import FreeCAD
 
@@ -350,15 +369,18 @@ def introspect(exc):
     budget goes on one dead end. Introspection is the answer to API knowledge
     here as everywhere (ADR-0006) — this just applies it at the moment the
     guess fails, rather than hoping the assistant asks first (ADR-0008).
+
+    PropertiesList is the sharp answer for a DocumentObject, where `dir()` is
+    eighty names of mostly plumbing; on a module or a class it is the unbound
+    descriptor, which is neither, hence the isinstance rather than a truth
+    test. A hint is never worth losing the traceback it was meant to explain,
+    so anything that goes wrong here gives back nothing.
     """
     obj, name = getattr(exc, "obj", None), getattr(exc, "name", None)
     if obj is None or not name:
         return ""
     try:
         public = sorted(a for a in dir(obj) if not a.startswith("_"))
-        # PropertiesList is the sharp answer for a DocumentObject; dir() is 80
-        # names of mostly plumbing. On a module or a class it is the unbound
-        # descriptor, which is neither — hence the isinstance, not a truth test.
         declared = getattr(obj, "PropertiesList", None)
         properties = sorted(declared) if isinstance(declared, (list, tuple)) else public
         hint = "\n%s has no %r." % (_name_of(obj), name)
@@ -367,7 +389,6 @@ def introspect(exc):
             hint += " Closest existing: %s." % ", ".join(close)
         return hint + "\nIt has: %s" % ", ".join(properties[:_HINT_LIMIT])
     except BaseException:
-        # A hint is never worth losing the traceback it was meant to explain.
         return ""
 
 
@@ -396,9 +417,6 @@ def _bodies_in_pieces(doc):
     return scattered
 
 
-# A feature is a step the user would recognise as cutting or adding metal; a
-# Sketch, a datum or a Body itself is not, and neither is anything outside
-# PartDesign.
 _MOVES_MATERIAL = "PartDesign::Feature"
 
 _VOLUME_TOLERANCE = 1e-9
@@ -426,6 +444,10 @@ def _features_that_moved_no_material(doc, created):
     comparison that names the feature at fault: a feature's base is exactly the
     solid it was handed, so the difference is exactly what it did, whatever
     else the same Step built around it.
+
+    A feature is a step the user would recognise as cutting or adding metal; a
+    Sketch, a datum or a Body itself is not, and neither is anything outside
+    PartDesign.
     """
     idle = []
     for name in sorted(created):
@@ -517,12 +539,18 @@ def reading(request):
     return answer
 
 
-# What this process will do, by the `do` of the request. A request that does not
-# say is a Step, which is what every request was before there were two.
 _ASKED_FOR = {"step": preflight, "reading": reading}
 
 
 def serve(stdin=None, respond=respond):
+    """
+    Read requests off stdin until it closes, and answer each one.
+
+    What the process will do is the `do` of the request; a request that does
+    not say is a Step. Anything Python can still catch comes back as a
+    correction, and anything it cannot takes this process down instead of
+    FreeCAD.
+    """
     stdin = stdin or sys.stdin
     respond({"ready": True, "pid": os.getpid()})
 
@@ -538,12 +566,8 @@ def serve(stdin=None, respond=respond):
         try:
             respond(_ASKED_FOR[request.get("do") or "step"](request))
         except BaseException as exc:
-            # Anything Python can still catch comes back as a correction.
-            # Anything it cannot takes this process down instead of FreeCAD.
             respond({"ok": False, "traceback": traceback.format_exc() + introspect(exc)})
 
 
-# freecadcmd runs a script with __name__ set to its basename, not "__main__".
-# Importing this module as core.preflight_worker (for SENTINEL) must not serve.
 if __name__ in ("__main__", "preflight_worker"):
     serve()

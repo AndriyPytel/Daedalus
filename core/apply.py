@@ -41,9 +41,6 @@ class ApplyResult:
         return {"status": "failed", "traceback": self.traceback}
 
 
-# ── the Qt main thread ────────────────────────────────────────────────────────
-
-
 def _qt():
     try:
         from PySide2 import QtCore, QtWidgets
@@ -96,7 +93,7 @@ class _Dispatcher:
         def run():
             try:
                 outcome["value"] = func()
-            except BaseException as exc:      # re-raised on the calling thread
+            except BaseException as exc:
                 outcome["error"] = exc
             finally:
                 done.set()
@@ -120,14 +117,6 @@ def on_main_thread(func, timeout=DISPATCH_TIMEOUT):
     return _dispatcher.on_main_thread(func, timeout)
 
 
-# ── the transaction ───────────────────────────────────────────────────────────
-
-
-# A Step that raises is a failure the assistant corrects against; a Step that
-# quietly does nothing was scored as a success, and the Plan moved on assuming
-# an object that was never created (ADR-0010). Seen once already: code that
-# defined a function to build the sketch and never called it — the two removed
-# APIs inside it never even ran.
 _CHANGED_NOTHING = (
     "The code ran without error but changed nothing: no object was created, "
     "deleted or modified. A Step that leaves the Document as it found it has "
@@ -154,17 +143,8 @@ def run_in_transaction(doc, code, label="Copilot Step"):
     doc.commitTransaction()
 
 
-# ── the pipeline ──────────────────────────────────────────────────────────────
-
-
-# One deleted feature is the assistant replacing something it just got wrong —
-# a Pad it padded the wrong way, taken out with the sketch it was built on.
-# More than one is it clearing the board.
 _A_CORRECTION = 1
 
-# What the count is of: the steps of the tree a person would name if asked what
-# the part is made of. A Body is one of them because deleting the Body takes
-# every feature in it, and Preflight reports that as a single name.
 _MOVES_MATERIAL = "PartDesign::Feature"
 _A_BODY = "PartDesign::Body"
 
@@ -173,10 +153,13 @@ def _is_modelling(obj):
     """
     Whether deleting this object takes a piece of the model with it.
 
-    A sketch is deliberately not one. A Pad and the sketch under it are one
-    change to the part and they go together, so counting both would make every
-    single-feature correction look like a rebuild. The feature is the piece;
-    the sketch is how it was drawn.
+    The count is of the steps of the tree a person would name if asked what
+    the part is made of. A sketch is deliberately not one: a Pad and the sketch
+    under it are one change to the part and they go together, so counting both
+    would make every single-feature correction look like a rebuild. The feature
+    is the piece; the sketch is how it was drawn. A Body is one of them,
+    because deleting the Body takes every feature in it and Preflight reports
+    that as a single name.
     """
     derived = getattr(obj, "isDerivedFrom", None)
     if derived is not None:
@@ -263,6 +246,19 @@ class ApplyPipeline:
         return os.path.join(directory, "copilot_step_%d.png" % self._renders)
 
     def apply(self, code, selection=None, label="Copilot Step") -> ApplyResult:
+        """
+        Lint *code*, Preflight it, and land it on the live Document.
+
+        Preflight is not asked for a render: that is a rasterisation per Step,
+        in a headless process, for a picture whose only reader has the real 3D
+        view open beside it.
+
+        A Step that raises is a failure the assistant corrects against, but a
+        Step that quietly does nothing was scored as a success and the Plan
+        moved on assuming an object that was never created — code that defined
+        a function to build the sketch and never called it is the shape of it.
+        So a Step that created, deleted and modified nothing is a failure here.
+        """
         checked = lint(code, selection)
         if not checked.ok:
             return ApplyResult(ok=False, traceback=checked.report())
@@ -275,9 +271,6 @@ class ApplyPipeline:
 
         copy = self._dispatch(lambda: copy_of(doc))
         try:
-            # No render_path: Preflight no longer renders (ADR-0015). A
-            # rasterisation per Step, in a headless process, for a picture
-            # whose only reader has the real 3D view open beside it.
             preflighted = self.worker.check(code, document=copy)
         finally:
             _discard(copy)
@@ -468,15 +461,16 @@ class ApplyPipeline:
         user. It is the one that does not come through the loop, so it is the
         one that would otherwise vanish from a replayed Session — leaving a
         deleted object with nothing anywhere saying it was allowed.
+
+        Only an explicit yes is consent. Whoever asks releases waiting
+        questions somehow when a run is stopped, and the panel releases this
+        one with the Plan Gate's answer — an object, and so truthy. Read as
+        consent, that let Stop delete the user's own work.
         """
         deletes = sorted(set(preflighted.deleted) - self.owned)
         if not deletes:
             return None
 
-        # Only an explicit yes is one. Whoever asks releases waiting questions
-        # somehow when a run is stopped, and the panel releases this one with
-        # the Plan Gate's answer — an object, and so truthy. Read as consent,
-        # that let Stop delete the user's own work.
         if self._allowed("delete " + ", ".join(deletes), {"delete": deletes}):
             return None
 

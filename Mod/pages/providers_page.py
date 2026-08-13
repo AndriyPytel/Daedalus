@@ -1,4 +1,3 @@
-# FreeCadCopilot/Mod/pages/providers_page.py
 """
 ProvidersPage – "API & Providers" preference sub-page.
 
@@ -8,6 +7,9 @@ Two-panel layout:
 
 Uses SVG icons for visibility toggle and status indicators.
 Dynamic provider management allows for future extension.
+
+``_STATUS_STYLE`` is carried alongside the semantic colours, which replace
+rather than extend a stylesheet.
 """
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
@@ -17,14 +19,16 @@ except ImportError:
 
 from ui.ui_helpers import UIHelpers
 
-# Carried alongside the semantic colours, which replace rather than extend a stylesheet.
 _STATUS_STYLE = "font-size: 11px; font-weight: 600;"
 
 
-# ── Connection-test worker ────────────────────────────────────────────────────
-
 class _TestWorker(QtCore.QObject):
-    result = QtCore.Signal(bool, str)   # success, message
+    """
+    Runs one connection test off the UI thread. ``result`` carries whether it
+    succeeded and the message to show.
+    """
+
+    result = QtCore.Signal(bool, str)
 
     def __init__(self, provider, api_key, base_url=""):
         super(_TestWorker, self).__init__()
@@ -39,31 +43,43 @@ class _TestWorker(QtCore.QObject):
         self.result.emit(ok, msg)
 
 
-# ── Main page ─────────────────────────────────────────────────────────────────
-
 class ProvidersPage(QtWidgets.QWidget):
-    """The 'API & Providers' preference sub-page."""
+    """
+    The 'API & Providers' preference sub-page.
+
+    ``_edits`` holds every unsaved key change locally, and ``_base_edits`` the
+    same for local servers' addresses, until the page is saved.
+    """
 
     def __init__(self, parent=None):
         super(ProvidersPage, self).__init__(parent)
         self.setObjectName("CopilotProvidersPage")
         self.setWindowTitle("API & Providers")
         self._current_provider = None
-        self._edits = {}  # Tracks all unsaved key changes locally
-        self._base_edits = {}  # The same, for local servers' addresses
+        self._edits = {}
+        self._base_edits = {}
         self._thread = None
         self._worker = None
         self._tinted = False
         self._build_ui()
 
         from utils import provider_manager
-        # Bound method, not a lambda: Qt drops it when this page is destroyed.
         provider_manager.instance().models_changed.connect(self._on_models_changed)
 
     def getWidget(self):
         return self
 
     def _build_ui(self):
+        """
+        Lay the page out.
+
+        ``models_changed`` is connected to a bound method rather than a lambda,
+        because Qt drops the lambda when this page is destroyed.
+
+        A local server's address is plain text, not a secret, so it gets its own
+        field, shown only for a provider whose endpoint the addon does not
+        already know.
+        """
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(16, 16, 16, 16)
         outer.setSpacing(8)
@@ -76,7 +92,6 @@ class ProvidersPage(QtWidgets.QWidget):
         divider.setFrameShape(QtWidgets.QFrame.HLine)
         outer.addWidget(divider)
 
-        # ── Splitter ─────────────────────────────────────────────────────────
         splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         splitter.setHandleWidth(1)
 
@@ -112,8 +127,6 @@ class ProvidersPage(QtWidgets.QWidget):
         self.title_lbl.setStyleSheet("font-size: 16px; font-weight: 700;")
         self.right_layout.addWidget(self.title_lbl)
 
-        # A local server's address: plain text, not a secret, and shown only for
-        # a provider whose endpoint the addon does not already know (FCC-50).
         self.base_url_container = QtWidgets.QWidget()
         base_vbox = QtWidgets.QVBoxLayout(self.base_url_container)
         base_vbox.setContentsMargins(0, 0, 0, 0)
@@ -254,6 +267,11 @@ class ProvidersPage(QtWidgets.QWidget):
         return model_catalog.needs_base_url(provider)
 
     def _on_selection_changed(self, current, _prev):
+        """
+        Show the selected provider's credentials.
+
+        A local server's token is optional; a hosted provider's key is not.
+        """
         if not current:
             self._set_editor_enabled(False)
             return
@@ -277,7 +295,6 @@ class ProvidersPage(QtWidgets.QWidget):
         if local:
             self.base_url_edit.setText(
                 self._base_edits.get(provider, sm.get_base_url_for_provider(provider)))
-        # A local server's token is optional; a hosted provider's key is not.
         self.key_lbl.setText("API Key (optional)" if local else "API Key")
         self.key_edit.setPlaceholderText(
             "Only if the server asks for one…" if local else "Enter API key…")
@@ -320,7 +337,11 @@ class ProvidersPage(QtWidgets.QWidget):
                 break
 
     def _run_test(self):
-        # A local server is identified by its address, everything else by its key.
+        """
+        Test the connection the editor is showing.
+
+        A local server is identified by its address, everything else by its key.
+        """
         local = self._wants_base_url(self._current_provider)
         key = self.key_edit.text().strip()
         base = self.base_url_edit.text().strip() if local else ""
@@ -390,24 +411,26 @@ class ProvidersPage(QtWidgets.QWidget):
         if self.provider_list.count() > 0:
             self.provider_list.setCurrentRow(0)
 
-    # ── FreeCAD Preferences API ───────────────────────────────────────────────
-
     def loadSettings(self):
         self._populate_list()
 
     def saveSettings(self):
+        """
+        Persist the page.
+
+        The combos are read before anything is written. ``set_api_keys`` emits
+        ``api_keys_changed``; the provider manager answers it by clearing its
+        fetched lists and emitting ``models_changed``; this page answers that by
+        rebuilding these very combos and re-selecting them from the settings as
+        they still are — all of it synchronous, inside this call. A choice read
+        afterwards would be the old stored value, and the user's pick would be
+        destroyed by the save meant to persist it.
+        """
         from utils import settings_manager
         sm = settings_manager.instance()
         
         self._remember_edits()
 
-        # Read the combos before anything is written. `set_api_keys` emits
-        # `api_keys_changed`; the provider manager answers it by clearing its
-        # fetched lists and emitting `models_changed`; this page answers *that*
-        # by rebuilding these very combos and re-selecting them from the
-        # settings as they still are. All of it synchronous, inside this call —
-        # so a choice read afterwards is the old stored value, and the user's
-        # pick is destroyed by the save meant to persist it (FCC-44).
         chosen = self._chosen_models()
 
         for provider, url in self._base_edits.items():
@@ -441,12 +464,16 @@ class ProvidersPage(QtWidgets.QWidget):
                 "naming": self.naming_model_combo.currentData()}
 
     def _save_models(self, sm, chosen):
+        """
+        Store the two model choices and show what was stored.
+
+        An empty naming model is the "Same as the chat model" row, which is a
+        choice and has to be writable; ``None`` only means the combo has
+        nothing selected at all. The rebuild that runs mid-save re-selects the
+        old values, so the combos are refreshed afterwards.
+        """
         if chosen["default"]:
             sm.set_default_model(chosen["default"])
-        # "" is the "Same as the chat model" row, which is a choice and has to be
-        # writable; None only means the combo has nothing selected at all.
         if chosen["naming"] is not None:
             sm.set_naming_model(chosen["naming"])
-        # The rebuild that ran mid-save re-selected the old values; show what
-        # was actually stored.
         self._refresh_models()

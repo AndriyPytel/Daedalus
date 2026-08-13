@@ -1,4 +1,3 @@
-# FreeCadCopilot/utils/provider_manager.py
 """
 ProviderManager – Singleton that derives the live model list from the API keys
 currently stored in SettingsManager.
@@ -16,10 +15,15 @@ from PySide.QtCore import QObject, QThread, Signal
 
 
 class _FetchThread(QThread):
-    """Asks one provider for its model list, off the UI thread."""
+    """
+    Asks one provider for its model list, off the UI thread.
 
-    fetched = Signal(str, list)   # provider, [{id, display}]
-    failed = Signal(str, str)     # provider, error
+    ``fetched`` carries the provider name and its ``[{id, display}]`` list;
+    ``failed`` carries the provider name and the error text.
+    """
+
+    fetched = Signal(str, list)
+    failed = Signal(str, str)
 
     def __init__(self, provider: str, api_key: str, base_url: str = "", parent=None):
         super().__init__(parent)
@@ -39,34 +43,41 @@ class _FetchThread(QThread):
 
 
 class _ProviderManager(QObject):
-    """Internal singleton implementation."""
+    """
+    Internal singleton implementation.
 
-    models_changed = Signal(list)  # list[dict] — [{display, id, provider}, …]
+    ``models_changed`` carries the whole list of ``{display, id, provider}``
+    dicts.
+
+    The fetched lists are a session-lifetime cache, keyed by provider; a disk
+    cache with a TTL is the upgrade path if one fetch per provider per session
+    becomes noticeable. ``_threads`` maps a provider to its running
+    ``_FetchThread`` and doubles as the "asked already" mark. ``_fetched_with``
+    records the ``(api_key, base_url)`` each list was fetched with, so a key
+    change can clear the one provider it invalidated rather than all of them.
+    ``_resolved`` maps a model id to the ``(provider, display)`` that last
+    reported it and survives a cleared fetch: between a key change and the new
+    list landing it is the only thing that can resolve a fetched-only model,
+    and ``get_model_entry`` runs on the Step thread and cannot ask.
+
+    An address change invalidates a fetched list exactly as a key change does,
+    so both signals arrive at the same slot.
+    """
+
+    models_changed = Signal(list)
 
     def __init__(self):
         super().__init__()
         from core import model_catalog
         self._providers: list = model_catalog.providers()
-        # ponytail: session-lifetime cache; a disk cache with a TTL is the
-        # upgrade path if one fetch per provider per session becomes noticeable.
-        self._fetched: dict = {}   # provider -> [{id, display}]
-        self._threads: dict = {}   # provider -> _FetchThread (also the "asked already" mark)
-        # What each fetched list was fetched with, so a key change can clear
-        # the one provider it invalidated rather than all of them.
-        self._fetched_with: dict = {}   # provider -> (api_key, base_url)
-        # Every model any provider has ever reported, and where it came from.
-        # Survives a cleared fetch: between a key change and the new list
-        # landing, this is the only thing that can resolve a fetched-only
-        # model, and `get_model_entry` runs on the Step thread and cannot ask.
-        self._resolved: dict = {}   # model_id -> (provider, display)
+        self._fetched: dict = {}
+        self._threads: dict = {}
+        self._fetched_with: dict = {}
+        self._resolved: dict = {}
 
-        # Subscribe to key changes so the model list stays in sync
         from utils import settings_manager
         settings_manager.instance().api_keys_changed.connect(self._on_keys_changed)
-        # An address change invalidates a fetched list exactly as a key change does.
         settings_manager.instance().base_urls_changed.connect(self._on_keys_changed)
-
-    # ── Fetching ──────────────────────────────────────────────────────────────
 
     def _configured(self, provider: str) -> tuple:
         """
@@ -86,13 +97,17 @@ class _ProviderManager(QObject):
         return (key, base) if key else None
 
     def _ensure_fetched(self, provider: str):
-        """Start a background fetch the first time a provider is asked for."""
+        """
+        Start a background fetch the first time a provider is asked for.
+
+        A provider with nothing to ask with is skipped silently: that is not a
+        failure and not worth a warning, the user simply has not filled the
+        page in yet.
+        """
         if provider in self._fetched or provider in self._threads or provider not in self._providers:
             return
         credentials = self._configured(provider)
         if credentials is None:
-            # Nothing to ask with. Not a failure and not worth a warning — the
-            # user simply has not filled the page in yet.
             return
         key, base = credentials
         thread = _FetchThread(provider, key, base, self)
@@ -102,8 +117,12 @@ class _ProviderManager(QObject):
         thread.start()
 
     def _on_fetched(self, provider: str, models: list):
+        """
+        Take a landed model list, unless the fetch outlived the key it was
+        started for.
+        """
         if self.sender() is not self._threads.get(provider):
-            return  # a fetch outlived the key it was started for
+            return
         self._fetched[provider] = models
         self._fetched_with[provider] = self._configured(provider)
         self._remember(provider, models)
@@ -122,11 +141,15 @@ class _ProviderManager(QObject):
             self._resolved[model["id"]] = (provider, model["display"])
 
     def _on_fetch_failed(self, provider: str, error: str):
+        """
+        Warn that a provider could not be reached, naming the address.
+
+        A local server's failure is about an address the user typed, and
+        "Connection refused" without it says nothing they can act on.
+        """
         import FreeCAD
         from utils import settings_manager
 
-        # A local server's failure is about an address the user typed, and
-        # "Connection refused" without it says nothing they can act on.
         where = settings_manager.instance().get_base_url_for_provider(provider)
         at = f" at {where}" if where else ""
         FreeCAD.Console.PrintWarning(
@@ -140,8 +163,6 @@ class _ProviderManager(QObject):
     def _entries_for(self, provider: str) -> list:
         self._ensure_fetched(provider)
         return self._known(provider)
-
-    # ── Slots ─────────────────────────────────────────────────────────────────
 
     def _on_keys_changed(self, _changed):
         """
@@ -159,8 +180,6 @@ class _ProviderManager(QObject):
             self._fetched_with.pop(provider, None)
             self._threads.pop(provider, None)
         self.models_changed.emit(self.get_available_models())
-
-    # ── Public API ─────────────────────────────────────────────────────────────
 
     def get_available_models(self) -> list:
         """
@@ -196,9 +215,10 @@ class _ProviderManager(QObject):
         once keeps its provider until a fetch says otherwise — without that,
         every fetched-only model is unresolvable between a key change and the
         new list landing, and the run ends in a crash report (FCC-53).
+
+        Deliberately does not trigger a fetch: this runs on the Step thread.
         """
         for provider in self._providers:
-            # Deliberately does not trigger a fetch: this runs on the Step thread.
             for m in self._known(provider):
                 if m["id"] == model_id:
                     return {"id": m["id"], "display": m["display"], "provider": provider}
@@ -231,8 +251,6 @@ class _ProviderManager(QObject):
             return False, str(exc)
         return True, f"Connection successful — {len(models)} models"
 
-
-# ── Singleton accessor ────────────────────────────────────────────────────────
 
 @lru_cache(maxsize=None)
 def instance() -> _ProviderManager:

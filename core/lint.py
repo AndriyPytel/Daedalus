@@ -13,22 +13,42 @@ cannot teach the way out of (ADR-0008):
   pure function of the Document, or Preflight and Apply can disagree — the
   worker has no GUI and no selection, so anything reading them means the two
   processes are running different programs.
-- **Nothing may be made active** (ADR-0008). Activation is GUI-only, so no
-  spelling of it works headless and the traceback has no right answer to
-  point at — introspection would only confirm the absence, once per guess.
+- **Nothing may be made active** (ADR-0008). The active Body lives in the
+  GUI: `App.Document` has no active-object API in any spelling, so no spelling
+  of it works headless and the traceback has no right answer to point at.
+  Each attempt is a bare `AttributeError` the assistant answers by trying the
+  next spelling, and three of them spend the whole Step budget.
 - **No raw shape passed off as a PartDesign feature** (ADR-0012). Assigning
   `.Shape` on a `PartDesign::*` object, or bolting fields onto one with
   `addProperty`, builds a feature tree that is fiction: the sketch is
   decorative, nothing rebuilds when a dimension changes, and no traceback
   appears anywhere — Preflight recomputes clean and Review sees a correct
-  picture. `Part::Feature` is untouched; the rule is about the disguise.
+  picture. `Part::Feature` is untouched; the rule is about the disguise. The
+  reason names the feature types rather than asking for "a real feature",
+  because every prohibition short of that is answered with the next spelling
+  of the same workaround.
 - **No Step may swallow its own failure** (ADR-0008). A bare `except`, or a
   handler that only passes, discards the traceback the correction path is
   built on. Code that catches its own exception and says nothing disables the
   mechanism the architecture rests on.
 
+A Sketcher constraint is checked against a hardcoded table of names and
+arities. `Sketcher.Constraint`'s C++ constructor segfaults on a name it does
+not know and on a known name at the wrong arity — no traceback, nothing to
+correct against. The arities are the argument counts *after* the name, read off
+the PyArg_ParseTuple ladder in FreeCAD 1.0's
+src/Mod/Sketcher/App/ConstraintPyImp.cpp; Sketcher exposes no introspection for
+signatures, and this module is tested without FreeCAD, so the table is
+hardcoded on purpose. `InternalAlignment` is matched by substring in the C++,
+and spelled "InternalAlignment:Foo". Every signature also takes an optional
+trailing `activated`, and a dimensional one an optional `driving` after it;
+whether an argument is a bool is not something the AST can tell, so the two
+extra positions are simply allowed.
+
 Element names the *user* selected are explicit input, not a guess, so they are
-allowed through when they match the live selection.
+allowed through when they match the live selection. Only Edge, Face and Vertex
+are matched: Wire, Shell and Solid belong to an earlier version of this pattern
+that rejected "Solid1" as an object Label.
 
 This module replaces the old validator's hand-maintained substring rules. It
 does not port them: a rule per surprise, forever, is what introspection and
@@ -39,25 +59,14 @@ import re
 from dataclasses import dataclass, field
 from typing import List
 
-# ADR-0005 names these three and no others. Wire/Shell/Solid were in an earlier
-# version of this pattern and rejected "Solid1" as an object Label.
 ELEMENT = re.compile(r"^(Edge|Face|Vertex)\d+$")
 
 GUI_NAMES = ("Gui", "FreeCADGui")
 
-# The active Body lives in the GUI. App.Document has no active-object API in
-# any spelling, so each attempt is a bare AttributeError the assistant answers
-# by trying the next spelling — three of them spend the whole Step budget.
 ACTIVATION_NAMES = (
     "ActiveObject", "setActiveObject", "getActiveObject", "activeView", "ActiveView",
 )
 
-# Sketcher.Constraint's C++ constructor segfaults on a name it does not know
-# and on a known name at the wrong arity — no traceback, nothing to correct
-# against. Arities are the argument counts *after* the name, read off the
-# PyArg_ParseTuple ladder in FreeCAD 1.0's src/Mod/Sketcher/App/ConstraintPyImp.cpp.
-# Sketcher exposes no introspection for signatures, and this module is tested
-# without FreeCAD, so the table is hardcoded on purpose.
 _CONSTRAINT_ARITIES = {
     "Horizontal":    {1, 4},
     "Vertical":      {1, 4},
@@ -78,13 +87,9 @@ _CONSTRAINT_ARITIES = {
     "DistanceY":     {2, 3, 5},
     "Symmetric":     {5, 6},
     "SnellsLaw":     {6},
-    # Matched by substring in the C++, and spelled "InternalAlignment:Foo".
     "InternalAlignment": {2, 3},
 }
 
-# Every signature also takes an optional trailing `activated`, and a dimensional
-# one an optional `driving` after it. Whether an argument is a bool is not
-# something the AST can tell, so the two extra positions are simply allowed.
 _CONSTRAINT_SIGNATURES = {
     name: {arity + extra for arity in arities for extra in (0, 1, 2)}
     for name, arities in _CONSTRAINT_ARITIES.items()
@@ -117,8 +122,6 @@ _ELEMENT_REASON = (
     "PartDesign::Hole rather than a bore you then have to go and find."
 )
 
-# ADR-0012. Named types rather than "a real feature": the round this came from
-# answered every prohibition with the next spelling of the same workaround.
 _RAW_SHAPE_REASON = (
     "%s came from PartDesign and a PartDesign feature computes its own Shape "
     "from its Profile — assigning it, or bolting fields on with addProperty, "
@@ -191,6 +194,10 @@ def lint(code: str, selection=None) -> LintResult:
 
     `selection` is the Snapshot's selection; element names in it are treated as
     explicit user input and allowed.
+
+    The GUI is caught as an attribute as well as a name, so that
+    `App.Gui.Selection`, `FreeCAD.Gui` and `doc.Gui` are caught too: reaching
+    the GUI through something else is the same problem by a longer route.
     """
     try:
         tree = ast.parse(code)
@@ -216,8 +223,6 @@ def lint(code: str, selection=None) -> LintResult:
         elif isinstance(node, ast.Name) and node.id in GUI_NAMES:
             complain(_GUI_REASON % node.id)
 
-        # Also catches App.Gui.Selection..., FreeCAD.Gui..., doc.Gui... — reaching
-        # the GUI through something else is the same problem by a longer route.
         elif isinstance(node, ast.Attribute) and node.attr in GUI_NAMES:
             complain(_GUI_REASON % node.attr)
 

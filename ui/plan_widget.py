@@ -42,8 +42,6 @@ class PlanWidget(QtWidgets.QFrame):
         self._states = []
         self.set_steps(steps)
 
-    # ── what it is told ──────────────────────────────────────────────────────
-
     def set_steps(self, steps):
         for row in self._rows:
             row.setParent(None)
@@ -70,8 +68,6 @@ class PlanWidget(QtWidgets.QFrame):
         if 1 <= index <= len(self._rows):
             self._set_state(index - 1, state)
 
-    # ── painting ─────────────────────────────────────────────────────────────
-
     def _set_state(self, position, state):
         self._states[position] = state
         self._paint(position)
@@ -80,10 +76,10 @@ class PlanWidget(QtWidgets.QFrame):
         """
         Pending and done carry no colour — the ○ / ✓ marker already says which,
         and a colour of our own is a light-theme value under a dark theme (ADR-0011).
-        Running and failed do: those two must read the same in every theme.
+        Running and failed do: those two must read the same in every theme, and
+        palette(highlight) is the one role FreeCAD's themes keep meaningful.
         """
         state = self._states[position]
-        # palette(highlight) is the one role FreeCAD's themes keep meaningful.
         colour = {RUNNING: "palette(highlight)", FAILED: "#f44336"}.get(state, "")
         style = "font-weight:%s;" % ("600" if state == RUNNING else "400")
         if colour:

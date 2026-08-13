@@ -6,6 +6,12 @@ loop has no idea a UI exists and the same stream doubles as the session log —
 a bad run can be inspected without reproducing it.
 
 The stream is an output. It is asserted on and never substituted.
+
+Two kinds say where a run came from rather than what it did: `part` carries the
+path the reading Design settled on was written to, so a run can be pointed at
+the file it was planned from, and `outstanding` carries what an earlier run's
+acceptance checks found wrong and nobody fixed, emitted once at the top of the
+run that inherits it.
 """
 import json
 import time
@@ -17,8 +23,6 @@ QUESTION = "question"
 ANSWER = "answer"
 ATTACHED = "attached"
 DESIGN = "design"
-# Where the reading Design settled on was written down, so a run can be pointed
-# at the file it was planned from (FCC-108).
 PART = "part"
 PLAN = "plan"
 PLAN_REVISED = "plan_revised"
@@ -29,8 +33,6 @@ TOOL_RESULT = "tool_result"
 PREFLIGHT_FAILED = "preflight_failed"
 APPLIED = "applied"
 ASSERTION = "assertion"
-# What an earlier run's acceptance checks found wrong and nobody fixed. Emitted
-# once, at the top of the run that inherits it (FCC-98).
 OUTSTANDING = "outstanding"
 REVIEW_VERDICT = "review_verdict"
 BLOCKED = "blocked"
@@ -71,19 +73,22 @@ class EventStream:
         return callback
 
     def emit(self, kind: str, **data) -> Event:
+        """
+        Record an event of *kind* and hand it to every subscriber.
+
+        A subscriber that raises is ignored: a broken renderer must not take the
+        run down with it.
+        """
         if kind not in KINDS:
             raise ValueError("unknown event kind: %r" % kind)
         event = Event(kind=kind, data=data)
         self._events.append(event)
         for subscriber in self._subscribers:
-            # A broken renderer must not take the run down with it.
             try:
                 subscriber(event)
             except Exception:
                 pass
         return event
-
-    # ── reading ──────────────────────────────────────────────────────────────
 
     def __iter__(self):
         return iter(tuple(self._events))
@@ -127,7 +132,7 @@ class EventStream:
             handle.write(event.as_json() + "\n")
             handle.flush()
 
-        for event in self._events:      # anything already emitted
+        for event in self._events:
             write(event)
         self.subscribe(write)
         return handle

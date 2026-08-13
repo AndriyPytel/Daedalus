@@ -1,4 +1,3 @@
-# FreeCadCopilot/Mod/CopilotPreferences.py
 """
 Registers the addon's preference page under the "FreeCadCopilot" group.
 FreeCAD shows it as a child entry in the left-hand tree, exactly like

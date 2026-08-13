@@ -1,4 +1,3 @@
-# FreeCadCopilot/ui/accordion_widget.py
 # type: ignore  # PySide2 imported via FreeCAD shim – static analyser can't resolve it
 """
 One collapsible row in the transcript.
@@ -17,7 +16,12 @@ from ui.ui_helpers import UIHelpers
 
 
 class AccordionWidget(QtWidgets.QWidget):
-    """A toggle row with text that shows and hides beneath it."""
+    """
+    A toggle row with text that shows and hides beneath it.
+
+    The content is plain text, not rich: a traceback says `<module>`, and QLabel
+    guesses rich text by default.
+    """
 
     def __init__(self, title: str = "Thinking..."):
         super().__init__()
@@ -35,7 +39,6 @@ class AccordionWidget(QtWidgets.QWidget):
 
         self.content_area = QtWidgets.QLabel()
         self.content_area.setWordWrap(True)
-        # A traceback says `<module>`, and QLabel guesses rich text by default.
         self.content_area.setTextFormat(QtCore.Qt.PlainText)
         self.content_area.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         self.content_area.setStyleSheet(
@@ -48,12 +51,12 @@ class AccordionWidget(QtWidgets.QWidget):
         self._anim = None
         self._effect = None
 
-    # ── Public API ────────────────────────────────────────────────────────────
-
     def append_text(self, text: str):
-        # Straight concatenation: reasoning arrives as fragments and carries
-        # its own newlines. A paragraph per call, as the old QTextEdit did,
-        # broke a streamed sentence across a dozen lines.
+        """
+        Appends by straight concatenation: reasoning arrives as fragments and
+        carries its own newlines, so a paragraph break per call would break a
+        streamed sentence across a dozen lines.
+        """
         self.content_area.setText(self.content_area.text() + text)
 
     def start_pulsing(self):

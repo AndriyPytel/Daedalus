@@ -11,6 +11,18 @@ stream and honours `cache_control`.
 
 This module must stay importable without FreeCAD; the settings lookup that
 needs it is deferred into `client_from_settings`.
+
+A reasoning model left on the provider's default cap spends it all on thought
+and answers with nothing, so `_OUTPUT_BUDGET` sets one; read it like the
+Anthropic thinking budget, because the request may cost four times it. Told
+nothing about effort, kimi-k3 circled one drawing for ten minutes and never
+left its own reasoning, and "medium" bought no less of it — the cap turns that
+into an error, and `_REASONING_EFFORT` is the only dial there is against
+reaching it.
+
+`IMAGE_SUFFIXES` and `PDF_SUFFIXES` are what the providers take, and what the
+attach dialog offers. A PDF is a full attachment rather than a second-class
+one: drawings arrive as PDFs.
 """
 import os
 import re
@@ -20,14 +32,8 @@ from typing import Callable, Iterable, Iterator, List
 REASONING = "reasoning"
 TEXT = "text"
 
-# A reasoning model left on the provider's default cap spends it all on thought
-# and answers with nothing (FCC-108). Read like the Anthropic thinking budget:
-# the request may cost four times this.
 _OUTPUT_BUDGET = 8192
 
-# Told nothing, kimi-k3 circled one drawing for ten minutes and never left its
-# own reasoning; "medium" bought no less of it. The cap turns that into an
-# error; this is the only dial we have against reaching it (FCC-108).
 _REASONING_EFFORT = "low"
 
 _PREFIX = {
@@ -72,6 +78,16 @@ class LiteLLMClient:
         self._completion = completion
 
     def stream(self, messages: list, **overrides) -> Iterator[Chunk]:
+        """
+        Stream a reply to *messages*, chunk by chunk.
+
+        The reasoning effort is sent with `allowed_openai_params` because
+        LiteLLM refuses to send a param it has no table entry for, and a
+        gateway's model is exactly what it has no entry for. Usage is asked for
+        on an OpenAI-compatible endpoint because a gateway that is not asked
+        can end a stream without a word about why, and a cut-off reply then
+        looks complete.
+        """
         completion = self._completion
         if completion is None:
             import litellm
@@ -90,13 +106,9 @@ class LiteLLMClient:
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
         elif _may_reason(self.model):
             kwargs.setdefault("reasoning_effort", _REASONING_EFFORT)
-            # LiteLLM refuses to send a param it has no table entry for, and a
-            # gateway's model is exactly what it has no entry for.
             kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
         kwargs.setdefault("max_tokens",
                           _output_cap(self.model, (self.thinking_budget or _OUTPUT_BUDGET) * 4))
-        # An OpenAI-compatible gateway that is not asked for usage can end a
-        # stream without a word about why; a cut-off reply then looks complete.
         if self.model.startswith("openai/"):
             kwargs.setdefault("stream_options", {"include_usage": True})
 
@@ -183,21 +195,23 @@ _RETRY_AFTER = re.compile(
     r"retry[-_ ]?(?:delay|after)\"?\s*[:=]?\s*\"?(\d+(?:\.\d+)?\s*[smh]?)", re.I)
 _OUT_OF_CREDIT = ("insufficient_quota", "credit balance", "out of credit", "billing_hard_limit")
 _OUT_OF_QUOTA = ("quota", "resource_exhausted", "resource has been exhausted")
-# A plan's own ceiling rather than a rate: a gateway answers it with 429 too,
-# and telling the user to wait a moment is telling them to wait ten days.
-# Measured on the opencode gateway, which refused kimi-k3 mid-run with
-# "Monthly usage limit reached. Resets in 10 days."
 _USED_UP = ("usage limit", "monthly limit", "limit reached", "spend limit",
             "spending limit")
-# Google answers a per-minute limit with the same RESOURCE_EXHAUSTED body as a
-# spent daily quota; only the violated metric says whether the wait is seconds
-# or a day.
 _PER_MINUTE = ("perminute", "per minute", "per min")
 _NO_IMAGES = ("image_url", "image input", "does not support image", "image content")
 
 
 def _translate(exc, model):
-    """A LiteLLM exception as a sentence the user can act on, or None if it is not one."""
+    """
+    A LiteLLM exception as a sentence the user can act on, or None if it is not one.
+
+    A plan's own ceiling is not a rate, though a gateway answers it with a 429
+    too, and telling the user to wait a moment is telling them to wait ten
+    days: the opencode gateway refused kimi-k3 mid-run with "Monthly usage
+    limit reached. Resets in 10 days." Google answers a per-minute limit with
+    the same RESOURCE_EXHAUSTED body as a spent daily quota, so only the
+    violated metric says whether the wait is seconds or a day.
+    """
     import litellm
 
     said = str(getattr(exc, "message", "") or exc)
@@ -310,8 +324,6 @@ def litellm_model_name(provider: str, model_id: str) -> str:
     return prefix + "/" + model_id
 
 
-# What the providers take, and what the attach dialog offers. A PDF is a full
-# attachment, not a second-class one: drawings arrive as PDFs (FCC-89).
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 PDF_SUFFIXES = (".pdf",)
 
@@ -358,6 +370,9 @@ def unusable_attachments(paths, model: str) -> list:
 
     The provider's own complaint arrives after the phase has already been
     called, which is too late to be told the picture was ignored (FCC-14).
+
+    A PDF is not an image, so a run carrying nothing but PDFs is not refused
+    for a model that cannot see — the PDF check is the one that decides it.
     """
     reasons = []
     pdfs, pictures = [], []
@@ -376,8 +391,6 @@ def unusable_attachments(paths, model: str) -> list:
                 "%s is not something the provider will take. Attach a PNG, JPEG, GIF, "
                 "WebP or PDF instead." % name)
 
-    # A PDF is not an image, so a run carrying nothing but PDFs is not refused
-    # for a model that cannot see — the next check is the one that decides it.
     nothing_but_pdfs = bool(pdfs) and not pictures
     if paths and not nothing_but_pdfs and accepts_images(model) is False:
         reasons.append(
@@ -400,7 +413,13 @@ def selected_model_name(model_id: str = None) -> str:
 
 
 def client_from_settings(model_id: str = None) -> LiteLLMClient:
-    """Build a client from the provider settings page and stored keys."""
+    """
+    Build a client from the provider settings page and stored keys.
+
+    A local server's address is a setting of its own rather than the key field,
+    and a gateway's is fixed and the catalog knows it. LiteLLM wants a key even
+    where the local server ignores it.
+    """
     from utils import settings_manager
 
     from core import model_catalog
@@ -408,10 +427,7 @@ def client_from_settings(model_id: str = None) -> LiteLLMClient:
     sm = settings_manager.instance()
     provider, mid, secret = sm.get_llm_credentials(model_id)
 
-    # A local server's address is a setting of its own, not the key field (FCC-50);
-    # a gateway's is fixed and the catalog knows it.
     api_base = model_catalog.api_base_for(provider, sm.get_base_url_for_provider(provider))
-    # LiteLLM wants a key even where the local server ignores it.
     api_key = secret or ("not-needed" if api_base else "")
 
     return LiteLLMClient(

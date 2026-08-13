@@ -1,4 +1,3 @@
-# FreeCadCopilot/ui/upload_widget.py
 """
 UploadWidget + FileChipBar
 
@@ -18,12 +17,15 @@ except ImportError:
 from ui.ui_helpers import UIHelpers
 
 
-# ── Individual file chip ──────────────────────────────────────────────────────
-
 class _FileChip(QtWidgets.QWidget):
-    """[📄 filename ×] or [🖼 filename ×] removable chip."""
+    """
+    [📄 filename ×] or [🖼 filename ×] removable chip.
 
-    remove_requested = QtCore.Signal(str)  # emits the file path
+    The chip is a translucent grey rather than a colour, so it works over any
+    theme (ADR-0011).
+    """
+
+    remove_requested = QtCore.Signal(str)
 
     _ICON_MAP = {
         ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image", ".webp": "image",
@@ -65,10 +67,9 @@ class _FileChip(QtWidgets.QWidget):
             }
         """)
         self.btn.clicked.connect(lambda: self.remove_requested.emit(self.filepath))
-        self.btn.setVisible(False)  # Hidden until hover
+        self.btn.setVisible(False)
         self.layout.addWidget(self.btn)
 
-        # A translucent grey, not a colour: it works over any theme (ADR-0011).
         self.setStyleSheet("""
             _FileChip {
                 border-radius: 12px;
@@ -86,15 +87,13 @@ class _FileChip(QtWidgets.QWidget):
         super().leaveEvent(event)
 
 
-# ── Chip container bar ────────────────────────────────────────────────────────
-
 class FileChipBar(QtWidgets.QWidget):
     """
     Horizontal strip of FileChip widgets shown above the input field.
     Hides itself when no files are attached.
     """
 
-    file_removed = QtCore.Signal(str)  # the user took a chip off the bar
+    file_removed = QtCore.Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -146,15 +145,13 @@ class FileChipBar(QtWidgets.QWidget):
         return list(self._files)
 
 
-# ── Upload trigger button ─────────────────────────────────────────────────────
-
 class UploadWidget(QtWidgets.QWidget):
     """
     A minimal "+" icon button that opens a file dialog.
     Chips are rendered by the FileChipBar (owned by copilot_panel).
     """
 
-    file_attached = QtCore.Signal(str)   # emits path of newly attached file
+    file_attached = QtCore.Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -184,8 +181,10 @@ class UploadWidget(QtWidgets.QWidget):
         self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=20, on=self.upload_btn))
 
     def open_file_dialog(self):
-        # PDFs are offered because they are accepted: the chip icon at
-        # `_ICON_MAP` has always dressed a PDF as attachable (FCC-89).
+        """
+        Offers PDFs as well as images because they are accepted: the chip icon
+        map dresses a PDF as attachable.
+        """
         files, _ = QtWidgets.QFileDialog.getOpenFileNames(
             self, "Attach a drawing", "",
             "Drawings (*.png *.jpg *.jpeg *.gif *.webp *.pdf);;All (*)"
@@ -199,14 +198,15 @@ class UploadWidget(QtWidgets.QWidget):
         """
         Call this from the QTextEdit's keyPressEvent (Ctrl+V).
         Returns True if an image was found and handled (suppress default paste).
+
+        The pixmap is built with fromImage rather than QPixmap(image): Qt5 has
+        no QImage constructor, PySide2 takes the call anyway and hands back a
+        null pixmap, and save() then writes that as a blank.
         """
         clipboard = QtWidgets.QApplication.clipboard()
         mime = clipboard.mimeData()
 
         if mime.hasImage():
-            # fromImage, not QPixmap(image): Qt5 has no QImage constructor, and
-            # PySide2 takes the call anyway and hands back a null pixmap, which
-            # save() then writes as a blank (FCC-48).
             pix = QtGui.QPixmap.fromImage(clipboard.image())
             if pix.isNull():
                 from utils.logger import logger

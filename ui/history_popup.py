@@ -7,7 +7,14 @@ except ImportError:
 from ui.ui_helpers import UIHelpers
 
 class HistoryItem(QtWidgets.QFrame):
-    """A single row in the history list with selectable title and delete button."""
+    """
+    A single row in the history list with selectable title and delete button.
+
+    The list is scanned by name, so the name takes the room and the time is
+    what gives way — see resizeEvent. The time is dimmed by an effect rather
+    than a colour: the theme decides what the text is, and this only says the
+    time is worth less than the name (ADR-0011).
+    """
     selected = QtCore.Signal(int)
     deleted = QtCore.Signal(int)
 
@@ -26,8 +33,6 @@ class HistoryItem(QtWidgets.QFrame):
         self.title_label = QtWidgets.QLabel(name)
         self.title_label.setObjectName("HistoryTitle")
         self.title_label.setStyleSheet("font-weight: 500; font-size: 13px; background: transparent;")
-        # The list is scanned by name, so the name takes the room and the time
-        # is what gives way — see resizeEvent.
         self.title_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
                                        QtWidgets.QSizePolicy.Preferred)
 
@@ -35,8 +40,6 @@ class HistoryItem(QtWidgets.QFrame):
         self.time_label.setObjectName("HistoryTime")
         self.time_label.setStyleSheet("font-size: 11px; background: transparent;")
         self.time_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        # An effect, not a colour: the theme decides what the text is, this only
-        # says the time is worth less than the name (ADR-0011).
         dim = QtWidgets.QGraphicsOpacityEffect(self.time_label)
         dim.setOpacity(0.6)
         self.time_label.setGraphicsEffect(dim)
@@ -104,6 +107,9 @@ class HistoryItem(QtWidgets.QFrame):
 class HistoryPopup(QtWidgets.QFrame):
     """
     Antigravity-style floating popup with session list.
+
+    The container is opaque, so the theme paints it: translucent needed a
+    colour of its own (ADR-0011).
     """
     session_selected = QtCore.Signal(int)
     session_deleted = QtCore.Signal(int)
@@ -114,7 +120,6 @@ class HistoryPopup(QtWidgets.QFrame):
         self.setObjectName("HistoryPopup")
         self.setFixedHeight(400)
 
-        # Opaque, so the theme paints it: translucent needed a colour of its own (ADR-0011).
         container = QtWidgets.QFrame(self)
         container.setObjectName("PopupContainer")
         frame = QtWidgets.QVBoxLayout(self)

@@ -13,6 +13,10 @@ So the wording lives here, once, with no Qt in sight. What is left to each
 narrator is where a line goes — a chat bubble, a collapsible row, a status
 line, stdout — and the shapes that are not prose at all: the Steps of a Plan,
 a block of code, a picture.
+
+The Plan Gate's three answers are written out here as well. The words are
+`core.loop`'s, but importing the loop in order to narrate it would point the
+dependency the wrong way.
 """
 from dataclasses import dataclass
 
@@ -23,8 +27,6 @@ from core.events import (
     STEP_STARTED, TOOL_RESULT,
 )
 
-# The Plan Gate's three answers, written out. The words are `core.loop`'s, but
-# importing the loop to narrate it would point the dependency the wrong way.
 _GATE_SAID = {
     None: "Waiting for you to approve the Plan…",
     "approve": "Approved — running the Plan.",
@@ -62,7 +64,26 @@ _NOTHING = Narration()
 
 
 def narrate(event) -> Narration:
-    """What *event* says. Never raises on an unknown kind — it just says nothing."""
+    """
+    What *event* says. Never raises on an unknown kind — it just says nothing.
+
+    Several kinds say less than they carry. The user's own answer is already in
+    the transcript, so what is worth saying is that nobody gave one — or that
+    nobody had to, because the drawing answered it. A design is laid out rather
+    than shown as the JSON it travels as: the Gate is where a misreading is
+    cheap to correct, and a dump is not read. A part is given by its path,
+    because the file is the point — a reading is corrected by opening it, and
+    one run is compared with the last by diffing two of them. The Gate is a
+    status rather than a line, since the panel already puts the question in a
+    card of its own and the run is only waiting; except where nobody was asked,
+    because a standing approval is a decision the user made once and is having
+    applied again, and it says so rather than looking like a Gate that was
+    skipped. A revision names which one it is of how many and what caused it,
+    because the reason alone never said that the same wall had been hit three
+    times. The acceptance checks get a line of their own and never the Review
+    verdict's, because the checks are code and Review deliberately never sees
+    code.
+    """
     data = event.data
     kind = event.kind
 
@@ -70,9 +91,6 @@ def narrate(event) -> Narration:
         return Narration(line=data["text"])
 
     if kind == ANSWER:
-        # The user's own answer is already in the transcript; what is worth
-        # saying is that nobody gave one (FCC-25) — or that nobody had to,
-        # because the drawing answered it (FCC-90).
         by = data.get("by")
         if by == "drawing":
             return Narration(line="Looked at the drawing again — " + data["text"])
@@ -85,22 +103,12 @@ def narrate(event) -> Narration:
         return Narration(line="Attached: " + ", ".join(names)) if names else _NOTHING
 
     if kind == DESIGN:
-        # The structure, laid out, rather than the JSON it travels as: the Gate
-        # is where a misreading is cheap to correct, and a dump is not read.
         return Narration(title="What the part is", body=render(data["model"]))
 
     if kind == PART:
-        # The path, because the file is the point: a reading is corrected by
-        # opening it, and a run is compared with the last one by diffing two of
-        # them (FCC-108).
         return Narration(line="The part as read: %s" % data.get("path", ""))
 
     if kind == GATE:
-        # A status rather than a line: the panel already puts the question in a
-        # card of its own, and the run is only waiting, not saying anything.
-        # Except where nobody was asked — a standing approval is a decision the
-        # user made once and is having applied again, and it says so rather
-        # than looking like a Gate that was skipped (FCC-101).
         if data.get("standing") and data.get("decision"):
             return Narration(status="Approved already — carrying on without asking.")
         return Narration(status=_GATE_SAID.get(data.get("decision"),
@@ -117,8 +125,6 @@ def narrate(event) -> Narration:
             body="\n".join("• " + str(entry) for entry in entries))
 
     if kind == PLAN_REVISED:
-        # Which revision of how many, and what caused it: the reason alone never
-        # said that the same wall had been hit three times.
         counted = (" (%d of %d, %s)" % (data["revision"], data["of"], data["because"])
                    if data.get("of") else "")
         return Narration(line="Revised the Plan%s: %s" % (counted, data["reason"]))
@@ -141,8 +147,6 @@ def narrate(event) -> Narration:
                               % (data["label"], created))
 
     if kind == ASSERTION:
-        # Its own line, never REVIEW_VERDICT's: the checks are code, and Review
-        # deliberately never sees code (ADR-0003).
         return Narration(line=_assertion_said(data))
 
     if kind == REVIEW_VERDICT:

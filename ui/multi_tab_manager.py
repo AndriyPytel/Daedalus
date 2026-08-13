@@ -1,4 +1,3 @@
-# FreeCadCopilot/ui/multi_tab_manager.py
 """
 ChatSessionManager — the stack of chat areas, one per Session.
 
@@ -29,10 +28,10 @@ class ChatSessionManager(QtWidgets.QWidget):
     - The header title label shows the active Session's name
     """
 
-    session_changed = QtCore.Signal(int)   # emitted when the active session switches
-    session_added   = QtCore.Signal(int, str) # idx, name
-    session_removed = QtCore.Signal(int)      # idx
-    session_renamed = QtCore.Signal(int, str) # idx, new_name
+    session_changed = QtCore.Signal(int)
+    session_added   = QtCore.Signal(int, str)
+    session_removed = QtCore.Signal(int)
+    session_renamed = QtCore.Signal(int, str)
 
     def __init__(self, sessions=None):
         super().__init__()
@@ -45,10 +44,24 @@ class ChatSessionManager(QtWidgets.QWidget):
 
         self.sessions = sessions if sessions is not None else Sessions()
 
-    # ── QScrollArea style helper ──────────────────────────────────────────────
-
     @staticmethod
     def _make_list() -> QtWidgets.QScrollArea:
+        """
+        One scrolling column for a Session's transcript.
+
+        The column ends in a stretch rather than being laid out with AlignTop:
+        an aligned item is given its sizeHint and nothing else, and a wrapped
+        label's sizeHint is a guess made at a width this column does not have,
+        so every message comes out short of its own text, clipped, with the
+        reserved space left blank.
+
+        The view follows the run only from the bottom, so a user scrolled back
+        to read keeps their place. "At the bottom" is measured against the
+        range the user last saw, not the one the new message just created.
+
+        The scroll animation is held on the scroll area because nothing else
+        references it and Qt would otherwise collect it mid-flight.
+        """
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
@@ -58,10 +71,6 @@ class ChatSessionManager(QtWidgets.QWidget):
         vl = QtWidgets.QVBoxLayout(container)
         vl.setSpacing(2)
         vl.setContentsMargins(0, 0, 0, 0)
-        # A stretch, not AlignTop: an aligned item is given its sizeHint and
-        # nothing else, and a wrapped label's sizeHint is a guess made at a
-        # width this column does not have — every message came out short of
-        # its own text, clipped, with the reserved space left blank.
         vl.addStretch(1)
         scroll.setWidget(container)
 
@@ -69,12 +78,8 @@ class ChatSessionManager(QtWidgets.QWidget):
         anim = QtCore.QPropertyAnimation(vbar, b"value")
         anim.setDuration(250)
         anim.setEasingCurve(QtCore.QEasingCurve.OutCubic)
-        scroll._scroll_anim = anim  # prevent GC
+        scroll._scroll_anim = anim
 
-        # Follow the run only from the bottom. Scrolled back to read, the user
-        # keeps their place — the transcript used to yank itself away on the
-        # next event. "At the bottom" is measured against the range the user
-        # last saw, not the one the new message just created.
         scroll._last_max = vbar.maximum()
 
         def _is_following():
@@ -124,8 +129,6 @@ class ChatSessionManager(QtWidgets.QWidget):
         """)
         container.setObjectName("scrollContainer")
         return scroll
-
-    # ── The Sessions, through the pages that show them ───────────────────────
 
     def _new_page(self):
         """One chat area, in a stack page of its own, at the end."""
@@ -219,8 +222,6 @@ class ChatSessionManager(QtWidgets.QWidget):
 
     def mark_restored(self, index: int) -> bool:
         return self.sessions.mark_restored(index)
-
-    # ── Session switching ─────────────────────────────────────────────────────
 
     def switch_to(self, index: int):
         if 0 <= index < self.stack.count():

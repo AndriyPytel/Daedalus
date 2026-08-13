@@ -9,6 +9,9 @@ as a traceback the assistant can correct against (ADR-0002).
 
 Nothing here imports FreeCAD. The parent is the addon's process; the only
 FreeCAD in play is the child's.
+
+Run as a script it is a smoke check:
+`python -m core.preflight "doc.addObject('Part::Box','Box')"`.
 """
 import json
 import os
@@ -36,13 +39,17 @@ _CANDIDATES = (
 
 @dataclass
 class PreflightResult:
-    """What the apply Tool sees: it worked, or here is why it did not."""
+    """
+    What the apply Tool sees: it worked, or here is why it did not.
+
+    `created`, `deleted` and `modified` are what the Step actually did,
+    observed rather than inferred from the code.
+    """
 
     ok: bool
     traceback: str = ""
     render: str = None
     objects: list = field(default_factory=list)
-    # What the Step actually did, observed rather than inferred from the code.
     created: list = field(default_factory=list)
     deleted: list = field(default_factory=list)
     modified: list = field(default_factory=list)
@@ -102,8 +109,6 @@ class PreflightWorker:
         self._draining = None
         self.restarts = 0
 
-    # ── process lifecycle ────────────────────────────────────────────────────
-
     @property
     def alive(self):
         return self._process is not None and self._process.poll() is None
@@ -113,6 +118,14 @@ class PreflightWorker:
         return self._process.pid if self._process else None
 
     def start(self):
+        """
+        Bring the worker up and wait for it to say it is ready.
+
+        The pipes are decoded as UTF-8 rather than by the locale: inside
+        FreeCAD.app neither LANG nor LC_ALL is set, so the locale resolves to
+        ascii and the first non-ASCII byte the worker emits kills the thread
+        reading that stream.
+        """
         if self.alive:
             return
         self._process = subprocess.Popen(
@@ -121,9 +134,6 @@ class PreflightWorker:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            # Not the locale's decoder: inside FreeCAD.app neither LANG nor
-            # LC_ALL is set, so it resolves to ascii and the first non-ASCII
-            # byte the Worker emits kills the thread reading that stream.
             encoding="utf-8",
             errors="replace",
             bufsize=1,
@@ -164,8 +174,6 @@ class PreflightWorker:
     def __exit__(self, *_):
         self.kill()
 
-    # ── the one thing this class is for ──────────────────────────────────────
-
     def check(self, code, document=None, render_path=None, timeout=None):
         """
         Run *code* against a fresh copy of *document* in the worker.
@@ -200,6 +208,10 @@ class PreflightWorker:
 
         Hands back the reply, or None and the sentence saying why there is
         none — which the caller phrases as whatever its own result is.
+
+        A worker can die between the liveness check and the write, so its last
+        words are read before the restart replaces them with a live worker's
+        silence.
         """
         if not self.alive:
             self.start()
@@ -208,8 +220,6 @@ class PreflightWorker:
             self._process.stdin.write(json.dumps(request) + "\n")
             self._process.stdin.flush()
         except (BrokenPipeError, ValueError):
-            # It died between the liveness check and the write. Read its last
-            # words before restart() replaces them with a live worker's silence.
             died = self._died_message("before it could start")
             self.restart()
             return None, died
@@ -227,10 +237,15 @@ class PreflightWorker:
                           % (timeout, doing))
         return None, died
 
-    # ── plumbing ─────────────────────────────────────────────────────────────
-
     def _pump(self):
-        """Forward tagged responses; FreeCAD's own banner on stdout is noise."""
+        """
+        Forward tagged responses; FreeCAD's own banner on stdout is noise.
+
+        The None put on the queue at the end is the only "the worker is gone"
+        signal there is. It is sent from a finally so that a reader dying is a
+        prompt visible failure rather than every pending request waiting out
+        its timeout.
+        """
         process = self._process
         lines = self._lines
         try:
@@ -238,9 +253,6 @@ class PreflightWorker:
                 if line.startswith(SENTINEL):
                     lines.put(line[len(SENTINEL):])
         finally:
-            # The only "the worker is gone" signal there is. Sent from a
-            # finally so that a reader dying is a prompt visible failure
-            # rather than every pending request waiting out its timeout.
             lines.put(None)
 
     def _drain_stderr(self):
@@ -294,7 +306,6 @@ def copy_of(document):
 
 
 if __name__ == "__main__":
-    # Smoke check: python -m core.preflight "doc.addObject('Part::Box','Box')"
     code = sys.argv[1] if len(sys.argv) > 1 else "doc.addObject('Part::Box', 'Box')"
     with PreflightWorker() as worker:
         result = worker.check(code, render_path="/tmp/preflight_smoke.png")

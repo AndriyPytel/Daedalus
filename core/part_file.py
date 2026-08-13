@@ -9,7 +9,19 @@ wrong most often and it was the only part with no record of its own (FCC-108).
 
 One reading is one file. A second reading of the same sheet is a second file
 beside the first, named by when it was taken, so "what did the reading change"
-is a diff rather than an afternoon with two transcripts.
+is a diff rather than an afternoon with two transcripts. The name carries the
+sheet, enough of its digest to tell two drawings of the same name apart and not
+so much that the name stops being readable, and the time the reading was taken:
+sortable, so a sheet's readings list in the order they were taken, and down to
+the microsecond, so that two taken inside one second are still two names and the
+sort still holds. A counter would not — `-1` sorts before `.yaml`. The file also
+says what schema it is, so one written by an older addon can be told apart from
+one this code understands.
+
+Readings live beside the transcripts, in the addon's own directory, which is
+where a user already goes to find a run, unless the caller says where. That
+default is rebindable, because a suite that wrote its fixtures there would fill
+the very directory a user reads.
 
 What is in the file is the requirement. A user who opens it and changes an axis
 has changed what the run must satisfy, and nothing here merges their edit with
@@ -26,28 +38,15 @@ except ImportError:  # pragma: no cover - the addon installs PyYAML
 
 from core.design import SECTIONS
 
-# What the file claims to be, so a file written by an older addon can be told
-# apart from one this code understands.
 SCHEMA = "fcc.part/1"
 
-# How the reading's time is written into the name. Sortable, so a sheet's
-# readings list in the order they were taken — and down to the microsecond, so
-# that two taken inside one second are still two names and the sort still
-# holds. A counter would not: `-1` sorts before `.yaml`.
 WHEN = "%Y%m%d-%H%M%S-%f"
 
-# Enough of the sheet's digest to tell two drawings of the same name apart, and
-# not so much that the name stops being readable.
 _DIGEST = 8
 
-# Where readings live when the caller does not say: beside the transcripts, in
-# the addon's own directory, which is where a user already goes to find a run.
-# Rebindable, because a suite that wrote its fixtures here would fill the very
-# directory a user reads.
 WHERE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                      "logs", "parts")
 
-# The two keys the file carries that are not the part.
 _PROVENANCE = "read_from"
 _SCHEMA_KEY = "schema"
 

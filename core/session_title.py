@@ -6,13 +6,15 @@ Separate from the run on purpose: `plan()` runs again on every revision
 mid-run or need bookkeeping of its own (FCC-44).
 
 Importable without FreeCAD — the settings lookup is deferred into `generate`.
+
+A title longer than the ceiling is thrown away: a title long enough to be a
+sentence is a model that ignored the instruction, and a sentence in the picker
+is the thing this module exists to remove.
 """
 from core.llm import TEXT
 
 LIMIT = 40
 
-# A title long enough to be a sentence is a model that ignored the instruction,
-# and a sentence in the picker is the thing this ticket exists to remove.
 CEILING = 60
 
 PROMPT = (
@@ -33,14 +35,17 @@ def fallback(intent: str) -> str:
 
 
 def generate(intent: str, model_id: str = None, client=None) -> str:
-    """The generated title, or "" when the provider gave nothing usable."""
+    """
+    The generated title, or "" when the provider gave nothing usable.
+
+    The client is built inside the try rather than before it: building it raises
+    when the model cannot be resolved, and an exception escaping here leaves the
+    Session silently unnamed.
+    """
     try:
         if client is None:
             from core.llm import client_from_settings
 
-            # Inside the try, not before it: building the client raises when the
-            # model cannot be resolved, and that escaped `_TitleThread.run`
-            # unhandled, so the Session was silently never named (FCC-44).
             client = client_from_settings(model_id)
         said = "".join(chunk.text for chunk in client.stream(
             [{"role": "system", "content": PROMPT},

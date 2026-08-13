@@ -14,6 +14,9 @@ Offline mode is not a mock of LiteLLM — it feeds Anthropic's real SSE event
 shapes through LiteLLM's real Anthropic parser and its real request transform,
 and asserts on what comes out. Live mode is the confirmation that the wire
 agrees with the code.
+
+``RECORDED_THINKING_STREAM`` is Anthropic's documented extended-thinking
+stream, verbatim event shapes.
 """
 import json
 import os
@@ -21,7 +24,6 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Anthropic's documented extended-thinking stream, verbatim event shapes.
 RECORDED_THINKING_STREAM = [
     {"type": "message_start", "message": {"id": "msg_spike", "type": "message", "role": "assistant",
                                           "model": "claude-3-7-sonnet-20250219", "content": [],

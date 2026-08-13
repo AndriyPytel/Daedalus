@@ -1,4 +1,3 @@
-# FreeCadCopilot/utils/settings_manager.py
 """
 SettingsManager – Singleton that owns all persistent settings for FreeCadCopilot.
 
@@ -18,24 +17,28 @@ _PARAM_PATH = "User parameter:BaseApp/Preferences/FreeCadCopilot"
 class _SettingsManager(QObject):
     """
     Internal singleton implementation.  Access via ``settings_manager.instance()``.
+
+    ``api_keys_changed`` is emitted after any key add, remove or edit;
+    ``base_urls_changed`` after a local server's address changes;
+    ``default_model_changed`` when the default model preference changes; and
+    ``last_model_changed`` when the chat UI's last-used model changes.
+
+    A local server's address is not a secret and is not a key. It lives in its
+    own setting so it is never password-masked, never stored beside the keys,
+    and a server that wants both an address and a token has room for both.
     """
 
-    # ── Signals ──────────────────────────────────────────────────────────────
-    api_keys_changed    = Signal(list)   # emitted after any key add/remove/edit
-    base_urls_changed   = Signal(dict)   # emitted after a local server's address changes
-    default_model_changed = Signal(str)  # emitted when the default model pref changes
-    last_model_changed  = Signal(str)    # emitted when the chat-UI last-used model changes
+    api_keys_changed    = Signal(list)
+    base_urls_changed   = Signal(dict)
+    default_model_changed = Signal(str)
+    last_model_changed  = Signal(str)
 
     def __init__(self):
         super().__init__()
 
-    # ── Internal helpers ─────────────────────────────────────────────────────
-
     @staticmethod
     def _grp():
         return FreeCAD.ParamGet(_PARAM_PATH)
-
-    # ── API Keys ─────────────────────────────────────────────────────────────
 
     def get_api_keys(self) -> list:
         """Return list of {provider, api_key} dicts."""
@@ -68,13 +71,6 @@ class _SettingsManager(QObject):
         keys.append({"provider": provider, "api_key": key})
         self.set_api_keys(keys)
 
-    # ── Base URLs ────────────────────────────────────────────────────────────
-    #
-    # A local server's address is not a secret and is not a key. It lives in its
-    # own setting so it is never password-masked, never stored beside the keys,
-    # and a server that wants both an address and a token has room for both
-    # (FCC-50).
-
     def get_base_urls(self) -> dict:
         """Return {provider: base_url} for every provider that has an address."""
         raw = self._grp().GetString("BaseUrls", "{}")
@@ -103,8 +99,6 @@ class _SettingsManager(QObject):
             urls.pop(provider, None)
         self.set_base_urls(urls)
 
-    # ── Sessions ─────────────────────────────────────────────────────────────
-
     def get_sessions(self) -> list:
         """
         The Session index: name, created_at, document, and the log's path.
@@ -122,16 +116,12 @@ class _SettingsManager(QObject):
     def set_sessions(self, sessions: list):
         self._grp().SetString("Sessions", json.dumps(sessions))
 
-    # ── Default model (set in Preferences) ──────────────────────────────────
-
     def get_default_model(self) -> str:
         return self._grp().GetString("DefaultModel", "")
 
     def set_default_model(self, model_id: str):
         self._grp().SetString("DefaultModel", model_id)
         self.default_model_changed.emit(model_id)
-
-    # ── Naming model (set in Preferences) ───────────────────────────────────
 
     def get_naming_model(self) -> str:
         """
@@ -144,8 +134,6 @@ class _SettingsManager(QObject):
 
     def set_naming_model(self, model_id: str):
         self._grp().SetString("NamingModel", model_id)
-
-    # ── Last-used model (set by Chat UI, persists across sessions) ────────────
 
     def get_last_model(self) -> str:
         last = self._grp().GetString("LastUsedModel", "")
@@ -162,13 +150,14 @@ class _SettingsManager(QObject):
 
 
 
-    # ── Convenience: credentials for LLM ────────────────────────────────────
-
     def get_llm_credentials(self, model_id: str = None):
         """
         Returns (provider, model_id, api_key) for the given model_id,
         or for the last-/default-model if model_id is None.
         Raises ValueError if not configured.
+
+        A local server is configured by its address; the token is optional, so
+        a missing key is only an error when there is no address either.
         """
         from utils import provider_manager
         mid = model_id or self.get_last_model()
@@ -186,14 +175,11 @@ class _SettingsManager(QObject):
         provider = entry["provider"]
         api_key  = self.get_api_key_for_provider(provider)
         if not api_key and not self.get_base_url_for_provider(provider):
-            # A local server is configured by its address; the token is optional.
             raise ValueError(
                 f"No API key for provider '{provider}'. Add one in Preferences → API & Providers."
             )
         return provider, mid, api_key
 
-
-# ── Singleton accessor ────────────────────────────────────────────────────────
 
 @lru_cache(maxsize=None)
 def instance() -> _SettingsManager:

@@ -1,4 +1,3 @@
-# FreeCadCopilot/utils/logger.py
 """
 Session-aware logging for FreeCAD Copilot.
 
@@ -17,10 +16,8 @@ import platform
 import traceback
 from datetime import datetime
 
-# ── Constants ─────────────────────────────────────────────────────────────────
-MAX_LOG_FILES = 10   # rotating window of session files to keep
+MAX_LOG_FILES = 10
 
-# ── Session log file (created once at import time) ────────────────────────────
 _session_log_file: str = ""
 
 
@@ -49,8 +46,6 @@ def _setup_session_log() -> str:
 _session_log_file = _setup_session_log()
 
 
-# ── FreeCAD console handler ───────────────────────────────────────────────────
-
 class _FreeCADHandler(logging.Handler):
     def emit(self, record):
         msg = self.format(record)
@@ -59,8 +54,6 @@ class _FreeCADHandler(logging.Handler):
         else:
             FreeCAD.Console.PrintMessage(f"{msg}\n")
 
-
-# ── Logger factory ────────────────────────────────────────────────────────────
 
 def get_logger(name: str = "FreeCadCopilot") -> logging.Logger:
     lg = logging.getLogger(name)
@@ -89,8 +82,6 @@ def get_logger(name: str = "FreeCadCopilot") -> logging.Logger:
 
 logger: logging.Logger = get_logger()
 
-
-# ── Public helpers ────────────────────────────────────────────────────────────
 
 def log_exception(exc: Exception, context: str = "") -> None:
     """

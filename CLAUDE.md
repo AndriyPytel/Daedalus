@@ -18,3 +18,28 @@ In the YouTrack knowledge base, not in the repo — `FCC-A-3` Project Overview, 
 
 Work for this repo lives in YouTrack, not GitHub Issues. Project config: `youtrack.md`.
 The `myga-*` skills drive it; `docs/agents/issue-tracker.md` has the plain `yt` conventions.
+
+## Comments
+
+No comments. A measurement, a constraint, a rejected alternative — anything a
+reader has to know and cannot read off the code — goes in the docstring of the
+function, class or module it belongs to. That is where someone looking for it
+goes, and it is what `help()` prints.
+
+Never in a comment, and never anywhere: the story of the change (`used to be`,
+`had been`, `now also`), the statistics of the run that produced it, or a
+ticket id. The commit message and the ticket hold those, and they are the two
+places that stay true.
+
+Machine-readable pragmas — `# type:`, `# noqa:`, a shebang, an encoding line —
+are not prose and are exempt.
+
+`tests/test_the_code_says_why_not_what.py` enforces this over `core`, `ui`,
+`utils`, `tools` and `Mod`.
+
+## Measurements
+
+A number in an Acceptance Criterion is produced by a test, from the sheets in
+`tests/modelmania` or the sessions in `logs/`. A measurement that lives only in
+a docstring or a commit message is a claim: the next change moves it and
+nothing says so.

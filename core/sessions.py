@@ -79,8 +79,6 @@ class Sessions:
         self._index = index if index is not None else SettingsIndex()
         self._sessions = []
 
-    # ── the durable half ─────────────────────────────────────────────────────
-
     def _save(self):
         """
         Write the index.
@@ -128,8 +126,6 @@ class Sessions:
         session.setdefault("restored", False)
         self._sessions.append(session)
         return len(self._sessions) - 1
-
-    # ── naming ───────────────────────────────────────────────────────────────
 
     def begin(self, index: int, name: str):
         """
@@ -193,11 +189,15 @@ class Sessions:
         return self._sessions.index(session)
 
     def rename(self, index: int, new_name: str) -> bool:
-        """The log's path does not follow the name, so a rename cannot orphan it."""
+        """
+        The log's path does not follow the name, so a rename cannot orphan it.
+
+        A name the user chose is marked as theirs, and is never replaced by a
+        generated one, now or later.
+        """
         if not 0 <= index < len(self._sessions) or not new_name.strip():
             return False
         self._sessions[index]["name"] = new_name.strip()
-        # A name the user chose is never replaced by a generated one, now or later.
         self._sessions[index]["manual"] = True
         self._save()
         return True
@@ -210,8 +210,6 @@ class Sessions:
                 self._save()
                 return True
         return False
-
-    # ── reading and removing ─────────────────────────────────────────────────
 
     def remove(self, index: int) -> bool:
         if not 0 <= index < len(self._sessions):

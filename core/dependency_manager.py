@@ -1,4 +1,24 @@
-# FreeCadCopilot/core/dependency_manager.py
+"""
+The Python packages the addon needs, installed into FreeCAD's own directory for
+user-installed packages.
+
+pymupdf is what makes a PDF a drawing rather than an opaque attachment: the page
+is rendered at the DPI its own callouts ask for, and its text layer is the exact
+list of what is printed on it. Without it `sheet_reader` says so and the sheet
+is sent whole. PyYAML is what the part Design is written down as; litellm
+already pulls it in, so it is here to be named rather than to be new — a reading
+that silently stopped being written because a transitive dependency moved would
+otherwise be discovered by its absence, months later.
+
+`pip install --target` without `--upgrade` refuses to overwrite a file that is
+already there but writes the new dist-info anyway: installing six 1.15.0 and
+then six 1.16.0 leaves `six-1.16.0.dist-info` beside `six-1.15.0.dist-info`, and
+`six.py` still reporting `__version__ = "1.15.0"`. That is how two pydantic and
+two pydantic_core versions come to sit side by side, and how a pydantic can end
+up not matching its pydantic_core. `--upgrade` fixes the code, but it does not
+remove the superseded dist-info, so the metadata still describes two installs
+where there is one — which is what `prune_superseded` is for.
+"""
 import csv
 import FreeCAD
 import os
@@ -11,20 +31,11 @@ from PySide.QtGui import QMessageBox
 
 _DIST_INFO = re.compile(r"^(?P<name>.+?)-(?P<version>\d[^-]*)\.dist-info$")
 
-# pip name -> import name for the addon's required packages; the two differ for Pillow
 REQUIRED_PACKAGES = {
     "litellm": "litellm",
     "numpy": "numpy",
     "Pillow": "PIL",
-    # What makes a PDF a drawing rather than an opaque attachment: the page is
-    # rendered here at the DPI its own callouts ask for, and its text layer is
-    # the exact list of what is printed on it (FCC-102). Missing, `sheet_reader`
-    # says so and the sheet is sent whole, the way it was before.
     "pymupdf": "pymupdf",
-    # What the part Design read is written down as (FCC-108). litellm already
-    # pulls it in, so it is here to be named rather than to be new: a reading
-    # that silently stopped being written because a transitive dependency moved
-    # would be discovered by its absence, months later.
     "PyYAML": "yaml",
 }
 
@@ -37,20 +48,6 @@ def get_target_directory():
     if not os.path.exists(path):
         os.makedirs(path)
     return path
-
-# ── Layered installs (FCC-28) ─────────────────────────────────────────────────
-#
-# `pip install --target` without `--upgrade` refuses to overwrite a file that is
-# already there but writes the new dist-info anyway. Measured: installing
-# six 1.15.0 and then six 1.16.0 leaves `six-1.16.0.dist-info` beside
-# `six-1.15.0.dist-info`, and `six.py` still reporting `__version__ = "1.15.0"`.
-# That is how two pydantic and two pydantic_core versions came to sit side by
-# side, and how a pydantic can end up not matching its pydantic_core.
-#
-# `--upgrade` fixes the code. It does not remove the superseded dist-info, so
-# the metadata still describes two installs where there is one — which is what
-# `prune_superseded` is for.
-
 
 def _normalised(name):
     """PEP 503: `pydantic_core` and `Pydantic-Core` are the same distribution."""
@@ -91,7 +88,9 @@ def prune_superseded(target_directory):
 
     A superseded install's files are removed only where the surviving version
     does not claim them too — `--upgrade` has already overwritten the shared
-    ones, and deleting those would break the install this is repairing.
+    ones, and deleting those would break the install this is repairing. A path
+    a RECORD claims outside the target directory is left alone: a RECORD is not
+    a licence to delete elsewhere.
 
     Returns the dist-info directory names removed.
     """
@@ -106,7 +105,7 @@ def prune_superseded(target_directory):
             for relative in _recorded_files(superseded) - kept_files:
                 path = os.path.normpath(os.path.join(target_directory, relative))
                 if not path.startswith(os.path.normpath(target_directory)):
-                    continue        # a RECORD is not a licence to delete elsewhere
+                    continue
                 try:
                     os.remove(path)
                 except OSError:
@@ -153,15 +152,12 @@ def install_package(package_name, target_directory):
         python_exe,
         "-m", "pip", "install",
         "--target", target_directory,
-        # Without this pip declines to overwrite a file that is already there,
-        # and installs the new metadata over the old code (FCC-28).
         "--upgrade",
         "--disable-pip-version-check",
         package_name
     ]
 
     try:
-        # Using subprocess.run for a simpler blocking call
         process = subprocess.run(
             command,
             check=True,
@@ -186,14 +182,17 @@ def run_dependency_check():
     The main function to check for and install missing dependencies.
     It identifies missing packages, asks the user for permission to install,
     and then proceeds with the installation, recommending a restart upon completion.
+
+    Superseded versions are pruned before the missing check rather than after
+    it: a directory that already has everything is exactly the one an earlier
+    layered install left behind, and returning early would never repair it.
+    Caches are invalidated after each install, or the import system does not
+    see the package that was just put there.
     """
     target_dir = get_target_directory()
     if target_dir not in sys.path:
         sys.path.insert(0, target_dir)
 
-    # Before the missing check, not after it: a directory that already has
-    # everything is exactly the one an earlier layered install left behind, and
-    # returning early would never repair it (FCC-28).
     superseded = prune_superseded(target_dir)
     if superseded:
         FreeCAD.Console.PrintMessage(
@@ -206,7 +205,6 @@ def run_dependency_check():
         FreeCAD.Console.PrintMessage("[FreeCadCopilot] All required packages are installed.\n")
         return
 
-    # Ask user for permission to install
     msg_box = QMessageBox()
     msg_box.setIcon(QMessageBox.Information)
     msg_box.setText("FreeCadCopilot - Additional Dependencies Required")
@@ -223,7 +221,6 @@ def run_dependency_check():
         QMessageBox.warning(None, "Dependencies Missing", "Required packages were not installed. The FreeCadCopilot addon may not function correctly.")
         return
 
-    # Install missing packages
     FreeCAD.Console.PrintMessage("--- [FreeCadCopilot] Starting dependency installation ---\n")
     all_successful = True
     for package in missing:
@@ -231,7 +228,7 @@ def run_dependency_check():
         success, error_msg = install_package(package, target_dir)
         if success:
             FreeCAD.Console.PrintMessage(f"'{package}' installed successfully.\n")
-            importlib.invalidate_caches() # Crucial for the import system to recognize the new package
+            importlib.invalidate_caches()
         else:
             QMessageBox.critical(None, "Installation Error", f"Failed to install '{package}':\n\n{error_msg}\n\nPlease check the Report view for details.")
             all_successful = False
