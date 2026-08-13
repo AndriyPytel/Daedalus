@@ -169,6 +169,14 @@ again. So the answer is never handed to you beside the description — it is *in
 the description, flagged `read` where the sheet said it, and the Acceptance
 entry it feeds says the same.
 
+A question about the *build* is not put to anybody: what material cards this
+FreeCAD has and what uuid one carries, what types it can create, what a property
+is called and how its values are spelt. No drawing prints any of that. Ask it and
+you are handed `tools_you_may_look_with` and asked for a look — reply with
+{"look": {"tool": "...", "arguments": {...}}}, alone, and what it says comes back
+in `what_the_tools_say` for you to plan from. Never guess a uuid and never treat
+a card as unavailable because the sheet does not name it.
+
 `nobody_answered` means the questions in it got no answer and none is coming:
 the sheet was asked and did not settle them. Choose, and write every value you
 chose into the prose of the Step that uses it, as "assumed module 2", "assumed
