@@ -15,7 +15,7 @@ import pytest
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, PART, PLAN,
     PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
-    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
+    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream,
 )
 from core import loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
@@ -5674,3 +5674,95 @@ def test_a_description_with_nothing_traced_in_conflict_is_left_alone():
                            "was_also_said": "SECTION A-A prints 45 mm"}]}
 
     assert loop._the_tracing_governs(json.loads(json.dumps(part))) == part
+
+
+# ── a Step that changes no geometry does not take the part down (FCC-147) ─────
+#
+# The recorded run built the part — 22 objects, one solid — and blocked on an
+# eighth Step that assigned plain carbon steel. `unbuildable` had one road out
+# of it and it was Plan, which has no Tools and cannot produce a material card
+# uuid, so three provider calls later the run ended with no Review, no
+# acceptance checks and no render over geometry that was complete.
+
+
+A_BRACKET_IN_STEEL = {"envelope": {"length": read("80 mm")},
+                      "material": read("plain carbon steel")}
+
+THE_LENGTH = "envelope \u2192 length: 80 mm (read)"
+
+THE_MATERIAL = "material: plain carbon steel (read)"
+
+NO_CARD = "no material card in this build carries plain carbon steel"
+
+
+def a_run_that_cannot_assign_the_material(**kwargs):
+    """The part padded and the material Step left out, with a reason."""
+    return drive([
+        design_reply(A_BRACKET_IN_STEEL),
+        plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
+                   {"do": "Assign plain carbon steel to the Body",
+                    "satisfies": [THE_MATERIAL]}),
+        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": NO_CARD}),
+        assertion_reply(CHECKS),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], **kwargs)
+
+
+def test_a_run_whose_only_unbuilt_step_changes_no_geometry_reaches_review():
+    """
+    Nothing was waiting on the material, so nothing is replanned over it: the
+    geometry is finished and a finished part is a part to judge.
+    """
+    result, events, _, tools = a_run_that_cannot_assign_the_material()
+
+    assert not result.blocked, result.reason
+    assert result.ok, result.reason
+    assert events.first(REVIEW_VERDICT).data["verdict"] == "pass"
+    assert events.first(PLAN_REVISED) is None, \
+        "the Plan was rewritten over a Step no geometry depends on"
+    assert tools.applied_codes() == ["pad()"]
+
+
+def test_the_entry_the_unbuilt_step_satisfied_comes_back_unmet_with_the_reason():
+    """
+    A blocked run and a run with an unmet entry are different things. The user
+    is told which acceptance entry was not reached and why, and the next run
+    over this Document inherits it.
+    """
+    result, events, llm, _ = a_run_that_cannot_assign_the_material()
+
+    assert result.unmet == [THE_MATERIAL]
+    said = events.first(UNBUILT).data
+    assert said["entries"] == [THE_MATERIAL]
+    assert said["why"] == NO_CARD
+    assert said["description"].startswith("Assign plain carbon steel to the Body")
+    assert _turns_of(llm, "assertion")[0]["acceptance"] == [THE_LENGTH], \
+        "the checks were asked to measure a Step that was never built"
+
+
+def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
+    """
+    The other direction of the same rule, and the conservative one: anything
+    that is not plainly a property no geometry depends on is geometry, and a
+    Step the part depends on still costs a revision rather than an unmet entry.
+    """
+    result, events, _, tools = drive([
+        design_reply(A_BRACKET_IN_STEEL),
+        plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
+                   {"do": "Pocket a recess in the steel face",
+                    "satisfies": [THE_MATERIAL]}),
+        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": "the recess cuts nothing"}),
+        plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
+                   {"do": "Pocket a wider recess", "satisfies": [THE_MATERIAL]}),
+        code_reply("pad()", "recess()"),
+        assertion_reply(CHECKS),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert result.ok, result.reason
+    assert events.first(UNBUILT) is None
+    assert events.first(PLAN_REVISED).data["because"] == "Execute could not build a Step"
+    assert result.unmet == []
+    assert tools.applied_codes() == ["pad()", "pad()", "recess()"]
