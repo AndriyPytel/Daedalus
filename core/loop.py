@@ -87,13 +87,18 @@ class Budgets:
 
     `looks_per_turn` bounds Execute's looks and Plan's alike: a question about
     the build is a look, and Plan asking one over and over would otherwise
-    never terminate either.
+    never terminate either. It is six because a look is the cheap turn — the
+    provider replies with one line of JSON, where the turn that writes the code
+    for a whole Plan composes every Step — and because two was not enough to
+    reach the last Step of one: a recorded run spent both on the types it built
+    with and was left declaring the eighth of eight Steps unbuildable for want
+    of a material uuid one free call would have given it (FCC-146).
     """
 
     attempts_per_step: int = 3
     review_cycles: int = 2
     revisions: int = 3
-    looks_per_turn: int = 2
+    looks_per_turn: int = 6
     rereads: int = 3
 
 
@@ -1294,6 +1299,36 @@ def _look(tools, look, events, looks=None):
 
     return {"tool": name, "arguments": arguments, "result": result,
             "answered_from": "what you were already told" if remembered is not None else None}
+
+
+def _what_this_build_has(tools):
+    """
+    The looks nobody should have to spend a turn on, taken before Execute is.
+
+    The material cards are a fact about the build: true from the first Step to
+    the last, and the Tool answers off a list FreeCAD already holds. Drawing
+    them from the same allowance as a question about the Document is what left
+    a recorded run with its looks spent at the Step that assigns a material,
+    being told a look now was a failed attempt — so it declared the Step
+    unbuildable and said the Tool was unavailable (FCC-146).
+
+    Unfiltered, because a page of cards is what the request wants to carry: a
+    name to match against was the question in the first place. A budget the
+    model does not have to spend is the only one it cannot run out of at the
+    last Step.
+
+    Not narrated, because nothing asked: this is knowledge the run is handed
+    with the request, not a question anybody put and an answer that came back.
+    A build whose Tools do not hold the cards is handed nothing, which is the
+    case every registry without a `materials` Tool is already in.
+    """
+    looks = Looks()
+    if "materials" in tools:
+        try:
+            looks.remember("materials", {}, tools.call("materials", {}))
+        except ToolError:
+            pass
+    return looks
 
 
 @dataclass
@@ -2570,7 +2605,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     stuck = {"applied": None}
     described = {}
     standing = {"approval": False, "read": set()}
-    looks = Looks()
+    looks = _what_this_build_has(tools)
 
     def rewrite(cause, refused, feedback, tried, reason=None):
         """
