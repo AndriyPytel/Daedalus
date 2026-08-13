@@ -38,6 +38,7 @@ from core.arithmetic import wrong_sums
 from core.design import (
     ROUND_IN, UNDER, corrected, decided_for_you, entries, entry_at, merge,
     nobody_carries_the_outside, read_off_the_wrong_view, render, said_at,
+    settled_by_the_tracing,
 )
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE,
@@ -1772,6 +1773,7 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
                                            budgets, cancelled)
     the_part = merge(the_part, _the_geometry_disagrees(the_part, attachments, events))
     the_part = _every_direction_settled(the_part, _round_evidence(attachments))
+    the_part = _the_tracing_governs(the_part)
     the_part = _written_down(the_part, attachments, events)
     return the_part
 
@@ -2060,6 +2062,25 @@ def _every_direction_settled(the_part, round_here):
         the_part = corrected(the_part, address,
                              {"value": _pointing_at(address, view), "flag": "derived",
                               ROUND_IN: view},
+                             finding["stands"])
+    return the_part
+
+
+def _the_tracing_governs(the_part):
+    """
+    A conflict one of whose readings was traced, written into the feature.
+
+    `settled_by_the_tracing` says which conflicts those are and where they
+    point; this is the write, through `corrected`, so the reading it displaces
+    stays on the model under `was` and the Plan Gate shows both (ADR-0022). The
+    value is `assumed`, because a tracing is what the model settled the
+    disagreement on and not what the sheet dimensioned, and its `because` is
+    the conflict — which stays where it is, in the words of both, for the user
+    to overrule at the Gate.
+    """
+    for finding in settled_by_the_tracing(the_part):
+        the_part = corrected(the_part, finding["about"],
+                             {"value": finding["instead"], "flag": "assumed"},
                              finding["stands"])
     return the_part
 

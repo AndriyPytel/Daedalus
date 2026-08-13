@@ -6,10 +6,12 @@ logic in FCC-93, so it is tested on its own rather than only through a run. The
 numbers are the ones from the run that named the defect
 (`logs/sessions/daefe57b593448e9baf83422fc37af1e.jsonl`, mm25-p1-1.pdf).
 """
+import json
+
 from core import design
 from core.design import (
-    corrected, crosswise, entries, grounded, merge, read_off_the_wrong_view,
-    render,
+    UNDER, corrected, crosswise, entries, entry_at, grounded, merge,
+    read_off_the_wrong_view, render, said_at, settled_by_the_tracing,
 )
 
 
@@ -1185,3 +1187,138 @@ def test_a_value_that_passed_is_never_nobodys_at_the_gate():
     assert "conflicts" not in grown
     assert decided_for_you(grown) == ["envelope \u2192 height: 50 mm \u2014 read off the silhouette"]
     assert not any(_NOBODY_SAID in said for said in decided_for_you(grown))
+
+
+# ── a conflict one of whose readings was traced (FCC-150) ────────────────────
+
+
+THE_TRACED_POCKET = (
+    "the middle-left view's traced pocket profile has straight-edge endpoints "
+    "at approximately x=89.45 mm and x=129.56 mm, with y=28.36 mm and "
+    "y=53.23 mm; its concave side arcs are approximately R30 and centred at "
+    "the end-bore axes. This shown profile is approximately 40 mm wide by "
+    "25 mm high, and its arc intersections are consistent with the shown "
+    "bore-axis centres.")
+
+THE_STATED_POCKET = (
+    "the existing front-central-pocket and rear-central-pocket entries state a "
+    "40 mm wide by 30 mm high profile, with lower and upper edges 10 mm from "
+    "the bottom and top tangent planes. The sheet does not dimension those "
+    "edges 10 mm from the height boundaries: the two 10 mm callouts in "
+    "SECTION B-B measure the depth-side walls beside the central opening, not "
+    "the pocket height.")
+
+THE_POCKET_IN_CONFLICT = {
+    "features": [
+        {"id": "front-central-pocket", "kind": "central concave-sided pocket",
+         "axis": _read("perpendicular to the front face"),
+         "profile": {"value": "40 mm wide by 30 mm high, bounded above and below "
+                              "by straight edges and at each side by a concave "
+                              "R30 arc",
+                     "flag": "derived",
+                     "from": "the middle-left view line work and SECTION A-A's "
+                             "10 mm top and bottom wall dimensions"},
+         "radius": _read("R30")},
+        {"id": "rear-central-pocket", "kind": "central concave-sided pocket",
+         "profile": {"value": "same 40 mm wide by 30 mm high concave-sided "
+                              "profile as the front central pocket",
+                     "flag": "derived",
+                     "from": "SECTION A-A and SECTION B-B show matching pockets"}},
+    ],
+    "conflicts": [
+        {"about": "the value 125 on this part",
+         "stands": "no callout prints it, no dimension line measures it and "
+                   "nothing traced is that size",
+         "was_also_said": "the drawing"},
+        {"about": "central-pocket profile dimensions and arc intersections",
+         "stands": THE_STATED_POCKET,
+         "was_also_said": THE_TRACED_POCKET},
+    ],
+}
+
+
+def test_the_reading_that_came_off_the_picture_settles_the_conflict():
+    """
+    The run that named this defect (`logs/sessions/
+    f8aaa6953cf54651bd57a3f65432d474.jsonl`, mm25-p1-1.pdf) filed this conflict
+    with the tracing in it and planned neither reading: it took the stated 30 mm
+    height, kept the R30 centres, and built a pocket 48.038476 mm wide. Only one
+    of the two readings was measured off the view, and it is the profile the
+    feature is settled at.
+    """
+    found = settled_by_the_tracing(THE_POCKET_IN_CONFLICT)
+
+    assert [finding["about"] for finding in found] == [
+        "features \u2192 front-central-pocket \u2192 profile",
+        "features \u2192 rear-central-pocket \u2192 profile"]
+    assert found[0]["instead"] == THE_TRACED_POCKET
+    assert "central-pocket profile" in found[0]["stands"]
+
+
+def test_the_field_settled_is_the_one_the_conflict_is_about():
+    """
+    A conflict about a profile says nothing about the axis or the radius beside
+    it, and a tracing written over those would be the third profile again.
+    """
+    found = settled_by_the_tracing(THE_POCKET_IN_CONFLICT)
+
+    assert not [finding for finding in found
+                if finding["about"].rsplit(UNDER, 1)[-1] != "profile"]
+
+
+def test_a_conflict_neither_of_whose_readings_was_traced_is_nobodys():
+    """
+    Every other conflict rides to the Gate in the words of both: the tracing is
+    what earns the overrule, and prose about a tracing is not one.
+    """
+    assert settled_by_the_tracing({
+        "features": [{"id": "front-central-pocket",
+                      "profile": _read("40 mm wide by 30 mm high")}],
+        "conflicts": [{"about": "central-pocket profile",
+                       "stands": "the front view prints 30 mm",
+                       "was_also_said": "SECTION A-A prints 25 mm"}]}) == []
+
+
+def test_a_tracing_that_names_no_feature_settles_nothing():
+    """An address nothing names is an address nothing can be written at."""
+    assert settled_by_the_tracing({
+        "features": [{"id": "the-arm", "profile": _read("40 mm wide")}],
+        "conflicts": [{"about": "central-pocket profile",
+                       "stands": THE_STATED_POCKET,
+                       "was_also_said": THE_TRACED_POCKET}]}) == []
+
+
+def test_the_tracing_written_in_is_the_models_own_choice_at_the_gate():
+    """
+    The value the Plan plans with, and the disagreement the user sees: the
+    traced profile is `assumed` with the conflict as its `because`, the 30 mm
+    reading it displaced stands beside it under `was`, and the conflict itself
+    is untouched on the part.
+    """
+    from core.design import decided_for_you
+
+    model = json.loads(json.dumps(THE_POCKET_IN_CONFLICT))
+    at = "features \u2192 front-central-pocket \u2192 profile"
+    for finding in settled_by_the_tracing(model):
+        corrected(model, finding["about"], {"value": finding["instead"],
+                                            "flag": "assumed"}, finding["stands"])
+
+    assert said_at(model, at) == THE_TRACED_POCKET
+    assert entry_at(model, at)["flag"] == "assumed"
+    assert "40 mm wide by 30 mm high" in entry_at(model, at)["was"]
+    assert len(model["conflicts"]) == 2
+    assert [said for said in decided_for_you(model) if said.startswith(at)]
+
+
+def test_a_tracing_already_written_in_is_not_written_again():
+    """
+    The description is re-read and re-merged as the run goes on, and a finding
+    that fires twice would displace the tracing with itself and lose the
+    reading it stands against.
+    """
+    model = json.loads(json.dumps(THE_POCKET_IN_CONFLICT))
+    for finding in settled_by_the_tracing(model):
+        corrected(model, finding["about"], {"value": finding["instead"],
+                                            "flag": "assumed"}, finding["stands"])
+
+    assert settled_by_the_tracing(model) == []
