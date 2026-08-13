@@ -730,6 +730,29 @@ def test_a_step_is_an_action_a_user_would_perform_not_a_call():
     assert "an action a user would perform" not in review_system
 
 
+def test_plan_is_told_a_step_that_cannot_fail_alone_takes_the_plan_with_it():
+    """
+    Step 1 of the Model Mania run was the ring, the lug and an arm at 45° with
+    twenty-two entries behind them. The arm's dimensions contradicted the
+    overall length, Execute handed the whole Step back, the seven Steps after it
+    were waiting on the pad it never made, and the run ended with an empty
+    Document. Split, the ring and the lug land. FCC-127.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    plan_system = " ".join(_system_messages(llm)[0].split())
+
+    assert "A Step nothing can fail on its own takes the whole Plan down with it" \
+        in plan_system
+    assert "is several pieces of work" in plan_system
+    assert "Split where the entries split" in plan_system
+    # And not at the price of the rule it sits under.
+    assert "never the same work twice" in plan_system
+
+
 def test_plan_is_told_to_write_the_sum_and_not_only_the_answer():
     """
     The sum is checked before the Gate, so it has to be there to check: a Step

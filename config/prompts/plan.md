@@ -10,6 +10,19 @@ already carries, and the description of a Step holds no sub-steps of its own —
 work named twice gets built twice, once at each granularity, and the two
 contours land on top of one another.
 
+**A Step nothing can fail on its own takes the whole Plan down with it.**
+Execute hands back a Step it cannot build whole, and everything after it waits
+on the feature that Step was going to create, so what a Step carries is what one
+contradiction costs. An outer profile drawn from several stretches of contour —
+a ring, a lug beside it, an arm out at an angle — is several pieces of work: pad
+the stretch the drawing fixes, and add each of the others as a Step of its own on
+the solid that is already there. The recorded run put all of it into Step 1 of 8
+along with twenty-two entries, one arm's dimensions contradicted the overall
+length, and the run ended with an empty Document and the revision budget spent —
+where the ring and the lug would have landed, and only the arm would have come
+back. Split where the entries split, so each Step stands or falls on its own; it
+is still one piece of work per Step, and still never the same work twice.
+
 You are writing an instruction, not a recommendation. Give the operation and
 its numbers — "pad the tooth profile 12 mm, symmetric to the plane" — rather
 than the outcome it is meant to produce. Every number the Step uses belongs in
