@@ -2554,6 +2554,56 @@ def test_the_replan_after_a_handback_reads_the_document_as_it_is():
         "first()", "nope1()", "nope2()", "nope3()", "yes()"]
 
 
+def test_a_step_handed_back_twice_with_nothing_applied_stops_the_run():
+    """
+    Rewriting a Step that has already come back once, with nothing having landed
+    in between, is the loop going nowhere: what Execute refuses is not how the
+    Step is worded. The Model Mania run handed Step 1 of 8 back over a left arm
+    that could not both be 73 mm long and reach the tangent plane the drawing
+    gives, was replanned, handed the same Step back again, and finished the
+    whole budget with an empty Document. FCC-127.
+    """
+    result, events, _, tools = drive(
+        [
+            plan_reply("Pad a profile that contradicts itself"),
+            json.dumps({"unbuildable": "the arm cannot reach the tangent plane"}),
+            plan_reply("Pad it with the arm assumed 80.5 mm long"),
+            json.dumps({"unbuildable": "80.5 mm does not reach it either"}),
+        ],
+        budgets=Budgets(revisions=5),
+    )
+
+    assert result.blocked
+    assert "80.5 mm does not reach it either" in result.reason
+    assert "the description it was planned from" in result.reason
+    assert tools.applied_codes() == []
+    assert len(events.of(PLAN_REVISED)) == 1, "the loop kept rewriting a Step going nowhere"
+
+
+def test_a_step_handed_back_after_another_one_landed_is_still_replanned():
+    """
+    Progress is progress: a handback that follows an applied Step is a Plan
+    being carried the rest of the way, not a loop. FCC-127.
+    """
+    result, _, _, tools = drive(
+        [
+            plan_reply("First", "Impossible"),
+            json.dumps({"steps": [{"step": 1, "code": "first()", "label": "First"}],
+                        "unbuildable": "the second cuts nothing"}),
+            plan_reply("Second", "Impossible again"),
+            json.dumps({"steps": [{"step": 1, "code": "second()", "label": "Second"}],
+                        "unbuildable": "still cuts nothing"}),
+            plan_reply("Third"),
+            code_reply("third()"),
+            verdict_reply("pass"),
+        ],
+        budgets=Budgets(revisions=5),
+    )
+
+    assert result.ok
+    assert tools.applied_codes() == ["first()", "second()", "third()"]
+
+
 def test_a_run_out_of_revisions_stops_and_names_handbacks_not_amendments():
     """
     FCC-22's rule survives the new cause: whichever branch spends the last

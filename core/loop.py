@@ -2502,6 +2502,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
     rejections = 0
     revisions = _Revisions()
+    stuck = {"applied": None}
     described = {}
     standing = {"approval": False, "read": set()}
     looks = Looks()
@@ -2592,6 +2593,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                 planned.acceptance, planned.cites)
         applied = progress["applied"]
 
+        if outcome["handback"] and stuck["applied"] == applied \
+                and not revisions.exhausted(budgets, steps):
+            return _block(events, _GOING_NOWHERE % outcome["handback"],
+                          outcome["tried"], applied)
+        if outcome["handback"]:
+            stuck["applied"] = applied
+
         if outcome["obsolete"] or outcome["handback"]:
             if outcome["obsolete"]:
                 cause, feedback = _Revisions.OBSOLETE, outcome["obsolete"]
@@ -2653,6 +2661,15 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
         planned = rewrite(_Revisions.REJECTED, "Review has rejected the result again.",
                           feedback, outcome["tried"] + [{"review": reason}])
+
+
+_GOING_NOWHERE = (
+    "Execute handed a Step back for the second time and nothing has been applied in "
+    "between, so rewriting it again would leave the run where it is. What it says "
+    "cannot be built is the description it was planned from, not the words the Step "
+    "was written in:\n%s\nCorrect the description — the values it holds in conflict, "
+    "and the datums and overalls a superseded feature left behind — and run it again."
+)
 
 
 _INVENTED = "assum"
