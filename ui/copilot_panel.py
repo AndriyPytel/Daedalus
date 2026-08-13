@@ -1,4 +1,3 @@
-# FreeCadCopilot/ui/copilot_panel.py
 """
 The panel: a renderer of the event stream.
 
@@ -11,6 +10,12 @@ The panel has no colours. FreeCAD paints its UI with one global stylesheet and
 leaves QPalette at whatever the OS handed over, so `palette(base)` was a
 light-theme value painted over a dark theme (ADR-0011). What is left in the
 stylesheet is geometry and typography, which no theme has an opinion about.
+
+`RESTORE_CHUNK` is how many events are replayed per event-loop turn when a
+Session is opened: small enough that no single turn is felt, large enough that
+a short Session lands in one. `ATTACHMENT_WIDTH` is how wide an attached
+picture is shown in the chat: wide enough to recognise the drawing, narrow
+enough that it is not the whole transcript.
 """
 import threading
 
@@ -31,8 +36,6 @@ from utils import settings_manager
 from utils import provider_manager
 from ui.ui_helpers import UIHelpers
 
-
-# ── Stylesheet ────────────────────────────────────────────────────────────────
 
 def _build_qss() -> str:
     """
@@ -132,11 +135,12 @@ def _build_qss() -> str:
 
 
 
-# ── Paste-aware text edit ──────────────────────────────────────────────────────
-
 class _PasteAwareTextEdit(QtWidgets.QTextEdit):
     """The composer: Enter sends, Shift+Enter inserts a newline, Ctrl+V images
-    go to the UploadWidget."""
+    go to the UploadWidget.
+
+    A pasted image is consumed here rather than handed on, so its raw bytes
+    never land in the text field."""
 
     paste_image_requested = QtCore.Signal()
     send_requested = QtCore.Signal()
@@ -146,7 +150,7 @@ class _PasteAwareTextEdit(QtWidgets.QTextEdit):
             mime = QtWidgets.QApplication.clipboard().mimeData()
             if mime.hasImage():
                 self.paste_image_requested.emit()
-                return   # consumed – don't paste raw image bytes into text field
+                return
 
         if event.key() in (QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter) \
                 and not (event.modifiers() & QtCore.Qt.ShiftModifier):
@@ -154,8 +158,6 @@ class _PasteAwareTextEdit(QtWidgets.QTextEdit):
             return
         super().keyPressEvent(event)
 
-
-# ── Worker objects ─────────────────────────────────────────────────────────────
 
 class EventBridge(QtCore.QObject):
     """
@@ -181,17 +183,15 @@ class AskTheUser(QtCore.QObject):
     the signal crosses to the GUI thread and the worker waits on an Event.
     """
 
-    plan_gate = QtCore.Signal(object)      # steps
-    owned_objects = QtCore.Signal(object)  # {"delete": [...]}
-    missing_values = QtCore.Signal(object)  # the question, as text
-    revision = QtCore.Signal(object)       # {"why": "...", "applied": n}
+    plan_gate = QtCore.Signal(object)
+    owned_objects = QtCore.Signal(object)
+    missing_values = QtCore.Signal(object)
+    revision = QtCore.Signal(object)
 
     def __init__(self):
         super().__init__()
         self._answered = threading.Event()
         self._answer = None
-
-    # ── worker thread ────────────────────────────────────────────────────────
 
     def about_the_plan(self, steps):
         return self._ask(self.plan_gate, steps)
@@ -241,8 +241,6 @@ class AskTheUser(QtCore.QObject):
         self._answered.wait()
         return self._answer
 
-    # ── GUI thread ───────────────────────────────────────────────────────────
-
     def answer(self, value):
         self._answer = value
         self._answered.set()
@@ -262,16 +260,19 @@ class LoopWorker(QtCore.QObject):
 
     It never reports progress itself — the event stream does that. All this
     signals is that the run is over.
+
+    The client is held rather than built per run, and is dropped so that the
+    next run rebuilds it from settings when the model changes.
     """
 
     finished = QtCore.Signal(object)
-    document_named = QtCore.Signal(str, str)   # transcript path, Document name
+    document_named = QtCore.Signal(str, str)
 
     def __init__(self, bridge: EventBridge, ask: AskTheUser):
         super().__init__()
         self.bridge = bridge
         self.ask = ask
-        self.client = None       # rebuilt from settings when the model changes
+        self.client = None
         self.pipeline = None
         self._stop = threading.Event()
 
@@ -286,20 +287,33 @@ class LoopWorker(QtCore.QObject):
         return self.client
 
     def _get_tools(self, events=None):
+        """
+        The registry for one run.
+
+        The pipeline outlives a run — it keeps the Session's Owned Objects — so
+        the stream it narrates the Owned Object question into is set per run
+        rather than at construction.
+        """
         from core.apply import ApplyPipeline
         from core.freecad_tools import build_registry
 
         if self.pipeline is None:
             self.pipeline = ApplyPipeline(confirm=self.ask.about_objects_we_do_not_own)
-        # The pipeline outlives a run — it keeps the Session's Owned Objects —
-        # so the stream it narrates the Owned Object question into is set per
-        # run rather than at construction.
         self.pipeline.events = events
         return build_registry(pipeline=self.pipeline)
 
     @QtCore.Slot(str, object, str, object)
     def do_work(self, intent: str, attachments: list, transcript: str,
                 outstanding: list = None):
+        """
+        Runs one Intent and emits the result.
+
+        A missing transcript log must not cost the user their run, and neither
+        must a Session that cannot be named after its Document, so both are
+        allowed to fail quietly. A model that cannot be resolved is a known
+        outcome and belongs in the transcript as a sentence, not as a traceback
+        the user cannot act on.
+        """
         from core import events as ev
         from core.events import EventStream
         from core.loop import run
@@ -310,7 +324,7 @@ class LoopWorker(QtCore.QObject):
         try:
             events.log_to(transcript)
         except Exception:
-            pass    # a missing log must not cost the user their run
+            pass
 
         events.subscribe(lambda event: logger.error("%s: %s" % (event.kind, event.data))
                          if event.kind in (ev.BLOCKED, ev.ERROR) else None)
@@ -320,14 +334,11 @@ class LoopWorker(QtCore.QObject):
             self.document_named.emit(transcript,
                                      str(tools.call("snapshot").get("document") or ""))
         except Exception:
-            pass    # a nameless Session in history is not worth losing a run over
+            pass
 
         try:
             client = self._get_client()
         except ValueError as exc:
-            # Which model, and what to do about it. A model that cannot be
-            # resolved is a known outcome and belongs in the transcript as a
-            # sentence, not as a traceback the user cannot act on (FCC-53).
             events.emit(ev.ERROR, message=str(exc))
             self.finished.emit(None)
             return
@@ -361,24 +372,37 @@ class _TitleThread(QtCore.QThread):
         self.titled.emit(generate(self._intent, self._model_id))
 
 
-# ── Main Panel ─────────────────────────────────────────────────────────────────
-
-# Events replayed per event-loop turn when a Session is opened. Small enough
-# that no single turn is felt, large enough that a short Session lands in one.
 RESTORE_CHUNK = 25
 
-# How wide an attached picture is shown in the chat. Wide enough to recognise
-# the drawing, narrow enough that it is not the whole transcript.
 ATTACHMENT_WIDTH = 320
 
 
 class CopilotPanel(QtWidgets.QDockWidget):
+    """
+    The dock: the panel's widgets, its worker thread, and the event stream
+    rendered into a transcript.
+
+    The dock carries an object name because QMainWindow::saveState() drops
+    unnamed docks, and without one the panel's position is never restored
+    across restarts.
+
+    Every launch opens an empty Session; the earlier ones stay in the picker
+    with their transcripts intact.
+
+    The status line sits outside the transcript's scroll area, so its minimum
+    width is the panel's: a Step description it cannot break — one long token,
+    or wrapping off entirely — widens the dock, and Qt does not give the width
+    back when the text goes short again.
+
+    `_outstanding` is what the last run's acceptance checks left wrong, carried
+    into the next Intent typed against the same Document: a drawing that amends
+    a part must not be planned as though the part were sound.
+    """
+
     request_work = QtCore.Signal(str, object, str, object)
 
     def __init__(self):
         super().__init__("FreeCAD Copilot")
-        # QMainWindow::saveState() drops unnamed docks — without this the panel's
-        # position is never restored across restarts.
         self.setObjectName("FreeCadCopilotPanel")
         self.setStyleSheet(_build_qss())
 
@@ -390,40 +414,30 @@ class CopilotPanel(QtWidgets.QDockWidget):
         root_layout.setContentsMargins(0, 0, 0, 15)
         root_layout.setSpacing(0)
 
-        # ── 1. Header bar ─────────────────────────────────────────────────────
         header = self._build_header()
         root_layout.addWidget(header)
 
-        # ── 2. Chat session manager (stacked widget) ──────────────────────────
         self.chat_sessions = ChatSessionManager()
         self.chat_sessions.setObjectName("ChatArea")
         self.chat_sessions.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         root_layout.addWidget(self.chat_sessions, stretch=1)
 
-        # ── History Popup ──
         from .history_popup import HistoryPopup
         self.history_popup = HistoryPopup(self)
         self.history_popup.session_selected.connect(self.switch_session)
         self.history_popup.session_deleted.connect(self.delete_session)
 
-        # ── 3. Status line ────────────────────────────────────────────────────
         self.status_line = QtWidgets.QLabel("")
         self.status_line.setObjectName("StatusLine")
         self.status_line.setVisible(False)
         self.status_line.setWordWrap(True)
-        # This label is outside the transcript's scroll area, so its minimum
-        # width is the panel's. A Step description it cannot break — one long
-        # token, or wrapping off entirely — widens the dock, and Qt does not
-        # give the width back when the text goes short again.
         self.status_line.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
                                        QtWidgets.QSizePolicy.Preferred)
         root_layout.addWidget(self.status_line)
 
-        # ── 4. Floating input card ─────────────────────────────────────────────
         input_card = self._build_input_card()
         root_layout.addWidget(input_card)
 
-        # ── Worker thread ──────────────────────────────────────────────────────
         self.thread = QtCore.QThread()
         self.bridge = EventBridge()
         self.ask = AskTheUser()
@@ -440,9 +454,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.ask.revision.connect(self.on_revision)
 
         self._running = False
-        # What the last run's acceptance checks left wrong, carried into the
-        # next Intent typed against the same Document. A drawing that amends a
-        # part must not be planned as though the part were sound (FCC-98).
         self._outstanding: list = []
         self._empty_state = None
         self._sent_attachments: list[str] = []
@@ -458,12 +469,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.chat_sessions.session_changed.connect(self.update_header_title)
         self.chat_sessions.session_removed.connect(lambda _: self.update_header_title(self.chat_sessions.stack.currentIndex()))
 
-        # Every launch opens an empty Session; the earlier ones stay in the
-        # picker with their transcripts intact (FCC-42).
         self.chat_sessions.load()
         self.new_chat()
-
-    # ── Builder helpers ────────────────────────────────────────────────────────
 
     def _build_header(self):
         bar = QtWidgets.QWidget()
@@ -510,11 +517,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         inner.setContentsMargins(0, 6, 0, 8)
         inner.setSpacing(0)
 
-        # ── File chip bar (hidden when empty) ──
         self.chip_bar = FileChipBar()
         inner.addWidget(self.chip_bar)
 
-        # ── Text input ──
         self.user_input = _PasteAwareTextEdit()
         self.user_input.setObjectName("ChatInput")
         self.user_input.setPlaceholderText("Ask FreeCAD Copilot…")
@@ -532,7 +537,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         div.setStyleSheet("QFrame { margin: 0 12px; }")
         inner.addWidget(div)
 
-        # ── Action strip ──
         strip = QtWidgets.QHBoxLayout()
         strip.setContentsMargins(8, 5, 8, 3)
         strip.setSpacing(6)
@@ -542,7 +546,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.chip_bar.file_removed.connect(self.upload_widget.discard)
         strip.addWidget(self.upload_widget)
 
-        # ── Model selector pill ───────────────────────────────────────────────
         self.model_combo = QtWidgets.QComboBox()
         self.model_combo.setObjectName("PillButton")
         self.model_combo.setFixedHeight(24)
@@ -555,7 +558,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         provider_manager.instance().models_changed.connect(self._refresh_model_combo)
         strip.addStretch()
 
-        # ── Send and Stop share one slot ──────────────────────────────────────
         self.send_button = QtWidgets.QPushButton()
         self.send_button.setObjectName("SendButton")
         self.send_button.setToolTip("Send message (Enter)")
@@ -594,10 +596,16 @@ class CopilotPanel(QtWidgets.QDockWidget):
             else QtCore.Qt.ScrollBarAlwaysOff)
 
     def resizeEvent(self, event):
+        """
+        Refits the composer, whose ceiling is a fraction of the panel's height
+        and so moves with it.
+
+        The composer is looked for rather than assumed: Qt resizes the dock
+        while __init__ is still building it.
+        """
         super().resizeEvent(event)
-        # Qt resizes the dock while __init__ is still building it.
         if getattr(self, "user_input", None):
-            self._fit_composer_to_text()   # the 40% ceiling moved with the panel
+            self._fit_composer_to_text()
 
     def showEvent(self, event):
         """
@@ -613,15 +621,19 @@ class CopilotPanel(QtWidgets.QDockWidget):
                              (self.send_button, "arrow_up")):
             button.setIcon(UIHelpers.get_icon(icon, size=18, on=button))
 
-    # ── Model / Mode helpers ───────────────────────────────────────────────────
-
     def _refresh_model_combo(self, models=None):
         """
         Rebuild the model combo, grouped under provider headings.
 
         A heading is a row with its selectable and enabled flags cleared, so
         grouping costs a QStandardItemModel and no custom popup widget — and
-        QComboBox's own type-to-jump keeps working over the whole list.
+        QComboBox's own type-to-jump keeps working over the whole list. A
+        heading is set apart by weight rather than by an indent, because
+        type-to-jump matches from the string's start.
+
+        While a provider's real list is still on its way, the last model is
+        kept as a row of its own: showing anything else is the flash of a model
+        the user never picked.
         """
         if models is None:
             models = provider_manager.instance().get_available_models()
@@ -640,7 +652,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
             for provider, entries in by_provider.items():
                 heading = QtGui.QStandardItem(provider)
                 heading.setFlags(QtCore.Qt.NoItemFlags)
-                # Weight, not an indent: type-to-jump matches from the string's start.
                 heading.setFont(bold)
                 items.appendRow(heading)
                 for model in entries:
@@ -654,8 +665,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
             if models and not provider_manager.instance().awaiting_model_lists():
                 index = self.model_combo.findData(self._retire_model(last_id))
             else:
-                # The provider's real list is still on its way; showing anything
-                # else here is the flash of a model the user never picked.
                 row = QtGui.QStandardItem(last_id)
                 row.setData(last_id, QtCore.Qt.UserRole)
                 items.insertRow(0, row)
@@ -666,10 +675,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.model_combo.blockSignals(False)
 
     def _retire_model(self, model_id: str) -> str:
-        """Every provider has answered and none offers ``model_id``. Say so."""
+        """
+        Every provider has answered and none offers ``model_id``. Say so.
+
+        The fallback is the Preferences default, or row 1 — the first model
+        under the first heading — because that default is only a preference and
+        may never have been set.
+        """
         settings = settings_manager.instance()
-        # Row 1 is the first model under the first heading — the Preferences
-        # default is only a preference, and it may never have been set.
         fallback = settings.get_default_model() or self.model_combo.itemData(1)
         settings.set_last_model(fallback)
         self.status_line.setText(
@@ -679,27 +692,31 @@ class CopilotPanel(QtWidgets.QDockWidget):
         return fallback
 
     def _on_model_changed(self, _idx: int):
+        """Drops the client so the next send rebuilds it from settings."""
         mid = self.model_combo.currentData()
         if mid:
             settings_manager.instance().set_last_model(mid)
             if getattr(self, "worker", None):
-                self.worker.client = None   # rebuilt from settings on the next send
-
-    # ── Public slots ───────────────────────────────────────────────────────────
+                self.worker.client = None
 
     def toggle_history(self):
+        """
+        The picker is populated from the indexed Sessions only, each carrying
+        its own position: a Session enters the picker when it gets its name, on
+        its first Intent, and the live empty Session is on screen rather than in
+        the history.
+        """
         if self.history_popup.isVisible():
             self.history_popup.close()
         else:
-            # Indexed only, and carrying its own position: a Session enters the
-            # picker when it gets its name, on its first Intent. The live empty
-            # Session is on screen, not in the history (FCC-42).
             self.history_popup.populate(self.chat_sessions.indexed_sessions())
             self.history_popup.drop_from_the_dock()
 
     def new_chat(self):
-        # Its real name comes from its first Intent, so there is nothing to call
-        # it yet — and "Chat 3" is what FCC-44 exists to remove.
+        """
+        Opens an empty Session. Its real name comes from its first Intent, so
+        there is nothing to call it yet.
+        """
         idx, _ = self.chat_sessions.add_new_chat("New Chat")
         self._became_the_live_session()
         self.update_header_title(idx)
@@ -707,13 +724,17 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.add_chat_widget(self._empty_state)
 
     def _reset_render_state(self):
-        """What one run builds and the next must not draw into."""
+        """
+        What one run builds and the next must not draw into.
+
+        There is room for one question at a time: the run is blocked on the
+        answer, so it cannot have asked a second thing while the first is on
+        screen.
+        """
         self._plan_widget = None
         self._thought = None
         self._thought_phase = None
         self._current_step = 0
-        # One question at a time: the run is blocked on the answer, so it
-        # cannot have asked a second thing while the first is on screen.
         self._question_card = None
         self._answers_to_enter = None
 
@@ -836,8 +857,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if info:
             self.title_label.setText(info["name"])
 
-    # ── Sending an Intent ──────────────────────────────────────────────────────
-
     def _unusable_attachments(self) -> list:
         """
         Why the attached files would not reach the model, before the run starts.
@@ -858,8 +877,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
         return unusable_attachments(attached, model)
 
     def on_send(self):
-        # While the Plan is waiting on a question the composer answers, Enter
-        # answers it rather than starting a second run on the answer (FCC-71).
+        """
+        Sends the composer's text as an Intent.
+
+        While the Plan is waiting on a question the composer answers, this
+        answers it rather than starting a second run on the answer. The Session
+        is named after the attachment check and never before it: an Intent that
+        is turned away there never ran, and must not name the Session.
+        """
         if self._answers_to_enter is not None:
             self._answer_with(self._answers_to_enter)
             return
@@ -880,8 +905,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
                 + "\n".join("• " + reason for reason in unusable)))
             return
 
-        # After the attachment check, never before it: an Intent that is turned
-        # away here never ran, and must not name the Session.
         self._name_session(index, session["log"], intent)
 
         attachments = self.chip_bar.get_and_clear()
@@ -908,22 +931,27 @@ class CopilotPanel(QtWidgets.QDockWidget):
         The truncated Intent goes up immediately so nothing is ever called
         "Untitled"; the generated title replaces it when it arrives, and is
         asked for again on the next Intent if this one produced none (FCC-44).
+
+        `begin` bounds the index and may have dropped Sessions before this one,
+        so the position it had is not the position it has.
         """
         from core.session_title import fallback
 
         if self.chat_sessions.begin(index, fallback(intent)):
-            # begin() bounds the index and may have dropped Sessions before this
-            # one, so the position it had is not the position it has.
             index = self.chat_sessions.stack.currentIndex()
             self.update_header_title(index)
         if self.chat_sessions.wants_a_title(index):
             self._ask_for_a_title(log, intent)
 
     def _ask_for_a_title(self, log: str, intent: str):
-        """Alongside the run, never in front of it."""
+        """
+        Alongside the run, never in front of it.
+
+        Qt owns the thread, so it is kept in a list: without a reference it is
+        collected mid-flight.
+        """
         thread = _TitleThread(intent, settings_manager.instance().get_naming_model(), self)
         thread.titled.connect(lambda title: self._title_arrived(log, title))
-        # Qt owns the thread; without a reference it is collected mid-flight.
         self._title_threads.append(thread)
         thread.finished.connect(lambda: self._title_threads.remove(thread))
         thread.start()
@@ -933,12 +961,16 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.update_header_title(self.chat_sessions.stack.currentIndex())
 
     def on_stop(self):
-        # A card left clickable after Stop answers a run that is already over.
+        """
+        Ends the run, and disables any question card with it: a card left
+        clickable after Stop answers a run that is already over. Stopping the
+        worker also releases a waiting question.
+        """
         if self._question_card is not None:
             self._question_card.setEnabled(False)
             self._question_card = None
             self._answers_to_enter = None
-        self.worker.stop()       # also releases a waiting question
+        self.worker.stop()
         self.stop_button.setEnabled(False)
         self.status_line.setText("Stopping after the current attempt…")
 
@@ -947,8 +979,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.send_button.setVisible(not running)
         self.stop_button.setVisible(running)
         self.stop_button.setEnabled(running)
-
-    # ── Rendering the event stream ─────────────────────────────────────────────
 
     @QtCore.Slot(object)
     def on_event(self, event):
@@ -962,14 +992,17 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         No calls back into the loop. A kind nobody narrates and nobody renders
         is simply not shown — nothing breaks.
+
+        Structure is handled first: those events carry more than a sentence,
+        and some of them also change the Plan widget's marks. The revised Steps
+        are rendered afterwards, so they stand under the line that says they
+        were revised.
         """
         from core import events as ev
         from core.narrate import narrate
 
         data = event.data
 
-        # Structure first: these carry more than a sentence, and some of them
-        # also change the Plan widget's marks.
         if event.kind == ev.THOUGHT:
             self._render_thought(data["phase"], data["text"])
             return
@@ -988,7 +1021,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         if event.kind == ev.PLAN:
             self._render_plan(data["steps"], "Plan", data.get("acceptance", ()),
-                              data.get("unanswered", ()))
+                              data.get("unanswered", ()), data.get("decided", ()))
             return
 
         if event.kind == ev.STEP_STARTED:
@@ -1005,10 +1038,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self._say(narrate(event))
 
-        # The revised Steps stand under the line that says they were revised.
         if event.kind == ev.PLAN_REVISED:
             self._render_plan(data["steps"], "Revised Plan", data.get("acceptance", ()),
-                              data.get("unanswered", ()))
+                              data.get("unanswered", ()), data.get("decided", ()))
 
     def _say(self, narration):
         """
@@ -1081,40 +1113,54 @@ class CopilotPanel(QtWidgets.QDockWidget):
         how.append_text(narration.body)
         how.toggle_content()
 
-    def _render_plan(self, steps, title, acceptance=(), unanswered=()):
+    def _render_plan(self, steps, title, acceptance=(), unanswered=(), decided=()):
+        """
+        The Plan's Steps, with what surrounds them at the Gate.
+
+        Values the model settled for itself stand above the Steps and open:
+        nothing is asked between the attachment and the Gate, so such a value
+        is read here or it is not read at all, and it is read before the Steps
+        built on it (ADR-0022). The questions nobody answered stand above the
+        acceptance criteria and open, since those Steps carry values the Plan
+        chose for itself and the Gate is the only place to overrule them. The
+        criteria stand under the Steps and open for the same reason: the Gate is
+        the only place a wrong criterion is correctable.
+        """
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
+        if decided:
+            settled = AccordionWidget("Decided for you")
+            self.add_chat_widget(settled)
+            settled.append_text("\n".join("• " + str(line) for line in decided))
+            settled.toggle_content()
         self._plan_widget = PlanWidget(steps, title=title)
         self.add_chat_widget(self._plan_widget)
         if unanswered:
-            # Above the criteria and open: these Steps carry values the Plan chose
-            # for itself, and the Gate is the only place to overrule them (FCC-96).
             open_questions = AccordionWidget("Nobody answered these — the Plan chose")
             self.add_chat_widget(open_questions)
             open_questions.append_text("\n".join("• " + str(q) for q in unanswered))
             open_questions.toggle_content()
         if acceptance:
-            # Under the Steps and open, for the same reason the reading is: the
-            # Gate is the only place a wrong criterion is correctable (FCC-75).
             criteria = AccordionWidget("What it has to satisfy")
             self.add_chat_widget(criteria)
             criteria.append_text("\n".join("• " + str(entry) for entry in acceptance))
             criteria.toggle_content()
 
     def _render_tool_call(self, name, arguments):
+        """
+        A call that is not code takes one collapsible shape in the stream, not
+        three (ADR-0011).
+        """
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
         if "code" in arguments:
             self.add_chat_widget(CodeBlockWidget(arguments["code"]))
         else:
-            # One collapsible shape in the stream, not three (ADR-0011).
             row = AccordionWidget(name)
             self.add_chat_widget(row)
             row.append_text(str(arguments))
-
-    # ── The two places the user keeps control ──────────────────────────────────
 
     @QtCore.Slot(object)
     def on_plan_gate(self, steps):
@@ -1171,14 +1217,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         The question itself is already in the transcript \u2014 it arrived as an
         event. This is only the card that takes the answer, and it takes it
-        from the composer, the same way Amend does.
+        from the composer, the same way Amend does. Enter is the only route to
+        Send here, the button being hidden mid-run.
         """
         def send():
             return self._from_composer("Give the values, then press Send\u2026",
                                        lambda said: said)
 
-        # Enter is the only route to Send here \u2014 the button is hidden mid-run \u2014
-        # and it used to start a second run on the answer instead (FCC-71).
         self._put_the_question(
             "Waiting for the values the Plan needs\u2026",
             "",
@@ -1209,8 +1254,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
             % ("The assistant", "these" if len(deletes) > 1 else "it"),
             (("\u2713  Allow", lambda: True),
              ("\u2717  Refuse", lambda: False)))
-
-    # ── one question, one card ─────────────────────────────────────────────────
 
     def _put_the_question(self, waiting_for, prompt, note, choices, enter=None):
         """
@@ -1299,15 +1342,18 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     @QtCore.Slot(object)
     def on_run_finished(self, result):
+        """
+        Ends the run and carries its unmet acceptance checks forward, whatever
+        the run ended as, including a result the user took as it is: the entries
+        are wrong in the Document either way, and the next Intent inherits them.
+        A run that passed clears the list.
+        """
         self._set_running(False)
         self.upload_widget.discard(*self._sent_attachments)
         self._sent_attachments = []
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
-        # Whatever the run ended as, including a result the user took as it is:
-        # the entries are wrong in the Document either way, and the next Intent
-        # inherits them. A run that passed clears the list.
         self._outstanding = list(getattr(result, "unmet", None) or ())
         if result is not None and result.ok:
             self.status_line.setVisible(False)
@@ -1317,23 +1363,23 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.status_line.setVisible(True)
 
     def add_chat_widget(self, widget: QtWidgets.QWidget):
+        """
+        Adds a widget to the transcript, before the trailing stretch, which is
+        what keeps a short transcript from being spread down the whole panel.
+        Following the bottom is the scroll area's own business, and only when
+        the user has not scrolled back to read.
+        """
         chat_history = self.chat_sessions.get_current_chat_history()
         if not chat_history:
             return None
             
         container = chat_history.widget()
         if container and container.layout():
-            # Before the trailing stretch, which is what keeps a short
-            # transcript from being spread down the whole panel. Following the
-            # bottom is the scroll area's own business now, and only when the
-            # user has not scrolled back to read.
             layout = container.layout()
             layout.insertWidget(max(layout.count() - 1, 0), widget)
 
         return widget
 
-    # What a run in flight is given to notice it was stopped before the thread
-    # is ended from outside. Long enough for a request already sent to unwind.
     SHUTDOWN_GRACE_MS = 3000
 
     def _cleanup_thread(self):
@@ -1346,6 +1392,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         question is FreeCAD hanging on exit, with no window left to answer
         from. The headless FreeCAD behind Preflight is this panel's child
         process and goes with it.
+
+        `SHUTDOWN_GRACE_MS` is what a run in flight is given to notice it was
+        stopped before the thread is ended from outside, long enough for a
+        request already sent to unwind.
         """
         self.worker.stop()
         if self.worker.pipeline is not None:
