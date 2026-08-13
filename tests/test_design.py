@@ -1107,3 +1107,81 @@ def test_a_value_the_drawing_gave_is_nobodys_decision():
     from core.design import decided_for_you
 
     assert decided_for_you(DEPTH_OFF_THE_SECTION) == []
+
+
+# ── a value that says nothing about what settled it (FCC-134) ────────────────
+
+
+AN_ASSUMED_OVERALL_NOBODY_CLAIMED = {
+    "envelope": {"height": {"value": "50 mm", "flag": "assumed"},
+                 "length": {"value": "150 mm", "flag": "read"}},
+}
+
+
+def test_an_assumed_value_with_no_because_is_a_conflict():
+    """
+    The requirement was written in `config/prompts/design.md` and nowhere else,
+    so the one thing that tells a user the model settled a value rested on the
+    model doing as it was told. It is a reading defect like every other: the run
+    carries on and the Plan Gate shows it.
+    """
+    grown = merge({}, AN_ASSUMED_OVERALL_NOBODY_CLAIMED)
+    said = [conflict for conflict in grown["conflicts"]
+            if conflict["about"] == "envelope \u2192 height"]
+
+    assert said, [conflict["about"] for conflict in grown["conflicts"]]
+    assert "because" in said[0]["stands"]
+
+
+def test_an_empty_because_is_no_because():
+    """A field written and left blank says as little as one never written."""
+    grown = merge({}, {"envelope": {"height": {"value": "50 mm", "flag": "assumed",
+                                              "because": ""}}})
+
+    assert [conflict for conflict in grown["conflicts"]
+            if conflict["about"] == "envelope \u2192 height"]
+
+
+def test_it_is_the_finding_derived_with_no_from_gets():
+    """
+    One rule about incomplete entries rather than two: an entry that does not
+    say what settled it is the same defect whichever flag it carries, so it is
+    raised at the same site and in the same words.
+    """
+    grown = merge({}, {"envelope": {"height": {"value": "50 mm", "flag": "assumed"},
+                                    "width": {"value": "40 mm", "flag": "derived"}}})
+    at = {conflict["about"]: conflict for conflict in grown["conflicts"]}
+
+    assumed, derived = at["envelope \u2192 height"], at["envelope \u2192 width"]
+
+    assert assumed["stands"].replace("assumed", "derived").replace("because", "from") \
+        == derived["stands"]
+
+
+def test_a_well_formed_assumed_passes_untouched():
+    """Silence on the value that says who settled it, or the Gate is noise."""
+    grown = merge({}, {"envelope": {
+        "height": {"value": "50 mm", "flag": "assumed",
+                   "because": "nothing carries the outer contour; read off the "
+                              "silhouette, half the 50 mm height"},
+        "width": {"value": "40 mm", "flag": "derived",
+                  "from": "the front view's line work: the arm's faces at "
+                          "y=37.99 and 23.00"}}})
+
+    assert "conflicts" not in grown
+
+
+def test_a_value_that_passed_is_never_nobodys_at_the_gate():
+    """
+    `decided_for_you` fell back to prose saying nothing settled the value, which
+    is the section AC5 of FCC-127 rests on. Nothing reaches that fallback once
+    the check has let the model through.
+    """
+    from core.design import _NOBODY_SAID, decided_for_you
+
+    grown = merge({}, {"envelope": {"height": {"value": "50 mm", "flag": "assumed",
+                                              "because": "read off the silhouette"}}})
+
+    assert "conflicts" not in grown
+    assert decided_for_you(grown) == ["envelope \u2192 height: 50 mm \u2014 read off the silhouette"]
+    assert not any(_NOBODY_SAID in said for said in decided_for_you(grown))
