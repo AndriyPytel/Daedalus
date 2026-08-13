@@ -20,7 +20,7 @@ from core.events import (
 from core import loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
-from core.design import UNDER, entries, merge, render
+from core.design import UNDER, entries, merge, render, said_at
 from core.loop import (
     PROMPTS, Budgets, prompt, revisions_ceiling, run,
 )
@@ -5533,3 +5533,38 @@ def test_a_plan_that_asks_for_a_value_is_told_to_choose_and_never_the_user():
     assert asked == [], "the user was asked for a value: %s" % asked
     assert tools.applied_codes() == ["a()"]
     assert events.first(PLAN).data["unanswered"] == [MISSING]
+
+
+# ── the tracing settles the conflict before the Plan (FCC-150) ───────────────
+
+
+def test_the_traced_profile_is_on_the_feature_before_the_plan_is_asked_for():
+    """
+    The recorded run (`logs/sessions/f8aaa6953cf54651bd57a3f65432d474.jsonl`,
+    mm25-p1-1.pdf) reached the Plan with the tracing sitting in `conflicts` and
+    nothing on the pocket, declared the Step unbuildable, asked once for the
+    conflict to be settled, and then invented a 48.038476 mm wide profile of its
+    own. The Plan is handed the traced profile instead, and the Gate is handed
+    the disagreement.
+    """
+    from tests.test_design import THE_POCKET_IN_CONFLICT, THE_TRACED_POCKET
+    from core.design import decided_for_you
+
+    settled = loop._the_tracing_governs(json.loads(json.dumps(THE_POCKET_IN_CONFLICT)))
+    at = "features \u2192 front-central-pocket \u2192 profile"
+
+    assert said_at(settled, at) == THE_TRACED_POCKET
+    assert "48.038476" not in json.dumps(settled)
+    assert len(settled["conflicts"]) == 2
+    assert [said for said in decided_for_you(settled) if said.startswith(at)]
+
+
+def test_a_description_with_nothing_traced_in_conflict_is_left_alone():
+    """A conflict the tracer never touched rides to the Gate as it always has."""
+    part = {"features": [{"id": "the-arm", "profile": {"value": "40 mm wide",
+                                                       "flag": "read"}}],
+            "conflicts": [{"about": "the arm profile",
+                           "stands": "the front view prints 40 mm",
+                           "was_also_said": "SECTION A-A prints 45 mm"}]}
+
+    assert loop._the_tracing_governs(json.loads(json.dumps(part))) == part

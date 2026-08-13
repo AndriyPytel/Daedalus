@@ -891,6 +891,76 @@ def settled_by_nothing(model) -> list:
     return found
 
 
+_CAME_OFF_THE_PICTURE = ("traced", "traces", "tracing")
+
+_A_MEASUREMENT = re.compile(r"\d+(?:\.\d+)?\s*mm")
+
+
+def settled_by_the_tracing(model) -> list:
+    """
+    Every conflict of whose two readings one was measured off the view.
+
+    A conflict is settled by the user at the Plan Gate, and that is right where
+    both readings are somebody's opinion of a callout. It is not the shape of
+    this one. The recorded run
+    (`logs/sessions/f8aaa6953cf54651bd57a3f65432d474.jsonl`, mm25-p1-1.pdf)
+    filed the central pocket as stated 40 mm wide by 30 mm high against a
+    profile traced off the middle-left view at 40 by 25, and the Plan used
+    neither: it took the stated height, kept the R30 centres on the end-bore
+    axes, and built a pocket 48.038476 mm wide, agreeing with nothing on the
+    sheet. Before that it declared the Step unbuildable and asked once for the
+    conflict to be settled — a question the description had already answered.
+
+    So where one of the readings came off the picture, that one governs: it is
+    the only one of the two that was measured rather than reasoned, which is the
+    same thing that earns `grounded` its correction. A finding, not a write:
+    `about` is the address, `instead` is the tracing and `stands` names the
+    conflict it settles, and the loop writes it through `corrected` so the
+    displaced reading stays beside it under `was`.
+
+    Narrow on purpose. Both sides talking about a tracing, or neither, is a
+    conflict nobody measured and it rides to the Gate. The address has to be
+    named twice over — the conflict names a feature the model carries, and what
+    it is `about` names a field of that feature — because a tracing written at
+    a field nobody pointed at is one more profile the sheet does not have.
+    """
+    found = []
+    for conflict in model.get("conflicts") or []:
+        traced = _the_traced_reading(conflict)
+        if traced:
+            found.extend({"about": at, "instead": traced,
+                          "stands": "the conflict about %s: this reading was "
+                                    "traced off the view and the one it displaces "
+                                    "was not" % conflict.get("about")}
+                         for at in _where_the_conflict_points(model, conflict))
+    return found
+
+
+def _the_traced_reading(conflict):
+    """The one side of *conflict* that was measured off the view, or ""."""
+    if not isinstance(conflict, dict):
+        return ""
+    traced = [said for said in (str(conflict.get("stands") or ""),
+                                str(conflict.get("was_also_said") or ""))
+              if any(word in said.lower() for word in _CAME_OFF_THE_PICTURE)
+              and _A_MEASUREMENT.search(said)]
+    return traced[0] if len(traced) == 1 else ""
+
+
+def _where_the_conflict_points(model, conflict):
+    """The addresses a conflict in prose names: a feature it says, a field it is about."""
+    said = " ".join(str(conflict.get(key) or "")
+                    for key in ("about", "stands", "was_also_said")).lower()
+    about = str(conflict.get("about") or "").lower()
+    return [_under(_under("features", this), field)
+            for feature in _features(model)
+            for this in [_named(feature, _IDENTITY)]
+            if this and this.lower() in said
+            for field, entry in feature.items()
+            if _a_value(entry) and not _filled(entry.get("was"))
+            and re.search(r"\b%s\b" % re.escape(field.replace("_", " ")), about)]
+
+
 def _drawn_in_common(one, other):
     """Whether two features name a view between them that both were read in."""
     return bool({str(view) for view in one.get("seen_in") or ()}
