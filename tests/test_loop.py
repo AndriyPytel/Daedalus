@@ -1013,7 +1013,9 @@ def test_execute_can_ask_the_document_before_committing_to_code():
     assert ("supported_types", {"prefix": "Sketcher::"}) in tools.calls
 
     asked_with = json.loads(llm.calls[2][-1]["content"])
-    assert asked_with["what_you_looked_at"][0]["result"]["types"] == ["Sketcher::SketchObject"]
+    looked = [look for look in asked_with["what_you_looked_at"]
+              if look["tool"] == "supported_types"]
+    assert looked[0]["result"]["types"] == ["Sketcher::SketchObject"]
 
 
 def test_a_look_is_visible_on_the_event_stream():
@@ -1111,7 +1113,7 @@ def test_execute_can_ask_what_a_type_has_before_any_object_of_it_exists():
     offered = _turns_of(llm, "execute")[0]["tools_you_may_look_with"]
     assert "describe_type" in [described["name"] for described in offered]
 
-    answered = _turns_of(llm, "execute")[1]["what_you_looked_at"][0]
+    answered = _turns_of(llm, "execute")[1]["what_you_looked_at"][-1]
     assert "ThroughAll" in answered["result"]["properties"][0]["enumeration"]
 
 
@@ -1125,7 +1127,7 @@ def test_a_look_at_a_tool_that_does_not_exist_is_answered_not_fatal():
 
     assert result.ok
     answered = json.loads(llm.calls[2][-1]["content"])
-    assert "error" in answered["what_you_looked_at"][0]["result"]
+    assert "error" in answered["what_you_looked_at"][-1]["result"]
 
 
 # ── Execute ───────────────────────────────────────────────────────────────────
@@ -4376,7 +4378,8 @@ def test_execute_is_handed_what_the_run_already_looked_at():
     # asked in. What matters is the next Execute call after that.
     asked_with = json.loads(llm.calls[2][-1]["content"])
 
-    assert [look["tool"] for look in asked_with["what_you_looked_at"]] == ["describe_type"]
+    assert [look["tool"] for look in asked_with["what_you_looked_at"]] \
+        == ["materials", "describe_type"]
 
 
 def test_a_regeneration_does_not_have_to_look_again():
@@ -4394,8 +4397,9 @@ def test_a_regeneration_does_not_have_to_look_again():
 
     regenerated = json.loads(llm.calls[3][-1]["content"])
 
-    assert [look["tool"] for look in regenerated["what_you_looked_at"]] == ["describe_type"]
-    assert regenerated["what_you_looked_at"][0]["arguments"] == {"type_id": "PartDesign::Pad"}
+    assert [look["tool"] for look in regenerated["what_you_looked_at"]] \
+        == ["materials", "describe_type"]
+    assert regenerated["what_you_looked_at"][-1]["arguments"] == {"type_id": "PartDesign::Pad"}
 
 
 def test_asking_twice_for_the_same_thing_calls_the_tool_once():
@@ -4445,7 +4449,8 @@ def test_what_an_object_has_is_forgotten_once_a_step_lands():
     assert len([c for c in tools.calls if c[0] == "describe_object"]) == 2, \
         "an object read before a Step landed was reported as though it still held"
     regenerated = json.loads(llm.calls[3][-1]["content"])
-    assert "what_you_looked_at" not in regenerated
+    assert "describe_object" not in [look["tool"] for look in
+                                     regenerated["what_you_looked_at"]]
 
 
 def test_what_a_type_has_survives_a_step_because_the_build_does_not_change():
@@ -4459,7 +4464,8 @@ def test_what_a_type_has_survives_a_step_because_the_build_does_not_change():
 
     regenerated = json.loads(llm.calls[3][-1]["content"])
 
-    assert [look["tool"] for look in regenerated["what_you_looked_at"]] == ["describe_type"]
+    assert [look["tool"] for look in regenerated["what_you_looked_at"]] \
+        == ["materials", "describe_type"]
 
 
 def test_a_look_that_failed_is_not_remembered_as_an_answer():
@@ -4488,6 +4494,106 @@ def test_the_carried_looks_are_bounded():
     assert len(carried) == Looks.CARRIED
     assert carried[-1]["arguments"] == {"type_id": "T%d" % (Looks.CARRIED + 3)}, \
         "the oldest looks went, not the newest"
+
+
+# ── the cards this build has (FCC-146) ────────────────────────────────────────
+#
+# A recorded run spent both its looks before it reached the Step that needed
+# one, was told its looks were spent, and declared the eighth of eight Steps
+# unbuildable because "the materials lookup tool is unavailable" — a Tool that
+# was there and would have answered in milliseconds.
+
+
+def test_execute_is_handed_the_material_cards_without_asking():
+    """
+    A fact about the build, true from the first Step to the last, handed over
+    before Execute can spend a turn asking for it.
+    """
+    _, _, llm, tools = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+
+    assert "materials" in [name for name, _ in tools.calls], \
+        "nobody took the cards before Execute was asked"
+
+    carried = _turns_of(llm, "execute")[0]["what_you_looked_at"]
+    cards = [look for look in carried if look["tool"] == "materials"]
+    assert cards, "the Execute request carried no material cards"
+    assert cards[0]["result"]["materials"][0]["uuid"] == "b9b3a6ff-1c8e"
+
+
+def test_a_turn_may_take_six_looks():
+    """
+    Six is what the recorded run wanted: `supported_types`, the types of the
+    three features it built, the Body it built them on, and the cards.
+    """
+    assert Budgets().looks_per_turn == 6
+
+    result, _, llm, tools = drive([
+        plan_reply("Pad it"),
+        look_reply("describe_type", type_id="T1"),
+        look_reply("describe_type", type_id="T2"),
+        look_reply("describe_type", type_id="T3"),
+        look_reply("describe_type", type_id="T4"),
+        look_reply("describe_type", type_id="T5"),
+        look_reply("describe_type", type_id="T6"),
+        code_reply("pad()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    assert len([c for c in tools.calls if c[0] == "describe_type"]) == 6
+    assert tools.applied_codes() == ["pad()"]
+    assert _turns_of(llm, "execute")[5]["tools_you_may_look_with"] != [], \
+        "the sixth look was refused"
+
+
+def test_a_plan_that_ends_in_a_material_assignment_uses_a_uuid_from_this_build():
+    result, _, llm, tools = drive([
+        plan_reply("Pad the profile", "Assign the material"),
+        code_reply("pad()", "obj.ShapeMaterial = uuid('b9b3a6ff-1c8e')"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    carried = _turns_of(llm, "execute")[0]["what_you_looked_at"]
+    known = [card["uuid"] for look in carried if look["tool"] == "materials"
+             for card in look["result"]["materials"]]
+    assigned = tools.applied_codes()[-1]
+
+    assert any(uuid in assigned for uuid in known), \
+        "the material Step was applied with a uuid this build does not have"
+
+
+def test_the_recorded_run_reaches_step_eight_and_assigns_a_card():
+    """
+    The looks the recorded run took, then code for all eight Steps: the four
+    looks no longer spend the budget the eighth Step needed, because the cards
+    were never on that budget.
+    """
+    steps = ["Sketch the base", "Pad it", "Sketch the pocket", "Pocket it",
+             "Sketch the boss", "Pad the boss", "Fillet the edges",
+             "Assign plain carbon steel"]
+
+    result, _, llm, tools = drive([
+        plan_reply(*steps),
+        look_reply("supported_types", prefix="PartDesign::"),
+        look_reply("describe_type", type_id="PartDesign::Pad"),
+        look_reply("describe_type", type_id="PartDesign::Pocket"),
+        look_reply("describe_type", type_id="PartDesign::Fillet"),
+        code_reply(*(["step%d()" % number for number in range(1, 8)]
+                     + ["obj.ShapeMaterial = uuid('b9b3a6ff-1c8e')"])),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    assert len(tools.applied_codes()) == 8, "the run did not reach Step 8"
+    assert "b9b3a6ff-1c8e" in tools.applied_codes()[7]
+    assert all("this_is_your_last_turn" not in turn
+               for turn in _turns_of(llm, "execute")), \
+        "Execute was told its looks were spent before it wrote the code"
 
 
 # ── failing the same way twice (FCC-100) ──────────────────────────────────────
