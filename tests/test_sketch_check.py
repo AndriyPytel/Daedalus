@@ -90,6 +90,61 @@ def test_a_child_that_could_not_answer_is_no_verdict():
     assert sketch_check.from_response({"ok": True, "verdict": None}) is None
 
 
+def test_a_reading_the_solver_gave_up_on_is_built_again(monkeypatch):
+    """
+    A reading is under-constrained on purpose, and from a start the solver
+    picks for itself the same sketch comes out solved or not solved run to run
+    — three builds in two hundred, measured on a bore given two printed sizes.
+    A build it gave up on leaves the geometry where the pixels put it, which is
+    what a reading with nothing wrong with it looks like, so the verdict has to
+    come off a solve that converged. FCC-127.
+    """
+    built = []
+
+    def _built(outline, view, between):
+        built.append(view)
+        return sketch_check.Verdict(view=view, solved=0 if len(built) > 1 else -3,
+                                    moved=9.88 if len(built) > 1 else 0.0)
+
+    monkeypatch.setattr(sketch_check, "available", lambda: True)
+    monkeypatch.setattr(sketch_check, "_built", _built)
+    verdict = sketch_check.checked(_a_plate(), "the front view")
+
+    assert len(built) == 2, "the verdict was read off a solve that gave up"
+    assert verdict.solved == 0
+    assert verdict.moved == 9.88
+
+
+def test_a_reading_nothing_can_solve_is_not_built_for_ever(monkeypatch):
+    """A fourth document does not make an unsolvable reading solvable."""
+    built = []
+
+    def _built(outline, view, between):
+        built.append(view)
+        return sketch_check.Verdict(view=view, solved=-3)
+
+    monkeypatch.setattr(sketch_check, "available", lambda: True)
+    monkeypatch.setattr(sketch_check, "_built", _built)
+    verdict = sketch_check.checked(_a_plate(), "the front view")
+
+    assert len(built) == sketch_check._TRIES
+    assert verdict.solved == -3, "a reading nobody could solve came back as solved"
+
+
+def test_a_reading_that_solves_first_time_is_built_once(monkeypatch):
+    built = []
+
+    def _built(outline, view, between):
+        built.append(view)
+        return sketch_check.Verdict(view=view, solved=0)
+
+    monkeypatch.setattr(sketch_check, "available", lambda: True)
+    monkeypatch.setattr(sketch_check, "_built", _built)
+    sketch_check.checked(_a_plate(), "the front view")
+
+    assert len(built) == 1
+
+
 def test_an_empty_outline_never_reaches_the_child():
     asked = []
 

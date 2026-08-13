@@ -39,7 +39,21 @@ of the reading this exists to catch — moves 9.88 mm.
 
 Disposable throughout. The document is made here, closed here, and never the
 user's; nothing here writes a Step, and nothing here reaches the feature tree.
-What comes back is a verdict about a *reading*.
+It is made under a name that says what it is, which is how a stray one is
+recognised. What comes back is a verdict about a *reading*.
+
+A traced entity that has to move further than `A_SHIFT` onto the sheet's own
+numbers is a fact about the reading rather than the slack in a fit. Two
+millimetres, measured over 96 outlines on the four sheets: the median moves
+0.27 mm, nine in ten under 0.62 mm and the worst 1.21 mm, where a pixel is
+0.2 mm across and an arc's ends are pulled onto its own circle. The reading it
+has to catch moves 9.88 mm.
+
+What crosses the pipe is named field by field rather than dumped wholesale, so
+what crosses is what is used and a new field on `Entity` does not silently
+become part of the contract between the two processes. A point crosses as a
+list, because JSON has no tuple and the reporting formats a point with `%` —
+a list there is a TypeError, not a rounding difference.
 
 **And it is made in the Preflight child, never in the addon's own process.**
 `checked` runs where it is called; every caller upstream goes through
@@ -53,18 +67,10 @@ worth a child process. It is not worth the user's FreeCAD.
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
-# The two ends of a piece of sketch geometry, as the Sketcher numbers them.
 START, END = 1, 2
 
-# The name the throwaway document is made under. It never reaches the user, but
-# a name that says what it is is what a stray one is recognised by.
 A_DOCUMENT = "copilot-reading-check"
 
-# How far the solver may move a traced entity onto the sheet's own numbers
-# before that is a fact about the reading rather than the slack in a fit, in mm.
-# Measured over 96 outlines on the four sheets: median 0.27, nine in ten under
-# 0.62, worst 1.21 — a pixel is 0.2 mm and an arc's ends are pulled onto its own
-# circle. The reading it has to catch moves 9.88.
 A_SHIFT = 2.0
 
 
@@ -80,32 +86,35 @@ class Trouble:
 
 @dataclass(frozen=True)
 class Verdict:
-    """What one outline came to when it was built."""
+    """
+    What one outline came to when it was built.
+
+    `solved` is what `Sketch.solve()` returned, where zero is solved and
+    anything else is not, and `dof` is what the reading leaves undetermined,
+    which is expected to be large: a profile off one view carries no position
+    and nothing here invents one. `printed` counts the sizes written from the
+    sheet's own text rather than from the pixels, and `distances` the printed
+    distances that reached two points of this outline — every other number on a
+    sheet is one of these, so until they arrive the check has almost nothing of
+    the drawing to hold the tracing against. `disagrees` is each of those the
+    tracing does not agree with before any solving, which is the plainest thing
+    here: what the sheet prints between two faces against what the pixels put
+    between them. `moved` is how far the furthest entity had to move to satisfy
+    them, in millimetres, and `shifted` each entity that moved further than the
+    fit can account for, which is the verdict this exists for.
+    """
 
     view: str = ""
     entities: int = 0
     geometry: int = 0
-    # What `Sketch.solve()` returned. Zero is solved; anything else is not.
     solved: int = 0
-    # What the reading leaves undetermined. It is expected to be large: a
-    # profile off one view carries no position, and nothing here invents one.
     dof: int = 0
     conflicts: list = field(default_factory=list)
     redundant: list = field(default_factory=list)
-    # The sizes written from the sheet's own text rather than from the pixels.
     printed: int = 0
-    # The printed distances that reached two points of this outline. Every
-    # other number on a sheet is one of these, so until they arrive the check
-    # has almost nothing of the drawing to hold the tracing against.
     distances: int = 0
-    # Each of those the tracing does not agree with, before any solving. This
-    # is the plainest thing here: what the sheet prints between two faces
-    # against what the pixels put between them.
     disagrees: list = field(default_factory=list)
-    # How far the furthest entity had to move to satisfy them, in mm.
     moved: float = 0.0
-    # Each entity that moved further than the fit can account for, which is the
-    # verdict this exists for.
     shifted: list = field(default_factory=list)
 
 
@@ -127,10 +136,39 @@ def checked(outline, view="", between=()):
     Builds in the process that calls it, which is the Preflight child and
     nothing else. `checked_by` is the entry point for everybody upstream —
     see the note at the top of this module.
+
+    Built again where the solver did not converge, up to `_TRIES` times, which
+    is three: the failure is a coin the solver tosses at each build, 1.5 in a
+    hundred once is 3 in a million three times over, and a reading nothing can
+    solve is not made solvable by a fourth document. A
+    reading is under-constrained on purpose — one view carries no position, so
+    the walk is free to move as a whole — and from a start the solver picks for
+    itself the same sketch comes out solved or not solved run to run: measured
+    on the two-arc bore below, three builds in two hundred came back `-3`. A
+    second `solve()` on the same sketch is not a second try, because the start
+    it failed from is where it now sits; a fresh build is. What that costs is a
+    document nobody sees, and what it buys is the one answer this module has no
+    other way of telling apart — geometry that stayed where the pixels put it
+    because the sheet agrees with itself, from geometry that stayed there
+    because the solver gave up. The first is a reading with nothing wrong with
+    it; the second measured nothing at all and read as the first.
     """
     if not available() or not outline.entities:
         return None
 
+    verdict = _built(outline, view, between)
+    for _ in range(_TRIES - 1):
+        if verdict.solved == 0:
+            break
+        verdict = _built(outline, view, between)
+    return verdict
+
+
+_TRIES = 3
+
+
+def _built(outline, view, between):
+    """One build of the reading, solved once, measured once."""
     import FreeCAD
 
     document = FreeCAD.newDocument(A_DOCUMENT)
@@ -165,17 +203,9 @@ def checked(outline, view="", between=()):
         FreeCAD.closeDocument(document.Name)
 
 
-# ── across the pipe ───────────────────────────────────────────────────────────
-
-# The fields of a traced entity this check reads. Named rather than dumped
-# wholesale, so what crosses is what is used and a new field on `Entity` does
-# not silently become part of the contract between two processes.
 _OF_AN_ENTITY = ("kind", "size", "printed", "start", "end", "centre", "radius",
                  "diameter")
 _OF_A_DISTANCE = ("printed", "first", "second", "view", "text")
-# Every one of those that is a point on the sheet. JSON has no tuple, and the
-# reporting formats a point with `%` — a list there is a TypeError, not a
-# rounding difference.
 _A_POINT = ("start", "end", "centre", "first", "second")
 _OF_A_TROUBLE = ("at", "printed", "said")
 
@@ -194,10 +224,13 @@ def checked_by(worker, outline, view="", between=()):
 
 
 def as_request(outline, view="", between=()):
-    """The outline, the view it was traced in, and the sheet's distances, as JSON."""
-    # `do` is what the child dispatches on: a Step, or one of these. The two
-    # halves are separate processes and this word is the whole of their
-    # agreement about which is which.
+    """
+    The outline, the view it was traced in, and the sheet's distances, as JSON.
+
+    `do` is what the child dispatches on: a Step, or one of these. The two
+    halves are separate processes and this word is the whole of their agreement
+    about which is which.
+    """
     return {"do": "reading", "view": view,
             "outline": {"closed": bool(outline.closed),
                         "entities": [_written(entity, _OF_AN_ENTITY)
@@ -254,27 +287,10 @@ def _read(said):
         for named, value in said.items()})
 
 
-# How far a dimension's foot may be from the face it names, in mm, measured in
-# the direction the dimension measures. It cannot be wider than the movement
-# that counts as a finding below, or a match at the edge of the band is
-# indistinguishable from the thing this exists to report — and measured, that
-# is exactly what happens: at 2.6 mm four more dimensions find a face, and all
-# four of them then cost the tracing 3.6 mm and one of them contradicts another
-# dimension outright. At 2.0 the same sheets write 13 distances across 12
-# outlines and the worst movement is 1.07 mm.
 A_FOOT = 2.0
 
-# How square to the sheet a dimension and the face it measures to have to be
-# drawn, as the cosine of the angle between them. A drawing is plotted square;
-# this is rounding in the file rather than a second direction.
 A_SQUARE_ON = 0.99
 
-# How far the pixels may be from what the sheet prints between two faces, in
-# mm, before that is a fact about the reading. Measured on the four sheets: the
-# 13 distances that reach a traced outline are 0.07 to 1.08 mm out, and the
-# 1.08 is the bias itself — a face is traced to the inside of the line that
-# draws it, so a width reads about a millimetre under. The reading this exists
-# to catch is 8 mm out.
 A_DISTANCE = 1.5
 
 
@@ -300,7 +316,15 @@ def _measured_across(sketch, outline, view, between):
     diagonal one measures between two points and this cannot tell which.
 
     The value written is the printed one, always. The two faces are the
-    tracing's; how far apart they have to be is the sheet's.
+    tracing's; how far apart they have to be is the sheet's. A constraint the
+    sketch already says is dropped rather than written twice.
+
+    `A_DISTANCE` is how far the pixels may be from what the sheet prints
+    between two faces, in millimetres, before that is a fact about the reading.
+    One and a half, measured on the four sheets: the 13 distances that reach a
+    traced outline are 0.07 to 1.08 mm out, and the 1.08 is the bias itself — a
+    face is traced to the inside of the line that draws it, so a width reads
+    about a millimetre under. The reading this exists to catch is 8 mm out.
     """
     import Sketcher
 
@@ -322,7 +346,7 @@ def _measured_across(sketch, outline, view, between):
             at = sketch.addConstraint(Sketcher.Constraint(
                 named, first, START, second, START,
                 entry.printed if how_far > 0 else -entry.printed))
-        except (ValueError, RuntimeError):  # the sketch already says this
+        except (ValueError, RuntimeError):
             continue
         written[at] = ("distance", entry, entry.printed)
         traced = _across(outline.entities[first].start,
@@ -348,6 +372,10 @@ def _squarely(entry):
     A dimension drawn along the sheet measures in one direction only, and the
     other coordinate of the two faces it measures is not its business — which
     is what makes a face rather than a corner enough to write it against.
+
+    Square is `A_SQUARE_ON`, the cosine of the angle between the dimension and
+    the face it measures to. A drawing is plotted square, so this is rounding in
+    the file rather than a second direction.
     """
     import math
 
@@ -371,6 +399,15 @@ def _the_face_at(outline, foot, way):
 
     None is the usual answer and the honest one: a foot on a view whose body is
     not traced, or on a face the tracer only got part of, names nothing here.
+
+    `A_FOOT` is how far the foot may be from the face it names, in millimetres,
+    measured in the direction the dimension measures. It cannot be wider than
+    the movement that counts as a finding, or a match at the edge of the band is
+    indistinguishable from the thing this exists to report — and measured, that
+    is exactly what happens: at 2.6 mm four more dimensions find a face, all
+    four then cost the tracing 3.6 mm, and one of them contradicts another
+    dimension outright. At 2.0 the same sheets write 13 distances across 12
+    outlines and the worst movement is 1.07 mm.
     """
     best, best_gap = None, A_FOOT
     for at, entity in enumerate(outline.entities):
