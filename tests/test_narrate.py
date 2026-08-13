@@ -10,7 +10,7 @@ import pytest
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, KINDS,
     OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
-    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, Event,
+    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, Event,
 )
 from core.narrate import Narration, narrate
 
@@ -38,6 +38,9 @@ SAMPLES = {
     APPLIED: {"step": 1, "label": "Base", "created": ["Pad"]},
     ASSERTION: {"ok": True, "confirmed": ["6.5 mm tall"], "uncovered": []},
     OUTSTANDING: {"entries": ["envelope \u2192 across the flats: 13.0 mm (read)"]},
+    UNBUILT: {"step": 8, "total": 8, "description": "Assign plain carbon steel",
+              "why": "no card in this build carries it",
+              "entries": ["material: plain carbon steel (read)"]},
     REVIEW_VERDICT: {"verdict": "pass", "reason": "matches the Intent"},
     BLOCKED: {"reason": "The budget is spent.", "tried": []},
     ERROR: {"message": "ValueError: no key"},

@@ -24,7 +24,7 @@ from core.design import render
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE,
     OUTSTANDING, PART, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
-    STEP_STARTED, TOOL_RESULT,
+    STEP_STARTED, TOOL_RESULT, UNBUILT,
 )
 
 _GATE_SAID = {
@@ -82,7 +82,9 @@ def narrate(event) -> Narration:
     because the reason alone never said that the same wall had been hit three
     times. The acceptance checks get a line of their own and never the Review
     verdict's, because the checks are code and Review deliberately never sees
-    code.
+    code. A Step that was not built says what was not reached and that the run
+    carried on regardless, because a blocked run and a run with an unmet entry
+    are different things and the transcript must not spell them the same.
     """
     data = event.data
     kind = event.kind
@@ -148,6 +150,15 @@ def narrate(event) -> Narration:
 
     if kind == ASSERTION:
         return Narration(line=_assertion_said(data))
+
+    if kind == UNBUILT:
+        entries = data.get("entries") or []
+        said = ("⚠ Step %d/%d was not built: %s — %s"
+                % (data["step"], data["total"], data["description"], data["why"]))
+        if entries:
+            said += "\nNot reached: " + ", ".join(str(entry) for entry in entries)
+        return Narration(line=said + "\nNothing in the geometry was waiting on it, so the "
+                                     "run carried on.")
 
     if kind == REVIEW_VERDICT:
         return Narration(line="%s Review: %s — %s"

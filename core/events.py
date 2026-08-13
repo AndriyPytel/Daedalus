@@ -12,6 +12,11 @@ path the reading Design settled on was written to, so a run can be pointed at
 the file it was planned from, and `outstanding` carries what an earlier run's
 acceptance checks found wrong and nobody fixed, emitted once at the top of the
 run that inherits it.
+
+`unbuilt` is a Step that could not be built and that nothing in the geometry
+was waiting on, with the entries of the description it was the Step to satisfy:
+a run that finishes with one of those is not a blocked run, and the stream says
+so in a word of its own.
 """
 import json
 import time
@@ -34,6 +39,7 @@ PREFLIGHT_FAILED = "preflight_failed"
 APPLIED = "applied"
 ASSERTION = "assertion"
 OUTSTANDING = "outstanding"
+UNBUILT = "unbuilt"
 REVIEW_VERDICT = "review_verdict"
 BLOCKED = "blocked"
 ERROR = "error"
@@ -41,7 +47,7 @@ ERROR = "error"
 KINDS = (
     THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED, GATE,
     STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED, ASSERTION,
-    OUTSTANDING, REVIEW_VERDICT, BLOCKED, ERROR,
+    OUTSTANDING, UNBUILT, REVIEW_VERDICT, BLOCKED, ERROR,
 )
 
 

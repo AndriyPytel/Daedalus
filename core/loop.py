@@ -43,7 +43,8 @@ from core.design import (
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE,
     OUTSTANDING, PART, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
-    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
+    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT,
+    EventStream,
 )
 from core import part_file, preflight, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
@@ -2713,11 +2714,14 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
         described = outcome["description"] or described
 
-        acceptance = _also_check(planned.acceptance, outstanding)
+        checking = _also_check(planned.acceptance, outstanding)
+        not_reached = _not_reached(outcome.get("unbuilt") or [], checking)
+        acceptance = [entry for entry in checking if entry not in not_reached]
         checked = (assertion(acceptance, described, tools, llm, events, budgets,
                              cancelled, after_a_retry=outcome.get("retried"))
                    if acceptance else None)
-        progress["unmet"] = list(checked.unmet) if checked is not None else []
+        progress["unmet"] = (list(checked.unmet) if checked is not None else []) \
+            + list(not_reached)
         if checked is not None and checked.failed:
             feedback = _why_the_checks_failed(checked.traceback)
             answer = decided(feedback, applied)
@@ -2852,6 +2856,14 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     moment it is not. Once a Step lands, anything read off the Document was
     read off it as it was before that Step, so from there it is history rather
     than knowledge.
+
+    A Step that changes no geometry is the exception: it is skipped rather than
+    handed back, and what it was to satisfy comes out on `unbuilt`. Nothing in
+    the part is waiting on it, and the one road out of a handback is Plan,
+    which has no Tools and so cannot write the Step Execute could not — a
+    recorded run spent three provider calls and 55 seconds arriving at a stop
+    that was decided the moment the last of eight Steps was the one that could
+    not be built.
     """
     if cancelled():
         raise Stopped()
@@ -2859,6 +2871,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     attempts = []
     index = 0
     retried = set()
+    unbuilt = []
     looks = looks if looks is not None else Looks()
     written = execute(steps, tools, llm, events, budgets=budgets, as_described=as_described,
                       looks=looks, entries=entries)
@@ -2878,6 +2891,15 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         outcome = written.for_step(index + 1)
         if not outcome.code and written.unbuildable and not attempts:
+            if not _changes_the_shape(step):
+                cited = list(cites[index]) if index < len(cites) else []
+                unbuilt.append({"step": step, "why": written.unbuildable,
+                                "entries": cited})
+                events.emit(UNBUILT, step=index + 1, total=len(steps), description=step,
+                            why=written.unbuildable, entries=cited)
+                index += 1
+                attempts = []
+                continue
             return {
                 "handback": "Step %d of %d could not be built as written: %s\n%s"
                             % (index + 1, len(steps), step, written.unbuildable),
@@ -2928,9 +2950,60 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                           looks, entries)
 
     return {"obsolete": None, "handback": None, "description": described,
-            "tried": [], "retried": sorted(
+            "tried": [], "unbuilt": unbuilt, "retried": sorted(
                 {cited for at in retried for cited in (cites[at] if at < len(cites)
                                                        else ())})}
+
+
+_A_PROPERTY_OF_THE_DOCUMENT = ("material", "appearance", "colour", "color",
+                               "density", "transparen", "visibility", "label")
+
+_SHAPES_THE_PART = ("pad", "pocket", "hole", "bore", "fillet", "chamfer", "sketch",
+                    "extrud", "revolv", "loft", "sweep", "mirror", "groove",
+                    "thicken", "draft", "boolean", "array", "pattern", "shell",
+                    "slot", "recess", "taper", "thread", "rib", "fuse", "subtract",
+                    "cut", "trim", "split")
+
+
+def _changes_the_shape(step):
+    """
+    Whether the part depends on *step* — read off the words the Step is in.
+
+    Conservative in one direction on purpose. A Step is geometry unless it
+    plainly names a property of the Document that no geometry depends on and
+    names no shape operation at all, so the words nothing here recognises leave
+    the run exactly where it was: handed back to Plan. Reading it the other way
+    round would let an unrecognised operation be skipped, and a Step of the part
+    skipped silently is the failure this must not add.
+
+    The prose is what there is. Execute leaves a Step out before any code for it
+    exists, so nothing has been written, nothing has run, and the Document
+    cannot be asked — a Step that assigns a material and a Step that pads a
+    profile differ, at that moment, only in what they say.
+    """
+    said = str(step).lower()
+    return not (any(word in said for word in _A_PROPERTY_OF_THE_DOCUMENT)
+                and not any(word in said for word in _SHAPES_THE_PART))
+
+
+def _not_reached(unbuilt, acceptance):
+    """
+    The acceptance entries the Steps that were never built were to satisfy.
+
+    Matched by address rather than whole, because a Step cites the address and
+    the acceptance carries the address with the value on the same line — the
+    same allowance `_unconsumed` makes for a Plan that copies the line it was
+    handed.
+
+    They are taken off what the checks are asked to measure and reported unmet
+    instead: a check written for a value nobody built fails, and a failed check
+    is a rejection that would send the run back round for a Step it already
+    knows cannot be written.
+    """
+    cited = {_as_written(entry).partition(": ")[0]
+             for step in unbuilt for entry in step["entries"]}
+    return [entry for entry in acceptance
+            if str(entry).partition(": ")[0] in cited]
 
 
 def _always_the_same_way(attempts):
