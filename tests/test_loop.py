@@ -4051,6 +4051,103 @@ def test_an_assumed_entry_is_not_something_a_plan_can_be_refused_over():
     assert events.first(PLAN_REVISED) is None
 
 
+# The recorded run's Document at the moment Execute handed Step 5 of 8 back:
+# four Steps applied, four entries of the description already standing in it.
+THE_BRACKET = {
+    "envelope": {"length": read("150 mm"), "depth front to rear": read("100 mm"),
+                 "height": read("40 mm"), "width": read("60 mm")},
+    "features": [{"id": "central-bore", "kind": "Ø8 vertical bore",
+                  "position": {"the front face": read("20 mm")}}],
+}
+
+BUILT = everything(THE_BRACKET)[:4]
+LEFT_TO_BUILD = everything(THE_BRACKET)[4:]
+
+
+def _four_steps_applied_then_a_handback():
+    """
+    The scripted turns of the recorded run, up to the revision.
+
+    Steps 1 to 4 apply, Step 5 cannot be built, and the revision plans the work
+    that is left and nothing else.
+    """
+    return [
+        design_reply(THE_BRACKET),
+        plan_reply(*[{"do": "Pad part %d" % (number + 1), "satisfies": [entry]}
+                     for number, entry in enumerate(BUILT)],
+                   {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
+        json.dumps({"steps": [{"step": number, "code": "part%d()" % number,
+                               "label": "Part %d" % number} for number in range(1, 5)],
+                    "unbuildable": "the bore misses the web as planned"}),
+        plan_reply({"do": "Bore the central hole from the top face",
+                    "satisfies": list(LEFT_TO_BUILD)}),
+        code_reply("bore()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
+    ]
+
+
+def test_a_revision_that_plans_only_the_unbuilt_steps_passes_the_coverage_check():
+    """
+    The check measures the Plan against the description, and after a handback
+    the question is narrower: what is left is the description less what the
+    applied Steps already satisfy. Without the subtraction the recorded run was
+    told sixteen entries were unplanned, every one of them standing in the
+    Document, and spent a second revision on a Plan that restated all eight
+    Steps — four of which Execute then applied nothing for. FCC-148.
+    """
+    result, events, llm, tools = drive(_four_steps_applied_then_a_handback(),
+                                       attachments=[RENDER_PNG], budgets=Budgets(revisions=5))
+
+    assert result.ok
+    assert len(_turns_of(llm, "plan")) == 2, "the revision was replanned for coverage"
+    assert tools.applied_codes() == ["part1()", "part2()", "part3()", "part4()", "bore()"]
+    reasons = [str(event.data.get("reason")) for event in events.of(PLAN_REVISED)]
+    assert len(reasons) == 1 and "the bore misses the web as planned" in reasons[0]
+
+
+def test_an_entry_an_applied_step_satisfied_is_not_reported_as_unplanned():
+    """
+    The four entries the Document already answers for never reach Plan as a
+    complaint. FCC-148.
+    """
+    _, _, llm, _ = drive(_four_steps_applied_then_a_handback(),
+                         attachments=[RENDER_PNG], budgets=Budgets(revisions=5))
+
+    complaints = [turn.get("what_went_wrong_last_time", "")
+                  for turn in _turns_of(llm, "plan")]
+
+    assert any(complaints), "the revision was not told what went wrong"
+    assert not [entry for entry in BUILT
+                if any(entry in complaint for complaint in complaints)]
+
+
+def test_an_entry_no_step_ever_landed_for_is_still_unplanned():
+    """
+    The subtraction is of what was applied, not of what was planned: a revision
+    that drops an entry no Step in the Document answers for is still refused.
+    FCC-148.
+    """
+    result, events, _, _ = drive([
+        design_reply(THE_BRACKET),
+        plan_reply(*[{"do": "Pad part %d" % (number + 1), "satisfies": [entry]}
+                     for number, entry in enumerate(BUILT)],
+                   {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
+        json.dumps({"steps": [{"step": number, "code": "part%d()" % number,
+                               "label": "Part %d" % number} for number in range(1, 4)],
+                    "unbuildable": "the fourth pad has nothing to stand on"}),
+        plan_reply({"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
+        plan_reply({"do": "Pad part 4", "satisfies": [BUILT[3]]},
+                   {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
+        code_reply("part4()", "bore()"),
+        assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(revisions=5))
+
+    assert result.ok
+    reasons = [event.data.get("reason") for event in events.of(PLAN_REVISED)]
+    assert any(BUILT[3] in str(reason) for reason in reasons), \
+        "an entry nothing in the Document builds passed the coverage check"
+
+
 def test_a_plan_that_never_learns_to_cite_stops_the_run_and_says_why():
     """
     The coverage re-plan spends the same shared ceiling as every other cause, so

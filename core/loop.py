@@ -828,9 +828,18 @@ def _acceptance_of(the_part):
     return [entry["says"] for entry in entries(the_part)]
 
 
-def _unconsumed(the_part, satisfies):
+def _unconsumed(the_part, satisfies, standing=()):
     """
     The entries of the description that no Step of the Plan accounts for.
+
+    `standing` is what the Steps already applied cite between them. After a
+    handback the question the check asks is narrower — the description less what
+    the Document already answers for — and a revision that plans only the work
+    that is left is a correct Plan. Measured against the description alone it is
+    not: a recorded run was told sixteen entries were unplanned, every one of
+    them satisfied by a feature standing in the Document at that moment, and
+    spent a revision on a Plan that restated all eight Steps, four of which
+    Execute then applied nothing for (FCC-148).
 
     The mechanical catch for the defect the epic is named after: the revised
     Plan of the recorded run dropped the 100 mm front to rear and no rule,
@@ -855,7 +864,7 @@ def _unconsumed(the_part, satisfies):
     line is. Refusing it would make the check fail on the one Plan that did
     exactly as it was told.
     """
-    cited = {_as_written(entry) for entry in satisfies}
+    cited = {_as_written(entry) for entry in list(satisfies) + list(standing)}
     return [entry["about"] for entry in entries(the_part)
             if entry["flag"] in ("read", "derived")
             and not any(said == entry["about"] or said.startswith(entry["about"] + ":")
@@ -1703,7 +1712,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     """
     events = events if events is not None else EventStream()
     budgets = budgets or Budgets()
-    progress = {"applied": 0, "tried": [], "unmet": list(outstanding)}
+    progress = {"applied": 0, "tried": [], "unmet": list(outstanding), "satisfied": []}
 
     def outcome(result):
         """
@@ -2637,7 +2646,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     while True:
         steps = planned.steps
 
-        unconsumed = _unconsumed(part["the_part"], planned.satisfies)
+        unconsumed = _unconsumed(part["the_part"], planned.satisfies,
+                                 progress["satisfied"])
         if unconsumed:
             planned = rewrite(_Revisions.UNCOVERED,
                               "The Plan still leaves part of the description unplanned.",
@@ -2843,6 +2853,10 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     (ADR-0013). The worst case — every Step failing every time — costs one call
     more than the per-Step loop did, which is the shape this replaced.
 
+    What the Steps that landed cite goes onto `progress["satisfied"]` as they
+    land, because that is what the coverage check subtracts from the description
+    when a handback sends the rest of the work back to Plan.
+
     Which Steps only landed on a second or third try is carried back out. A
     retry is where a feature gets talked into passing: the ring split of a
     recorded run was shortened until the Body stayed in one piece, and the
@@ -2918,6 +2932,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         if result.get("status") == "applied":
             progress["applied"] += 1
+            progress["satisfied"].extend(cites[index] if index < len(cites) else ())
             if attempts:
                 retried.add(index)
             described = result.get("description") or described
