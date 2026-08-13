@@ -863,8 +863,13 @@ def _drawn_in_common(one, other):
 
 
 def _features(model):
+    """
+    The features the part has, which is not the features the description holds:
+    a feature the later page replaced is judged by nothing, the way it is
+    measured by nothing (FCC-127).
+    """
     return [feature for feature in (model or {}).get("features") or ()
-            if isinstance(feature, dict)]
+            if isinstance(feature, dict) and not _filled(feature.get("superseded_by"))]
 
 
 def _carries_the_outside(feature):
@@ -997,6 +1002,8 @@ def _each_value(node, path):
         return [(path, node)]
 
     if isinstance(node, dict):
+        if _filled(node.get("superseded_by")):
+            return []
         return [found for key, value in node.items() if key not in _NOT_THE_PART
                 for found in _each_value(value, _under(path, key))]
 

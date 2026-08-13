@@ -673,6 +673,64 @@ def test_a_part_nobody_has_described_carries_no_entries():
     assert entries(None) == []
 
 
+# ── a feature the later page replaces (FCC-127) ───────────────────────────────
+
+
+THE_ARM_REPLACED = {
+    "envelope": {"length": _read("108 mm")},
+    "features": [
+        {"id": "left-mounting-ear", "kind": "horizontal left mounting ear",
+         "superseded_by": "phase2-angled-left-arm",
+         "position": {"the left end tangent plane": _read("0 mm")}},
+        {"id": "phase2-angled-left-arm", "kind": "left arm at 45°",
+         "position": {"the ring axis": _read("73 mm along the arm")}},
+    ],
+}
+
+
+def test_a_feature_the_later_page_replaces_is_no_longer_the_part():
+    """
+    One part, not one model of two parts. The Model Mania run kept the Phase 1
+    ear beside the Phase 2 arm, both `read`: every entry of the superseded ear
+    was a criterion the part had to meet and a Step Plan had to write, so the
+    Plan built a mounting bore the second page had deleted and spent a revision
+    being told it had left one unplanned. FCC-127.
+    """
+    about = [entry["about"] for entry in entries(THE_ARM_REPLACED)]
+
+    assert about == ["envelope → length",
+                     "features → phase2-angled-left-arm → position → the ring axis"]
+
+
+def test_a_feature_that_is_gone_is_not_checked_for_what_it_never_said():
+    """
+    Not the part any more means not judged either: a finding about a feature the
+    later page deleted is a conflict at the Gate about geometry nobody is going
+    to build. FCC-127.
+    """
+    silent = merge({}, {"features": [
+        {"id": "left-bore", "kind": "Ø6.6 bore", "topology": "through",
+         "superseded_by": "phase2-slot", "position": {}},
+        {"id": "phase2-slot", "kind": "Ø6.6 obround slot", "topology": "through",
+         "axis": _read("perpendicular to the top face"),
+         "position": {"the left end face": _read("15 mm")}},
+    ]})
+
+    assert not [found for found in silent.get("conflicts") or ()
+                if "left-bore" in str(found.get("about"))]
+
+
+def test_the_replacement_is_still_read_at_the_gate():
+    """
+    Out of the criteria, not out of the description: what the later page
+    replaced is what the user checks the reading against.
+    """
+    written = render(THE_ARM_REPLACED)
+
+    assert "- left-mounting-ear" in written
+    assert "superseded by: phase2-angled-left-arm" in written
+
+
 # ── one cavity, one feature ───────────────────────────────────────────────────
 
 

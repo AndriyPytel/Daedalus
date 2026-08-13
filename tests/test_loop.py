@@ -752,6 +752,29 @@ def test_plan_is_told_to_write_the_sum_and_not_only_the_answer():
         in plan_system
 
 
+def test_design_is_told_to_replace_the_feature_the_later_page_supersedes():
+    """
+    The rule was already there — one part, not one model of two parts — and the
+    run kept the Phase 1 ear beside the Phase 2 arm all the same, because the
+    merge will not let a filled field change. `superseded_by` is how a phase
+    that has already written the ear down says it is gone. FCC-127.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_DATUM),
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    design_system = " ".join(_system_messages(llm)[0].split())
+
+    assert "`superseded_by` on the replaced feature" in design_system
+    assert "Nothing of a feature carrying it is a value of the part any more" \
+        in design_system
+    assert "The datums and the envelope go with it" in design_system
+    # Not a way round the merge for a reading the phase has changed its mind about.
+    assert "never for two values of one feature that disagree" in design_system
+
+
 def test_the_granularity_rules_this_reverses_are_gone_from_plan():
     """
     Asserted as a reversal, because copy is only cancelled when it is absent:
@@ -3821,6 +3844,37 @@ def test_one_entry_may_feed_several_steps():
     ], attachments=[RENDER_PNG])
 
     assert events.first(PLAN_REVISED) is None
+
+
+def test_no_step_has_to_build_a_feature_the_later_page_replaced():
+    """
+    The Model Mania sheet's second page replaces the horizontal mounting ear
+    with an arm at 45°. With both on the description as `read`, the coverage
+    check required a Step for the ear's bore as well: the revision that dropped
+    it was handed back for leaving an entry unplanned, and a whole revision went
+    on a hole the drawing had deleted. FCC-127.
+    """
+    superseded = {
+        "features": [
+            {"id": "left-ear", "kind": "horizontal mounting ear",
+             "superseded_by": "angled-arm",
+             "position": {"the left end face": read("15 mm")}},
+            {"id": "angled-arm", "kind": "mounting arm at 45°",
+             "position": {"the ring axis": read("73 mm")}},
+        ],
+    }
+
+    result, events, _, _ = drive([
+        design_reply(superseded),
+        plan_reply({"do": "Pad the arm at 45°",
+                    "satisfies": ["features → angled-arm → position → the ring axis"]}),
+        code_reply("arm()"), assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert result.ok
+    assert events.first(PLAN_REVISED) is None
+    assert events.first(PLAN).data["acceptance"] == [
+        "features → angled-arm → position → the ring axis: 73 mm (read)"]
 
 
 def test_an_assumed_entry_is_not_something_a_plan_can_be_refused_over():

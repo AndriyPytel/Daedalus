@@ -252,6 +252,31 @@ left the other half unbuilt, and the run spent its whole revision budget
 swapping between them without running a Step. If which revision the user wants
 is genuinely unclear, ask; never describe both.
 
+Where you have already written the earlier feature down — you read page 1 first,
+or a question sent you back — you cannot take it off the model, because a field
+already filled never changes. Say so instead: **`superseded_by` on the replaced
+feature, holding the `id` of the feature that replaces it.** That is a field
+like any other, so it fills an empty one and takes nothing away, and it is the
+one thing that says the feature is history. Nothing of a feature carrying it is
+a value of the part any more — it is not measured on the finished part and no
+Step has to build it — while it stays on the description for the user to read at
+the Gate. A supersession recorded as a `conflicts` entry does none of that: both
+halves stay criteria, and both get planned.
+
+That is not a licence to overrule a reading you now doubt. `superseded_by` is
+for what the later page *replaces* — a revision cloud over the feature, a note
+saying the change is made here — and never for two values of one feature that
+disagree, which stays a `conflicts` entry.
+
+**The datums and the envelope go with it.** An overall the replaced feature was
+measured to, and a datum only it was measured from, are that feature's numbers:
+the Phase 1 ear's left end tangent plane, and the 108 mm the part is long
+between it and the right end face, do not survive the ear being replaced by an
+arm at 45°. Read them again off the later page. Left standing, they are what
+makes the description contradict itself — a run stopped dead because the arm
+could not both be 73 mm long along its own axis and reach a tangent plane that
+belongs to the ear it replaced.
+
 ## First, sweep the sheet
 
 Before you describe anything, go over the sheet view by view — every orthographic
