@@ -248,6 +248,14 @@ class FakeTools:
                     "properties": [{"name": "Length", "type": "App::PropertyLength",
                                     "value": "10.0 mm"}]}
 
+        @registry.tool("materials", "The material cards this build has, with their uuids.", {
+            "type": "object", "properties": {"name": {"type": "string"}},
+        })
+        def materials(name=None):
+            self.calls.append(("materials", {"name": name}))
+            return {"materials": [{"name": "Steel-Generic", "uuid": "b9b3a6ff-1c8e",
+                                   "density": "7900.00 kg/m^3"}], "count": 1}
+
         @registry.tool("apply_step", "Apply one Step.", {
             "type": "object",
             "properties": {"code": {"type": "string"}, "label": {"type": "string"}},
@@ -3185,6 +3193,61 @@ def test_a_run_nobody_answered_at_all_reaches_the_gate_rather_than_a_block():
     assert events.first(PLAN).data["unanswered"] == ["q1", "q2", "q3"]
     assert "half the 50 mm height" in json.dumps(events.first(PLAN).data["decided"]), \
         "the value the model settled reached the Gate without its evidence"
+    assert tools.applied_codes() == ["pad()"]
+
+
+A_MATERIAL_CARD = ("Provide the UUID of an installed plain carbon steel material card, or "
+                   "make the materials lookup tool available.")
+
+
+def test_a_question_about_a_material_card_is_answered_from_the_tools():
+    """
+    The uuid of a material card is a fact about this FreeCAD, not about the
+    part: no drawing prints one. A recorded run put it to the sheet three
+    times, was told each time that nothing in the views answers it, and ended
+    on the third for want of an answer. The Tool that holds it answers it and
+    the run carries on (FCC-149).
+    """
+    result, events, llm, tools = drive([
+        design_reply(SETTLED),
+        question_reply(A_MATERIAL_CARD),
+        look_reply("materials", name="plain carbon steel"),
+        plan_reply("Pad the profile", satisfies=everything(SETTLED)),
+        code_reply("pad()"), assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert result.ok, result.reason
+    assert ("materials", {"name": "plain carbon steel"}) in tools.calls, \
+        "the question never reached the Tool that answers it: %s" % tools.calls
+    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    assert len(design_turns) == 1, "the sheet was asked what no drawing prints"
+    assert "b9b3a6ff-1c8e" in json.dumps(_turns_of(llm, "plan")[-1]), \
+        "what the Tool said never reached Plan"
+    assert events.first(PLAN).data["unanswered"] == [], \
+        "an answered question reached the Gate as unanswered"
+    assert tools.applied_codes() == ["pad()"]
+
+
+def test_rereads_are_spent_only_on_questions_put_to_the_drawing():
+    """
+    One re-read, two questions: the one about the build is a look and costs it
+    nothing, so the one about the part still gets the sheet (FCC-149).
+    """
+    result, events, llm, tools = drive([
+        design_reply(SETTLED),
+        question_reply(A_MATERIAL_CARD),
+        look_reply("materials", name="steel"),
+        question_reply("Where is the O8 hole?"),
+        design_reply({"datums": [{"name": "the left end face", "is": "the flat face"}]}),
+        plan_reply("Pad the profile", satisfies=everything(SETTLED)),
+        code_reply("pad()"), assertion_reply("assert True"), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
+
+    assert result.ok, result.reason
+    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    assert len(design_turns) == 2, \
+        "the question about the part was charged for the question about the build"
+    assert events.first(PLAN).data["unanswered"] == []
     assert tools.applied_codes() == ["pad()"]
 
 

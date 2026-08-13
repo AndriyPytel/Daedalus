@@ -83,6 +83,10 @@ class Budgets:
     How often Plan may be told to choose for itself is not bounded here: no run
     ends for want of an answer, so the count of questions nobody answered is
     not a ceiling on anything (ADR-0022).
+
+    `looks_per_turn` bounds Execute's looks and Plan's alike: a question about
+    the build is a look, and Plan asking one over and over would otherwise
+    never terminate either.
     """
 
     attempts_per_step: int = 3
@@ -279,6 +283,31 @@ _DECIDE = ("Nobody is asked for a value. Choose sensible values yourself, and wr
            "correctable at the Plan Gate.")
 
 _SAID_NOTHING = "nothing in the views answers it."
+
+_ABOUT_THE_BUILD = ("material", "materials", "uuid", "uuids", "card", "cards", "density",
+                    "type", "types", "property", "properties", "enumeration", "spelling",
+                    "spellings", "installed")
+
+_LOOK_IT_UP = ("You asked for something no drawing prints — what this FreeCAD has, what a "
+               "type is called, what a card carries. Nobody is asked and the sheet is not "
+               "read: look it up with one of the Tools above and plan with what it says. "
+               "Reply with {\"look\": {\"tool\": \"...\", \"arguments\": {...}}}.")
+
+_LOOKED_AT_NOTHING = "no Tool here answers it."
+
+
+def _a_question_for_the_build(question):
+    """
+    Whether a question is about this FreeCAD rather than about the part.
+
+    A dimension, or which of two profiles governs, is a question the drawing
+    can settle. A material card's uuid, a type's name, a property's spelling is
+    not: no sheet prints one, and a recorded run spent every re-read it had
+    putting "the UUID of an installed plain carbon steel material card" to the
+    drawing before ending for want of an answer (FCC-149).
+    """
+    words = re.findall(r"[a-z]+", str(question).lower())
+    return any(word in _ABOUT_THE_BUILD for word in words)
 
 
 def nobody_to_ask(question):
@@ -604,6 +633,11 @@ class Plan:
     not need. `cites` is the same citations kept Step by Step, which one check
     does need: a Step builds in one plane, so the entries it cites have to
     agree about which one that is.
+
+    `look` is a read-only Tool Plan wants run, and like `question` it comes
+    instead of Steps. It is offered only once Plan has asked something the
+    drawing cannot answer, so it is how a question about the build is settled
+    rather than a second route to the Document.
     """
 
     steps: list
@@ -611,10 +645,11 @@ class Plan:
     acceptance: list = field(default_factory=list)
     satisfies: list = field(default_factory=list)
     cites: list = field(default_factory=list)
+    look: dict = None
 
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered=(),
-         revising=()):
+         revising=(), looking=(), looked=()):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
 
@@ -646,6 +681,11 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
 
     A question nobody answered rides with it as an instruction rather than a
     value or a source: Plan chooses, and says in the Step what it chose.
+
+    `looking` is the read-only Tools Plan may settle its own question with, and
+    `looked` is what they said. Both are empty until Plan asks something the
+    drawing was never going to answer: a uuid, a type's name, a property's
+    spelling.
     """
     request = {"intent": intent, "document": snapshot}
     if revising:
@@ -658,10 +698,19 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
     if unanswered:
         request["nobody_answered"] = {"the_questions": list(unanswered),
                                       "what_to_do": _DECIDE}
+    if looking:
+        request["tools_you_may_look_with"] = list(looking)
+        request["what_to_do_now"] = _LOOK_IT_UP
+    if looked:
+        request["what_the_tools_say"] = list(looked)
 
     reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
                  json.dumps(request, indent=2, default=str))
     steps, satisfies, cites = _steps_of(reply.get("steps", []))
+
+    look = reply.get("look")
+    if not steps and looking and isinstance(look, dict) and look:
+        return Plan(steps=[], look=look)
 
     question = str(reply.get("question") or "").strip()
     if not steps and question:
@@ -1576,11 +1625,18 @@ class _Asking:
     a Plan has been sent back for building two directions in one Step: run-wide
     like the rest, because a Plan that keeps mixing them would otherwise be
     sent back for ever.
+
+    `looked_up` is what the Tools said to the questions the drawing could not
+    answer, and `looks` is how many of them were taken. Both are run-wide for
+    the same reason as the rest: an answer already looked up is handed to every
+    later Plan rather than looked up again.
     """
 
     def __init__(self):
         self.unanswered = []
+        self.looked_up = []
         self.read_again = 0
+        self.looks = 0
         self.re_aimed = 0
 
 
@@ -2266,7 +2322,7 @@ def _one_direction_per_step(mixed):
 
 
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
-                               cancelled, asking, feedback=None, attachments=(),
+                               cancelled, asking, tools, feedback=None, attachments=(),
                                revising=()):
     """
     Plan, letting it ask for what the description did not carry (FCC-25).
@@ -2283,11 +2339,19 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     Gate shows it. FCC-90 was an interception for the drawing's sake; it is now
     the whole route.
 
-    Every question reaches the sheet first, including one raised after Plan was
-    told to choose for itself. That question is a *new* obstacle — the run that
-    found the outer profile self-contradictory found it on the third try — and
-    the sheet very often settles it. Asking the drawing used to be skipped there,
-    because the run stopped one line above it (FCC-96).
+    A question the drawing was never going to answer does not go to it. A
+    material card's uuid, what a type is called, which card carries a density
+    are facts about this FreeCAD, and a Tool holds them: Plan is handed the
+    read-only Tools and settles its own question with a look, bounded by
+    `budgets.looks_per_turn` and charged to nothing else. A recorded run put
+    "the UUID of an installed plain carbon steel material card" to the sheet
+    three times, spent every re-read it had on it and stopped (FCC-149).
+
+    Every question about the part reaches the sheet first, including one raised
+    after Plan was told to choose for itself. That question is a *new* obstacle
+    — the run that found the outer profile self-contradictory found it on the
+    third try — and the sheet very often settles it. Asking the drawing used to
+    be skipped there, because the run stopped one line above it (FCC-96).
 
     A question is not an approval: the Plan Gate is still the single point of
     approval, and it still sees every Step — and now the questions nobody
@@ -2320,12 +2384,18 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     know. A run that cannot move is a different matter and is stopped where
     progress is measured, not here (FCC-132).
     """
-    grown = the_part
+    grown, for_the_build = the_part, False
     while True:
         if cancelled():
             raise Stopped()
         planned = plan(intent, snapshot, llm, events, feedback=feedback,
-                       the_part=grown, unanswered=asking.unanswered, revising=revising)
+                       the_part=grown, unanswered=asking.unanswered, revising=revising,
+                       looking=_lookable(tools) if for_the_build else (),
+                       looked=asking.looked_up)
+        if planned.look:
+            asking.looked_up.append(_look(tools, planned.look, events))
+            for_the_build = False
+            continue
         mixed = _two_directions_in_one_step(planned)
         if mixed and asking.re_aimed < budgets.revisions:
             asking.re_aimed += 1
@@ -2338,7 +2408,13 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
 
         events.emit(QUESTION, text=planned.question)
 
-        if asking.read_again < budgets.rereads and _pictures(attachments):
+        if _a_question_for_the_build(planned.question):
+            if asking.looks < budgets.looks_per_turn:
+                asking.looks += 1
+                for_the_build = True
+                continue
+            events.emit(ANSWER, text=_LOOKED_AT_NOTHING, by="tools")
+        elif asking.read_again < budgets.rereads and _pictures(attachments):
             asking.read_again += 1
             from_the_drawing, _ = design({"the_part_as_you_described_it": grown,
                                           "the_question": planned.question},
@@ -2427,7 +2503,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     def replan(feedback=None, revising=()):
         planned, part["the_part"] = _plan_once_it_knows_enough(
             intent, tools.call("snapshot"), llm, events, budgets, part["the_part"],
-            cancelled, asking, feedback, attachments, revising)
+            cancelled, asking, tools, feedback, attachments, revising)
         return planned
 
     def decided(why, applied):
