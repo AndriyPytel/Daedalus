@@ -1,6 +1,7 @@
-# FreeCadCopilot/core/model_catalog.py
 """
-The models a key can actually call, asked of the provider itself.
+The models a key can actually call, asked of the provider itself. The table of
+providers is the registry of what the addon can reach; a bundled model list was
+a second answer to the same question, and one that could only go stale.
 
 Owns the whole path — URL, headers, request, parsing — so the endpoint and its
 auth sit inside the tested seam. FreeCAD-free, so it is importable in tests.
@@ -12,10 +13,6 @@ import httpx
 
 TIMEOUT = 10.0
 
-# Every provider the addon can reach, and where it lives. This table is the
-# registry: what a key entitles you to is asked of the provider itself, so a
-# bundled model list was a second answer to the same question that could only
-# go stale.
 _DEFAULT_BASE = {
     "OpenAI": "https://api.openai.com/v1",
     "Anthropic": "https://api.anthropic.com/v1",
@@ -24,7 +21,6 @@ _DEFAULT_BASE = {
     "Custom/Local": "",
 }
 
-# The ones LiteLLM names itself, and so already knows the address of.
 _VENDORS = ("OpenAI", "Anthropic", "Google")
 
 
@@ -65,11 +61,54 @@ def openai_base(base_url: str) -> str:
     return base
 
 
-def fetch(provider: str, api_key: str, base_url: str | None = None) -> list[dict]:
+_NOT_A_READER = ("embed", "tts", "whisper", "image", "audio", "moderation",
+                 "rerank", "sora", "video")
+
+
+def _offerable(provider: str, model_id: str, accepts_images=None) -> bool:
+    """
+    Whether *model_id* is worth offering: the addon's work is a drawing in and
+    code out, so a model that cannot see one is no use for it. Narrower than
+    dropping embeddings — `o3-mini` is a chat model with no eyes.
+
+    Only the three vendors LiteLLM names itself are judged. A gateway sells
+    under ids of its own and a local server serves whatever was pulled, so
+    LiteLLM's silence about those is not a verdict.
+
+    LiteLLM's table ships with LiteLLM and so is always a release behind the
+    model everyone wants, which is why an id it has never heard of is offered
+    rather than hidden. The words in ``_NOT_A_READER`` are the exception:
+    nothing called an embedding or a voice was ever going to read a drawing.
+    """
+    if provider not in _VENDORS:
+        return True
+
+    from core.llm import litellm_model_name
+    if accepts_images is None:
+        from core.llm import accepts_images
+
+    verdict = accepts_images(litellm_model_name(provider, model_id))
+    if verdict is None:
+        return not any(word in model_id.lower() for word in _NOT_A_READER)
+    return bool(verdict)
+
+
+def fetch(provider: str, api_key: str, base_url: str | None = None,
+          accepts_images=None) -> list[dict]:
     """
     Return ``[{id, display}]`` for ``provider``, raising on transport or HTTP
     failure. ``base_url`` overrides the provider's endpoint — it is where the
     Custom/Local server lives, and where tests point.
+
+    ``accepts_images`` is the sight verdict, ``llm.accepts_images`` by default:
+    True, False, or None for a model LiteLLM has never heard of.
+
+    A local server's address is a setting of its own, never the API key — a key
+    read as a URL is what produced "Request URL is missing an 'http://' or
+    'https://' protocol". Its key is optional: a server that wants no token
+    ignores the header, one that does gets it, which is why the key field
+    stays. Anthropic and Google both page their model lists, so each is asked
+    for one page of 1000, which nobody is near.
     """
     base = (base_url or _DEFAULT_BASE.get(provider, "")).rstrip("/")
     params = {}
@@ -78,20 +117,14 @@ def fetch(provider: str, api_key: str, base_url: str | None = None) -> list[dict
         headers = {"Authorization": "Bearer %s" % api_key}
     elif provider == "Anthropic":
         headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
-        # ponytail: one page of 1000 — both providers page, and nobody is near it.
         params = {"limit": 1000}
     elif provider == "Google":
         headers = {}
         params = {"key": api_key, "pageSize": 1000}
     else:
-        # A local server. Its address is a setting of its own (FCC-50), never
-        # the API key — a key read as a URL is what produced "Request URL is
-        # missing an 'http://' or 'https://' protocol".
         if not base_url:
             raise ValueError("No Base URL for provider: %s" % provider)
         base = openai_base(base_url)
-        # A local server that wants no token ignores the header; one that does
-        # gets it, which is why the key field stays.
         headers = {"Authorization": "Bearer %s" % api_key} if api_key else {}
 
     if not base:
@@ -102,14 +135,17 @@ def fetch(provider: str, api_key: str, base_url: str | None = None) -> list[dict
     payload = response.json()
 
     if provider == "Google":
-        return [
+        found = [
             {"id": entry["name"].removeprefix("models/"),
              "display": entry.get("displayName") or entry["name"].removeprefix("models/")}
             for entry in payload.get("models", [])
             if "generateContent" in entry.get("supportedGenerationMethods", [])
         ]
+    else:
+        found = [
+            {"id": entry["id"], "display": entry.get("display_name") or entry["id"]}
+            for entry in payload.get("data", [])
+        ]
 
-    return [
-        {"id": entry["id"], "display": entry.get("display_name") or entry["id"]}
-        for entry in payload.get("data", [])
-    ]
+    return [model for model in found
+            if _offerable(provider, model["id"], accepts_images)]
