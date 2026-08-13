@@ -77,11 +77,12 @@ class Budgets:
     a replan (see `_Revisions`): separate budgets would let them cycle into
     each other and would raise the worst-case number of Plan calls in a run.
 
-    `rereads` is how many times a question may be put back to the drawing. A
-    re-read is still a provider call, and without a ceiling a Plan that keeps
-    asking and a drawing that keeps answering never terminates. Since nobody is
-    asked for a value any more it carries all of the questioning there is, and
-    it bounds how often Plan may be told to choose for itself (ADR-0022).
+    `rereads` is how many times a question may be put back to the drawing, and
+    nothing else. A re-read is still a provider call, and without a ceiling a
+    Plan that keeps asking and a drawing that keeps answering never terminates.
+    How often Plan may be told to choose for itself is not bounded here: no run
+    ends for want of an answer, so the count of questions nobody answered is
+    not a ceiling on anything (ADR-0022).
     """
 
     attempts_per_step: int = 3
@@ -1558,21 +1559,6 @@ class _OutOfRevisions(Exception):
         self.tried = tried
 
 
-class _NobodyAnswered(Exception):
-    """
-    Plan asks and asks and does not plan. Not a value that went unanswered —
-    every question is answered now, with "choose it yourself" (ADR-0022) — but
-    a phase that will not do its job, and no site further along can end that. A
-    stop, not a fault: it carries the questions it went on asking, so the block
-    says what it stalled on rather than reporting an error nobody can act on
-    (FCC-96).
-    """
-
-    def __init__(self, reason):
-        super().__init__(reason)
-        self.reason = reason
-
-
 class _Asking:
     """
     What has been asked in this run, and of whom.
@@ -1596,9 +1582,6 @@ class _Asking:
         self.unanswered = []
         self.read_again = 0
         self.re_aimed = 0
-
-    def outstanding(self) -> str:
-        return "; ".join(self.unanswered)
 
 
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
@@ -1653,9 +1636,6 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
                                       "gone.", [], progress["applied"]))
     except _OutOfRevisions as spent:
         return outcome(_block(events, spent.reason, spent.tried, progress["applied"]))
-    except _NobodyAnswered as open_question:
-        return outcome(_block(events, open_question.reason, progress["tried"],
-                              progress["applied"]))
     except ProviderRefused as exc:
         return outcome(_block(events, str(exc), progress["tried"], progress["applied"],
                               said=exc.said))
@@ -2312,9 +2292,9 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     A question is not an approval: the Plan Gate is still the single point of
     approval, and it still sees every Step — and now the questions nobody
     answered, beside the Steps that chose without them. `budgets.rereads` bounds
-    the drawing being asked, and with it how often Plan may be told to choose:
-    a Plan that answers every telling with another question is not planning, and
-    the run says so rather than circling.
+    the drawing being asked and nothing else; how often Plan may be told to
+    choose is not bounded at all, because a run that reaches the Gate with
+    questions nobody answered is the case this route was written for.
 
     Every Plan comes through here, first or revised: a re-plan is a new Plan and
     may ask the same way, or it invents the value it was missing (FCC-67). What
@@ -2329,18 +2309,16 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     before the Plan was settled it is emitted again, because the Gate stands
     over the description the Plan was made from.
 
-    Two things end the questioning rather than bound it. The same question
-    asked twice cannot end — it has already been put to the sheet, already
-    answered by nobody, and already handed back with "choose and say what you
-    chose", and nothing has changed since. So has a Plan that answers every
-    telling to choose with a question about something new: every one of those
-    was answered, with "choose it yourself", and nothing further along can end
-    a Plan that will not plan (ADR-0022). A sheet that answered nothing is said
-    out loud, because the transcript could not otherwise tell a re-read that
-    found nothing from a re-read that never happened, which is the first thing
-    anybody reading a stalled run wants to know. Where nobody answers at all
-    the run goes on, with Plan choosing and saying in each Step what it chose:
-    not an error, but carried to the Gate.
+    No question ends the run. A value nobody supplied is settled by the model,
+    which says in `because` what it settled it off, and the Gate reads both; a
+    stop here would end a run for want of an answer, which is the one thing no
+    site may do (FCC-127, FCC-133). A question already outstanding is not
+    listed twice, so the Gate shows what was asked and not how often. A sheet
+    that answered nothing is said out loud, because the transcript could not
+    otherwise tell a re-read that found nothing from a re-read that never
+    happened, which is the first thing anybody reading a stalled run wants to
+    know. A run that cannot move is a different matter and is stopped where
+    progress is measured, not here (FCC-132).
     """
     grown = the_part
     while True:
@@ -2360,11 +2338,6 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
 
         events.emit(QUESTION, text=planned.question)
 
-        if planned.question in asking.unanswered:
-            raise _NobodyAnswered(
-                "Plan asked for the same value again rather than choosing one, so there is "
-                "no Plan. Answer this and run it again: " + planned.question)
-
         if asking.read_again < budgets.rereads and _pictures(attachments):
             asking.read_again += 1
             from_the_drawing, _ = design({"the_part_as_you_described_it": grown,
@@ -2376,14 +2349,9 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                 continue
             events.emit(ANSWER, text=_SAID_NOTHING, by="drawing")
 
-        if len(asking.unanswered) >= budgets.rereads:
-            raise _NobodyAnswered(
-                "Plan went on asking for values instead of choosing them, so there is no "
-                "Plan. It was told to choose after: " + asking.outstanding()
-                + "; and it asked again: " + planned.question)
-
         events.emit(ANSWER, text=_DECIDE, by="nobody")
-        asking.unanswered.append(planned.question)
+        if planned.question not in asking.unanswered:
+            asking.unanswered.append(planned.question)
 
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
