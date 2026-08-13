@@ -86,9 +86,10 @@ def merge(held, offered):
     an outside described in words and carried by nothing, `direction` for a
     feature that points somewhere and says nowhere, `pointing` for one placed
     along the very direction its axis points, `placement` for one sized in
-    a direction it is placed in nowhere, and `twice_over` for a cavity nothing
-    places, which is how one cavity comes to be two features. Their findings
-    join the same `conflicts` the disagreements go to.
+    a direction it is placed in nowhere, `twice_over` for a cavity nothing
+    places, which is how one cavity comes to be two features, and
+    `settled_by_nothing` for a value whose flag promises a reason it does not
+    carry. Their findings join the same `conflicts` the disagreements go to.
     """
     if not isinstance(offered, dict):
         return _with_the_findings(dict(held or {}))
@@ -171,7 +172,8 @@ def _the_entry(node, step):
 
 def _with_the_findings(model):
     found = (silhouette(model) + direction(model) + pointing(model)
-             + crosswise(model) + placement(model) + twice_over(model))
+             + crosswise(model) + placement(model) + twice_over(model)
+             + settled_by_nothing(model))
     if found:
         model["conflicts"] = _appended(model.get("conflicts"), found)
     return model
@@ -856,6 +858,39 @@ def twice_over(model) -> list:
     return found
 
 
+_SAYS_WHAT_SETTLED_IT = {"assumed": "because", "derived": "from"}
+
+
+def settled_by_nothing(model) -> list:
+    """
+    An entry that does not say what settled its value.
+
+    `assumed` carries `because` and `derived` carries `from` — one line each
+    saying who settled the value and on what (ADR-0022). Both requirements were
+    written in `config/prompts/design.md` and in nothing that runs, so the
+    section the Plan Gate shows a user rested on the model doing as it was told:
+    `decided_for_you` fell back to prose saying nobody supplied the value and
+    nothing said what settled it, which is a value nobody can check.
+
+    One rule rather than two, because it is one defect: the entry is incomplete,
+    and which field is missing follows from the flag. A conflict and not a
+    refusal, like every other reading defect — the run carries on and the user
+    settles it at the Gate.
+    """
+    found = []
+    for path, node in _each_value(model, ""):
+        says = _SAYS_WHAT_SETTLED_IT.get(str(node.get("flag") or ""))
+        if says and not _filled(node.get(says)):
+            found.append({
+                "about": path,
+                "stands": "`%s` with no `%s`: nothing else on the model can say "
+                          "afterwards where the value came from"
+                          % (node.get("flag"), says),
+                "was_also_said": str(node.get("value") or ""),
+            })
+    return found
+
+
 def _drawn_in_common(one, other):
     """Whether two features name a view between them that both were read in."""
     return bool({str(view) for view in one.get("seen_in") or ()}
@@ -958,8 +993,9 @@ def decided_for_you(model) -> list:
     surviving question. Sniffing that prose for the word "user" would be a
     guess, and the section is honest either way — these are the values the sheet
     did not give. An `assumed` value with no `because` at all is a Design turn
-    that did not do its job, and it reads as the model's own, which is the safe
-    way round for a choice nobody claimed.
+    that did not do its job, and `settled_by_nothing` raises it at the merge —
+    so `_NOBODY_SAID` is what a model that never went through one reads as, and
+    not what a user is shown at the Gate.
     """
     return [_the_decision(path, node) for path, node in _each_value(model, "")
             if _filled(node.get("was")) or node.get("flag") == "assumed"]
