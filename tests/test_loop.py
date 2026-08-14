@@ -874,6 +874,29 @@ def test_the_positive_form_of_the_lint_rules_reaches_execute():
     assert "computes its own Shape" not in review_system
 
 
+def test_a_step_that_selects_a_subset_says_how_many_it_expects():
+    """
+    An obround pad has no longitudinal edge on its outer surface, so the Step
+    that asked for the outline could only ever select the eight pocket
+    corners — and it applied to those eight and reported success. Plan states
+    the count in the Step's prose, Execute checks the selection against it.
+    FCC-151.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    # The prompts are wrapped copy; a sentence crosses line breaks.
+    plan_system, execute_system, review_system = (
+        " ".join(text.split()) for text in _system_messages(llm))
+
+    assert "says how many" in plan_system
+    assert "how many" in execute_system
+    assert "len(edges) != 12" in execute_system
+    assert "how many" not in review_system
+
+
 def test_the_curve_and_thread_types_are_traps_not_prompt_copy():
     """
     Which types this build offers for a thread and for a free curve is

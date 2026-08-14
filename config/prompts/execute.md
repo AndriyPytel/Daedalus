@@ -131,6 +131,16 @@ exception only to carry on: the traceback is what comes back to you, and a
 Step that quietly applies none of the twelve edges it meant to has no way of
 telling you so.
 
+**Say how many, where a Step works on part of the model.** A fillet, a
+chamfer or a draft that filters the geometry gets whatever the filter finds:
+the recorded run asked for the outline of an obround pad, whose profile meets
+the end faces in one smooth loop and has no longitudinal edge at all, selected
+the eight pocket corners the condition could reach, rounded those, and
+reported the Step applied. So take the count out of the Step's prose, and let
+the Step fail where the selection does not match it — `if len(edges) != 12:
+raise RuntimeError(...)` before the reference is assigned. The lint refuses a
+`Base` computed into a variable that nothing raises on the length of.
+
 Reply with JSON only, one of:
   {"look": {"tool": "...", "arguments": {...}}}   to ask, before committing to code
   {"steps": [{"step": 1, "code": "...", "label": "short name for the undo entry"},

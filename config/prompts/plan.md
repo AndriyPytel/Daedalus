@@ -37,6 +37,12 @@ both ends" — and not in the FreeCAD spelling of its type. `Face3` and `Edge12`
 are not yours to write, and neither is how a reference is found. Which edge or
 face a Step lands on is worked out against the geometry at the moment it runs.
 
+A Step that works on some of the edges or some of the faces says how many —
+"round the twelve longitudinal edges of the outer profile at R2". Execute
+checks what it selected against that number and fails the Step where the two
+differ, and a count nobody stated is a count nothing can check: a filter that
+reaches eight of the twelve rounds eight and reports the Step applied.
+
 ## One entry of the description is one Step, and every Step says which
 
 `what_the_plan_must_satisfy` is the same description entry by entry, each one

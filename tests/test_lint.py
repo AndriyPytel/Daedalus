@@ -336,3 +336,96 @@ def test_the_element_reason_no_longer_points_at_shape():
 
     assert ".Shape" not in reason
     assert "adjacency" not in reason
+
+
+# ── a computed selection that never says how many (FCC-151) ───────────────────
+
+
+THE_RECORDED_R2_FILLET = """body = doc.getObject('Body')
+base = doc.getObject('PocketRearCentral')
+if body is None or base is None:
+    raise RuntimeError('The rear central pocket required for edge fillets is missing')
+
+edge_refs = []
+for i, edge in enumerate(base.Shape.Edges, 1):
+    vs = edge.Vertexes
+    if len(vs) != 2:
+        continue
+    a = vs[0].Point
+    b = vs[1].Point
+    if abs(a.x - b.x) < 1e-7 and abs(a.z - b.z) < 1e-7 and abs(a.y - b.y) > 1e-7:
+        edge_refs.append('Edge%d' % i)
+if not edge_refs:
+    raise RuntimeError('No longitudinal outer or pocket-perimeter edges were found for R2 fillets')
+
+fillet = doc.addObject('PartDesign::Fillet', 'FilletRedEdges')
+fillet.Label = 'R2 Outer and Pocket Longitudinal Fillets'
+body.addObject(fillet)
+fillet.Base = (base, edge_refs)
+fillet.Radius = 2.0
+doc.recompute()
+"""
+
+
+def test_the_recorded_runs_r2_fillet_is_rejected_for_never_saying_how_many():
+    """
+    The Step asked for the outline of an obround pad, whose profile meets the
+    end faces in one smooth loop and has no longitudinal edge at all. The
+    filter could only ever find the eight pocket corners, it found them, and
+    the run reported the fillet applied. FCC-151.
+    """
+    result = lint(THE_RECORDED_R2_FILLET)
+
+    assert not result.ok
+    assert "how many" in result.report()
+
+
+@pytest.mark.parametrize("code", [
+    "edges = [e for e in base.Shape.Edges if e.Length > 5]\n"
+    "refs = ['Edge%d' % (base.Shape.Edges.index(e) + 1) for e in edges]\n"
+    "fillet.Base = (base, refs)\n",
+    "refs = []\n"
+    "for i, e in enumerate(base.Shape.Edges, 1):\n"
+    "    if e.Length > 5:\n"
+    "        refs.append('Edge%d' % i)\n"
+    "if not refs:\n"
+    "    raise RuntimeError('found none')\n"
+    "chamfer.Base = (base, refs)\n",
+    "fillet.Base = (base, ['Edge%d' % (i + 1) for i, e in enumerate(base.Shape.Edges)])\n",
+])
+def test_a_computed_selection_with_no_count_is_rejected(code):
+    result = lint(code)
+
+    assert not result.ok
+    assert "how many" in result.report()
+
+
+def test_a_selection_that_raises_on_the_count_is_accepted():
+    code = (
+        "refs = []\n"
+        "for i, e in enumerate(base.Shape.Edges, 1):\n"
+        "    if e.Length > 5:\n"
+        "        refs.append('Edge%d' % i)\n"
+        "if len(refs) != 12:\n"
+        "    raise RuntimeError('the outline has 12 edges, found %d' % len(refs))\n"
+        "fillet.Base = (base, refs)\n"
+    )
+
+    assert lint(code).ok, lint(code).report()
+
+
+def test_the_reason_says_what_to_write_instead():
+    reason = lint("refs = pick(base)\nfillet.Base = (base, refs)\n").report()
+
+    assert "len(" in reason
+    assert "raise" in reason
+
+
+def test_a_selection_the_user_made_needs_no_count():
+    result = lint("fillet.Base = (box, ['Edge3'])", SELECTED_EDGE_3)
+
+    assert result.ok, result.report()
+
+
+def test_a_base_that_is_not_a_selection_is_untouched():
+    assert lint("pad.Base = sketch\npocket.Profile = sketch\n").ok
