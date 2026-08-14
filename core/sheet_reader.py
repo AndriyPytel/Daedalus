@@ -1644,6 +1644,12 @@ def _in_millimetres(point, rect, millimetres_per_point):
             (rect.y1 - point[1]) * millimetres_per_point)
 
 
+def _on_the_page(point, rect, millimetres_per_point):
+    """A point of the view back in page points, which is where a leader ends."""
+    return (rect.x0 + point[0] / millimetres_per_point,
+            rect.y1 - point[1] / millimetres_per_point)
+
+
 def _at(point):
     return "(%.2f, %.2f)" % point
 
@@ -2014,6 +2020,8 @@ def _traced(document, page, rect, millimetres_per_point):
             circle = _circle_through(hole)
             if circle is None:
                 said.append(_shaped(walked, in_millimetres))
+                circles.extend(_a_bore_in_pieces(said[-1], rect,
+                                                 millimetres_per_point))
                 continue
             (x, y), radius = circle
             on_the_page = (box.x0 + x * across, box.y0 + y * down)
@@ -2025,8 +2033,59 @@ def _traced(document, page, rect, millimetres_per_point):
                                        millimetres_per_point))],
                 closed=True, area=math.pi * (wide / 2.0) ** 2))
             circles.append((on_the_page, radius * across, wide,
-                            said[-1].entities[0]))
+                            (said[-1].entities[0],)))
     return [outline for outline in said if outline.entities], circles
+
+
+def _a_bore_in_pieces(hole, rect, millimetres_per_point):
+    """
+    A hole the fit would not call a circle, offered to the callouts as its arcs.
+
+    A bore a centre line or a section hatch crosses is flooded as two patches
+    and read as arcs, and a leader reaching into one of them named nothing: a
+    callout could only ever reach a hole that came back a whole circle. The
+    arcs are the bore — they are what the leader stands in and what a printed
+    diameter is measured against — and the size goes to every one of them,
+    which is one hole.
+
+    Offered only where the arcs of the patch are arcs of one circle, within the
+    tracing's own slack: that is a bore cut in pieces, and a patch whose arcs
+    curve round different centres is a slot or a pocket with rounded ends. A
+    diameter is not what is printed against one of those, and a pocket's own
+    fitted disc is wide enough to swallow the leader of a hole inside it.
+
+    `A_BORE_IN_PIECES` is how far the pieces may disagree about the circle they
+    are arcs of, as a share of its radius, and it is the tracing's own slack
+    rather than a shape of its own: `ROUND`, what `_circle_through` allows a
+    boundary to sit from the circle fitted through it and still be one.
+
+    Measured on the four sheets in `tests/modelmania`: 18 holes come back whole
+    circles and 23 patches come back a bore in pieces, and no callout's leader
+    ends inside one of the 23 — the \u00d842 and \u00d850 of the 2023 sheet end 45
+    and 74 points outside the nearest. So nothing on those sheets changes
+    hands, and what changes is that an arc can carry a printed size at all:
+    without it `sketch_check`'s arc branch, and the bore read as two sizes it
+    exists to catch, had no path from any sheet.
+    """
+    arcs = [entity for entity in hole.entities if entity.kind == "arc"]
+    if not arcs or not _of_one_circle(arcs):
+        return []
+    widest = max(arcs, key=lambda entity: entity.radius)
+    return [(_on_the_page(widest.centre, rect, millimetres_per_point),
+             widest.radius / millimetres_per_point, 2 * widest.radius,
+             tuple(arcs))]
+
+
+A_BORE_IN_PIECES = ROUND
+
+
+def _of_one_circle(arcs):
+    """Whether every arc is an arc of the same circle, within the tracing's slack."""
+    widest = max(arcs, key=lambda entity: entity.radius)
+    return all(abs(arc.radius - widest.radius) <= A_BORE_IN_PIECES * widest.radius
+               and _distance(arc.centre, widest.centre)
+               <= A_BORE_IN_PIECES * widest.radius
+               for arc in arcs)
 
 
 def _numpy():
@@ -2503,7 +2562,7 @@ def _the_pixels_against_the_callouts(circles, printed, leaders, notes,
         across = _a_number(said[0].text)
         if across is None:
             continue
-        for centre, radius, wide, entity in circles:
+        for centre, radius, wide, entities in circles:
             if _distance(centre, reaches) > radius:
                 continue
             if abs(wide - across) > TOO_FAR:
@@ -2514,18 +2573,24 @@ def _the_pixels_against_the_callouts(circles, printed, leaders, notes,
                     "nothing here settles which is meant."
                     % (said[0].text, wide, abs(wide - across)))
             else:
-                _the_printed_size(drawn, entity, across)
+                _the_printed_size(drawn, entities, across)
             break
 
 
-def _the_printed_size(drawn, entity, across):
-    """The traced hole, again, carrying the size the draughtsman printed."""
-    carrying = replace(entity, printed=across)
+def _the_printed_size(drawn, entities, across):
+    """
+    The traced hole, again, carrying the size the draughtsman printed.
+
+    A hole is one feature however many pieces it was traced in, so a callout
+    that reaches it sizes every one of them. Sizing the first alone would leave
+    the rest at what the pixels made of them and invent the reading — one bore
+    given two sizes — that `sketch_check` exists to report.
+    """
     for view in drawn:
         for held in [view.entities] + [one.entities for one in view.outlines]:
             for at, one in enumerate(held):
-                if one is entity:
-                    held[at] = carrying
+                if any(one is entity for entity in entities):
+                    held[at] = replace(one, printed=across)
 
 
 def _from_raster(path, into, max_edge):
@@ -3097,7 +3162,7 @@ def _near(number, drawn):
 
     `A_DISTANCE` is how far the pixels may be from what the sheet prints for
     the same thing, in millimetres. One and a half, measured on the four
-    sheets: the 13 printed distances that reach a traced outline are 0.07 to
+    sheets: the 11 printed distances that reach a traced outline are 0.17 to
     1.08 mm out, and the 1.08 is the bias itself — a face is traced to the
     inside of the line that draws it, so a width reads about a millimetre
     under. It is the one band the tracing is read with, here and in

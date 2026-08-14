@@ -1194,6 +1194,36 @@ def test_a_bore_the_pixels_contradict_is_a_conflict_and_never_a_value():
     assert view.entities[0].printed is None
 
 
+def test_a_bore_traced_in_arcs_carries_the_size_a_leader_reaches_it_with():
+    """
+    A hole crossed by a centre line or a section hatch is flooded as two
+    patches and comes back as arcs rather than as one circle, and a callout
+    reaching into one of them had nothing to name: `printed` was attached to
+    traced circles alone. So the arc a sheet can produce carried no printed
+    size, and `sketch_check`'s arc branch — the one that catches a bore read as
+    two different sizes — ran on nothing any sheet could hand it.
+
+    Every arc of the one patch takes the size, because they are one hole: a
+    leader stands inside all of them and sizing the first alone would invent
+    the very disagreement the check reports.
+    """
+    arcs = tuple(sheet_reader.Entity(
+        kind="arc", source="traced", role="contour", size=41.0, radius=20.5,
+        centre=(0.0, 0.0), start=start, end=end)
+        for start, end in (((20.5, 0.0), (0.0, 20.5)), ((0.0, 20.5), (-20.5, 0.0))))
+    view = sheet_reader.Drawn(view="a view", entities=list(arcs))
+    printed = [sheet_reader.Printed(text="42", at=(10.0, 10.0), notation="\u00d8")]
+    leaders = [{"callout": "42", "printed_at": (10.0, 10.0),
+                "its_leader_reaches": (100.0, 100.0)}]
+    notes = []
+
+    sheet_reader._the_pixels_against_the_callouts(
+        [((100.0, 100.0), 20.5, 41.0, arcs)], printed, leaders, notes, [view])
+
+    assert notes == []
+    assert [entity.printed for entity in view.entities] == [42.0, 42.0]
+
+
 def test_a_number_is_never_snapped_onto_a_hole_by_being_the_nearest_number():
     """
     Why the join has to be the leader and not the nearest value. The 2023 sheet

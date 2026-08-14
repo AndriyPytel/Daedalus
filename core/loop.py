@@ -1909,7 +1909,7 @@ def _the_geometry_disagrees(the_part, attachments, events):
     That is what `conflicts` is, and it is the only phase that has both numbers
     in front of it.
 
-    Measured on `tests/modelmania`: 13 printed distances reach a traced outline
+    Measured on `tests/modelmania`: 11 printed distances reach a traced outline
     across the four sheets and every one agrees to within 1.08 mm, so a run
     against them gains nothing here. That is the right answer and not a weak
     check: the sheets agree with themselves.

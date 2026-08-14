@@ -69,8 +69,8 @@ def test_the_tracing_does_not_contradict_itself(sheet):
     """
     The floor, and it was not known before: what the pixels were measured into
     can be built all at once, and the sheet's own numbers cost it under a
-    millimetre and a half to satisfy. Measured over all four sheets, 96
-    outlines: median 0.27 mm, nine in ten under 0.62, worst 1.21 — the slack in
+    millimetre and a half to satisfy. Measured over all four sheets, 142
+    outlines: median 0.25 mm, nine in ten under 0.65, worst 1.32 — the slack in
     a fit through pixels 0.2 mm across.
     """
     for view, outline in _outlines(sheet):
@@ -215,15 +215,6 @@ def test_a_dimension_drawn_across_the_sheet_is_not_written():
     assert sketch_check.checked(plate, "a view", between).distances == 0
 
 
-def test_a_foot_that_reaches_no_face_of_this_outline_writes_nothing():
-    """Most feet reach nothing here: the view was not traced, or the face was not."""
-    plate = _a_plate(50.0, 30.0)
-    between = [sheet_reader.Between(printed=50.0, text="50", view="a view",
-                                    first=(0.0, 15.0), second=(90.0, 15.0))]
-
-    assert sketch_check.checked(plate, "a view", between).distances == 0
-
-
 def test_the_distances_of_another_view_are_not_written_into_this_one(sheet):
     """A view's own millimetres are its own: the same numbers name other places."""
     for view, outline in _outlines(sheet):
@@ -238,8 +229,8 @@ def test_the_distances_of_another_view_are_not_written_into_this_one(sheet):
 
 def test_a_disagreement_is_reported_and_never_resolved(sheet):
     """
-    Measured on the four sheets: the 13 printed distances that reach a traced
-    outline sit 0.07 to 1.08 mm from what the pixels put between the same two
+    Measured on the four sheets: the 11 printed distances that reach a traced
+    outline sit 0.17 to 1.08 mm from what the pixels put between the same two
     faces, and the 1.08 is the bias itself — a face is traced to the inside of
     the line that draws it. So the sheets agree with themselves, and nothing
     here is reported against them.
@@ -248,6 +239,104 @@ def test_a_disagreement_is_reported_and_never_resolved(sheet):
         verdict = sketch_check.checked(outline, view, sheet.between)
 
         assert verdict.disagrees == [], (view, verdict.disagrees)
+
+
+def _a_bracket():
+    """
+    A C traced as a closed walk: two faces of it are collinear and 30 mm apart.
+
+    What a rectangle cannot show — a foot standing on one face of a pair that
+    share a line, where the other is the wrong answer at the same distance
+    across the dimension.
+    """
+    corners = [(0.0, 0.0), (50.0, 0.0), (50.0, 10.0), (10.0, 10.0),
+               (10.0, 40.0), (50.0, 40.0), (50.0, 50.0), (0.0, 50.0)]
+    return sheet_reader.Outline(
+        entities=[sheet_reader.Entity(
+            kind="line", source="traced", role="contour",
+            size=sheet_reader._distance(corners[at],
+                                        corners[(at + 1) % len(corners)]),
+            start=corners[at], end=corners[(at + 1) % len(corners)])
+            for at in range(len(corners))],
+        closed=True, area=1400.0)
+
+
+def test_a_conflicting_constraint_comes_back_at_the_entity_it_was_written_for():
+    """
+    Two printed distances between the same two faces that cannot both be true,
+    put through the real solver. What the solver hands back is its own
+    constraint numbering, one-based; what a `Trouble` says is where in the walk
+    the trouble is, and that is the numbering every other Trouble in the
+    verdict uses. The two are separate fields because they are separate
+    coordinate systems: here the walk has four entities and the sketch has six
+    constraints, four coincidences and then the two distances.
+    """
+    plate = _a_plate(50.0, 30.0)
+    between = [sheet_reader.Between(printed=50.0, text="50", view="a view",
+                                    first=(0.0, 15.0), second=(50.0, 15.0)),
+               sheet_reader.Between(printed=60.0, text="60", view="a view",
+                                    first=(0.0, 10.0), second=(50.0, 10.0))]
+
+    verdict = sketch_check.checked(plate, "a view", between)
+
+    assert verdict.conflicts
+    assert {trouble.constraint for trouble in verdict.conflicts} == {4, 5}
+    for trouble in verdict.conflicts:
+        assert trouble.entity is plate.entities[trouble.at], trouble.said
+        assert trouble.printed in (50.0, 60.0), trouble.said
+        assert "the sheet prints" in trouble.said
+
+
+def test_a_foot_that_reaches_no_face_of_this_outline_writes_nothing():
+    """
+    Most feet reach nothing here: the view was not traced, or the face was not.
+
+    Off across the dimension and off along the face are both misses, and the
+    second is the one a line rather than a segment cannot tell: a foot 120 mm
+    above the plate stands on the left face's own infinite line and on no part
+    of the face.
+    """
+    plate = _a_plate(50.0, 30.0)
+    across = [sheet_reader.Between(printed=50.0, text="50", view="a view",
+                                   first=(0.0, 15.0), second=(90.0, 15.0))]
+    beyond = [sheet_reader.Between(printed=50.0, text="50", view="a view",
+                                   first=(0.0, 120.0), second=(50.0, 120.0))]
+
+    assert sketch_check.checked(plate, "a view", across).distances == 0
+    assert sketch_check.checked(plate, "a view", beyond).distances == 0
+
+
+def test_a_collinear_face_elsewhere_in_the_view_is_not_the_face_measured_to():
+    """
+    Two faces of the same walk on one line, and a foot on the far one: the
+    distance across the dimension is zero to both, so the only thing that tells
+    them apart is how far along their own direction the foot stands.
+    """
+    bracket = _a_bracket()
+
+    assert sketch_check._the_face_at(bracket, (50.0, 45.0), (1.0, 0.0)) == 5
+    assert sketch_check._the_face_at(bracket, (50.0, 5.0), (1.0, 0.0)) == 1
+
+
+def test_a_walk_of_lines_says_nothing_until_a_printed_distance_reaches_it():
+    """
+    Why the distances had to be written at all: coincidences are satisfied
+    where the pixels already put the walk, so `solved == 0` and `moved == 0` on
+    an outline of lines are the constraints being true by construction and not
+    a verdict about the reading. The same plate, traced 48 mm wide against a
+    sheet that prints 50, moves 1.08 mm and says which dimension moved it.
+    """
+    plate = _a_plate(48.0, 30.0)
+    between = [sheet_reader.Between(printed=50.0, text="50", view="a view",
+                                    first=(0.0, 15.0), second=(48.0, 15.0))]
+
+    assert sketch_check.checked(plate, "a view").moved == 0.0
+
+    verdict = sketch_check.checked(plate, "a view", between)
+
+    assert verdict.distances == 1
+    assert verdict.moved > 1.0, verdict.moved
+    assert verdict.disagrees
 
 
 # ── through the child, which is where it actually runs (FCC-126) ──────────────

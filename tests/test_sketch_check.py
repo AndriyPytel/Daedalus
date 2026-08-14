@@ -68,7 +68,8 @@ def test_the_verdict_comes_back_as_the_verdict():
     verdict = sketch_check.Verdict(
         view="the front view", entities=6, geometry=6, solved=0, dof=4,
         printed=1, distances=1,
-        disagrees=[sketch_check.Trouble(at=2, printed=40.0, said="prints 40")],
+        disagrees=[sketch_check.Trouble(at=2, constraint=7, printed=40.0,
+                                        said="prints 40")],
         moved=9.88,
         shifted=[sketch_check.Trouble(at=0, printed=42.0, said="moved 9.88 mm")])
 
@@ -78,6 +79,7 @@ def test_the_verdict_comes_back_as_the_verdict():
     assert back.view == "the front view"
     assert back.moved == 9.88
     assert [t.said for t in back.disagrees] == ["prints 40"]
+    assert [(t.at, t.constraint) for t in back.disagrees] == [(2, 7)]
     assert [t.printed for t in back.shifted] == [42.0]
 
 
