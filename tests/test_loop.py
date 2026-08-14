@@ -7,6 +7,7 @@ never substituted.
 """
 import base64
 import json
+import math
 import os
 import tempfile
 
@@ -5431,13 +5432,10 @@ def _a_sheet_that_contradicts_itself(tmp_path, wide=98.2, printed=100.0):
     no comparison to make — see the test below, which holds that ceiling in
     place on purpose.
     """
-    from core import sheet_reader
-
     corners = [(0.0, 0.0), (wide, 0.0), (wide, 30.0), (0.0, 30.0)]
     entities = [
         sheet_reader.Entity(kind="line", source="traced", role="contour",
-                            size=sheet_reader._distance(corners[at],
-                                                        corners[(at + 1) % 4]),
+                            size=math.dist(corners[at], corners[(at + 1) % 4]),
                             start=corners[at], end=corners[(at + 1) % 4])
         for at in range(4)]
     outline = sheet_reader.Outline(entities=entities, closed=True, area=3000.0)
@@ -5567,8 +5565,6 @@ def test_a_sheet_that_agrees_with_itself_adds_nothing(tmp_path, monkeypatch):
     is the tracing's own bias. So a run against a real sheet gains nothing
     here, and that is the right answer rather than a weak check.
     """
-    from core import sheet_reader
-
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=100.0)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
@@ -5664,8 +5660,6 @@ def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
 
 def _a_sheet_of_many_outlines(tmp_path, how_many=4):
     """One view holding several traced plates, so a budget has something to run out of."""
-    from core import sheet_reader
-
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     drawn = sheet.drawn[0]
     return sheet_reader.Sheet(
