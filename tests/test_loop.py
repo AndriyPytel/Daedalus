@@ -5470,6 +5470,69 @@ def test_a_sheet_that_contradicts_its_own_tracing_says_so_on_the_part(
     assert "the front view" in said
 
 
+def test_a_geometric_conflict_names_both_points_it_is_about(tmp_path, monkeypatch):
+    """
+    The sentence a user reads at the Gate, whole. Two numbers and a view name
+    the disagreement and not the thing it disagrees about: a sheet dimensions
+    more than one distance in a view, and "100 printed where the pixels put
+    98.20" does not say which of them to go and look at. The two points are
+    the feet the dimension itself reached the tracing through, and they are
+    the only thing here that identifies it.
+    """
+    sheet = _a_sheet_that_contradicts_itself(tmp_path)
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+
+    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
+
+    assert grown["conflicts"][0]["about"] == (
+        "the sheet prints 100 between (0.00, 15.00) and (100.00, 15.00) and the "
+        "pixels put 98.20 mm between them, in the front view")
+
+
+def test_a_redundant_constraint_reaches_the_part_in_the_words_of_a_conflict(
+        tmp_path, monkeypatch):
+    """
+    FCC-122 asked for a conflicting *or redundant* constraint index and the
+    sweep carried the first only. A reading the solver is told the same thing
+    about twice is as unsettled as one it is told two contradicting things
+    about — neither is something a re-read can be asked — so it arrives at the
+    Gate in the same words instead of not arriving at all.
+    """
+    class _AChildThatFoundBoth:
+        def start(self):
+            pass
+
+        def kill(self):
+            pass
+
+        def reading(self, request, timeout=None):
+            from core.sketch_check import Trouble, Verdict, as_response
+
+            return dict(as_response(Verdict(
+                view=request["view"],
+                conflicts=[Trouble(
+                    at=3, printed=50.0,
+                    said="the 50 the sheet prints between (0.00, 5.00) and "
+                         "(50.00, 5.00)")],
+                redundant=[Trouble(
+                    at=1, printed=42.0,
+                    said="the arc the sheet prints \u00d842 against")])), ok=True)
+
+    sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=100.0)
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+                        lambda *_, **__: _AChildThatFoundBoth())
+
+    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
+
+    assert grown["conflicts"] == [
+        {"about": "the 50 the sheet prints between (0.00, 5.00) and (50.00, 5.00),"
+                  " in the front view",
+         "stands": "the solver cannot satisfy this reading"},
+        {"about": "the arc the sheet prints \u00d842 against, in the front view",
+         "stands": "the solver cannot satisfy this reading"}]
+
+
 def test_a_reading_too_far_out_is_past_what_this_check_can_see(
         tmp_path, monkeypatch):
     """

@@ -373,9 +373,10 @@ def _measured_across(sketch, outline, view, between):
             disagrees.append(Trouble(
                 at=first, constraint=at, entity=outline.entities[first],
                 printed=entry.printed,
-                said="the sheet prints %s between these two faces and the "
+                said="the sheet prints %s between %s and %s and the "
                      "pixels put %.2f mm between them"
-                     % (entry.text or entry.printed, traced)))
+                     % (entry.text or entry.printed, _spelt(entry.first),
+                        _spelt(entry.second), traced)))
     return written, disagrees
 
 

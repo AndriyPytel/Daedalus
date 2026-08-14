@@ -1996,7 +1996,14 @@ def _every_outline_traced(attachments):
 
 
 def _what_the_solver_said(worker, outline, view, between, unchecked, timeout=None):
-    """One outline's verdict, as the conflicts it puts on the description."""
+    """
+    One outline's verdict, as the conflicts it puts on the description.
+
+    A constraint the solver calls redundant reads the same way here as one it
+    calls conflicting: both are a reading nobody in this phase can settle —
+    which of the two printed numbers to drop is not something a re-read can be
+    asked — so both go to the Gate, in the same words.
+    """
     verdict = sketch_check.checked_by(worker, outline, view, between, timeout)
     if verdict is None:
         if outline.entities:
@@ -2008,7 +2015,7 @@ def _what_the_solver_said(worker, outline, view, between, unchecked, timeout=Non
              for trouble in verdict.disagrees]
     found.extend({"about": "%s, in %s" % (trouble.said, view),
                   "stands": "the solver cannot satisfy this reading"}
-                 for trouble in verdict.conflicts)
+                 for trouble in verdict.conflicts + verdict.redundant)
     return found
 
 
