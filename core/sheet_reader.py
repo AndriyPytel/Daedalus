@@ -254,18 +254,18 @@ def _said(entity):
                                      if entity.role in ("dimension", "leader")
                                      else "")
     if entity.kind == "line":
-        return "%sline %s to %s" % (whose, _at(entity.start), _at(entity.end))
+        return "%sline %s to %s" % (whose, spelt(entity.start), spelt(entity.end))
     if entity.kind == "circle":
         said = "%scircle \u00d8%.2f centred %s" % (whose, entity.diameter,
-                                                 _at(entity.centre))
+                                                 spelt(entity.centre))
         if entity.printed is None:
             return said
         return "%s — the sheet prints \u00d8%g against it, and that is the size" \
                % (said, entity.printed)
-    said = "%sarc R%.2f centred %s" % (whose, entity.radius, _at(entity.centre))
+    said = "%sarc R%.2f centred %s" % (whose, entity.radius, spelt(entity.centre))
     if entity.start is None:
         return said
-    return "%s, from %s to %s" % (said, _at(entity.start), _at(entity.end))
+    return "%s, from %s to %s" % (said, spelt(entity.start), spelt(entity.end))
 
 
 @dataclass(frozen=True)
@@ -937,11 +937,7 @@ def _the_picture_holding(boxes, region):
 
 def _share_of(box, region):
     """How much of a region a box holds, as a fraction of the region."""
-    overlap = pymupdf.Rect(region) & box
-    if overlap.is_empty:
-        return 0.0
-    area = region.width * region.height
-    return (overlap.width * overlap.height) / area if area else 0.0
+    return _shared(box, region, region.width * region.height)
 
 
 def _the_region_holding_the_picture(box, regions):
@@ -966,10 +962,20 @@ def _the_region_holding_the_picture(box, regions):
 
 def _share_of_the_picture(box, region):
     """How much of a picture lies inside a region, as a fraction of the picture."""
+    return _shared(box, region, box.width * box.height)
+
+
+def _shared(box, region, area):
+    """
+    Where a box and a region overlap, as a fraction of *area*.
+
+    The two shares differ in nothing but which of the two is the whole, and
+    which one that is decides what the number means: the share of a region a
+    picture holds, or the share of a picture a region holds.
+    """
     overlap = pymupdf.Rect(region) & box
     if overlap.is_empty:
         return 0.0
-    area = box.width * box.height
     return (overlap.width * overlap.height) / area if area else 0.0
 
 
@@ -1690,7 +1696,8 @@ def _on_the_page(point, rect, millimetres_per_point):
             rect.y1 - point[1] / millimetres_per_point)
 
 
-def _at(point):
+def spelt(point):
+    """A point as it is reported to a reader, in millimetres of the part."""
     return "(%.2f, %.2f)" % point
 
 
@@ -2939,7 +2946,7 @@ def _the_between_list(sheet):
              "still yours to read."]
     for entry in sheet.between:
         lines.append("  %s measures %s to %s — %s"
-                     % (entry.text, _at(entry.first), _at(entry.second),
+                     % (entry.text, spelt(entry.first), spelt(entry.second),
                         entry.view))
     return "\n".join(lines)
 
