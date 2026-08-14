@@ -1162,21 +1162,98 @@ def test_the_biggest_silhouette_on_the_sheet_is_not_the_one_that_is_cut(sheet_20
     assert max(traced.values()) >= 51, traced
 
 
-@needs_pymupdf
-def test_a_hole_the_sheet_agrees_with_carries_the_number_the_sheet_prints(sheet):
+def test_a_hole_the_sheet_agrees_with_carries_the_number_the_sheet_prints():
     """
-    The join the tracing exists for, made rather than reported. `mm25-p1-1.pdf`
-    prints \u00d840 against a hole its pixels measure at 38.93 — the millimetre
-    under that a traced hole always reads — so the two are the same feature seen
-    twice, and the exact one of them is the printed one.
-    """
-    snapped = [entity for view in sheet.drawn for entity in view.entities
-               if entity.kind == "circle" and entity.printed is not None]
+    The join the tracing exists for, made rather than reported: a callout of
+    \u00d840 whose leader ends in a hole the pixels measure at 39.95 is one
+    feature seen twice, and the exact one of the two is the printed one. The
+    shape stays the tracing's — the traced diameter is kept beside the size —
+    and `read` is what tells a size that came out of the text layer from one
+    measured off the picture.
 
-    assert snapped, "one callout on this sheet reaches a traced hole"
-    assert any(entity.printed == 40.0 and abs(entity.diameter - 38.93) < 0.1
-               for entity in snapped), snapped
-    assert "the sheet prints" in sheet_reader._the_drawn_list(sheet)
+    Constructed rather than read off a sheet because not one of the four
+    produces an agreement this close: measured there, a traced circle reads
+    0.49 to 1.17 mm under the number printed for it.
+    """
+    hole = sheet_reader.Entity(kind="circle", source="traced", role="contour",
+                               size=39.95, diameter=39.95, centre=(0.0, 0.0))
+    view = sheet_reader.Drawn(view="a view", entities=[hole])
+    printed = [sheet_reader.Printed(text="40", at=(10.0, 10.0), notation="\u00d8")]
+    leaders = [{"callout": "40", "printed_at": (10.0, 10.0),
+                "its_leader_reaches": (100.0, 100.0)}]
+    notes = []
+
+    sheet_reader._the_pixels_against_the_callouts(
+        [((100.0, 100.0), 20.0, 39.95, (hole,))], printed, leaders, notes, [view])
+
+    assert notes == []
+    snapped = view.entities[0]
+    assert snapped.printed == 40.0
+    assert snapped.size == 40.0
+    assert snapped.diameter == 39.95
+    assert snapped.source == "read"
+    assert "the sheet prints" in sheet_reader._said(snapped)
+
+
+def test_a_snapped_circle_is_round_at_the_size_the_sheet_prints():
+    """
+    What a view is round at is the printed number once one has been carried:
+    the traced diameter is the evidence that found the feature and never its
+    size, so reporting 39.95 where the sheet prints \u00d840 would hand the
+    description the one number this module is not allowed to supply.
+    """
+    snapped = sheet_reader.Entity(kind="circle", source="read", role="contour",
+                                  size=40.0, diameter=39.95, printed=40.0,
+                                  centre=(0.0, 0.0))
+    sheet = sheet_reader.Sheet(source="a sheet", drawn=[
+        sheet_reader.Drawn(view="a view", entities=[snapped])])
+
+    assert sheet_reader.round_evidence(sheet) == {"a view": [40.0]}
+    assert sheet_reader.round_in(sheet) == {"a view": [40.0]}
+
+
+def test_the_millimetre_a_traced_hole_reads_under_by_is_not_an_agreement():
+    """
+    The band is what the tracer's repeats measure, not what its bias measures.
+    A callout of \u00d840 into a hole the pixels make 38.93 — the \u00d840 of
+    `mm25-p1-1.pdf` — is 1.07 mm apart, which is a hole measured to the inside
+    of the line that draws it and not two readings of one number. Nothing is
+    carried.
+
+    And nothing is reported either: the sheet agrees with itself, and a delta
+    the tracing produces on its own is not a disagreement between the
+    draughtsman and this module. That is the gap between the two bands.
+    """
+    hole = sheet_reader.Entity(kind="circle", source="traced", role="contour",
+                               size=38.93, diameter=38.93, centre=(0.0, 0.0))
+    view = sheet_reader.Drawn(view="a view", entities=[hole])
+    printed = [sheet_reader.Printed(text="40", at=(10.0, 10.0), notation="\u00d8")]
+    leaders = [{"callout": "40", "printed_at": (10.0, 10.0),
+                "its_leader_reaches": (100.0, 100.0)}]
+    notes = []
+
+    sheet_reader._the_pixels_against_the_callouts(
+        [((100.0, 100.0), 20.0, 38.93, (hole,))], printed, leaders, notes, [view])
+
+    assert notes == []
+    assert view.entities[0].printed is None
+    assert view.entities[0].size == 38.93
+
+
+@needs_pymupdf
+def test_no_hole_on_these_sheets_is_traced_close_enough_to_snap(sheet):
+    """
+    Said of a real sheet, because the band was measured on four of them: the
+    tracing reads 0.49 to 1.17 mm under every number printed for it, and the
+    snap band is 0.15 mm, so `mm25-p1-1.pdf` carries no printed size onto a
+    traced circle and raises no conflict about one either.
+    """
+    circles = [entity for view in sheet.drawn for entity in view.entities
+               if entity.kind == "circle" and entity.source in ("traced", "read")]
+
+    assert circles
+    assert [entity for entity in circles if entity.printed is not None] == []
+    assert not [note for note in sheet.notes if "difference of" in note]
 
 
 def test_a_bore_the_pixels_contradict_is_a_conflict_and_never_a_value():
@@ -1214,9 +1291,10 @@ def test_a_bore_traced_in_arcs_carries_the_size_a_leader_reaches_it_with():
     the very disagreement the check reports.
     """
     arcs = tuple(sheet_reader.Entity(
-        kind="arc", source="traced", role="contour", size=41.0, radius=20.5,
+        kind="arc", source="traced", role="contour", size=41.9, radius=20.95,
         centre=(0.0, 0.0), start=start, end=end)
-        for start, end in (((20.5, 0.0), (0.0, 20.5)), ((0.0, 20.5), (-20.5, 0.0))))
+        for start, end in (((20.95, 0.0), (0.0, 20.95)),
+                           ((0.0, 20.95), (-20.95, 0.0))))
     view = sheet_reader.Drawn(view="a view", entities=list(arcs))
     printed = [sheet_reader.Printed(text="42", at=(10.0, 10.0), notation="\u00d8")]
     leaders = [{"callout": "42", "printed_at": (10.0, 10.0),
@@ -1224,7 +1302,7 @@ def test_a_bore_traced_in_arcs_carries_the_size_a_leader_reaches_it_with():
     notes = []
 
     sheet_reader._the_pixels_against_the_callouts(
-        [((100.0, 100.0), 20.5, 41.0, arcs)], printed, leaders, notes, [view])
+        [((100.0, 100.0), 20.95, 41.9, arcs)], printed, leaders, notes, [view])
 
     assert notes == []
     assert [entity.printed for entity in view.entities] == [42.0, 42.0]
@@ -1232,11 +1310,17 @@ def test_a_bore_traced_in_arcs_carries_the_size_a_leader_reaches_it_with():
 
 def test_a_number_is_never_snapped_onto_a_hole_by_being_the_nearest_number():
     """
-    Why the join has to be the leader and not the nearest value. The 2023 sheet
-    prints \u00d86.6 for its M6 clearance holes, in a view of its own, and prints
-    a bare `6` in four other places. The traced circles measure 6.10, so the
+    A circle no leader points into does not snap, which is the question
+    settled here rather than left to the code. The 2023 sheet prints
+    \u00d86.6 for its M6 clearance holes, in a view of its own, and prints a
+    bare `6` in four other places. The traced circles measure 6.10, so the
     nearest printed number is the `6` — the wrong number, from the wrong view,
-    by the depth of the counterbore.
+    by the depth of the counterbore, and 0.09 mm away where its own callout is
+    0.5 mm away.
+
+    The leader is traced through the file's own line work and is the only
+    evidence there is of which hole a callout is about. Without one there is
+    none, and a size invented from proximity is worse than no size.
     """
     hole = sheet_reader.Entity(kind="circle", source="traced", role="contour",
                                size=6.10, diameter=6.10, centre=(0.0, 0.0))

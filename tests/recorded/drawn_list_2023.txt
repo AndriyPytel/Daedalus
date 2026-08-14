@@ -4,7 +4,7 @@ The line work each view is drawn with, taken out of the file and converted to mi
   `leader` — followed from a callout to the feature it is of.
   `centre` — drawn dashed, which marks an axis or a plane of symmetry.
   unmarked — an extension line, a hatch stroke or an edge, and nothing here says which. An extension line is drawn from the very face its dimension measures, so it is worth reading and it is not an outline.
-An entity marked `traced` is not the draughtsman's: it is measured off the picture, to the inside of the line that draws it, so it reads about a millimetre under the drawn size. Use it to check a number, never to supply one.
+An entity marked `traced` is not the draughtsman's: it is measured off the picture, to the inside of the line that draws it, so it reads about a millimetre under the drawn size. Use it to check a number, never to supply one. One marked `read` is that same measurement carrying the size the sheet prints against it, which a callout's leader reached and agreed with.
 What each view is round in, which is the one thing the drawing says outright about direction: a feature is round in the view its axis points at and in no other, so two of them round in two views cannot have been drilled the same way. Say which view each feature is round in, in `round_in`.
   the lower centre of the sheet, the first one, on page 1: Ø6.07, Ø6.09
   the upper centre of the sheet, on page 1: Ø6.10, Ø6.10
