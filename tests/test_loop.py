@@ -5560,10 +5560,9 @@ def test_a_reading_too_far_out_is_past_what_this_check_can_see(
 
 def test_a_sheet_that_agrees_with_itself_adds_nothing(tmp_path, monkeypatch):
     """
-    Measured on the four sheets in `tests/modelmania`: 13 printed distances
-    reach a traced outline and every one of them agrees within 1.08 mm, which
-    is the tracing's own bias. So a run against a real sheet gains nothing
-    here, and that is the right answer rather than a weak check.
+    A matching printed distance adds no conflict. The four-sheet evidence test
+    holds the real-sheet measurements; this isolates the same no-conflict path
+    without depending on a PDF.
     """
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=100.0)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
@@ -5723,10 +5722,9 @@ def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypat
 
 def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch):
     """
-    A timeout per outline is no bound at all: 96 outlines that all hang is 48
-    minutes of a Design phase that says nothing while it spends them. The
-    budget belongs to the phase, and the outlines it does not reach are
-    unchecked in the same words as any other.
+    A timeout per outline is no bound at all: a sweep can spend one timeout for
+    every outline without returning. The budget belongs to the phase, and the
+    outlines it does not reach are unchecked in the same words as any other.
     """
     asked = []
 

@@ -15,14 +15,6 @@ from core import sheet_reader, sketch_check
 pytestmark = pytest.mark.freecad
 
 SHEET = os.path.join(os.path.dirname(__file__), "modelmania", "mm25-p1-1.pdf")
-SHEET_2023 = os.path.join(os.path.dirname(__file__), "modelmania",
-                          "model-mania_-in-person-2023 copy.pdf")
-FOUR_SHEETS = [SHEET,
-               os.path.join(os.path.dirname(__file__), "modelmania",
-                            "mm25-p2.pdf"),
-               os.path.join(os.path.dirname(__file__), "modelmania",
-                            "model-mania-2024.pdf"),
-               SHEET_2023]
 
 
 @pytest.fixture(scope="module")
@@ -30,20 +22,6 @@ def sheet(tmp_path_factory):
     if not sheet_reader.available():
         pytest.skip("PyMuPDF is not installed")
     return sheet_reader.read(SHEET, into=str(tmp_path_factory.mktemp("sheet")))
-
-
-@pytest.fixture(scope="module")
-def four_sheets(tmp_path_factory):
-    """
-    Every sheet in `tests/modelmania`, read once for the module.
-
-    Four and not five: `model-mania_-in-person-2023.pdf` is the same file as the
-    copy beside it, and reading it would measure the same drawing twice.
-    """
-    if not sheet_reader.available():
-        pytest.skip("PyMuPDF is not installed")
-    return [sheet_reader.read(path, into=str(tmp_path_factory.mktemp("sheet%d" % at)))
-            for at, path in enumerate(FOUR_SHEETS)]
 
 
 def _outlines(sheet):
@@ -88,11 +66,9 @@ def test_a_closed_walk_off_a_real_sheet_becomes_a_sketch(sheet):
 
 def test_the_tracing_does_not_contradict_itself(sheet):
     """
-    The floor, and it was not known before: what the pixels were measured into
-    can be built all at once, and the sheet's own numbers cost it under a
-    millimetre and a half to satisfy. Measured over all four sheets, 142
-    outlines: median 0.22 mm, nine in ten under 0.57, worst 1.28 — the slack in
-    a fit through pixels 0.2 mm across.
+    The floor: what the pixels were measured into can be built all at once, and
+    the sheet's own numbers keep the movement below the reading threshold. The
+    four-sheet evidence test holds the aggregate movement bands.
     """
     for view, outline in _outlines(sheet):
         verdict = sketch_check.checked(outline, view)
@@ -254,11 +230,9 @@ def test_the_distances_of_another_view_are_not_written_into_this_one(sheet):
 
 def test_a_disagreement_is_reported_and_never_resolved(sheet):
     """
-    Measured on the four sheets: the 11 printed distances that reach a traced
-    outline sit 0.17 to 1.08 mm from what the pixels put between the same two
-    faces, and the 1.08 is the bias itself — a face is traced to the inside of
-    the line that draws it. So the sheets agree with themselves, and nothing
-    here is reported against them.
+    The sheet agrees with itself, so none of its outline verdicts is reported.
+    The four-sheet evidence test holds the aggregate distance and disagreement
+    measurements.
     """
     for view, outline in _outlines(sheet):
         verdict = sketch_check.checked(outline, view, sheet.between)
@@ -389,7 +363,7 @@ def _as_it_crosses(verdict):
     return sketch_check.Verdict(**said)
 
 
-def test_the_child_answers_the_same_thing_this_process_does(four_sheets):
+def test_the_child_answers_the_same_thing_this_process_does(modelmania_sheets):
     """
     The move that keeps FreeCAD open has to cost the verdict nothing. Every
     outline of all four sheets — 142 of them when this was measured — built once
@@ -404,7 +378,7 @@ def test_the_child_answers_the_same_thing_this_process_does(four_sheets):
 
     compared = 0
     with PreflightWorker() as worker:
-        for sheet in four_sheets:
+        for sheet in modelmania_sheets.values():
             for view, outline in _outlines(sheet):
                 here = sketch_check.checked(outline, view, sheet.between)
                 there = sketch_check.checked_by(worker, outline, view,

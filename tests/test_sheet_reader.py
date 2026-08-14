@@ -12,12 +12,12 @@ callout's box measures on this sheet; 4.1 pt is the paragraph in the title block
 declaring the drawing to be the sole property of SolidWorks. Each one is
 asserted because each one is a decision this module makes on its own.
 """
-import json
 import os
 
 import pytest
 
 from core import sheet_reader
+from tests import modelmania_harness
 
 SHEET = os.path.join(os.path.dirname(__file__), "modelmania", "mm25-p1-1.pdf")
 RASTER = os.path.join(os.path.dirname(__file__), "modelmania", "mm2025-phase1.png")
@@ -27,12 +27,6 @@ RASTER = os.path.join(os.path.dirname(__file__), "modelmania", "mm2025-phase1.pn
 # instead of inside it.
 SHEET_2023 = os.path.join(os.path.dirname(__file__), "modelmania",
                           "model-mania_-in-person-2023 copy.pdf")
-FOUR_SHEETS = [SHEET,
-               os.path.join(os.path.dirname(__file__), "modelmania",
-                            "mm25-p2.pdf"),
-               os.path.join(os.path.dirname(__file__), "modelmania",
-                            "model-mania-2024.pdf"),
-               SHEET_2023]
 
 needs_pymupdf = pytest.mark.skipif(not sheet_reader.available(),
                                    reason="PyMuPDF is not installed")
@@ -1459,7 +1453,7 @@ def test_what_a_picture_has_inside_a_region_is_measured_off_the_four_sheets():
     import pymupdf
 
     inside, alongside, clipped = [], [], []
-    for path in FOUR_SHEETS:
+    for path in modelmania_harness.SHEETS.values():
         document = pymupdf.open(path)
         for page in document:
             words = [w for w in page.get_text("words") if str(w[4]).strip()]
@@ -1593,63 +1587,21 @@ def test_a_small_number_on_no_sheet_is_reported():
         "features": [{"id": "a chamfer", "size": {"value": "1.5 mm"}}]}) == [1.5]
 
 
-# ── what the recorded descriptions invent, per sheet (FCC-137) ───────────────
-
-DESCRIBED = os.path.join(os.path.dirname(__file__), "recorded",
-                         "described_numbers.json")
-
-
-def _described(sheet_name):
-    """
-    The numbers every recorded run against this sheet stated, one list per
-    description.
-
-    32 descriptions off `logs/sessions`, which is not in the repo, so what the
-    check reads is what is kept: `invented` is asked of the numbers a
-    description states and of nothing else, so the numbers are the description
-    as far as this measurement is concerned, and the prose they were lifted out
-    of is a third of a megabyte of it.
-    """
-    with open(DESCRIBED, encoding="utf-8") as reading:
-        return [one["stated"] for one in json.load(reading)[sheet_name]]
-
-
-@needs_pymupdf
-def test_a_description_invents_little_against_its_own_sheet_and_much_against_another(
-        sheet, sheet_2023):
-    """
-    Why `_off_the_sheet` intersects. Over the 32 recorded descriptions, against
-    the sheet its own run was given: 6 numbers on no sheet, all of them in the
-    2025 runs, and none at all in the 21 against 2023. Held against the other
-    sheet the same descriptions invent 62 — the other drawing is a different
-    part, and a union over two attachments reports every one of those.
-
-    The bands are around the measurement, not on it: this fails when the
-    reading changes what a description is allowed to have read.
-    """
-    both = [(sheet, "mm25-p1-1.pdf", sheet_2023),
-            (sheet_2023, "model-mania_-in-person-2023 copy.pdf", sheet)]
-    own = [len(sheet_reader.invented(theirs, {"stated": stated}))
-           for theirs, name, _ in both for stated in _described(name)]
-    other = [len(sheet_reader.invented(elsewhere, {"stated": stated}))
-             for _, name, elsewhere in both for stated in _described(name)]
-
-    assert len(own) == 32
-    assert sum(own) <= 10, sum(own)
-    assert sum(other) >= 50, sum(other)
-
-
 @needs_pymupdf
 def test_the_two_sheets_agree_on_far_fewer_numbers_than_either_alone(
-        sheet, sheet_2023):
+        modelmania_sheets):
     """
-    The intersection `_off_the_sheet` takes, measured: of the 62 a union of the
-    two sheets would report over the 32 recorded descriptions, 5 are on neither
-    sheet — and the other 57 are numbers one of the two prints.
+    The intersection `_off_the_sheet` takes keeps the few values neither sheet
+    can cite and drops values either drawing prints.
     """
-    agreed = [len(set(sheet_reader.invented(sheet, {"stated": stated}))
-                  & set(sheet_reader.invented(sheet_2023, {"stated": stated})))
-              for name in ("mm25-p1-1.pdf", "model-mania_-in-person-2023 copy.pdf")
-              for stated in _described(name)]
+    descriptions = modelmania_harness.described_numbers()
+    first = modelmania_sheets["mm25-p1-1.pdf"]
+    second = modelmania_sheets["model-mania_-in-person-2023 copy.pdf"]
+    agreed = [
+        len(set(sheet_reader.invented(first, {"stated": stated}))
+            & set(sheet_reader.invented(second, {"stated": stated})))
+        for name in ("mm25-p1-1.pdf", "model-mania_-in-person-2023 copy.pdf")
+        for stated in (entry["stated"] for entry in descriptions[name])
+    ]
 
     assert sum(agreed) <= 8, sum(agreed)

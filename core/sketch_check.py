@@ -30,13 +30,11 @@ dimension's two extension lines reach two faces of the outline, which is 11 of
 them across 10 outlines. `108` read as `100` is a distance, and until they were written there
 was nothing in the sketch for it to be wrong about.
 
-Measured across all four sheets in `tests/modelmania`, 142 outlines, with every
-size and every distance the sheets could reach them with: the median moves
-0.22 mm, nine in ten move under 0.57 mm and the worst moves 1.28 mm — that is
-the slack in a fit through pixels 0.2 mm across, and it is what agreement looks
-like. A bore traced in two arcs and snapped to two different callouts — 42
-against 50, which is the shape of the reading this exists to catch — moves
-9.88 mm.
+Measured evidence from all four sheets in `tests/modelmania` yields 142
+outlines. Their movement stays within 0.15 to 0.30 mm at the median, 0.50 to
+0.75 mm at nine in ten, and 1.0 to 1.5 mm at the worst. A bore traced in two
+arcs and snapped to two different callouts — 42 against 50, which is the shape
+of the reading this exists to catch — moves 9.88 mm.
 
 Disposable throughout. The document is made here, closed here, and never the
 user's; nothing here writes a Step, and nothing here reaches the feature tree.
@@ -45,10 +43,8 @@ recognised. What comes back is a verdict about a *reading*.
 
 A traced entity that has to move further than `A_SHIFT` onto the sheet's own
 numbers is a fact about the reading rather than the slack in a fit. Two
-millimetres, measured over 142 outlines on the four sheets: the median moves
-0.22 mm, nine in ten under 0.57 mm and the worst 1.28 mm, where a pixel is
-0.2 mm across and an arc's ends are pulled onto its own circle. The reading it
-has to catch moves 9.88 mm.
+millimetres leaves the four sheets' worst movement under 1.5 mm, while the
+reading it has to catch moves 9.88 mm.
 
 What crosses the pipe is named field by field rather than dumped wholesale, so
 what crosses is what is used and a new field on `Entity` does not silently
@@ -448,7 +444,7 @@ def _the_face_at(outline, foot, way):
     then measured to.
 
     At 2.0 across and 3.0 along, the four sheets write 11 distances across 10
-    outlines and the worst movement is 1.32 mm.
+    outlines, and the measured worst movement stays under 1.5 mm.
     """
     best, best_gap = None, A_FOOT
     for at, entity in enumerate(outline.entities):

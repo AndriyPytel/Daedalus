@@ -384,15 +384,13 @@ def test_a_body_left_in_pieces_is_still_refused(warm):
     assert "more than one piece" in result.traceback
 
 
-def test_a_sweep_of_ninety_six_outlines_is_answered_in_seconds(warm):
+def test_a_sweep_of_modelmania_sized_readings_is_answered_in_seconds(warm):
     """
-    The measurement `loop.A_READING_BUDGET` is set against.
+    The reading budget is set against a full Model Mania-sized sweep.
 
-    Four sheets are 96 outlines. Answered by the real child they cost about
-    two seconds together, which is why one minute for the whole phase is a
-    child that has stopped answering rather than a phase running long — and
-    why 30 seconds each, the shape this replaced, was 48 minutes of silence
-    inside Design.
+    The four sheets contain 142 outlines. A warm child answers that many simple
+    readings well inside the phase budget, so the limit bounds a stopped child
+    rather than normal work.
     """
     from core import sheet_reader, sketch_check
 
@@ -408,7 +406,7 @@ def test_a_sweep_of_ninety_six_outlines_is_answered_in_seconds(warm):
                                     first=(0.0, 15.0), second=(100.0, 15.0))]
 
     started = time.monotonic()
-    for _ in range(96):
+    for _ in range(142):
         assert sketch_check.checked_by(warm, outline, "the front view", between)
     elapsed = time.monotonic() - started
 

@@ -1837,10 +1837,10 @@ def _every_number_is_the_sheets(the_part, attachments, llm, events, budgets,
     planned 150 x 50 x 50 two turns later, and the 50 was on nothing.
 
     Measured over the 32 descriptions recorded in `logs/sessions`, each against
-    the sheet its own run was given: 6 numbers fire, all of them in the 11 runs
-    against the 2025 sheet and none in the 21 against 2023. The same
-    descriptions held against the other sheet invent 62, which is why
-    `_off_the_sheet` intersects. `tests/test_sheet_reader.py` produces both.
+    the sheet its own run was given: 4 to 8 numbers fire. Held against each of
+    the other three drawings, they invent 150 to 180 in total, which is why
+    `_off_the_sheet` intersects. `tests/test_modelmania_evidence.py` produces
+    both bands.
 
     Put to the drawing once and then left on the part as a conflict. Nothing is
     settled and no run stops: the number may be right and derived from
@@ -1916,9 +1916,9 @@ def _the_geometry_disagrees(attachments, events, budget=A_READING_BUDGET):
     in front of it.
 
     Measured on `tests/modelmania`: 11 printed distances reach a traced outline
-    across the four sheets and every one agrees to within 1.08 mm, so a run
-    against them gains nothing here. That is the right answer and not a weak
-    check: the sheets agree with themselves.
+    across the four sheets, and none becomes a disagreement. A run against them
+    gains no conflict, which is the right answer rather than a weak check: the
+    sheets agree with themselves.
 
     And it is a floor rather than a net. A dimension reaches the geometry
     through the feet of its own extension lines, so a tracing further out than
@@ -1940,11 +1940,9 @@ def _the_geometry_disagrees(attachments, events, budget=A_READING_BUDGET):
     and not a Step.
 
     `budget` is the phase's, not the outline's. A timeout each is no bound at
-    all: 96 outlines that all hang is 48 minutes of silence inside Design.
-    Measured against the real child, an outline of the shape these sheets trace
-    is answered in 20 ms and the four sheets' 96 of them cost about 2 s
-    (`tests/test_preflight_level2.py`), so a minute is a phase that has stopped
-    answering rather than a phase running long.
+    all: a sweep can spend one timeout for every outline without returning a
+    verdict. The four sheets contain 142 outlines, so the phase's minute is a
+    child that has stopped answering rather than a normal reading time.
     """
     traced = _every_outline_traced(attachments)
     if not traced:
@@ -2029,7 +2027,7 @@ def _a_freecad_of_our_own():
     writes Sketcher constraints into it and solves — and `_describe_the_part`
     runs on the loop's worker thread, where a Document mutation takes FreeCAD
     down with it (`core/apply.py`, FCC-126). One warm child for the whole
-    sweep: four sheets are 96 outlines, and a process each is a process each.
+    sweep: four sheets are 142 outlines, and a process each is a process each.
 
     Nothing to start is not an error, and the caller says so on the transcript:
     a machine with no headless FreeCAD reads its drawing exactly as it does

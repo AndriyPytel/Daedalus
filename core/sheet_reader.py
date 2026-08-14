@@ -3251,12 +3251,10 @@ def _near(number, drawn):
     Whether the tracing measured something this size, within its own slack.
 
     `A_DISTANCE` is how far the pixels may be from what the sheet prints for
-    the same thing, in millimetres. One and a half, measured on the four
-    sheets: the 11 printed distances that reach a traced outline are 0.17 to
-    1.08 mm out, and the 1.08 is the bias itself — a face is traced to the
-    inside of the line that draws it, so a width reads about a millimetre
-    under. It is the one band the tracing is read with, here and in
-    `sketch_check`, and the reading it exists to catch is 8 mm out.
+    the same thing, in millimetres. The four-sheet evidence test finds 11
+    printed distances that reach a traced outline and no disagreement. It is
+    the one band the tracing is read with, here and in `sketch_check`, and the
+    reading it exists to catch is 8 mm out.
     """
     return any(abs(number - measured) <= A_DISTANCE for measured in drawn)
 

@@ -98,6 +98,17 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
+@pytest.fixture(scope="module")
+def modelmania_sheets(tmp_path_factory):
+    """The four distinct drawings, parsed once for one test module."""
+    from core import sheet_reader
+    from tests import modelmania_harness
+
+    if not sheet_reader.available():
+        pytest.skip("PyMuPDF is not installed")
+    return modelmania_harness.read_sheets(tmp_path_factory)
+
+
 @pytest.fixture(autouse=True)
 def readings_go_to_a_temporary_directory(tmp_path, monkeypatch):
     """

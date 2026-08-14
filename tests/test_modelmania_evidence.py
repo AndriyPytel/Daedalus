@@ -1,0 +1,73 @@
+"""
+Measured evidence from the four distinct Model Mania drawings and the recorded
+number lists that describe them.
+"""
+import statistics
+
+import pytest
+
+from core import sheet_reader
+from tests import modelmania_harness
+
+
+def test_recorded_descriptions_keep_their_own_sheet_and_fail_on_the_others(
+        modelmania_sheets):
+    """
+    The 32 recorded descriptions invent 4 to 8 numbers against their own
+    drawings and 150 to 180 against the other three drawings. The bands leave
+    room for a tracing adjustment while making a changed reading visible.
+    """
+    own, other = [], []
+    for name, descriptions in modelmania_harness.described_numbers().items():
+        for description in descriptions:
+            stated = {"stated": description["stated"]}
+            own.append(len(sheet_reader.invented(modelmania_sheets[name], stated)))
+            other.extend(
+                len(sheet_reader.invented(sheet, stated))
+                for other_name, sheet in modelmania_sheets.items()
+                if other_name != name)
+
+    assert len(own) == 32
+    assert 4 <= sum(own) <= 8, own
+    assert 150 <= sum(other) <= 180, other
+
+
+@pytest.mark.freecad
+def test_the_four_sheets_keep_their_measured_reading_verdicts(modelmania_sheets):
+    """
+    The four sheets produce 142 outlines, all of which build and solve. Eleven
+    face-to-face distances reach outlines, and every sheet has no disagreement.
+    Movement remains within the measured bands: 0.15 to 0.30 mm at the median,
+    0.50 to 0.75 mm at nine in ten, and 1.0 to 1.5 mm at the worst.
+    """
+    verdicts = modelmania_harness.verdicts(modelmania_sheets)
+    by_sheet = {
+        name: [verdict for verdict_name, verdict in verdicts if verdict_name == name]
+        for name in modelmania_harness.SHEETS
+    }
+
+    assert {name: len(found) for name, found in by_sheet.items()} == {
+        "mm25-p1-1.pdf": 25,
+        "mm25-p2.pdf": 21,
+        "model-mania-2024.pdf": 52,
+        "model-mania_-in-person-2023 copy.pdf": 44,
+    }
+    assert all(verdict is not None for _, verdict in verdicts)
+    assert all(verdict.geometry == verdict.entities for _, verdict in verdicts)
+    assert all(verdict.solved == 0 for _, verdict in verdicts)
+    assert all(not verdict.conflicts and not verdict.redundant
+               for _, verdict in verdicts)
+    assert {name: sum(verdict.distances for verdict in found)
+            for name, found in by_sheet.items()} == {
+        "mm25-p1-1.pdf": 4,
+        "mm25-p2.pdf": 2,
+        "model-mania-2024.pdf": 3,
+        "model-mania_-in-person-2023 copy.pdf": 2,
+    }
+    assert sum(verdict.distances > 0 for _, verdict in verdicts) == 10
+    assert all(not verdict.disagrees for _, verdict in verdicts)
+
+    moved = [verdict.moved for _, verdict in verdicts]
+    assert 0.15 <= statistics.median(moved) <= 0.30
+    assert 0.50 <= statistics.quantiles(moved, n=10, method="inclusive")[8] <= 0.75
+    assert 1.0 <= max(moved) <= 1.5
