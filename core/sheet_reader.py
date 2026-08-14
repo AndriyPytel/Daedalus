@@ -945,12 +945,13 @@ def _the_region_holding_the_picture(box, regions):
     Where a picture is traced, which is the region holding most of it.
 
     Regions overlap and a picture can lie across two, so what chooses between
-    them is the larger share and not a threshold: a picture with 0.55 of itself
-    in one region and 0.45 in another passed no threshold that both did not
-    fail, and was traced in neither. `IN_THE_REGION` is left saying the one
-    thing a threshold can say — that a picture is in no region worth speaking
-    of — which is the isometric reaching over the title block of every one of
-    these sheets, at most 0.36 of itself in any region there.
+    them is the larger share and not a threshold: a picture with 0.55 of
+    itself in one region and 0.45 in another is traced in the region holding
+    the 0.55, where a threshold both shares fail leaves it traced in neither.
+    `IN_THE_REGION` is left saying the one thing a threshold can say — that a
+    picture is in no region worth speaking of — which is the isometric
+    reaching over the title block of every one of these sheets, at most 0.36
+    of itself in any region there.
     """
     best, most = None, IN_THE_REGION
     for region in regions:
