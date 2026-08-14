@@ -6,6 +6,7 @@ document, because the whole point of the module is that a solver has an opinion
 of its own and nothing else in the pipeline does.
 """
 import os
+from dataclasses import replace
 
 import pytest
 
@@ -16,6 +17,12 @@ pytestmark = pytest.mark.freecad
 SHEET = os.path.join(os.path.dirname(__file__), "modelmania", "mm25-p1-1.pdf")
 SHEET_2023 = os.path.join(os.path.dirname(__file__), "modelmania",
                           "model-mania_-in-person-2023 copy.pdf")
+FOUR_SHEETS = [SHEET,
+               os.path.join(os.path.dirname(__file__), "modelmania",
+                            "mm25-p2.pdf"),
+               os.path.join(os.path.dirname(__file__), "modelmania",
+                            "model-mania-2024.pdf"),
+               SHEET_2023]
 
 
 @pytest.fixture(scope="module")
@@ -23,6 +30,20 @@ def sheet(tmp_path_factory):
     if not sheet_reader.available():
         pytest.skip("PyMuPDF is not installed")
     return sheet_reader.read(SHEET, into=str(tmp_path_factory.mktemp("sheet")))
+
+
+@pytest.fixture(scope="module")
+def four_sheets(tmp_path_factory):
+    """
+    Every sheet in `tests/modelmania`, read once for the module.
+
+    Four and not five: `model-mania_-in-person-2023.pdf` is the same file as the
+    copy beside it, and reading it would measure the same drawing twice.
+    """
+    if not sheet_reader.available():
+        pytest.skip("PyMuPDF is not installed")
+    return [sheet_reader.read(path, into=str(tmp_path_factory.mktemp("sheet%d" % at)))
+            for at, path in enumerate(FOUR_SHEETS)]
 
 
 def _outlines(sheet):
@@ -346,32 +367,91 @@ def test_a_walk_of_lines_says_nothing_until_a_printed_distance_reaches_it():
 # ── through the child, which is where it actually runs (FCC-126) ──────────────
 
 
-def test_the_child_answers_the_same_thing_this_process_does(sheet):
+def _as_it_crosses(verdict):
     """
-    The move that keeps FreeCAD open has to cost the verdict nothing. Same
-    outlines, same sheet, one built here and one built in the Preflight child,
-    and the answer is the answer either way.
+    A verdict with the two differences a process boundary is entitled to.
+
+    `entity` is the caller's own traced object, which does not cross the pipe by
+    design and which nothing upstream reads. `moved` is a float the solver
+    settles differently run to run from a start it picks for itself — 0.40 mm
+    apart at the widest over the four sheets, which is why it is asserted as a
+    band beside this rather than compared here.
+
+    Every other field is compared as it stands, whichever it is: a field added
+    to `Verdict` or to `Trouble` later is covered without anyone coming back
+    here, and that is the whole point of comparing whole verdicts.
+    """
+    said = dict(vars(verdict))
+    for named, value in said.items():
+        if isinstance(value, list):
+            said[named] = [replace(trouble, entity=None) for trouble in value]
+    said["moved"] = 0.0
+    return sketch_check.Verdict(**said)
+
+
+def test_the_child_answers_the_same_thing_this_process_does(four_sheets):
+    """
+    The move that keeps FreeCAD open has to cost the verdict nothing. Every
+    outline of all four sheets — 142 of them when this was measured — built once
+    here and once in the Preflight child, and the two verdicts compared whole
+    rather than over a chosen tuple of fields.
+
+    Whole because the wire form crosses by field list: an attribute it forgets
+    is invisible to every field a chosen tuple does compare, and `conflicts` and
+    `redundant` are what the description is written from.
     """
     from core.preflight import PreflightWorker
 
+    compared = 0
     with PreflightWorker() as worker:
-        for view, outline in _outlines(sheet)[:4]:
-            here = sketch_check.checked(outline, view, sheet.between)
-            there = sketch_check.checked_by(worker, outline, view, sheet.between)
+        for sheet in four_sheets:
+            for view, outline in _outlines(sheet):
+                here = sketch_check.checked(outline, view, sheet.between)
+                there = sketch_check.checked_by(worker, outline, view,
+                                                sheet.between)
 
-            assert there is not None, view
-            assert (there.entities, there.geometry, there.solved, there.dof,
-                    there.distances) == (here.entities, here.geometry,
-                                         here.solved, here.dof, here.distances), view
-            assert [t.said for t in there.disagrees] == \
-                   [t.said for t in here.disagrees], view
-            assert [t.said for t in there.shifted] == \
-                   [t.said for t in here.shifted], view
-            # Not the same float: the solver settles a slack fit slightly
-            # differently run to run, and 0.44 against 0.57 mm on one section is
-            # that, not a difference of process. What may not differ is the
-            # finding, and `shifted` above is the finding.
-            assert abs(there.moved - here.moved) < sketch_check.A_SHIFT / 2, view
+                assert there is not None, view
+                assert _as_it_crosses(there) == _as_it_crosses(here), view
+                assert abs(there.moved - here.moved) < sketch_check.A_SHIFT / 2, view
+                compared += 1
+
+    assert compared > 100, compared
+
+
+def test_a_conflict_and_a_redundancy_reach_the_caller_from_the_child():
+    """
+    The four sheets raise neither, so the two fields the description conflicts
+    are written from are exercised on readings built to raise them: a plate the
+    sheet dimensions 50 and 60 across the same two faces, which cannot hold
+    both, and a bore traced as two arcs the sheet prints Ø42 for twice, which
+    is told its size once more than it needs.
+
+    Each arrives back at the entity of the walk it was written for and with the
+    number it was written from, and the verdict crossing the pipe is the verdict
+    this process builds.
+    """
+    from core.preflight import PreflightWorker
+
+    plate = _a_plate(50.0, 30.0)
+    contradicting = [
+        sheet_reader.Between(printed=50.0, text="50", view="a view",
+                             first=(0.0, 5.0), second=(50.0, 5.0)),
+        sheet_reader.Between(printed=60.0, text="60", view="a view",
+                             first=(0.0, 25.0), second=(50.0, 25.0))]
+    bore = _a_bore_in_two_pieces(42.0, 42.0)
+
+    with PreflightWorker() as worker:
+        conflicted = sketch_check.checked_by(worker, plate, "a view", contradicting)
+        repeated = sketch_check.checked_by(worker, bore, "a view")
+
+    assert [(trouble.at, trouble.printed) for trouble in conflicted.conflicts] == \
+           [(3, 50.0), (3, 60.0)]
+    assert [(trouble.at, trouble.printed) for trouble in repeated.redundant] == \
+           [(1, 42.0)]
+    assert _as_it_crosses(conflicted) == _as_it_crosses(
+        sketch_check.checked(plate, "a view", contradicting))
+    assert _as_it_crosses(repeated) == _as_it_crosses(
+        sketch_check.checked(bore, "a view"))
 
 
 def test_a_reading_the_solver_cannot_take_does_not_take_the_caller_with_it():
