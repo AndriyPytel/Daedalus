@@ -1271,7 +1271,7 @@ def _distance(one, other):
 
 A_HAIR = 0.05
 
-A_TRACED_NUMBER = 1.5
+A_DISTANCE = 1.5
 
 A_MARK = 2.0
 
@@ -3085,7 +3085,7 @@ def invented(sheet, model):
                                      entity.radius)
                     if measured})
     return sorted(number for number in said
-                  if isinstance(number, float) and number >= A_MARK
+                  if isinstance(number, float)
                   and number not in cited
                   and not _near(number, drawn)
                   and not _derived_from(number, cited))
@@ -3095,18 +3095,20 @@ def _near(number, drawn):
     """
     Whether the tracing measured something this size, within its own slack.
 
-    `A_TRACED_NUMBER` is how far a number in a description may be from something
-    the tracing measured and still be that thing, in mm. It is the same band the
-    tracing is reported with everywhere else: a face is measured to the inside
-    of the line that draws it, so it reads about a millimetre under, and half a
-    millimetre of fit sits around that.
+    `A_DISTANCE` is how far the pixels may be from what the sheet prints for
+    the same thing, in millimetres. One and a half, measured on the four
+    sheets: the 13 printed distances that reach a traced outline are 0.07 to
+    1.08 mm out, and the 1.08 is the bias itself — a face is traced to the
+    inside of the line that draws it, so a width reads about a millimetre
+    under. It is the one band the tracing is read with, here and in
+    `sketch_check`, and the reading it exists to catch is 8 mm out.
     """
-    return any(abs(number - measured) <= A_TRACED_NUMBER for measured in drawn)
+    return any(abs(number - measured) <= A_DISTANCE for measured in drawn)
 
 
 def _derived_from(number, cited):
     """
-    Whether one number is two of the sheet's own put together.
+    Whether one number is the distance between two of the sheet's own.
 
     A distance nobody printed is `derived` and the description is told to say
     so rather than call it undefined, and deriving it is subtraction: measured
@@ -3114,12 +3116,15 @@ def _derived_from(number, cited):
     less its 12.5, and `125 mm` is the 2025 sheet's 150 less its 25. A check
     that called those inventions would fire on every correct reading of a
     drawing that dimensions from one end.
+
+    Two distinct callouts, and subtraction only. A callout paired with itself
+    exempts every doubling of a printed value, and a sum is the description
+    stating arithmetic of its own, which `wrong_sums` is the check for.
     """
     numbers = [one for one in cited if isinstance(one, float)]
     return any(abs(number - abs(one - other)) < 0.01
-               or abs(number - (one + other)) < 0.01
                for at, one in enumerate(numbers)
-               for other in numbers[at:])
+               for other in numbers[at + 1:])
 
 
 def _numbers_in(node):

@@ -5650,6 +5650,28 @@ def test_a_description_whose_numbers_are_all_the_sheets_is_left_alone(monkeypatc
         lambda: False) == {"features": []}
 
 
+def test_a_number_printed_on_one_sheet_of_two_is_not_off_the_sheet(monkeypatch):
+    """
+    `invented` is a sheet-level question and the sheets are read one at a time,
+    so with two attachments the sheet that does not print a number reports it
+    and the sheet that does says nothing. Unioned, every number printed on one
+    of two sheets is on no sheet at all.
+    """
+    monkeypatch.setattr(loop, "_sheets", lambda attachments: ["the first", "the second"])
+    monkeypatch.setattr(loop.sheet_reader, "invented",
+                        lambda sheet, part: {"the first": [50.0, 1234.0],
+                                             "the second": [1234.0]}[sheet])
+
+    assert loop._off_the_sheet(["one.pdf", "two.pdf"], {"features": []}) == [1234.0]
+
+
+def test_with_no_sheet_to_ask_nothing_is_off_the_sheet(monkeypatch):
+    """An intersection over no sheets is every number, and no sheet said so."""
+    monkeypatch.setattr(loop, "_sheets", lambda attachments: [])
+
+    assert loop._off_the_sheet(["one.pdf"], {"envelope": {"the length": "50 mm"}}) == []
+
+
 # ── nobody answers and the run does not die (FCC-127) ─────────────────────────
 
 THE_CLAMP_POINTED_AT_THE_WRONG_VIEW = {

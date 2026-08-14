@@ -67,6 +67,8 @@ worth a child process. It is not worth the user's FreeCAD.
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
+from core.sheet_reader import A_DISTANCE
+
 START, END = 1, 2
 
 A_DOCUMENT = "copilot-reading-check"
@@ -291,8 +293,6 @@ A_FOOT = 2.0
 
 A_SQUARE_ON = 0.99
 
-A_DISTANCE = 1.5
-
 
 def _measured_across(sketch, outline, view, between):
     """
@@ -319,12 +319,9 @@ def _measured_across(sketch, outline, view, between):
     tracing's; how far apart they have to be is the sheet's. A constraint the
     sketch already says is dropped rather than written twice.
 
-    `A_DISTANCE` is how far the pixels may be from what the sheet prints
-    between two faces, in millimetres, before that is a fact about the reading.
-    One and a half, measured on the four sheets: the 13 distances that reach a
-    traced outline are 0.07 to 1.08 mm out, and the 1.08 is the bias itself — a
-    face is traced to the inside of the line that draws it, so a width reads
-    about a millimetre under. The reading this exists to catch is 8 mm out.
+    `A_DISTANCE` is the tracing's own slack, and `sheet_reader` is where it is
+    measured and where it is written down: how far the pixels may be from what
+    the sheet prints between two faces, before that is a fact about the reading.
     """
     import Sketcher
 

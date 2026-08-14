@@ -51,6 +51,8 @@ a thing the merge has to recognise again.
 """
 import re
 
+from core.sheet_reader import A_DISTANCE
+
 SECTIONS = ("printed_on_the_sheet", "datums", "envelope", "features", "conflicts",
             "not_defined")
 
@@ -588,8 +590,6 @@ def crosswise(model) -> list:
     return found
 
 
-_THE_SAME_CIRCLE = 1.5
-
 _A_NUMBER = re.compile(r"([0-9]+(?:\.[0-9]+)?)")
 
 
@@ -627,13 +627,12 @@ def _traced_round_at(round_here, view, wide):
     """
     Whether *view* was traced curved at something the width of *wide*.
 
-    `_THE_SAME_CIRCLE` is how far a traced diameter may sit from the one the
-    description read and still be the same circle. The tracer measures to the
-    inside of the line that draws it, so it reads about a millimetre under; the
-    rest is the raster.
+    `A_DISTANCE` is how far a traced diameter may sit from the one the
+    description read and still be the same circle: the tracing's own slack,
+    measured and written down in `sheet_reader`.
     """
     said = _as_a_view(view)
-    return any(abs(seen - wide) <= _THE_SAME_CIRCLE
+    return any(abs(seen - wide) <= A_DISTANCE
                for at, seen_here in round_here.items() if _as_a_view(at) == said
                for seen in seen_here)
 
