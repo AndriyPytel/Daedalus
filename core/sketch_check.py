@@ -68,7 +68,7 @@ worth a child process. It is not worth the user's FreeCAD.
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
-from core.sheet_reader import A_DISTANCE
+from core.sheet_reader import A_DISTANCE, spelt
 
 START, END = 1, 2
 
@@ -375,8 +375,8 @@ def _measured_across(sketch, outline, view, between):
                 printed=entry.printed,
                 said="the sheet prints %s between %s and %s and the "
                      "pixels put %.2f mm between them"
-                     % (entry.text or entry.printed, _spelt(entry.first),
-                        _spelt(entry.second), traced)))
+                     % (entry.text or entry.printed, spelt(entry.first),
+                        spelt(entry.second), traced)))
     return written, disagrees
 
 
@@ -515,10 +515,6 @@ def _how_far_it_moved(sketch, outline):
     return found
 
 
-def _spelt(point):
-    return "(%.2f, %.2f)" % point
-
-
 def _measured(entity):
     """What the pixels made of one entity, in the words it is reported in."""
     if entity.kind == "line":
@@ -629,8 +625,8 @@ def _troubles(indices, written, outline):
             found.append(Trouble(
                 at=entity_at, constraint=at, entity=entity, printed=what.printed,
                 said="the %s the sheet prints between %s and %s"
-                     % (what.text or what.printed, _spelt(what.first),
-                        _spelt(what.second))))
+                     % (what.text or what.printed, spelt(what.first),
+                        spelt(what.second))))
         elif kind == "size":
             found.append(Trouble(
                 at=entity_at, constraint=at, entity=entity,

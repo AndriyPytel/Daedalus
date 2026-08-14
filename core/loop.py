@@ -1817,7 +1817,9 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
                                                 budgets, cancelled)
     the_part = _every_number_is_the_sheets(the_part, attachments, llm, events,
                                            budgets, cancelled)
-    the_part = merge(the_part, _the_geometry_disagrees(the_part, attachments, events))
+    disagreements = _the_geometry_disagrees(attachments, events)
+    the_part = merge(the_part, dict(the_part, conflicts=disagreements)
+                     if disagreements else the_part)
     the_part = _every_direction_settled(the_part, _round_evidence(attachments))
     the_part = _the_tracing_governs(the_part)
     the_part = _written_down(the_part, attachments, events)
@@ -1896,7 +1898,7 @@ def _where_is_this_number(found):
 A_READING_BUDGET = 60.0
 
 
-def _the_geometry_disagrees(the_part, attachments, events, budget=A_READING_BUDGET):
+def _the_geometry_disagrees(attachments, events, budget=A_READING_BUDGET):
     """
     What the sheet prints against what the sheet draws, as conflicts.
 
@@ -1946,7 +1948,7 @@ def _the_geometry_disagrees(the_part, attachments, events, budget=A_READING_BUDG
     """
     traced = _every_outline_traced(attachments)
     if not traced:
-        return the_part
+        return []
 
     worker = _a_freecad_of_our_own()
     found = []
@@ -1972,7 +1974,7 @@ def _the_geometry_disagrees(the_part, attachments, events, budget=A_READING_BUDG
                                    "outlines read off these sheets: %s. The run goes "
                                    "on; those outlines are unchecked."
                                    % (len(unchecked), ", ".join(sorted(set(unchecked)))))
-    return dict(the_part, conflicts=found) if found else the_part
+    return found
 
 
 def _every_outline_traced(attachments):

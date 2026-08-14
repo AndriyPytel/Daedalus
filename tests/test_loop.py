@@ -7,8 +7,10 @@ never substituted.
 """
 import base64
 import json
+import math
 import os
 import tempfile
+from dataclasses import replace
 
 import pytest
 
@@ -5431,13 +5433,10 @@ def _a_sheet_that_contradicts_itself(tmp_path, wide=98.2, printed=100.0):
     no comparison to make — see the test below, which holds that ceiling in
     place on purpose.
     """
-    from core import sheet_reader
-
     corners = [(0.0, 0.0), (wide, 0.0), (wide, 30.0), (0.0, 30.0)]
     entities = [
         sheet_reader.Entity(kind="line", source="traced", role="contour",
-                            size=sheet_reader._distance(corners[at],
-                                                        corners[(at + 1) % 4]),
+                            size=math.dist(corners[at], corners[(at + 1) % 4]),
                             start=corners[at], end=corners[(at + 1) % 4])
         for at in range(4)]
     outline = sheet_reader.Outline(entities=entities, closed=True, area=3000.0)
@@ -5462,10 +5461,10 @@ def test_a_sheet_that_contradicts_its_own_tracing_says_so_on_the_part(
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
-    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
+    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
 
-    assert len(grown["conflicts"]) == 1
-    said = str(grown["conflicts"][0])
+    assert len(found) == 1
+    said = str(found[0])
     assert "100" in said and "98.2" in said
     assert "the front view" in said
 
@@ -5482,9 +5481,9 @@ def test_a_geometric_conflict_names_both_points_it_is_about(tmp_path, monkeypatc
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
-    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
+    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
 
-    assert grown["conflicts"][0]["about"] == (
+    assert found[0]["about"] == (
         "the sheet prints 100 between (0.00, 15.00) and (100.00, 15.00) and the "
         "pixels put 98.20 mm between them, in the front view")
 
@@ -5523,9 +5522,9 @@ def test_a_redundant_constraint_reaches_the_part_in_the_words_of_a_conflict(
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatFoundBoth())
 
-    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
+    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
 
-    assert grown["conflicts"] == [
+    assert found == [
         {"about": "the 50 the sheet prints between (0.00, 5.00) and (50.00, 5.00),"
                   " in the front view",
          "stands": "the solver cannot satisfy this reading"},
@@ -5556,8 +5555,7 @@ def test_a_reading_too_far_out_is_past_what_this_check_can_see(
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=108.0)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream()) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], EventStream()) == []
 
 
 def test_a_sheet_that_agrees_with_itself_adds_nothing(tmp_path, monkeypatch):
@@ -5567,13 +5565,10 @@ def test_a_sheet_that_agrees_with_itself_adds_nothing(tmp_path, monkeypatch):
     is the tracing's own bias. So a run against a real sheet gains nothing
     here, and that is the right answer rather than a weak check.
     """
-    from core import sheet_reader
-
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=100.0)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream()) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], EventStream()) == []
 
 
 def test_without_a_freecad_to_build_in_the_description_is_untouched(
@@ -5586,8 +5581,7 @@ def test_without_a_freecad_to_build_in_the_description_is_untouched(
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
     monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream()) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], EventStream()) == []
 
 
 def test_the_reading_is_never_built_in_the_addon_s_own_process(
@@ -5626,11 +5620,11 @@ def test_the_reading_is_never_built_in_the_addon_s_own_process(
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatAnswered())
 
-    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
+    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
 
     assert [entry["do"] for entry in asked if isinstance(entry, dict)] == ["reading"]
     assert asked[-1] == "killed", "the child outlived the sweep"
-    assert "98.20" in grown["conflicts"][0]["about"]
+    assert "98.20" in found[0]["about"]
 
 
 def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
@@ -5656,16 +5650,13 @@ def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatDied())
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], events) == []
     assert "the front view" in events.last(ERROR).data["message"], \
         "an unchecked reading is indistinguishable from a clean one"
 
 
 def _a_sheet_of_many_outlines(tmp_path, how_many=4):
     """One view holding several traced plates, so a budget has something to run out of."""
-    from core import sheet_reader
-
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     drawn = sheet.drawn[0]
     return sheet_reader.Sheet(
@@ -5707,8 +5698,7 @@ def test_a_child_that_cannot_come_back_leaves_the_rest_unchecked_and_the_run_ali
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatCannotComeBack())
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], events) == []
     assert "the front view" in events.last(ERROR).data["message"]
 
 
@@ -5727,8 +5717,7 @@ def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypat
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
     monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], events) == []
     assert "the front view" in events.last(ERROR).data["message"]
 
 
@@ -5760,8 +5749,7 @@ def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch)
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatHangs())
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events,
-                                        budget=60.0) == {"features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], events, budget=60.0) == []
 
     assert len(asked) < 4, "the budget bounded nothing"
     assert max(asked) <= 60.0, "one outline was given more than the whole budget"
@@ -5770,6 +5758,40 @@ def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch)
 
 def _never_called(*_, **__):
     raise AssertionError("the reading was built in the addon's own process")
+# ── one read of a sheet per phase that wants it (FCC-144) ─────────────────────
+
+
+def test_a_sheet_is_read_once_however_many_phases_ask_for_it(tmp_path, monkeypatch):
+    """
+    Three phases of `_describe_the_part` read the same attachments — the sweep
+    of what is printed, the round evidence, and the geometry check — and each
+    of them asks `sheet_reader.read` for the whole sheet again.
+
+    Reading one is not cheap: measured on the four sheets in `tests/modelmania`,
+    the three phases cost 17.3 s when each re-renders them and 6.2 s when the
+    reader hands back what it already read. The cache is `_ALREADY_READ`, keyed
+    by what the file is, so this holds the phases to one render and not the
+    reader to one call.
+    """
+    read = []
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4\n")
+    sheet = replace(_a_sheet_that_contradicts_itself(tmp_path),
+                    overview=str(path))
+
+    def no_headless_freecad(*_, **__):
+        raise RuntimeError("No headless FreeCAD found.")
+
+    monkeypatch.setattr(loop.sheet_reader, "_ALREADY_READ", {})
+    monkeypatch.setattr(loop.sheet_reader, "_read",
+                        lambda where, *_, **__: read.append(where) or sheet)
+    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+
+    loop._the_sweep_is_the_sheets({"features": []}, [str(path)])
+    loop._round_evidence([str(path)])
+    loop._the_geometry_disagrees([str(path)], EventStream())
+
+    assert read == [str(path)]
 
 
 # ── a number on no sheet (FCC-124) ────────────────────────────────────────────

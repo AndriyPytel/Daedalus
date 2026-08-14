@@ -57,7 +57,6 @@ def wrong_sums(prose) -> list:
         comes_to = _worked_out(written)
         if comes_to is None:
             continue
-        answer = float(claim.group("answer"))
         if _rounds_to(comes_to, claim.group("answer")):
             continue
         wrong.append("%s = %s, and it is %s" % (written, claim.group("answer"),

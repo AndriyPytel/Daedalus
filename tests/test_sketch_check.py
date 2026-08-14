@@ -61,7 +61,16 @@ def test_every_point_arrives_as_a_tuple():
     assert isinstance(outline.entities[0].end, tuple)
     assert isinstance(outline.entities[4].centre, tuple)
     assert isinstance(between[0].first, tuple)
-    assert "(0.00, 10.00)" == sketch_check._spelt(between[0].first)
+    assert "(0.00, 10.00)" == sheet_reader.spelt(between[0].first)
+
+
+def test_a_point_is_spelt_in_one_place():
+    """
+    Two modules report the same points to the same reader, and they spelt them
+    in two byte-identical helpers. One of them is the speller; the other imports
+    it, so a change to how a point reads cannot reach half the report.
+    """
+    assert sketch_check.spelt is sheet_reader.spelt
 
 
 def test_the_verdict_comes_back_as_the_verdict():
