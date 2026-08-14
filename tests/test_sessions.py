@@ -51,9 +51,6 @@ def _with_an_intent(sessions, name):
     return position
 
 
-# ── what is durable ───────────────────────────────────────────────────────────
-
-
 def test_a_session_with_no_intent_is_not_in_the_index(sessions, index):
     """
     It has nothing to show in the picker and nothing to be named after, and
@@ -88,9 +85,6 @@ def test_the_index_carries_only_the_four_durable_fields(sessions, index):
     _with_an_intent(sessions, "A 20-tooth gear")
 
     assert set(index.records[0]) == {"name", "created_at", "document", "log"}
-
-
-# ── the bound ─────────────────────────────────────────────────────────────────
 
 
 def test_the_session_bound_holds_without_a_restart(sessions, index, monkeypatch):
@@ -159,9 +153,6 @@ def test_load_keeps_the_newest_and_deletes_the_rest(index, monkeypatch, tmp_path
     assert os.path.exists(logs[3])
 
 
-# ── naming ────────────────────────────────────────────────────────────────────
-
-
 def test_a_generated_title_is_taken_once_and_then_frozen(sessions):
     position = _with_an_intent(sessions, "New Chat")
     log = sessions.at(position)["log"]
@@ -210,9 +201,6 @@ def test_naming_the_document_is_written_down(sessions, index):
 
     assert sessions.name_document(sessions.at(position)["log"], "Gearbox")
     assert index.records[0]["document"] == "Gearbox"
-
-
-# ── positions, and whose transcript is due ────────────────────────────────────
 
 
 def test_indexed_carries_the_position_not_a_fresh_count(sessions):

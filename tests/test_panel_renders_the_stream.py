@@ -58,6 +58,8 @@ def test_the_panel_only_ever_asks_the_loop_to_start():
     type, and the four answers about a failed result are the same kind of
     thing — but the only loop *function* it may call is `run`. Calling anything
     else would mean the event stream had stopped being the contract.
+
+    Data types are fine to name; only `run` may be invoked.
     """
     tree = panel_tree()
 
@@ -71,7 +73,6 @@ def test_the_panel_only_ever_asks_the_loop_to_start():
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
     }
 
-    # Data types are fine to name; only `run` may be invoked.
     vocabulary = {"Approval", "APPROVE", "REJECT", "AMEND",
                   "ACCEPT", "REVISE", "START_OVER", "DECISIONS"}
     assert imported <= vocabulary | {"run"}, \
@@ -126,11 +127,14 @@ def test_the_dock_names_itself():
 
 
 def test_the_run_is_stoppable():
+    """
+    The panel provides a stop mechanism that tells the loop by name, not by
+    killing the thread.
+    """
     tree = panel_tree()
     names = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
 
     assert {"on_stop", "stop"} <= names
-    # and the loop is told about it by name, not by killing the thread
     assert "cancelled" in {
         keyword.arg for node in ast.walk(tree)
         if isinstance(node, ast.Call) for keyword in node.keywords

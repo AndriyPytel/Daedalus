@@ -170,9 +170,6 @@ def test_an_unreachable_host_raises():
         fetch("OpenAI", "sk-test", base_url="http://127.0.0.1:1")
 
 
-# ── OpenCode Go, a hosted gateway at an address of its own ──────────
-
-
 def test_the_registry_names_every_provider_the_addon_can_reach():
     """
     The list of providers is this table now, not a file in the repo: what a key
@@ -223,9 +220,6 @@ def test_opencode_go_sends_its_key_as_a_bearer_token(provider_endpoint):
     fetch("OpenCode Go", "sk-zen", base_url=base + "/v1")
 
     assert server.last_headers.get("authorization") == "Bearer sk-zen"
-
-
-# ── What a model is offered for: reading a drawing and writing code ──
 
 
 def _sees(verdicts):

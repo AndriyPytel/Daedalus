@@ -4,6 +4,10 @@ Level 1 — the Plan Gate.
 The single point at which the user approves a Plan. Approval covers every Step
 in it; there is no per-Step approval. Nothing runs before it. A revised Plan is
 a new Plan and has its own Gate — which is still one Gate per Plan (FCC-68).
+
+THE_NUT defines what the user said the nut is. Every value is assumed, so there
+is an Acceptance to fail and no entry a Step is obliged to cite — the coverage
+check is not what these tests are about.
 """
 import inspect
 import json
@@ -41,10 +45,8 @@ class Gate:
         return self.answers.pop(0) if self.answers else Approval(APPROVE)
 
 
-# ── nothing runs before approval ──────────────────────────────────────────────
-
-
 def test_no_step_executes_before_the_user_approves():
+    """The Plan was shown to the gate before anything was applied."""
     gate = Gate(Approval(APPROVE))
 
     _, events, tools = drive(
@@ -52,7 +54,6 @@ def test_no_step_executes_before_the_user_approves():
 
     assert gate.shown == [["Create a 10mm box"]]
     assert tools.applied_codes() == ["box()"]
-    # The Plan was shown to the gate before anything was applied.
     kinds = [e.kind for e in events]
     assert kinds.index(PLAN) == 0
 
@@ -78,9 +79,6 @@ def test_the_gate_sees_the_plan_it_is_approving():
     assert gate.shown == [["First", "Second", "Third"]]
 
 
-# ── one approval covers the whole Plan ────────────────────────────────────────
-
-
 def test_approval_covers_every_step_so_there_is_no_per_step_approval():
     gate = Gate(Approval(APPROVE))
 
@@ -98,6 +96,9 @@ def test_a_review_driven_revision_goes_back_to_the_gate():
     again. FCC-68 reversed it: the user approved 18 Steps and a different set
     ran, learned about after the fact. A revised Plan is a new Plan, and every
     Plan has its own Gate — which is still one Gate per Plan, not per Step.
+
+    Still surfaced as a revision — the Gate is added to PLAN_REVISED, not
+    substituted for it. What the previous Plan applied stays in the Document.
     """
     gate = Gate(Approval(APPROVE), Approval(APPROVE))
 
@@ -107,10 +108,7 @@ def test_a_review_driven_revision_goes_back_to_the_gate():
     ], gate)
 
     assert gate.shown == [["Make it"], ["Fix the length"]]
-    # Still surfaced as a revision — the Gate is added to PLAN_REVISED, not
-    # substituted for it.
     assert events.first(PLAN_REVISED).data["reason"] == "20mm, not 10mm"
-    # What the previous Plan applied stays in the Document.
     assert tools.applied_codes() == ["make()", "fix()"]
 
 
@@ -173,9 +171,6 @@ def test_amending_a_revised_plan_spends_the_amendment_budget():
     assert result.blocked
     assert "amended the Plan 2 times" in result.reason
     assert "Review rejected the result 1 time" in result.reason
-
-
-# ── amending ──────────────────────────────────────────────────────────────────
 
 
 def test_the_user_can_amend_a_plan_before_it_runs():
@@ -242,9 +237,6 @@ def test_an_amendment_is_surfaced_as_a_revised_plan():
     revised = events.first(PLAN_REVISED)
     assert revised.data["steps"] == ["Just A"]
     assert "Simpler please" in revised.data["reason"]
-
-
-# ── the revision budget names what it was spent on (FCC-22) ───────────────────
 
 
 def _amended_twice_then_obsolete_twice():
@@ -350,18 +342,12 @@ def test_rejecting_after_amending_still_applies_nothing():
     assert tools.applied_codes() == []
 
 
-# ── the default ───────────────────────────────────────────────────────────────
-
-
 def test_a_gate_that_answers_nothing_is_treated_as_approval():
     """A gate returning None must not wedge the run."""
     _, _, tools = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")],
                         gate=lambda steps: None)
 
     assert tools.applied_codes() == ["box()"]
-
-
-# ── the decision before a revision may wipe the model (FCC-77) ────────────────
 
 
 class Decider:
@@ -390,9 +376,6 @@ def drive_with(turns, decide, gate=None, applies=(), checks=(), attachments=()):
 FAILED_CHECKS = ('Traceback (most recent call last):\n'
                  "AssertionError: 13.0 mm across the flats\n")
 
-# What the user said the nut is. Every value assumed, so there is an Acceptance
-# to fail and no entry a Step is obliged to cite — the coverage check is not
-# what these tests are about (FCC-94).
 THE_NUT = {"envelope": {"across the flats": {"value": "13.0 mm", "flag": "assumed"}}}
 
 
@@ -437,12 +420,14 @@ def test_stopping_while_the_decision_is_open_is_recorded_as_stopped():
     Stop must not read as "the user took the result": the panel answers with
     something unrecognised, that falls to the default, and the loop asks
     `cancelled()` before it plans anything. FCC-77.
+
+    "released-by-abandon" is what the panel sends on Stop.
     """
     stopped = []
 
     def presses_stop(failure):
         stopped.append(failure)
-        return "released-by-abandon"      # what the panel sends on Stop
+        return "released-by-abandon"
 
     llm = ScriptedLLMClient(a_run_whose_checks_fail())
     tools = FakeTools(checks=[{"ok": False, "traceback": FAILED_CHECKS}])

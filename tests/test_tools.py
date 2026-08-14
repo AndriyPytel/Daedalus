@@ -38,9 +38,6 @@ def fake():
     return registry
 
 
-# ── plain functions with JSON schemas ─────────────────────────────────────────
-
-
 def test_a_tool_is_a_plain_function_with_a_schema():
     def add(a, b):
         return a + b
@@ -65,9 +62,6 @@ def test_duplicate_tool_names_are_refused(fake):
         fake.add(Tool("snapshot", "Again.", lambda: None))
 
 
-# ── described independently of transport ──────────────────────────────────────
-
-
 def test_descriptions_carry_no_transport_of_their_own(fake):
     described = fake.describe()
 
@@ -82,9 +76,6 @@ def test_an_adapter_is_built_on_the_descriptions_not_instead_of_them(fake):
 
     assert [a["type"] for a in adapted] == ["function", "function"]
     assert [a["function"] for a in adapted] == fake.describe()
-
-
-# ── calling ───────────────────────────────────────────────────────────────────
 
 
 def test_calling_a_tool_runs_the_function(fake):
@@ -127,9 +118,6 @@ def test_a_tool_that_fails_reports_it_as_a_tool_error(fake):
 def test_a_tools_own_error_reaches_the_caller_unwrapped(fake):
     with pytest.raises(ToolError, match="No object named 'Ghost'"):
         fake.call("describe_object", {"name": "Ghost"})
-
-
-# ── substitutability ──────────────────────────────────────────────────────────
 
 
 def test_the_registry_is_introspectable_so_callers_need_no_import(fake):

@@ -52,9 +52,6 @@ def test_no_model_list_is_bundled_with_the_addon():
     assert "models.json" not in source
 
 
-# ── the window between a key change and the list landing (FCC-53) ─────────────
-
-
 @pytest.fixture
 def manager():
     """
@@ -104,10 +101,12 @@ def test_only_the_provider_whose_credentials_changed_is_invalidated(manager):
     """
     A key change invalidates the list that key entitled you to, and no other.
     Clearing every provider's list threw away answers that were still true.
+
+    The test sets openai's credentials to be different from the ones it fetched
+    with, so the key change invalidates only openai's list.
     """
     _fetched(manager, "openai", LIVE_ONLY)
     _fetched(manager, "anthropic", [{"id": "claude-y", "display": "Claude Y"}])
-    # openai's credentials are now different from the ones it fetched with.
     manager._fetched_with["openai"] = ("an-older-key", "")
 
     manager._on_keys_changed([])

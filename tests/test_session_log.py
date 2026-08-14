@@ -30,9 +30,6 @@ def test_an_unknown_kind_is_a_loud_failure_not_a_silent_event():
         events.emit("almost_applied", step=1)
 
 
-# ── live watching ─────────────────────────────────────────────────────────────
-
-
 def test_subscribers_see_events_as_they_are_emitted():
     seen = []
     events = EventStream()
@@ -55,9 +52,6 @@ def test_a_broken_renderer_does_not_take_the_run_down():
 
     assert len(reached) == 1, "a later subscriber was skipped"
     assert len(events) == 1
-
-
-# ── persistence ───────────────────────────────────────────────────────────────
 
 
 def test_the_log_is_written_as_the_run_happens(tmp_path):
@@ -133,9 +127,6 @@ def test_unserialisable_data_does_not_break_the_log(tmp_path):
     assert len(open(path).read().strip().splitlines()) == 1
 
 
-# ── replaying a Session ───────────────────────────────────────────────────────
-
-
 def _written(path, events):
     stream = EventStream()
     stream.log_to(str(path))
@@ -196,9 +187,6 @@ def test_an_event_kind_this_build_does_not_know_survives_the_read(tmp_path):
 
 def test_a_session_with_no_log_yet_replays_as_nothing(tmp_path):
     assert replay(str(tmp_path / "never_written.jsonl")) == ([], False)
-
-
-# ── reading it back in memory ─────────────────────────────────────────────────
 
 
 def test_the_stream_can_be_queried_by_kind():

@@ -42,24 +42,20 @@ def tools(doc):
     return build_registry(doc)
 
 
-# ── Snapshot ──────────────────────────────────────────────────────────────────
-
-
 def test_snapshot_reports_what_exists_without_dumping_the_tree(tools, part):
     snapshot = tools.call("snapshot")
 
     assert snapshot["document"] == "ToolsLevel2"
     assert [o["name"] for o in snapshot["objects"]] == ["Box", "Fillet"]
     assert snapshot["object_count"] == 2
-    # A summary per object, not its properties.
     assert set(snapshot["objects"][0]) == {"name", "label", "type", "errors"}
     assert snapshot["objects"][0]["type"] == "Part::Box"
 
 
 def test_snapshot_carries_the_selection_and_the_active_body(tools, part):
+    """Headless has no GUI, so both degrade rather than fail."""
     snapshot = tools.call("snapshot")
 
-    # Headless has no GUI, so both degrade rather than fail.
     assert snapshot["selection"] == []
     assert snapshot["active_body"] is None
 
@@ -77,9 +73,10 @@ def test_the_origin_datums_do_not_become_the_overall_size(tools, doc):
     """
     A Body carries three planes and three axes, each 1e100 across. Taken
     literally they make every part 2e+100 mm wide — which is exactly what the
-    old measurement reported to Preflight before FCC-66.
+    old measurement reported to Preflight before FCC-66. A Body brings its
+    Origin with it, so adding one is all it takes to put them in the Document.
     """
-    doc.addObject("PartDesign::Body", "Body")     # brings its Origin with it
+    doc.addObject("PartDesign::Body", "Body")
     box = doc.addObject("Part::Box", "Box")
     box.Length, box.Width, box.Height = 40, 30, 10
     doc.recompute()
@@ -102,15 +99,13 @@ def test_snapshot_of_an_empty_document_is_still_a_snapshot(tools):
 
 
 def test_snapshot_reports_an_object_left_in_error(tools, doc):
-    doc.addObject("Part::Cut", "Cut")   # no Base/Tool
+    """A Cut with neither Base nor Tool is an object the recompute leaves in error."""
+    doc.addObject("Part::Cut", "Cut")
     doc.recompute()
 
     errors = {o["name"]: o["errors"] for o in tools.call("snapshot")["objects"]}
 
     assert errors["Cut"], "a broken feature looked healthy in the Snapshot"
-
-
-# ── Introspection: the property names are the running FreeCAD's ───────────────
 
 
 def test_property_names_come_from_the_running_freecad(tools, part):
@@ -167,9 +162,6 @@ def test_describe_object_on_a_ghost_says_what_does_exist(tools, part):
     assert "Box" in str(raised.value) and "Fillet" in str(raised.value)
 
 
-# ── Supported types ───────────────────────────────────────────────────────────
-
-
 def test_supported_types_come_from_the_document_itself(tools):
     supported = tools.call("supported_types")
 
@@ -199,9 +191,6 @@ def test_supported_types_does_not_report_a_confident_wrong_absence(tools, doc):
     assert reported >= raw
 
 
-# ── Describing a type nothing has been built from yet ─────────────────────────
-
-
 def test_a_type_is_describable_before_any_object_of_it_exists(tools, doc):
     """
     The gap `supported_types` and `describe_object` leave between them: one
@@ -220,13 +209,14 @@ def test_an_enumeration_reports_the_spellings_this_build_accepts(tools):
     """
     `'Through all'` is not one of them, and assigning it is what killed Step 2
     of the recorded run. FCC-95.
+
+    A length is a number, not a choice, and has nothing to spell.
     """
     properties = {p["name"]: p for p in
                   tools.call("describe_type", {"type_id": "PartDesign::Pocket"})["properties"]}
 
     assert "ThroughAll" in properties["Type"]["enumeration"]
     assert "Through all" not in properties["Type"]["enumeration"]
-    # A length is a number, not a choice, and has nothing to spell.
     assert "enumeration" not in properties["Length"]
 
 
@@ -268,9 +258,6 @@ def test_describe_type_cannot_be_used_to_apply_anything(tools, doc):
     assert schema["parameters"]["properties"]["type_id"]["type"] == "string"
 
 
-# ── Dependencies ──────────────────────────────────────────────────────────────
-
-
 def test_dependencies_report_both_directions(tools, part):
     fillet = tools.call("dependencies", {"name": "Fillet"})
     box = tools.call("dependencies", {"name": "Box"})
@@ -282,9 +269,6 @@ def test_dependencies_report_both_directions(tools, part):
 def test_dependencies_on_a_ghost_says_what_does_exist(tools, part):
     with pytest.raises(ToolError, match="No object named 'Ghost'"):
         tools.call("dependencies", {"name": "Ghost"})
-
-
-# ── Materials (FCC-38) ────────────────────────────────────────────────────────
 
 
 def test_materials_carry_the_uuid_shape_material_needs(tools):
@@ -341,9 +325,6 @@ def test_a_name_that_matches_nothing_hands_back_the_shelf_rather_than_nothing(to
         "the whole shelf was promised and the steels are not on it"
 
 
-# ── The Description Review judges by (FCC-81) ─────────────────────────────────
-
-
 def _plate(doc, holes=1):
     """
     A plate with Ø8 holes through it, built as a real PartDesign tree.
@@ -351,6 +332,8 @@ def _plate(doc, holes=1):
     A `Part::Box` would describe as a box and prove nothing: the Description's
     first layer is the feature tree, and it is trustworthy only because Lint
     forces the tree to be genuine PartDesign (ADR-0012).
+
+    The profile sits on XY and the material is above it, so the cut goes up.
     """
     import FreeCAD as App
     import Part
@@ -385,7 +368,6 @@ def _plate(doc, holes=1):
     hole.Profile = centres
     hole.Diameter = 8.0
     hole.DepthType = "ThroughAll"
-    # The profile sits on XY and the material is above it, so the cut goes up.
     hole.Reversed = True
     doc.recompute()
     return doc
@@ -427,10 +409,11 @@ def test_the_inventory_reports_how_much_material_there_is(doc):
     A Pocket extruded away from the solid cuts nothing, and the feature tree,
     the face families and the overall size all come out identical whether it
     cut or not. Volume is the one reading that tells the two apart. FCC-96.
+
+    20 x 20 x 10 less one 8mm bore through it.
     """
     plate = description(_plate(doc))["geometry"]
 
-    # 20 x 20 x 10 less one 8mm bore through it.
     assert plate["volume_mm3"] == pytest.approx(20 * 20 * 10 - math.pi * 4 ** 2 * 10, rel=1e-3)
 
 
@@ -461,9 +444,6 @@ def test_a_document_with_nothing_modelled_is_still_described(doc):
                                 "geometry": {"solids": 0, "volume_mm3": 0.0, "surfaces": []}}
 
 
-# ── BoundBox ──────────────────────────────────────────────────────────────────
-
-
 def test_a_bound_box_read_after_tessellation_lands_inside_the_curved_face():
     """
     `Shape.BoundBox` is taken off the triangulation where there is one, so on a
@@ -474,7 +454,10 @@ def test_a_bound_box_read_after_tessellation_lands_inside_the_curved_face():
     numbers in the two places, which is how a part came out with every cut
     0.18 mm off X while Preflight saw it exact.
 
-    The face is exact either way, and so is `optimalBoundingBox()`.
+    The face is exact either way, and so is `optimalBoundingBox()`. Where the
+    mesh happens to put a vertex the reading is exact, which is why this is a
+    trap and not a constant: it is wrong on the sides the chords cut across,
+    and only there.
     """
     import Part
 
@@ -483,18 +466,12 @@ def test_a_bound_box_read_after_tessellation_lands_inside_the_curved_face():
 
     shape.tessellate(1.0)
 
-    # Where the mesh happens to put a vertex the reading is exact, which is why
-    # this is a trap and not a constant: it is wrong on the sides the chords
-    # cut across, and only there.
     assert shape.BoundBox.YMax < 25.0 - 1e-3, \
         "this build no longer reads the BoundBox off the mesh; the trap can go"
     assert shape.optimalBoundingBox().YMax == pytest.approx(25.0, abs=1e-6)
     assert shape.cleaned().BoundBox.YMax == pytest.approx(25.0, abs=1e-9)
     faces = [f for f in shape.Faces if type(f.Surface).__name__ == "Cylinder"]
     assert faces[0].Surface.Radius == pytest.approx(25.0, abs=1e-9)
-
-
-# ── No Document ───────────────────────────────────────────────────────────────
 
 
 def test_no_open_document_is_a_tool_error_not_a_crash():

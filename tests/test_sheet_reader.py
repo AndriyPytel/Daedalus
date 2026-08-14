@@ -11,6 +11,10 @@ dimension digit renders at when the sheet goes out whole; 12.9 pt is what a
 callout's box measures on this sheet; 4.1 pt is the paragraph in the title block
 declaring the drawing to be the sole property of SolidWorks. Each one is
 asserted because each one is a decision this module makes on its own.
+
+SHEET_2023 is the sheet from the same competition and the same draughtsman that
+lays its labels out differently: a note that mentions a view, and a section
+label printed below the section instead of inside it.
 """
 import os
 
@@ -21,10 +25,6 @@ from tests import modelmania_harness
 
 SHEET = os.path.join(os.path.dirname(__file__), "modelmania", "mm25-p1-1.pdf")
 RASTER = os.path.join(os.path.dirname(__file__), "modelmania", "mm2025-phase1.png")
-# The 2023 sheet is the one that named the two defects below. It is the same
-# competition and the same draughtsman, and it lays its labels out differently:
-# a note that mentions a view, and a section label printed below the section
-# instead of inside it.
 SHEET_2023 = os.path.join(os.path.dirname(__file__), "modelmania",
                           "model-mania_-in-person-2023 copy.pdf")
 
@@ -58,9 +58,6 @@ def _overlapping(sheet, box, page=1):
             if crop.page == page
             and crop.rect[0] < box[2] and box[0] < crop.rect[2]
             and crop.rect[1] < box[3] and box[1] < crop.rect[3]}
-
-
-# ── the resolution ────────────────────────────────────────────────────────────
 
 
 @needs_pymupdf
@@ -99,9 +96,6 @@ def test_a_crop_is_never_wider_than_the_cap_it_would_be_downscaled_to(sheet):
 
     for crop in sheet.crops:
         assert max(Image.open(crop.path).size) <= sheet_reader.MAX_EDGE, crop.name
-
-
-# ── the text layer ────────────────────────────────────────────────────────────
 
 
 @needs_pymupdf
@@ -207,9 +201,6 @@ def test_a_label_below_its_view_names_the_view_and_not_the_block_it_lands_in(she
         "the scale in the title block is being shown as part of the section"
 
 
-# ── where the views are ─────────────────────────────────────────────────────
-
-
 @needs_pymupdf
 def test_no_two_crops_arrive_under_the_same_name(sheet_2023):
     """
@@ -276,9 +267,6 @@ def test_a_view_whose_body_is_not_in_the_line_work_still_arrives_as_one_view(she
         "the top view arrives as %d views: %s" % (len(the_top_view), the_top_view)
 
 
-# ── the leaders ───────────────────────────────────────────────────────────────
-
-
 @needs_pymupdf
 def test_a_leader_is_followed_to_the_feature_its_arrowhead_touches(sheet):
     """
@@ -299,9 +287,6 @@ def test_a_leader_is_followed_to_the_feature_its_arrowhead_touches(sheet):
     assert reaches_x > 150, \
         "the leader stopped at %s, back among the text it started from" % (
             traced["(R30)"],)
-
-
-# ── the coverage check ────────────────────────────────────────────────────────
 
 
 @needs_pymupdf
@@ -348,9 +333,6 @@ def test_a_description_that_used_everything_is_left_alone(sheet):
     used = {"note": " ".join(entry.text for entry in sheet_reader.dimensions(sheet))}
 
     assert sheet_reader.uncited(sheet, used) == []
-
-
-# ── what is shown, and what happens without any of it ─────────────────────────
 
 
 @needs_pymupdf
@@ -441,9 +423,6 @@ def test_a_raster_is_still_cut_up_and_still_says_it_has_no_text_layer(tmp_path):
     assert sheet is not None and sheet.crops, "a raster sheet produced no crops"
     assert sheet.printed == []
     assert any("no text layer" in note for note in sheet.notes)
-
-
-# ── the line work ─────────────────────────────────────────────────────────────
 
 
 @needs_pymupdf
@@ -732,9 +711,6 @@ def test_a_crop_is_never_resized_at_the_far_end_for_costing_too_many_patches(she
             "%s costs %d visual tokens and will be resized"
             % (crop.name, costs(crop.path)))
 
-    # The layout picture is where this was actually being paid: 1400 x 1081 is
-    # 1950 patches, so the one picture that says where the views are was the one
-    # arriving smaller than it was rendered.
     for overview in sheet.overviews:
         assert costs(overview) <= sheet_reader.THE_BUDGET, costs(overview)
 
@@ -756,9 +732,6 @@ def test_a_raster_crop_is_not_enlarged_past_what_the_file_holds(tmp_path):
         x0, y0, x1, y1 = crop.rect
         assert width <= int(x1 - x0) + 1 and height <= int(y1 - y0) + 1, crop.name
     assert original
-
-
-# ── the picture the view is ───────────────────────────────────────────────────
 
 
 @needs_pymupdf
@@ -888,9 +861,6 @@ def test_a_straight_edge_is_never_reported_as_an_arc_of_half_a_metre(sheet):
     assert max(radii) < 200.0, sorted(radii)[-3:]
 
 
-# ── which view a thing is round in (FCC-109) ─────────────────────────────────
-
-
 @needs_pymupdf
 def test_the_view_each_round_thing_is_round_in_is_reported(sheet_2023):
     """
@@ -898,16 +868,17 @@ def test_the_view_each_round_thing_is_round_in_is_reported(sheet_2023):
     Their axes are therefore not the bore's, which is round in the elevation —
     the run that named this built all three parallel and the clamp screw ended
     up alongside the split it exists to pinch.
+
+    The plan of the arm is drawn twice on this sheet (once at the top and once
+    larger and shaded below) and both draw these holes as circles. What matters
+    is the view that does not: the elevation, where the Ø42 bore is the round
+    thing and these two are a pair of parallel lines.
     """
     round_here = sheet_reader.round_in(sheet_2023)
 
     holes = [view for view, wide in round_here.items()
              if any(6.0 <= one <= 6.6 for one in wide)]
     assert holes, "the Ø6.6 holes were traced round in no view at all"
-    # The plan of the arm is drawn twice on this sheet — once at the top and
-    # once, larger and shaded, below — and both draw these holes as circles.
-    # What matters is the view that does not: the elevation, where the Ø42
-    # bore is the round thing and these two are a pair of parallel lines.
     assert not any("middle centre" in view for view in holes), holes
 
 
@@ -957,9 +928,6 @@ def test_a_view_that_fits_in_one_crop_is_not_sent_twice(sheet_2023):
     whole = {crop.name for crop in sheet_2023.crops if ", part " not in crop.name}
 
     assert whole & {one.name for one in sheet_2023.wholes} == set()
-
-
-# ── a circle in pieces is still a circle (FCC-110) ───────────────────────────
 
 
 @needs_pymupdf
@@ -1538,9 +1506,6 @@ def test_the_sweep_is_not_what_makes_a_number_cited(sheet):
         "envelope": {"the length": {"value": "1234 mm"}}})
 
     assert invented == [1234.0]
-
-
-# ── what a description is allowed to have worked out ─────────────────────────
 
 
 def _a_sheet_printing(*callouts):

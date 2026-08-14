@@ -60,9 +60,6 @@ def _select(page, provider):
     raise AssertionError("%s is not in the provider list" % provider)
 
 
-# ── The field ─────────────────────────────────────────────────────────────────
-
-
 def test_a_local_provider_has_an_address_field_and_it_is_not_masked(providers_page):
     from conftest import QtWidgets
 
@@ -87,9 +84,6 @@ def test_a_local_providers_key_is_announced_as_optional(providers_page):
 
     _select(providers_page, "OpenAI")
     assert providers_page.key_lbl.text() == "API Key"
-
-
-# ── What is stored ────────────────────────────────────────────────────────────
 
 
 def test_the_address_survives_and_stays_out_of_the_key_list(providers_page,
@@ -146,9 +140,6 @@ def test_clearing_the_address_removes_it(providers_page, settings_are_the_tests_
     assert sm.get_base_url_for_provider(LOCAL) == ""
 
 
-# ── What reaches the combo ────────────────────────────────────────────────────
-
-
 def _drain(manager, timeout_turns=400):
     """
     Let every fetch already in flight finish before a test starts recording.
@@ -194,6 +185,10 @@ def test_no_address_means_no_fetch_and_nothing_said(settings_are_the_tests_own, 
 
 def test_an_unreachable_address_names_itself_and_leaves_the_rest_working(
         settings_are_the_tests_own, monkeypatch):
+    """
+    An unreachable server warns and names the address that could not be reached.
+    The panel keeps working after the failure: asking again is still answerable.
+    """
     import FreeCAD
     from utils import provider_manager
 
@@ -217,11 +212,7 @@ def test_an_unreachable_address_names_itself_and_leaves_the_rest_working(
     assert warnings, "an unreachable server failed silently"
     assert "127.0.0.1:1" in " ".join(warnings), \
         "the warning does not name the address that could not be reached"
-    # And the panel keeps working: asking again is still answerable.
     assert isinstance(manager.get_available_models(), list)
-
-
-# ── The model combos survive their own save (FCC-44) ──────────────────────────
 
 
 def _naming_rows(page):
@@ -246,13 +237,15 @@ def test_a_naming_model_survives_the_save_that_stores_it(providers_page,
     `api_keys_changed` → `models_changed` → `_refresh_models`, rebuilding the
     combo and re-selecting it from the *stored* value — and only then read the
     combo it had just overwritten.
+
+    The test uses an unsaved key edit so the save takes the branch that writes
+    the keys.
     """
     sm = settings_are_the_tests_own
     sm.set_api_key_for_provider("OpenAI", "sk-test")
     _select(providers_page, "OpenAI")
 
     wanted = _choose_naming_model(providers_page)
-    # An unsaved key edit, so the save takes the branch that writes the keys.
     providers_page.key_edit.setText("sk-test-changed")
 
     providers_page.saveSettings()
@@ -281,14 +274,18 @@ def test_the_default_model_survives_it_too(providers_page, settings_are_the_test
 
 def test_same_as_the_chat_model_is_a_choice_and_is_stored(providers_page,
                                                           settings_are_the_tests_own):
-    """Empty is a decision, not an absence — it must overwrite a real model."""
+    """
+    Empty is a decision, not an absence — it must overwrite a real model. The
+    first row of the naming combo is "Same as the chat model", which is what
+    stores the empty.
+    """
     sm = settings_are_the_tests_own
     sm.set_api_key_for_provider("OpenAI", "sk-test")
     _select(providers_page, "OpenAI")
     _choose_naming_model(providers_page)
     providers_page.saveSettings()
 
-    providers_page.naming_model_combo.setCurrentIndex(0)     # "Same as the chat model"
+    providers_page.naming_model_combo.setCurrentIndex(0)
     providers_page.saveSettings()
 
     assert sm.get_naming_model() == ""

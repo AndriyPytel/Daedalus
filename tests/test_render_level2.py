@@ -49,9 +49,6 @@ def _shades(image):
     return colours - {_BACKGROUND, _EDGE}
 
 
-# ── edges and shading (FCC-46) ────────────────────────────────────────────────
-
-
 def test_a_box_is_drawn_with_its_edges(doc, tmp_path):
     """
     Without edges, two adjacent faces of a similar shade merge into one blob —
@@ -87,9 +84,10 @@ def test_a_bodys_origin_does_not_set_the_framing(doc, tmp_path):
     planes, each 1e100 across. Taken literally they own the bounding box and
     the part lands in one pixel — and their edges, sampled per pixel, ask for
     an array of 1e100 points. Neither is geometry; the viewport does not draw
-    them either.
+    them either. A Body brings its Origin with it, so adding one is all it
+    takes to put them in the Document.
     """
-    doc.addObject("PartDesign::Body", "Body")     # brings the Origin with it
+    doc.addObject("PartDesign::Body", "Body")
     _a_box(doc, name="Solid")
 
     image = _rendered(doc, tmp_path, "body")
@@ -98,9 +96,6 @@ def test_a_bodys_origin_does_not_set_the_framing(doc, tmp_path):
     assert drawn > 40000, \
         "the part is %d pixels — the Origin's datums took the framing" % drawn
     assert len(_shades(image)) == 3, "the datum planes were shaded as surfaces"
-
-
-# ── the depth test (FCC-46) ───────────────────────────────────────────────────
 
 
 def _a_rod_through(doc):

@@ -33,8 +33,10 @@ class FakeWorker:
     """Records what it was asked to Preflight, answers however the test says."""
 
     def __init__(self, result=None):
-        # A real worker reports what the Step touched, and a Step that touched
-        # nothing is not a success — so the default here has to say it made one.
+        """
+        A real worker reports what the Step touched, and a Step that touched
+        nothing is not a success, so the default here has to say it made one.
+        """
         self.result = result or PreflightResult(ok=True, render="/tmp/step.png",
                                                 created=["Box"])
         self.checked = []
@@ -68,16 +70,14 @@ def pipeline(trace):
     return built
 
 
-# ── the order ─────────────────────────────────────────────────────────────────
-
-
 def test_a_clean_step_lands_and_reports_what_it_created(pipeline):
+    """
+    An Apply lands a Step and describes what is now there. It takes no picture.
+    """
     result = pipeline.apply("box = doc.addObject('Part::Box', 'Box')", label="Add the box")
 
     assert result.ok
     assert result.created == ["Box"]
-    # An Apply lands a Step and describes what is now there. It takes no
-    # picture: nothing read the per-Step render (FCC-81).
     assert [what for what, _ in pipeline.trace] == ["transaction"]
 
 
@@ -121,7 +121,6 @@ def test_preflight_gets_a_throwaway_copy_not_the_document(pipeline):
 
     checked = pipeline.fake_worker.checked[0]
     assert pipeline.document.saved_copies == [checked["document"]]
-    # Preflight no longer renders per Step (ADR-0015).
     assert checked["render_path"] is None
 
 
@@ -133,9 +132,6 @@ def test_the_throwaway_copy_is_deleted_afterwards(pipeline):
     assert not os.path.exists(pipeline.fake_worker.checked[0]["document"])
 
 
-# ── Preflight is behind the Tool, not beside it ───────────────────────────────
-
-
 def test_the_caller_sees_applied_or_failed_and_nothing_else(pipeline):
     applied = pipeline.apply("doc.recompute()").as_tool_result()
     pipeline.fake_worker.result = PreflightResult(ok=False, traceback="boom")
@@ -143,7 +139,6 @@ def test_the_caller_sees_applied_or_failed_and_nothing_else(pipeline):
 
     assert applied["status"] == "applied"
     assert failed == {"status": "failed", "traceback": "boom"}
-    # Nothing in either result names Preflight, the worker, or a copy.
     assert "preflight" not in repr(applied).lower()
     assert set(applied) == {"status", "created", "description"}
 
@@ -156,9 +151,6 @@ def test_a_worker_that_died_reads_as_a_failed_step_not_an_incident(pipeline):
 
     assert not result.ok
     assert pipeline.trace == []
-
-
-# ── failure against the real Document ─────────────────────────────────────────
 
 
 def test_a_step_that_passes_preflight_but_fails_for_real_is_reported_as_such(trace):
@@ -183,9 +175,6 @@ def test_no_open_document_is_a_reason_not_a_crash():
 
     assert not result.ok
     assert "no open Document" in result.traceback
-
-
-# ── the selection reaches the lint ────────────────────────────────────────────
 
 
 def test_an_element_the_user_selected_survives_the_lint(pipeline):
@@ -213,10 +202,11 @@ def test_a_fillet_that_never_says_how_many_edges_never_reaches_preflight(pipelin
     assert pipeline.trace == []
 
 
-# ── everything is marshalled ──────────────────────────────────────────────────
-
-
 def test_every_document_touch_goes_through_the_dispatcher():
+    """
+    Every document touch goes through the dispatcher: resolve the Document, read
+    it, copy it, run the transaction, describe what is there now.
+    """
     dispatched = []
 
     def dispatch(func, timeout=None):
@@ -229,6 +219,4 @@ def test_every_document_touch_goes_through_the_dispatcher():
 
     pipeline.apply("doc.recompute()")
 
-    # resolve the Document, read it, copy it, run the transaction, describe
-    # what is there now.
     assert len(dispatched) == 5

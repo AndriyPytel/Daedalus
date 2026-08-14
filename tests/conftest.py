@@ -1,3 +1,11 @@
+"""
+Test infrastructure: FreeCAD and Qt imports, fixtures, and the suite's QApplication.
+
+Importing FreeCAD prepends its Mod directory, where this addon is symlinked
+from one checkout, so a run from a worktree would import that one instead.
+The path manipulation after the FreeCAD import restores the checkout's own
+modules to the front of sys.path.
+"""
 import os
 import sys
 from dataclasses import dataclass
@@ -39,8 +47,6 @@ def _try_import_freecad():
 
 HAVE_FREECAD = _try_import_freecad()
 
-# Importing FreeCAD prepends its Mod directory, where this addon is symlinked
-# from one checkout — so a run from a worktree would import that one instead.
 if sys.path[0] != ROOT:
     sys.path.remove(ROOT)
     sys.path.insert(0, ROOT)

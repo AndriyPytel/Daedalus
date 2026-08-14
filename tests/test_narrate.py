@@ -4,6 +4,14 @@ Level 1 — what an event says to a person.
 The wording used to live inside a `QDockWidget`, which is why the second
 narrator could drift for months without anything failing. It is plain Python
 now, so this runs with no FreeCAD and no Qt.
+
+SAMPLES is one plausible event per kind, shared with the panel's own check
+so that a kind added to the stream and forgotten in both narrators is caught
+by name. The ANSWER sample deliberately uses `by: "drawing"` rather than
+`by: "user"` — the latter is the one answer that says nothing, and a sample
+that says nothing would not prove the kind is covered. The GATE sample carries
+the answered Gate rather than the waiting one, because a sample has to carry
+the field the wording turns on.
 """
 import pytest
 
@@ -14,13 +22,9 @@ from core.events import (
 )
 from core.narrate import Narration, narrate
 
-# One plausible event per kind. Shared with the panel's own check, so a kind
-# added to the stream and forgotten in both narrators is caught by name here.
 SAMPLES = {
     THOUGHT: {"phase": "plan", "text": "thinking"},
     QUESTION: {"text": "How many teeth?"},
-    # Deliberately not `by: "user"` — that is the one answer that says nothing,
-    # and a sample that says nothing would not prove the kind is covered.
     ANSWER: {"text": "the pockets go through", "by": "drawing"},
     ATTACHED: {"files": [{"name": "sheet.pdf", "path": "/tmp/sheet.pdf"}]},
     DESIGN: {"model": {"envelope": {"length": {"value": "40 mm", "flag": "read"}}}},
@@ -28,8 +32,6 @@ SAMPLES = {
     PLAN: {"steps": ["Sketch the base"], "acceptance": []},
     PLAN_REVISED: {"steps": ["Sketch the base"], "reason": "the pocket was too deep",
                    "revision": 2, "of": 3, "because": "Execute could not build a Step"},
-    # The answered Gate, not the waiting one: a sample has to carry the field
-    # the wording turns on.
     GATE: {"decision": "approve"},
     STEP_STARTED: {"index": 1, "total": 3, "description": "Sketch the base"},
     TOOL_CALL: {"name": "apply_step", "arguments": {"code": "pass", "label": "Base"}},
@@ -37,7 +39,7 @@ SAMPLES = {
     PREFLIGHT_FAILED: {"step": 1, "attempt": 2, "traceback": "AttributeError: Support"},
     APPLIED: {"step": 1, "label": "Base", "created": ["Pad"]},
     ASSERTION: {"ok": True, "confirmed": ["6.5 mm tall"], "uncovered": []},
-    OUTSTANDING: {"entries": ["envelope \u2192 across the flats: 13.0 mm (read)"]},
+    OUTSTANDING: {"entries": ["envelope → across the flats: 13.0 mm (read)"]},
     UNBUILT: {"step": 8, "total": 8, "description": "Assign plain carbon steel",
               "why": "no card in this build carries it",
               "entries": ["material: plain carbon steel (read)"]},

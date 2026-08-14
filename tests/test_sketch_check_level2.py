@@ -338,9 +338,6 @@ def test_a_walk_of_lines_says_nothing_until_a_printed_distance_reaches_it():
     assert verdict.disagrees
 
 
-# ── through the child, which is where it actually runs (FCC-126) ──────────────
-
-
 def _as_it_crosses(verdict):
     """
     A verdict with the two differences a process boundary is entitled to.

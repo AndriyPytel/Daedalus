@@ -10,6 +10,12 @@ what is being checked here is the machinery, not the model's taste.
 The load-bearing assertion is the last one: the fillet is still on the intended
 edge after a parameter upstream in the history changes. That is the whole reason
 ADR-0005 forbids a literal `Edge12`.
+
+STEP_FILLET is the point of the whole slice: the edges are worked out from the
+geometry at execution time, and no element name is written down in advance.
+STEP_HOLE drills a hole because a hole is the feature the Description exists
+for: it is a dimension and not a pixel, and no view of the result answers "is
+that one Ø4".
 """
 import json
 
@@ -34,7 +40,6 @@ RADIUS = 1.5
 BORE = 4.0
 TOP_EDGES = 4
 
-# ── the four Steps, as a model would write them ───────────────────────────────
 
 STEP_SKETCH = """
 import Part, Sketcher
@@ -73,8 +78,6 @@ STEP_PARAMETER = """
 doc.getObject("Pad").Length = %s
 """ % PAD_CHANGED
 
-# The point of the whole slice: the edges are worked out from the geometry at
-# execution time. No element name is written down in advance.
 STEP_FILLET = """
 body = doc.getObject("Body")
 # Capture the base feature first: Body.addObject moves Tip to the new feature,
@@ -94,8 +97,6 @@ fillet.Base = (base, edges)
 fillet.Radius = %(radius)s
 """ % {"count": TOP_EDGES, "radius": RADIUS}
 
-# A hole, because a hole is the feature the Description exists for: it is a
-# dimension and not a pixel, and no view answers "is that one Ø4" (FCC-81).
 STEP_HOLE = """
 import Part
 
@@ -119,6 +120,10 @@ hole.Reversed = True
 
 
 def scripted_model():
+    """
+    The Plan, then the whole of it written in one Execute turn, then the
+    verdict. Each Step still lands on its own, through its own apply.
+    """
     return ScriptedLLMClient([
         json.dumps({"steps": [
             "Sketch a %gmm square on the XY plane inside a new Body" % SQUARE,
@@ -128,8 +133,6 @@ def scripted_model():
             % (TOP_EDGES, RADIUS),
             "Drill a %gmm hole through it on the centreline" % BORE,
         ]}),
-        # One Execute turn for the whole Plan, which is what the phase now is
-        # (FCC-95). Each Step still lands on its own, through its own apply.
         json.dumps({"steps": [
             {"step": 1, "code": STEP_SKETCH, "label": "Sketch the square"},
             {"step": 2, "code": STEP_PAD, "label": "Pad the sketch"},
@@ -141,9 +144,6 @@ def scripted_model():
                     "reason": "A %gmm square padded to %gmm, top edges filleted, "
                               "drilled Ø%g." % (SQUARE, PAD_CHANGED, BORE)}),
     ])
-
-
-# ── the harness: everything real except the model ─────────────────────────────
 
 
 @pytest.fixture(scope="module")
@@ -190,9 +190,6 @@ def slice_run(doc, worker, tmp_path):
 
     return {"result": result, "events": events, "doc": doc,
             "pipeline": pipeline, "gate": gate}
-
-
-# ── the loop runs against a real Document ─────────────────────────────────────
 
 
 def test_the_full_loop_runs_end_to_end(slice_run):
@@ -249,9 +246,6 @@ def test_every_object_the_run_created_is_owned(slice_run):
     assert {"Sketch", "Pad", "Fillet", "Body"} <= owned
 
 
-# ── the assertion the whole design is for ─────────────────────────────────────
-
-
 def _top_flat_area(shape):
     top = shape.BoundBox.ZMax
     return sum(face.Area for face in shape.Faces
@@ -263,6 +257,9 @@ def test_the_fillet_stays_on_the_intended_edge_after_an_upstream_change(slice_ru
     Change the pad length — upstream of the fillet in the history — and the
     fillet must still be on the top edges. A hardcoded `Edge12` would not
     crash here; it would silently move, which is why ADR-0005 exists.
+
+    The section stays square, so the filleted top stays the same area on all
+    four of its edges.
     """
     doc = slice_run["doc"]
     fillet = doc.getObject("Fillet")
@@ -273,13 +270,15 @@ def test_the_fillet_stays_on_the_intended_edge_after_an_upstream_change(slice_ru
 
     assert fillet.State == ["Up-to-date"], "the fillet broke on an upstream change"
     assert fillet.Shape.BoundBox.ZMax == pytest.approx(25.0)
-    # Same square section, so the same filleted top: still all four top edges.
     assert _top_flat_area(fillet.Shape) == pytest.approx(before)
     assert _top_flat_area(fillet.Shape) == pytest.approx((SQUARE - 2 * RADIUS) ** 2)
 
 
 def test_the_fillet_survives_a_change_further_upstream_still(slice_run):
-    """The sketch dimension, two features upstream of the fillet."""
+    """
+    The sketch dimension, two features upstream of the fillet. The top is 20 by
+    10 afterwards, still filleted on all four of its edges.
+    """
     doc = slice_run["doc"]
     sketch, fillet = doc.getObject("Sketch"), doc.getObject("Fillet")
     distance_x = [n for n, c in enumerate(sketch.Constraints) if c.Type == "DistanceX"][0]
@@ -288,11 +287,7 @@ def test_the_fillet_survives_a_change_further_upstream_still(slice_run):
     doc.recompute()
 
     assert fillet.State == ["Up-to-date"]
-    # A 20 x 10 top, still filleted on all four of its edges.
     assert _top_flat_area(fillet.Shape) == pytest.approx((20 - 2 * RADIUS) * (SQUARE - 2 * RADIUS))
-
-
-# ── undo ──────────────────────────────────────────────────────────────────────
 
 
 def test_one_undo_takes_back_exactly_one_step(slice_run):
@@ -307,34 +302,35 @@ def test_one_undo_takes_back_exactly_one_step(slice_run):
 
 
 def test_each_step_of_the_run_undoes_in_turn(slice_run):
+    """Five undos take the run apart, one Step at a time, in reverse order."""
     doc = slice_run["doc"]
 
     assert doc.UndoNames == ["Drill the hole", "Fillet the top edges",
                              "Change the pad length", "Pad the sketch",
                              "Sketch the square"]
 
-    doc.undo()                                        # un-drill
+    doc.undo()
     assert doc.getObject("Hole") is None
-    doc.undo()                                        # un-fillet
+    doc.undo()
     assert doc.getObject("Fillet") is None
-    doc.undo()                                        # un-change the parameter
+    doc.undo()
     assert doc.getObject("Pad").Length.Value == PAD
-    doc.undo()                                        # un-pad
+    doc.undo()
     assert doc.getObject("Pad") is None
-    doc.undo()                                        # un-sketch
+    doc.undo()
     assert doc.getObject("Sketch") is None
 
 
-# ── every event is there for the panel to show ────────────────────────────────
-
-
 def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
+    """
+    Every event the panel draws the run from. The six Tool calls are the five
+    applies plus the one review_views the loop drives at the end.
+    """
     events = slice_run["events"]
     kinds = [e.kind for e in events]
 
     assert kinds[0] == PLAN
     assert len(events.of(STEP_STARTED)) == 5
-    # Five applies plus the one review_views the loop drives at the end.
     assert len(events.of(TOOL_CALL)) == 6
     assert len(events.of(TOOL_RESULT)) == 6
     assert len(events.of(APPLIED)) == 5

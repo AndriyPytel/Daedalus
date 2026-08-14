@@ -85,9 +85,6 @@ def mapped(status_code, body, provider="gemini", model="gemini/gemini-2.5-pro"):
     raise AssertionError("LiteLLM did not classify that payload as an error at all")
 
 
-# ── Provider adaptation ───────────────────────────────────────────────────────
-
-
 def test_anthropic_reasoning_and_text_arrive_separately():
     client, _ = client_replaying(anthropic_chunks())
 
@@ -115,6 +112,7 @@ def test_openai_has_no_reasoning_and_still_streams_text():
 
 
 def test_stream_is_lazy_so_the_panel_sees_tokens_as_they_arrive():
+    """Nothing is consumed from the provider before the caller pulls."""
     chunks = anthropic_chunks()
     seen = []
 
@@ -126,12 +124,9 @@ def test_stream_is_lazy_so_the_panel_sees_tokens_as_they_arrive():
     client = LiteLLMClient(model="m", api_key="k", completion=completion)
     stream = client.stream([{"role": "user", "content": "hi"}])
 
-    assert seen == []          # nothing consumed before the caller pulls
+    assert seen == []
     next(stream)
     assert len(seen) < len(chunks)
-
-
-# ── A provider that would not answer ──────────────────────────────────────────
 
 
 def test_an_exhausted_google_quota_is_named_as_one_with_the_model_and_the_wait():
@@ -309,9 +304,6 @@ def test_a_failure_that_is_not_the_provider_refusing_is_left_alone():
         collect(client.stream([{"role": "user", "content": "hi"}]))
 
 
-# ── Request shaping ───────────────────────────────────────────────────────────
-
-
 def test_thinking_budget_is_requested_when_configured():
     client, completion = client_replaying(anthropic_chunks())
     client.thinking_budget = 1024
@@ -444,9 +436,6 @@ def test_cache_control_on_a_message_is_passed_through_untouched():
     assert completion.kwargs["messages"][0]["content"][0]["cache_control"] == {"type": "ephemeral"}
 
 
-# ── Model naming ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.parametrize("provider,model_id,expected", [
     ("Anthropic", "claude-3-7-sonnet-20250219", "anthropic/claude-3-7-sonnet-20250219"),
     ("OpenAI", "gpt-4o", "openai/gpt-4o"),
@@ -458,9 +447,6 @@ def test_cache_control_on_a_message_is_passed_through_untouched():
 ])
 def test_model_names_get_the_provider_prefix_litellm_wants(provider, model_id, expected):
     assert litellm_model_name(provider, model_id) == expected
-
-
-# ── The scripted client, which every other Level 1 test leans on ──────────────
 
 
 def test_scripted_client_replays_turns_in_order_and_records_what_it_was_asked():
@@ -484,9 +470,6 @@ def test_scripted_client_running_dry_is_a_loud_test_failure():
 
     with pytest.raises(AssertionError, match="ran out of turns"):
         client.stream([])
-
-
-# ── An attachment the run could not use, named before it starts (FCC-14) ──────
 
 
 def _an_image(tmp_path, name="bracket.png"):
@@ -548,9 +531,10 @@ def test_a_model_that_cannot_read_a_pdf_is_named_before_the_run(tmp_path):
     """
     The case that is now possible: the model takes images and not PDFs. It has
     to be named before anything is sent, in the same voice as the sentences
-    beside it — the provider's own complaint arrives too late (FCC-14).
+    beside it — the provider's own complaint arrives too late (FCC-14). Grok 2
+    Vision is such a model: it sees, and it does not read a PDF.
     """
-    model = "xai/grok-2-vision-1212"      # sees, and does not read a PDF
+    model = "xai/grok-2-vision-1212"
     reasons = unusable_attachments([_a_pdf(tmp_path)], model)
 
     assert len(reasons) == 1, reasons

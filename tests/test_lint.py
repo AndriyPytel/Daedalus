@@ -13,9 +13,6 @@ from core.lint import lint, selected_elements
 SELECTED_EDGE_3 = [{"object": "Box", "elements": ["Edge3"]}]
 
 
-# ── literal element names (ADR-0005) ──────────────────────────────────────────
-
-
 @pytest.mark.parametrize("code", [
     "fillet.Base = (box, ['Edge12'])",
     "fillet.Base = (box, ['Face3'])",
@@ -62,9 +59,6 @@ def test_only_the_three_kinds_adr_0005_names_are_rejected():
     assert not lint("name = 'Edge1'").ok
 
 
-# ── the user's live selection is explicit input ───────────────────────────────
-
-
 def test_an_element_the_user_selected_is_accepted():
     result = lint("fillet.Base = (box, ['Edge3'])", selection=SELECTED_EDGE_3)
 
@@ -88,22 +82,22 @@ def test_selected_elements_flattens_a_snapshot_selection():
     assert selected_elements(None) == set()
 
 
-# ── Gui and live selection (ADR-0002) ─────────────────────────────────────────
-
-
 @pytest.mark.parametrize("code", [
     "import FreeCADGui",
     "import Gui",
     "from FreeCADGui import Selection",
     "Gui.ActiveDocument.ActiveView.viewAxometric()",
     "sel = FreeCADGui.Selection.getSelectionEx()",
-    # Reaching the GUI through something else is the same problem by a longer route.
     "sel = App.Gui.Selection.getSelection()",
     "from FreeCAD import Gui",
     "from FreeCAD import Gui as g",
     "App.FreeCADGui.updateGui()",
 ])
 def test_gui_and_live_selection_are_rejected(code):
+    """
+    Reaching the GUI through something else is the same problem by a longer
+    route.
+    """
     result = lint(code)
 
     assert not result.ok
@@ -115,9 +109,6 @@ def test_the_reason_explains_why_preflight_would_stop_meaning_anything():
 
     assert "pure function of the Document" in reason
     assert "headless" in reason
-
-
-# ── activating a Body (GUI-only, by a longer route) ───────────────────────────
 
 
 @pytest.mark.parametrize("code", [
@@ -153,12 +144,6 @@ def test_document_only_code_passes():
     )
 
     assert lint(code).ok
-
-
-# ── shape of the result ───────────────────────────────────────────────────────
-
-
-# ── Sketcher constraint signatures (FCC-19) ───────────────────────────────────
 
 
 @pytest.mark.parametrize("code", [
@@ -249,9 +234,6 @@ def test_a_passing_result_is_truthy_and_reports_nothing():
     assert result.report() == ""
 
 
-# ── a raw shape passed off as a feature (ADR-0012) ────────────────────────────
-
-
 PAD = "pad = body.newObject('PartDesign::Feature', 'Pad')\n"
 
 
@@ -299,9 +281,6 @@ def test_a_real_partdesign_feature_is_untouched():
     assert lint(code).ok, lint(code).report()
 
 
-# ── a Step that swallows its own failure (ADR-0008, ADR-0012) ─────────────────
-
-
 @pytest.mark.parametrize("code", [
     "try:\n    fillet.recompute()\nexcept:\n    raise",
     "try:\n    fillet.recompute()\nexcept Exception:\n    pass",
@@ -336,9 +315,6 @@ def test_the_element_reason_no_longer_points_at_shape():
 
     assert ".Shape" not in reason
     assert "adjacency" not in reason
-
-
-# ── a computed selection that never says how many (FCC-151) ───────────────────
 
 
 THE_RECORDED_R2_FILLET = """body = doc.getObject('Body')

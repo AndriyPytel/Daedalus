@@ -11,6 +11,11 @@ FreeCAD dies.
 
 So the replacement is tested for the property that actually matters: the
 callable runs on the main thread, no matter which thread asked.
+
+MAKES_A_DOCUMENT enumerates every module of `core` that calls `newDocument`,
+and the process it calls it in. Two are the Preflight child (ADR-0002); the
+third probes a type in a hidden, temporary Document and is recorded here
+rather than fixed, so that it is not rediscovered as a surprise.
 """
 import threading
 
@@ -62,9 +67,6 @@ def run_off_thread(job, qt_app, timeout=10):
     return outcome["value"]
 
 
-# ── the property that matters ─────────────────────────────────────────────────
-
-
 def test_work_asked_for_on_a_worker_thread_runs_on_the_main_thread(qt_app):
     app, QtCore = qt_app
     main = QtCore.QThread.currentThread()
@@ -114,7 +116,9 @@ def test_there_is_no_addtodo_or_singleshot_path_left_anywhere():
     The dead branch is gone, not merely deprioritised.
 
     Checked against the parsed source rather than the text, so the comment
-    explaining why they are gone does not count as using them.
+    explaining why they are gone does not count as using them. The panel's own
+    scroll-to-bottom is Qt UI work on the main thread, not dispatch; only core/
+    may not use these at all.
     """
     import ast
     import os
@@ -134,12 +138,7 @@ def test_there_is_no_addtodo_or_singleshot_path_left_anywhere():
                     if isinstance(node, ast.Attribute) and node.attr in ("addTodo", "singleShot"):
                         offenders.append("%s uses %s" % (filename, node.attr))
 
-    # The panel's own scroll-to-bottom is Qt UI work on the main thread, not
-    # dispatch; only core/ may not use these at all.
     assert [o for o in offenders if not o.startswith("copilot_panel.py")] == []
-
-
-# ── nothing makes a Document in the addon's own process (FCC-126) ─────────────
 
 
 def _core_sources():
@@ -151,10 +150,6 @@ def _core_sources():
             for name in sorted(os.listdir(here)) if name.endswith(".py")]
 
 
-# Every module of `core` that calls `newDocument`, and the process it calls it
-# in. Two are the Preflight child (ADR-0002); the third probes a type in a
-# hidden, temporary Document and is recorded here rather than fixed, so that it
-# is not rediscovered as a surprise (FCC-126).
 MAKES_A_DOCUMENT = {
     "preflight_worker.py": "is the child",
     "sketch_check.py": "runs in the child",

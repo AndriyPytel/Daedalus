@@ -4,6 +4,19 @@ so it is checked architecturally: by reading the source, not by hoping.
 
 If this fails, either the new code took a shortcut around the Tool registry, or
 a module earned its place on ALLOWED and nobody said so.
+
+The Document is reached from exactly these places, and each has a reason:
+  - core/freecad_tools.py: The Tools themselves. This is the sanctioned route.
+  - core/preflight_worker.py: Runs inside the Preflight Worker's own process,
+    against a throwaway copy. It never touches the user's Document.
+  - core/apply.py: Resolves the Document to hand to the transaction; reached
+    only through the apply_step Tool.
+  - core/sketch_check.py: Builds the reading as a sketch in a document of its
+    own, to ask the solver whether what was read can be true at once, and
+    closes it in a `finally`. It reads a drawing and never the user's Document.
+
+Reaching the live Document means one of these: ActiveDocument, openDocument,
+newDocument, listDocuments, getDocument.
 """
 import ast
 import os
@@ -13,23 +26,13 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACKAGES = ("core", "ui", "utils", "Mod")
 
-# The Document is reached from exactly these places, and each has a reason.
 ALLOWED = {
-    # The Tools themselves. This is the sanctioned route.
     "core/freecad_tools.py",
-    # Runs inside the Preflight Worker's own process, against a throwaway copy.
-    # It never touches the user's Document.
     "core/preflight_worker.py",
-    # Resolves the Document to hand to the transaction; reached only through
-    # the apply_step Tool.
     "core/apply.py",
-    # Builds the reading as a sketch in a document of its own, to ask the solver
-    # whether what was read can be true at once, and closes it in a `finally`.
-    # It reads a drawing and never the user's Document.
     "core/sketch_check.py",
 }
 
-# Reaching the live Document means one of these.
 DOCUMENT_ACCESS = ("ActiveDocument", "openDocument", "newDocument", "listDocuments", "getDocument")
 
 

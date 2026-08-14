@@ -9,6 +9,9 @@ Review — at the end of the Plan, from a render.
 Run against a real headless FreeCAD through the real Preflight Worker, because
 what is being checked is what FreeCAD does rather than what a fake would agree
 to (ADR-0007).
+
+DISJOINT pads two circles 30 mm apart, which never meet; OVERLAPPING pads two
+that fuse into one solid; SINGLE pads one.
 """
 import pytest
 
@@ -47,8 +50,8 @@ pad.Length = 10
 """ % (list(circles),)
 
 
-DISJOINT = _pad_of((0, 5), (30, 5))          # 30mm apart: they never meet
-OVERLAPPING = _pad_of((0, 5), (6, 5))        # they fuse into one solid
+DISJOINT = _pad_of((0, 5), (30, 5))
+OVERLAPPING = _pad_of((0, 5), (6, 5))
 SINGLE = _pad_of((0, 5))
 
 

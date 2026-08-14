@@ -10,6 +10,13 @@ The harness is the Preflight Worker, because that is what actually runs the
 checks: it already `exec`s code in a namespace with `doc`, `App` and `Part`,
 already returns any `BaseException` as a traceback, and already opens a copy
 from disk rather than the live Document.
+
+NUT is an ISO 4032 M8 nut, near enough: 13 across the flats, 6.5 tall, 4.0 bore
+radius, and turned so that nothing here is axis-aligned.
+
+ACROSS_THE_FLATS is what the phase is meant to write: the distance between two
+faces that face each other, taken off the Shape rather than off the box around
+it.
 """
 import math
 
@@ -21,8 +28,6 @@ from core.preflight import PreflightWorker, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
-# An ISO 4032 M8 nut, near enough: 13 across the flats, 6.5 tall, 4.0 bore
-# radius — and turned, so that nothing here is axis-aligned.
 NUT = """
 import math
 hexagon = doc.addObject('Part::Prism', 'Nut')
@@ -40,8 +45,6 @@ cut.Placement.Rotation = App.Rotation(App.Vector(0, 0, 1), %s)
 doc.recompute()
 """
 
-# What the phase is meant to write: the distance between two faces that face
-# each other, taken off the Shape rather than off the box around it.
 ACROSS_THE_FLATS = """
 faces = [f for f in doc.getObject('NutBlank').Shape.Faces
          if f.Surface.__class__.__name__ == 'Plane']
@@ -75,9 +78,6 @@ def check(worker, code, angle=0):
     return worker.check(NUT % angle + code, None)
 
 
-# ── a check that runs ─────────────────────────────────────────────────────────
-
-
 def test_a_check_that_holds_comes_back_ok(worker):
     assert check(worker, ACROSS_THE_FLATS).ok
 
@@ -104,6 +104,9 @@ def test_an_entry_that_fails_does_not_hide_the_entries_under_it(worker):
     measured, so Plan revised the material and sent back a part whose five
     bores had cut nothing. Both entries here are wrong, and both have to be
     named, or the second failure is invisible behind the first.
+
+    A message this long does not stay on one line, and a failure of the part
+    misread as a broken check would spend the phase's attempts rewriting it.
     """
     both_wrong = """
 faces = [f for f in doc.getObject('NutBlank').Shape.Faces
@@ -130,8 +133,6 @@ assert not failed, "these did not hold:\\n" + "\\n".join(failed)
     assert not result.ok
     assert "17 mm across the flats" in result.traceback
     assert "9.0 mm bore radius" in result.traceback, "the second entry went unmeasured"
-    # A message this long does not stay on one line, and a failure of the part
-    # misread as a broken check would spend the phase's attempts rewriting it.
     assert _the_model_failed(result.traceback)
 
 
@@ -163,9 +164,6 @@ assert any(abs(side - 13.0) < 1e-6 for side in sides), "the bounding box carries
     turned = check(worker, reports_the_drawing, angle=17)
     assert not turned.ok, "a turned nut's bounding box must not report 13 mm"
     assert "AssertionError" in turned.traceback
-
-
-# ── a check that is itself broken ─────────────────────────────────────────────
 
 
 def test_a_broken_check_is_not_read_as_a_failed_model(worker):
@@ -206,9 +204,6 @@ def test_a_document_that_will_not_recompute_is_read_as_a_failed_model(worker):
 
     assert not result.ok
     assert _the_model_failed(result.traceback)
-
-
-# ── the Document is not touched ───────────────────────────────────────────────
 
 
 def test_the_phase_leaves_the_live_document_exactly_as_it_found_it():

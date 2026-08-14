@@ -29,9 +29,6 @@ DEPTH_OFF_THE_SECTION = {
 }
 
 
-# ── merge only ────────────────────────────────────────────────────────────────
-
-
 def test_a_field_already_filled_is_not_replaced():
     """
     The 100 mm read off SECTION B-B was not overruled or argued with in the run
@@ -132,9 +129,6 @@ def test_merging_does_not_touch_what_it_was_given():
     assert held == {"features": [{"id": "hole-40-left", "kind": "Ø40 hole"}]}
 
 
-# ── the outside of the part ───────────────────────────────────────────────────
-
-
 THE_CAPSULE_SAID_IN_PASSING = {
     "datums": [
         {"name": "the left end face",
@@ -230,9 +224,6 @@ def test_a_conflict_the_merge_did_not_see_is_still_not_a_criterion():
     assert not [entry for entry in entries(grown) if "the shape of the outside" in entry["about"]]
 
 
-# ── which way a feature points ────────────────────────────────────────────────
-
-
 THE_CLAMP_AS_ONE_FLAT_PROFILE = {
     "datums": [{"name": "the ring axis",
                 "is": "the front-to-rear axis common to the Ø50 ring and the Ø42 bore"}],
@@ -321,9 +312,6 @@ def test_a_feature_with_neither_an_axis_nor_a_curve_is_left_alone():
     })
 
     assert "conflicts" not in grown
-
-
-# ── a size in a direction, and where it sits in that direction ────────────────
 
 
 THE_FOOT_NOBODY_PLACED = {
@@ -557,9 +545,6 @@ def test_the_pocket_that_never_said_which_way_is_short_of_its_axis_and_nothing_e
         ["features → pocket-1 → axis"]
 
 
-# ── what the Plan Gate shows ──────────────────────────────────────────────────
-
-
 THE_PART = {
     "datums": [{"name": "the left end face", "is": "the flat face at the left"}],
     "envelope": {"length": _read("150 mm"), "depth front to rear": _read("100 mm")},
@@ -603,9 +588,6 @@ def test_a_conflict_and_a_gap_are_shown_apart_from_the_part():
 def test_a_part_nobody_has_described_renders_as_nothing():
     assert render({}) == ""
     assert render(None) == ""
-
-
-# ── what a Step cites and a check measures ────────────────────────────────────
 
 
 def _about(model):
@@ -676,9 +658,6 @@ def test_a_part_nobody_has_described_carries_no_entries():
     assert entries(None) == []
 
 
-# ── a feature the later page replaces (FCC-127) ───────────────────────────────
-
-
 THE_ARM_REPLACED = {
     "envelope": {"length": _read("108 mm")},
     "features": [
@@ -734,9 +713,6 @@ def test_the_replacement_is_still_read_at_the_gate():
     assert "superseded by: phase2-angled-left-arm" in written
 
 
-# ── one cavity, one feature ───────────────────────────────────────────────────
-
-
 THE_CAVITY_DESCRIBED_TWICE = {
     "envelope": {"length between the end faces": _read("108 mm")},
     "features": [
@@ -786,9 +762,6 @@ def test_a_cavity_the_drawing_places_raises_nothing():
     assert "conflicts" not in grown
 
 
-# ── the outside nobody carries ────────────────────────────────────────────────
-
-
 def test_the_outside_being_nobody_s_is_answerable_rather_than_only_recorded():
     """
     The finding stood in `conflicts` for the whole of the recorded run and
@@ -822,9 +795,6 @@ def test_the_finding_quotes_the_description_rather_than_the_sheet():
 
     assert "R12.5" not in nobody_carries_the_outside(both)
     assert "capsule" in nobody_carries_the_outside(both)
-
-
-# ── two views, two axes (FCC-109) ─────────────────────────────────────────────
 
 
 def _round_in(view, axis):
@@ -902,9 +872,6 @@ def test_the_finding_arrives_through_the_merge_like_every_other():
     assert any("two views" in str(entry.get("stands")) for entry in grown["conflicts"])
 
 
-# ── only a round thing is round in a view (FCC-110) ──────────────────────────
-
-
 THE_SPLIT_AND_THE_CUTOUT = {
     "features": [
         {"id": "clamp-ring-bore", "kind": "\u00d842 circular clamp bore",
@@ -938,9 +905,6 @@ def test_a_bore_named_in_the_topology_of_something_else_does_not_make_it_round()
 def test_two_holes_are_still_judged_against_each_other():
     """Narrowed to what is round, not switched off."""
     assert len(crosswise(THE_CLAMP_READ_OFF_ONE_VIEW)) == 2
-
-
-# ── the reading held against the trace (FCC-110) ─────────────────────────────
 
 
 A_TRACE = {
@@ -1015,9 +979,6 @@ def test_where_the_drawing_confirms_them_all_the_disagreement_is_the_drawings():
     assert len(read_off_the_wrong_view(both, A_TRACE)) == 2
 
 
-# ── the one write that overrules (FCC-110) ───────────────────────────────────
-
-
 def test_a_correction_lands_at_the_address_and_keeps_what_it_displaced():
     model = _a_bore("VIEW C-C, on page 2")
 
@@ -1061,8 +1022,6 @@ def test_the_merge_still_refuses_everything_that_is_not_a_correction():
 
     assert design.said_at(grown, "features → clamp-ring-bore → axis") == "the depth"
     assert any("the height" in str(entry) for entry in grown["conflicts"])
-
-# ── the overrule lands where the direction is (FCC-141) ──────────────────────
 
 
 def test_a_finding_about_a_position_is_corrected_where_the_direction_is():
@@ -1117,10 +1076,6 @@ def test_a_diameter_that_is_a_measurement_is_still_a_width():
     assert len(grounded(_a_bore("VIEW C-C, on page 2", wide="Ø42"), A_TRACE)) == 1
 
 
-
-# ── what was decided for the user (FCC-127) ──────────────────────────────────
-
-
 def test_a_value_the_model_settled_is_read_off_the_model_with_its_reason():
     """
     Nothing accumulates a list of decisions beside the description — that is
@@ -1165,9 +1120,6 @@ def test_a_value_the_drawing_gave_is_nobodys_decision():
     from core.design import decided_for_you
 
     assert decided_for_you(DEPTH_OFF_THE_SECTION) == []
-
-
-# ── a value that says nothing about what settled it (FCC-134) ────────────────
 
 
 AN_ASSUMED_OVERALL_NOBODY_CLAIMED = {
@@ -1243,9 +1195,6 @@ def test_a_value_that_passed_is_never_nobodys_at_the_gate():
     assert "conflicts" not in grown
     assert decided_for_you(grown) == ["envelope \u2192 height: 50 mm \u2014 read off the silhouette"]
     assert not any(_NOBODY_SAID in said for said in decided_for_you(grown))
-
-
-# ── a conflict one of whose readings was traced (FCC-150) ────────────────────
 
 
 THE_TRACED_POCKET = (

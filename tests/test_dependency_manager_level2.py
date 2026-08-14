@@ -54,9 +54,6 @@ def test_an_installed_pillow_is_found(dependency_manager):
     assert not dependency_manager.check_package("Pillow")
 
 
-# ── A layered install is repaired, not lived with (FCC-28) ────────────────────
-
-
 def _a_distribution(target, name, version, files):
     """One installed distribution: its files, and a RECORD that claims them."""
     import os

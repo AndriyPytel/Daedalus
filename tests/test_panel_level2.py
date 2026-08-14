@@ -7,6 +7,10 @@ What is checked here is the arithmetic and the state machine that would
 otherwise be verified by opening the panel and squinting: the composer's
 height, Send and Stop sharing one slot, and Sessions surviving a restart —
 restored, renamed, deleted, and let go of when the user switches away.
+
+The bound itself — pruning on create, and a promptless launch counting for
+nothing — is Level 1 now that the Sessions are not behind a widget. See
+tests/test_sessions.py; what stays here is the stack keeping step with them.
 """
 import os
 
@@ -15,9 +19,6 @@ import pytest
 from conftest import NO_QT, QT_APP
 
 pytestmark = pytest.mark.freecad
-
-
-# ── The lane itself (FCC-52) ──────────────────────────────────────────────────
 
 
 def test_the_qt_modules_all_come_from_one_binding():
@@ -135,9 +136,10 @@ def test_a_long_status_line_does_not_widen_the_panel(panel, status):
     width is the panel's. Unwrapped, a Step description made the dock wider —
     and Qt does not give the width back when the text goes short again, so the
     user lost the dock width they had set. FCC-21.
+
+    The dock's own minimumSizeHint only follows its child once shown, which
+    the fixture's panel is not. The child is where the width is decided.
     """
-    # The dock's own minimumSizeHint only follows its child once shown, which
-    # the fixture's panel is not. The child is where the width is decided.
     contents = panel.widget()
     panel.status_line.setVisible(True)
     panel.status_line.setText("Working…")
@@ -298,9 +300,6 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     panel.chip_bar.remove_file(str(drawing))
 
 
-# ── A pasted image arrives with its pixels (FCC-48) ───────────────────────────
-
-
 def _on_the_clipboard(colour):
     """A 6×4 image of one colour, on the real clipboard. Returns it."""
     from conftest import QtGui
@@ -366,9 +365,6 @@ def test_a_paste_with_no_image_falls_through_to_the_default(panel):
     assert panel.upload_widget.temporary == [], "a text paste left a file behind"
 
 
-# ── A pasted image is cleaned up on the chip's terms (FCC-15) ─────────────────
-
-
 def _a_pasted_image(panel, tmp_path, name):
     """What handle_clipboard_paste leaves behind, without a real clipboard."""
     path = str(tmp_path / name)
@@ -405,9 +401,6 @@ def test_closing_the_panel_takes_the_unsent_images_with_it(panel, tmp_path):
     panel.closeEvent(QtGui.QCloseEvent())
 
     assert not os.path.exists(left_behind), "closing with an image attached leaked it"
-
-
-# ── The transcript's own height and scroll position ───────────────────────────
 
 
 def _a_long_message(panel, times=8):
@@ -477,15 +470,15 @@ def test_the_transcript_follows_the_run_when_it_is_at_the_bottom(panel):
     assert bar.value() == bar.maximum(), "the transcript stopped following a live run"
 
 
-# ── Shutting down (the freeze on quit) ────────────────────────────────────────
-
-
 def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_the_tests_own):
     """
     A run parked on the Plan Gate blocks its thread on an Event. `quit()` does
     not touch a thread that is inside a call, so waiting on it without first
     releasing the question is FreeCAD hanging on exit with no window left to
     answer from.
+
+    In its own daemon thread: the defect under test is a wait that never
+    returns, and a test that hangs says nothing to whoever runs the suite.
     """
     import time
 
@@ -505,8 +498,6 @@ def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_t
         QT_APP.processEvents()
         time.sleep(0.02)
 
-    # In its own daemon thread: the defect under test is a wait that never
-    # returns, and a test that hangs says nothing to whoever runs the suite.
     import threading
 
     done = threading.Event()
@@ -515,9 +506,6 @@ def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_t
 
     assert done.wait(5), "shutdown is still waiting on a run parked at the Plan Gate"
     assert not built.thread.isRunning(), "the worker thread outlived the panel"
-
-
-# ── The panel belongs to the window, not to a workbench ───────────────────────
 
 
 def test_the_panel_docks_on_the_main_window_once(sessions_are_the_tests_own):
@@ -565,9 +553,6 @@ def test_leaving_the_copilot_workbench_does_not_take_the_chat_away():
     hides = [node for node in ast.walk(deactivated[0])
              if isinstance(node, ast.Attribute) and node.attr in ("hide", "setVisible", "close")]
     assert hides == [], "leaving the workbench still hides the chat"
-
-
-# ── The Session picker (FCC-43) ───────────────────────────────────────────────
 
 
 def _a_row(name="Bracket with two bores", document="Parts.FCStd", created_at=0.0):
@@ -661,11 +646,12 @@ def test_the_delete_icon_is_tinted_to_the_button_like_every_other_icon(panel):
     The row's icon was the one call site not going through `UIHelpers.get_icon`,
     so it painted the SVG's own hardcoded white — invisible under a light
     FreeCAD theme, and a colour of the addon's own, which ADR-0011 forbids.
+
+    A theme is one global stylesheet, which is what the colour has to arrive
+    through — the route ADR-0011 describes, not a QPalette call.
     """
     row = _a_row()
     for wanted in ("#c8321e", "#1e64c8"):
-        # A theme is one global stylesheet, which is what the colour has to
-        # arrive through — the route ADR-0011 describes, not a QPalette call.
         row.del_btn.setStyleSheet(
             "QPushButton#DeleteButton { background: transparent; border: none; color: %s; }" % wanted)
         row.hide()
@@ -689,7 +675,6 @@ def test_a_row_never_changes_height_under_the_cursor(panel):
     QT_APP.processEvents()
 
     assert row.height() == resting
-# ── A Session enters history on its first Intent (FCC-42, FCC-44) ─────────────
 
 
 def test_a_session_with_no_intent_is_not_in_the_history_index(panel):
@@ -752,9 +737,10 @@ def test_a_promptless_launch_adds_no_row_to_the_picker(panel):
 def test_a_picker_row_names_the_session_it_shows_not_its_own_position(panel):
     """
     The picker shows a subset, so a row numbered from zero would open its
-    neighbour. The row carries the Session's position in the stack.
+    neighbour. The row carries the Session's position in the stack. The first
+    Session here is never used, so it stays unindexed and the picker skips it.
     """
-    panel.chat_sessions.add_new_chat("Never used")          # unindexed, skipped
+    panel.chat_sessions.add_new_chat("Never used")
     index, _ = panel.chat_sessions.add_new_chat("New Chat")
     panel.chat_sessions.begin(index, "The one this test is looking for")
 
@@ -879,11 +865,14 @@ def test_a_launch_opens_an_empty_session_and_keeps_the_earlier_ones(sessions_are
 
 
 def test_a_first_intent_names_the_session_from_what_was_typed(panel, monkeypatch):
-    """A readable name is there from the start — never "Chat 1", never empty."""
+    """
+    A readable name is there from the start — never "Chat 1", never empty.
+
+    An attachment the model cannot read turns the Intent away before it names
+    anything, which is the behaviour — not this test's subject.
+    """
     asked = []
     monkeypatch.setattr(panel, "_ask_for_a_title", lambda index, intent: asked.append(intent))
-    # An attachment the model cannot read turns the Intent away before it names
-    # anything (FCC-14), which is the behaviour — not this test's subject.
     panel.chip_bar.get_and_clear()
     panel.new_chat()
     index = panel.chat_sessions.stack.currentIndex()
@@ -902,9 +891,6 @@ def test_a_first_intent_names_the_session_from_what_was_typed(panel, monkeypatch
     assert name.startswith("Model a spur gear")
     assert panel.title_label.text() == name
     assert asked, "the generated title was never asked for"
-
-
-# ── Sessions that survive a restart (FCC-5) ───────────────────────────────────
 
 
 def _widgets_in(panel):
@@ -1097,12 +1083,14 @@ def test_an_event_kind_the_panel_does_not_know_is_skipped_not_fatal(panel, tmp_p
 
 
 def test_a_rename_persists_and_reaches_the_header(panel):
+    """
+    Only a Session that has had an Intent is in the index at all, and the
+    index no longer lines up positionally with the open Sessions.
+    """
     from utils import settings_manager
 
     index, _ = panel.chat_sessions.add_new_chat("New Chat")
     panel.chat_sessions.switch_to(index)
-    # Only a Session that has had an Intent is in the index at all (FCC-42), and
-    # the index no longer lines up positionally with the open Sessions.
     panel.chat_sessions.begin(index, "a first intent")
     log = panel.chat_sessions.get_session_info(index)["log"]
 
@@ -1126,11 +1114,6 @@ def test_deleting_a_session_takes_its_transcript_with_it(panel, tmp_path):
 
     assert not os.path.exists(log), "delete hid the Session and kept the transcript"
     assert "doomed" not in [s["name"] for s in settings_manager.instance().get_sessions()]
-
-
-# The bound itself — pruning on create, and a promptless launch counting for
-# nothing — is Level 1 now that the Sessions are not behind a widget. See
-# tests/test_sessions.py; what stays here is the stack keeping step with them.
 
 
 def test_pruning_takes_the_chat_area_with_the_session(sessions_are_the_tests_own,
@@ -1217,9 +1200,6 @@ def test_switching_is_refused_while_a_run_is_in_flight(panel):
         assert "switching sessions" in panel.status_line.text()
     finally:
         panel._set_running(False)
-
-
-# ── Plan asking for what the Intent did not say (FCC-25) ──────────────────────
 
 
 def _button(card, text):
@@ -1411,6 +1391,9 @@ def test_the_part_stands_above_the_plan_at_the_gate(panel):
     open — a description one click away is not read. What the panel shows is a
     structure laid out, not a JSON dump, and the laying out is `core.design`'s,
     so the panel is handed prose either way. FCC-86, FCC-93.
+
+    The panel is shared with the tests above, so it is the last of each that
+    this one just put there.
     """
     from core.events import DESIGN, PLAN, Event
 
@@ -1427,8 +1410,6 @@ def test_the_part_stands_above_the_plan_at_the_gate(panel):
 
     from ui.accordion_widget import AccordionWidget
 
-    # The panel is shared with the tests above, so it is the last of each that
-    # this one just put there.
     widgets = _widgets_in(panel)
     described_at, how = max((i, w) for i, w in enumerate(widgets)
                             if isinstance(w, AccordionWidget)

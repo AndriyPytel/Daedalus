@@ -4,6 +4,26 @@ Level 1 — the Plan -> Execute -> Review loop. Written first, no FreeCAD presen
 The hardest logic in the project, verified the cheapest way: a scripted LLM and
 a fake Tool registry. The event stream is an output and is asserted on; it is
 never substituted.
+
+DESCRIPTION holds what a real Apply hands back: the feature tree with its
+parameters and the geometry read off the Shape.
+
+A_CUBE is the smallest part there is, for tests that only care that a Design
+turn happened at all.
+
+A_DATUM is a description carrying no value at all: nothing for a Step to cite
+and nothing for the checks to measure, so a run over it has neither a coverage
+duty nor an Assertion phase. What the prompt tests want, which is a Design turn
+and nothing else.
+
+The prompts are wrapped copy; a sentence crosses line breaks. Many tests unwrap
+system messages with " ".join(text.split()) before asserting on their content.
+
+The prose about the views is appended after the JSON, past a blank line. Tests
+that parse Review's JSON input use .split("\n\n")[0] to discard it.
+
+An empty design_reply() is the sheet answering nothing: the re-read came back
+with no value, so what was asked stays unsettled by the drawing.
 """
 import base64
 import json
@@ -58,8 +78,6 @@ def _a_real_pdf():
 
 RENDER_PNG = _a_real_png()
 
-# What a real Apply hands back: the feature tree with its parameters, and the
-# geometry read off the Shape (FCC-81).
 DESCRIPTION = {
     "features": [{"name": "Box", "label": "Box", "type": "Part::Box",
                   "parameters": {"Length": "10.0 mm"}}],
@@ -71,14 +89,8 @@ def read(value):
     return {"value": value, "flag": "read"}
 
 
-# The smallest part there is, for the tests that only care that a Design turn
-# happened at all.
 A_CUBE = {"envelope": {"length": read("10 mm")}}
 
-# A description carrying no value at all: nothing for a Step to cite and nothing
-# for the checks to measure, so a run over it has neither a coverage duty nor an
-# Assertion phase. What the prompt tests want, which is a Design turn and
-# nothing else (FCC-94).
 A_DATUM = {"datums": [{"name": "the left end face", "is": "the flat face at the left"}]}
 
 A_PART = {
@@ -91,9 +103,6 @@ A_PART = {
                   "seen_in": ["top view"]}],
     "not_defined": [{"what": "the material", "looked_in": ["the title block"]}],
 }
-
-
-# ── scripted phase replies ────────────────────────────────────────────────────
 
 
 def plan_reply(*steps, thinking=None, satisfies=None):
@@ -186,9 +195,6 @@ def verdict_reply(verdict, reason="", thinking=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
-# ── the fake Tool registry ────────────────────────────────────────────────────
-
-
 class FakeTools:
     """
     The registry the loop is given. `applies` decides what apply_step returns,
@@ -198,19 +204,24 @@ class FakeTools:
     APPLIED = {"status": "applied", "created": ["Box"], "description": DESCRIPTION}
 
     def __init__(self, applies=(), views=None, checks=()):
+        """
+        What is in the Document by now. A Snapshot frozen at empty could not
+        show that a regeneration is written against the Steps that did apply.
+        
+        What the end-of-run capture answers. None means a registry that has no
+        `review_views` at all, which is the same case as headless.
+        
+        One entry per `check_assertions` call; anything left over passes.
+        """
         self.applies = list(applies)
-        # What is in the Document by now. A Snapshot frozen at empty could not
-        # show that a regeneration is written against the Steps that did apply.
         self.created = []
-        # What the end-of-run capture answers. None means a registry that has
-        # no `review_views` at all, which is the same case as headless.
         self.views = views
-        # One entry per `check_assertions` call; anything left over passes.
         self.checks = list(checks)
         self.calls = []
         self.registry = self._build()
 
     def _build(self):
+        """A None entry, or running off the end, means "this one worked"."""
         registry = ToolRegistry()
 
         @registry.tool("snapshot", "State right now.")
@@ -267,8 +278,8 @@ class FakeTools:
             "required": ["code"],
         })
         def apply_step(code, label="Step"):
+            """A None entry, or running off the end, means "this one worked"."""
             self.calls.append(("apply_step", {"code": code, "label": label}))
-            # A None entry, or running off the end, means "this one worked".
             queued = self.applies.pop(0) if self.applies else None
             result = queued if queued is not None else dict(self.APPLIED)
             if result.get("status") == "applied":
@@ -316,9 +327,6 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
     return result, events, llm, tools
 
 
-# ── the prompts each phase sends ──────────────────────────────────────────────
-
-
 def _system_messages(llm):
     """The system message of every turn, in order, as the provider saw it."""
     return [call[0]["content"] for call in llm.calls]
@@ -358,6 +366,7 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
 
 
 def test_the_traps_land_in_the_prompts_that_ask_for_them():
+    """Review judges the outcome, not the API, and its file asks for no traps."""
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
@@ -368,7 +377,6 @@ def test_the_traps_land_in_the_prompts_that_ask_for_them():
     assert "{{traps}}" not in plan_system
     for text in (plan_system, execute_system):
         assert all(trap in text for trap in TRAPS)
-    # Review judges the outcome, not the API, and its file asks for no traps.
     assert TRAPS[0] not in review_system
 
 
@@ -384,7 +392,6 @@ def test_the_sketch_construction_rule_reaches_plan_and_execute():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    # The prompts are wrapped copy; a sentence crosses line breaks.
     plan_system, execute_system, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
@@ -457,7 +464,6 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    # The prompts are wrapped copy; a sentence crosses line breaks.
     _, execute_system, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     for cancelled in ("invariant of its own", "assert it in the Step's code",
@@ -465,7 +471,6 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
         assert cancelled not in execute_system, \
             "execute.md still asks for an assert inside a Step: " + cancelled
 
-    # The rule this one is not: a Step still may not swallow its own traceback.
     assert "Let a Step fail" in execute_system
 
 
@@ -484,7 +489,6 @@ def test_the_reading_rules_moved_to_the_design_phase_whole():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    # The prompts are wrapped copy; a sentence crosses line breaks.
     design_system, plan_system, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
@@ -514,7 +518,6 @@ def test_a_value_carries_a_named_datum_and_a_read_or_assumed_flag():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    # The prompts are wrapped copy; a sentence crosses line breaks.
     design_system, _, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
@@ -566,7 +569,6 @@ def test_a_curve_is_not_read_until_its_centre_is_placed():
     assert "A curve is not read until its centre is placed" in design_system
     assert "every arc, fillet and round gets **two** values" in design_system
     assert "from the centre of the arc to the arc" in design_system
-    # A reference dimension is repeated, not invented.
     assert "it is `read`, never `assumed`" in design_system
 
 
@@ -591,7 +593,6 @@ def test_the_views_decide_what_no_dimension_arrow_says():
     assert "hatched where there is material" in design_system
     assert "Where two readings satisfy the same numbers, say which one the view shows" \
         in design_system
-    # And the escape hatch costs something to use.
     assert "name the views you looked in" in design_system
 
 
@@ -719,13 +720,17 @@ def test_a_step_is_an_action_a_user_would_perform_not_a_call():
     Step 1 and again in Steps 3-8. The rule that closes it is the level: the
     action a user would perform, one piece of work per Step, no sub-steps and
     no restating another Step's work. FCC-74.
+
+    The operation is still named, in engineering words rather than the FreeCAD
+    spelling of its type.
+
+    Which element a reference resolves to stays Execute's (ADR-0005).
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    # The prompts are wrapped copy; a sentence crosses line breaks.
     plan_system, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
@@ -735,10 +740,7 @@ def test_a_step_is_an_action_a_user_would_perform_not_a_call():
     assert "no sub-steps of its own" in plan_system
     assert "restates work another Step already carries" in plan_system
 
-    # Decision (a) on FCC-74: the operation is still named, in engineering
-    # words rather than the FreeCAD spelling of its type.
     assert "not in the FreeCAD spelling of its type" in plan_system
-    # Which element a reference resolves to stays Execute's (ADR-0005).
     assert "never an element" in plan_system
     assert "an action a user would perform" not in review_system
 
@@ -762,7 +764,6 @@ def test_plan_is_told_a_step_that_cannot_fail_alone_takes_the_plan_with_it():
         in plan_system
     assert "is several pieces of work" in plan_system
     assert "Split where the entries split" in plan_system
-    # And not at the price of the rule it sits under.
     assert "never the same work twice" in plan_system
 
 
@@ -807,7 +808,6 @@ def test_design_is_told_to_replace_the_feature_the_later_page_supersedes():
     assert "Nothing of a feature carrying it is a value of the part any more" \
         in design_system
     assert "The datums and the envelope go with it" in design_system
-    # Not a way round the merge for a reading the phase has changed its mind about.
     assert "never for two values of one feature that disagree" in design_system
 
 
@@ -848,7 +848,6 @@ def test_plan_names_declared_numbers_and_not_how_a_reference_is_found():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    # The prompts are wrapped copy; a sentence crosses line breaks.
     plan_system, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     assert "A link is written as the name you gave" not in plan_system, \
@@ -868,7 +867,6 @@ def test_the_positive_form_of_the_lint_rules_reaches_execute():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    # The prompts are wrapped copy; a sentence crosses line breaks.
     _, execute_system, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
@@ -892,7 +890,6 @@ def test_a_step_that_selects_a_subset_says_how_many_it_expects():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    # The prompts are wrapped copy; a sentence crosses line breaks.
     plan_system, execute_system, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
@@ -983,9 +980,6 @@ def test_a_missing_prompt_file_raises_rather_than_sending_an_empty_prompt():
         prompt("no_such_phase")
 
 
-# ── Plan ──────────────────────────────────────────────────────────────────────
-
-
 def test_plan_produces_an_ordered_list_of_steps_from_the_intent_and_a_snapshot():
     result, events, llm, tools = drive([
         plan_reply("Create a 10mm box", "Fillet the top edge"),
@@ -1022,9 +1016,6 @@ def test_the_steps_run_in_the_order_the_plan_gave_them():
     assert [e.data["description"] for e in events.of(STEP_STARTED)] == ["First", "Second", "Third"]
 
 
-# ── Execute looks before it writes ────────────────────────────────────────────
-
-
 def test_execute_can_ask_the_document_before_committing_to_code():
     """
     The phase that hallucinates API was the one phase that could not ask:
@@ -1059,7 +1050,13 @@ def test_a_look_is_visible_on_the_event_stream():
 
 
 def test_looking_is_budgeted_and_the_last_turn_offers_nothing_to_look_with():
-    """Looks are for answering a question, not for stalling instead of coding."""
+    """
+    Looks are for answering a question, not for stalling instead of coding.
+
+    Scoped, not just mentioned: an empty Tool list and an open invitation to
+    declare the Plan obsolete is how one value nobody could look up threw away
+    every Step that was buildable without it.
+    """
     result, _, llm, tools = drive([
         plan_reply("Add a sketch"),
         look_reply("supported_types"),
@@ -1069,16 +1066,11 @@ def test_looking_is_budgeted_and_the_last_turn_offers_nothing_to_look_with():
     ], budgets=Budgets(looks_per_turn=2))
 
     assert result.ok
-    # Two looks, one Tool call: the allowance is spent by asking, and the
-    # second answer was already here to give (FCC-99).
     assert len([c for c in tools.calls if c[0] == "supported_types"]) == 1
 
     final = json.loads(llm.calls[3][-1]["content"])
     assert final["tools_you_may_look_with"] == [], "the last turn still invited a look"
     assert "code" in final["this_is_your_last_turn"]
-    # Scoped, not just mentioned: an empty Tool list and an open invitation to
-    # declare the Plan obsolete is how one value nobody could look up threw away
-    # every Step that was buildable without it.
     assert "obsolete" in final["this_is_your_last_turn"]
     assert "Document" in final["this_is_your_last_turn"]
     assert "still exists" in final["this_is_your_last_turn"]
@@ -1156,9 +1148,6 @@ def test_a_look_at_a_tool_that_does_not_exist_is_answered_not_fatal():
     assert result.ok
     answered = json.loads(llm.calls[2][-1]["content"])
     assert "error" in answered["what_you_looked_at"][-1]["result"]
-
-
-# ── Execute ───────────────────────────────────────────────────────────────────
 
 
 def test_the_whole_plan_is_written_in_one_call():
@@ -1258,7 +1247,6 @@ def test_the_regeneration_is_written_against_the_document_as_it_stands():
     assert regeneration["document"]["objects"] == [{"name": "Box"}]
     assert regeneration["document"]["object_count"] == 1
 
-    # Re-read rather than remembered: the Snapshot was asked for again.
     last_failure = max(index for index, (name, args) in enumerate(tools.calls)
                        if name == "apply_step" and args["code"] == "second()")
     assert "snapshot" in [name for name, _ in tools.calls[last_failure:]]
@@ -1488,9 +1476,6 @@ def test_an_obsolete_step_is_never_applied():
     assert tools.applied_codes() == ["something()"]
 
 
-# ── Review ────────────────────────────────────────────────────────────────────
-
-
 def test_review_receives_the_intent_the_render_and_the_document_state():
     _, _, llm, _ = drive([
         plan_reply("Only"),
@@ -1518,7 +1503,6 @@ def test_review_and_assertion_are_both_given_the_whole_description():
     ], attachments=[RENDER_PNG])
 
     to_assertion = json.loads(llm.calls[3][-1]["content"])
-    # The prose about the views is appended after the JSON, past a blank line.
     to_review = json.loads(llm.calls[4][-1]["content"][0]["text"].split("\n\n")[0])
 
     assert to_assertion["the_document_as_it_now_stands"] == DESCRIPTION
@@ -1555,9 +1539,6 @@ def test_review_is_told_when_there_is_no_render_to_judge_by():
     assert "No render was produced" in content[0]["text"]
 
 
-# ── attachments ───────────────────────────────────────────────────────────────
-
-
 def test_an_attachment_reaches_the_design_phase_as_a_picture():
     """
     The panel used to collect the attached paths and throw them away, so the
@@ -1581,9 +1562,6 @@ def test_an_attachment_reaches_the_design_phase_as_a_picture():
 
 MODEL_MANIA = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "modelmania", "mm25-p1-1.pdf")
-
-
-# ── the reading, written down (FCC-108) ───────────────────────────────────────
 
 
 def test_the_part_design_read_is_written_to_a_file_the_run_names():
@@ -1618,9 +1596,6 @@ def test_the_file_says_which_sheet_the_part_was_read_from():
     read_from = part_file.provenance(events.last(PART).data["path"])
     assert read_from["sheet"] == os.path.basename(MODEL_MANIA)
     assert read_from["views"], "the views it was read from are not recorded"
-
-
-# ── the envelope is measured, not asked about (FCC-114) ───────────────────────
 
 
 A_CLAMP_ENVELOPE = ["envelope → length between the ends: 108 mm (read)",
@@ -1707,9 +1682,6 @@ def test_a_step_that_landed_first_time_names_nothing_to_the_checks():
     assert "entries_a_retry_touched" not in _turns_of(llm, "assertion")[0]
 
 
-# ── Execute is given the values, not asked to derive them (FCC-115) ───────────
-
-
 def test_execute_is_handed_every_entry_against_the_value_it_resolves_to():
     """
     A Step cites an address; the value it needs is then a lookup. Without it
@@ -1728,9 +1700,6 @@ def test_execute_is_handed_every_entry_against_the_value_it_resolves_to():
     assert addressed, "Execute was given the prose and no addresses"
     assert all(": " not in address for address in addressed)
     assert any(value for value in addressed.values())
-
-
-# ── one Step, one plane (FCC-111) ─────────────────────────────────────────────
 
 
 THE_CLAMP_OUTLINE = {
@@ -1804,9 +1773,6 @@ def test_a_step_whose_citations_agree_is_planned_once():
     assert tools.applied_codes() == ["profile()"]
 
 
-# ── the sweep is the sheet's, not the model's account of it (FCC-112) ─────────
-
-
 def test_what_is_printed_on_the_sheet_is_written_by_the_reader_not_the_model():
     """
     230 exact entries came back from one run as 22 sentences, and `off_by` —
@@ -1826,9 +1792,6 @@ def test_what_is_printed_on_the_sheet_is_written_by_the_reader_not_the_model():
     assert {entry["callout"] for entry in swept} != {"Page 1: some numbers, two locations"}
     assert any(entry.get("off_by") is not None for entry in swept), \
         "what the sheet measures of its own numbers did not survive"
-
-
-# ── a direction read off the wrong view (FCC-110, ADR-0022) ──────────────────
 
 
 THE_CLAMP_READ_OFF_ONE_VIEW = {
@@ -1860,7 +1823,7 @@ def test_two_holes_that_disagree_and_nothing_to_settle_them_reach_the_gate():
     """
     result, events, _, tools = drive([
         design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
-        design_reply({}),                       # the sheet settles neither of them
+        design_reply({}),
         plan_reply("Pad the outer profile",
                    satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
         code_reply("pad()"),
@@ -2164,9 +2127,6 @@ def test_an_intent_with_no_attachment_adds_no_event():
     assert events.first(ATTACHED) is None
 
 
-# ── the part Design describes ─────────────────────────────────────────────────
-
-
 def test_the_description_is_an_event_of_its_own_standing_before_the_plan():
     """
     It used to be a field on the Plan event, because Plan produced it. A phase
@@ -2224,7 +2184,6 @@ def test_design_asks_the_user_itself_before_any_plan_exists():
     assert kinds.index(QUESTION) < kinds.index(DESIGN) < kinds.index(PLAN), \
         "the question reached the user after a Plan had been drafted"
 
-    # A value the user supplied is assumed; one off the sheet stays read.
     shown = json.loads(llm.calls[2][-1]["content"])["what_the_part_is"]
     assert "the left end face: 25 mm (assumed)" in shown
     assert "the left end face: 15 mm (read)" in shown
@@ -2342,6 +2301,7 @@ def test_review_never_sees_the_plan_the_code_or_executes_reasoning():
 
 
 def test_a_failed_verdict_returns_to_plan_and_never_to_execute():
+    """The 4th call is Plan again, carrying the verdict; the 5th is Execute."""
     _, events, llm, _ = drive([
         plan_reply("Make it"),
         code_reply("make()"),
@@ -2351,7 +2311,6 @@ def test_a_failed_verdict_returns_to_plan_and_never_to_execute():
         verdict_reply("pass"),
     ])
 
-    # The 4th call is Plan again, carrying the verdict; the 5th is Execute.
     to_plan = json.dumps(llm.calls[3])
     to_execute = json.dumps(llm.calls[4])
 
@@ -2370,9 +2329,6 @@ def test_the_verdict_is_surfaced_either_way():
     verdict = events.first(REVIEW_VERDICT)
     assert verdict.data["verdict"] == "pass"
     assert verdict.data["reason"] == "That is a 10mm box."
-
-
-# ── Budgets ───────────────────────────────────────────────────────────────────
 
 
 def test_three_attempts_per_step_then_blocked_with_what_was_tried():
@@ -2465,7 +2421,6 @@ def test_review_is_no_longer_told_the_bounding_box():
         plan_reply("Pad the base"), code_reply("pad()"), verdict_reply("pass"),
     ])
 
-    # The prose about the views is appended after the JSON, past a blank line.
     review_request = llm.calls[-1][1]["content"][0]["text"].split("\n\n")[0]
 
     assert "overall_size_mm" not in json.loads(review_request)
@@ -2479,13 +2434,15 @@ def test_plan_is_told_to_cite_and_told_it_does_not_write_the_list():
     feature is settled before Plan is called, so the same cavity read off three
     views is one Step and Plan is told outright it may not decide that again.
     FCC-75, FCC-94.
+
+    Part.LineSegment alone still appears in the traps, where it is a fact about
+    this build; what goes is Plan being asked to write it as a parameter.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    # The prompts are wrapped copy; a sentence crosses line breaks.
     plan_system = " ".join(_system_messages(llm)[0].split())
 
     assert "what_the_plan_must_satisfy" in plan_system
@@ -2494,8 +2451,6 @@ def test_plan_is_told_to_cite_and_told_it_does_not_write_the_list():
     assert "it is not yours to decide again" in plan_system
     assert "You do not write the acceptance list" in plan_system
 
-    # `Part.LineSegment` alone still appears in the traps, where it is a fact
-    # about this build; what goes is Plan being asked to write it as a parameter.
     for cancelled in ("Every Step carries its **parameters**",
                       '"parameters": {"type": "PartDesign::Pad"',
                       '{"type": "Part.LineSegment"', '"properties": {"Length": 10}',
@@ -2512,7 +2467,6 @@ def test_the_named_parameters_mechanism_is_gone_from_the_code():
     with pytest.raises(ImportError):
         from core.preflight_worker import wrong_parameters    # noqa: F401
 
-    # The real registry, not the fake one: the schema is what reaches the model.
     from core.freecad_tools import build_registry
     described = {tool["name"]: tool for tool in build_registry(pipeline=object()).describe()}
     assert "parameters" not in described["apply_step"]["parameters"]["properties"]
@@ -2540,7 +2494,6 @@ def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
     assert "the same result seen from" in review_content[0]["text"]
     assert "not several" in review_content[0]["text"]
 
-    # review_views is not in the list Execute was offered to look with.
     assert "review_views" not in llm.calls[1][1]["content"]
 
 
@@ -2554,7 +2507,6 @@ def test_a_run_with_no_views_still_reaches_a_verdict():
         [plan_reply("Add a box"),
          code_reply("doc.addObject('Part::Box', 'Box')"),
          verdict_reply("pass")],
-        # Headless: no views at the end, and no Step ever produced a picture.
         applies=[{"status": "applied", "created": ["Box"], "description": {}}],
         views=[],
     )
@@ -2584,7 +2536,6 @@ def test_a_step_that_cannot_be_built_returns_to_plan():
     revised = events.first(PLAN_REVISED)
     assert revised is not None
     assert revised.data["steps"] == ["Possible"]
-    # The Plan is told what could not be built and what came back from trying.
     assert "could not be built" in revised.data["reason"]
     assert "three" in revised.data["reason"]
 
@@ -2610,7 +2561,6 @@ def test_the_replan_after_a_handback_reads_the_document_as_it_is():
                        if name == "apply_step" and args["code"] == "nope3()")
     after = [name for name, _ in tools.calls[last_failure:]]
     assert "snapshot" in after, "the revision was planned without re-reading the Document"
-    # The Step that did apply is not planned again.
     assert tools.applied_codes() == [
         "first()", "nope1()", "nope2()", "nope3()", "yes()"]
 
@@ -2695,7 +2645,6 @@ def test_the_revisions_ceiling_is_computed_from_the_plans_length():
     one. The configured value is the floor. FCC-61.
     """
     assert revisions_ceiling(Budgets(), ["s"] * 4) == 3
-    # A nut planned as actions is six to eight Steps, and still gets the floor.
     assert revisions_ceiling(Budgets(), ["s"] * 6) == 3
     assert revisions_ceiling(Budgets(), ["s"] * 14) == 3
     assert revisions_ceiling(Budgets(), ["s"] * 15) == 3
@@ -2767,9 +2716,6 @@ def test_blocked_waits_for_the_user_rather_than_failing_silently():
     assert not result.ok
     assert result.awaiting_user
     assert events[-1].kind == BLOCKED
-
-
-# ── A provider that would not answer ──────────────────────────────────────────
 
 
 def a_refusal():
@@ -2862,20 +2808,14 @@ def test_a_reply_that_is_all_reasoning_and_no_answer_is_not_called_malformed():
     assert events.first(ERROR) is not None
 
 
-# ── The event stream ──────────────────────────────────────────────────────────
-
-
 def test_the_event_stream_of_a_clean_run():
+    """Execute's reasoning stands before the first Step starts rather than inside it: it is reasoning about the whole Plan, and it is spent before any Step runs (FCC-95). What a Step still has of its own is `step_started`, the apply and `applied`."""
     _, events, _, _ = drive([
         plan_reply("Only", thinking="A box is a Part::Box."),
         code_reply("box()", thinking="addObject then set Length."),
         verdict_reply("pass", "Good.", thinking="The render shows a cube."),
     ])
 
-    # Execute's reasoning stands before the first Step starts rather than
-    # inside it: it is reasoning about the whole Plan, and it is spent before
-    # any Step runs (FCC-95). What a Step still has of its own is
-    # `step_started`, the apply and `applied`.
     assert [e.kind for e in events] == [
         THOUGHT, PLAN, GATE, GATE,
         THOUGHT, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
@@ -2986,9 +2926,6 @@ def test_the_stream_can_be_watched_live():
     assert seen[0] == PLAN
 
 
-# ── Failure modes ─────────────────────────────────────────────────────────────
-
-
 def test_a_reply_that_is_not_json_is_an_error_the_user_is_told_about():
     result, events, _, _ = drive(["I would love to help but here is prose instead.",
                                   "Still prose, I am afraid."])
@@ -3016,9 +2953,6 @@ def test_a_provider_failure_is_surfaced_rather_than_swallowed():
 
     assert not result.ok
     assert "429 rate limited" in events.first(ERROR).data["message"]
-
-
-# ── Stopping mid-run ──────────────────────────────────────────────────────────
 
 
 def test_the_user_can_stop_between_steps():
@@ -3066,9 +3000,6 @@ def test_a_run_that_is_never_stopped_is_unaffected():
     assert tools.applied_codes() == ["box()"]
 
 
-# ── The loop is a function of (Intent, context) ───────────────────────────────
-
-
 def test_the_loop_takes_everything_it_needs_as_arguments():
     """A narrower Intent is all a future sub-agent needs."""
     import inspect
@@ -3103,8 +3034,6 @@ def test_a_run_reports_what_it_did():
     assert result.verdict == "pass"
 
 
-# ── Plan asks rather than inventing a parameter (FCC-25) ──────────────────────
-
 GEAR = "модельку шестерні"
 MISSING = "I need the module, the tooth count, the thickness and the bore diameter."
 
@@ -3124,7 +3053,6 @@ def test_plan_can_ask_instead_of_planning():
 
     question = events.first(QUESTION)
     assert question is not None and question.data["text"] == MISSING
-    # The question was said out loud before any Plan reached the user.
     kinds = [e.kind for e in events]
     assert kinds.index(QUESTION) < kinds.index(PLAN)
     assert result.ok
@@ -3155,7 +3083,6 @@ def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan
     run(GEAR, llm=llm, tools=tools.registry, attachments=[RENDER_PNG],
         ask=lambda _: "module 2, 20 teeth, 10 thick, ⌀8 bore")
 
-    # The answer went to Design first, with the question it answers.
     told = json.loads(llm.calls[1][-1]["content"][0]["text"])
     assert told["the_question"] == MISSING
     assert told["the_answer_you_were_given"] == "module 2, 20 teeth, 10 thick, ⌀8 bore"
@@ -3301,8 +3228,6 @@ def test_rereads_counts_re_reads_of_the_drawing_and_nothing_else():
     assert events.first(PLAN).data["unanswered"] == ["q1", "q2", "q3"]
 
 
-# ── the question goes back to the description, never to the user (FCC-90) ─────
-
 THROUGH_OR_NOT = ("Does the hourglass pocket go through the 150 mm length, or is it "
                   "a set depth? And which edges take the R2 fillet?")
 OFF_THE_SECTION = {"features": [
@@ -3337,14 +3262,12 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
     assert answered.data["by"] == "drawing"
     assert "20 mm deep (read)" in answered.data["text"]
 
-    # The re-read was given the picture and the description it already wrote.
     re_read = llm.calls[2][-1]["content"]
     assert [b for b in re_read if b.get("type") == "image_url"], "it re-read without the sheet"
     asked_again = json.loads(re_read[0]["text"])
     assert asked_again["the_question"] == THROUGH_OR_NOT
     assert asked_again["the_part_as_you_described_it"] == A_PART
 
-    # And Plan was handed the description grown, not an answer beside it.
     to_plan = json.loads(llm.calls[3][-1]["content"])
     assert "- pocket-front" in to_plan["what_the_part_is"]
     assert "the front face: 20 mm deep (read)" in to_plan["what_the_part_is"]
@@ -3390,7 +3313,7 @@ def test_a_question_the_sheet_does_not_answer_is_settled_by_the_model():
     result, events, _, _ = drive([
         design_reply(A_PART),
         question_reply("What general tolerance applies?"),
-        design_reply(),                         # not on the sheet
+        design_reply(),
         plan_reply("Sketch it, assumed ±0.1 mm", satisfies=everything(A_PART)),
         code_reply("a()"), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG],
@@ -3446,9 +3369,6 @@ def test_the_re_reads_have_a_ceiling_of_their_own():
         "the second question was put to the sheet past the ceiling"
 
 
-# ── the questioning belongs to the run, not to one Plan (FCC-96) ─────────────
-
-
 def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
     """
     The run that stalled on Model Mania 2025 asked three times. The third
@@ -3463,7 +3383,7 @@ def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
 
     result, events, llm, _ = drive([
         design_reply(A_PART),
-        question_reply("q1"), design_reply(),          # not on the sheet
+        question_reply("q1"), design_reply(),
         question_reply("q2"), design_reply(off_the_sheet),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
         assertion_reply("assert True"), verdict_reply("pass"),
@@ -3486,7 +3406,7 @@ def test_the_same_question_twice_is_listed_once_and_does_not_end_the_run():
     """
     result, events, _, tools = drive([
         design_reply(A_PART),
-        question_reply("q1"), design_reply(),          # not on the sheet
+        question_reply("q1"), design_reply(),
         question_reply("q1"), design_reply(),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
         assertion_reply("assert True"), verdict_reply("pass"),
@@ -3524,7 +3444,7 @@ def test_a_replan_does_not_refill_the_re_read_ceiling():
         design_reply(A_PART),
         question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
         plan_reply("Impossible", satisfies=everything(A_PART)), code_reply("nope()"),
-        question_reply("q2"),                          # the re-plan asks too
+        question_reply("q2"),
         plan_reply("Possible", satisfies=everything(A_PART)), code_reply("yes()"),
         assertion_reply("assert True"), verdict_reply("pass"),
     ], applies=[failed("one")], attachments=[RENDER_PNG],
@@ -3566,9 +3486,6 @@ def test_a_question_alongside_steps_is_still_a_plan():
     assert result.ok
     assert asked == []
     assert events.first(QUESTION) is None
-
-
-# ── a re-plan is a Plan: it may ask, and never comes back empty (FCC-67) ──────
 
 
 def test_a_replan_after_a_handback_may_ask_rather_than_planning_blind():
@@ -3635,12 +3552,6 @@ def test_no_plan_without_steps_ever_reaches_execute(monkeypatch):
     assert tools.applied_codes() == []
 
 
-# ── the Assertion phase ───────────────────────────────────────────────────────
-
-
-# A nut described, and the Acceptance derived from it. The list is no longer
-# written by Plan, so a run that has something to check is a run that had
-# something described (FCC-94).
 A_NUT = {"envelope": {"across the flats": read("13.0 mm"), "height": read("6.5 mm")}}
 
 ACCEPTANCE = acceptance_of(A_NUT)
@@ -3775,7 +3686,6 @@ def test_review_is_told_the_facts_the_checks_confirmed():
 
     assert review_request["facts_the_checks_confirmed"] == [ACCEPTANCE[0]]
     assert review_request["what_the_checks_could_not_cover"] == [ACCEPTANCE[1]]
-    # And it is visible as uncovered rather than dropped or asserted as passing.
     assert events.first(ASSERTION).data["uncovered"] == [ACCEPTANCE[1]]
 
 
@@ -3797,7 +3707,6 @@ def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
     assert result.ok
     assert events.first(PLAN_REVISED) is None, "a broken check sent Plan to rebuild"
     assert len([c for c in tools.calls if c[0] == "check_assertions"]) == 2
-    # The traceback came back to the phase that wrote the check, not to Plan.
     assert "AttributeError" in json.dumps(llm.calls[4])
 
 
@@ -3839,7 +3748,13 @@ def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
     events = EventStream()
 
     def cancelled():
-        # Runs clean until the checks start; then the user presses Stop.
+        """
+        Runs clean until the checks start; then the user presses Stop.
+        
+        One physical cavity, seen in three views and reconciled into one
+        feature by the phase that owns the description. Steps 4, 5 and 6 of
+        the recorded run cut it three times, once per view.
+        """
         return any(name == "check_assertions" for name, _ in tools.calls)
 
     result = run("Make a nut", llm=llm, tools=tools.registry, events=events,
@@ -3850,12 +3765,6 @@ def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
     assert len([c for c in tools.calls if c[0] == "check_assertions"]) == 1
 
 
-# ── the Plan consumes the description (FCC-94) ────────────────────────────────
-
-
-# One physical cavity, seen in three views and reconciled into one feature by
-# the phase that owns the description. Steps 4, 5 and 6 of the recorded run cut
-# it three times, once per view.
 THE_CAVITY = {
     "envelope": {"depth front to rear": read("100 mm")},
     "features": [{"id": "central-opening", "kind": "hourglass pocket",
@@ -3888,7 +3797,6 @@ def test_the_acceptance_is_the_descriptions_own_entries_and_not_plans_paraphrase
     shown = events.first(PLAN).data["acceptance"]
     assert shown == ["envelope → depth front to rear: 100 mm (read)",
                      "features → central-opening → position → the front face: 20 mm (read)"]
-    # And the checks are written from that same list, not from a Plan's version.
     assert _turns_of(llm, "assertion")[0]["acceptance"] == shown
 
 
@@ -3950,7 +3858,6 @@ def test_a_plan_that_leaves_a_read_entry_unconsumed_is_planned_again():
     assert revised is not None, "a Plan that dropped the depth reached the user as final"
     assert CAVITY_DEPTH in revised.data["reason"]
 
-    # And Plan was told which entry, verbatim, so it can cite it back.
     told = json.loads(llm.calls[2][-1]["content"])["what_went_wrong_last_time"]
     assert CAVITY_DEPTH in told
     assert CAVITY_POCKET not in told, "an entry that was cited was reported as missing"
@@ -4079,8 +3986,6 @@ def test_an_assumed_entry_is_not_something_a_plan_can_be_refused_over():
     assert events.first(PLAN_REVISED) is None
 
 
-# The recorded run's Document at the moment Execute handed Step 5 of 8 back:
-# four Steps applied, four entries of the description already standing in it.
 THE_BRACKET = {
     "envelope": {"length": read("150 mm"), "depth front to rear": read("100 mm"),
                  "height": read("40 mm"), "width": read("60 mm")},
@@ -4193,9 +4098,6 @@ def test_a_plan_that_never_learns_to_cite_stops_the_run_and_says_why():
     assert tools.applied_codes() == [], "a Plan that dropped an entry built something"
 
 
-# ── the Plan's own arithmetic (FCC-127) ───────────────────────────────────────
-
-
 def test_a_step_whose_sum_does_not_come_out_never_reaches_the_gate():
     """
     The recorded run's Plan assumed an 80.5 mm station for a 45° arm "to place
@@ -4218,7 +4120,6 @@ def test_a_step_whose_sum_does_not_come_out_never_reaches_the_gate():
     assert revised is not None
     assert "and it is 8.58" in revised.data["reason"]
     assert revised.data["because"] == "the Plan's own arithmetic did not come out"
-    # The Gate saw the Plan that adds up, and only that one.
     assert len(events.of(GATE)) == 2, "the wrong sum was put to the user"
     assert tools.applied_codes() == ["arm()"]
 
@@ -4258,15 +4159,6 @@ def test_a_run_with_no_attachment_still_plans_and_still_shows_an_acceptance():
     assert any(name == "check_assertions" for name, _ in tools.calls)
 
 
-# ── what a failed run leaves behind (FCC-98) ──────────────────────────────────
-#
-# A recorded run finished eight Steps, failed six of its acceptance entries,
-# and stopped. Nothing carried that out of the run: the choice the user was
-# offered was made in the panel and never reached the transcript, and the next
-# drawing was planned against the same Document as though the part were sound.
-# The second run then rebuilt on top of six entries that were already wrong.
-
-
 SIX_FAILED = ('Traceback (most recent call last):\n'
               '  File "<step>", line 156, in <module>\n'
               'AssertionError: these did not hold: envelope \u2192 across the flats: '
@@ -4274,6 +4166,13 @@ SIX_FAILED = ('Traceback (most recent call last):\n'
 
 
 def test_the_entries_that_did_not_hold_come_out_on_the_result():
+    """
+    A recorded run finished eight Steps, failed six of its acceptance entries,
+    and stopped. Nothing carried that out of the run: the choice the user was
+    offered was made in the panel and never reached the transcript, and the next
+    drawing was planned against the same Document as though the part were sound.
+    The second run then rebuilt on top of six entries that were already wrong.
+    """
     result, _, _, _ = a_run_over_the_nut(
         *[planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS)] * 5,
         budgets=Budgets(revisions=1),
@@ -4353,9 +4252,6 @@ def test_a_document_that_cannot_recompute_leaves_the_whole_list_outstanding():
     assert result.unmet == ACCEPTANCE
 
 
-# ── the choice the user is offered is part of the transcript ──────────────────
-
-
 def test_what_the_user_decided_about_a_failed_result_is_on_the_stream():
     decided = []
 
@@ -4399,9 +4295,6 @@ def test_nothing_is_asked_when_the_run_applied_nothing_to_lose():
     )
 
     assert asked == []
-
-
-# ── the next run inherits it ──────────────────────────────────────────────────
 
 
 STILL_WRONG = ["envelope \u2192 across the flats: 13.0 mm (read)"]
@@ -4471,6 +4364,7 @@ def test_an_inherited_failure_that_now_passes_is_no_longer_outstanding():
 
 
 def test_a_run_that_inherits_nothing_says_nothing_about_it():
+    """ A look costs a whole provider turn: Execute replies with a question instead of code and has to be asked again. A recorded run asked what the same scratch object had eight times and what PartDesign::Pocket has five, across the regenerations of one Plan, and every one of those answers had already been given. So what the run has been told is handed back to Execute before it can ask, and an answer it asks for anyway comes out of what it was told."""
     from core.events import OUTSTANDING
 
     _, events, llm, _ = a_run_over_the_nut(
@@ -4481,17 +4375,8 @@ def test_a_run_that_inherits_nothing_says_nothing_about_it():
     assert "acceptance checks did not pass" not in json.dumps(llm.calls[1])
 
 
-# ── a look this run already took (FCC-99) ─────────────────────────────────────
-#
-# A look costs a whole provider turn: Execute replies with a question instead
-# of code and has to be asked again. A recorded run asked what the same scratch
-# object had eight times and what PartDesign::Pocket has five, across the
-# regenerations of one Plan, and every one of those answers had already been
-# given. So what the run has been told is handed back to Execute before it can
-# ask, and an answer it asks for anyway comes out of what it was told.
-
-
 def test_execute_is_handed_what_the_run_already_looked_at():
+    """The turn after the look already carries it, which is the turn it was asked in. What matters is the next Execute call after that."""
     _, _, llm, _ = drive([
         plan_reply("Sketch it", "Pad it"),
         look_reply("describe_type", type_id="PartDesign::Pad"),
@@ -4499,8 +4384,6 @@ def test_execute_is_handed_what_the_run_already_looked_at():
         verdict_reply("pass"),
     ])
 
-    # The turn after the look already carries it, which is the turn it was
-    # asked in. What matters is the next Execute call after that.
     asked_with = json.loads(llm.calls[2][-1]["content"])
 
     assert [look["tool"] for look in asked_with["what_you_looked_at"]] \
@@ -4528,6 +4411,7 @@ def test_a_regeneration_does_not_have_to_look_again():
 
 
 def test_asking_twice_for_the_same_thing_calls_the_tool_once():
+    """Both are still narrated: a transcript showing the question and not the answer would read as a look that went nowhere."""
     _, events, _, tools = drive([
         plan_reply("Pad it"),
         look_reply("describe_type", type_id="PartDesign::Pad"),
@@ -4537,8 +4421,6 @@ def test_asking_twice_for_the_same_thing_calls_the_tool_once():
     ], budgets=Budgets(looks_per_turn=2))
 
     assert len([c for c in tools.calls if c[0] == "describe_type"]) == 1
-    # Both are still narrated: a transcript showing the question and not the
-    # answer would read as a look that went nowhere.
     told = [e for e in events.of(TOOL_RESULT) if e.data["name"] == "describe_type"]
     assert len(told) == 2
     assert [e.data["already_known"] for e in told] == [False, True]
@@ -4619,14 +4501,6 @@ def test_the_carried_looks_are_bounded():
     assert len(carried) == Looks.CARRIED
     assert carried[-1]["arguments"] == {"type_id": "T%d" % (Looks.CARRIED + 3)}, \
         "the oldest looks went, not the newest"
-
-
-# ── the cards this build has (FCC-146) ────────────────────────────────────────
-#
-# A recorded run spent both its looks before it reached the Step that needed
-# one, was told its looks were spent, and declared the eighth of eight Steps
-# unbuildable because "the materials lookup tool is unavailable" — a Tool that
-# was there and would have answered in milliseconds.
 
 
 def test_execute_is_handed_the_material_cards_without_asking():
@@ -4719,16 +4593,6 @@ def test_the_recorded_run_reaches_step_eight_and_assigns_a_card():
     assert all("this_is_your_last_turn" not in turn
                for turn in _turns_of(llm, "execute")), \
         "Execute was told its looks were spent before it wrote the code"
-
-
-# ── failing the same way twice (FCC-100) ──────────────────────────────────────
-#
-# A recorded run failed one Step three times running with the identical "moved
-# no material" traceback. Each rewrite renamed the objects and restructured the
-# loop that built the profiles, and none of them changed the direction of the
-# cut the traceback was describing. Then it replanned and did the same three
-# again. The traceback said what to change; nothing said that the answer being
-# tried had already been tried.
 
 
 NO_MATERIAL = ("Traceback (most recent call last):\n"
@@ -4845,6 +4709,7 @@ def test_a_step_that_never_failed_any_other_way_tells_plan_to_change_the_step():
 
 
 def test_a_step_that_failed_variously_does_not_tell_plan_to_change_the_step():
+    """ Sixty-nine of a hundred and thirty-five minutes of one recorded session were spent waiting at a Plan Gate, against six seconds of FreeCAD. Four of those waits were revisions of a Plan the user had already read and approved: a Step Execute could not build, checks that did not hold, part of the description nothing planned. A standing approval is the user saying "get on with it" — and it covers the Plan and only the Plan."""
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("one()"), code_reply("two()"), code_reply("three()"),
@@ -4855,16 +4720,6 @@ def test_a_step_that_failed_variously_does_not_tell_plan_to_change_the_step():
        budgets=Budgets(attempts_per_step=3))
 
     assert "Rewording it" not in json.dumps(llm.calls[4])
-
-
-# ── one approval, standing (FCC-101) ──────────────────────────────────────────
-#
-# Sixty-nine of a hundred and thirty-five minutes of one recorded session were
-# spent waiting at a Plan Gate, against six seconds of FreeCAD. Four of those
-# waits were revisions of a Plan the user had already read and approved: a Step
-# Execute could not build, checks that did not hold, part of the description
-# nothing planned. A standing approval is the user saying "get on with it" —
-# and it covers the Plan and only the Plan.
 
 
 def gate_that(*answers):
@@ -5342,11 +5197,6 @@ def test_the_first_plan_of_a_run_is_not_a_revision_of_anything():
     assert "the_plan_you_wrote" not in _turns_of(llm, "plan")[0]
 
 
-# ── a direction is put back to the drawing before it stops the run (FCC-110) ──
-
-
-# The re-read that says which of the two was misread, and the Plan that follows
-# from it: two axes are two planes, so they are two Steps (FCC-111).
 _THE_AXIS_PUT_RIGHT = [
     design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
     design_reply({"features": [{"id": "right-mounting-hole",
@@ -5418,9 +5268,6 @@ def test_a_re_read_that_settles_nothing_no_longer_stops_the_run():
     assert result.ok, result.reason
     assert tools.applied_codes() == ["pad()"]
     assert events.first(BLOCKED) is None
-
-
-# ── the geometry contradicts the sheet (FCC-122) ──────────────────────────────
 
 
 def _a_sheet_that_contradicts_itself(tmp_path, wide=98.2, printed=100.0):
@@ -5756,7 +5603,6 @@ def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch)
 
 def _never_called(*_, **__):
     raise AssertionError("the reading was built in the addon's own process")
-# ── one read of a sheet per phase that wants it (FCC-144) ─────────────────────
 
 
 def test_a_sheet_is_read_once_however_many_phases_ask_for_it(tmp_path, monkeypatch):
@@ -5790,9 +5636,6 @@ def test_a_sheet_is_read_once_however_many_phases_ask_for_it(tmp_path, monkeypat
     loop._the_geometry_disagrees([str(path)], EventStream())
 
     assert read == [str(path)]
-
-
-# ── a number on no sheet (FCC-124) ────────────────────────────────────────────
 
 
 def test_a_number_on_no_sheet_is_put_to_the_drawing_and_then_left_as_a_conflict(
@@ -5864,8 +5707,6 @@ def test_with_no_sheet_to_ask_nothing_is_off_the_sheet(monkeypatch):
     assert loop._off_the_sheet(["one.pdf"], {"envelope": {"the length": "50 mm"}}) == []
 
 
-# ── nobody answers and the run does not die (FCC-127) ─────────────────────────
-
 THE_CLAMP_POINTED_AT_THE_WRONG_VIEW = {
     "envelope": {"length": read("108 mm")},
     "features": [
@@ -5878,11 +5719,9 @@ THE_CLAMP_POINTED_AT_THE_WRONG_VIEW = {
 
 TRACED_IN_THE_PLAN = {"the upper plan": [42.0]}
 
-# The run the correction rescues: a bore pointed at a view its circle is not in,
-# a sheet that will not settle it, and a Plan over the part as corrected.
 _THE_BORE_PUT_RIGHT = [
     design_reply(THE_CLAMP_POINTED_AT_THE_WRONG_VIEW),
-    design_reply(),                             # the sheet does not settle it
+    design_reply(),
     plan_reply("Bore the ring",
                satisfies=everything(THE_CLAMP_POINTED_AT_THE_WRONG_VIEW)),
     code_reply("bore()"),
@@ -5975,13 +5814,6 @@ def test_a_plan_that_asks_for_a_value_is_told_to_choose_and_never_the_user():
     assert events.first(PLAN).data["unanswered"] == [MISSING]
 
 
-# ── the re-read is written where the direction lives (FCC-141) ───────────────
-
-# The eight findings of the recorded run
-# (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`, the 2023 pipe clamp):
-# every feature written along the depth, every one of them placed along the
-# depth by two datums, and the sheet drawing all four round in the plan.
-
 THE_CLAMP_READ_OFF_THE_WRONG_VIEW = {
     "datums": [{"name": "the front face", "fixes": "the depth",
                 "is": "the front face of the clamp body"},
@@ -6017,8 +5849,6 @@ THE_CLAMP_READ_OFF_THE_WRONG_VIEW = {
 
 TRACED_ROUND_IN_THE_UPPER_PLAN = {"the upper plan": [6.6, 6.6, 42.0]}
 
-# What the re-read replies: a direction, at the fields the prompt asks for, and
-# nothing about the positions the findings are addressed to.
 THE_VIEW_LOOKED_AT_AGAIN = {"features": [
     {"id": feature["id"],
      "axis": {"value": "along the height", "flag": "traced",
@@ -6084,9 +5914,6 @@ def test_a_position_a_finding_named_is_left_as_it_was(monkeypatch):
         == "12.5 mm"
 
 
-# ── the tracing settles the conflict before the Plan (FCC-150) ───────────────
-
-
 def test_the_traced_profile_is_on_the_feature_before_the_plan_is_asked_for():
     """
     The recorded run (`logs/sessions/f8aaa6953cf54651bd57a3f65432d474.jsonl`,
@@ -6117,15 +5944,6 @@ def test_a_description_with_nothing_traced_in_conflict_is_left_alone():
                            "was_also_said": "SECTION A-A prints 45 mm"}]}
 
     assert loop._the_tracing_governs(json.loads(json.dumps(part))) == part
-
-
-# ── a Step that changes no geometry does not take the part down (FCC-147) ─────
-#
-# The recorded run built the part — 22 objects, one solid — and blocked on an
-# eighth Step that assigned plain carbon steel. `unbuildable` had one road out
-# of it and it was Plan, which has no Tools and cannot produce a material card
-# uuid, so three provider calls later the run ended with no Review, no
-# acceptance checks and no render over geometry that was complete.
 
 
 A_BRACKET_IN_STEEL = {"envelope": {"length": read("80 mm")},

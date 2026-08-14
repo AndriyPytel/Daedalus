@@ -7,6 +7,12 @@ is built to catch (ADR-0007).
 
 The harness is the Preflight Worker itself: part of the product, not
 scaffolding around it.
+
+CRASHING_CODE reliably takes the process down at the C level, the way a bad call
+into FreeCAD's C++ core does. Python cannot catch it; only process isolation can.
+
+GENERIC_DEATH_ENDS is the last sentence of the generic death message; anything
+the worker said follows it.
 """
 import os
 import time
@@ -17,12 +23,8 @@ from core.preflight import PreflightWorker, copy_of, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
-# Reliably takes the process down at the C level, the way a bad call into
-# FreeCAD's C++ core does. Python cannot catch it; only process isolation can.
 CRASHING_CODE = "import ctypes; ctypes.string_at(0)"
 
-# The last sentence of the generic death message; anything the worker said
-# follows it.
 GENERIC_DEATH_ENDS = "Rewrite the Step to avoid whatever crashed the core."
 
 
@@ -61,9 +63,6 @@ def saved_document(tmp_path):
         yield copy_of(doc)
     finally:
         FreeCAD.closeDocument(doc.Name)
-
-
-# ── the happy path ────────────────────────────────────────────────────────────
 
 
 def test_a_clean_step_comes_back_ok_with_a_render(warm, tmp_path):
@@ -108,9 +107,6 @@ def test_the_document_is_reloaded_for_every_preflight(warm, saved_document):
 
     assert second.ok, second.traceback
     assert [o["name"] for o in second.objects] == ["ExistingBox"]
-
-
-# ── the failures the assistant learns from ────────────────────────────────────
 
 
 def test_api_that_does_not_exist_comes_back_as_a_traceback(warm):
@@ -169,10 +165,11 @@ def test_a_hint_is_not_offered_when_there_is_no_object_to_introspect(warm):
 
 
 def test_a_recompute_that_leaves_an_object_in_error_is_a_failure(warm):
+    """A Cut with neither Base nor Tool is what the recompute fails on."""
     result = warm.check(
         "box = doc.addObject('Part::Box', 'Box')\n"
         "box.Length = 10\n"
-        "cut = doc.addObject('Part::Cut', 'Cut')"   # no Base/Tool — recompute fails
+        "cut = doc.addObject('Part::Cut', 'Cut')"
     )
 
     assert not result.ok
@@ -183,13 +180,15 @@ def test_a_failed_recompute_names_the_reason_freecad_already_knows(warm):
     """
     A bare list of names tells the next attempt nothing, so it re-spells the
     same code. FreeCAD keeps the reason on the object. FCC-11.
+
+    The sketch here is empty, so there is nothing for the Pad to pad.
     """
     result = warm.check(
         "body = doc.addObject('PartDesign::Body', 'Body')\n"
         "sketch = doc.addObject('Sketcher::SketchObject', 'Sketch')\n"
         "body.addObject(sketch)\n"
         "pad = doc.addObject('PartDesign::Pad', 'Pad')\n"
-        "pad.Profile = sketch\n"          # the sketch is empty — nothing to pad
+        "pad.Profile = sketch\n"
         "body.addObject(pad)\n"
     )
 
@@ -210,10 +209,11 @@ def test_every_object_left_in_error_gets_its_own_line(warm):
     assert reasons[1].startswith("CutB (Part::Cut): ")
 
 
-# ── the failures the whole design rests on ────────────────────────────────────
-
-
 def test_code_that_crashes_the_core_kills_the_worker_not_us(fresh):
+    """
+    Code that crashes the core kills the worker, not us. We are still here to
+    assert it, which is the point.
+    """
     doomed = fresh.pid
 
     result = fresh.check(CRASHING_CODE)
@@ -222,7 +222,6 @@ def test_code_that_crashes_the_core_kills_the_worker_not_us(fresh):
     assert "died" in result.traceback
     assert fresh.pid != doomed, "the worker was not replaced"
     assert fresh.alive
-    # And we are still here to assert it — which is the point.
 
 
 def test_a_dead_worker_says_what_it_said_on_the_way_out(fresh):
@@ -251,7 +250,8 @@ def test_a_death_on_the_write_reports_the_dead_workers_stderr(fresh):
     the one restart() puts in its place.
 
     The real race — dying between the liveness check and the write — cannot be
-    staged, so the write is what fails here. What is under test is the ordering.
+    staged, so the write is what fails here. What is under test is the
+    ordering. The half-second is what the drain thread needs to catch up.
     """
     class _Dead:
         def write(self, _):
@@ -261,7 +261,7 @@ def test_a_death_on_the_write_reports_the_dead_workers_stderr(fresh):
             pass
 
     fresh.check("import sys; sys.stderr.write('the worker had something to say\\n')")
-    time.sleep(0.5)                     # let the drain thread catch up
+    time.sleep(0.5)
     fresh._process.stdin = _Dead()
 
     result = fresh.check("doc.addObject('Part::Box', 'Box')")
@@ -271,20 +271,19 @@ def test_a_death_on_the_write_reports_the_dead_workers_stderr(fresh):
     assert "the worker had something to say" in result.traceback
 
 
-# ── what the worker says, in any alphabet ─────────────────────────────────────
-
-
 def test_a_step_that_writes_cyrillic_to_stderr_is_read_back_intact(fresh):
     """
     The Worker's stderr is the only diagnostic a later death has to offer, and
     an object Label, a path or a message is not obliged to be ASCII. FCC-51.
+
+    The half-second is what the drain thread needs to catch up.
     """
     result = fresh.check(
         "import sys; sys.stderr.write('деталь не побудована\\n'); sys.stderr.flush()"
     )
 
     assert result.ok, result.traceback
-    time.sleep(0.5)                     # let the drain thread catch up
+    time.sleep(0.5)
     assert "деталь не побудована" in fresh._stderr_text()
 
 

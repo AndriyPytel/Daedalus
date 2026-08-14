@@ -1,16 +1,4 @@
-"""
-The addon has no colours of its own (#12).
-
-FreeCAD ships its themes as one global stylesheet and never touches QPalette,
-so the palette stays whatever the OS handed over — light values on macOS, under
-a dark theme. Every `palette(base)` the addon wrote was a request for those
-light values, painted over a dark panel. The fix is deletion, not better roles,
-and deletion is exactly the kind of thing that creeps back one rule at a time.
-Hence a test rather than a review note.
-
-Qt behaviour itself stays Level 3 — a manual script. What is checked here is
-what the source says, which is where this defect lives.
-"""
+"""The addon has no colours of its own (#12).FreeCAD ships its themes as one global stylesheet and never touches QPalette,so the palette stays whatever the OS handed over — light values on macOS, undera dark theme. Every `palette(base)` the addon wrote was a request for thoselight values, painted over a dark panel. The fix is deletion, not better roles,and deletion is exactly the kind of thing that creeps back one rule at a time.Hence a test rather than a review note.Qt behaviour itself stays Level 3 — a manual script. What is checked here iswhat the source says, which is where this defect lives.ALLOWED_ROLE is the one role FreeCAD's themes do keep meaningful, and the oneplace the addon still needs it: the Step that is running.SEMANTIC holds colour that carries meaning rather than style. These must notfollow the theme (a failed Step is red in every theme), so they stay explicitvalues.Sub-control rules (`::handle`, `::drop-down`) are drawn by the style, not boxedby the theme's widget padding, so the reset does not apply to them."""
 import ast
 import os
 import re
@@ -18,20 +6,14 @@ import re
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STYLED = [os.path.join(ROOT, "ui"), os.path.join(ROOT, "Mod", "pages")]
 
-# The one role FreeCAD's themes do keep meaningful, and the one place the addon
-# still needs it: the Step that is running.
 ALLOWED_ROLE = "palette(highlight)"
 
-# Colour that carries meaning rather than style. These must *not* follow the
-# theme — a failed Step is red in every theme — so they stay explicit values.
 SEMANTIC = {"#4caf50", "#f44336"}
 
 _PALETTE = re.compile(r"palette\([a-z-]+\)")
 _HEX = re.compile(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})(?![0-9A-Za-z_])")
 _RGBA = re.compile(r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*[,)]")
 _PINS_A_SIZE = re.compile(r"\b(?:min|max)-(?:width|height)\s*:")
-# Sub-control rules (`::handle`, `::drop-down`) are drawn by the style, not
-# boxed by the theme's widget padding, so the reset below does not apply.
 _SUB_CONTROL = re.compile(r"::[a-z-]+")
 
 
@@ -122,12 +104,14 @@ def test_a_translucent_wash_is_grey_or_it_is_a_colour():
     code block, the Plan Gate — the wash is `rgba(127, 127, 127, ...)`. Equal
     channels darken a light theme and lighten a dark one without deciding what
     either of them is. Unequal channels are a colour wearing an alpha.
+
+    The destructive-action wash is derived from #f44336, which is semantic, so
+    it is filtered out.
     """
     offenders = {}
     for path, source in styled_sources():
         tinted = {channels for text in qss_strings(source)
                   for channels in _RGBA.findall(text) if len(set(channels)) > 1}
-        # The destructive-action wash is derived from #f44336, which is semantic.
         tinted = {c for c in tinted if "#%02x%02x%02x" % tuple(int(v) for v in c)
                   not in SEMANTIC}
         if tinted:

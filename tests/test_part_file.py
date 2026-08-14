@@ -34,9 +34,6 @@ def sheet(tmp_path):
     return str(drawing)
 
 
-# ── written, and readable by a person ────────────────────────────────────────
-
-
 def test_the_part_is_written_where_the_run_can_be_pointed_at_it(sheet, tmp_path):
     path = part_file.saved(THE_CLAMP, sheet, into=str(tmp_path / "parts"))
 
@@ -105,9 +102,6 @@ def test_a_diameter_sign_survives_the_round_trip(sheet, tmp_path):
 
     assert "Ø50" in open(path, encoding="utf-8").read()
     assert "Ø50" in part_file.read(path)["datums"][0]["is"]
-
-
-# ── the file is the requirement ──────────────────────────────────────────────
 
 
 def test_a_hand_edited_file_is_what_comes_back(sheet, tmp_path):

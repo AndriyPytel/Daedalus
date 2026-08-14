@@ -30,10 +30,11 @@ def worker():
 
 @pytest.fixture
 def doc():
+    """A Document with undo on, which the GUI turns on and headless does not."""
     import FreeCAD
 
     document = FreeCAD.newDocument("ApplyLevel2")
-    document.UndoMode = 1          # the GUI turns this on; headless does not
+    document.UndoMode = 1
     try:
         yield document
     finally:
@@ -42,13 +43,13 @@ def doc():
 
 @pytest.fixture
 def pipeline(doc, worker, tmp_path):
-    # Already on the main thread here, so the dispatcher is a straight call.
+    """
+    An ApplyPipeline for testing. Already on the main thread here, so the
+    dispatcher is a straight call.
+    """
     return ApplyPipeline(document=doc, worker=worker,
                          dispatch=lambda func, timeout=None: func(),
                          render_dir=str(tmp_path))
-
-
-# ── a Step lands ──────────────────────────────────────────────────────────────
 
 
 def test_a_step_lands_in_the_document(pipeline, doc):
@@ -107,9 +108,6 @@ def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc):
     assert "alumin" in doc.getObject("Body").ShapeMaterial.Name.lower()
 
 
-# ── one undo takes the whole Step back ────────────────────────────────────────
-
-
 def test_a_single_undo_takes_a_whole_step_back(pipeline, doc):
     """Several objects, one Step, one Ctrl+Z."""
     result = pipeline.apply(
@@ -144,10 +142,13 @@ def test_the_undo_entry_is_named_after_the_step(pipeline, doc):
 
 
 def test_a_step_that_throws_leaves_the_document_untouched(doc, worker, tmp_path):
+    """
+    A Step that passes lint and Preflight but then fails for real (the object
+    already exists) leaves the document untouched.
+    """
     pipeline = ApplyPipeline(document=doc, worker=worker,
                              dispatch=lambda func, timeout=None: func(),
                              render_dir=str(tmp_path))
-    # Passes lint and Preflight, then fails for real: the object already exists.
     pipeline.apply(BOX)
     before = [o.Name for o in doc.Objects]
 
@@ -157,10 +158,12 @@ def test_a_step_that_throws_leaves_the_document_untouched(doc, worker, tmp_path)
     assert [o.Name for o in doc.Objects] == before, "an aborted transaction left debris"
 
 
-# ── crashing code leaves FreeCAD alive ────────────────────────────────────────
-
-
 def test_code_that_crashes_the_core_never_reaches_the_document(doc, tmp_path):
+    """
+    Code that crashes the core never reaches the document, and this process
+    (which is standing in for the user's FreeCAD) is still here to make the
+    assertion.
+    """
     with PreflightWorker() as own:
         pipeline = ApplyPipeline(document=doc, worker=own,
                                  dispatch=lambda func, timeout=None: func(),
@@ -171,8 +174,6 @@ def test_code_that_crashes_the_core_never_reaches_the_document(doc, tmp_path):
         assert not result.ok
         assert "died" in result.traceback
         assert doc.Objects == []
-    # And this process — which is standing in for the user's FreeCAD — is
-    # still here to make the assertion.
     import FreeCAD
     assert FreeCAD.getDocument("ApplyLevel2") is doc
 
@@ -188,9 +189,6 @@ def test_an_unbounded_loop_never_reaches_the_document(doc, tmp_path):
         assert not result.ok
         assert "timed out" in result.traceback
         assert doc.Objects == []
-
-
-# ── through the Tool, which is the only way the loop will see it ──────────────
 
 
 def test_apply_step_is_a_tool_and_hides_preflight_behind_it(doc, worker, tmp_path):
@@ -222,9 +220,6 @@ def test_apply_step_returns_the_traceback_for_the_assistant_to_correct_against(d
 
 def test_the_read_only_registry_has_no_apply_step(doc):
     assert "apply_step" not in build_registry(doc)
-
-
-# ── what a Step touches, observed rather than inferred ────────────────────────
 
 
 def test_preflight_reports_what_the_step_actually_created(worker):

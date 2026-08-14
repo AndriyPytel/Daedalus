@@ -8,6 +8,12 @@ user read and approved the Step that says so.
 
 What a Step touches is taken from Preflight, which actually ran it, rather than
 from reading the code.
+
+The Owned Object rule asks about the user's objects. It has nothing to say about
+the assistant's own, and a run asked to amend an existing part cleared every
+feature the earlier phase of the same Session had built and started again. What
+it threw away was a finished part the user had watched being made, so the size
+of the deletion is its own question.
 """
 import pytest
 
@@ -49,9 +55,6 @@ def touching(modified=(), deleted=(), created=()):
                                       created=list(created)))
 
 
-# ── the direction where nothing is asked ──────────────────────────────────────
-
-
 def test_creating_something_new_is_never_confirmed():
     asked = Asked()
 
@@ -62,9 +65,10 @@ def test_creating_something_new_is_never_confirmed():
 
 
 def test_modifying_an_object_we_created_is_not_confirmed():
+    """The first apply creates the Box, which makes it the assistant's own."""
     asked = Asked()
     built = pipeline(touching(created=["Box"]), confirm=asked)
-    built.apply("box()")                      # now Box is ours
+    built.apply("box()")
 
     result = built.apply("box.Length = 20")
 
@@ -94,18 +98,15 @@ def test_ownership_is_remembered_across_steps_in_a_session():
 def test_recompute_of_a_dependent_object_is_not_a_modification():
     """
     Preflight reports what changed; a downstream Shape recompute is not the Step
-    modifying the user's object, and must not turn into a prompt.
+    modifying the user's object, and must not turn into a prompt. The worker
+    already filtered Shape-only changes, so `modified` is empty.
     """
     asked = Asked()
 
-    # The worker already filtered Shape-only changes, so `modified` is empty.
     result = pipeline(touching(created=["Fillet"]), confirm=asked).apply("fillet()")
 
     assert result.ok
     assert asked.asks == []
-
-
-# ── the direction where the user is asked ─────────────────────────────────────
 
 
 def test_modifying_an_object_the_user_made_is_covered_by_the_plan_gate():
@@ -170,9 +171,6 @@ def test_only_the_objects_that_are_not_ours_are_named():
     assert asked.asks == [{"delete": ["Theirs"]}]
 
 
-# ── the rule beats the Plan Gate ──────────────────────────────────────────────
-
-
 def test_the_rule_applies_regardless_of_plan_gate_approval():
     """
     The pipeline is never told whether the Plan was approved — approval cannot
@@ -206,9 +204,6 @@ def test_a_failed_preflight_never_reaches_the_question():
     assert asked.asks == []
 
 
-# ── failing closed ────────────────────────────────────────────────────────────
-
-
 def test_with_no_way_to_ask_the_users_work_is_left_alone():
     result = pipeline(touching(deleted=["UserBox"])).apply("x()")
 
@@ -223,9 +218,6 @@ def test_with_no_way_to_ask_our_own_objects_are_still_fine():
     built = pipeline(touching(created=["Box"]))
 
     assert built.apply("box()").ok
-
-
-# ── the question leaves a trace (FCC-88) ──────────────────────────────────────
 
 
 def test_asking_to_delete_the_users_own_work_is_on_the_stream():
@@ -285,15 +277,6 @@ def test_only_an_explicit_yes_is_consent():
         built = pipeline(touching(deleted=["UserBox"]), confirm=lambda kinds: answer)
 
         assert not built.apply("delete()").ok, "%r was taken for consent" % (answer,)
-
-
-# ── the rebuild rule (FCC-97) ─────────────────────────────────────────────────
-#
-# The Owned Object rule asks about the user's objects. It has nothing to say
-# about the assistant's own, and a run asked to amend an existing part cleared
-# every feature the earlier phase of the same Session had built and started
-# again. What it threw away was a finished part the user had watched being
-# made, so the size of the deletion is its own question.
 
 
 class Feature(FakeObject):
