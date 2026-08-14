@@ -39,7 +39,7 @@ from core.arithmetic import wrong_sums
 from core.design import (
     ROUND_IN, UNDER, corrected, decided_for_you, entries, entry_at, merge,
     nobody_carries_the_outside, read_off_the_wrong_view, render, said_at,
-    settled_by_the_tracing,
+    settled_by_the_tracing, what_the_trace_says, where_the_direction_is,
 )
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE,
@@ -2086,7 +2086,7 @@ def _the_directions_are_the_drawings(the_part, attachments, llm, events, budgets
                          llm, events, attachments)
         if not grew:
             break
-        the_part = _corrected_by(the_part, grew, found)
+        the_part = _corrected_by(the_part, grew, found, round_here)
         the_part = merge(the_part, grew)
         still = read_off_the_wrong_view(the_part, round_here)
         if len(still) >= len(found):
@@ -2096,22 +2096,34 @@ def _the_directions_are_the_drawings(the_part, attachments, llm, events, budgets
     return the_part
 
 
-def _corrected_by(the_part, grew, found):
+def _corrected_by(the_part, grew, found, round_here):
     """
-    The re-read written over the addresses the findings named, and only those.
+    The re-read written where the directions the findings are about live, and
+    nowhere else.
 
     Every other field of the fragment goes through the ordinary merge and fills
     only what is empty. These were named by a check that measured the sheet, so
     a different answer at one of them is the correction that was asked for
     rather than a second opinion arriving late.
+
+    The address a finding carries is not always the one the answer belongs at,
+    which is `where_the_direction_is`. Written at the position `pointing`
+    addresses, a direction lands on a field the prompt never asked about, the
+    axis stands, the merge drops the reply for being filled already, and the
+    re-read ends having changed nothing at all.
+
+    What earns the overrule is the measurement, not the finding's account of
+    the reading it stands against — the trace where there is one, and where
+    there is none the finding is all the evidence there is.
     """
     for finding in found:
-        address = str(finding.get("about") or "")
+        address = where_the_direction_is(the_part, str(finding.get("about") or ""))
         offered = said_at(grew, address)
         if offered is None or offered == said_at(the_part, address):
             continue
         the_part = corrected(the_part, address, entry_at(grew, address),
-                             finding.get("stands"))
+                             what_the_trace_says(the_part, address, round_here)
+                             or finding.get("stands"))
     return the_part
 
 

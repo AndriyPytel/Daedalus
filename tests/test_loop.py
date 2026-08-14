@@ -20,7 +20,10 @@ from core.events import (
 from core import loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
-from core.design import UNDER, entries, merge, render, said_at
+from core.design import (
+    UNDER, entries, entry_at, merge, pointing, read_off_the_wrong_view, render,
+    said_at,
+)
 from core.loop import (
     PROMPTS, Budgets, prompt, revisions_ceiling, run,
 )
@@ -5887,6 +5890,115 @@ def test_a_plan_that_asks_for_a_value_is_told_to_choose_and_never_the_user():
     assert asked == [], "the user was asked for a value: %s" % asked
     assert tools.applied_codes() == ["a()"]
     assert events.first(PLAN).data["unanswered"] == [MISSING]
+
+
+# ── the re-read is written where the direction lives (FCC-141) ───────────────
+
+# The eight findings of the recorded run
+# (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`, the 2023 pipe clamp):
+# every feature written along the depth, every one of them placed along the
+# depth by two datums, and the sheet drawing all four round in the plan.
+
+THE_CLAMP_READ_OFF_THE_WRONG_VIEW = {
+    "datums": [{"name": "the front face", "fixes": "the depth",
+                "is": "the front face of the clamp body"},
+               {"name": "the longitudinal centre plane", "fixes": "the depth",
+                "is": "the plane halfway through the depth"}],
+    "envelope": {"length": read("108 mm")},
+    "features": [
+        {"id": "right-mounting-hole", "kind": "Ø6.6 through hole",
+         "topology": "through", "diameter": read("6.6 mm"),
+         "axis": {"value": "perpendicular to the front face, along the depth",
+                  "flag": "read", "round_in": "the front elevation"},
+         "position": {"the front face": read("12.5 mm"),
+                      "the longitudinal centre plane": read("coincident")}},
+        {"id": "left-mounting-hole", "kind": "Ø6.6 through hole",
+         "topology": "through", "diameter": read("6.6 mm"),
+         "axis": {"value": "perpendicular to the front face, along the depth",
+                  "flag": "read", "round_in": "the front elevation"},
+         "position": {"the front face": read("12.5 mm"),
+                      "the longitudinal centre plane": read("coincident")}},
+        {"id": "clamp-bore", "kind": "Ø42 bore through the clamp ring",
+         "topology": "through", "diameter": read("42 mm"),
+         "axis": {"value": "perpendicular to the front face, along the depth",
+                  "flag": "read", "round_in": "the front elevation"},
+         "position": {"the front face": read("25 mm"),
+                      "the longitudinal centre plane": read("coincident")}},
+        {"id": "ring-split", "kind": "saw cut through the clamp ring",
+         "topology": "open split through to the right end face",
+         "axis": read("perpendicular to the front face, along the depth"),
+         "position": {"the front face": read("54 mm"),
+                      "the longitudinal centre plane": read("coincident")}},
+    ],
+}
+
+TRACED_ROUND_IN_THE_UPPER_PLAN = {"the upper plan": [6.6, 6.6, 42.0]}
+
+# What the re-read replies: a direction, at the fields the prompt asks for, and
+# nothing about the positions the findings are addressed to.
+THE_VIEW_LOOKED_AT_AGAIN = {"features": [
+    {"id": feature["id"],
+     "axis": {"value": "along the height", "flag": "traced",
+              "round_in": "the upper plan"}}
+    for feature in THE_CLAMP_READ_OFF_THE_WRONG_VIEW["features"]]}
+
+
+def _re_read_as(monkeypatch, fragment):
+    """The re-read a provider would have replied with, without a provider."""
+    monkeypatch.setattr(loop, "design",
+                        lambda body, llm, events, attachments=(): (fragment, []))
+
+
+def _looked_at_the_view_again(monkeypatch, part, fragment):
+    _traced(monkeypatch, TRACED_ROUND_IN_THE_UPPER_PLAN)
+    _re_read_as(monkeypatch, fragment)
+    return loop._the_directions_are_the_drawings(
+        json.loads(json.dumps(part)), [], None, EventStream(),
+        loop.Budgets(rereads=2), lambda: False)
+
+
+def test_the_eight_holes_of_the_recorded_run_end_corrected_and_the_run_goes_on(monkeypatch):
+    """
+    The reply arrived at `axis`, the overrule was written at the position each
+    finding is addressed to, and the merge dropped the axis for being filled
+    already — so the re-read changed nothing, the loop broke on finding no
+    fewer, and the run ended where FCC-110 had it end.
+    """
+    assert len(pointing(THE_CLAMP_READ_OFF_THE_WRONG_VIEW)) == 8
+
+    looked = _looked_at_the_view_again(monkeypatch, THE_CLAMP_READ_OFF_THE_WRONG_VIEW,
+                                       THE_VIEW_LOOKED_AT_AGAIN)
+
+    assert read_off_the_wrong_view(looked, TRACED_ROUND_IN_THE_UPPER_PLAN) == []
+    assert said_at(looked, "features → clamp-bore → axis") == "along the height"
+
+
+def test_the_correction_keeps_what_it_displaced_and_cites_what_earned_it(monkeypatch):
+    """
+    The evidence is the measurement off the sheet, not the finding's own
+    account of the reading it stands against: a wrong reading does not earn an
+    overrule, a traced circle does.
+    """
+    looked = _looked_at_the_view_again(monkeypatch, THE_CLAMP_READ_OFF_THE_WRONG_VIEW,
+                                       THE_VIEW_LOOKED_AT_AGAIN)
+
+    axis = entry_at(looked, "features → right-mounting-hole → axis")
+
+    assert axis["was"] == "perpendicular to the front face, along the depth"
+    assert "6.6" in axis["because"] and "the upper plan" in axis["because"]
+
+
+def test_a_position_a_finding_named_is_left_as_it_was(monkeypatch):
+    """
+    The overrule is as wide as the evidence. The trace measures a circle in a
+    view, which settles a direction and says nothing about how far the hole is
+    from the front face.
+    """
+    looked = _looked_at_the_view_again(monkeypatch, THE_CLAMP_READ_OFF_THE_WRONG_VIEW,
+                                       THE_VIEW_LOOKED_AT_AGAIN)
+
+    assert said_at(looked, "features → right-mounting-hole → position → the front face") \
+        == "12.5 mm"
 
 
 # ── the tracing settles the conflict before the Plan (FCC-150) ───────────────

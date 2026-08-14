@@ -12,6 +12,7 @@ from core import design
 from core.design import (
     UNDER, corrected, crosswise, entries, entry_at, grounded, merge,
     read_off_the_wrong_view, render, said_at, settled_by_the_tracing,
+    where_the_direction_is,
 )
 
 
@@ -1060,6 +1061,61 @@ def test_the_merge_still_refuses_everything_that_is_not_a_correction():
 
     assert design.said_at(grown, "features → clamp-ring-bore → axis") == "the depth"
     assert any("the height" in str(entry) for entry in grown["conflicts"])
+
+# ── the overrule lands where the direction is (FCC-141) ──────────────────────
+
+
+def test_a_finding_about_a_position_is_corrected_where_the_direction_is():
+    """
+    `pointing` addresses the position it could not reconcile with the axis —
+    `features → X → position → <datum>` — because it cannot tell which of the
+    two is wrong. The re-read is asked for a direction, so the answer is one,
+    and a direction goes where directions go.
+    """
+    model = _a_bore("VIEW C-C, on page 2")
+
+    assert where_the_direction_is(
+        model, "features → clamp-ring-bore → position → the ring axis") \
+        == "features → clamp-ring-bore → axis"
+
+
+def test_a_finding_already_about_the_direction_is_left_where_it_is():
+    """`grounded` and `crosswise` address the field the direction is in already."""
+    at = "features → clamp-ring-bore → axis"
+
+    assert where_the_direction_is(_a_bore("VIEW C-C, on page 2"), at) == at
+
+
+def test_the_direction_is_the_plane_where_that_is_what_carries_the_view():
+    model = {"features": [{"id": "front-central-pocket", "kind": "round pocket",
+                           "plane": _round_in("VIEW C-C, on page 2", "the depth")}]}
+
+    assert where_the_direction_is(
+        model, "features → front-central-pocket → position → the top face") \
+        == "features → front-central-pocket → plane"
+
+
+def test_a_diameter_that_is_not_a_measurement_is_no_width():
+    """
+    "0.47 of the overall length" is a proportion and "M6" is a thread callout.
+    The first number out of either is a millimetre width nobody measured, and
+    it is matched at ±1.5 mm against the traced arcs — so the trace confirms a
+    reading, or contradicts it, at random.
+    """
+    for said, traced in (("0.47 of the overall length", 1.0), ("M6", 7.0)):
+        model = {"features": [{"id": "a-hole", "kind": "tapped hole",
+                               "topology": "through",
+                               "diameter": {"value": said, "flag": "read"},
+                               "axis": _round_in("VIEW C-C, on page 2", "the depth")}]}
+
+        assert grounded(model, {"the middle centre of the sheet, on page 1":
+                                [traced]}) == [], said
+
+
+def test_a_diameter_that_is_a_measurement_is_still_a_width():
+    """Narrowed to what was measured, not switched off."""
+    assert len(grounded(_a_bore("VIEW C-C, on page 2", wide="Ø42"), A_TRACE)) == 1
+
 
 
 # ── what was decided for the user (FCC-127) ──────────────────────────────────
