@@ -12,6 +12,7 @@ callout's box measures on this sheet; 4.1 pt is the paragraph in the title block
 declaring the drawing to be the sole property of SolidWorks. Each one is
 asserted because each one is a decision this module makes on its own.
 """
+import json
 import os
 
 import pytest
@@ -1334,3 +1335,112 @@ def test_the_sweep_is_not_what_makes_a_number_cited(sheet):
         "envelope": {"the length": {"value": "1234 mm"}}})
 
     assert invented == [1234.0]
+
+
+# ── what a description is allowed to have worked out ─────────────────────────
+
+
+def _a_sheet_printing(*callouts):
+    """A sheet that prints these callouts and draws nothing, for the citations."""
+    return sheet_reader.Sheet(
+        source="a.pdf",
+        printed=[sheet_reader.Printed(text=text, at=(at * 10.0, 0.0))
+                 for at, text in enumerate(callouts)])
+
+
+def test_a_number_the_sheet_measures_between_two_of_its_own_is_derived():
+    """
+    Subtraction is what a drawing dimensioned from one end asks the reader to
+    do: `95.5 mm to the bore axis` is the 2023 sheet's 108 less its 12.5.
+    """
+    assert sheet_reader.invented(_a_sheet_printing("108", "12.5"), {
+        "envelope": {"to the bore axis": {"value": "95.5 mm"}}}) == []
+
+
+def test_a_number_that_is_two_of_the_sheets_added_up_is_not_derived():
+    """
+    Stating a sum is the prompt's job and checking one is `wrong_sums`. Admitted
+    here it exempts every total a description could have added up to.
+    """
+    assert sheet_reader.invented(_a_sheet_printing("108", "12.5"), {
+        "envelope": {"the length": {"value": "120.5 mm"}}}) == [120.5]
+
+
+def test_a_number_is_not_derived_from_itself():
+    """
+    A number is its own difference and its own double, so a pair drawn from one
+    printed callout twice exempts every doubling of it and nought besides.
+    """
+    assert sheet_reader.invented(_a_sheet_printing("108"), {
+        "envelope": {"the length": {"value": "216 mm"}}}) == [216.0]
+
+
+def test_a_small_number_on_no_sheet_is_reported():
+    """
+    No floor. `A_MARK` is the shortest traced entity worth reporting, a
+    tracing-noise floor, and reused here it silences a 1.5 mm chamfer.
+    """
+    assert sheet_reader.invented(_a_sheet_printing("108"), {
+        "features": [{"id": "a chamfer", "size": {"value": "1.5 mm"}}]}) == [1.5]
+
+
+# ── what the recorded descriptions invent, per sheet (FCC-137) ───────────────
+
+DESCRIBED = os.path.join(os.path.dirname(__file__), "recorded",
+                         "described_numbers.json")
+
+
+def _described(sheet_name):
+    """
+    The numbers every recorded run against this sheet stated, one list per
+    description.
+
+    32 descriptions off `logs/sessions`, which is not in the repo, so what the
+    check reads is what is kept: `invented` is asked of the numbers a
+    description states and of nothing else, so the numbers are the description
+    as far as this measurement is concerned, and the prose they were lifted out
+    of is a third of a megabyte of it.
+    """
+    with open(DESCRIBED, encoding="utf-8") as reading:
+        return [one["stated"] for one in json.load(reading)[sheet_name]]
+
+
+@needs_pymupdf
+def test_a_description_invents_little_against_its_own_sheet_and_much_against_another(
+        sheet, sheet_2023):
+    """
+    Why `_off_the_sheet` intersects. Over the 32 recorded descriptions, against
+    the sheet its own run was given: 6 numbers on no sheet, all of them in the
+    2025 runs, and none at all in the 21 against 2023. Held against the other
+    sheet the same descriptions invent 62 — the other drawing is a different
+    part, and a union over two attachments reports every one of those.
+
+    The bands are around the measurement, not on it: this fails when the
+    reading changes what a description is allowed to have read.
+    """
+    both = [(sheet, "mm25-p1-1.pdf", sheet_2023),
+            (sheet_2023, "model-mania_-in-person-2023 copy.pdf", sheet)]
+    own = [len(sheet_reader.invented(theirs, {"stated": stated}))
+           for theirs, name, _ in both for stated in _described(name)]
+    other = [len(sheet_reader.invented(elsewhere, {"stated": stated}))
+             for _, name, elsewhere in both for stated in _described(name)]
+
+    assert len(own) == 32
+    assert sum(own) <= 10, sum(own)
+    assert sum(other) >= 50, sum(other)
+
+
+@needs_pymupdf
+def test_the_two_sheets_agree_on_far_fewer_numbers_than_either_alone(
+        sheet, sheet_2023):
+    """
+    The intersection `_off_the_sheet` takes, measured: of the 62 a union of the
+    two sheets would report over the 32 recorded descriptions, 5 are on neither
+    sheet — and the other 57 are numbers one of the two prints.
+    """
+    agreed = [len(set(sheet_reader.invented(sheet, {"stated": stated}))
+                  & set(sheet_reader.invented(sheet_2023, {"stated": stated})))
+              for name in ("mm25-p1-1.pdf", "model-mania_-in-person-2023 copy.pdf")
+              for stated in _described(name)]
+
+    assert sum(agreed) <= 8, sum(agreed)

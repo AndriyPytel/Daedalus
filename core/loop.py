@@ -1833,10 +1833,11 @@ def _every_number_is_the_sheets(the_part, attachments, llm, events, budgets,
     ADR-0019 is named after: the run that read a depth of 100 off a section
     planned 150 x 50 x 50 two turns later, and the 50 was on nothing.
 
-    Measured over the 30 descriptions recorded in `logs/sessions`, each against
-    the sheet its own run was given: one fires, and it is a position — 125 mm
-    to a bore on a sheet that prints 150, 100, 50 and 40 and no 25 — that was
-    reasoned rather than read.
+    Measured over the 32 descriptions recorded in `logs/sessions`, each against
+    the sheet its own run was given: 6 numbers fire, all of them in the 11 runs
+    against the 2025 sheet and none in the 21 against 2023. The same
+    descriptions held against the other sheet invent 62, which is why
+    `_off_the_sheet` intersects. `tests/test_sheet_reader.py` produces both.
 
     Put to the drawing once and then left on the part as a conflict. Nothing is
     settled and no run stops: the number may be right and derived from
@@ -1865,10 +1866,19 @@ def _every_number_is_the_sheets(the_part, attachments, llm, events, budgets,
 
 
 def _off_the_sheet(attachments, the_part):
-    found = []
-    for sheet in _sheets(attachments):
-        found.extend(sheet_reader.invented(sheet, the_part))
-    return sorted(set(found))
+    """
+    The numbers every sheet of this run says are on no sheet.
+
+    `invented` is asked of one sheet, which is the right level for it: a sheet
+    either prints a number or does not. Over several attachments the answers
+    intersect — a number printed on the second sheet is on a sheet, and the
+    first sheet not printing it is what a two-sheet drawing looks like.
+    `_uncited` unions instead, because every callout on every sheet has to be
+    accounted for by the one description.
+    """
+    said = [set(sheet_reader.invented(sheet, the_part))
+            for sheet in _sheets(attachments)]
+    return sorted(set.intersection(*said)) if said else []
 
 
 def _where_is_this_number(found):
