@@ -2988,20 +2988,20 @@ def _the_drawn_list(sheet):
         for view, diameters in round_here.items():
             lines.append("  %s: %s" % (view, ", ".join(
                 "\u00d8%.2f" % wide for wide in diameters)))
-    for view in sheet.drawn:
-        if not view.entities:
+    for drawn in sheet.drawn:
+        if not drawn.entities:
             continue
         lines.append("  %s%s:" % (
-            view.view,
+            drawn.view,
             " — its body was placed as a picture, so what follows is its "
             "dimension and centre lines and not its outline"
-            if view.from_a_picture else ""))
-        lines.extend("    %s" % _said(entity) for entity in view.entities)
-        if view.left_out:
-            lines.append("    (and %d shorter entities, left out)" % view.left_out)
-        if view.traced_left_out:
+            if drawn.from_a_picture else ""))
+        lines.extend("    %s" % _said(entity) for entity in drawn.entities)
+        if drawn.left_out:
+            lines.append("    (and %d shorter entities, left out)" % drawn.left_out)
+        if drawn.traced_left_out:
             lines.append("    (and %d traced entities of the smaller outlines, "
-                         "left out)" % view.traced_left_out)
+                         "left out)" % drawn.traced_left_out)
     return "\n".join(lines)
 
 
@@ -3020,11 +3020,11 @@ def round_in(sheet):
     if sheet is None:
         return {}
     found = {}
-    for view in sheet.drawn:
-        round_here = [_as_reported(_how_wide(entity)) for entity in view.entities
+    for drawn in sheet.drawn:
+        round_here = [_as_reported(_how_wide(entity)) for entity in drawn.entities
                       if entity.kind == "circle"]
         if round_here:
-            found[view.view] = sorted(round_here)
+            found[drawn.view] = sorted(round_here)
     return found
 
 
@@ -3072,9 +3072,9 @@ def round_evidence(sheet):
     if sheet is None:
         return {}
     found = {}
-    for view in sheet.drawn:
+    for drawn in sheet.drawn:
         seen = set()
-        for entity in view.entities:
+        for entity in drawn.entities:
             if entity.kind == "circle":
                 seen.add(_as_reported(_how_wide(entity)))
             elif entity.kind == "arc":
@@ -3082,7 +3082,7 @@ def round_evidence(sheet):
                          if entity.printed is not None
                          else 2 * _as_reported(entity.radius))
         if seen:
-            found[view.view] = sorted(seen)
+            found[drawn.view] = sorted(seen)
     return found
 
 
@@ -3234,15 +3234,15 @@ def invented(sheet, model):
     cited = {_number_of(entry.text) for entry in dimensions(sheet)}
     cited |= {_a_number(entry.text) for entry in sheet.printed}
     cited |= {entry.printed for entry in sheet.between}
-    drawn = sorted({round(measured, 2) for view in sheet.drawn
-                    for entity in view.entities
-                    for measured in (entity.size, entity.diameter,
-                                     entity.radius)
-                    if measured})
+    traced = sorted({round(measured, 2) for drawn in sheet.drawn
+                     for entity in drawn.entities
+                     for measured in (entity.size, entity.diameter,
+                                      entity.radius)
+                     if measured})
     return sorted(number for number in said
                   if isinstance(number, float)
                   and number not in cited
-                  and not _near(number, drawn)
+                  and not _near(number, traced)
                   and not _derived_from(number, cited))
 
 

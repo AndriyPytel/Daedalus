@@ -5460,10 +5460,10 @@ def test_a_sheet_that_contradicts_its_own_tracing_says_so_on_the_part(
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
-    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
+    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
 
-    assert len(grown["conflicts"]) == 1
-    said = str(grown["conflicts"][0])
+    assert len(found) == 1
+    said = str(found[0])
     assert "100" in said and "98.2" in said
     assert "the front view" in said
 
@@ -5480,9 +5480,9 @@ def test_a_geometric_conflict_names_both_points_it_is_about(tmp_path, monkeypatc
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
-    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
+    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
 
-    assert grown["conflicts"][0]["about"] == (
+    assert found[0]["about"] == (
         "the sheet prints 100 between (0.00, 15.00) and (100.00, 15.00) and the "
         "pixels put 98.20 mm between them, in the front view")
 
@@ -5521,9 +5521,9 @@ def test_a_redundant_constraint_reaches_the_part_in_the_words_of_a_conflict(
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatFoundBoth())
 
-    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
+    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
 
-    assert grown["conflicts"] == [
+    assert found == [
         {"about": "the 50 the sheet prints between (0.00, 5.00) and (50.00, 5.00),"
                   " in the front view",
          "stands": "the solver cannot satisfy this reading"},
@@ -5554,8 +5554,7 @@ def test_a_reading_too_far_out_is_past_what_this_check_can_see(
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=108.0)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream()) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], EventStream()) == []
 
 
 def test_a_sheet_that_agrees_with_itself_adds_nothing(tmp_path, monkeypatch):
@@ -5568,8 +5567,7 @@ def test_a_sheet_that_agrees_with_itself_adds_nothing(tmp_path, monkeypatch):
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=100.0)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream()) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], EventStream()) == []
 
 
 def test_without_a_freecad_to_build_in_the_description_is_untouched(
@@ -5582,8 +5580,7 @@ def test_without_a_freecad_to_build_in_the_description_is_untouched(
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
     monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream()) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], EventStream()) == []
 
 
 def test_the_reading_is_never_built_in_the_addon_s_own_process(
@@ -5622,11 +5619,11 @@ def test_the_reading_is_never_built_in_the_addon_s_own_process(
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatAnswered())
 
-    grown = loop._the_geometry_disagrees({"features": []}, ["a.pdf"], EventStream())
+    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
 
     assert [entry["do"] for entry in asked if isinstance(entry, dict)] == ["reading"]
     assert asked[-1] == "killed", "the child outlived the sweep"
-    assert "98.20" in grown["conflicts"][0]["about"]
+    assert "98.20" in found[0]["about"]
 
 
 def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
@@ -5652,8 +5649,7 @@ def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatDied())
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], events) == []
     assert "the front view" in events.last(ERROR).data["message"], \
         "an unchecked reading is indistinguishable from a clean one"
 
@@ -5701,8 +5697,7 @@ def test_a_child_that_cannot_come_back_leaves_the_rest_unchecked_and_the_run_ali
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatCannotComeBack())
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], events) == []
     assert "the front view" in events.last(ERROR).data["message"]
 
 
@@ -5721,8 +5716,7 @@ def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypat
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
     monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events) == {
-        "features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], events) == []
     assert "the front view" in events.last(ERROR).data["message"]
 
 
@@ -5754,8 +5748,7 @@ def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch)
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatHangs())
 
-    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events,
-                                        budget=60.0) == {"features": []}
+    assert loop._the_geometry_disagrees(["a.pdf"], events, budget=60.0) == []
 
     assert len(asked) < 4, "the budget bounded nothing"
     assert max(asked) <= 60.0, "one outline was given more than the whole budget"
