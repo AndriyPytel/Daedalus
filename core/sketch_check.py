@@ -24,13 +24,13 @@ between the two.
 What the sheet prints is two things and the second one is most of a drawing. A
 diameter arrives where a callout's leader reached a traced hole, which happens
 once on four sheets; a **distance** arrives wherever a dimension's two
-extension lines reach two faces of the outline, which is 13 of them across 12
+extension lines reach two faces of the outline, which is 11 of them across 10
 outlines. `108` read as `100` is a distance, and until they were written there
 was nothing in the sketch for it to be wrong about.
 
-Measured across all four sheets in `tests/modelmania`, 96 outlines, with every
+Measured across all four sheets in `tests/modelmania`, 142 outlines, with every
 size and every distance the sheets could reach them with: the median moves
-0.27 mm, nine in ten move under 0.75 mm and the worst moves 1.07 mm — that is
+0.25 mm, nine in ten move under 0.65 mm and the worst moves 1.32 mm — that is
 the slack in a fit through pixels 0.2 mm across, and it is what agreement looks
 like. The \u00d840 hole of `mm25-p1-1.pdf`, whose callout the tracing reads a
 millimetre under, moves 0.54 mm onto the printed size. A bore traced in two
@@ -44,8 +44,8 @@ recognised. What comes back is a verdict about a *reading*.
 
 A traced entity that has to move further than `A_SHIFT` onto the sheet's own
 numbers is a fact about the reading rather than the slack in a fit. Two
-millimetres, measured over 96 outlines on the four sheets: the median moves
-0.27 mm, nine in ten under 0.62 mm and the worst 1.21 mm, where a pixel is
+millimetres, measured over 142 outlines on the four sheets: the median moves
+0.25 mm, nine in ten under 0.65 mm and the worst 1.32 mm, where a pixel is
 0.2 mm across and an arc's ends are pulled onto its own circle. The reading it
 has to catch moves 9.88 mm.
 
@@ -78,9 +78,23 @@ A_SHIFT = 2.0
 
 @dataclass(frozen=True)
 class Trouble:
-    """One constraint the solver objected to, back at the entity it came from."""
+    """
+    One constraint the solver objected to, back at the entity it came from.
 
-    at: int
+    `at` is an index into the walk and `constraint` an index into the sketch's
+    own constraints, and they are two fields because they are two coordinate
+    systems: a rectangle is four entities and six constraints, so one number
+    meaning both is a resolution computed and thrown away. `at` is the field
+    every Trouble in a verdict is read with; `constraint` is None where there
+    was no constraint, which is every entity that merely moved.
+
+    The solver counts its constraints from one — `ConflictingConstraints` on
+    that rectangle comes back `[5, 6]` for the fifth and sixth — and
+    `constraint` counts from zero, the way `Sketch.Constraints` is indexed.
+    """
+
+    at: int = None
+    constraint: int = None
     entity: object = None
     printed: float = None
     said: str = ""
@@ -178,8 +192,8 @@ def _built(outline, view, between):
         sketch = document.addObject("Sketcher::SketchObject", "Reading")
         for entity in outline.entities:
             sketch.addGeometry(_as_geometry(entity), False)
-        _joined(sketch, outline)
-        written = _sized(sketch, outline)
+        written = _joined(sketch, outline)
+        written.update(_sized(sketch, outline))
         across, disagrees = _measured_across(sketch, outline, view, between)
         written.update(across)
         document.recompute()
@@ -209,7 +223,7 @@ _OF_AN_ENTITY = ("kind", "size", "printed", "start", "end", "centre", "radius",
                  "diameter")
 _OF_A_DISTANCE = ("printed", "first", "second", "view", "text")
 _A_POINT = ("start", "end", "centre", "first", "second")
-_OF_A_TROUBLE = ("at", "printed", "said")
+_OF_A_TROUBLE = ("at", "constraint", "printed", "said")
 
 
 def checked_by(worker, outline, view="", between=()):
@@ -291,6 +305,8 @@ def _read(said):
 
 A_FOOT = 2.0
 
+A_GAP = 3.0
+
 A_SQUARE_ON = 0.99
 
 
@@ -345,12 +361,13 @@ def _measured_across(sketch, outline, view, between):
                 entry.printed if how_far > 0 else -entry.printed))
         except (ValueError, RuntimeError):
             continue
-        written[at] = ("distance", entry, entry.printed)
+        written[at] = ("distance", entry, entry.printed, first)
         traced = _across(outline.entities[first].start,
                          outline.entities[second].start, way)
         if abs(traced - entry.printed) > A_DISTANCE:
             disagrees.append(Trouble(
-                at=at, printed=entry.printed,
+                at=first, constraint=at, entity=outline.entities[first],
+                printed=entry.printed,
                 said="the sheet prints %s between these two faces and the "
                      "pixels put %.2f mm between them"
                      % (entry.text or entry.printed, traced)))
@@ -392,19 +409,40 @@ def _the_face_at(outline, foot, way):
 
     The face has to be square to the dimension — a line the dimension measures
     *to* is a line it measures *across* — and the foot has to be on it, which
-    is a point-to-segment distance and not a distance to either end of it.
+    is a point-to-segment distance and not a distance to the infinite line the
+    segment lies on. Measured to the line, a face's own extent along its own
+    direction is never asked about, and a collinear face anywhere else in the
+    view — the far side of a C, the other flange of a bracket — stands at the
+    same distance as the face the foot is actually on and can win the match.
+
+    So the projection along the face is clamped to the face, and how far the
+    clamp had to move it — how far past the face's own ends the foot stands —
+    is asked before anything else. The two directions are two bands because
+    they are two quantities: across the dimension is the tracing against the
+    sheet, and along the face is a draughtsman's gap.
 
     None is the usual answer and the honest one: a foot on a view whose body is
     not traced, or on a face the tracer only got part of, names nothing here.
 
-    `A_FOOT` is how far the foot may be from the face it names, in millimetres,
-    measured in the direction the dimension measures. It cannot be wider than
-    the movement that counts as a finding, or a match at the edge of the band is
-    indistinguishable from the thing this exists to report — and measured, that
-    is exactly what happens: at 2.6 mm four more dimensions find a face, all
-    four then cost the tracing 3.6 mm, and one of them contradicts another
-    dimension outright. At 2.0 the same sheets write 13 distances across 12
-    outlines and the worst movement is 1.07 mm.
+    `A_FOOT` is how far the foot may be from the face it names across the
+    dimension, in millimetres. It cannot be wider than the movement that counts
+    as a finding, or a match at the edge of the band is indistinguishable from
+    the thing this exists to report — and measured, that is exactly what
+    happens: at 2.6 mm four more dimensions find a face, all four then cost the
+    tracing 3.6 mm, and one of them contradicts another dimension outright.
+
+    `A_GAP` is the other direction and a different quantity: how far past the
+    end of a face a foot may stand, in millimetres, because an extension line
+    is drawn with a gap between it and the part it is drawn off, so a foot
+    stands short of the face it names by that gap. Measured on the four sheets,
+    the feet that stand on the face they name are 0 to 2.63 mm past its end and
+    the next one is 3.17, so 3.0 is the empty ground between them — and the
+    answer does not turn on it: anything from 2.7 to 8 mm writes the same 11
+    distances, and 12 lets in two feet 11 mm past the end of the face they are
+    then measured to.
+
+    At 2.0 across and 3.0 along, the four sheets write 11 distances across 10
+    outlines and the worst movement is 1.32 mm.
     """
     best, best_gap = None, A_FOOT
     for at, entity in enumerate(outline.entities):
@@ -416,11 +454,25 @@ def _the_face_at(outline, foot, way):
             continue
         if abs((along[0] * way[0] + along[1] * way[1]) / long_enough) > 1 - A_SQUARE_ON:
             continue
+        if _past_the_end(foot, entity.start, along, long_enough) > A_GAP:
+            continue
         gap = abs((foot[0] - entity.start[0]) * way[0]
                   + (foot[1] - entity.start[1]) * way[1])
         if gap < best_gap:
             best, best_gap = at, gap
     return best
+
+
+def _past_the_end(foot, start, along, long_enough):
+    """
+    How far beyond a segment's own two ends a point stands, in millimetres.
+
+    The projection of the point onto the segment's direction, clamped to the
+    segment, and how far the clamp had to move it. Zero anywhere on the face.
+    """
+    reach = ((foot[0] - start[0]) * along[0]
+             + (foot[1] - start[1]) * along[1]) / long_enough
+    return max(0.0, -reach, reach - long_enough)
 
 
 def _how_far_it_moved(sketch, outline):
@@ -500,9 +552,14 @@ def _joined(sketch, outline):
     own and joins nothing, and an outline that was not found closed is not
     closed here — forcing one shut is inventing geometry, and the solver would
     then object to this module rather than to the sheet.
+
+    Written down against the entity each one joins, the same as a size and a
+    distance are, so that a walk the solver cannot close names the place in the
+    walk it could not close.
     """
     import Sketcher
 
+    written = {}
     entities = outline.entities
     for at, entity in enumerate(entities):
         onward = (at + 1) % len(entities)
@@ -512,8 +569,10 @@ def _joined(sketch, outline):
             continue
         if at == onward:
             continue
-        sketch.addConstraint(Sketcher.Constraint("Coincident", at, END,
-                                                 onward, START))
+        written[sketch.addConstraint(
+            Sketcher.Constraint("Coincident", at, END,
+                                onward, START))] = ("walk", entity, None, at)
+    return written
 
 
 def _sized(sketch, outline):
@@ -538,24 +597,37 @@ def _sized(sketch, outline):
         else:
             continue
         written[sketch.addConstraint(
-            Sketcher.Constraint(named, at, wide))] = ("size", entity, wide)
+            Sketcher.Constraint(named, at, wide))] = ("size", entity, wide, at)
     return written
 
 
 def _troubles(indices, written, outline):
-    """Each index the solver objected to, back at the entity it was written for."""
+    """
+    Each constraint the solver objected to, back at the entity it was written for.
+
+    The solver counts its constraints from one and `written` is keyed by what
+    `addConstraint` returned, which counts from zero — so the index arriving
+    here names the constraint before it, and reading it as it comes reports the
+    coincidence for the dimension and the dimension for nothing at all.
+
+    A distance is written between two faces and comes back at the first of
+    them, which is the one its own foot named.
+    """
     found = []
-    for at in indices:
-        kind, what, wide = written.get(at, (None, None, None))
+    for index in indices:
+        at = index - 1
+        kind, what, wide, entity_at = written.get(at, (None, None, None, None))
+        entity = (outline.entities[entity_at] if entity_at is not None
+                  else None)
         if kind == "distance":
             found.append(Trouble(
-                at=at, printed=what.printed,
+                at=entity_at, constraint=at, entity=entity, printed=what.printed,
                 said="the %s the sheet prints between %s and %s"
                      % (what.text or what.printed, _spelt(what.first),
                         _spelt(what.second))))
         elif kind == "size":
             found.append(Trouble(
-                at=at, entity=what,
+                at=entity_at, constraint=at, entity=entity,
                 printed=what.printed,
                 said="the %s the sheet prints \u00d8%g against"
                      % (what.kind, what.printed) if what.printed is not None
@@ -563,7 +635,7 @@ def _troubles(indices, written, outline):
                           % (what.kind, wide * (2 if what.kind == "arc" else 1))))
         else:
             found.append(Trouble(
-                at=at,
+                at=entity_at, constraint=at, entity=entity,
                 said="the walk itself: one entity of this outline does not end "
                      "where the next begins"))
     return found
