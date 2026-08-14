@@ -210,17 +210,20 @@ class Entity:
     have had to be. `size` is what the entity is ranked by: a length for a line,
     the swept length for an arc, a diameter for a circle.
 
-    `source` says whose measurement it is, and the three are not
+    `source` says whose measurement it is, and the four are not
     interchangeable: `vector` is the draughtsman's own path out of the file,
-    `centre` is a dashed one, and `traced` is this module's fit through the
-    pixels of a placed picture, which reads about a millimetre under the drawn
-    size and may never supply a number.
+    `centre` is a dashed one, `traced` is this module's fit through the pixels
+    of a placed picture, which reads about a millimetre under the drawn size and
+    may never supply a number, and `read` is a traced feature whose size came
+    out of the text layer instead.
 
     `printed` is what the sheet prints for this entity, where a callout's leader
     reaches into it and the two agree. The trace found the feature and the text
     layer supplies its size, which is the only direction that arithmetic runs: a
     traced diameter reads about a millimetre under the drawn one and can never
-    supply a number, and a printed one is the draughtsman's own.
+    supply a number, and a printed one is the draughtsman's own. It becomes
+    `size`, and `diameter` keeps what the pixels made of it — the evidence the
+    two are one feature.
 
     `role` is what the module can prove this is: `contour` where it was traced
     off the picture the view was placed as, `dimension` where it lies along a
@@ -241,7 +244,8 @@ class Entity:
     diameter: float = None
 
 
-_WHOSE = {"vector": "", "centre": "centre ", "traced": "traced "}
+_WHOSE = {"vector": "", "centre": "centre ", "traced": "traced ",
+          "read": "read "}
 
 
 def _said(entity):
@@ -2003,6 +2007,8 @@ ROUND = 0.06
 
 TOO_FAR = 2.0
 
+THE_SAME_HOLE = 0.15
+
 
 def _traced(document, page, rect, millimetres_per_point, regions):
     """
@@ -2582,15 +2588,29 @@ def _the_pixels_against_the_callouts(circles, printed, leaders, notes,
     and a bare `6` is printed in four other places; the circles trace at 6.10,
     so the nearest printed number is the wrong number from the wrong view.
 
-    The band is the same `TOO_FAR` the disagreement uses, and for the same
-    measured reason: a hole is measured to the inside of the line that draws it,
-    so the tracing reads about a millimetre under — \u00d838.93 against a printed
-    \u00d840 on `mm25-p1-1.pdf` — and the band is wide enough for that bias and
-    far too narrow for a digit read wrong. It is measured rather than chosen and
-    it is not symmetrical about zero for that reason: the tracing reads \u00d833.8
-    to \u00d834.6 where the sheet prints 35, so the bias is a millimetre and the
-    spread around it half of one, and two millimetres is outside anything the
-    tracing does on its own and inside every misread digit that matters.
+    Two bands, because there are two questions and `TOO_FAR` was measured for
+    the other one. `THE_SAME_HOLE` is how close the two numbers have to be for
+    them to be one measurement made twice; `TOO_FAR` is how far apart they have
+    to be before the sheet is contradicting itself. Between the two nothing is
+    said and nothing is carried: that is where the tracing's own under-read
+    lives, and it is neither an agreement to take a value from nor a
+    disagreement to report.
+
+    Measured on the four sheets in `tests/modelmania`, every traced full circle
+    against the number printed for it: 33.84 to 33.88 against \u00d835, 38.90 to
+    38.93 against \u00d840, 9.45 against \u00d810, 14.43 against 15, 6.07 to 6.11
+    against \u00d86.6. Seventeen circles and not one of them over — a hole is
+    measured to the inside of the line that draws it, so the tracing reads 0.49
+    to 1.17 mm under, and the size of that under-read is the sheet's own.
+
+    `THE_SAME_HOLE` is what the tracer's repeats measure rather than what its
+    bias measures. The four \u00d840 circles of those sheets agree with each
+    other within 0.027 mm, the \u00d835 within 0.041, the \u00d810 within 0.013
+    and the \u00d86.6 within 0.037: one hole traced more than once comes back
+    inside 0.05 mm. The band is three times that and still a third of the
+    smallest under-read on any of the four sheets, so nothing on them snaps —
+    the 1.07 mm between the \u00d840 of `mm25-p1-1.pdf` and its pixels is the
+    bias, not an agreement.
     """
     for leader in leaders:
         reaches = leader["its_leader_reaches"]
@@ -2605,15 +2625,15 @@ def _the_pixels_against_the_callouts(circles, printed, leaders, notes,
         for centre, radius, wide, entities in circles:
             if _distance(centre, reaches) > radius:
                 continue
-            if abs(wide - across) > TOO_FAR:
+            if abs(wide - across) <= THE_SAME_HOLE:
+                _the_printed_size(drawn, entities, across)
+            elif abs(wide - across) > TOO_FAR:
                 notes.append(
                     "The callout \u00d8%s points into a hole whose pixels measure "
                     "\u00d8%.1f mm — a difference of %.1f mm. The callout is the "
                     "draughtsman's own text and the measurement is this module's; "
                     "nothing here settles which is meant."
                     % (said[0].text, wide, abs(wide - across)))
-            else:
-                _the_printed_size(drawn, entities, across)
             break
 
 
@@ -2625,12 +2645,19 @@ def _the_printed_size(drawn, entities, across):
     that reaches it sizes every one of them. Sizing the first alone would leave
     the rest at what the pixels made of them and invent the reading — one bore
     given two sizes — that `sketch_check` exists to report.
+
+    The printed value becomes the entity's `size`, and `read` says so: the
+    tracing found the feature and the text layer supplies what it measures,
+    which is the only direction that arithmetic runs. The traced diameter is
+    kept beside it, because it is the evidence the two are one feature and it
+    is what a reader checks the printed number against.
     """
     for view in drawn:
         for held in [view.entities] + [one.entities for one in view.outlines]:
             for at, one in enumerate(held):
                 if any(one is entity for entity in entities):
-                    held[at] = replace(one, printed=across)
+                    held[at] = replace(one, printed=across, size=across,
+                                       source="read")
 
 
 def _from_raster(path, into, max_edge):
@@ -2940,7 +2967,9 @@ def _the_drawn_list(sheet):
              "An entity marked `traced` is not the draughtsman's: it is measured "
              "off the picture, to the inside of the line that draws it, so it "
              "reads about a millimetre under the drawn size. Use it to check a "
-             "number, never to supply one."]
+             "number, never to supply one. One marked `read` is that same "
+             "measurement carrying the size the sheet prints against it, which "
+             "a callout's leader reached and agreed with."]
     round_here = round_in(sheet)
     if round_here:
         lines.append(
@@ -2985,7 +3014,7 @@ def round_in(sheet):
         return {}
     found = {}
     for view in sheet.drawn:
-        round_here = [_as_reported(entity.diameter) for entity in view.entities
+        round_here = [_as_reported(_how_wide(entity)) for entity in view.entities
                       if entity.kind == "circle"]
         if round_here:
             found[view.view] = sorted(round_here)
@@ -2995,6 +3024,18 @@ def round_in(sheet):
 def _as_reported(measurement):
     """A measurement at the precision it is written down at, and no finer."""
     return round(measurement, 2)
+
+
+def _how_wide(entity):
+    """
+    How wide a round entity is, printed where the sheet printed it.
+
+    The traced diameter is the evidence that found the feature and never its
+    size: it reads about a millimetre under, so reporting it where a callout
+    has been carried would hand the description the one number this module is
+    not allowed to supply.
+    """
+    return entity.printed if entity.printed is not None else entity.diameter
 
 
 def round_evidence(sheet):
@@ -3028,9 +3069,11 @@ def round_evidence(sheet):
         seen = set()
         for entity in view.entities:
             if entity.kind == "circle":
-                seen.add(_as_reported(entity.diameter))
+                seen.add(_as_reported(_how_wide(entity)))
             elif entity.kind == "arc":
-                seen.add(2 * _as_reported(entity.radius))
+                seen.add(_as_reported(entity.printed)
+                         if entity.printed is not None
+                         else 2 * _as_reported(entity.radius))
         if seen:
             found[view.view] = sorted(seen)
     return found

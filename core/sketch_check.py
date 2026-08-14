@@ -9,10 +9,11 @@ solver has an opinion of its own.
 
 `sheet_reader` now hands over a closed walk: lines, arcs and circles in
 millimetres of the part, in the order the silhouette was walked round, and a
-hole a callout's leader reaches carries the size the draughtsman printed rather
-than the size the pixels measure. That is a `Sketch` — `addGeometry` takes
-exactly those three — and once it is one, the solver answers a question nothing
-else in the pipeline can put: can what was read be true at once?
+hole a callout's leader reaches carries the size the draughtsman printed where
+the two agree closely enough to be one measurement made twice. That is a
+`Sketch` — `addGeometry` takes exactly those three — and once it is one, the
+solver answers a question nothing else in the pipeline can put: can what was
+read be true at once?
 
 The answer is not the solver's return code. Two numbers that cannot both be
 true rarely make a sketch *unsolvable* — the solver satisfies them by moving
@@ -22,20 +23,20 @@ constrain it with what the sheet prints, solve, and measure the distance
 between the two.
 
 What the sheet prints is two things and the second one is most of a drawing. A
-diameter arrives where a callout's leader reached a traced hole, which happens
-once on four sheets; a **distance** arrives wherever a dimension's two
-extension lines reach two faces of the outline, which is 11 of them across 10
-outlines. `108` read as `100` is a distance, and until they were written there
+diameter arrives where a callout's leader reached a traced hole and agreed with
+it, which happens on none of the four sheets — the tracing reads 0.49 to
+1.17 mm under, and the snap band is 0.15; a **distance** arrives wherever a
+dimension's two extension lines reach two faces of the outline, which is 11 of
+them across 10 outlines. `108` read as `100` is a distance, and until they were written there
 was nothing in the sketch for it to be wrong about.
 
 Measured across all four sheets in `tests/modelmania`, 142 outlines, with every
 size and every distance the sheets could reach them with: the median moves
-0.25 mm, nine in ten move under 0.65 mm and the worst moves 1.32 mm — that is
+0.22 mm, nine in ten move under 0.57 mm and the worst moves 1.28 mm — that is
 the slack in a fit through pixels 0.2 mm across, and it is what agreement looks
-like. The \u00d840 hole of `mm25-p1-1.pdf`, whose callout the tracing reads a
-millimetre under, moves 0.54 mm onto the printed size. A bore traced in two
-arcs and snapped to two different callouts — 42 against 50, which is the shape
-of the reading this exists to catch — moves 9.88 mm.
+like. A bore traced in two arcs and snapped to two different callouts — 42
+against 50, which is the shape of the reading this exists to catch — moves
+9.88 mm.
 
 Disposable throughout. The document is made here, closed here, and never the
 user's; nothing here writes a Step, and nothing here reaches the feature tree.
@@ -45,7 +46,7 @@ recognised. What comes back is a verdict about a *reading*.
 A traced entity that has to move further than `A_SHIFT` onto the sheet's own
 numbers is a fact about the reading rather than the slack in a fit. Two
 millimetres, measured over 142 outlines on the four sheets: the median moves
-0.25 mm, nine in ten under 0.65 mm and the worst 1.32 mm, where a pixel is
+0.22 mm, nine in ten under 0.57 mm and the worst 1.28 mm, where a pixel is
 0.2 mm across and an arc's ends are pulled onto its own circle. The reading it
 has to catch moves 9.88 mm.
 
