@@ -10,6 +10,7 @@ import json
 import math
 import os
 import tempfile
+from dataclasses import replace
 
 import pytest
 
@@ -5757,6 +5758,40 @@ def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch)
 
 def _never_called(*_, **__):
     raise AssertionError("the reading was built in the addon's own process")
+# ── one read of a sheet per phase that wants it (FCC-144) ─────────────────────
+
+
+def test_a_sheet_is_read_once_however_many_phases_ask_for_it(tmp_path, monkeypatch):
+    """
+    Three phases of `_describe_the_part` read the same attachments — the sweep
+    of what is printed, the round evidence, and the geometry check — and each
+    of them asks `sheet_reader.read` for the whole sheet again.
+
+    Reading one is not cheap: measured on the four sheets in `tests/modelmania`,
+    the three phases cost 17.3 s when each re-renders them and 6.2 s when the
+    reader hands back what it already read. The cache is `_ALREADY_READ`, keyed
+    by what the file is, so this holds the phases to one render and not the
+    reader to one call.
+    """
+    read = []
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4\n")
+    sheet = replace(_a_sheet_that_contradicts_itself(tmp_path),
+                    overview=str(path))
+
+    def no_headless_freecad(*_, **__):
+        raise RuntimeError("No headless FreeCAD found.")
+
+    monkeypatch.setattr(loop.sheet_reader, "_ALREADY_READ", {})
+    monkeypatch.setattr(loop.sheet_reader, "_read",
+                        lambda where, *_, **__: read.append(where) or sheet)
+    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+
+    loop._the_sweep_is_the_sheets({"features": []}, [str(path)])
+    loop._round_evidence([str(path)])
+    loop._the_geometry_disagrees([str(path)], EventStream())
+
+    assert read == [str(path)]
 
 
 # ── a number on no sheet (FCC-124) ────────────────────────────────────────────
