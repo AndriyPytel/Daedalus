@@ -77,9 +77,13 @@ reaches over from the far corner and clips 35% of the same fragment. Two fifths
 is the line between holding a view and clipping one, and a fragment goes to
 whichever picture holds most of it in any case. `IN_THE_REGION` answers the
 other question, which is not that one: it asks how much of a picture lies
-inside a region, so that the picture is measured where it is. Measured on the
-four sheets, every view body sits wholly inside its own region and a picture
-straddling two has 0.55 of itself in one of them.
+inside a region, so that the picture is measured where it is — and where a
+picture is inside two, the largest share takes it, because a threshold can say
+that a picture is in no region worth speaking of and cannot choose between two.
+Measured on the four sheets, a view body has at least 0.92 of itself inside its
+own region, the one picture lying inside two at once is wholly inside one and
+0.55 inside the other, and a picture a region merely clips has at most 0.36 of
+itself in it.
 
 **The extracted list is numerals, and the notation is measured back onto it.**
 `Ø` is not in the text layer at all — the diameter symbol is drawn as geometry,
@@ -176,7 +180,7 @@ A_VIEW = 90.0
 
 HELD_BY_A_PICTURE = 0.4
 
-IN_THE_REGION = 0.9
+IN_THE_REGION = 0.5
 
 
 @dataclass(frozen=True)
@@ -503,10 +507,7 @@ def _a_page(page, at, of_pages, into, legible_px, max_edge,
 
     overviews.append(_render(page, page.rect, _fits(page.rect, max_edge), into,
                              "sheet" if at == 1 else "sheet-%02d" % at))
-    grid = _ink_grid(page, words)
-    regions = _cut_on_gutters(_regions(grid, page.rect), grid)
-    regions = _one_view_one_picture(regions, page.get_image_info())
-    regions = _covering(regions, [tuple(w[:4]) for w in words], page.rect)
+    regions = _the_regions_of(page, words)
 
     named = [(_on_page(name, at, of_pages), rect)
              for name, rect in zip(_names_for(regions, words, page.rect), regions)]
@@ -664,6 +665,20 @@ def _patches(rect, dpi):
     scale = dpi / 72.0
     return (math.ceil(rect.width * scale / A_PATCH)
             * math.ceil(rect.height * scale / A_PATCH))
+
+
+def _the_regions_of(page, words):
+    """
+    The areas of one page a view could be in, in the order they are decided.
+
+    The flood fill over the ink finds them, the gutters cut a region holding
+    several views apart, a picture pulls back together the pieces of the view
+    it is the body of, and a callout no region caught gets one of its own.
+    """
+    grid = _ink_grid(page, words)
+    regions = _cut_on_gutters(_regions(grid, page.rect), grid)
+    regions = _one_view_one_picture(regions, page.get_image_info())
+    return _covering(regions, [tuple(w[:4]) for w in words], page.rect)
 
 
 def _ink_grid(page, words):
@@ -923,6 +938,26 @@ def _share_of(box, region):
         return 0.0
     area = region.width * region.height
     return (overlap.width * overlap.height) / area if area else 0.0
+
+
+def _the_region_holding_the_picture(box, regions):
+    """
+    Where a picture is traced, which is the region holding most of it.
+
+    Regions overlap and a picture can lie across two, so what chooses between
+    them is the larger share and not a threshold: a picture with 0.55 of itself
+    in one region and 0.45 in another passed no threshold that both did not
+    fail, and was traced in neither. `IN_THE_REGION` is left saying the one
+    thing a threshold can say — that a picture is in no region worth speaking
+    of — which is the isometric reaching over the title block of every one of
+    these sheets, at most 0.36 of itself in any region there.
+    """
+    best, most = None, IN_THE_REGION
+    for region in regions:
+        share = _share_of_the_picture(box, region)
+        if share > most:
+            best, most = region, share
+    return best
 
 
 def _share_of_the_picture(box, region):
@@ -1386,7 +1421,8 @@ def _drawn(page, named, millimetres_per_point, document=None, circles=None,
                                   for point in run],
                                  role=_the_role_of(run, measuring, leaders)))
         outlines, found_circles = _traced(document, page, rect,
-                                          millimetres_per_point) \
+                                          millimetres_per_point,
+                                          [one for _, one in named]) \
             if document is not None else ([], [])
         if circles is not None:
             circles.extend(found_circles)
@@ -1968,7 +2004,7 @@ ROUND = 0.06
 TOO_FAR = 2.0
 
 
-def _traced(document, page, rect, millimetres_per_point):
+def _traced(document, page, rect, millimetres_per_point, regions):
     """
     What the picture holding a view says about the part, in millimetres.
 
@@ -1990,6 +2026,10 @@ def _traced(document, page, rect, millimetres_per_point):
     the 35 the sheet prints. Where a callout points into a hole the two are said
     together and their difference is left showing.
 
+    One picture is traced in one region — the one holding most of it — and the
+    view that region is gets its outline. A picture is not read twice and a
+    picture across two regions is not lost by both.
+
     `A_SHADE` is how far from the paper a pixel has to be to be the part,
     measured off the picture's own corners rather than assumed, the same way the
     raster path measures its paper, because a view exported on a dark background
@@ -2001,7 +2041,7 @@ def _traced(document, page, rect, millimetres_per_point):
     said, circles = [], []
     for picture in page.get_image_info(xrefs=True):
         box = pymupdf.Rect(*picture["bbox"])
-        if _share_of_the_picture(box, rect) < IN_THE_REGION \
+        if _the_region_holding_the_picture(box, regions) != rect \
                 or not picture.get("xref"):
             continue
         pixels = _pixels_of(document, picture["xref"])
