@@ -162,10 +162,21 @@ class PreflightWorker:
         self._process = None
 
     def restart(self):
-        """Silent by design — the user is never told the worker died."""
+        """
+        Silent by design — the user is never told the worker died, and silent
+        about not coming back either.
+
+        A replacement that cannot be started is a request without an answer,
+        not an exception thrown at a caller who asked for a reading: the
+        reading check may cost a reading and never the run. The worker stays
+        dead and the next request tries again.
+        """
         self.kill()
         self.restarts += 1
-        self.start()
+        try:
+            self.start()
+        except Exception:
+            pass
 
     def __enter__(self):
         self.start()
@@ -207,14 +218,20 @@ class PreflightWorker:
         One request down the pipe, one reply back, and a dead worker replaced.
 
         Hands back the reply, or None and the sentence saying why there is
-        none — which the caller phrases as whatever its own result is.
+        none — which the caller phrases as whatever its own result is. Never
+        raises: a child that will not come up at all is one more reason for no
+        reply, not an exception for a caller who asked a question.
 
         A worker can die between the liveness check and the write, so its last
         words are read before the restart replaces them with a live worker's
         silence.
         """
         if not self.alive:
-            self.start()
+            try:
+                self.start()
+            except Exception as why:
+                return None, ("The Preflight Worker could not be started, so %s was "
+                              "not run: %s" % (doing, why))
 
         try:
             self._process.stdin.write(json.dumps(request) + "\n")

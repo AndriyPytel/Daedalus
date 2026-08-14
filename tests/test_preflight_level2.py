@@ -382,3 +382,34 @@ def test_a_body_left_in_pieces_is_still_refused(warm):
 
     assert not result.ok
     assert "more than one piece" in result.traceback
+
+
+def test_a_sweep_of_ninety_six_outlines_is_answered_in_seconds(warm):
+    """
+    The measurement `loop.A_READING_BUDGET` is set against.
+
+    Four sheets are 96 outlines. Answered by the real child they cost about
+    two seconds together, which is why one minute for the whole phase is a
+    child that has stopped answering rather than a phase running long — and
+    why 30 seconds each, the shape this replaced, was 48 minutes of silence
+    inside Design.
+    """
+    from core import sheet_reader, sketch_check
+
+    corners = [(0.0, 0.0), (98.2, 0.0), (98.2, 30.0), (0.0, 30.0)]
+    entities = [
+        sheet_reader.Entity(kind="line", source="traced", role="contour",
+                            size=sheet_reader._distance(corners[at],
+                                                        corners[(at + 1) % 4]),
+                            start=corners[at], end=corners[(at + 1) % 4])
+        for at in range(4)]
+    outline = sheet_reader.Outline(entities=entities, closed=True, area=3000.0)
+    between = [sheet_reader.Between(printed=100.0, text="100", view="the front view",
+                                    first=(0.0, 15.0), second=(100.0, 15.0))]
+
+    started = time.monotonic()
+    for _ in range(96):
+        assert sketch_check.checked_by(warm, outline, "the front view", between)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 20, "the sweep is nowhere near the budget the phase is given"

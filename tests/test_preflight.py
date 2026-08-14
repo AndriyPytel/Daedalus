@@ -66,3 +66,47 @@ def test_a_request_pending_on_a_dead_reader_fails_instead_of_waiting(unstarted):
 
     assert response is None
     assert elapsed < 1, "the caller waited out the timeout for a worker already gone"
+
+
+class _AProcessThatTakesTheRequest:
+    """A live process that accepts a write and never answers."""
+
+    def __init__(self):
+        self.stdin = SimpleNamespace(write=lambda _: None, flush=lambda: None)
+
+    def poll(self):
+        return None
+
+
+def test_a_worker_that_cannot_come_back_answers_no_reading_instead_of_raising(
+        unstarted, monkeypatch):
+    """
+    FCC-126 moved the reading check into the child so a segfaulting solver
+    costs the reading and not the run. A restart that cannot be made was the
+    hole in that: `start()` raised out of `reading()`, through
+    `_the_geometry_disagrees`, and ended the run at the second death.
+    """
+    monkeypatch.setattr(PreflightWorker, "start", _never_comes_up)
+
+    assert unstarted.reading({"do": "reading"}, timeout=0.1) is None
+
+
+def test_a_restart_that_fails_after_a_death_is_a_result_and_not_an_exception(
+        unstarted, monkeypatch):
+    """
+    The same promise on the Step path: whatever happened, the caller gets a
+    PreflightResult back. Here the request goes down the pipe, the worker never
+    answers, and the replacement cannot be started either.
+    """
+    unstarted._process = _AProcessThatTakesTheRequest()
+    unstarted._lines.put(None)
+    monkeypatch.setattr(PreflightWorker, "start", _never_comes_up)
+
+    result = unstarted.check("pad()", timeout=0.1)
+
+    assert result.ok is False
+    assert result.traceback
+
+
+def _never_comes_up(*_, **__):
+    raise RuntimeError("Preflight Worker did not come up: ")

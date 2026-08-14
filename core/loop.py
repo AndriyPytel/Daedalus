@@ -31,6 +31,7 @@ import json
 import mimetypes
 import os
 import re
+import time
 from dataclasses import dataclass, field
 from typing import List
 
@@ -1892,7 +1893,10 @@ def _where_is_this_number(found):
         % ", ".join("%g" % number for number in found))
 
 
-def _the_geometry_disagrees(the_part, attachments, events):
+A_READING_BUDGET = 60.0
+
+
+def _the_geometry_disagrees(the_part, attachments, events, budget=A_READING_BUDGET):
     """
     What the sheet prints against what the sheet draws, as conflicts.
 
@@ -1927,24 +1931,42 @@ def _the_geometry_disagrees(the_part, attachments, events):
     An outline the solver could not be asked about is said out loud, for the
     same reason a re-read that found nothing says so: a sheet nothing was wrong
     with and a sheet nobody could check both arrive at the Gate with no
-    conflict on them, and only one of the two is a verdict.
+    conflict on them, and only one of the two is a verdict. A child that never
+    came up, a child that died and could not be replaced, and a budget that ran
+    out are all that same sentence: those outlines are unchecked and the run
+    goes on. Nothing here may end a run — that is what makes it a reading check
+    and not a Step.
+
+    `budget` is the phase's, not the outline's. A timeout each is no bound at
+    all: 96 outlines that all hang is 48 minutes of silence inside Design.
+    Measured against the real child, an outline of the shape these sheets trace
+    is answered in 20 ms and the four sheets' 96 of them cost about 2 s
+    (`tests/test_preflight_level2.py`), so a minute is a phase that has stopped
+    answering rather than a phase running long.
     """
-    worker = _a_freecad_of_our_own()
-    if worker is None:
+    traced = _every_outline_traced(attachments)
+    if not traced:
         return the_part
 
-    found, unchecked = [], []
-    try:
-        for path in attachments:
-            sheet = sheet_reader.read(path)
-            if sheet is None:
-                continue
-            for view in sheet.drawn:
-                for outline in view.outlines:
-                    found.extend(_what_the_solver_said(worker, outline, view.view,
-                                                       sheet.between, unchecked))
-    finally:
-        worker.kill()
+    worker = _a_freecad_of_our_own()
+    found = []
+    if worker is None:
+        unchecked = [view for outline, view, _ in traced if outline.entities]
+    else:
+        unchecked = []
+        spent_by = time.monotonic() + budget
+        try:
+            for outline, view, between in traced:
+                left = spent_by - time.monotonic()
+                if left <= 0:
+                    if outline.entities:
+                        unchecked.append(view)
+                    continue
+                found.extend(_what_the_solver_said(
+                    worker, outline, view, between, unchecked,
+                    min(left, preflight.DEFAULT_TIMEOUT)))
+        finally:
+            worker.kill()
     if unchecked:
         events.emit(ERROR, message="The solver could not be asked about %d of the "
                                    "outlines read off these sheets: %s. The run goes "
@@ -1953,9 +1975,29 @@ def _the_geometry_disagrees(the_part, attachments, events):
     return dict(the_part, conflicts=found) if found else the_part
 
 
-def _what_the_solver_said(worker, outline, view, between, unchecked):
+def _every_outline_traced(attachments):
+    """
+    Every outline read off every sheet, with the view and the distances it
+    belongs to, before any child is started.
+
+    Read first so that a child which never comes up still knows what it was
+    going to be asked about: "nothing was checked" is only sayable by something
+    holding the list of what there was.
+    """
+    traced = []
+    for path in attachments:
+        sheet = sheet_reader.read(path)
+        if sheet is None:
+            continue
+        for drawn in sheet.drawn:
+            traced.extend((outline, drawn.view, sheet.between)
+                          for outline in drawn.outlines)
+    return traced
+
+
+def _what_the_solver_said(worker, outline, view, between, unchecked, timeout=None):
     """One outline's verdict, as the conflicts it puts on the description."""
-    verdict = sketch_check.checked_by(worker, outline, view, between)
+    verdict = sketch_check.checked_by(worker, outline, view, between, timeout)
     if verdict is None:
         if outline.entities:
             unchecked.append(view)
@@ -1980,9 +2022,10 @@ def _a_freecad_of_our_own():
     down with it (`core/apply.py`, FCC-126). One warm child for the whole
     sweep: four sheets are 96 outlines, and a process each is a process each.
 
-    Nothing to start is not an error. A machine with no headless FreeCAD reads
-    its drawing exactly as it does today, which is what every other rung of the
-    reading does when what it needs is not there.
+    Nothing to start is not an error, and the caller says so on the transcript:
+    a machine with no headless FreeCAD reads its drawing exactly as it does
+    today, but a check that ran on no outline at all is not allowed to look
+    like a check that found nothing.
     """
     try:
         worker = preflight.PreflightWorker()

@@ -5596,6 +5596,112 @@ def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
         "an unchecked reading is indistinguishable from a clean one"
 
 
+def _a_sheet_of_many_outlines(tmp_path, how_many=4):
+    """One view holding several traced plates, so a budget has something to run out of."""
+    from core import sheet_reader
+
+    sheet = _a_sheet_that_contradicts_itself(tmp_path)
+    drawn = sheet.drawn[0]
+    return sheet_reader.Sheet(
+        source=sheet.source,
+        drawn=[sheet_reader.Drawn(view=drawn.view, entities=drawn.entities,
+                                  outlines=drawn.outlines * how_many)],
+        between=sheet.between)
+
+
+class _AChildThatCannotComeBack(loop.preflight.PreflightWorker):
+    """
+    A worker that came up once and can never be started again.
+
+    Not a fake reading: `_ask` is the real one, so what the sweep sees is the
+    parent's own answer to a restart that failed.
+    """
+
+    def __init__(self):
+        super().__init__(freecadcmd="/nonexistent/freecadcmd")
+        self.came_up = 0
+
+    def start(self):
+        self.came_up += 1
+        if self.came_up > 1:
+            raise RuntimeError("Preflight Worker did not come up: ")
+
+
+def test_a_child_that_cannot_come_back_leaves_the_rest_unchecked_and_the_run_alive(
+        tmp_path, monkeypatch):
+    """
+    The promise FCC-126 made and did not keep: the reading check may cost a
+    reading, never the run. A restart that cannot be made is the same outcome
+    as a reading nobody could take — unchecked, said out loud, and Design goes
+    on to the Plan Gate.
+    """
+    sheet = _a_sheet_of_many_outlines(tmp_path)
+    events = EventStream()
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+                        lambda *_, **__: _AChildThatCannotComeBack())
+
+    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events) == {
+        "features": []}
+    assert "the front view" in events.last(ERROR).data["message"]
+
+
+def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypatch):
+    """
+    `None` is a legitimate answer; silence is not. A worker that never came up
+    used to check zero outlines and put nothing on the transcript, which is a
+    sheet nobody could check arriving at the Gate looking exactly like a sheet
+    nothing was wrong with.
+    """
+    def no_headless_freecad(*_, **__):
+        raise RuntimeError("No headless FreeCAD found.")
+
+    sheet = _a_sheet_that_contradicts_itself(tmp_path)
+    events = EventStream()
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+
+    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events) == {
+        "features": []}
+    assert "the front view" in events.last(ERROR).data["message"]
+
+
+def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch):
+    """
+    A timeout per outline is no bound at all: 96 outlines that all hang is 48
+    minutes of a Design phase that says nothing while it spends them. The
+    budget belongs to the phase, and the outlines it does not reach are
+    unchecked in the same words as any other.
+    """
+    asked = []
+
+    class _AChildThatHangs:
+        def start(self):
+            pass
+
+        def kill(self):
+            pass
+
+        def reading(self, request, timeout=None):
+            asked.append(timeout)
+            return None
+
+    clock = iter([0.0] + [40.0 * step for step in range(1, 40)])
+    sheet = _a_sheet_of_many_outlines(tmp_path)
+    events = EventStream()
+    monkeypatch.setattr(loop.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+                        lambda *_, **__: _AChildThatHangs())
+
+    assert loop._the_geometry_disagrees({"features": []}, ["a.pdf"], events,
+                                        budget=60.0) == {"features": []}
+
+    assert len(asked) < 4, "the budget bounded nothing"
+    assert max(asked) <= 60.0, "one outline was given more than the whole budget"
+    assert "4 of the outlines" in events.last(ERROR).data["message"]
+
+
 def _never_called(*_, **__):
     raise AssertionError("the reading was built in the addon's own process")
 
