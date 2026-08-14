@@ -32,6 +32,7 @@ PAD = 5.0
 PAD_CHANGED = 12.0
 RADIUS = 1.5
 BORE = 4.0
+TOP_EDGES = 4
 
 # ── the four Steps, as a model would write them ───────────────────────────────
 
@@ -81,14 +82,17 @@ body = doc.getObject("Body")
 base = body.Tip
 solid = base.Shape
 top = solid.BoundBox.ZMax
-edges = [n + 1 for n, edge in enumerate(solid.Edges)
+edges = ["Edge%%d" %% (n + 1) for n, edge in enumerate(solid.Edges)
          if abs(edge.CenterOfMass.z - top) < 1e-6]
+# The Step says four, so four is what the selection has to come to.
+if len(edges) != %(count)d:
+    raise RuntimeError("the top face has %(count)d edges, found %%d" %% len(edges))
 
 fillet = doc.addObject("PartDesign::Fillet", "Fillet")
 body.addObject(fillet)
-fillet.Base = (base, ["Edge%%d" %% n for n in edges])
-fillet.Radius = %s
-""" % RADIUS
+fillet.Base = (base, edges)
+fillet.Radius = %(radius)s
+""" % {"count": TOP_EDGES, "radius": RADIUS}
 
 # A hole, because a hole is the feature the Description exists for: it is a
 # dimension and not a pixel, and no view answers "is that one Ø4" (FCC-81).
@@ -120,7 +124,8 @@ def scripted_model():
             "Sketch a %gmm square on the XY plane inside a new Body" % SQUARE,
             "Pad the sketch by %gmm" % PAD,
             "Change the pad length to %gmm" % PAD_CHANGED,
-            "Fillet the top edges with a %gmm radius, finding them from the geometry" % RADIUS,
+            "Fillet the %d top edges with a %gmm radius, finding them from the geometry"
+            % (TOP_EDGES, RADIUS),
             "Drill a %gmm hole through it on the centreline" % BORE,
         ]}),
         # One Execute turn for the whole Plan, which is what the phase now is
@@ -232,7 +237,7 @@ def test_the_generated_code_would_have_been_rejected_if_it_hardcoded_an_edge():
 
     assert lint(STEP_FILLET).ok, lint(STEP_FILLET).report()
 
-    hardcoded = STEP_FILLET.replace('["Edge%d" % n for n in edges]', "['Edge12']")
+    hardcoded = STEP_FILLET.replace("(base, edges)", "(base, ['Edge12'])")
     assert hardcoded != STEP_FILLET, "the substitution did not take"
     assert not lint(hardcoded).ok
     assert "literal element name" in lint(hardcoded).report()
@@ -383,7 +388,7 @@ def test_each_step_is_narrated_in_order(slice_run):
 
     assert [e.data["index"] for e in started] == [1, 2, 3, 4, 5]
     assert all(e.data["total"] == 5 for e in started)
-    assert "Fillet the top edges" in started[3].data["description"]
+    assert "Fillet the %d top edges" % TOP_EDGES in started[3].data["description"]
 
 
 def test_the_run_reads_back_from_its_log(slice_run, tmp_path):

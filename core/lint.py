@@ -1,8 +1,8 @@
 """
 The AST lint that runs before Preflight.
 
-Five rules, each from an ADR, each about a failure a Preflight traceback
-cannot teach the way out of (ADR-0008):
+Six rules, each about a failure a Preflight traceback cannot teach the way out
+of (ADR-0008):
 
 - **No literal `Edge12` / `Face3` / `Vertex7`** (ADR-0005). FreeCAD 1.0's
   topological naming mitigation made these less fragile, not stable. A
@@ -27,6 +27,12 @@ cannot teach the way out of (ADR-0008):
   reason names the feature types rather than asking for "a real feature",
   because every prohibition short of that is answered with the next spelling
   of the same workaround.
+- **A computed selection says how many it expected** (FCC-151). A fillet whose
+  `Base` is a list the Step filtered out of the geometry applies to whatever
+  the filter found: eight of the twelve edges the Step describes is a rounded
+  model, an applied Step, and no traceback anywhere. Only a count stated in
+  the code can tell the two apart, so a `Base` built from a variable or a
+  comprehension is refused unless something raises on its length.
 - **No Step may swallow its own failure** (ADR-0008). A bare `except`, or a
   handler that only passes, discards the traceback the correction path is
   built on. Code that catches its own exception and says nothing disables the
@@ -142,6 +148,16 @@ _SWALLOWED_REASON = (
     "twelve edges it meant to must fail, not record how many it managed."
 )
 
+_UNCOUNTED_SELECTION_REASON = (
+    "%s is given a selection this Step computed, and nothing says how many "
+    "elements it expected to find. A filter that finds eight of the twelve "
+    "edges the Step describes rounds those eight, and the Step reports itself "
+    "applied: from the outside it is indistinguishable from one that found "
+    "them all. State the count the Step's prose gives and let the Step fail "
+    "where the selection does not match it — `if len(edges) != 12: raise "
+    "RuntimeError(...)` — before the reference is assigned."
+)
+
 _GUI_REASON = (
     "%s is not available during Preflight. The worker is a headless FreeCAD "
     "with no GUI and no selection, so code that reads them runs differently "
@@ -206,6 +222,7 @@ def lint(code: str, selection=None) -> LintResult:
 
     allowed = selected_elements(selection)
     features = _partdesign_features(tree)
+    counted = _counted_selections(tree)
     problems = []
     seen = set()
 
@@ -238,6 +255,9 @@ def lint(code: str, selection=None) -> LintResult:
             disguised = _shape_assignment(node, features)
             if disguised:
                 complain(_RAW_SHAPE_REASON % disguised)
+            uncounted = _uncounted_selection(node, counted)
+            if uncounted:
+                complain(_UNCOUNTED_SELECTION_REASON % uncounted)
 
         elif isinstance(node, ast.Call):
             disguised = _added_property(node, features)
@@ -288,6 +308,58 @@ def _partdesign_features(tree) -> set:
             if isinstance(target, ast.Name):
                 features.add(target.id)
     return features
+
+
+def _counted_selections(tree) -> set:
+    """
+    Variables whose length this Step checks against a number, and raises on.
+
+    An `if` that ends in a `raise` and an `assert` are the two shapes; a
+    length compared to nothing in particular — `if not edges` — is not one of
+    them, because an empty selection is only the extreme of the failure. The
+    recorded run's fillet had exactly that guard, found eight of the edges its
+    Step described, and passed it.
+    """
+    counted = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assert):
+            test = node.test
+        elif isinstance(node, ast.If) and any(isinstance(inner, ast.Raise)
+                                              for inner in ast.walk(node)):
+            test = node.test
+        else:
+            continue
+        if not any(isinstance(inner, ast.Constant) and isinstance(inner.value, int)
+                   for inner in ast.walk(test)):
+            continue
+        for inner in ast.walk(test):
+            if (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name)
+                    and inner.func.id == "len" and len(inner.args) == 1
+                    and isinstance(inner.args[0], ast.Name)):
+                counted.add(inner.args[0].id)
+    return counted
+
+
+def _uncounted_selection(node: ast.Assign, counted: set):
+    """
+    The `x.Base = (obj, elements)` whose element list nothing counted, or None.
+
+    A list written out in the code states its own count; a variable and a
+    comprehension state nothing, and that is the whole of the failure — the
+    filter runs, finds what it finds, and the Step applies to that.
+    """
+    for target in node.targets:
+        if not (isinstance(target, ast.Attribute) and target.attr == "Base"):
+            continue
+        value = node.value
+        if not (isinstance(value, (ast.Tuple, ast.List)) and len(value.elts) == 2):
+            continue
+        elements = value.elts[1]
+        if isinstance(elements, ast.Name) and elements.id not in counted:
+            return ast.unparse(target)
+        if isinstance(elements, (ast.ListComp, ast.GeneratorExp, ast.SetComp)):
+            return ast.unparse(target)
+    return None
 
 
 def _shape_assignment(node: ast.Assign, features: set):

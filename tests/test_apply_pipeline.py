@@ -195,6 +195,24 @@ def test_an_element_the_user_selected_survives_the_lint(pipeline):
     assert result.ok, result.traceback
 
 
+def test_a_fillet_that_never_says_how_many_edges_never_reaches_preflight(pipeline):
+    """
+    A filter that finds eight of the marked edges rounds eight of them and
+    reports the Step applied. It fails before the Document sees it. FCC-151.
+    """
+    result = pipeline.apply(
+        "refs = []\n"
+        "for i, e in enumerate(base.Shape.Edges, 1):\n"
+        "    if abs(e.Vertexes[0].Point.x - e.Vertexes[1].Point.x) < 1e-7:\n"
+        "        refs.append('Edge%d' % i)\n"
+        "fillet.Base = (base, refs)\n")
+
+    assert not result.ok
+    assert "how many" in result.traceback
+    assert pipeline.fake_worker.checked == []
+    assert pipeline.trace == []
+
+
 # ── everything is marshalled ──────────────────────────────────────────────────
 
 
