@@ -27,6 +27,12 @@ RASTER = os.path.join(os.path.dirname(__file__), "modelmania", "mm2025-phase1.pn
 # instead of inside it.
 SHEET_2023 = os.path.join(os.path.dirname(__file__), "modelmania",
                           "model-mania_-in-person-2023 copy.pdf")
+FOUR_SHEETS = [SHEET,
+               os.path.join(os.path.dirname(__file__), "modelmania",
+                            "mm25-p2.pdf"),
+               os.path.join(os.path.dirname(__file__), "modelmania",
+                            "model-mania-2024.pdf"),
+               SHEET_2023]
 
 needs_pymupdf = pytest.mark.skipif(not sheet_reader.available(),
                                    reason="PyMuPDF is not installed")
@@ -1316,6 +1322,95 @@ def test_what_a_picture_holds_and_what_it_is_traced_from_are_two_questions(
     assert {one.view for one in bodied} <= {one.view for one in traced}
     assert len(traced) > len(bodied), (
         "a view can be traced without its body being called a picture")
+
+
+@needs_pymupdf
+def test_a_picture_straddling_two_regions_is_traced_in_the_one_holding_most():
+    """
+    The rule is an argmax and not a threshold. A picture with 0.55 of itself in
+    one region and 0.45 in another is in the first and in no other; under a
+    threshold of 0.9 it was in neither, and the two crops that show it both
+    reported the view as having no outline at all.
+    """
+    import pymupdf
+
+    box = pymupdf.Rect(0, 0, 100, 100)
+    holding = pymupdf.Rect(-50, 0, 55, 100)
+    clipping = pymupdf.Rect(55, 0, 150, 100)
+
+    assert sheet_reader._share_of_the_picture(box, holding) == pytest.approx(0.55)
+    assert sheet_reader._share_of_the_picture(box, clipping) == pytest.approx(0.45)
+    assert sheet_reader._the_region_holding_the_picture(
+        box, [clipping, holding]) == holding
+
+
+@needs_pymupdf
+def test_a_picture_in_no_region_worth_speaking_of_is_traced_nowhere():
+    """
+    The threshold survives the argmax, doing the one job it can do: the
+    isometric in the corner of every one of these sheets reaches over the title
+    block and has at most 0.36 of itself in any region there, and tracing it
+    would hand that region an outline of a view drawn somewhere else.
+    """
+    import pymupdf
+
+    box = pymupdf.Rect(0, 0, 100, 100)
+    clipping = pymupdf.Rect(-50, 0, 36, 100)
+
+    assert sheet_reader._the_region_holding_the_picture(box, [clipping]) is None
+
+
+@needs_pymupdf
+def test_what_a_picture_has_inside_a_region_is_measured_off_the_four_sheets():
+    """
+    The numbers `IN_THE_REGION` stands on, read off `tests/modelmania` rather
+    than stated: a view body has at least 0.92 of itself inside its own region,
+    the one picture that lies inside two regions at once — the 2024 sheet's
+    page 2 detail — is wholly inside one of them and 0.55 inside the other, and
+    a picture a region only clips has at most 0.36 of itself in it.
+
+    Four sheets, not five: `model-mania_-in-person-2023.pdf` is the same file
+    as the copy beside it and would count everything on it twice.
+    """
+    import pymupdf
+
+    inside, alongside, clipped = [], [], []
+    for path in FOUR_SHEETS:
+        document = pymupdf.open(path)
+        for page in document:
+            words = [w for w in page.get_text("words") if str(w[4]).strip()]
+            regions = sheet_reader._the_regions_of(page, words)
+            for picture in page.get_image_info():
+                box = pymupdf.Rect(*picture["bbox"])
+                shares = sorted((sheet_reader._share_of_the_picture(box, region)
+                                 for region in regions), reverse=True)
+                held = [share for share in shares
+                        if share > sheet_reader.IN_THE_REGION]
+                if held:
+                    inside.append(held[0])
+                    alongside.extend(held[1:])
+                else:
+                    clipped.append(shares[0] if shares else 0.0)
+
+    assert min(inside) == pytest.approx(0.92, abs=0.02), inside
+    assert max(clipped) == pytest.approx(0.36, abs=0.04), clipped
+    assert len(alongside) == 1, alongside
+    assert alongside[0] == pytest.approx(0.55, abs=0.02)
+
+
+@needs_pymupdf
+def test_which_views_are_bodied_by_a_picture_is_the_set_it_was(sheet_2023):
+    """
+    `from_a_picture` asks how much of a *region* a picture holds, and choosing
+    where a picture is traced does not touch it. Pinned as the set and not as a
+    count, so a view swapped for another cannot pass.
+    """
+    assert {one.view for one in sheet_2023.drawn if one.from_a_picture} == {
+        "SECTION A-A, on page 1",
+        "VIEW B, on page 1",
+        "the middle centre of the sheet, on page 1",
+        "the upper centre of the sheet, on page 1",
+        "the upper left of the sheet, on page 2"}
 
 
 @needs_pymupdf
