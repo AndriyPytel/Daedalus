@@ -227,17 +227,21 @@ _A_POINT = ("start", "end", "centre", "first", "second")
 _OF_A_TROUBLE = ("at", "constraint", "printed", "said")
 
 
-def checked_by(worker, outline, view="", between=()):
+def checked_by(worker, outline, view="", between=(), timeout=None):
     """
     One outline built in the Preflight child, and the solver's verdict on it.
 
     None where there was no verdict to be had — an outline with nothing in it,
     or a child that died or hung on this reading. Nothing checked and nothing
     passed are the same answer here: the description simply gains no conflict.
+
+    `timeout` is what is left of the sweep's own budget, so the last outline
+    asked cannot outlive it.
     """
     if not outline.entities:
         return None
-    return from_response(worker.reading(as_request(outline, view, between)))
+    return from_response(
+        worker.reading(as_request(outline, view, between), timeout))
 
 
 def as_request(outline, view="", between=()):
