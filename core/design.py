@@ -454,6 +454,8 @@ def pointing(model) -> list:
 
 ROUND_IN = "round_in"
 
+_A_DIRECTION_FIELD = ("axis", "plane")
+
 
 def _said_of(feature, field):
     """
@@ -590,14 +592,24 @@ def crosswise(model) -> list:
     return found
 
 
-_A_NUMBER = re.compile(r"([0-9]+(?:\.[0-9]+)?)")
+_A_WIDTH = re.compile(r"^[\u00d8R]?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:mm)?$")
 
 
 def _how_wide(feature):
-    """The diameter this feature was read at, in millimetres, or None."""
+    """
+    The diameter this feature was read at, in millimetres, or None.
+
+    A diameter field does not always hold a diameter. The recorded run wrote
+    "0.47 of the overall length" in one and an `M6` callout in another, and the
+    first number out of either is a millimetre width nobody measured — held
+    against the traced arcs within the tracing's own slack, it confirms a
+    reading or contradicts one at random. A field that is not a plain
+    measurement is not a width, and a width the check does not have is a check
+    that says nothing.
+    """
     for keys, across in ((_A_DIAMETER, 1.0), (_A_RADIUS, 2.0)):
         for key in keys:
-            found = _A_NUMBER.search(_said_of(feature, key))
+            found = _A_WIDTH.match(_said_of(feature, key))
             if found:
                 return float(found.group(1)) * across
     found = re.search(r"\u00d8\s*([0-9]+(?:\.[0-9]+)?)", _what_it_is_called(feature))
@@ -687,11 +699,52 @@ def grounded(model, round_here) -> list:
 
 def _which_field_is_round(feature):
     """Which of `axis` and `plane` is the one carrying `round_in`."""
-    for field in ("axis", "plane"):
+    for field in _A_DIRECTION_FIELD:
         said = feature.get(field)
         if isinstance(said, dict) and str(said.get(ROUND_IN) or "").strip():
             return field
-    return "axis"
+    return _A_DIRECTION_FIELD[0]
+
+
+def where_the_direction_is(model, address):
+    """
+    The address a re-read's answer belongs at, given the finding it answers.
+
+    A check addresses its finding where the wrong reading is, and `pointing`
+    cannot: it holds an axis and a position that cannot both be right and no
+    way to tell which, so it addresses the position — `features → X → position
+    → <datum>`. The re-read is then asked for a direction, "say which way the
+    axis points given that view", and a direction written at a position lands
+    on a field nobody asked about while the axis it was meant to overrule
+    stands. So the answer goes where directions go, on the feature the finding
+    named.
+    """
+    steps = str(address).split(UNDER)
+    if steps[-1] in _A_DIRECTION_FIELD or len(steps) < 2 or steps[0] != "features":
+        return address
+    where = _under(steps[0], steps[1])
+    feature = entry_at(model, where)
+    return _under(where, _which_field_is_round(feature)) \
+        if isinstance(feature, dict) else address
+
+
+def what_the_trace_says(model, address, round_here):
+    """
+    The measurement that earns an overrule at *address*, or nothing.
+
+    `corrected` is given a `because`, and what belongs there is the evidence
+    off the drawing: the width the feature was read at, and the view the tracer
+    found a circle that wide in. A finding's `stands` is the reading it stands
+    against — the thing being overruled, which cannot also be the reason for
+    overruling it.
+    """
+    steps = str(address).split(UNDER)
+    feature = entry_at(model, _under(steps[0], steps[1])) if len(steps) > 1 else None
+    wide = _how_wide(feature) if isinstance(feature, dict) else None
+    if wide is None:
+        return ""
+    seen = [at for at in round_here or () if _traced_round_at(round_here, at, wide)]
+    return "something \u00d8%g was traced in %s" % (wide, " and ".join(seen)) if seen else ""
 
 
 def read_off_the_wrong_view(model, round_here=None) -> list:
