@@ -3199,8 +3199,8 @@ def uncited(sheet, model):
     """
     if sheet is None or not model:
         return []
-    said = _numbers_in({key: value for key, value in model.items()
-                        if key != "printed_on_the_sheet"})
+    said = numbers_in({key: value for key, value in model.items()
+                       if key != "printed_on_the_sheet"})
     return [entry.text for entry in dimensions(sheet)
             if _number_of(entry.text) not in said]
 
@@ -3230,8 +3230,8 @@ def invented(sheet, model):
     """
     if sheet is None or not model:
         return []
-    said = _numbers_in({key: value for key, value in model.items()
-                        if key != "printed_on_the_sheet"})
+    said = numbers_in({key: value for key, value in model.items()
+                       if key != "printed_on_the_sheet"})
     cited = {_number_of(entry.text) for entry in dimensions(sheet)}
     cited |= {_a_number(entry.text) for entry in sheet.printed}
     cited |= {entry.printed for entry in sheet.between}
@@ -3281,14 +3281,15 @@ def _derived_from(number, cited):
                for other in numbers[at + 1:])
 
 
-def _numbers_in(node):
+def numbers_in(node):
+    """Every number said anywhere in a structure, whatever it is written into."""
     found = set()
     if isinstance(node, dict):
         for value in node.values():
-            found |= _numbers_in(value)
+            found |= numbers_in(value)
     elif isinstance(node, (list, tuple)):
         for value in node:
-            found |= _numbers_in(value)
+            found |= numbers_in(value)
     elif node is not None:
         text = str(node)
         digits, at = "", 0

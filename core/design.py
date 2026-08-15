@@ -51,7 +51,7 @@ a thing the merge has to recognise again.
 """
 import re
 
-from core.sheet_reader import A_DISTANCE
+from core.sheet_reader import A_DISTANCE, numbers_in
 
 SECTIONS = ("printed_on_the_sheet", "datums", "envelope", "features", "conflicts",
             "not_defined")
@@ -1026,7 +1026,12 @@ def _features(model):
     measured by nothing (FCC-127).
     """
     return [feature for feature in (model or {}).get("features") or ()
-            if isinstance(feature, dict) and not _filled(feature.get("superseded_by"))]
+            if isinstance(feature, dict) and not _superseded(feature)]
+
+
+def _superseded(node):
+    """Whether a later page replaced this, which is what makes it not the part."""
+    return isinstance(node, dict) and _filled(node.get("superseded_by"))
 
 
 def _carries_the_outside(feature):
@@ -1081,33 +1086,71 @@ def distilled(model) -> dict:
     a projection of the model that already exists, so there is no second
     structure to hold an order the drawing never showed (ADR-0019, ADR-0024).
 
-    What goes is what proves a value rather than states it: the sweep of the
-    sheet, the disagreements and the gaps, none of which is the part and none
-    of which `entries` has ever walked, and on a value what fixed it, the views
-    it was seen in and the view its circle was traced round in. What stays is
-    every address the Acceptance is derived from, so the description and the
-    criteria still come off one model (ADR-0020).
+    The distiller is a hybrid and this is its mechanical half, kept mechanical
+    so that what is left to judgement is only what no rule can decide. What
+    goes is the sweep of the sheet, the disagreements and the gaps, none of
+    which is the part and none of which `entries` has ever walked; on a value,
+    what fixed it, the views it was seen in and the view its circle was traced
+    round in; and the features a later page deletes, which are what the sheet
+    said and not what the part is (FCC-127). All of it stays in the evidence
+    log, which is where the reading is checked against the drawing. What stays
+    here is every address the Acceptance is derived from, so the description
+    and the criteria still come off one model (ADR-0020).
 
     `because` stays with it. It is not the proof of a number off the sheet, it
     is what the model settled a value nobody supplied — the one thing at the
     Gate that is the user's to overrule, read there through `decided_for_you`
     and in the file afterwards (ADR-0022).
 
+    The other half is the model's, because neither identity nor an
+    inconsistency is decidable by a rule: two entries can be one feature under
+    two names, and a distilled part can still hold values that do not follow
+    from each other. Its boundary is five verbs — drop, merge, re-address,
+    re-measure from a surviving datum, flag — and `carried_by_no_source` is
+    what holds it. A value no source carries stays a gap and is settled the way
+    every gap is.
+
     `tests/test_loop.py` measures what this leaves of the recorded reading of
-    the 2023 pipe clamp, against what Plan was handed of it before.
+    the 2023 pipe clamp, against what Plan was handed of it before, and
+    `tests/test_modelmania_evidence.py` measures the title block it drops off
+    the sheet that reading was taken from.
     """
-    return {section: _without_the_proof(value)
+    return {section: _without_the_evidence(value)
             for section, value in (model or {}).items()
             if section not in _NOT_THE_PART}
 
 
-def _without_the_proof(node):
+def _without_the_evidence(node):
+    """
+    What is left once the rule has taken what proves a value and what the
+    drawing deleted, both of which the log beside the document keeps.
+    """
     if isinstance(node, dict):
-        return {key: _without_the_proof(value) for key, value in node.items()
+        return {key: _without_the_evidence(value) for key, value in node.items()
                 if key not in _THE_PROOF}
     if isinstance(node, list):
-        return [_without_the_proof(entry) for entry in node]
+        return [_without_the_evidence(entry) for entry in node
+                if not _superseded(entry)]
     return node
+
+
+def carried_by_no_source(document, evidence, intent) -> list:
+    """
+    The numbers the document states that neither the log nor the Intent does.
+
+    The boundary the distiller is held to. Its mechanical half cannot cross it,
+    since a projection states no number the model it came from did not; its
+    other half is a model deciding identity and inconsistency in prose, and a
+    model free to decide those is free to write a value no source ever carried,
+    which is the failure the phase exists to prevent (ADR-0019). So it is
+    checked rather than asked for: a number in the document was printed on the
+    sheet, measured off it, worked out from something that was, or said in the
+    Intent, and there is no fifth place for one to come from.
+
+    `tests/test_loop.py` runs it over the recorded reading of the 2023 pipe
+    clamp, and over the same document with one number added to it.
+    """
+    return sorted(numbers_in(document) - numbers_in(evidence) - numbers_in(intent))
 
 
 def entries(model) -> list:
@@ -1201,7 +1244,7 @@ def _each_value(node, path):
         return [(path, node)]
 
     if isinstance(node, dict):
-        if _filled(node.get("superseded_by")):
+        if _superseded(node):
             return []
         return [found for key, value in node.items() if key not in _NOT_THE_PART
                 for found in _each_value(value, _under(path, key))]

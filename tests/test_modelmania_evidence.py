@@ -6,7 +6,7 @@ import statistics
 
 import pytest
 
-from core import sheet_reader
+from core import design, sheet_reader
 from tests import modelmania_harness
 
 
@@ -71,3 +71,31 @@ def test_the_four_sheets_keep_their_measured_reading_verdicts(modelmania_sheets)
     assert 0.15 <= statistics.median(moved) <= 0.30
     assert 0.50 <= statistics.quantiles(moved, n=10, method="inclusive")[8] <= 0.75
     assert 1.0 <= max(moved) <= 1.5
+
+
+def test_the_document_carries_nothing_off_the_title_block_and_no_dead_feature(
+        modelmania_sheets):
+    """
+    What the code removes at distillation, measured on the sheet the recorded
+    run read. Of the 230 strings the 2023 clamp prints, 121 stand inside the
+    title block — a drawing number, a date, a scale and the small print — and
+    the sweep carrying them is a record of the sheet rather than of the part.
+    Neither are the two features page 2 deletes, which the reading keeps for
+    the user checking it against the drawing and the document does not carry
+    at all.
+    """
+    sheet = modelmania_sheets["model-mania_-in-person-2023 copy.pdf"]
+    swept = sheet_reader.printed_on_the_sheet(sheet)
+    in_the_title_block = [entry for entry, printed in zip(swept, sheet.printed)
+                          if sheet_reader._in_the_title_block(printed, sheet)]
+    reading = modelmania_harness.the_2023_clamp_as_read()
+    document = design.distilled(reading)
+
+    assert (len(swept), len(in_the_title_block)) == (230, 121)
+    assert reading["printed_on_the_sheet"] == swept, "the run read another sheet"
+    assert "printed_on_the_sheet" not in document
+    assert [feature["id"] for feature in document["features"]] == \
+        [feature["id"] for feature in reading["features"]
+         if not feature.get("superseded_by")]
+    assert "superseded" in design.render(reading), "the reading kept no dead feature"
+    assert "superseded" not in design.render(document)

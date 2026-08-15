@@ -54,8 +54,8 @@ from core import loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
 from core.design import (
-    UNDER, decided_for_you, distilled, entries, entry_at, merge, pointing,
-    read_off_the_wrong_view, render, said_at,
+    UNDER, carried_by_no_source, decided_for_you, distilled, entries, entry_at,
+    merge, pointing, read_off_the_wrong_view, render, said_at,
 )
 from core.loop import (
     PROMPTS, Budgets, prompt, revisions_ceiling, run,
@@ -1667,6 +1667,73 @@ def test_plan_is_handed_the_document_and_not_everything_design_read():
     assert len(handed) < 9_000, "Plan is being handed the evidence again"
 
 
+def _the_clamp_as_it_was_read():
+    """The recorded run of the 2023 pipe clamp, down to the two files it leaves."""
+    _, events, _, _ = drive([
+        design_reply(THE_2023_CLAMP),
+        plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
+        code_reply("clamp()"),
+        assertion_reply("assert True, 'the clamp'"),
+        verdict_reply("pass"),
+    ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
+
+    written = events.last(PART).data["path"]
+    return (part_file.read(written), part_file.read(part_file.evidence(written)),
+            part_file.asked_for(written))
+
+
+def _occupied_by(node, fields):
+    """
+    The characters *fields* occupy on the part the document is made of.
+
+    Nothing of a feature a later page deletes, because the document does not
+    carry one either, and what it does not carry it cannot have dropped.
+    """
+    if isinstance(node, dict):
+        return sum(len(json.dumps(value, ensure_ascii=False)) if key in fields
+                   else _occupied_by(value, fields) for key, value in node.items())
+    if isinstance(node, list):
+        return sum(_occupied_by(entry, fields) for entry in node
+                   if not (isinstance(entry, dict) and entry.get("superseded_by")))
+    return 0
+
+
+def test_no_number_in_the_document_came_from_the_distiller():
+    """
+    The boundary the distiller is held to, over the run that named it: every
+    number the document states is in the evidence log beside it or in the
+    Intent it was read under. The half that decides identity and catches what
+    does not follow is a model reading prose, and a model free to decide those
+    is free to write a value no source carried — which is the one thing this
+    phase exists to prevent. The added 77 mm is what that looks like.
+    """
+    document, logged, intent = _the_clamp_as_it_was_read()
+    invented = dict(document, envelope=dict(document["envelope"], height=read("77 mm")))
+
+    assert carried_by_no_source(document, logged, intent) == []
+    assert carried_by_no_source(invented, logged, intent) == [77.0]
+
+
+def test_the_document_says_why_a_value_is_the_users_and_the_log_says_what_proved_it():
+    """
+    What survives distillation with a value and what does not, measured on the
+    recorded reading. `from` and `seen_in` prove a number rather than being one
+    and are cut mechanically into the log — 2,190 characters of them. The 357
+    characters of `because` stay, because they are the only thing telling a
+    user the model chose a value rather than read it (ADR-0022), and so does
+    the flag on every one of the 46 entries the Acceptance is derived from.
+    """
+    document, logged, _ = _the_clamp_as_it_was_read()
+
+    assert _occupied_by(document, ("from", "seen_in")) == 0
+    assert _occupied_by({section: logged[section] for section in document},
+                     ("from", "seen_in")) == 2_190
+    assert _occupied_by(document, ("because",)) == 357
+    assert [entry for entry in entries(document) if not entry["flag"]] == []
+    assert len(entries(document)) == 46
+    assert decided_for_you(document) == decided_for_you(logged) != []
+
+
 def test_the_file_the_user_opens_is_the_document_the_run_was_planned_from():
     """
     The reading and the request used to be one rendering of the same undistilled
@@ -1710,6 +1777,51 @@ def test_the_evidence_is_logged_beside_the_reading_distilled_out_of_it():
     assert os.path.isfile(beside)
     assert "conflicts" not in part_file.read(written)
     assert "the two axes cross" in json.dumps(part_file.read(beside)["conflicts"])
+
+
+THE_HOLE_THAT_CANNOT_BE_BOTH = dict(
+    A_PART,
+    features=[dict(A_PART["features"][0],
+                   position={"the left end face": read("15 mm"),
+                             "the right end face": read("70 mm")})],
+    conflicts=[{"about": "features \u2192 hole-8-left \u2192 position",
+                "stands": "15 mm from the left end face",
+                "was_also_said": "70 mm from the right end face, on a part 80 mm long"},
+               {"about": "features \u2192 hole-8-left \u2192 position",
+                "stands": "15 mm from the left end face",
+                "was_also_said": "the two ends do not meet on an 80 mm part"}],
+)
+
+
+def test_two_entries_that_cannot_both_be_true_still_reach_the_gate():
+    """
+    The half of distillation no rule can do is the model's: it decides which
+    two entries are one feature under two names, and it catches values that do
+    not follow from each other — 15 mm from one end and 70 mm from the other on
+    a part 80 mm long, which every check in `core/design.py` reads as two
+    positions and nothing more. Distilling is not where such a finding is
+    settled and not where it is lost: it rides to the Gate with the rest and
+    stands in the log beside the document, and the only entry distillation may
+    take out of that list is one another entry at the same address stands for.
+    """
+    _, events, _, _ = drive([
+        design_reply(THE_HOLE_THAT_CANNOT_BE_BOTH),
+        plan_reply("Drill it", satisfies=everything(THE_HOLE_THAT_CANNOT_BE_BOTH)),
+        code_reply("drill()"),
+        assertion_reply("assert True, 'the hole'"),
+        verdict_reply("pass"),
+    ])
+
+    written = events.last(PART).data["path"]
+    kept = part_file.read(part_file.evidence(written))["conflicts"]
+    flagged = THE_HOLE_THAT_CANNOT_BE_BOTH["conflicts"][0]
+    lost = [conflict for conflict in merge({}, THE_HOLE_THAT_CANNOT_BE_BOTH)["conflicts"]
+            if conflict not in kept]
+
+    assert flagged in kept
+    assert flagged in events.last(DESIGN).data["model"]["conflicts"]
+    assert [conflict for conflict in lost
+            if conflict["about"] not in {standing["about"] for standing in kept}] == []
 
 
 def _reaches(function, called):
