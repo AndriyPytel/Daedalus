@@ -1350,15 +1350,16 @@ THE_BORE_AND_ITS_EVIDENCE = {
 def test_the_document_is_the_part_without_the_evidence_that_settled_it():
     """
     The second of Design's two steps. What goes is what proves a value rather
-    than states it — the sweep of the sheet, the disagreements, the gaps, what
-    fixed a derived value and the views it was read in — and what stays is the
-    part, entry for entry: the same addresses `entries` has always walked, so
-    the Acceptance is the same list either way.
+    than states it — the sweep of the sheet, the disagreements, what fixed a
+    derived value and the views it was read in — and what stays is the part,
+    entry for entry: the same addresses `entries` has always walked, so the
+    Acceptance is the same list either way. What nobody has supplied stays
+    beside it and is none of those addresses.
     """
     document = distilled(THE_BORE_AND_ITS_EVIDENCE)
     bore = document["features"][0]
 
-    assert list(document) == ["datums", "envelope", "features"]
+    assert list(document) == ["datums", "envelope", "features", "not_defined"]
     assert bore["axis"] == {"value": "the depth", "flag": "derived"}
     assert "seen_in" not in bore
     assert [entry["about"] for entry in entries(document)] == \
@@ -1375,3 +1376,52 @@ def test_a_value_the_model_settled_says_so_in_the_document():
 
     assert decided_for_you(document) == decided_for_you(THE_BORE_AND_ITS_EVIDENCE)
     assert decided_for_you(document)[0].endswith("half the length")
+
+
+THE_SPLIT_THE_DRAWING_ANSWERED = {
+    "features": [{"id": "ring-split", "kind": "radial split through the ring",
+                  "topology": "open slot",
+                  "width": {"value": "3 mm between the split faces", "flag": "derived",
+                            "from": "the 1 mm and the 2 mm callout either side of "
+                                    "the ring axis"},
+                  "seen_in": ["SECTION A-A"]}],
+    "not_defined": [{"what": "the width of the ring split",
+                     "looked_in": ["SECTION A-A"]},
+                    {"what": "general dimensional tolerances",
+                     "looked_in": ["the notes"]}],
+}
+
+
+def test_a_gap_the_model_now_carries_the_value_for_is_retired():
+    """
+    What nobody supplies is what nobody supplies now. The split was measured off
+    the two callouts either side of it after the gap was written down, and the
+    gap went on saying nobody had given a width while the width stood beside it.
+    """
+    document = distilled(THE_SPLIT_THE_DRAWING_ANSWERED)
+
+    assert [gap["what"] for gap in document["not_defined"]] == \
+        ["general dimensional tolerances"]
+
+
+THE_SLOT_AND_WHERE_IT_IS_NOT = {
+    "datums": [{"name": "the ring axis", "is": "the axis of the \u00d842 bore",
+                "fixes": "the length"}],
+    "features": [{"id": "left-mounting-slot", "kind": "slot", "topology": "through",
+                  "axis": _read("perpendicular to the front face"),
+                  "seen_in": ["VIEW B"]}],
+    "not_defined": [{"what": "the left mounting-slot lengthwise position from the "
+                             "ring axis", "looked_in": ["VIEW B"]}],
+}
+
+
+def test_a_gap_naming_the_datum_it_would_be_measured_from_is_answered_by_nothing():
+    """
+    A gap says what is missing and then what it belongs to — "the width of the
+    ring split" — and where it says the two the other way round it is naming the
+    datum the missing value would be measured from. The slot's own axis is not
+    where the slot is, and a gap retired by it would take the views it was
+    looked in off the Gate with it.
+    """
+    assert distilled(THE_SLOT_AND_WHERE_IT_IS_NOT)["not_defined"] == \
+        THE_SLOT_AND_WHERE_IT_IS_NOT["not_defined"]

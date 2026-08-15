@@ -616,7 +616,7 @@ def _how_wide(feature):
     return float(found.group(1)) if found else None
 
 
-_HOW_A_VIEW_IS_SAID = re.compile(r"[^a-z0-9]+")
+_ONE_WORD_FROM_THE_NEXT = re.compile(r"[^a-z0-9]+")
 
 _SAID_EITHER_WAY = ("the", "on", "of", "sheet")
 
@@ -631,7 +631,7 @@ def _as_a_view(name):
     same view. Compared as they stand they are not, and the check then reads a
     view it was never given as a view with nothing in it.
     """
-    return "".join(word for word in _HOW_A_VIEW_IS_SAID.split(str(name).lower())
+    return "".join(word for word in _ONE_WORD_FROM_THE_NEXT.split(str(name).lower())
                    if word and word not in _SAID_EITHER_WAY)
 
 
@@ -1088,14 +1088,22 @@ def distilled(model) -> dict:
 
     The distiller is a hybrid and this is its mechanical half, kept mechanical
     so that what is left to judgement is only what no rule can decide. What
-    goes is the sweep of the sheet, the disagreements and the gaps, none of
-    which is the part and none of which `entries` has ever walked; on a value,
-    what fixed it, the views it was seen in and the view its circle was traced
-    round in; and the features a later page deletes, which are what the sheet
-    said and not what the part is (FCC-127). All of it stays in the evidence
-    log, which is where the reading is checked against the drawing. What stays
-    here is every address the Acceptance is derived from, so the description
-    and the criteria still come off one model (ADR-0020).
+    goes is the sweep of the sheet, the disagreements and the gaps something
+    has since answered, none of which is the part and none of which `entries`
+    has ever walked; on a value, what fixed it, the views it was seen in and
+    the view its circle was traced round in; and the features a later page
+    deletes, which are what the sheet said and not what the part is (FCC-127).
+    All of it stays in the evidence log, which is where the reading is checked
+    against the drawing. What stays here is every address the Acceptance is
+    derived from, so the description and the criteria still come off one model
+    (ADR-0020).
+
+    A gap is retired here for the same reason a dead datum's values are
+    re-measured here: the merge only ever grows, so what nobody had supplied
+    when the sheet was first read stays on the reading and in the log, and what
+    the Gate and Plan are shown is what nobody supplies now (ADR-0019,
+    FCC-153). A gap nobody answered survives whole, with the views it was
+    looked in.
 
     A datum goes with the feature it belonged to, and every live value measured
     from a dead one is re-measured from the datum that takes over (FCC-153).
@@ -1124,9 +1132,12 @@ def distilled(model) -> dict:
     the sheet that reading was taken from.
     """
     taken_over = _which_datum_takes_over(model)
-    return {section: _re_measured(_without_the_evidence(value), taken_over)
-            for section, value in (model or {}).items()
-            if section not in _NOT_THE_PART}
+    document = {section: _re_measured(_without_the_evidence(value), taken_over)
+                for section, value in (model or {}).items()
+                if section not in _NOT_THE_PART}
+    still_missing = [gap for gap in (model or {}).get("not_defined") or ()
+                     if not _answered(document, gap)]
+    return dict(document, not_defined=still_missing) if still_missing else document
 
 
 def _without_the_evidence(node):
@@ -1141,6 +1152,46 @@ def _without_the_evidence(node):
         return [_without_the_evidence(entry) for entry in node
                 if not _superseded(entry)]
     return node
+
+
+def _answered(document, gap):
+    """
+    Whether *document* carries a value at what *gap* says is missing.
+
+    A gap is prose and an address is not, so what the two share is words: every
+    step of the address is named in the entry, and the innermost of them — the
+    field — is named ahead of what carries it. That order is what tells "the
+    width of the ring split", which the split's own width answers, from "the
+    lengthwise position from the left mounting-hole axis", which the hole's
+    axis does not: the second names the datum the missing value would be
+    measured from, and a datum is not what the entry lacks.
+
+    The conservative way round deliberately. A retirement missed leaves a gap
+    on the list that something has answered, which is untidy; a gap retired
+    that nobody answered goes off the Gate taking with it the views it was
+    looked in, and those are what let a user point at the view that was missed.
+    """
+    said = _in_the_same_words(_named(gap, ("what",)) or "")
+    return bool(said) and any(_named_ahead(said, at.split(UNDER)[1:] or [at])
+                              for at, _ in _each_value(document, ""))
+
+
+def _named_ahead(said, steps):
+    """Whether *said* names every step of an address, the innermost of them first."""
+    where = [_where_it_is_named(said, _in_the_same_words(step)) for step in steps]
+    return None not in where and where[-1] == min(where)
+
+
+def _where_it_is_named(said, step):
+    """Where *said* says *step* whole, rather than inside a longer word."""
+    found = re.search(r"(?<![a-z0-9])%s(?![a-z0-9])" % re.escape(step), said)
+    return found.start() if found else None
+
+
+def _in_the_same_words(said):
+    """One phrase with the difference between two ways of writing it gone."""
+    return " ".join(word for word in _ONE_WORD_FROM_THE_NEXT.split(str(said).lower())
+                    if word)
 
 
 def measured_from_what_is_gone(document, evidence) -> list:

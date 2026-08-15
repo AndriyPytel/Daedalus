@@ -1938,6 +1938,92 @@ def test_a_run_asked_for_the_earlier_revision_re_measures_nothing():
     assert entry_at(document, MEASURED_FROM_A_DELETED_FACE[0])["value"] == "108 mm"
 
 
+ANSWERED_BEFORE_IT_DISTILLED = {
+    "the exact lengthwise position and complete dimensional profile of the arm cutout":
+        "features \u2192 arm-cutout \u2192 profile",
+    "the width of the ring split and the meaning of the separate 1 mm and 2 mm "
+    "callouts at the split": "features \u2192 ring-split \u2192 width",
+}
+
+NOBODY_PRINTED_A_TOLERANCE = {"what": "general dimensional tolerances",
+                              "looked_in": ["notes, page 1", "title block, page 1"]}
+
+
+def _under_the_heading(shown, heading):
+    """The lines one section of the rendered part is written on."""
+    lines = shown.split("\n")
+    written = []
+    for line in lines[lines.index(heading) + 1:]:
+        if not line.startswith(" "):
+            break
+        written.append(line)
+    return written
+
+
+def test_a_gap_the_run_answered_is_not_a_gap_on_the_document():
+    """
+    The recorded run of the 2023 pipe clamp put three gaps to the drawing and
+    the drawing answered two: the profile of the arm cutout, and the width of
+    the ring split off the 1 mm and 2 mm callouts either side of it. Both value
+    and gap then stood on the description, so the Gate showed a person a value
+    beside a note saying nobody had supplied one (FCC-153).
+    """
+    document, logged, _ = _the_clamp_as_it_was_read()
+    answered = [gap for gap in logged["not_defined"]
+                if said_at(document, ANSWERED_BEFORE_IT_DISTILLED.get(gap["what"], ""))]
+
+    assert len(answered) == 2
+    assert [gap for gap in document["not_defined"] if gap in answered] == []
+
+
+def test_a_gap_nobody_answered_reaches_the_gate_with_the_views_it_was_looked_in():
+    """
+    The third of them nobody ever answered: neither page prints a general
+    tolerance. It survives whole, views and all, because the views it was
+    looked in are what let a user point at the one that was missed.
+    """
+    document, _, _ = _the_clamp_as_it_was_read()
+
+    assert document["not_defined"] == [NOBODY_PRINTED_A_TOLERANCE]
+
+
+def test_the_evidence_keeps_every_gap_the_reading_held():
+    """
+    Retiring is not deleting. What nobody had supplied while Design was still
+    reading is part of the reading, and the log beside the document is where
+    the whole of it stays (ADR-0019).
+    """
+    document, logged, _ = _the_clamp_as_it_was_read()
+
+    assert logged["not_defined"] == merge({}, THE_2023_CLAMP)["not_defined"]
+    assert len(logged["not_defined"]) == len(document["not_defined"]) + 2
+
+
+def test_the_gaps_the_gate_stands_over_are_the_gaps_plan_is_handed():
+    """
+    One list, because there is one document: the Gate stands over the
+    description the Plan was made from, and `what_the_part_is` is that same
+    rendering of it, so a gap cannot be open in one and closed in the other.
+    Neither of them is what nobody had supplied when the sheet was first read —
+    that is the reading, and it rides to the transcript whole.
+    """
+    _, events, llm, _ = drive([
+        design_reply(THE_2023_CLAMP),
+        plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
+        code_reply("clamp()"),
+        assertion_reply("assert True, 'the clamp'"),
+        verdict_reply("pass"),
+    ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
+
+    document = part_file.read(events.last(PART).data["path"])
+    handed = _turns_of(llm, "plan")[0]["what_the_part_is"]
+
+    assert render(document) == handed
+    assert _under_the_heading(handed, "Not defined") == [
+        "  - general dimensional tolerances",
+        "    looked in: notes, page 1, title block, page 1"]
+
+
 def _reaches(function, called):
     """Whether *function* names `part_file.<called>` anywhere in its body."""
     return any(isinstance(node, ast.Attribute) and node.attr == called
