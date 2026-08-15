@@ -12,6 +12,7 @@ SHEETS = {
         HERE / "modelmania/model-mania_-in-person-2023 copy.pdf"),
 }
 DESCRIBED = HERE / "recorded/described_numbers.json"
+READING_2023 = HERE / "recorded/reading_2023_clamp.json"
 
 
 def read_sheets(tmp_path_factory):
@@ -28,6 +29,16 @@ def read_sheets(tmp_path_factory):
 def described_numbers():
     """The numbers stated by the recorded descriptions, grouped by their sheet."""
     with DESCRIBED.open(encoding="utf-8") as reading:
+        return json.load(reading)
+
+
+def the_2023_clamp_as_read():
+    """
+    The whole of what Design gathered on the recorded run of the 2023 pipe clamp
+    (`logs/sessions/fe663c12890b4d4497ad458136dfa880.jsonl`), which is not in
+    the repo.
+    """
+    with READING_2023.open(encoding="utf-8") as reading:
         return json.load(reading)
 
 

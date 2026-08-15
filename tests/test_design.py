@@ -10,9 +10,9 @@ import json
 
 from core import design
 from core.design import (
-    UNDER, corrected, crosswise, entries, entry_at, grounded, merge,
-    read_off_the_wrong_view, render, said_at, settled_by_the_tracing,
-    where_the_direction_is,
+    UNDER, corrected, crosswise, decided_for_you, distilled, entries, entry_at,
+    grounded, merge, read_off_the_wrong_view, render, said_at,
+    settled_by_the_tracing, where_the_direction_is,
 )
 
 
@@ -1327,3 +1327,51 @@ def test_a_tracing_already_written_in_is_not_written_again():
                                             "flag": "assumed"}, finding["stands"])
 
     assert settled_by_the_tracing(model) == []
+
+
+THE_BORE_AND_ITS_EVIDENCE = {
+    "printed_on_the_sheet": [{"callout": "\u00d842", "view": "the front elevation"}],
+    "datums": [{"name": "the left end face", "is": "the flat face at the left"}],
+    "envelope": {"length": _read("108 mm")},
+    "features": [{"id": "ring-bore", "kind": "\u00d842 bore", "topology": "through",
+                  "axis": {"value": "the depth", "flag": "derived",
+                           "from": "the front elevation's line work",
+                           "round_in": "the front elevation"},
+                  "position": {"the left end face": {"value": "65.5 mm",
+                                                     "flag": "assumed",
+                                                     "because": "half the length"}},
+                  "seen_in": ["the front elevation"]}],
+    "conflicts": [{"about": "envelope \u2192 length", "stands": "108 mm",
+                   "was_also_said": "180 mm"}],
+    "not_defined": [{"what": "the material", "looked_in": ["the title block"]}],
+}
+
+
+def test_the_document_is_the_part_without_the_evidence_that_settled_it():
+    """
+    The second of Design's two steps. What goes is what proves a value rather
+    than states it — the sweep of the sheet, the disagreements, the gaps, what
+    fixed a derived value and the views it was read in — and what stays is the
+    part, entry for entry: the same addresses `entries` has always walked, so
+    the Acceptance is the same list either way.
+    """
+    document = distilled(THE_BORE_AND_ITS_EVIDENCE)
+    bore = document["features"][0]
+
+    assert list(document) == ["datums", "envelope", "features"]
+    assert bore["axis"] == {"value": "the depth", "flag": "derived"}
+    assert "seen_in" not in bore
+    assert [entry["about"] for entry in entries(document)] == \
+        [entry["about"] for entry in entries(THE_BORE_AND_ITS_EVIDENCE)]
+
+
+def test_a_value_the_model_settled_says_so_in_the_document():
+    """
+    `because` is not the proof of a number off the sheet: it is what the model
+    settled a value the sheet never gave, which the Gate shows through
+    `decided_for_you` and the user overrules in the file.
+    """
+    document = distilled(THE_BORE_AND_ITS_EVIDENCE)
+
+    assert decided_for_you(document) == decided_for_you(THE_BORE_AND_ITS_EVIDENCE)
+    assert decided_for_you(document)[0].endswith("half the length")

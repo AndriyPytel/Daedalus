@@ -35,6 +35,7 @@ outside called rounded and carried by nothing, an axis pointing along the
 direction it is placed in, and a number no sheet prints — so that one run
 reaches all eight Design call sites.
 """
+import ast
 import base64
 import json
 import math
@@ -53,13 +54,14 @@ from core import loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
 from core.design import (
-    UNDER, decided_for_you, entries, entry_at, merge, pointing,
+    UNDER, decided_for_you, distilled, entries, entry_at, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
 from core.loop import (
     PROMPTS, Budgets, prompt, revisions_ceiling, run,
 )
 from core.tools import ToolError, ToolRegistry
+from tests import modelmania_harness
 
 SNAPSHOT = {"document": "Unnamed", "objects": [], "object_count": 0,
             "active_body": None, "selection": []}
@@ -138,10 +140,11 @@ def plan_reply(*steps, thinking=None, satisfies=None):
 
 
 def _grown(models):
+    """The description as the run holds it: merged, then distilled to the document."""
     grown = {}
     for model in models:
         grown = merge(grown, model)
-    return grown
+    return distilled(grown)
 
 
 def everything(*models):
@@ -712,7 +715,7 @@ def test_the_part_travels_as_a_structure_and_reaches_the_gate_laid_out():
     The structure is the point: it is what the merge can refuse to overwrite,
     and what the Plan Gate can show as datums, an envelope and features rather
     than as paragraphs. It rides the stream as the model and reaches Plan as the
-    same thing the user was shown. FCC-87, FCC-93.
+    document distilled out of it, laid out the same way. FCC-87, FCC-93.
     """
     _, events, llm, _ = drive([
         design_reply(A_PART),
@@ -725,8 +728,8 @@ def test_the_part_travels_as_a_structure_and_reaches_the_gate_laid_out():
     assert events.first(DESIGN).data["model"] == A_PART, "the structure was flattened away"
 
     shown = json.loads(llm.calls[1][-1]["content"])["what_the_part_is"]
-    assert shown == render(A_PART), "Plan and the Gate were shown different things"
-    for heading in ("Datums", "Envelope", "Features", "Not defined"):
+    assert shown == render(distilled(A_PART)), "Plan was shown something else again"
+    for heading in ("Datums", "Envelope", "Features"):
         assert heading in shown
     assert "the left end face: 15 mm (read)" in shown
     assert "{" not in shown, "Plan was handed a JSON dump"
@@ -1640,6 +1643,136 @@ def test_the_file_says_which_sheet_the_part_was_read_from():
     assert read_from["views"], "the views it was read from are not recorded"
 
 
+THE_2023_CLAMP = modelmania_harness.the_2023_clamp_as_read()
+
+
+def test_plan_is_handed_the_document_and_not_everything_design_read():
+    """
+    The recorded run of the 2023 pipe clamp handed Plan every scrap of evidence
+    Design had gathered — a sweep of every callout on the sheet, and every
+    disagreement, none of which is the part. Distilled it is a document a
+    person reads at a sitting, and both numbers here are that reading's.
+    """
+    _, _, llm, _ = drive([
+        design_reply(THE_2023_CLAMP),
+        plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
+        code_reply("clamp()"),
+        assertion_reply("assert True, 'the clamp'"),
+        verdict_reply("pass"),
+    ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
+
+    handed = _turns_of(llm, "plan")[0]["what_the_part_is"]
+    assert len(render(merge({}, THE_2023_CLAMP))) > 45_000, \
+        "this is no longer the reading the run took"
+    assert len(handed) < 9_000, "Plan is being handed the evidence again"
+
+
+def test_the_file_the_user_opens_is_the_document_the_run_was_planned_from():
+    """
+    The reading and the request used to be one rendering of the same undistilled
+    model each, so the file a user opens to correct an axis held the evidence
+    as well. One document now: what `part_file.read` hands back is what Plan was
+    asked to account for, described and measured alike.
+    """
+    _, events, llm, _ = drive([
+        design_reply(A_PART),
+        plan_reply("Only", satisfies=everything(A_PART)),
+        code_reply("box()"),
+        assertion_reply("assert True"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    request = _turns_of(llm, "plan")[0]
+    document = part_file.read(events.last(PART).data["path"])
+    assert document == distilled(merge({}, A_PART))
+    assert render(document) == request["what_the_part_is"]
+    assert loop._acceptance_of(document) == request["what_the_plan_must_satisfy"]
+
+
+def test_the_evidence_is_logged_beside_the_reading_distilled_out_of_it():
+    """
+    Nothing downstream needs the proof of a number, and whoever asks tomorrow
+    where one came from needs all of it — so it is kept where they will already
+    be looking, under the name of the reading it belongs to.
+    """
+    _, events, _, _ = drive([
+        design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
+        design_reply({}),
+        plan_reply("Pad the outer profile",
+                   satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
+        code_reply("pad()"),
+        assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    written = events.last(PART).data["path"]
+    beside = part_file.evidence(written)
+    assert os.path.isfile(beside)
+    assert "conflicts" not in part_file.read(written)
+    assert "the two axes cross" in json.dumps(part_file.read(beside)["conflicts"])
+
+
+def _reaches(function, called):
+    """Whether *function* names `part_file.<called>` anywhere in its body."""
+    return any(isinstance(node, ast.Attribute) and node.attr == called
+               and isinstance(node.value, ast.Name) and node.value.id == "part_file"
+               for node in ast.walk(function))
+
+
+def test_nothing_past_the_reading_opens_the_evidence():
+    """
+    Read by nobody is the whole point of writing it down: a phase that reaches
+    back into the evidence is planning from what was distilled away, and the
+    distillation would be a rendering nobody is held to. Checked by reading the
+    source, the way every other architectural claim in this project is.
+    """
+    with open(loop.__file__, encoding="utf-8") as source:
+        written = ast.parse(source.read())
+
+    functions = [node for node in ast.walk(written)
+                 if isinstance(node, ast.FunctionDef)]
+    assert {function.name for function in functions
+            if _reaches(function, "logged") or _reaches(function, "evidence")} \
+        == {"_written_down"}
+    assert {function.name for function in functions
+            if any(isinstance(node, ast.Name) and node.id == "_written_down"
+                   for node in ast.walk(function))} == {"_describe_the_part"}
+
+
+A_BORE_AND_THE_EVIDENCE_FOR_IT = {
+    "envelope": {"length": read("108 mm")},
+    "features": [{"id": "ring-bore", "kind": "\u00d842 bore", "topology": "through",
+                  "axis": {"value": "the depth", "flag": "derived",
+                           "from": "the front elevation's line work: the ring is "
+                                   "drawn round at 42 across",
+                           "round_in": "the front elevation"},
+                  "position": {"the left end face": read("65.5 mm")},
+                  "seen_in": ["the front elevation", "the upper plan"]}],
+}
+
+
+def test_a_plan_citing_the_document_it_was_handed_leaves_nothing_unplanned():
+    """
+    The description and the Acceptance still come off one model, so a Step that
+    cites a line of the document it was shown is a Step that covers the entry
+    that line is (ADR-0020). A second Plan turn here would be the coverage check
+    reading a different list from the one Plan was handed.
+    """
+    result, _, llm, tools = drive([
+        design_reply(A_BORE_AND_THE_EVIDENCE_FOR_IT),
+        plan_reply("Bore the ring",
+                   satisfies=acceptance_of(A_BORE_AND_THE_EVIDENCE_FOR_IT)),
+        code_reply("bore()"),
+        assertion_reply("assert True, 'the bore'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["bore()"]
+    assert len(_turns_of(llm, "plan")) == 1, \
+        "the Plan was sent back over an entry it had cited"
+
+
 A_CLAMP_ENVELOPE = ["envelope → length between the ends: 108 mm (read)",
                     "envelope → depth front to rear: 30 mm (read)",
                     "envelope → height of the right lug: 30 mm (read)"]
@@ -1830,7 +1963,8 @@ def test_what_is_printed_on_the_sheet_is_written_by_the_reader_not_the_model():
         verdict_reply("pass"),
     ], attachments=[MODEL_MANIA])
 
-    swept = part_file.read(events.last(PART).data["path"])["printed_on_the_sheet"]
+    written = events.last(PART).data["path"]
+    swept = part_file.read(part_file.evidence(written))["printed_on_the_sheet"]
     assert {entry["callout"] for entry in swept} != {"Page 1: some numbers, two locations"}
     assert any(entry.get("off_by") is not None for entry in swept), \
         "what the sheet measures of its own numbers did not survive"
@@ -1878,22 +2012,6 @@ def test_two_holes_that_disagree_and_nothing_to_settle_them_reach_the_gate():
     assert events.first(BLOCKED) is None
     conflicts = json.dumps(events.last(DESIGN).data["model"]["conflicts"])
     assert "the two axes cross" in conflicts
-
-
-def test_the_disagreement_nobody_settled_is_in_the_reading():
-    """The reading is a file: what could not be settled is readable in it."""
-    _, events, _, _ = drive([
-        design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
-        design_reply({}),
-        plan_reply("Pad the outer profile",
-                   satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
-        code_reply("pad()"),
-        assertion_reply("assert True, 'the length'"),
-        verdict_reply("pass"),
-    ], attachments=[RENDER_PNG])
-
-    written = part_file.read(events.last(PART).data["path"])
-    assert "the two axes cross" in json.dumps(written["conflicts"])
 
 
 THE_CLAMP_READ_PROPERLY = {
@@ -2452,7 +2570,7 @@ def test_the_description_is_carried_into_execute_as_text():
 
     asked = llm.calls[2][-1]["content"]
     assert isinstance(asked, str), "Execute was sent a picture, not text"
-    assert json.loads(asked)["what_the_part_is"] == render(A_PART)
+    assert json.loads(asked)["what_the_part_is"] == render(distilled(A_PART))
 
 
 def test_the_description_reaches_plan_under_one_key():
@@ -2467,7 +2585,7 @@ def test_the_description_reaches_plan_under_one_key():
                          attachments=[RENDER_PNG])
 
     request = json.loads(llm.calls[1][-1]["content"])
-    assert request["what_the_part_is"] == render(A_PART)
+    assert request["what_the_part_is"] == render(distilled(A_PART))
     assert "how_the_drawing_was_read" not in request
     assert "you_asked_and_were_answered" not in request
 
@@ -2493,7 +2611,7 @@ def test_a_revision_plans_from_the_same_description_and_does_not_read_again():
 
     assert len(events.of(DESIGN)) == 1
     replan = json.loads(llm.calls[5][-1]["content"])
-    assert replan["what_the_part_is"] == render(A_PART)
+    assert replan["what_the_part_is"] == render(distilled(A_PART))
     assert replan["what_went_wrong_last_time"] == "not right"
 
 
@@ -3517,7 +3635,7 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
     assert [b for b in re_read if b.get("type") == "image_url"], "it re-read without the sheet"
     asked_again = json.loads(re_read[0]["text"])
     assert asked_again["the_question"] == THROUGH_OR_NOT
-    assert asked_again["the_part_as_you_described_it"] == A_PART
+    assert asked_again["the_part_as_you_described_it"] == distilled(A_PART)
 
     to_plan = json.loads(llm.calls[3][-1]["content"])
     assert "- pocket-front" in to_plan["what_the_part_is"]

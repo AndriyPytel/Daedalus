@@ -7,8 +7,14 @@ in the Plan request and into the transcript as one event, and neither can be
 opened, diffed or corrected. The reading is the part of the pipeline that is
 wrong most often and it was the only part with no record of its own (FCC-108).
 
-One reading is one file. A second reading of the same sheet is a second file
-beside the first, named by when it was taken, so "what did the reading change"
+One reading is two files: the document Design distilled, which is the reading,
+and beside it the whole of what Design gathered to arrive at it. Downstream
+opens the first and nothing opens the second — the proof of a number is worth
+nothing once the number is settled, and worth having for the person who asks
+tomorrow where it came from.
+
+A second reading of the same sheet is a second file beside the first, named by
+when it was taken, so "what did the reading change"
 is a diff rather than an afternoon with two transcripts. The name carries the
 sheet, enough of its digest to tell two drawings of the same name apart and not
 so much that the name stops being readable, and the time the reading was taken:
@@ -43,6 +49,8 @@ SCHEMA = "fcc.part/1"
 WHEN = "%Y%m%d-%H%M%S-%f"
 
 WITHOUT_A_SHEET = "the-intent"
+
+_EVIDENCE = "-evidence.yaml"
 
 _DIGEST = 8
 
@@ -81,6 +89,28 @@ def saved(model, source, into=None, read_from=None, asked_for=None) -> str:
         yaml.safe_dump(dict(_head(source, read_from, asked_for), **_ordered(model)), handle,
                        sort_keys=False, allow_unicode=True, default_flow_style=False)
     return path
+
+
+def logged(model, reading) -> None:
+    """
+    The whole of what was read, as a log beside the reading distilled from it.
+
+    Once the document is distilled the proof of a number is worth nothing to the
+    run — it is planned, checked and built out of the reading — and it is worth
+    something to whoever asks afterwards where a number came from. So it is kept
+    where they are already looking, under the name of the reading it belongs to,
+    and nothing downstream opens it.
+    """
+    if not model or not reading or yaml is None:
+        return
+    with open(evidence(reading), "w", encoding="utf-8") as handle:
+        yaml.safe_dump(_ordered(model), handle, sort_keys=False, allow_unicode=True,
+                       default_flow_style=False)
+
+
+def evidence(reading) -> str:
+    """Where that log is: the reading's own name, said to be the evidence."""
+    return os.path.splitext(reading)[0] + _EVIDENCE if reading else ""
 
 
 def read(path) -> dict:

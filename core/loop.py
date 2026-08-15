@@ -37,7 +37,7 @@ from typing import List
 
 from core.arithmetic import wrong_sums
 from core.design import (
-    ROUND_IN, UNDER, corrected, decided_for_you, entries, entry_at, merge,
+    ROUND_IN, UNDER, corrected, decided_for_you, distilled, entries, entry_at, merge,
     nobody_carries_the_outside, read_off_the_wrong_view, render, said_at,
     settled_by_the_tracing, what_the_trace_says, where_the_direction_is,
 )
@@ -1813,6 +1813,13 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
     those words do not carry, so a text-only run reaches the Gate with a
     description, an Acceptance list and a reading on disk rather than with
     nothing at all.
+
+    It ends in two steps: gather every piece of evidence there is, then distil
+    it (ADR-0024). What leaves the phase is the document — what the part is —
+    and the evidence that settled it stays in the log beside the file, so every
+    phase after this one is handed the part rather than the reading of it.
+    `tests/test_loop.py` measures both against the recorded run of the 2023
+    pipe clamp.
     """
     the_part, question = design({"intent": intent}, llm, events, attachments)
     the_part = merge({}, the_part)
@@ -1842,8 +1849,7 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
                      if disagreements else the_part)
     the_part = _every_direction_settled(the_part, _round_evidence(attachments))
     the_part = _the_tracing_governs(the_part)
-    the_part = _written_down(the_part, intent, attachments, events)
-    return the_part
+    return _written_down(distilled(the_part), the_part, intent, attachments, events)
 
 
 def _every_number_is_the_sheets(the_part, intent, attachments, llm, events, budgets,
@@ -2259,15 +2265,21 @@ def _the_sweep_is_the_sheets(the_part, attachments):
     return dict(the_part, printed_on_the_sheet=swept)
 
 
-def _written_down(the_part, intent, attachments, events):
+def _written_down(document, gathered, intent, attachments, events):
     """
-    The reading saved as a file, and read back out of it.
+    The document saved as a file, read back out of it, and the evidence beside it.
 
     Read back rather than passed on, because a file nothing downstream uses is
     a file nobody keeps true. From here on the run is planned, checked and
     built out of what is on disk, so a user who opens it and corrects an axis
     has corrected the run — and two readings of one sheet are two files to
     diff rather than two transcripts to compare (FCC-108).
+
+    What is on disk is what came out of the distil step, and the whole of what
+    Design gathered is the log beside it. The reading is the requirement, and a
+    requirement nobody can hold in their head is one nobody checks; the proof of
+    each of its numbers is what a person goes looking for afterwards and no
+    phase needs, so it is a file with the same name and nothing reads it.
 
     The Intent is written beside the sheet it was read off, because a reading
     is the requirement one run is held to, and what was asked is what makes it
@@ -2280,10 +2292,11 @@ def _written_down(the_part, intent, attachments, events):
     """
     source = next((path for path in attachments if sheet_reader.read(path)),
                   attachments[0] if attachments else "")
-    path = part_file.saved(the_part, source, asked_for=intent,
+    path = part_file.saved(document, source, asked_for=intent,
                            read_from=_how_it_was_read(sheet_reader.read(source)))
     if not path:
-        return the_part
+        return document
+    part_file.logged(gathered, path)
     events.emit(PART, path=path)
     return part_file.read(path)
 

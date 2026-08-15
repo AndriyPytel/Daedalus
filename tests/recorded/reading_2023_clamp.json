@@ -1,0 +1,1643 @@
+{
+ "conflicts": [
+  {
+   "page_1_lower_centre_view": "Ø11 ↧6 (C'BORE FOR M6 SHCS), which denotes a circular counterbore",
+   "page_1_upper_centre_view": "HEX Ø11 ↧6, and the view shows a hexagonal recess at the same right-lug hole",
+   "what": "the profile of the Ø11 by 6 mm deep right-lug recess"
+  },
+  {
+   "about": "envelope → the shape of the outside",
+   "stands": "no feature carries the outer contour, so the outside of the part is whatever profile the envelope's overall sizes are padded into",
+   "was_also_said": "features → left-lug-hole → position → the leftmost tangent plane of the left lug → from: the lower centre view, page 1 line work: the left lug outer end is R15 and the hole centre is concentric with that rounded end"
+  },
+  {
+   "about": "datums → the rightmost end face",
+   "stands": "the planar extreme face at the right end of the right lug",
+   "was_also_said": "features → left-lug-hole → position → the leftmost tangent plane of the left lug → from: the lower centre view, page 1 line work: the left lug outer end is R15 and the hole centre is concentric with that rounded end"
+  },
+  {
+   "about": "features → right-lug-hex-recess → axis",
+   "stands": "nothing records which way its axis points, so it is built along the base profile like everything else",
+   "was_also_said": "hexagonal Ø11 recess at the right-lug hole"
+  },
+  {
+   "about": "features → ring-split → axis",
+   "stands": "nothing records which way its axis points, so it is built along the base profile like everything else",
+   "was_also_said": "radial split through the right side of the clamp ring"
+  },
+  {
+   "about": "features → left-lug-hole → position → the centre plane of the part depth front to rear",
+   "stands": "the feature goes through, so it starts at no face and is placed in the depth by nothing — and its axis points along the depth, so either the axis or this position was read off the wrong view",
+   "was_also_said": "features → left-lug-hole → axis: parallel to the depth front to rear"
+  },
+  {
+   "about": "features → right-lug-hole → position → the centre plane of the part depth front to rear",
+   "stands": "the feature goes through, so it starts at no face and is placed in the depth by nothing — and its axis points along the depth, so either the axis or this position was read off the wrong view",
+   "was_also_said": "features → right-lug-hole → axis: parallel to the depth front to rear"
+  },
+  {
+   "about": "datums → the angled free-end face of the left arm",
+   "stands": "the planar free end face of the 45.0° left arm",
+   "was_also_said": "features → left-lug-hole → position → the leftmost tangent plane of the left lug → from: the lower centre view, page 1 line work: the left lug outer end is R15 and the hole centre is concentric with that rounded end"
+  },
+  {
+   "about": "features → right-lug-hole → axis",
+   "stands": "this is round in lower centre view, page 1, and left-arm-slot is round in VIEW C-C, page 2 — two views, so the two axes cross, and these were written the same way",
+   "was_also_said": "features → right-lug-hole → axis: parallel to the depth front to rear"
+  },
+  {
+   "about": "features → left-arm-slot → axis",
+   "stands": "this is round in VIEW C-C, page 2, and right-lug-hole is round in lower centre view, page 1 — two views, so the two axes cross, and these were written the same way",
+   "was_also_said": "features → left-arm-slot → axis: parallel to the depth front to rear"
+  },
+  {
+   "about": "features → right-lug-hole → axis",
+   "stands": {
+    "because": "the feature goes through, so it starts at no face and is placed in the depth by nothing — and its axis points along the depth, so either the axis or this position was read off the wrong view",
+    "flag": "read",
+    "round_in": "the lower centre of the sheet, the first one, on page 1",
+    "value": "perpendicular to the plane of the length and the depth, parallel to the height",
+    "was": "parallel to the depth front to rear"
+   },
+   "was_also_said": {
+    "flag": "read",
+    "round_in": "the lower centre of the sheet, the first one, on page 1",
+    "value": "perpendicular to the plane of the length and the depth, parallel to the height"
+   }
+  },
+  {
+   "about": "features → right-lug-hole → round_in",
+   "stands": "lower centre view, page 1",
+   "was_also_said": "the lower centre of the sheet, the first one, on page 1"
+  },
+  {
+   "about": "features → left-arm-slot → axis",
+   "stands": {
+    "because": "this is round in VIEW C-C, page 2, and right-lug-hole is round in lower centre view, page 1 — two views, so the two axes cross, and these were written the same way",
+    "flag": "read",
+    "round_in": "VIEW C-C, on page 2",
+    "value": "perpendicular to the plane of the length and the depth, parallel to the height",
+    "was": "parallel to the depth front to rear"
+   },
+   "was_also_said": {
+    "flag": "read",
+    "round_in": "VIEW C-C, on page 2",
+    "value": "perpendicular to the plane of the length and the depth, parallel to the height"
+   }
+  },
+  {
+   "about": "features → right-lug-hole → axis",
+   "stands": "this is round in the lower centre of the sheet, the first one, on page 1, and left-arm-slot is round in VIEW C-C, on page 2 — two views, so the two axes cross, and these were written the same way",
+   "was_also_said": "features → right-lug-hole → axis: perpendicular to the plane of the length and the depth, parallel to the height"
+  },
+  {
+   "about": "features → left-arm-slot → axis",
+   "stands": "this is round in VIEW C-C, on page 2, and right-lug-hole is round in the lower centre of the sheet, the first one, on page 1 — two views, so the two axes cross, and these were written the same way",
+   "was_also_said": "features → left-arm-slot → axis: perpendicular to the plane of the length and the depth, parallel to the height"
+  },
+  {
+   "about": "features → right-lug-hole → axis",
+   "evidence": "SECTION A-A, page 1 shows the right-lug clearance hole and its counterbore extending horizontally through the 30 mm part depth; the hole is round in the lower centre and upper centre views, page 1, which are views normal to the depth direction.",
+   "stands": "perpendicular to the plane of the length and the height, parallel to the depth front to rear",
+   "was_also_said": "perpendicular to the plane of the length and the depth, parallel to the height"
+  },
+  {
+   "about": "features → arm-cutout → topology and plane",
+   "evidence": "the lower centre view on page 1 shows the cutout profile in plan, while VIEW B shows its section through the part height.",
+   "stands": "The through arm cutout is shown round-ended and tapered in the length-and-depth view, and passes through the part along the height.",
+   "was_also_said": "through the part depth front to rear; profile in the plane of the length and the height"
+  },
+  {
+   "about": "features → angled-left-arm → 73 mm extent",
+   "evidence": "VIEW C-C, page 2: the 73 mm dimension arrow terminates on the outer ring contour, while the ring axis is separately marked at the circle centre.",
+   "stands": "The 73 mm dimension is along the 45.0° arm from its free-end face to the outer Ø50 ring contour at the lower-left tangent region; it is not dimensioned to the ring axis.",
+   "was_also_said": "73 mm long from its angled free-end face to the ring axis"
+  },
+  {
+   "about": "envelope → length between the leftmost tangent plane of the left lug and the rightmost end face",
+   "evidence": "page 2 instructs that features inside red revision clouds are changed; VIEW C-C replaces the Phase 1 left lug and horizontal arm with the 45.0° angled arm.",
+   "stands": "108 mm is a Phase 1 overall measured from the rounded left lug that page 2 replaces with the angled left arm; it is not an envelope datum for the Phase 2 arm.",
+   "was_also_said": "108 mm retained as the finished-part length between the leftmost tangent plane of the left lug and the rightmost end face"
+  },
+  {
+   "about": "features → right-lug-hex-recess → profile",
+   "evidence": "the upper centre view on page 1 explicitly labels and draws the recess as HEX Ø11 ↧6; the lower-view C'BORE note identifies the same M6 screw recess but does not override its explicitly drawn hexagonal profile.",
+   "stands": "hexagonal recess, Ø11 by 6 mm deep, concentric with the right-lug clearance hole",
+   "was_also_said": "circular counterbore inferred from the generic C'BORE note"
+  },
+  {
+   "about": "features → ring-split → position → the ring axis",
+   "stands": {
+    "flag": "read",
+    "value": "centred on the ring axis"
+   },
+   "was_also_said": {
+    "flag": "read",
+    "value": "the upper split face is 1 mm above the ring axis and the lower split face is 2 mm below the ring axis"
+   }
+  },
+  {
+   "about": "features → arm-cutout → position → the bottom tangent plane of the ring",
+   "stands": "the feature goes through, so it starts at no face and is placed in the height by nothing — and its axis points along the height, so either the axis or this position was read off the wrong view",
+   "was_also_said": "features → arm-cutout → axis: parallel to the height"
+  },
+  {
+   "about": "features → right-lug-hole → axis",
+   "evidence": "The Ø6.6 hole is round in the lower centre and upper centre views on page 1, both views normal to the depth direction; SECTION A-A shows the clearance hole and 6 mm deep recess extending through the 30 mm depth.",
+   "stands": "perpendicular to the plane of the length and the height, parallel to the depth front to rear",
+   "was_also_said": "perpendicular to the plane of the length and the depth, parallel to the height"
+  },
+  {
+   "about": "features → right-lug-hex-recess → axis",
+   "evidence": "The hexagonal recess is drawn around the right-lug hole in the upper centre view and SECTION A-A shows its 6 mm depth along the part depth.",
+   "stands": "perpendicular to the plane of the length and the height, parallel to the depth front to rear, concentric with the right-lug-hole axis",
+   "was_also_said": "an axis parallel to the height"
+  },
+  {
+   "about": "the finished revision represented by the model",
+   "evidence": "Notes 3 and 4 on page 2 and the red revision clouds around the 45.0° arm and the counterbored slot.",
+   "stands": "Phase 2: page 2 directs that red-cloud changes are made and all other Phase 1 dimensions remain the same; the angled-left-arm and left-arm-slot are required finished-part features, while the Phase 1 horizontal left-arm and left-lug-hole remain superseded history only",
+   "was_also_said": "a Phase 1-only model excluding the page-2 revisions"
+  },
+  {
+   "about": "features → arm-cutout → axis",
+   "stands": {
+    "flag": "read",
+    "value": "parallel to the height"
+   },
+   "was_also_said": {
+    "flag": "read",
+    "value": "parallel to the height, perpendicular to the plane of the length and the depth"
+   }
+  },
+  {
+   "about": "features → arm-cutout → position → the ring axis",
+   "stands": {
+    "flag": "derived",
+    "from": "the lower centre view and VIEW B, page 1",
+    "value": "the cutout is symmetric about the ring axis"
+   },
+   "was_also_said": {
+    "flag": "read",
+    "value": "the cutout's terminating end is at the ring-axis station, 30 mm from its rounded left end"
+   }
+  },
+  {
+   "about": "features → ring-split → position → the width",
+   "stands": "the feature has a size in the width and no position in the width against a datum that fixes it, and a position nobody named defaults to centred",
+   "was_also_said": "features → ring-split → width: {'value': '3 mm between the split faces', 'flag': 'derived', 'from': 'the 1 mm callout from the ring axis to the upper split face and the 2 mm callout from the ring axis to the lower split face in the middle centre view, page 1'}"
+  },
+  {
+   "about": "features → right-lug-hole and right-lug-hex-recess → common axis direction",
+   "evidence": "The right-lug hole and hex recess are circular/hexagonal in the lower-centre and upper-centre plan views on page 1, and SECTION A-A shows both extending across the part depth.",
+   "stands": "Both the Ø6.6 right-lug clearance hole and its concentric HEX Ø11 × 6 recess have an axis perpendicular to the plane of the length and the height, parallel to the depth front to rear.",
+   "was_also_said": "right-lug-hole and left-arm-slot axes parallel to the height"
+  },
+  {
+   "about": "features → arm-cutout → profile, plane, and axis",
+   "evidence": "The lower-centre view on page 1 supplies the length-and-depth profile and its 30 mm dimension; VIEW B is the height-direction section through that same cutout.",
+   "stands": "The arm cutout profile lies in the plane of the length and the depth and extends through the part parallel to the height. In the lower-centre view on page 1, its rounded left end has vertical straight extent between the depth stations 40.86 and 52.34 mm, rounded into the profile walls by approximately R4.3 corners; its upper and lower walls are at depth stations 55.89 and 37.31 mm and run to the ring-axis station at approximately 90.49 mm. The printed 30 mm dimension runs from the cutout's left-end station at x=60.71 mm to the ring axis at x=90.73 mm.",
+   "was_also_said": "a tapered through cutout in the plane of the length and the height, through the part depth front to rear"
+  },
+  {
+   "about": "features → ring-split → width and heightwise position",
+   "evidence": "The page-1 middle-centre view dimensions the upper split face from the ring axis as 1 mm and the lower split face from the ring axis as 2 mm.",
+   "stands": "The ring split is 3 mm wide between its two faces. Its upper split face is 1 mm above the ring axis and its lower split face is 2 mm below the ring axis; therefore the split centre plane is 0.5 mm below the ring axis, not centred on it.",
+   "was_also_said": "the ring split is centred on the ring axis"
+  },
+  {
+   "about": "envelope → Phase 2 finished-part length",
+   "evidence": "Page 2 directs that the red-cloud revisions replace the Phase 1 geometry; VIEW C-C replaces the left lug and horizontal arm with the angled arm. No Phase-2 overall dimension to the angled free-end face is printed.",
+   "stands": "The finished Phase 2 model does not retain the Phase 1 108 mm envelope, because its left-hand measurement face was the leftmost tangent plane of the replaced left lug. Page 2 supplies no replacement overall length between the angled-arm free end and the rightmost end face.",
+   "was_also_said": "108 mm remains the finished-part length between the leftmost tangent plane of the left lug and the rightmost end face"
+  },
+  {
+   "about": "features → angled-left-arm → 73 mm endpoint",
+   "evidence": "In VIEW C-C on page 2, the 73 mm dimension arrow ends on the outer ring contour, while the ring axis is separately shown by the circular centre mark.",
+   "stands": "The 73 mm dimension is along the 45.0° arm from its free-end face to the outer Ø50 ring contour at the lower-left arm-to-ring tangent region, not to the ring axis.",
+   "was_also_said": "73 mm from the angled free-end face to the ring axis"
+  }
+ ],
+ "datums": [
+  {
+   "fixes": "the length",
+   "is": "the extreme left tangent plane of the rounded left lug",
+   "name": "the leftmost tangent plane of the left lug"
+  },
+  {
+   "fixes": "the length",
+   "is": "the planar extreme face at the right end of the right lug",
+   "name": "the rightmost end face"
+  },
+  {
+   "fixes": "the length and the height",
+   "is": "the axis through the centres of the Ø50 outer ring and Ø42 bore",
+   "name": "the ring axis"
+  },
+  {
+   "fixes": "the depth front to rear",
+   "is": "one exterior face of the part normal to the ring axis",
+   "name": "the front face"
+  },
+  {
+   "fixes": "the height",
+   "is": "the horizontal tangent plane at the lowest point of the Ø50 outer ring",
+   "name": "the bottom tangent plane of the ring"
+  },
+  {
+   "fixes": "the depth front to rear",
+   "is": "the symmetry plane halfway between the front and rear exterior faces",
+   "name": "the centre plane of the part depth front to rear"
+  },
+  {
+   "fixes": "the length",
+   "is": "the planar free end face of the 45.0° left arm",
+   "name": "the angled free-end face of the left arm"
+  }
+ ],
+ "envelope": {
+  "depth front to rear between the exterior faces": {
+   "flag": "read",
+   "value": "30 mm"
+  },
+  "height between the bottom tangent plane of the ring and the top tangent plane of the Ø50 ring": {
+   "flag": "read",
+   "value": "50 mm"
+  },
+  "length between the leftmost tangent plane of the left lug and the rightmost end face": {
+   "flag": "read",
+   "value": "108 mm"
+  }
+ },
+ "features": [
+  {
+   "id": "outer-profile",
+   "kind": "forked clamp outer profile: a central circular ring, a left straight arm with a rounded left lug, and a right rounded lug",
+   "plane": {
+    "flag": "read",
+    "value": "the plane of the length and the height"
+   },
+   "position": {
+    "the leftmost tangent plane of the left lug": {
+     "flag": "read",
+     "value": "0 mm"
+    },
+    "the rightmost end face": {
+     "flag": "read",
+     "value": "108 mm from the leftmost tangent plane of the left lug"
+    },
+    "the ring axis": {
+     "flag": "read",
+     "value": "65.5 mm from the leftmost tangent plane of the left lug"
+    }
+   },
+   "seen_in": [
+    "middle centre view, page 1",
+    "lower centre view, page 1",
+    "upper centre view, page 1",
+    "SECTION A-A, page 1"
+   ],
+   "topology": "the profile lies in the plane of the length and the height and extends 30 mm front to rear"
+  },
+  {
+   "axis": {
+    "flag": "read",
+    "round_in": "middle centre view, page 1",
+    "value": "parallel to the depth front to rear, coincident with the ring axis"
+   },
+   "id": "ring-bore",
+   "kind": "Ø42 circular bore in the clamp ring",
+   "position": {
+    "the bottom tangent plane of the ring": {
+     "flag": "derived",
+     "from": "the Ø50 outer diameter and the arm bottom face flush with the ring's lowest tangent in the middle centre view, page 1",
+     "value": "25 mm"
+    },
+    "the leftmost tangent plane of the left lug": {
+     "flag": "read",
+     "value": "65.5 mm"
+    }
+   },
+   "seen_in": [
+    "middle centre view, page 1",
+    "SECTION A-A, page 1",
+    "VIEW B, page 1"
+   ],
+   "topology": "through 30 mm front to rear"
+  },
+  {
+   "axis": {
+    "flag": "read",
+    "round_in": "middle centre view, page 1",
+    "value": "parallel to the depth front to rear, coincident with the ring axis"
+   },
+   "id": "ring-outer-cylinder",
+   "kind": "Ø50 outer cylindrical ring",
+   "position": {
+    "the bottom tangent plane of the ring": {
+     "flag": "derived",
+     "from": "the Ø50 outer diameter and the arm bottom face flush with the ring's lowest tangent in the middle centre view, page 1",
+     "value": "25 mm"
+    },
+    "the leftmost tangent plane of the left lug": {
+     "flag": "read",
+     "value": "65.5 mm"
+    }
+   },
+   "seen_in": [
+    "middle centre view, page 1",
+    "SECTION A-A, page 1",
+    "VIEW B, page 1"
+   ],
+   "topology": "through 30 mm front to rear around the Ø42 bore"
+  },
+  {
+   "id": "left-arm",
+   "kind": "straight left arm joining the left lug to the lower tangent of the ring",
+   "plane": {
+    "flag": "read",
+    "value": "the plane of the length and the height"
+   },
+   "position": {
+    "the bottom tangent plane of the ring": {
+     "flag": "derived",
+     "from": "the middle centre view, page 1 shows the arm bottom face continuous with the ring's lower tangent",
+     "value": "0 mm"
+    },
+    "the leftmost tangent plane of the left lug": {
+     "flag": "read",
+     "value": "0 mm"
+    },
+    "the ring axis": {
+     "flag": "read",
+     "value": "65.5 mm from the leftmost tangent plane of the left lug"
+    }
+   },
+   "seen_in": [
+    "middle centre view, page 1",
+    "lower centre view, page 1",
+    "VIEW B, page 1"
+   ],
+   "superseded_by": "angled-left-arm",
+   "topology": "solid arm, 15 mm tall, flush with the ring's lower tangent plane"
+  },
+  {
+   "id": "right-lug",
+   "kind": "right lug with R12.5 rounded outer end",
+   "plane": {
+    "flag": "read",
+    "value": "the plane of the length and the height"
+   },
+   "position": {
+    "the bottom tangent plane of the ring": {
+     "flag": "derived",
+     "from": "the 30 mm lug height is centred on the ring axis in the middle centre view, page 1",
+     "value": "10 mm below the ring axis"
+    },
+    "the rightmost end face": {
+     "flag": "read",
+     "value": "0 mm"
+    },
+    "the ring axis": {
+     "flag": "read",
+     "value": "42.5 mm from the rightmost end face"
+    }
+   },
+   "radius": {
+    "flag": "read",
+    "value": "R12.5"
+   },
+   "seen_in": [
+    "middle centre view, page 1",
+    "lower centre view, page 1",
+    "upper centre view, page 1",
+    "SECTION A-A, page 1"
+   ],
+   "topology": "solid lug, 30 mm tall in the plane of the length and the height"
+  },
+  {
+   "axis": {
+    "flag": "read",
+    "round_in": "lower centre view, page 1",
+    "value": "parallel to the depth front to rear"
+   },
+   "id": "left-lug-hole",
+   "kind": "Ø6.6 clearance hole with Ø11 counterbore for M6 SHCS",
+   "position": {
+    "the centre plane of the part depth front to rear": {
+     "flag": "derived",
+     "from": "the 7 mm dimension from the exterior face and 14 mm lug width in the lower centre view, page 1",
+     "value": "0 mm"
+    },
+    "the leftmost tangent plane of the left lug": {
+     "flag": "derived",
+     "from": "the lower centre view, page 1 line work: the left lug outer end is R15 and the hole centre is concentric with that rounded end",
+     "value": "15 mm"
+    }
+   },
+   "round_in": "lower centre view, page 1",
+   "seen_in": [
+    "lower centre view, page 1",
+    "upper centre view, page 1",
+    "SECTION A-A, page 1"
+   ],
+   "superseded_by": "left-arm-slot",
+   "topology": "Ø6.6 through all; Ø11 counterbore 6 mm deep from the called-out exterior face"
+  },
+  {
+   "axis": {
+    "because": "the feature goes through, so it starts at no face and is placed in the depth by nothing — and its axis points along the depth, so either the axis or this position was read off the wrong view",
+    "flag": "read",
+    "round_in": "the lower centre of the sheet, the first one, on page 1",
+    "value": "perpendicular to the plane of the length and the depth, parallel to the height",
+    "was": "parallel to the depth front to rear"
+   },
+   "id": "right-lug-hole",
+   "kind": "Ø6.6 clearance hole for M6 SHCS with Ø11, 6 mm deep recess",
+   "position": {
+    "the centre plane of the part depth front to rear": {
+     "flag": "derived",
+     "from": "the right lug is symmetric about the depth centre plane in the lower centre and upper centre views, page 1",
+     "value": "0 mm"
+    },
+    "the rightmost end face": {
+     "flag": "derived",
+     "from": "the R12.5 rounded end and the hole centre concentric with that end in the lower centre view, page 1",
+     "value": "12.5 mm"
+    }
+   },
+   "round_in": "lower centre view, page 1",
+   "seen_in": [
+    "lower centre view, page 1",
+    "upper centre view, page 1",
+    "SECTION A-A, page 1"
+   ],
+   "topology": "Ø6.6 through all; recessed 6 mm deep from the called-out exterior face"
+  },
+  {
+   "axis": {
+    "flag": "read",
+    "round_in": "the upper centre of the sheet, on page 1",
+    "value": "parallel to the depth front to rear, coincident with the right-lug-hole axis"
+   },
+   "id": "right-lug-hex-recess",
+   "kind": "hexagonal Ø11 recess at the right-lug hole",
+   "plane": {
+    "flag": "read",
+    "value": "the plane of the length and the depth"
+   },
+   "position": {
+    "the centre plane of the part depth front to rear": {
+     "flag": "derived",
+     "from": "the upper centre and lower centre views on page 1 show the hexagonal recess concentric with, and symmetric about, the right-lug-hole axis",
+     "value": "0 mm"
+    },
+    "the right-lug-hole axis": {
+     "flag": "read",
+     "value": "concentric"
+    }
+   },
+   "seen_in": [
+    "upper centre view, page 1"
+   ],
+   "topology": "6 mm deep from the exterior face shown in the upper centre view"
+  },
+  {
+   "axis": {
+    "flag": "read",
+    "value": "parallel to the height"
+   },
+   "id": "arm-cutout",
+   "kind": "tapered through cutout in the left arm adjacent to the ring",
+   "plane": {
+    "flag": "read",
+    "value": "the plane of the length and the height"
+   },
+   "position": {
+    "the bottom tangent plane of the ring": {
+     "flag": "read",
+     "value": "the cutout opens above the arm bottom face and leaves material below it"
+    },
+    "the ring axis": {
+     "flag": "derived",
+     "from": "the lower centre view and VIEW B, page 1",
+     "value": "the cutout is symmetric about the ring axis"
+    }
+   },
+   "profile": {
+    "flag": "derived",
+    "from": "the 30 mm dimension in the lower centre view, page 1, and the cutout perimeter line work in the lower centre view and VIEW B, page 1",
+    "value": "through-cut profile in the plane of the length and the depth: its rounded left end is at the station 30 mm left of the ring axis; its upper and lower perimeter walls run from that rounded end to the ring-axis station, where the cutout terminates"
+   },
+   "profile_dimensions": {
+    "the front face": {
+     "flag": "derived",
+     "from": "the 30 mm dimension and the profile line work in the lower centre view and VIEW B, page 1",
+     "value": "the cutout profile is the tapered profile shown in the lower centre view and VIEW B, page 1: rounded rectangular at its left end, with converging upper and lower walls terminating at the ring-axis station"
+    },
+    "the ring axis": {
+     "flag": "read",
+     "value": "30 mm from the rounded left end of the cutout to the ring axis"
+    }
+   },
+   "seen_in": [
+    "lower centre view, page 1",
+    "middle centre view, page 1",
+    "VIEW B, page 1"
+   ],
+   "topology": "through the part depth front to rear; its profile has a rounded rectangular left end and converging upper and lower walls toward the ring"
+  },
+  {
+   "axis": {
+    "flag": "read",
+    "value": "parallel to the depth front to rear"
+   },
+   "id": "ring-split",
+   "kind": "radial split through the right side of the clamp ring",
+   "plane": {
+    "flag": "read",
+    "value": "the plane of the length and the height"
+   },
+   "position": {
+    "the ring axis": {
+     "flag": "read",
+     "value": "centred on the ring axis"
+    }
+   },
+   "seen_in": [
+    "middle centre view, page 1",
+    "SECTION A-A, page 1",
+    "VIEW C-C, page 2"
+   ],
+   "topology": "open slot joining the Ø42 bore to the right exterior side of the ring",
+   "width": {
+    "flag": "derived",
+    "from": "the 1 mm callout from the ring axis to the upper split face and the 2 mm callout from the ring axis to the lower split face in the middle centre view, page 1",
+    "value": "3 mm between the split faces"
+   }
+  },
+  {
+   "id": "edge-fillets",
+   "kind": "R2 typical fillets on all edges shown red",
+   "radius": {
+    "flag": "read",
+    "value": "R2"
+   },
+   "seen_in": [
+    "middle centre view, page 1",
+    "lower centre view, page 1",
+    "upper centre view, page 1",
+    "VIEW B, page 1",
+    "SECTION A-A, page 1"
+   ],
+   "topology": "filleted edges"
+  },
+  {
+   "cross_section": {
+    "depth front to rear": {
+     "flag": "read",
+     "value": "25 mm"
+    },
+    "free-end geometry": {
+     "flag": "derived",
+     "from": "the straight free-end contour and the parallel arm sidewalls in VIEW C-C, page 2",
+     "value": "flat planar end face perpendicular to the 45.0° arm centreline"
+    },
+    "width in the plane of the length and the height": {
+     "flag": "derived",
+     "from": "the two parallel arm sidewalls in VIEW C-C, page 2, together with the unchanged 15 mm Phase 1 arm-width callout",
+     "value": "15 mm"
+    }
+   },
+   "id": "angled-left-arm",
+   "kind": "straight left arm at 45.0° to the ring axis, replacing the Phase 1 horizontal left arm and rounded left lug",
+   "plane": {
+    "flag": "read",
+    "value": "the plane of the length and the height"
+   },
+   "position": {
+    "the angled free-end face of the left arm": {
+     "flag": "read",
+     "value": "73 mm to the ring axis along the arm"
+    },
+    "the centre plane of the part depth front to rear": {
+     "flag": "derived",
+     "from": "the 25 mm arm depth is symmetric about the part depth centre plane in the page 2 top and isometric views",
+     "value": "0 mm"
+    },
+    "the ring axis": {
+     "flag": "read",
+     "value": "45.0° from the ring axis"
+    }
+   },
+   "seen_in": [
+    "VIEW C-C, page 2"
+   ],
+   "topology": "solid arm joining the left side of the ring; 73 mm long from its angled free-end face to the ring axis"
+  },
+  {
+   "axis": {
+    "because": "this is round in VIEW C-C, page 2, and right-lug-hole is round in lower centre view, page 1 — two views, so the two axes cross, and these were written the same way",
+    "flag": "read",
+    "round_in": "VIEW C-C, on page 2",
+    "value": "perpendicular to the plane of the length and the depth, parallel to the height",
+    "was": "parallel to the depth front to rear"
+   },
+   "id": "left-arm-slot",
+   "kind": "Ø6.6 obround clearance slot, 8.0 mm between end-centre axes, with Ø11 obround counterbore",
+   "position": {
+    "the left-lug-hole axis": {
+     "flag": "read",
+     "value": "concentric"
+    }
+   },
+   "round_in": "VIEW C-C, on page 2",
+   "seen_in": [
+    "VIEW C-C, page 2"
+   ],
+   "topology": "Ø6.6 × 8.0 through all; Ø11 counterbore 6 mm deep from the exterior face shown in VIEW C-C, with a 19 mm overall counterbore-slot length"
+  }
+ ],
+ "not_defined": [
+  {
+   "looked_in": [
+    "lower centre view, page 1",
+    "middle centre view, page 1",
+    "VIEW B, page 1"
+   ],
+   "what": "the exact lengthwise position and complete dimensional profile of the arm cutout"
+  },
+  {
+   "looked_in": [
+    "middle centre view, page 1",
+    "SECTION A-A, page 1"
+   ],
+   "what": "the width of the ring split and the meaning of the separate 1 mm and 2 mm callouts at the split"
+  },
+  {
+   "looked_in": [
+    "notes, page 1",
+    "title block, page 1"
+   ],
+   "what": "general dimensional tolerances"
+  }
+ ],
+ "printed_on_the_sheet": [
+  {
+   "callout": "THIRD",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "ANGLE",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "PROJECTION",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "6.6",
+   "drawn_in_front_of_it": "Ø",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "THRU",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "ALL",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "11",
+   "drawn_in_front_of_it": "Ø",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "6",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "(C'BORE",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "FOR",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "M6",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "SHCS)",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "R12.5",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "6.6",
+   "drawn_in_front_of_it": "Ø",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "THRU",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "ALL",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "11",
+   "drawn_in_front_of_it": "Ø",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "6",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "(C'BORE",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "FOR",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "M6",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "SHCS)",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "30",
+   "off_by": 0.02,
+   "the_sheet_measures": 30.02,
+   "view": "the lower centre of the sheet, the first one, on page 1, part 2 of 3"
+  },
+  {
+   "callout": "14",
+   "off_by": 0.01,
+   "the_sheet_measures": 14.01,
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "7",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "A",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 2 of 3"
+  },
+  {
+   "callout": "A",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 2 of 3"
+  },
+  {
+   "callout": "50",
+   "drawn_in_front_of_it": "Ø",
+   "view": "the middle centre of the sheet, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "15",
+   "off_by": -0.01,
+   "the_sheet_measures": 14.99,
+   "view": "the middle centre of the sheet, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "1",
+   "view": "the middle centre of the sheet, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "2",
+   "view": "the middle centre of the sheet, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "15",
+   "off_by": -0.01,
+   "the_sheet_measures": 14.99,
+   "view": "the middle centre of the sheet, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "30",
+   "off_by": 0.02,
+   "the_sheet_measures": 30.02,
+   "view": "the middle centre of the sheet, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "108",
+   "off_by": -0.0,
+   "the_sheet_measures": 108.0,
+   "view": "the middle centre of the sheet, on page 1, part 2 of 3"
+  },
+  {
+   "callout": "42",
+   "drawn_in_front_of_it": "Ø",
+   "view": "the middle centre of the sheet, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "42.5",
+   "off_by": -0.02,
+   "the_sheet_measures": 42.48,
+   "view": "the middle centre of the sheet, on page 1, part 2 of 3"
+  },
+  {
+   "callout": "65.5",
+   "off_by": 0.02,
+   "the_sheet_measures": 65.52,
+   "view": "the middle centre of the sheet, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "R2",
+   "view": "the middle centre of the sheet, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "TYP",
+   "view": "the middle centre of the sheet, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "ALL",
+   "view": "the middle centre of the sheet, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "RED",
+   "view": "the middle centre of the sheet, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "FILLETS",
+   "view": "the middle centre of the sheet, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "SEE",
+   "view": "the middle centre of the sheet, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "VIEW",
+   "view": "the middle centre of the sheet, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "B",
+   "view": "the middle centre of the sheet, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "FOR",
+   "view": "the middle centre of the sheet, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "CLARITY",
+   "view": "the middle centre of the sheet, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "OF",
+   "view": "the middle centre of the sheet, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "CUTOUT",
+   "view": "the middle centre of the sheet, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "HEX",
+   "view": "the upper centre of the sheet, on page 1, part 2 of 2"
+  },
+  {
+   "callout": "11",
+   "drawn_in_front_of_it": "Ø",
+   "view": "the upper centre of the sheet, on page 1, part 2 of 2"
+  },
+  {
+   "callout": "6",
+   "view": "the upper centre of the sheet, on page 1, part 2 of 2"
+  },
+  {
+   "callout": "6",
+   "view": "SECTION A-A, on page 1"
+  },
+  {
+   "callout": "6",
+   "view": "SECTION A-A, on page 1"
+  },
+  {
+   "callout": "30",
+   "off_by": -0.01,
+   "the_sheet_measures": 29.99,
+   "view": "SECTION A-A, on page 1"
+  },
+  {
+   "callout": "25",
+   "off_by": -0.02,
+   "the_sheet_measures": 24.98,
+   "view": "SECTION A-A, on page 1"
+  },
+  {
+   "callout": "SECTION",
+   "view": "the lower right of the sheet, on page 1"
+  },
+  {
+   "callout": "A-A",
+   "view": "the lower right of the sheet, on page 1"
+  },
+  {
+   "callout": "VIEW",
+   "view": "VIEW B, on page 1"
+  },
+  {
+   "callout": "B",
+   "view": "VIEW B, on page 1"
+  },
+  {
+   "callout": "NOTES:",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "ALL",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "DIMENSIONS",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "ARE",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "IN",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "MILLIMETERS",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "1.",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "MATERIAL:",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "PLAIN",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "CARBON",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "STEEL",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "2.",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
+  },
+  {
+   "callout": "MATERIAL:",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "PLAIN",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "CARBON",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "STEEL",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "DRAWN",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "BY:",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "SCALE:",
+   "view": "the lower right of the sheet, on page 1"
+  },
+  {
+   "callout": "1:1",
+   "view": "the lower right of the sheet, on page 1"
+  },
+  {
+   "callout": "JMD",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "01-01-23",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "MODEL",
+   "view": "the lower right of the sheet, on page 1"
+  },
+  {
+   "callout": "MANIA",
+   "view": "the lower right of the sheet, on page 1"
+  },
+  {
+   "callout": "2023",
+   "view": "the lower right of the sheet, on page 1"
+  },
+  {
+   "callout": "DATE",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "NAME",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "THE",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "INFORMATION",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "CONTAINED",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "IN",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "THIS",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "DRAWING",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "IS",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "THE",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "SOLE",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "PROPERTY",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "OF",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "SOLIDWORKS.",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "ANY",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "REPRODUCTION",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "IN",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "PART",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "OR",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "AS",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "A",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "WHOLE",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "WITHOUT",
+   "view": "the lower right of the sheet, on page 1"
+  },
+  {
+   "callout": "THE",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "WRITTEN",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "PERMISSION",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "OF",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "SOLIDWORKS",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "IS",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "PROHIBITED.",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "PROPRIETARY",
+   "view": "the lower centre of the sheet, the first one, on page 1, part 3 of 3"
+  },
+  {
+   "callout": "AND",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "CONFIDENTIAL",
+   "view": "the lower centre of the sheet, the second one, on page 1"
+  },
+  {
+   "callout": "Phase",
+   "view": "the lower right of the sheet, on page 1"
+  },
+  {
+   "callout": "1",
+   "view": "the lower right of the sheet, on page 1"
+  },
+  {
+   "callout": "®",
+   "view": "the lower right of the sheet, on page 1"
+  },
+  {
+   "callout": "THIRD",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "ANGLE",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "PROJECTION",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "R12.5",
+   "view": "VIEW C-C, on page 2, part 5 of 6"
+  },
+  {
+   "callout": "25",
+   "off_by": -0.0,
+   "the_sheet_measures": 25.0,
+   "view": "VIEW C-C, on page 2, part 5 of 6"
+  },
+  {
+   "callout": "45.0°",
+   "view": "VIEW C-C, on page 2, part 1 of 6"
+  },
+  {
+   "callout": "42.5",
+   "view": "VIEW C-C, on page 2, part 2 of 6"
+  },
+  {
+   "callout": "30",
+   "off_by": 0.0,
+   "the_sheet_measures": 30.0,
+   "view": "VIEW C-C, on page 2, part 2 of 6"
+  },
+  {
+   "callout": "50",
+   "drawn_in_front_of_it": "Ø",
+   "view": "VIEW C-C, on page 2, part 5 of 6"
+  },
+  {
+   "callout": "73",
+   "off_by": -0.0,
+   "the_sheet_measures": 73.0,
+   "view": "VIEW C-C, on page 2, part 1 of 6"
+  },
+  {
+   "callout": "C",
+   "view": "VIEW C-C, on page 2, part 1 of 6"
+  },
+  {
+   "callout": "C",
+   "view": "VIEW C-C, on page 2, part 4 of 6"
+  },
+  {
+   "callout": "8",
+   "view": "VIEW C-C, on page 2, part 2 of 6"
+  },
+  {
+   "callout": "19",
+   "view": "VIEW C-C, on page 2, part 2 of 6"
+  },
+  {
+   "callout": "6.6",
+   "drawn_in_front_of_it": "Ø",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "X",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "8.0",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "THRU",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "ALL",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "11",
+   "drawn_in_front_of_it": "Ø",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "6",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "(C'BORE",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "SLOT",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "FOR",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "M6",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "SHCS)",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "VIEW",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "C-C",
+   "view": "VIEW C-C, on page 2, part 6 of 6"
+  },
+  {
+   "callout": "NOTES:",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "ALL",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "DIMENSIONS",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "ARE",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "IN",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "MILLIMETERS",
+   "view": "the lower left of the sheet, on page 2, part 2 of 2"
+  },
+  {
+   "callout": "1.",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "MATERIAL:",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "PLAIN",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "CARBON",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "STEEL",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "2.",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "MAKE",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "CHANGES",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "AS",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "INDICATED",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "IN",
+   "view": "the lower left of the sheet, on page 2, part 2 of 2"
+  },
+  {
+   "callout": "RED",
+   "view": "the lower left of the sheet, on page 2, part 2 of 2"
+  },
+  {
+   "callout": "REVISION",
+   "view": "the lower left of the sheet, on page 2, part 2 of 2"
+  },
+  {
+   "callout": "CLOUDS.",
+   "view": "the lower left of the sheet, on page 2, part 2 of 2"
+  },
+  {
+   "callout": "3.",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "ALL",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "OTHER",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "DIMENSIONS",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "REMAIN",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "THE",
+   "view": "the lower left of the sheet, on page 2, part 2 of 2"
+  },
+  {
+   "callout": "SAME",
+   "view": "the lower left of the sheet, on page 2, part 2 of 2"
+  },
+  {
+   "callout": "AS",
+   "view": "the lower left of the sheet, on page 2, part 2 of 2"
+  },
+  {
+   "callout": "IN",
+   "view": "the lower left of the sheet, on page 2, part 2 of 2"
+  },
+  {
+   "callout": "PHASE",
+   "view": "the lower left of the sheet, on page 2, part 2 of 2"
+  },
+  {
+   "callout": "1.",
+   "view": "the lower left of the sheet, on page 2, part 2 of 2"
+  },
+  {
+   "callout": "4.",
+   "view": "the lower left of the sheet, on page 2, part 1 of 2"
+  },
+  {
+   "callout": "MATERIAL:",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "DRAWN",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "BY:",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "SCALE:",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "1:1",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "JMD",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "01-01-23",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "MODEL",
+   "view": "the lower right of the sheet, on page 2"
+  },
+  {
+   "callout": "MANIA",
+   "view": "the lower right of the sheet, on page 2"
+  },
+  {
+   "callout": "2023",
+   "view": "the lower right of the sheet, on page 2"
+  },
+  {
+   "callout": "DATE",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "NAME",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "THE",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "INFORMATION",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "CONTAINED",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "IN",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "THIS",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "DRAWING",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "IS",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "THE",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "SOLE",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "PROPERTY",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "OF",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "SOLIDWORKS.",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "ANY",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "REPRODUCTION",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "IN",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "PART",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "OR",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "AS",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "A",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "WHOLE",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "WITHOUT",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "THE",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "WRITTEN",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "PERMISSION",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "OF",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "SOLIDWORKS",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "IS",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "PROHIBITED.",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "PROPRIETARY",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "AND",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "CONFIDENTIAL",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "Phase",
+   "view": "the lower right of the sheet, on page 2"
+  },
+  {
+   "callout": "2",
+   "view": "the lower right of the sheet, on page 2"
+  },
+  {
+   "callout": "®",
+   "view": "the lower right of the sheet, on page 2"
+  },
+  {
+   "callout": "PLAIN",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "CARBON",
+   "view": "the lower centre of the sheet, on page 2"
+  },
+  {
+   "callout": "STEEL",
+   "view": "the lower centre of the sheet, on page 2"
+  }
+ ]
+}

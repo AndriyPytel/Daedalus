@@ -1069,6 +1069,47 @@ def render(model) -> str:
     return "\n".join(written)
 
 
+_THE_PROOF = ("from", "seen_in", "round_in")
+
+
+def distilled(model) -> dict:
+    """
+    The part, without the evidence Design gathered to settle it.
+
+    Design ends in two steps — gather every piece of evidence it can, then
+    distil — and this is the second, which is why it is not a phase of its own:
+    a projection of the model that already exists, so there is no second
+    structure to hold an order the drawing never showed (ADR-0019, ADR-0024).
+
+    What goes is what proves a value rather than states it: the sweep of the
+    sheet, the disagreements and the gaps, none of which is the part and none
+    of which `entries` has ever walked, and on a value what fixed it, the views
+    it was seen in and the view its circle was traced round in. What stays is
+    every address the Acceptance is derived from, so the description and the
+    criteria still come off one model (ADR-0020).
+
+    `because` stays with it. It is not the proof of a number off the sheet, it
+    is what the model settled a value nobody supplied — the one thing at the
+    Gate that is the user's to overrule, read there through `decided_for_you`
+    and in the file afterwards (ADR-0022).
+
+    `tests/test_loop.py` measures what this leaves of the recorded reading of
+    the 2023 pipe clamp, against what Plan was handed of it before.
+    """
+    return {section: _without_the_proof(value)
+            for section, value in (model or {}).items()
+            if section not in _NOT_THE_PART}
+
+
+def _without_the_proof(node):
+    if isinstance(node, dict):
+        return {key: _without_the_proof(value) for key, value in node.items()
+                if key not in _THE_PROOF}
+    if isinstance(node, list):
+        return [_without_the_proof(entry) for entry in node]
+    return node
+
+
 def entries(model) -> list:
     """
     Every value the part carries, addressed by where it sits and said in words.
