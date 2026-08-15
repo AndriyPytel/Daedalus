@@ -57,6 +57,32 @@ def test_the_name_carries_the_sheet_the_digest_and_when_it_was_read(sheet, tmp_p
     assert datetime.datetime.strptime(when, part_file.WHEN)
 
 
+def test_a_reading_with_no_sheet_behind_it_is_named_after_what_it_was_read_off(tmp_path):
+    """
+    A part described from the words of the Intent alone is read off no drawing,
+    so there is no name to take and no digest to tell two of them apart — the
+    time it was taken is what makes it its own file.
+    """
+    name = os.path.basename(part_file.saved(THE_CLAMP, "", into=str(tmp_path / "parts")))
+
+    assert name.startswith(part_file.WITHOUT_A_SHEET + "-")
+    when = name[len(part_file.WITHOUT_A_SHEET) + 1:-len(".yaml")]
+    assert datetime.datetime.strptime(when, part_file.WHEN)
+
+
+def test_a_reading_off_no_sheet_says_so_rather_than_naming_one(tmp_path):
+    """An empty name and a digest of nothing are two claims about a drawing
+    that does not exist, and the file is what the run is held to."""
+    path = part_file.saved(THE_CLAMP, "", into=str(tmp_path / "parts"),
+                           asked_for="Make a 10 mm box.")
+
+    written = part_file.provenance(path)
+    assert "sheet" not in written and "digest" not in written
+    assert written["schema"] == part_file.SCHEMA
+    assert part_file.asked_for(path) == "Make a 10 mm box."
+    assert part_file.read(path) == THE_CLAMP
+
+
 def test_a_second_reading_of_one_sheet_is_a_second_file(sheet, tmp_path):
     into = str(tmp_path / "parts")
 

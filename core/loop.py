@@ -1774,13 +1774,27 @@ def _written_in(the_part, intent, question, answer, llm, events, attachments):
     An answer carried alongside the description instead would be a second source
     for Plan to prefer, and preferring the newer is exactly how the depth off
     SECTION B-B was lost.
+
+    Nobody answering is a turn too. The question is Design's own, so what it
+    asks about is a value the part cannot be described without, and left
+    unsettled it is a gap where a criterion belongs — nothing plans it, nothing
+    measures it, and the Gate has nothing to show the user. Design settles it
+    instead, and the instruction rides in the question because that is where the
+    phase reads what to do with one (ADR-0022).
     """
-    grew, asks = design({"intent": intent,
-                         "the_part_as_you_described_it": the_part,
-                         "the_question": question,
-                         "the_answer_you_were_given": answer},
-                        llm, events, attachments)
+    body = {"intent": intent, "the_part_as_you_described_it": the_part,
+            "the_question": question if answer else _settle_it(question)}
+    if answer:
+        body["the_answer_you_were_given"] = answer
+    grew, asks = design(body, llm, events, attachments)
     return merge(the_part, grew), asks
+
+
+def _settle_it(question):
+    return (question + " Nobody answered it, so settle it yourself: give every value you "
+            "choose the flag `assumed` and a `because` saying what you settled it off. It "
+            "is shown to the user above the Steps, and a choice they can see is a choice "
+            "they can correct.")
 
 
 def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments):
@@ -1794,13 +1808,12 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
     to. Unanswered it is not fatal — the model settles the value like every
     other, and the choice rides to the Gate.
 
-    With nothing to look at there is no turn at all: Design then holds only what
-    the Intent supplies, and the run costs exactly what it costs without a
-    drawing.
+    Design runs whether or not there is a drawing. With nothing to look at it
+    describes the part from the words of the Intent alone and asks for what
+    those words do not carry, so a text-only run reaches the Gate with a
+    description, an Acceptance list and a reading on disk rather than with
+    nothing at all.
     """
-    if not _pictures(attachments):
-        return {}
-
     the_part, question = design({"intent": intent}, llm, events, attachments)
     the_part = merge({}, the_part)
 
@@ -1808,10 +1821,9 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
         if cancelled():
             raise Stopped()
         events.emit(QUESTION, text=question)
-        answer = _answered(question, ask, events)
-        if answer:
-            the_part, _ = _written_in(the_part, intent, question, answer, llm, events,
-                                      attachments)
+        the_part, _ = _written_in(the_part, intent, question,
+                                  _answered(question, ask, events), llm, events,
+                                  attachments)
 
     the_part = _every_callout_accounted_for(the_part, intent, attachments, llm, events,
                                             budgets, cancelled)
@@ -2260,6 +2272,11 @@ def _written_down(the_part, intent, attachments, events):
     The Intent is written beside the sheet it was read off, because a reading
     is the requirement one run is held to, and what was asked is what makes it
     a requirement rather than a description of a drawing.
+
+    A part described from words alone leaves one too. There is no sheet to name
+    it after and none to say it was read off, and both of those are things the
+    file says rather than reasons not to write it: what the run is planned,
+    checked and built from is the reading, drawing or no drawing.
     """
     source = next((path for path in attachments if sheet_reader.read(path)),
                   attachments[0] if attachments else "")

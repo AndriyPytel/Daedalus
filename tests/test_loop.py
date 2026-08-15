@@ -25,6 +25,10 @@ that parse Review's JSON input use .split("\n\n")[0] to discard it.
 An empty design_reply() is the sheet answering nothing: the re-read came back
 with no value, so what was asked stays unsettled by the drawing.
 
+A_BOX_FROM_WORDS is what Design comes back with when there is nothing to look
+at: every value settled by the model, each with the `because` it settled it off,
+which is the whole of what a run over an Intent and no drawing has to plan from.
+
 A_READING_THAT_PROVOKES_EVERY_RE_READ is a description that trips every check
 the Design phase makes of it at once — a callout of the sheet nobody used, an
 outside called rounded and carried by nothing, an axis pointing along the
@@ -49,8 +53,8 @@ from core import loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
 from core.design import (
-    UNDER, entries, entry_at, merge, pointing, read_off_the_wrong_view, render,
-    said_at,
+    UNDER, decided_for_you, entries, entry_at, merge, pointing,
+    read_off_the_wrong_view, render, said_at,
 )
 from core.loop import (
     PROMPTS, Budgets, prompt, revisions_ceiling, run,
@@ -93,6 +97,11 @@ DESCRIPTION = {
 
 def read(value):
     return {"value": value, "flag": "read"}
+
+
+def settled(value, because):
+    """A value nobody supplied: the model chose it and says what off (ADR-0022)."""
+    return {"value": value, "flag": "assumed", "because": because}
 
 
 A_CUBE = {"envelope": {"length": read("10 mm")}}
@@ -318,10 +327,37 @@ def failed(traceback):
     return {"status": "failed", "traceback": traceback}
 
 
+def _describes_a_part(turn):
+    """Whether a scripted turn is a Design turn — the phase every run opens with."""
+    body = turn.get("text") if isinstance(turn, dict) else turn
+    try:
+        return "design" in json.loads(body)
+    except (TypeError, ValueError):
+        return False
+
+
+def scripted(turns, attachments=()):
+    """
+    The provider, turn by turn, with the Design turn every run opens with.
+
+    Design runs on every run, drawing or no drawing (FCC-153), so `llm.calls[0]`
+    is always Design — read a phase's requests with `_turns_of` rather than by
+    counting them. A script that opens with something else is given a Design
+    turn that describes nothing, which is what a test about Plan or Execute
+    means by not writing one. A run with a drawing has always scripted its own
+    and is left alone, because a Design reply in the wrong shape — the case
+    those tests are about — is not one this could recognise.
+    """
+    turns = list(turns)
+    if turns and not attachments and not _describes_a_part(turns[0]):
+        turns.insert(0, design_reply())
+    return ScriptedLLMClient(turns)
+
+
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
           views=None, checks=(), attachments=(), decide=None, outstanding=()):
     """Run the loop over scripted turns and hand back everything to assert on."""
-    llm = ScriptedLLMClient(turns)
+    llm = scripted(turns, attachments)
     tools = FakeTools(applies, views=views, checks=checks)
     events = EventStream()
     kwargs = {"ask": ask} if ask is not None else {}
@@ -378,7 +414,7 @@ def test_the_traps_land_in_the_prompts_that_ask_for_them():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    plan_system, execute_system, review_system = _system_messages(llm)
+    _, plan_system, execute_system, review_system = _system_messages(llm)
 
     assert "{{traps}}" not in plan_system
     for text in (plan_system, execute_system):
@@ -398,7 +434,7 @@ def test_the_sketch_construction_rule_reaches_plan_and_execute():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    plan_system, execute_system, review_system = (
+    _, plan_system, execute_system, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     for text in (plan_system, execute_system):
@@ -470,7 +506,7 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    _, execute_system, _ = (" ".join(text.split()) for text in _system_messages(llm))
+    _, _, execute_system, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     for cancelled in ("invariant of its own", "assert it in the Step's code",
                       "thinner as the radius grows"):
@@ -737,7 +773,7 @@ def test_a_step_is_an_action_a_user_would_perform_not_a_call():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    plan_system, _, review_system = (
+    _, plan_system, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "an action a user would perform" in plan_system
@@ -764,7 +800,7 @@ def test_plan_is_told_a_step_that_cannot_fail_alone_takes_the_plan_with_it():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    plan_system = " ".join(_system_messages(llm)[0].split())
+    plan_system = " ".join(_system_messages(llm)[1].split())
 
     assert "A Step nothing can fail on its own takes the whole Plan down with it" \
         in plan_system
@@ -785,7 +821,7 @@ def test_plan_is_told_to_write_the_sum_and_not_only_the_answer():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    plan_system = " ".join(_system_messages(llm)[0].split())
+    plan_system = " ".join(_system_messages(llm)[1].split())
 
     assert "A number you worked out is written as the sum that worked it out" \
         in plan_system
@@ -854,7 +890,7 @@ def test_plan_names_declared_numbers_and_not_how_a_reference_is_found():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    plan_system, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
+    _, plan_system, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     assert "A link is written as the name you gave" not in plan_system, \
         "plan.md still asks Plan for the link FCC-71 takes back"
@@ -873,7 +909,7 @@ def test_the_positive_form_of_the_lint_rules_reaches_execute():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    _, execute_system, review_system = (
+    _, _, execute_system, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "computes its own Shape from its Profile" in execute_system
@@ -896,7 +932,7 @@ def test_a_step_that_selects_a_subset_says_how_many_it_expects():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    plan_system, execute_system, review_system = (
+    _, plan_system, execute_system, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "says how many" in plan_system
@@ -1005,7 +1041,7 @@ def test_plan_is_given_the_intent_and_the_snapshot():
         verdict_reply("pass"),
     ])
 
-    asked = json.dumps(llm.calls[0])
+    asked = json.dumps(llm.calls[1])
     assert "Make a 10mm box" in asked
     assert "object_count" in asked, "Plan did not see a Snapshot"
     assert ("snapshot", {}) in tools.calls
@@ -1037,7 +1073,7 @@ def test_execute_can_ask_the_document_before_committing_to_code():
     assert result.ok
     assert ("supported_types", {"prefix": "Sketcher::"}) in tools.calls
 
-    asked_with = json.loads(llm.calls[2][-1]["content"])
+    asked_with = json.loads(llm.calls[3][-1]["content"])
     looked = [look for look in asked_with["what_you_looked_at"]
               if look["tool"] == "supported_types"]
     assert looked[0]["result"]["types"] == ["Sketcher::SketchObject"]
@@ -1074,13 +1110,13 @@ def test_looking_is_budgeted_and_the_last_turn_offers_nothing_to_look_with():
     assert result.ok
     assert len([c for c in tools.calls if c[0] == "supported_types"]) == 1
 
-    final = json.loads(llm.calls[3][-1]["content"])
+    final = json.loads(llm.calls[4][-1]["content"])
     assert final["tools_you_may_look_with"] == [], "the last turn still invited a look"
     assert "code" in final["this_is_your_last_turn"]
     assert "obsolete" in final["this_is_your_last_turn"]
     assert "Document" in final["this_is_your_last_turn"]
     assert "still exists" in final["this_is_your_last_turn"]
-    assert "this_is_your_last_turn" not in json.loads(llm.calls[1][-1]["content"])
+    assert "this_is_your_last_turn" not in json.loads(llm.calls[2][-1]["content"])
 
 
 def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run():
@@ -1152,7 +1188,7 @@ def test_a_look_at_a_tool_that_does_not_exist_is_answered_not_fatal():
     ])
 
     assert result.ok
-    answered = json.loads(llm.calls[2][-1]["content"])
+    answered = json.loads(llm.calls[3][-1]["content"])
     assert "error" in answered["what_you_looked_at"][-1]["result"]
 
 
@@ -1338,7 +1374,7 @@ def test_the_reason_a_recompute_failed_reaches_the_next_attempts_request():
         applies=[failed("Pad (PartDesign::Pad): Linked shape object is empty"), None],
     )
 
-    retry = json.loads(llm.calls[2][-1]["content"])
+    retry = json.loads(llm.calls[3][-1]["content"])
 
     assert retry["your_failed_attempts_at_this_step"] == [
         {"code": "pad_one()",
@@ -1536,7 +1572,7 @@ def test_review_is_told_when_there_is_no_render_to_judge_by():
     """A sketch-only Step produces no render; Review must not be left guessing."""
     tools = FakeTools(applies=[{"status": "applied", "created": ["Sketch"],
                                 "description": {"features": [], "geometry": {}}}])
-    llm = ScriptedLLMClient([plan_reply("Only"), code_reply("sketch()"), verdict_reply("pass")])
+    llm = scripted([plan_reply("Only"), code_reply("sketch()"), verdict_reply("pass")])
 
     run("Sketch a square", llm=llm, tools=tools.registry)
 
@@ -2206,13 +2242,15 @@ def test_several_attachments_all_reach_the_design_phase():
 
 
 def test_an_intent_with_no_attachments_sends_what_it_always_did():
-    """Attaching nothing costs nothing: the text-only request keeps its shape."""
+    """Attaching nothing shows nobody a picture, and Plan's request keeps its shape."""
     _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
 
-    content = llm.calls[0][-1]["content"]
+    shown = llm.calls[0][-1]["content"]
+    to_plan = llm.calls[1][-1]["content"]
 
-    assert isinstance(content, str)
-    assert json.loads(content)["intent"] == "Make a 10mm box"
+    assert [block["type"] for block in shown] == ["text"]
+    assert isinstance(to_plan, str)
+    assert json.loads(to_plan)["intent"] == "Make a 10mm box"
 
 
 def test_an_attachment_that_has_been_moved_is_dropped_not_fatal():
@@ -2282,18 +2320,94 @@ def test_the_description_is_an_event_of_its_own_standing_before_the_plan():
     assert "reading" not in events.first(PLAN).data
 
 
-def test_with_nothing_attached_there_is_no_design_turn_at_all():
-    """
-    No extra provider call for a sheet that does not exist, and the Plan Gate is
-    identical to today's. Design then holds only what the user's answers supply.
-    FCC-93.
-    """
-    _, events, llm, _ = drive([plan_reply("Only"), code_reply("box()"),
-                               verdict_reply("pass")])
+A_BOX_FROM_WORDS = {
+    "datums": [{"name": "the base", "is": "the face the box stands on",
+                "fixes": "the height"}],
+    "envelope": {"length": settled("10 mm", "the Intent asks for a 10 mm box"),
+                 "width": settled("10 mm", "a box named by one size is square"),
+                 "height": settled("10 mm", "a box named by one size is square")},
+}
 
-    assert events.first(DESIGN) is None
-    assert len(llm.calls) == 3, "a Design turn was spent on an Intent with no picture"
-    assert events.first(PLAN).data["steps"] == ["Only"]
+
+def _a_run_with_no_drawing():
+    """A whole run over an Intent and nothing else, through to a verdict."""
+    return drive([design_reply(A_BOX_FROM_WORDS), plan_reply("Pad a 10 mm box"),
+                  code_reply("box()"), assertion_reply("assert True"),
+                  verdict_reply("pass")])
+
+
+def test_with_nothing_attached_the_part_is_described_from_the_words_alone():
+    """
+    Design runs whether or not there is a drawing, and the Gate then shows a
+    description and the criteria the finished part has to satisfy rather than
+    nothing. FCC-153.
+    """
+    _, events, llm, _ = _a_run_with_no_drawing()
+
+    described = events.first(DESIGN).data["model"]
+    acceptance = events.first(PLAN).data["acceptance"]
+    assert described == A_BOX_FROM_WORDS
+    assert acceptance == acceptance_of(A_BOX_FROM_WORDS)
+    assert len(acceptance) == len(entries(described))
+    assert json.loads(llm.calls[1][-1]["content"])["what_the_part_is"]
+
+
+def test_a_reading_with_no_sheet_to_name_it_after_is_still_written_down():
+    """
+    What the run is planned, checked and built from is the file, drawing or no
+    drawing, so a description written from words is written down like any
+    other — named after what it was read off, there being no sheet.
+    """
+    _, events, _, _ = _a_run_with_no_drawing()
+
+    written = events.last(PART).data["path"]
+    assert len(events.of(PART)) == 1
+    assert os.path.dirname(written) == part_file.WHERE
+    assert os.path.basename(written).startswith(part_file.WITHOUT_A_SHEET)
+    assert part_file.read(written) == events.first(DESIGN).data["model"]
+    assert "sheet" not in part_file.provenance(written)
+
+
+def test_a_question_nobody_answered_is_settled_by_design_and_shown_at_the_gate():
+    """
+    Design asks about what the part cannot be described without, so nobody
+    answering cannot leave it out: the model settles every value it asked
+    about, says in `because` what off, and the Gate is handed each of them
+    (ADR-0022).
+    """
+    asked = []
+
+    _, events, _, _ = drive(
+        [design_reply(A_DATUM, question="How long, how wide and how tall is the box?"),
+         design_reply(A_BOX_FROM_WORDS), plan_reply("Pad a 10 mm box"),
+         code_reply("box()"), assertion_reply("assert True"), verdict_reply("pass")],
+        ask=lambda question: asked.append(question) or None)
+
+    described = events.first(DESIGN).data["model"]
+    settled_by_design = entries(described)
+    decided = decided_for_you(described)
+    assert asked == ["How long, how wide and how tall is the box?"]
+    assert settled_by_design == entries(A_BOX_FROM_WORDS)
+    assert all(entry["flag"] == "assumed" for entry in settled_by_design)
+    assert all(entry_at(described, entry["about"])["because"]
+               for entry in settled_by_design)
+    assert [entry["about"] for entry in settled_by_design] == \
+        [line.split(":")[0] for line in decided]
+    assert events.first(PLAN).data["decided"] == decided
+
+
+def test_the_checks_measure_a_part_described_from_words_alone():
+    """
+    A description built from the Intent has entries, so there is an Acceptance
+    list for the Assertion phase to write checks against — as many criteria
+    measured as the description has entries.
+    """
+    result, events, _, tools = _a_run_with_no_drawing()
+
+    assert result.ok
+    assert events.first(ASSERTION).data["confirmed"] == acceptance_of(A_BOX_FROM_WORDS)
+    assert len(events.first(ASSERTION).data["confirmed"]) == len(entries(A_BOX_FROM_WORDS))
+    assert any(name == "check_assertions" for name, _ in tools.calls)
 
 
 def test_design_asks_the_user_itself_before_any_plan_exists():
@@ -2412,7 +2526,8 @@ def test_review_gets_only_the_render_when_nothing_was_attached():
 
 
 def test_an_attachment_that_has_been_moved_does_not_break_review():
-    llm = ScriptedLLMClient([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+    llm = scripted([design_reply(), plan_reply("Only"), code_reply("box()"),
+                     verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
                  attachments=["/nowhere/gone.png"])
@@ -2447,8 +2562,8 @@ def test_a_failed_verdict_returns_to_plan_and_never_to_execute():
         verdict_reply("pass"),
     ])
 
-    to_plan = json.dumps(llm.calls[3])
-    to_execute = json.dumps(llm.calls[4])
+    to_plan = json.dumps(llm.calls[4])
+    to_execute = json.dumps(llm.calls[5])
 
     assert "The box is 20mm, not 10mm." in to_plan
     assert "The box is 20mm, not 10mm." not in to_execute, "the verdict reached Execute"
@@ -2579,7 +2694,7 @@ def test_plan_is_told_to_cite_and_told_it_does_not_write_the_list():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         verdict_reply("pass"),
     ])
-    plan_system = " ".join(_system_messages(llm)[0].split())
+    plan_system = " ".join(_system_messages(llm)[1].split())
 
     assert "what_the_plan_must_satisfy" in plan_system
     assert "Every entry marked `(read)` must be cited by at least one Step" in plan_system
@@ -2625,12 +2740,12 @@ def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
 
     assert [name for name, _ in tools.calls].count("review_views") == 1
 
-    review_content = llm.calls[2][1]["content"]
+    review_content = llm.calls[3][1]["content"]
     assert sum(1 for part in review_content if part["type"] == "image_url") == 4
     assert "the same result seen from" in review_content[0]["text"]
     assert "not several" in review_content[0]["text"]
 
-    assert "review_views" not in llm.calls[1][1]["content"]
+    assert "review_views" not in llm.calls[2][1]["content"]
 
 
 def test_a_run_with_no_views_still_reaches_a_verdict():
@@ -2648,7 +2763,7 @@ def test_a_run_with_no_views_still_reaches_a_verdict():
     )
 
     assert result.ok
-    assert "No render was produced" in llm.calls[2][1]["content"][0]["text"]
+    assert "No render was produced" in llm.calls[3][1]["content"][0]["text"]
 
 
 def test_a_step_that_cannot_be_built_returns_to_plan():
@@ -3103,7 +3218,7 @@ def test_the_user_can_stop_between_steps():
 
     events.subscribe(cancel_after_the_first_step)
 
-    result = run("Make a box", llm=ScriptedLLMClient([
+    result = run("Make a box", llm=scripted([
         plan_reply("First", "Second", "Third"),
         code_reply("first()"),
         code_reply("second()"),
@@ -3120,7 +3235,7 @@ def test_stopping_says_what_is_already_in_the_document():
     events = EventStream()
     events.subscribe(lambda e: stop.update(now=True) if e.kind == PLAN else None)
 
-    run("Make a box", llm=ScriptedLLMClient([plan_reply("First")]),
+    run("Make a box", llm=scripted([plan_reply("First")]),
         tools=FakeTools().registry, events=events, cancelled=lambda: stop["now"])
 
     blocked = events.first(BLOCKED)
@@ -3236,7 +3351,7 @@ def test_a_run_nobody_is_watching_gets_a_plan_that_chose_for_them():
         intent=GEAR)
 
     assert result.ok
-    told = json.dumps(llm.calls[1])
+    told = json.dumps(llm.calls[2])
     assert "Choose sensible values yourself" in told
     assert events.first(ANSWER).data["by"] == "nobody"
 
@@ -3249,7 +3364,7 @@ def test_with_nobody_to_ask_the_run_does_not_stall():
         intent=GEAR)
 
     assert result.ok
-    assert "Choose sensible values yourself" in json.dumps(llm.calls[1])
+    assert "Choose sensible values yourself" in json.dumps(llm.calls[2])
 
 
 SETTLED = {
@@ -3595,8 +3710,8 @@ def test_a_replan_does_not_refill_the_re_read_ceiling():
 def test_with_no_attachment_a_question_is_settled_by_plan_itself():
     """
     No sheet to ask and nobody to ask either, so no turn is spent on either:
-    Plan is told to choose and the run costs exactly what it costs without a
-    drawing. FCC-93, ADR-0022.
+    Plan is told to choose, and the only turn Design costs is the one it
+    describes the part in. FCC-93, ADR-0022.
     """
     asked = []
 
@@ -3607,7 +3722,7 @@ def test_with_no_attachment_a_question_is_settled_by_plan_itself():
 
     assert result.ok, result.reason
     assert asked == []
-    assert len(llm.calls) == 4, "a turn was spent re-reading a drawing that is not there"
+    assert len(llm.calls) == 5, "a turn was spent re-reading a drawing that is not there"
 
 
 def test_a_question_alongside_steps_is_still_a_plan():
@@ -3756,7 +3871,7 @@ def test_an_empty_acceptance_list_costs_no_llm_call():
     ])
 
     assert result.ok
-    assert len(llm.calls) == 3, "an extra provider call on a Plan with nothing to check"
+    assert len(llm.calls) == 4, "an extra provider call on a Plan with nothing to check"
     assert events.first(ASSERTION) is None
     assert not any(name == "check_assertions" for name, _ in tools.calls)
 
@@ -4520,7 +4635,7 @@ def test_execute_is_handed_what_the_run_already_looked_at():
         verdict_reply("pass"),
     ])
 
-    asked_with = json.loads(llm.calls[2][-1]["content"])
+    asked_with = json.loads(llm.calls[3][-1]["content"])
 
     assert [look["tool"] for look in asked_with["what_you_looked_at"]] \
         == ["materials", "describe_type"]
@@ -4591,7 +4706,7 @@ def test_what_an_object_has_is_forgotten_once_a_step_lands():
 
     assert len([c for c in tools.calls if c[0] == "describe_object"]) == 2, \
         "an object read before a Step landed was reported as though it still held"
-    regenerated = json.loads(llm.calls[3][-1]["content"])
+    regenerated = json.loads(llm.calls[4][-1]["content"])
     assert "describe_object" not in [look["tool"] for look in
                                      regenerated["what_you_looked_at"]]
 
@@ -4748,7 +4863,7 @@ def test_the_same_failure_twice_is_told_not_to_write_a_third_variation():
         verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL)])
 
-    third = json.loads(llm.calls[3][-1]["content"])
+    third = json.loads(llm.calls[4][-1]["content"])
     said = third["you_have_failed_this_the_same_way_twice"]
 
     assert "failed 2 times with the same failure" in said
@@ -4765,7 +4880,7 @@ def test_the_directive_matches_the_failure_and_not_some_other_one():
         verdict_reply("pass"),
     ], applies=[failed(IN_PIECES), failed(IN_PIECES)])
 
-    said = json.loads(llm.calls[3][-1]["content"])["you_have_failed_this_the_same_way_twice"]
+    said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
 
     assert "do not meet" in said
     assert "share their endpoints" in said
@@ -4818,7 +4933,7 @@ def test_the_directive_offers_leaving_the_step_out_rather_than_repeating():
         verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL)])
 
-    said = json.loads(llm.calls[3][-1]["content"])["you_have_failed_this_the_same_way_twice"]
+    said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
 
     assert "leave this Step out" in said
     assert "Plan is given this one back" in said
@@ -4837,7 +4952,7 @@ def test_a_step_that_never_failed_any_other_way_tells_plan_to_change_the_step():
         verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL)] * 3, budgets=Budgets(attempts_per_step=3))
 
-    to_plan = json.dumps(llm.calls[4])
+    to_plan = json.dumps(llm.calls[5])
 
     assert "failed the same way" in to_plan
     assert "Rewording it will send Execute back at the same wall" in to_plan
@@ -4874,7 +4989,7 @@ def gate_that(*answers):
 
 
 def driven_through(gate, turns, **kwargs):
-    llm = ScriptedLLMClient(turns)
+    llm = scripted(turns)
     tools = FakeTools(kwargs.pop("applies", ()), views=kwargs.pop("views", None),
                       checks=kwargs.pop("checks", ()))
     events = EventStream()
@@ -5267,7 +5382,7 @@ def test_the_re_ask_quotes_what_the_phase_said_and_names_the_shape():
         verdict_reply("pass"),
     ])
 
-    asked_again = llm.calls[2][-1]["content"]
+    asked_again = llm.calls[3][-1]["content"]
 
     assert "I need to check the Hole feature's properties first." in asked_again
     assert "asks for the look *in* the JSON" in asked_again

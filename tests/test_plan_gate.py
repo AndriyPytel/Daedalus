@@ -19,12 +19,12 @@ from core.loop import (
 )
 from tests.test_loop import (
     RENDER_PNG, FakeTools, assertion_reply, code_reply, design_reply, failed,
-    obsolete_reply, plan_reply, question_reply, verdict_reply,
+    obsolete_reply, plan_reply, question_reply, scripted, verdict_reply,
 )
 
 
 def drive(turns, gate, budgets=None, ask=None):
-    llm = ScriptedLLMClient(turns)
+    llm = scripted(turns)
     tools = FakeTools()
     events = EventStream()
     kwargs = {"ask": ask} if ask is not None else {}
@@ -134,7 +134,7 @@ def test_a_revised_plan_is_shown_before_it_changes_anything():
         applied_when_shown.append(list(tools.applied_codes()))
         return Approval(APPROVE)
 
-    run("Make a 10mm box", llm=ScriptedLLMClient([
+    run("Make a 10mm box", llm=scripted([
         plan_reply("Impossible"), code_reply("nope()"),
         plan_reply("Possible"), code_reply("yes()"), verdict_reply("pass"),
     ]), tools=tools.registry, gate=gate, budgets=Budgets(attempts_per_step=1))
@@ -192,7 +192,7 @@ def test_the_user_can_amend_a_plan_before_it_runs():
 
 def test_the_amendment_reaches_plan():
     gate = Gate(Approval(AMEND, "Use PartDesign, not Part primitives"), Approval(APPROVE))
-    llm = ScriptedLLMClient([
+    llm = scripted([
         plan_reply("Add a Part::Box"),
         plan_reply("Create a Body"),
         code_reply("a()"),
@@ -201,7 +201,7 @@ def test_the_amendment_reaches_plan():
 
     run("Make a 10mm box", llm=llm, tools=FakeTools().registry, gate=gate)
 
-    assert "Use PartDesign, not Part primitives" in json.dumps(llm.calls[1])
+    assert "Use PartDesign, not Part primitives" in json.dumps(llm.calls[2])
 
 
 def test_a_replan_after_an_amendment_may_ask_rather_than_planning_blind():
@@ -365,7 +365,7 @@ class Decider:
 def drive_with(turns, decide, gate=None, applies=(), checks=(), attachments=()):
     from tests.test_loop import FakeTools as Tools
 
-    llm = ScriptedLLMClient(turns)
+    llm = scripted(turns, attachments)
     tools = Tools(applies, checks=checks)
     events = EventStream()
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
@@ -551,12 +551,12 @@ def test_a_headless_run_revises_by_default_and_never_wipes_the_model():
 
 
 def test_plan_is_told_to_build_on_the_model_that_already_exists():
-    llm = ScriptedLLMClient([
+    llm = scripted([
         plan_reply("Make it"), code_reply("make()"), verdict_reply("pass"),
     ])
     tools = FakeTools()
     run("Make a 10mm box", llm=llm, tools=tools.registry, events=EventStream())
-    plan_system = " ".join(llm.calls[0][0]["content"].split())
+    plan_system = " ".join(llm.calls[1][0]["content"].split())
 
     assert "builds on the model that already exists" in plan_system
     assert "only when the feedback says outright that you may" in plan_system

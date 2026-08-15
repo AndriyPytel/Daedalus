@@ -42,6 +42,8 @@ SCHEMA = "fcc.part/1"
 
 WHEN = "%Y%m%d-%H%M%S-%f"
 
+WITHOUT_A_SHEET = "the-intent"
+
 _DIGEST = 8
 
 WHERE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -57,8 +59,11 @@ def saved(model, source, into=None, read_from=None, asked_for=None) -> str:
     *model* written as one reading of *source*. The path, or "" if there is
     nothing to write.
 
-    A run with no drawing describes no part, and a file saying so is a file to
-    mistake for a reading later.
+    A Design turn that described nothing wrote nothing down, and a file saying
+    so is a file to mistake for a reading later. An empty *source* is not that
+    case: a part described from the Intent alone was read off no sheet, and the
+    name and the provenance say so rather than naming a drawing that does not
+    exist.
 
     `asked_for` is the Intent the reading was taken under, and it is written
     first: a reading says what it was read off, and what it was read for is the
@@ -69,9 +74,8 @@ def saved(model, source, into=None, read_from=None, asked_for=None) -> str:
 
     into = into or WHERE
     os.makedirs(into, exist_ok=True)
-    path = os.path.join(into, "%s-%s-%s.yaml" % (
-        os.path.splitext(os.path.basename(source))[0], _digest_of(source),
-        datetime.datetime.now().strftime(WHEN)))
+    path = os.path.join(into, "%s-%s.yaml" % (_named(source),
+                                              datetime.datetime.now().strftime(WHEN)))
 
     with open(path, "w", encoding="utf-8") as handle:
         yaml.safe_dump(dict(_head(source, read_from, asked_for), **_ordered(model)), handle,
@@ -108,14 +112,36 @@ def _whole(path):
     return loaded if isinstance(loaded, dict) else {}
 
 
+def _named(source):
+    """
+    The stem of the file: the sheet and enough of its digest to tell two
+    drawings of one name apart, or, with no sheet behind the reading, what it
+    was read off instead.
+    """
+    if not source:
+        return WITHOUT_A_SHEET
+    return "%s-%s" % (os.path.splitext(os.path.basename(source))[0], _digest_of(source))
+
+
+def _read_off(source):
+    """
+    What the reading says it was taken from.
+
+    A reading with no sheet behind it carries neither name nor digest: an empty
+    name and a digest of nothing are two claims about a drawing that does not
+    exist, and the file is what the run is held to.
+    """
+    if not source:
+        return {}
+    return {"sheet": os.path.basename(source), "digest": _digest_of(source)}
+
+
 def _head(source, read_from, asked_for):
+    read = dict(_read_off(source),
+                read_at=datetime.datetime.now().isoformat(timespec="seconds"))
     return {_ASKED_FOR: str(asked_for or ""),
             _SCHEMA_KEY: SCHEMA,
-            _PROVENANCE: dict({"sheet": os.path.basename(source),
-                               "digest": _digest_of(source),
-                               "read_at": datetime.datetime.now().isoformat(
-                                   timespec="seconds")},
-                              **(read_from or {}))}
+            _PROVENANCE: dict(read, **(read_from or {}))}
 
 
 def _ordered(model):

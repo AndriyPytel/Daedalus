@@ -121,10 +121,12 @@ hole.Reversed = True
 
 def scripted_model():
     """
-    The Plan, then the whole of it written in one Execute turn, then the
-    verdict. Each Step still lands on its own, through its own apply.
+    Design, which has no drawing to read and describes nothing, then the Plan,
+    then the whole of it written in one Execute turn, then the verdict. Each
+    Step still lands on its own, through its own apply.
     """
     return ScriptedLLMClient([
+        json.dumps({"design": {}, "question": ""}),
         json.dumps({"steps": [
             "Sketch a %gmm square on the XY plane inside a new Body" % SQUARE,
             "Pad the sketch by %gmm" % PAD,
