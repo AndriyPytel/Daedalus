@@ -1097,6 +1097,14 @@ def distilled(model) -> dict:
     here is every address the Acceptance is derived from, so the description
     and the criteria still come off one model (ADR-0020).
 
+    A datum goes with the feature it belonged to, and every live value measured
+    from a dead one is re-measured from the datum that takes over (FCC-153).
+    That is the one thing here the document says and the reading does not, and
+    it is why the re-measure is the distiller's rather than the merge's: the
+    merge only ever grows, so the description the Gate is read against is still
+    the sheet's own (ADR-0019). `measured_from_what_is_gone` is what says none
+    of them is left.
+
     `because` stays with it. It is not the proof of a number off the sheet, it
     is what the model settled a value nobody supplied — the one thing at the
     Gate that is the user's to overrule, read there through `decided_for_you`
@@ -1115,7 +1123,8 @@ def distilled(model) -> dict:
     `tests/test_modelmania_evidence.py` measures the title block it drops off
     the sheet that reading was taken from.
     """
-    return {section: _without_the_evidence(value)
+    taken_over = _which_datum_takes_over(model)
+    return {section: _re_measured(_without_the_evidence(value), taken_over)
             for section, value in (model or {}).items()
             if section not in _NOT_THE_PART}
 
@@ -1132,6 +1141,150 @@ def _without_the_evidence(node):
         return [_without_the_evidence(entry) for entry in node
                 if not _superseded(entry)]
     return node
+
+
+def measured_from_what_is_gone(document, evidence) -> list:
+    """
+    The values *document* measures from a datum that went with its feature.
+
+    The invariant a discarded feature leaves behind: once something has
+    discarded a feature, that feature can no longer be what another value is
+    measured from (FCC-153). Left standing, the datum is a face the drawing
+    deleted and every value keyed by it is a criterion the finished part is
+    checked against and cannot meet.
+
+    Read against the reading and not against the document alone: a document
+    carries no `superseded_by`, because the features that carried it are what
+    it dropped, so nothing in it can say which datums died. It is the same two
+    arguments `carried_by_no_source` is held with, for the same reason.
+
+    `tests/test_loop.py` runs it over the recorded reading of the 2023 pipe
+    clamp, over the document distilled out of it, and over the same reading
+    taken under an Intent that asks for the earlier revision.
+    """
+    taken_over = _which_datum_takes_over(evidence)
+    found = []
+    for at, entry in _each_value(document, ""):
+        gone = _the_datum_that_is_gone("%s: %s" % (at, entry.get("value")), taken_over)
+        if gone:
+            found.append({"about": at, "stands": str(entry.get("value")),
+                          "instead": taken_over[gone]})
+    return found
+
+
+def _which_datum_takes_over(model):
+    """
+    Datum name → the datum that takes its place, for every datum that went with
+    the feature it belonged to.
+
+    A feature owns a datum two ways, and both are read off the model rather
+    than out of its prose. It owns the one named after it — `the left-lug-hole
+    axis` is the hole's, and the slot that replaces the hole brings its own in
+    the same words. And it owns the one it was placed at in a direction the
+    feature replacing it is placed in too: the ear was where the length began
+    and the arm at 45° is, so the arm's free end face takes over from the ear's
+    tangent plane. A datum fixing two directions at once names no single one
+    and is left where it is, which is `_which_way_each_datum_fixes`'s own rule.
+    """
+    fixes = _which_way_each_datum_fixes(model)
+    features = [feature for feature in (model or {}).get("features") or ()
+                if isinstance(feature, dict)]
+    by_id = {str(feature.get("id")): feature for feature in features
+             if feature.get("id")}
+
+    taken_over = {}
+    for gone in features:
+        instead = by_id.get(str(gone.get("superseded_by") or ""))
+        if not instead:
+            continue
+        for datum in _every_datum_named(model):
+            named = _under_the_new_name(datum, str(gone.get("id") or ""),
+                                        str(instead.get("id") or ""))
+            if named:
+                taken_over[datum] = named
+        placed = _placed_in_each_direction(instead, fixes)
+        for way, datum in _placed_in_each_direction(gone, fixes).items():
+            if placed.get(way) and placed[way] != datum:
+                taken_over[datum] = placed[way]
+    return taken_over
+
+
+def _every_datum_named(model):
+    """Every datum the model names: the list, and what a position is keyed by."""
+    return {str(datum["name"]) for datum in (model or {}).get("datums") or ()
+            if isinstance(datum, dict) and datum.get("name")} | {
+        str(key) for feature in (model or {}).get("features") or ()
+        if isinstance(feature, dict) for key in (feature.get("position") or ())}
+
+
+def _placed_in_each_direction(feature, fixes):
+    """The datum this feature is placed by, in each direction that names one."""
+    return {fixes[datum]: datum for datum in (feature.get("position") or ())
+            if datum in fixes}
+
+
+def _under_the_new_name(datum, gone, instead):
+    """
+    *datum* said with the feature replacing *gone*, where it is named after it.
+
+    A whole identity or none of one: `left-arm` is written inside
+    `left-arm-slot`, and a datum of the slot is not the arm's to rename.
+    """
+    written = re.sub(r"(?<![\w-])%s(?![\w-])" % re.escape(gone), instead, datum) \
+        if gone and instead else datum
+    return written if written != datum else None
+
+
+def _the_datum_that_is_gone(said, taken_over):
+    return next((datum for datum in taken_over if datum in said), None)
+
+
+def _re_measured(node, taken_over):
+    """
+    A value measured from a datum that is gone, measured from the one that took
+    over — and the magnitude not carried across with it.
+
+    The two are different faces, so the number the sheet gave from one is not
+    the number from the other, and a projection may not work out the one it was
+    never given: the 108 mm the 2023 clamp is long was measured from a lug the
+    second page replaces with an arm at 45°, and no overall to the arm's free
+    end is printed anywhere. So the value says it is to be read again, keeps
+    what it said under `was`, and is `assumed` with a `because` — which is what
+    puts all seven of them in front of a person at the Gate, where a number
+    silently kept would have been checked on the finished part and failed
+    (ADR-0022).
+    """
+    if isinstance(node, dict):
+        written = {}
+        for key, value in node.items():
+            value = _re_measured(value, taken_over)
+            gone = _the_datum_that_is_gone("%s: %s" % (key, value.get("value")),
+                                           taken_over) if _a_value(value) else None
+            written[_instead(str(key), taken_over)] = \
+                _read_again(value, gone, taken_over) if gone else value
+        return written
+    if isinstance(node, list):
+        return [_re_measured(entry, taken_over) for entry in node
+                if str(_named(entry, ("name",)) or "") not in taken_over]
+    return node
+
+
+def _read_again(value, gone, taken_over):
+    return {"value": _TO_BE_READ_AGAIN, "flag": "assumed",
+            "because": _WENT_WITH_THE_FEATURE % (gone, taken_over[gone]),
+            "was": value.get("value")}
+
+
+def _instead(said, taken_over):
+    for gone, instead in taken_over.items():
+        said = said.replace(gone, instead)
+    return said
+
+
+_TO_BE_READ_AGAIN = "to be read again off the later page"
+
+_WENT_WITH_THE_FEATURE = "%s went with the feature the later page deleted, " \
+                         "and %s takes its place"
 
 
 def carried_by_no_source(document, evidence, intent) -> list:

@@ -55,7 +55,8 @@ from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
 from core.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, entries, entry_at,
-    merge, pointing, read_off_the_wrong_view, render, said_at,
+    measured_from_what_is_gone, merge, pointing, read_off_the_wrong_view, render,
+    said_at,
 )
 from core.loop import (
     PROMPTS, Budgets, prompt, revisions_ceiling, run,
@@ -1714,6 +1715,9 @@ def test_no_number_in_the_document_came_from_the_distiller():
     assert carried_by_no_source(invented, logged, intent) == [77.0]
 
 
+READ_AGAIN_OFF_THE_LATER_PAGE = "read again off the later page"
+
+
 def test_the_document_says_why_a_value_is_the_users_and_the_log_says_what_proved_it():
     """
     What survives distillation with a value and what does not, measured on the
@@ -1722,16 +1726,25 @@ def test_the_document_says_why_a_value_is_the_users_and_the_log_says_what_proved
     characters of `because` stay, because they are the only thing telling a
     user the model chose a value rather than read it (ADR-0022), and so does
     the flag on every one of the 46 entries the Acceptance is derived from.
+
+    The document says more of it than the reading does — 1,376 characters — and
+    the whole of the difference is the seven values re-measured from a datum
+    that survives, which is the one thing the distiller decides and the reading
+    never said.
     """
     document, logged, _ = _the_clamp_as_it_was_read()
 
     assert _occupied_by(document, ("from", "seen_in")) == 0
     assert _occupied_by({section: logged[section] for section in document},
                      ("from", "seen_in")) == 2_190
-    assert _occupied_by(document, ("because",)) == 357
+    assert _occupied_by({section: logged[section] for section in document},
+                     ("because",)) == 357
+    assert _occupied_by(document, ("because",)) == 1_376
     assert [entry for entry in entries(document) if not entry["flag"]] == []
     assert len(entries(document)) == 46
-    assert decided_for_you(document) == decided_for_you(logged) != []
+    assert [decision for decision in decided_for_you(document)
+            if READ_AGAIN_OFF_THE_LATER_PAGE not in decision] == \
+        decided_for_you(logged) != []
 
 
 def test_the_file_the_user_opens_is_the_document_the_run_was_planned_from():
@@ -1822,6 +1835,107 @@ def test_two_entries_that_cannot_both_be_true_still_reach_the_gate():
     assert flagged in events.last(DESIGN).data["model"]["conflicts"]
     assert [conflict for conflict in lost
             if conflict["about"] not in {standing["about"] for standing in kept}] == []
+
+
+THE_LEFT_LUG_PLANE = "the leftmost tangent plane of the left lug"
+
+THE_ARMS_FREE_END = "the angled free-end face of the left arm"
+
+MEASURED_FROM_A_DELETED_FACE = [
+    "envelope \u2192 length between %s and the rightmost end face" % THE_LEFT_LUG_PLANE,
+    "features \u2192 outer-profile \u2192 position \u2192 %s" % THE_LEFT_LUG_PLANE,
+    "features \u2192 outer-profile \u2192 position \u2192 the rightmost end face",
+    "features \u2192 outer-profile \u2192 position \u2192 the ring axis",
+    "features \u2192 ring-bore \u2192 position \u2192 %s" % THE_LEFT_LUG_PLANE,
+    "features \u2192 ring-outer-cylinder \u2192 position \u2192 %s" % THE_LEFT_LUG_PLANE,
+    "features \u2192 left-arm-slot \u2192 position \u2192 the left-lug-hole axis",
+]
+
+RE_MEASURED = [
+    "envelope \u2192 length between %s and the rightmost end face" % THE_ARMS_FREE_END,
+    "features \u2192 outer-profile \u2192 position \u2192 %s" % THE_ARMS_FREE_END,
+    "features \u2192 outer-profile \u2192 position \u2192 the rightmost end face",
+    "features \u2192 outer-profile \u2192 position \u2192 the ring axis",
+    "features \u2192 ring-bore \u2192 position \u2192 %s" % THE_ARMS_FREE_END,
+    "features \u2192 ring-outer-cylinder \u2192 position \u2192 %s" % THE_ARMS_FREE_END,
+    "features \u2192 left-arm-slot \u2192 position \u2192 the left-arm-slot axis",
+]
+
+
+def test_nothing_the_document_states_is_measured_from_a_face_the_sheet_deleted():
+    """
+    The recorded run of the 2023 pipe clamp measures seven of its criteria from
+    two faces the second page deletes: the 108 mm overall and the lengthwise
+    position of the outer profile, the bore and the outer ring from the left
+    lug's tangent plane, and the slot from the axis of the hole it replaces.
+    Every one of them is a criterion the finished part is checked against and
+    none of them is on it (FCC-153).
+    """
+    document, logged, _ = _the_clamp_as_it_was_read()
+
+    assert [found["about"] for found in measured_from_what_is_gone(logged, logged)] == \
+        MEASURED_FROM_A_DELETED_FACE
+    assert measured_from_what_is_gone(document, logged) == []
+
+
+def test_each_of_the_seven_is_re_measured_from_a_datum_that_survives():
+    """
+    Re-measured and not dropped: what the sheet gave stays a criterion, keyed by
+    the datum that takes over from the dead one — the arm's own free end face
+    where the left lug's tangent plane was, the slot's axis where the hole's
+    was — with what it said from the face that is gone kept under `was`, so the
+    Gate shows a person which seven the later page unsettled (ADR-0022). The
+    dead datum leaves `datums` with the feature that owned it.
+    """
+    document, _, _ = _the_clamp_as_it_was_read()
+    named = [datum["name"] for datum in document["datums"]]
+
+    assert [entry_at(document, at)["was"] for at in RE_MEASURED] == [
+        "108 mm", "0 mm", "108 mm from %s" % THE_LEFT_LUG_PLANE,
+        "65.5 mm from %s" % THE_LEFT_LUG_PLANE, "65.5 mm", "65.5 mm", "concentric"]
+    assert THE_LEFT_LUG_PLANE not in named
+    assert THE_ARMS_FREE_END in named
+
+
+def test_what_the_sheet_said_still_reaches_the_user_at_the_gate():
+    """
+    The re-measure is the distiller's and never the merge's: the merge stays
+    monotonic (ADR-0019), so the description the Gate is read against is still
+    the sheet's own — the 108 mm the second page unsettles, and the datum it is
+    measured from, both written where Design put them.
+    """
+    reading = merge({}, THE_2023_CLAMP)
+
+    assert THE_LEFT_LUG_PLANE in [datum["name"] for datum in reading["datums"]]
+    assert entry_at(reading, MEASURED_FROM_A_DELETED_FACE[0])["value"] == "108 mm"
+
+
+def _asked_for_phase_1(reading):
+    """
+    The same reading under an Intent that asks for Phase 1: the second page's
+    features never become the part, so nothing is superseded (FCC-153).
+    """
+    replacing = {feature["superseded_by"] for feature in reading["features"]
+                 if feature.get("superseded_by")}
+    return dict(reading, features=[
+        {field: said for field, said in feature.items() if field != "superseded_by"}
+        for feature in reading["features"] if feature["id"] not in replacing])
+
+
+def test_a_run_asked_for_the_earlier_revision_re_measures_nothing():
+    """
+    The invariant is what has to hold when the user asks for the later revision.
+    Asked for Phase 1 off the same sheet, nothing is superseded, no datum dies,
+    every criterion keeps the address it was read under — and the 108 mm the
+    Phase 2 document loses is still the length of the part.
+    """
+    phase_1 = _asked_for_phase_1(merge({}, THE_2023_CLAMP))
+    document = distilled(phase_1)
+
+    assert measured_from_what_is_gone(document, phase_1) == []
+    assert [entry["about"] for entry in entries(document)] == \
+        [entry["about"] for entry in entries(phase_1)]
+    assert entry_at(document, MEASURED_FROM_A_DELETED_FACE[0])["value"] == "108 mm"
 
 
 def _reaches(function, called):
