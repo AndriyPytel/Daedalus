@@ -74,6 +74,32 @@ def test_what_was_written_is_what_comes_back(sheet, tmp_path):
     assert part_file.read(path) == THE_CLAMP
 
 
+def test_the_file_says_what_the_reading_was_asked_for(sheet, tmp_path):
+    """
+    A reading is the requirement one run was held to. What it was read off is
+    half of that, and what it was read for is the other half.
+    """
+    path = part_file.saved(THE_CLAMP, sheet, into=str(tmp_path / "parts"),
+                           asked_for="Open the \u00d842 bore to \u00d845.")
+
+    assert part_file.asked_for(path) == "Open the \u00d842 bore to \u00d845."
+    assert part_file.read(path) == THE_CLAMP
+
+
+def test_what_was_asked_for_is_the_first_thing_the_file_says(sheet, tmp_path):
+    path = part_file.saved(THE_CLAMP, sheet, into=str(tmp_path / "parts"),
+                           asked_for="Open the bore.")
+
+    text = open(path, encoding="utf-8").read()
+    assert text.index("what_was_asked_for:") < text.index("read_from:") < text.index("datums:")
+
+
+def test_a_reading_nobody_said_what_they_wanted_says_nothing(sheet, tmp_path):
+    path = part_file.saved(THE_CLAMP, sheet, into=str(tmp_path / "parts"))
+
+    assert part_file.asked_for(path) == ""
+
+
 def test_the_file_says_which_sheet_it_was_read_from(sheet, tmp_path):
     path = part_file.saved(THE_CLAMP, sheet, into=str(tmp_path / "parts"),
                            read_from={"scale": "0.3528 mm per point"})

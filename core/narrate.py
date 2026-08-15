@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 from core.design import render
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE, INTENT,
     OUTSTANDING, PART, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
     STEP_STARTED, TOOL_RESULT, UNBUILT,
 )
@@ -88,6 +88,9 @@ def narrate(event) -> Narration:
     """
     data = event.data
     kind = event.kind
+
+    if kind == INTENT:
+        return Narration(line="What was asked for: %s" % data.get("text", ""))
 
     if kind == QUESTION:
         return Narration(line=data["text"])

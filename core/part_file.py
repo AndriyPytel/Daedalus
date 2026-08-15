@@ -49,15 +49,20 @@ WHERE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 _PROVENANCE = "read_from"
 _SCHEMA_KEY = "schema"
+_ASKED_FOR = "what_was_asked_for"
 
 
-def saved(model, source, into=None, read_from=None) -> str:
+def saved(model, source, into=None, read_from=None, asked_for=None) -> str:
     """
     *model* written as one reading of *source*. The path, or "" if there is
     nothing to write.
 
     A run with no drawing describes no part, and a file saying so is a file to
     mistake for a reading later.
+
+    `asked_for` is the Intent the reading was taken under, and it is written
+    first: a reading says what it was read off, and what it was read for is the
+    other half of holding the run to it.
     """
     if not model or yaml is None:
         return ""
@@ -69,7 +74,7 @@ def saved(model, source, into=None, read_from=None) -> str:
         datetime.datetime.now().strftime(WHEN)))
 
     with open(path, "w", encoding="utf-8") as handle:
-        yaml.safe_dump(dict(_head(source, read_from), **_ordered(model)), handle,
+        yaml.safe_dump(dict(_head(source, read_from, asked_for), **_ordered(model)), handle,
                        sort_keys=False, allow_unicode=True, default_flow_style=False)
     return path
 
@@ -77,7 +82,7 @@ def saved(model, source, into=None, read_from=None) -> str:
 def read(path) -> dict:
     """The part in *path*, or {} where there is no readable file there."""
     return {key: value for key, value in _whole(path).items()
-            if key not in (_SCHEMA_KEY, _PROVENANCE)}
+            if key not in (_SCHEMA_KEY, _PROVENANCE, _ASKED_FOR)}
 
 
 def provenance(path) -> dict:
@@ -85,6 +90,11 @@ def provenance(path) -> dict:
     whole = _whole(path)
     return dict(whole.get(_PROVENANCE) or {},
                 **{_SCHEMA_KEY: whole.get(_SCHEMA_KEY, "")})
+
+
+def asked_for(path) -> str:
+    """What the run that took this reading was asked to produce."""
+    return str(_whole(path).get(_ASKED_FOR) or "")
 
 
 def _whole(path):
@@ -98,8 +108,9 @@ def _whole(path):
     return loaded if isinstance(loaded, dict) else {}
 
 
-def _head(source, read_from):
-    return {_SCHEMA_KEY: SCHEMA,
+def _head(source, read_from, asked_for):
+    return {_ASKED_FOR: str(asked_for or ""),
+            _SCHEMA_KEY: SCHEMA,
             _PROVENANCE: dict({"sheet": os.path.basename(source),
                                "digest": _digest_of(source),
                                "read_at": datetime.datetime.now().isoformat(

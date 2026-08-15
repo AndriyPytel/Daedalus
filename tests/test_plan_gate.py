@@ -12,7 +12,7 @@ check is not what these tests are about.
 import inspect
 import json
 
-from core.events import BLOCKED, PLAN, PLAN_REVISED, EventStream
+from core.events import BLOCKED, INTENT, PLAN, PLAN_REVISED, EventStream
 from core.llm import ScriptedLLMClient
 from core.loop import (
     ACCEPT, AMEND, APPROVE, REJECT, REVISE, START_OVER, Approval, Budgets, run,
@@ -55,7 +55,7 @@ def test_no_step_executes_before_the_user_approves():
     assert gate.shown == [["Create a 10mm box"]]
     assert tools.applied_codes() == ["box()"]
     kinds = [e.kind for e in events]
-    assert kinds.index(PLAN) == 0
+    assert kinds[:2] == [INTENT, PLAN]
 
 
 def test_a_rejected_plan_applies_nothing():

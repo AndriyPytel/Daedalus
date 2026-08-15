@@ -16,13 +16,14 @@ the field the wording turns on.
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, KINDS,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, INTENT, KINDS,
     OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, Event,
 )
 from core.narrate import Narration, narrate
 
 SAMPLES = {
+    INTENT: {"text": "Build the pipe clamp on this sheet."},
     THOUGHT: {"phase": "plan", "text": "thinking"},
     QUESTION: {"text": "How many teeth?"},
     ANSWER: {"text": "the pockets go through", "by": "drawing"},
@@ -66,6 +67,16 @@ def test_the_shapes_that_are_not_prose_say_nothing(kind):
     — or they would appear twice.
     """
     assert narrate(an_event(kind)) == Narration()
+
+
+def test_what_the_run_was_asked_for_is_a_line_of_its_own():
+    """
+    Given the way the part is given, a line naming it. The run is judged
+    against what was asked, and a transcript that never says it cannot be
+    judged at all.
+    """
+    assert narrate(an_event(INTENT)).line == \
+        "What was asked for: Build the pipe clamp on this sheet."
 
 
 def test_the_part_is_a_row_that_carries_the_structure_laid_out():

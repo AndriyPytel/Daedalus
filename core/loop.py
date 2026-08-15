@@ -42,7 +42,7 @@ from core.design import (
     settled_by_the_tracing, what_the_trace_says, where_the_direction_is,
 )
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE, INTENT,
     OUTSTANDING, PART, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT,
     EventStream,
@@ -607,6 +607,12 @@ def design(body, llm, events, attachments=()):
     was invented not because the model saw badly but because it needed something
     to plan with. The sheet rides along whenever there is one, because the phase
     that owns the description is the only phase that ever sees the picture.
+
+    The Intent is in the body of every turn, beside whatever else that turn is
+    asking about. It is the scope of the run rather than one source among them,
+    so a turn without it reads the sheet for nothing in particular; it never
+    narrows what is described, because what the drawing prints is on the part
+    whether the run was asked about it or not.
 
     Hands back what to merge and what Design wants asked. A reply that is not a
     model grows the part by nothing, which is the same case as a sheet that does
@@ -1712,6 +1718,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     for whoever drives the next run.
     """
     events = events if events is not None else EventStream()
+    events.emit(INTENT, text=intent)
     budgets = budgets or Budgets()
     progress = {"applied": 0, "tried": [], "unmet": list(outstanding), "satisfied": []}
 
@@ -1757,7 +1764,7 @@ def _answered(question, ask, events):
     return answer
 
 
-def _written_in(the_part, question, answer, llm, events, attachments):
+def _written_in(the_part, intent, question, answer, llm, events, attachments):
     """
     A person's answer, back through Design rather than on to Plan.
 
@@ -1768,7 +1775,8 @@ def _written_in(the_part, question, answer, llm, events, attachments):
     for Plan to prefer, and preferring the newer is exactly how the depth off
     SECTION B-B was lost.
     """
-    grew, asks = design({"the_part_as_you_described_it": the_part,
+    grew, asks = design({"intent": intent,
+                         "the_part_as_you_described_it": the_part,
                          "the_question": question,
                          "the_answer_you_were_given": answer},
                         llm, events, attachments)
@@ -1802,31 +1810,31 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
         events.emit(QUESTION, text=question)
         answer = _answered(question, ask, events)
         if answer:
-            the_part, _ = _written_in(the_part, question, answer, llm, events,
+            the_part, _ = _written_in(the_part, intent, question, answer, llm, events,
                                       attachments)
 
-    the_part = _every_callout_accounted_for(the_part, attachments, llm, events,
+    the_part = _every_callout_accounted_for(the_part, intent, attachments, llm, events,
                                             budgets, cancelled)
-    the_part = _the_outside_is_carried(the_part, attachments, llm, events, budgets,
-                                       cancelled)
+    the_part = _the_outside_is_carried(the_part, intent, attachments, llm, events,
+                                       budgets, cancelled)
 
     if the_part:
         events.emit(DESIGN, model=the_part)
     the_part = _the_sweep_is_the_sheets(the_part, attachments)
-    the_part = _the_directions_are_the_drawings(the_part, attachments, llm, events,
-                                                budgets, cancelled)
-    the_part = _every_number_is_the_sheets(the_part, attachments, llm, events,
+    the_part = _the_directions_are_the_drawings(the_part, intent, attachments, llm,
+                                                events, budgets, cancelled)
+    the_part = _every_number_is_the_sheets(the_part, intent, attachments, llm, events,
                                            budgets, cancelled)
     disagreements = _the_geometry_disagrees(attachments, events)
     the_part = merge(the_part, dict(the_part, conflicts=disagreements)
                      if disagreements else the_part)
     the_part = _every_direction_settled(the_part, _round_evidence(attachments))
     the_part = _the_tracing_governs(the_part)
-    the_part = _written_down(the_part, attachments, events)
+    the_part = _written_down(the_part, intent, attachments, events)
     return the_part
 
 
-def _every_number_is_the_sheets(the_part, attachments, llm, events, budgets,
+def _every_number_is_the_sheets(the_part, intent, attachments, llm, events, budgets,
                                 cancelled):
     """
     A number on the description that is on no sheet, put back to the drawing.
@@ -1853,7 +1861,8 @@ def _every_number_is_the_sheets(the_part, attachments, llm, events, budgets,
     if budgets.rereads:
         if cancelled():
             raise Stopped()
-        grew, _ = design({"the_part_as_you_described_it": the_part,
+        grew, _ = design({"intent": intent,
+                          "the_part_as_you_described_it": the_part,
                           "the_question": _where_is_this_number(found)},
                          llm, events, attachments)
         if grew:
@@ -2050,8 +2059,8 @@ def _round_evidence(attachments):
     return found
 
 
-def _the_directions_are_the_drawings(the_part, attachments, llm, events, budgets,
-                                     cancelled):
+def _the_directions_are_the_drawings(the_part, intent, attachments, llm, events,
+                                     budgets, cancelled):
     """
     A direction read off the wrong view put back to the drawing before anybody
     settles it for it.
@@ -2088,7 +2097,8 @@ def _the_directions_are_the_drawings(the_part, attachments, llm, events, budgets
         if cancelled():
             raise Stopped()
         looked += 1
-        grew, _ = design({"the_part_as_you_described_it": the_part,
+        grew, _ = design({"intent": intent,
+                          "the_part_as_you_described_it": the_part,
                           "the_question": _look_at_the_view_again(found)},
                          llm, events, attachments)
         if not grew:
@@ -2237,7 +2247,7 @@ def _the_sweep_is_the_sheets(the_part, attachments):
     return dict(the_part, printed_on_the_sheet=swept)
 
 
-def _written_down(the_part, attachments, events):
+def _written_down(the_part, intent, attachments, events):
     """
     The reading saved as a file, and read back out of it.
 
@@ -2246,10 +2256,14 @@ def _written_down(the_part, attachments, events):
     built out of what is on disk, so a user who opens it and corrects an axis
     has corrected the run — and two readings of one sheet are two files to
     diff rather than two transcripts to compare (FCC-108).
+
+    The Intent is written beside the sheet it was read off, because a reading
+    is the requirement one run is held to, and what was asked is what makes it
+    a requirement rather than a description of a drawing.
     """
     source = next((path for path in attachments if sheet_reader.read(path)),
                   attachments[0] if attachments else "")
-    path = part_file.saved(the_part, source,
+    path = part_file.saved(the_part, source, asked_for=intent,
                            read_from=_how_it_was_read(sheet_reader.read(source)))
     if not path:
         return the_part
@@ -2269,7 +2283,7 @@ def _how_it_was_read(sheet):
     return {"views": seen, "notes": list(sheet.notes)}
 
 
-def _the_outside_is_carried(the_part, attachments, llm, events, budgets,
+def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
                             cancelled):
     """
     The one finding a run may not walk past: the shape of the part is nobody's.
@@ -2301,7 +2315,8 @@ def _the_outside_is_carried(the_part, attachments, llm, events, budgets,
         if cancelled():
             raise Stopped()
         looked += 1
-        grew, _ = design({"the_part_as_you_described_it": the_part,
+        grew, _ = design({"intent": intent,
+                          "the_part_as_you_described_it": the_part,
                           "the_question": _the_outer_profile(why)},
                          llm, events, attachments)
         if not grew:
@@ -2316,7 +2331,8 @@ def _the_outside_is_carried(the_part, attachments, llm, events, budgets,
     if not why:
         return the_part
 
-    grew, _ = design({"the_part_as_you_described_it": the_part,
+    grew, _ = design({"intent": intent,
+                      "the_part_as_you_described_it": the_part,
                       "the_question": _settle_the_outer_profile(why)},
                      llm, events, attachments)
     return merge(the_part, grew) if grew else the_part
@@ -2340,7 +2356,7 @@ def _the_outer_profile(why):
         "datum. Read it off the view the silhouette is drawn in." % why)
 
 
-def _every_callout_accounted_for(the_part, attachments, llm, events, budgets,
+def _every_callout_accounted_for(the_part, intent, attachments, llm, events, budgets,
                                  cancelled):
     """
     The sweep of the sheet, checked against the sheet instead of against itself.
@@ -2368,7 +2384,8 @@ def _every_callout_accounted_for(the_part, attachments, llm, events, budgets,
         if cancelled():
             raise Stopped()
         looked += 1
-        grew, _ = design({"the_part_as_you_described_it": the_part,
+        grew, _ = design({"intent": intent,
+                          "the_part_as_you_described_it": the_part,
                           "the_question": _look_again_at(missed)},
                          llm, events, attachments)
         if not grew:
@@ -2554,7 +2571,8 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             events.emit(ANSWER, text=_LOOKED_AT_NOTHING, by="tools")
         elif asking.read_again < budgets.rereads and _pictures(attachments):
             asking.read_again += 1
-            from_the_drawing, _ = design({"the_part_as_you_described_it": grown,
+            from_the_drawing, _ = design({"intent": intent,
+                                          "the_part_as_you_described_it": grown,
                                           "the_question": planned.question},
                                          llm, events, attachments)
             if from_the_drawing:

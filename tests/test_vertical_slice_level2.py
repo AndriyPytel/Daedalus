@@ -23,7 +23,7 @@ import pytest
 
 from core.apply import ApplyPipeline
 from core.events import (
-    APPLIED, BLOCKED, PLAN, REVIEW_VERDICT, STEP_STARTED, TOOL_CALL,
+    APPLIED, BLOCKED, INTENT, PLAN, REVIEW_VERDICT, STEP_STARTED, TOOL_CALL,
     TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import build_registry
@@ -329,7 +329,7 @@ def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
     events = slice_run["events"]
     kinds = [e.kind for e in events]
 
-    assert kinds[0] == PLAN
+    assert kinds[:2] == [INTENT, PLAN]
     assert len(events.of(STEP_STARTED)) == 5
     assert len(events.of(TOOL_CALL)) == 6
     assert len(events.of(TOOL_RESULT)) == 6
@@ -394,4 +394,5 @@ def test_the_run_reads_back_from_its_log(slice_run, tmp_path):
     replayed = [json.loads(line) for line in open(path).read().strip().splitlines()]
 
     assert [e["kind"] for e in replayed] == [e.kind for e in slice_run["events"]]
-    assert replayed[0]["data"]["steps"][0].startswith("Sketch a 10mm square")
+    planned = next(entry for entry in replayed if entry["kind"] == PLAN)
+    assert planned["data"]["steps"][0].startswith("Sketch a 10mm square")

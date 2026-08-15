@@ -24,6 +24,12 @@ that parse Review's JSON input use .split("\n\n")[0] to discard it.
 
 An empty design_reply() is the sheet answering nothing: the re-read came back
 with no value, so what was asked stays unsettled by the drawing.
+
+A_READING_THAT_PROVOKES_EVERY_RE_READ is a description that trips every check
+the Design phase makes of it at once — a callout of the sheet nobody used, an
+outside called rounded and carried by nothing, an axis pointing along the
+direction it is placed in, and a number no sheet prints — so that one run
+reaches all eight Design call sites.
 """
 import base64
 import json
@@ -35,9 +41,9 @@ from dataclasses import replace
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, PART, PLAN,
-    PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
-    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, INTENT, PART,
+    PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
+    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream, replay,
 )
 from core import loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
@@ -1894,6 +1900,16 @@ def _said_to_design(llm, at=0):
                       if block.get("type") == "text")
 
 
+def _asked_of_design(llm):
+    """
+    The body of every Design turn, in order. Not `_turns_of`: a Design request
+    is content blocks rather than one string, because the sheet rides with it,
+    and the body is the first of them.
+    """
+    return [json.loads(call[-1]["content"][0]["text"]) for call in llm.calls
+            if call[0]["content"] == prompt("design")]
+
+
 @pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
 def test_a_sheet_is_shown_as_its_views_and_not_as_one_page():
     """
@@ -1986,6 +2002,126 @@ def test_the_second_look_is_bounded_by_the_re_read_ceiling():
 
     design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
     assert len(design_turns) <= 3, "the re-look ran past its ceiling"
+
+
+THE_2023_SHEET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelmania",
+                              "model-mania_-in-person-2023 copy.pdf")
+
+A_READING_THAT_PROVOKES_EVERY_RE_READ = {
+    "datums": [{"name": "the ring axis", "fixes": "the height",
+                "is": "the centreline of the clamp body"}],
+    "envelope": {"length": read("150 mm"), "depth front to rear": read("777 mm")},
+    "features": [{"id": "clamp-bore", "kind": "\u00d842 bore", "topology": "through",
+                  "axis": read("along the height"),
+                  "position": {"the ring axis": read("coincident")},
+                  "seen_in": ["the plan"]}],
+    "not_defined": [{"what": "the rounded ends of the outside",
+                     "looked_in": ["the plan"]}],
+}
+
+
+def _a_run_that_reads_the_sheet_every_way(sheet, intent):
+    """
+    One run that reaches all eight Design turns.
+
+    The first pass at the sheet, the person's answer written in, the five
+    re-reads this reading provokes — a callout nobody used, the outer contour
+    asked and then settled, an axis pointing along the direction it is placed
+    in, a 777 mm nothing prints — and the question Plan puts back to the
+    drawing. `rereads=1` is what fires each of them exactly once: every one of
+    them looks again until it stops finding fewer.
+    """
+    return drive([design_reply(A_READING_THAT_PROVOKES_EVERY_RE_READ,
+                               question="How thick is the pad under the arm?")]
+                 + [design_reply({})] * 6
+                 + [question_reply("Which end does the slot open at?"),
+                    design_reply({}),
+                    plan_reply("Build it",
+                               satisfies=everything(A_READING_THAT_PROVOKES_EVERY_RE_READ)),
+                    code_reply("box()"), verdict_reply("pass")],
+                 intent=intent, attachments=[sheet], ask=lambda question: "12 mm",
+                 budgets=Budgets(rereads=1))
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_every_design_turn_of_a_run_is_told_what_the_run_was_asked_for():
+    """
+    Eight call sites, one run, and the Intent on every one of them. It is the
+    scope of the run — what is expected on the output — so a turn that reads
+    the sheet without it reads for nothing in particular.
+    """
+    intent = "Build the pipe clamp on this sheet."
+
+    _, _, llm, _ = _a_run_that_reads_the_sheet_every_way(MODEL_MANIA, intent)
+
+    turns = _asked_of_design(llm)
+    assert len(turns) == 8, "the run did not drive all eight Design call sites"
+    assert [turn for turn in turns if turn.get("intent") == intent] == turns
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_a_re_read_of_the_two_page_2023_sheet_still_knows_what_was_asked():
+    """
+    The sheet the recorded run was made against, and the case the Intent has
+    to survive: a revision names one thing to change, and every look that sheet
+    provokes — the second page among them — is taken knowing what that is.
+    """
+    intent = "Revise the clamp: open the \u00d842 bore to \u00d845 and change nothing else."
+
+    _, _, llm, _ = _a_run_that_reads_the_sheet_every_way(THE_2023_SHEET, intent)
+
+    re_reads = _asked_of_design(llm)[1:]
+    assert re_reads, "the sheet provoked no re-read at all"
+    assert [turn for turn in re_reads if turn.get("intent") == intent] == re_reads
+    assert all("the_part_as_you_described_it" in turn for turn in re_reads), \
+        "a re-read arrived without the model it is growing"
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_a_replayed_session_says_what_was_asked_before_it_says_what_was_read(tmp_path):
+    """
+    Read back off the log rather than off the live stream, because the session
+    opened tomorrow is the one that has to be judged, and it is judged against
+    what was asked.
+    """
+    intent = "Build the pipe clamp on this sheet."
+    path = str(tmp_path / "session.jsonl")
+    events = EventStream()
+    events.log_to(path)
+    llm = ScriptedLLMClient([design_reply(A_CUBE), plan_reply("Only",
+                                                             satisfies=everything(A_CUBE)),
+                             code_reply("box()"), verdict_reply("pass")])
+
+    run(intent, llm=llm, tools=FakeTools().registry, events=events,
+        attachments=[MODEL_MANIA])
+
+    replayed, truncated = replay(path)
+    kinds = [event.kind for event in replayed]
+
+    assert not truncated
+    assert kinds[0] == INTENT, "the run said something before it said what it was for"
+    assert kinds.count(INTENT) == 1
+    assert kinds.index(INTENT) < kinds.index(DESIGN)
+    assert replayed[0].data["text"] == intent
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_the_reading_on_disk_says_what_it_was_read_for_and_not_only_what_off():
+    """
+    A reading opened tomorrow is the requirement the run was held to, and what
+    was asked is half of reading it.
+    """
+    intent = "Build the pipe clamp on this sheet."
+
+    _, events, _, _ = drive([design_reply(A_CUBE),
+                             plan_reply("Only", satisfies=everything(A_CUBE)),
+                             code_reply("box()"), verdict_reply("pass")],
+                            intent=intent, attachments=[MODEL_MANIA])
+
+    written = events.last(PART).data["path"]
+
+    assert part_file.asked_for(written) == intent
+    assert part_file.provenance(written)["sheet"] == os.path.basename(MODEL_MANIA)
 
 
 def test_a_pdf_that_cannot_be_rendered_here_still_goes_out_as_a_file_block():
@@ -2104,7 +2240,7 @@ def test_a_run_that_had_an_attachment_says_so_on_the_stream():
     attached = events.first(ATTACHED)
     assert attached.data["files"] == [{"name": os.path.basename(RENDER_PNG),
                                        "path": RENDER_PNG}]
-    assert [event.kind for event in events].index(ATTACHED) == 0
+    assert [event.kind for event in events][:2] == [INTENT, ATTACHED]
 
 
 def test_the_attachment_is_recorded_even_where_the_file_has_gone():
@@ -2817,7 +2953,7 @@ def test_the_event_stream_of_a_clean_run():
     ])
 
     assert [e.kind for e in events] == [
-        THOUGHT, PLAN, GATE, GATE,
+        INTENT, THOUGHT, PLAN, GATE, GATE,
         THOUGHT, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
         THOUGHT, REVIEW_VERDICT,
     ]
@@ -2838,7 +2974,7 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
     ], attachments=[RENDER_PNG])
 
     assert [e.kind for e in events] == [
-        ATTACHED, DESIGN, PART, PLAN, GATE, GATE,
+        INTENT, ATTACHED, DESIGN, PART, PLAN, GATE, GATE,
         STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
         TOOL_CALL, TOOL_RESULT, ASSERTION,
         REVIEW_VERDICT,
@@ -2852,7 +2988,7 @@ def test_the_event_stream_of_a_retried_run():
     )
 
     assert [e.kind for e in events] == [
-        PLAN, GATE, GATE,
+        INTENT, PLAN, GATE, GATE,
         STEP_STARTED,
         TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
         TOOL_CALL, TOOL_RESULT, APPLIED,
@@ -2868,8 +3004,8 @@ def test_the_event_stream_of_a_blocked_run():
     )
 
     assert [e.kind for e in events] == [
-        PLAN, GATE, GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
-        BLOCKED,
+        INTENT, PLAN, GATE, GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
+        PREFLIGHT_FAILED, BLOCKED,
     ]
 
 
@@ -2923,7 +3059,7 @@ def test_the_stream_can_be_watched_live():
     ]), tools=FakeTools().registry, events=events)
 
     assert seen == [e.kind for e in events]
-    assert seen[0] == PLAN
+    assert seen[0] == INTENT
 
 
 def test_a_reply_that_is_not_json_is_an_error_the_user_is_told_about():
@@ -4309,7 +4445,7 @@ def test_a_run_that_inherits_a_failure_says_so_before_it_reads_the_drawing():
         outstanding=STILL_WRONG)
 
     assert events.first(OUTSTANDING).data["entries"] == STILL_WRONG
-    assert list(events)[0].kind == OUTSTANDING, \
+    assert [event.kind for event in events][:2] == [INTENT, OUTSTANDING], \
         "what is already wrong turned up after the run had started planning"
 
 
@@ -5655,7 +5791,8 @@ def test_a_number_on_no_sheet_is_put_to_the_drawing_and_then_left_as_a_conflict(
     monkeypatch.setattr(loop, "design", design)
 
     grown = loop._every_number_is_the_sheets(
-        {"features": []}, ["a.pdf"], None, None, loop.Budgets(), lambda: False)
+        {"features": []}, "Make the clamp", ["a.pdf"], None, None, loop.Budgets(),
+        lambda: False)
 
     assert asked and "1234" in asked[0]
     assert len(grown["conflicts"]) == 1
@@ -5671,7 +5808,8 @@ def test_a_number_the_look_accounted_for_is_not_a_conflict(monkeypatch):
                         lambda payload, llm, events, attachments: ({}, None))
 
     grown = loop._every_number_is_the_sheets(
-        {"features": []}, ["a.pdf"], None, None, loop.Budgets(), lambda: False)
+        {"features": []}, "Make the clamp", ["a.pdf"], None, None, loop.Budgets(),
+        lambda: False)
 
     assert "conflicts" not in grown
 
@@ -5681,7 +5819,7 @@ def test_a_description_whose_numbers_are_all_the_sheets_is_left_alone(monkeypatc
     monkeypatch.setattr(loop, "design", lambda *a, **kw: 1 / 0)
 
     assert loop._every_number_is_the_sheets(
-        {"features": []}, ["a.pdf"], None, None, loop.Budgets(),
+        {"features": []}, "Make the clamp", ["a.pdf"], None, None, loop.Budgets(),
         lambda: False) == {"features": []}
 
 
@@ -5866,7 +6004,7 @@ def _looked_at_the_view_again(monkeypatch, part, fragment):
     _traced(monkeypatch, TRACED_ROUND_IN_THE_UPPER_PLAN)
     _re_read_as(monkeypatch, fragment)
     return loop._the_directions_are_the_drawings(
-        json.loads(json.dumps(part)), [], None, EventStream(),
+        json.loads(json.dumps(part)), "Make the clamp", [], None, EventStream(),
         loop.Budgets(rereads=2), lambda: False)
 
 

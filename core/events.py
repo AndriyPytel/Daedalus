@@ -17,12 +17,17 @@ run that inherits it.
 was waiting on, with the entries of the description it was the Step to satisfy:
 a run that finishes with one of those is not a blocked run, and the stream says
 so in a word of its own.
+
+`intent` is what the run was asked to produce. It stands first, before anything
+has been read, so a session says what was wanted before it says what was found
+and a transcript can be judged against the request that opened it.
 """
 import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Tuple
 
+INTENT = "intent"
 THOUGHT = "thought"
 QUESTION = "question"
 ANSWER = "answer"
@@ -45,9 +50,9 @@ BLOCKED = "blocked"
 ERROR = "error"
 
 KINDS = (
-    THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED, GATE,
-    STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED, ASSERTION,
-    OUTSTANDING, UNBUILT, REVIEW_VERDICT, BLOCKED, ERROR,
+    INTENT, THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
+    GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED,
+    ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, BLOCKED, ERROR,
 )
 
 

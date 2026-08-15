@@ -16,8 +16,8 @@ from core.events import (
 
 def test_every_specced_event_kind_exists():
     assert set(KINDS) == {
-        "thought", "question", "answer", "attached", "design", "part", "plan",
-        "plan_revised", "gate", "step_started", "tool_call", "tool_result",
+        "intent", "thought", "question", "answer", "attached", "design", "part",
+        "plan", "plan_revised", "gate", "step_started", "tool_call", "tool_result",
         "preflight_failed", "applied", "assertion", "outstanding", "unbuilt",
         "review_verdict", "blocked", "error",
     }

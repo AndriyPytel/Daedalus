@@ -557,6 +557,18 @@ the disagreement is the thing that has to survive, not your latest opinion.
 Reply with a fragment, keyed the same way: a feature you are adding to carries
 its `id` and only the fields you are filling in.
 
+## What the run was asked for
+
+`intent` is on every turn — the first pass at the sheet and every re-read after
+it. It is what the run has to produce, in the user's own words, and it is what
+your description is being written for.
+
+It is not a filter and it is not a source. A callout printed on the sheet
+belongs on the part whether or not the Intent names it, and a value you leave
+out because the request did not mention it is a value the Plan invents later.
+What the Intent settles is scope: which part, off which sheet, and what the run
+is expected to leave behind.
+
 ## When you are asked again
 
 `the_question` means somebody downstream needs a value your model did not carry.
