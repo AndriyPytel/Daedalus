@@ -367,6 +367,9 @@ class Sheet:
     measures. `overviews` is the layout picture of every page, the first of
     which is `overview`.
 
+    `callouts` is `printed` again, grouped into the lines the draughtsman set the
+    words on: the same objects, one list to a printed line.
+
     `notes` is what could not be done and why, in the words the user would need.
     A sheet with no text layer is not an error; it is a sheet with no text layer.
     """
@@ -375,6 +378,7 @@ class Sheet:
     crops: list = field(default_factory=list)
     wholes: list = field(default_factory=list)
     printed: list = field(default_factory=list)
+    callouts: list = field(default_factory=list)
     leaders: list = field(default_factory=list)
     drawn: list = field(default_factory=list)
     between: list = field(default_factory=list)
@@ -461,10 +465,11 @@ def _from_pdf(path, into, legible_px, max_edge):
     document = pymupdf.open(path)
     notes = []
     overviews, crops, wholes, printed, leaders, drawn = [], [], [], [], [], []
-    between = []
+    between, callouts = [], []
     for at, page in enumerate(document, start=1):
         _a_page(page, at, len(document), into, legible_px, max_edge,
-                overviews, crops, wholes, printed, leaders, drawn, between, notes)
+                overviews, crops, wholes, printed, callouts, leaders, drawn, between,
+                notes)
 
     notes = list(dict.fromkeys(notes))
     if len(overviews) > 1:
@@ -483,11 +488,13 @@ def _from_pdf(path, into, legible_px, max_edge):
 
     return Sheet(source=path, overview=overviews[0] if overviews else "",
                  overviews=overviews, crops=crops, wholes=wholes, printed=printed,
-                 leaders=leaders, drawn=drawn, between=between, notes=notes)
+                 callouts=callouts, leaders=leaders, drawn=drawn, between=between,
+                 notes=notes)
 
 
 def _a_page(page, at, of_pages, into, legible_px, max_edge,
-            overviews, crops, wholes, printed, leaders, drawn, between, notes):
+            overviews, crops, wholes, printed, callouts, leaders, drawn, between,
+            notes):
     """
     One page of the drawing, added to what the whole document has given.
 
@@ -540,6 +547,7 @@ def _a_page(page, at, of_pages, into, legible_px, max_edge,
                            off_by=measured.get(index, (None, None))[1],
                            notation=notation.get(index, ""))
                    for index, w in enumerate(words))
+    callouts.extend(_as_callouts(words, printed[printed_before:]))
     leaders.extend(_leaders(page, words))
     printed_scale = _millimetres_per_point(words, notes)
     _the_scale_the_lines_vote_for(scale, voters, printed_scale, notes)
@@ -1131,6 +1139,38 @@ def _runs(line):
         run.append(word)
     if run:
         yield run
+
+
+def _as_callouts(words, entries):
+    """
+    One page's strings grouped into the lines the draughtsman set them on.
+
+    The extractor hands out words: `Ø6.6 THRU ALL` arrives as three strings and
+    `MAKE CHANGES AS INDICATED IN RED REVISION CLOUDS.` as eight, and read as
+    separate strings they are a bore, a note and the words nobody can account
+    for. A printed line is what shares a baseline and stands within `SAME_LINE`
+    of the word before it, which is the same measurement `_captions` tells a
+    label from a note by.
+
+    Taken across the baseline in the order the words stand on the page rather
+    than the order they arrive: the marker of a numbered note is set first and
+    extracted last, so read in the order given it is joined to the end of the
+    note it numbers.
+
+    `entries` is `words` as it was recorded, one to one and in the same order,
+    so a run of words is a run of them.
+    """
+    lines = {}
+    for index, word in enumerate(words):
+        lines.setdefault(round(float(word[1]), 1), []).append(index)
+    for line in lines.values():
+        run = []
+        for index in sorted(line, key=lambda index: float(words[index][0])):
+            if run and float(words[index][0]) - float(words[run[-1]][2]) > SAME_LINE:
+                yield [entries[at] for at in run]
+                run = []
+            run.append(index)
+        yield [entries[at] for at in run]
 
 
 def _the_view_labelled_by(regions, box):
@@ -2910,16 +2950,29 @@ def shown(sheet):
 
 
 def _the_printed_list(sheet):
-    lines = ["Every string the sheet's own text layer carries, extracted from "
+    """
+    The callouts the sheet prints, as printed and with the view each is in.
+
+    The sheet's own text layer, extracted rather than read off a picture, so it
+    is exact; grouped into the lines the draughtsman set, so it is a callout and
+    not the words an extractor split one into; and without the title block,
+    which is the record of the sheet rather than of the part.
+    """
+    lines = ["Every callout the sheet's own text layer carries, extracted from "
              "the file rather than read off the picture, with the view it is in. "
              "This is exact — it is the draughtsman's own text — and it is the "
-             "list `printed_on_the_sheet` has to account for."]
-    for entry in sheet.printed:
-        where = " — %s" % entry.seen_in if entry.seen_in else ""
-        measured = ("; the sheet measures %.1f mm between the faces this one's "
-                    "dimension line is drawn across" % entry.measures
-                    if entry.measures is not None else "")
-        lines.append("  %s%s%s%s" % (entry.notation, entry.text, where, measured))
+             "list `printed_on_the_sheet` has to account for. The title block is "
+             "not here: a drawing number, a date and a scale are printed on the "
+             "sheet and are not values of the part."]
+    for callout in _the_callouts(sheet):
+        where = " — %s" % callout[0].seen_in if callout[0].seen_in else ""
+        measured = "".join(
+            "; the sheet measures %.1f mm between the faces this one's "
+            "dimension line is drawn across" % entry.measures
+            for entry in callout if entry.measures is not None)
+        lines.append("  %s%s%s" % (
+            " ".join(entry.notation + entry.text for entry in callout),
+            where, measured))
     return "\n".join(lines)
 
 
@@ -2953,25 +3006,36 @@ def _the_between_list(sheet):
 
 
 def _the_drawn_list(sheet):
+    """
+    The line work each view is drawn with, as far as it can be proved to be
+    anything.
+
+    An entity nothing can prove anything about is an extension line, a hatch
+    stroke or an edge, and nothing on the sheet says which. Read out beside the
+    contours, a 40 mm extension line is a 40 mm edge; left out and counted, it
+    is a number nobody was invited to build from. They stay in `drawn`, because
+    that is the record of the sheet, and are kept out of here, because this is
+    a record of the part — the same split `_the_printed_list` makes.
+    """
     lines = ["The line work each view is drawn with, taken out of the file and "
              "converted to millimetres of the part. Coordinates are millimetres "
              "inside the view itself: x to the right of the view's left edge, y "
              "*up* from its bottom edge. This is the draughtsman's own geometry "
              "and not a reading of a picture, so a distance nobody printed is "
              "measured here rather than assumed, and a value measured off it is "
-             "`derived`, never `not_defined`. Each entity says what it could be "
-             "proved to be, and most of a sheet is line work nothing can prove "
-             "anything about:\n"
+             "`derived`, never `not_defined`. Every entity here says what it "
+             "was proved to be, and one that could be proved nothing about is "
+             "not here at all:\n"
              "  `contour` — traced off the picture the view was placed as, and "
              "the only thing here that is the part itself.\n"
              "  `dimension` — a line a printed number was measured against.\n"
              "  `leader` — followed from a callout to the feature it is of.\n"
              "  `centre` — drawn dashed, which marks an axis or a plane of "
              "symmetry.\n"
-             "  unmarked — an extension line, a hatch stroke or an edge, and "
-             "nothing here says which. An extension line is drawn from the very "
-             "face its dimension measures, so it is worth reading and it is not "
-             "an outline.\n"
+             "Most of a sheet is an extension line, a hatch stroke or an edge "
+             "with nothing to say which of the three it is, and that is what "
+             "each view says it left out. Read out beside the rest, a 40 mm "
+             "extension line is a 40 mm edge.\n"
              "An entity marked `traced` is not the draughtsman's: it is measured "
              "off the picture, to the inside of the line that draws it, so it "
              "reads about a millimetre under the drawn size. Use it to check a "
@@ -2997,7 +3061,13 @@ def _the_drawn_list(sheet):
             " — its body was placed as a picture, so what follows is its "
             "dimension and centre lines and not its outline"
             if drawn.from_a_picture else ""))
-        lines.extend("    %s" % _said(entity) for entity in drawn.entities)
+        proved = [entity for entity in drawn.entities
+                  if entity.role != "unclassified"]
+        lines.extend("    %s" % _said(entity) for entity in proved)
+        if len(proved) < len(drawn.entities):
+            lines.append("    (and %d entities nothing could prove anything "
+                         "about, left out)"
+                         % (len(drawn.entities) - len(proved)))
         if drawn.left_out:
             lines.append("    (and %d shorter entities, left out)" % drawn.left_out)
         if drawn.traced_left_out:
@@ -3113,6 +3183,24 @@ def _as_swept(entry):
         swept["the_sheet_measures"] = round(entry.measures, 2)
         swept["off_by"] = round(entry.off_by, 2)
     return swept
+
+
+def _the_callouts(sheet):
+    """
+    What the sheet prints outside its title block, as the draughtsman set it.
+
+    The same split `dimensions` makes, made once more where the sheet is shown:
+    a drawing number, a revision date and `1:2` are printed on the sheet and are
+    not values of the part. They stay in `printed`, because the sweep is a
+    record of the sheet, and they are kept out of here, because what Design is
+    shown is a record of the part.
+    """
+    if sheet is None:
+        return []
+    outside = ([entry for entry in callout
+                if not _in_the_title_block(entry, sheet)]
+               for callout in sheet.callouts)
+    return [callout for callout in outside if callout]
 
 
 def dimensions(sheet):
