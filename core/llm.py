@@ -28,8 +28,11 @@ left its own reasoning, and "medium" bought no less of it — the cap turns that
 into an error, and `_REASONING_EFFORT` is the only dial there is against
 reaching it. `_SUBSCRIPTION_EFFORT` is the other end of the same dial, for the
 route that is not billed by the token: there the circling is visible, because
-the reasoning streams, and it is bounded, because the call has a ceiling — so
-the low setting would only buy the cheapest thinking a subscription can.
+the reasoning streams, and it is bounded, because the call has a ceiling that
+moves with the dial — so the low setting would only buy the cheapest thinking a
+subscription can. It sits at `medium`: on one sheet through Design `high` spent
+41,704 tokens of thinking against `medium`'s 26,117 and four minutes more of
+the wait, and Design is one phase of a run that has several.
 
 `IMAGE_SUFFIXES` and `PDF_SUFFIXES` are what the providers take, and what the
 attach dialog offers. A PDF is a full attachment rather than a second-class
@@ -53,7 +56,7 @@ _OUTPUT_BUDGET = 8192
 
 _REASONING_EFFORT = "low"
 
-_SUBSCRIPTION_EFFORT = "high"
+_SUBSCRIPTION_EFFORT = "medium"
 
 _THINKING_WITHHELD = "thinking… ~%d tokens\n"
 
@@ -291,7 +294,9 @@ def _retry_hint(said):
     return " The provider says to retry in %s." % found.group(1).strip()
 
 
-CALL_TIMEOUT = 600.0
+_CEILING = {"low": 300.0, "medium": 900.0, "high": 1500.0}
+
+CALL_TIMEOUT = _CEILING[_SUBSCRIPTION_EFFORT]
 
 _CLAUDE_CANDIDATES = (
     os.path.expanduser("~/.local/bin/claude"),
@@ -412,8 +417,16 @@ class ClaudeCodeClient:
 
     `timeout` is a ceiling and not a measurement. The CLI has none of its own
     where the keyed route leans on LiteLLM's, and a subprocess that never
-    answers is the parent's problem. Ten minutes is per call, not per run,
-    because a whole run of all its phases takes a quarter of an hour.
+    answers is the parent's problem. It is per call rather than per run, and it
+    follows `_SUBSCRIPTION_EFFORT`, because the dial buys thinking and the
+    thinking is the wait: one sheet through Design is 52 s at `low`, 429 s at
+    `medium` and 668 s at `high`, nearly all of it spent before the first word
+    of the answer (`tests/recorded/claude-code-design-effort.jsonl`). A ceiling
+    that does not move with the dial cuts the answer off rather than bounding
+    it — `logs/sessions/1b6cd765da1e4304a6215035d1ec5a56.jsonl` is a flat ten
+    minutes killing 43,050 tokens of thinking 68 s before the reply would have
+    landed. `_CEILING` is twice each of those measurements, rounded up to five
+    minutes, and the doubling is the room a busier sheet gets.
     """
 
     def __init__(self, model: str, spawn: Callable = None,

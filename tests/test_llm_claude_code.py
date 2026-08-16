@@ -44,6 +44,7 @@ MINIMAL = "claude-code-stream-minimal.jsonl"
 DEFAULT_ENV = "claude-code-stream-default-env.jsonl"
 THINKING_REDACTED = "claude-code-stream-thinking.jsonl"
 THINKING_IN_WORDS = "claude-code-stream-thinking-in-words.jsonl"
+DESIGN_AT_EFFORT = "claude-code-design-effort.jsonl"
 
 MODEL = "sonnet"
 
@@ -65,6 +66,21 @@ def _init(name):
 
 def _result(name):
     return [event for event in _events(name) if event.get("type") == "result"][0]
+
+
+def _design_at(effort):
+    """
+    One recorded Design call, by the effort it was made at.
+
+    The same sheet and the same prompt through `--effort low`, `medium` and
+    `high`, kept as the three `result` events the CLI ended each of them with.
+    """
+    return [call for call in _events(DESIGN_AT_EFFORT)
+            if call["effort"] == effort][0]["result"]
+
+
+def _seconds(result):
+    return result["duration_ms"] / 1000.0
 
 
 class _Pipe(io.StringIO):
@@ -352,6 +368,34 @@ def test_a_call_that_never_answers_ends_the_run_rather_than_hanging_it():
     assert spawn.process.killed.is_set(), "the process was left running"
 
 
+def test_the_ceiling_a_call_waits_under_is_the_one_its_own_effort_measured():
+    """A call is made at one effort, and the wait it is allowed is that effort's."""
+    assert ClaudeCodeClient(MODEL).timeout == llm._CEILING[llm._SUBSCRIPTION_EFFORT]
+
+
+def test_every_effort_the_dial_offers_leaves_room_for_the_design_call_it_buys():
+    """
+    The dial buys thinking and the thinking is the wait: 52 s at `low`, 429 s
+    at `medium`, 668 s at `high`, on the sheet the recording was taken from.
+    Twice each is what a busier sheet than that one has to fit under.
+    """
+    for effort, ceiling in llm._CEILING.items():
+        assert ceiling >= 2 * _seconds(_design_at(effort)), effort
+
+
+def test_an_effort_the_dial_reaches_outlasts_a_flat_ten_minutes():
+    """
+    Which is why the ceiling moves with it.
+    `logs/sessions/1b6cd765da1e4304a6215035d1ec5a56.jsonl` is what one that
+    does not do: 43,050 tokens of thinking, killed at 600 s, 68 s before the
+    reply the recording carries landed.
+    """
+    high = _design_at("high")
+
+    assert _seconds(high) > 600
+    assert llm._CEILING["high"] > _seconds(high)
+
+
 def test_a_claude_that_exits_without_answering_is_a_refusal():
     client, _ = client_over(_Process([], returncode=1, stderr="Invalid API key"))
 
@@ -421,7 +465,7 @@ def test_the_reply_is_asked_for_as_it_forms_rather_than_when_it_is_finished():
     assert "--include-partial-messages" in spawn.argv
 
 
-def test_the_effort_is_the_high_one_and_not_the_keyed_route_s():
+def test_the_effort_is_this_route_s_own_and_not_the_keyed_route_s():
     """
     `_REASONING_EFFORT`'s `low` exists against a model circling invisibly in its
     own reasoning; here the circling streams and the call is bounded, so low
