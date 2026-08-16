@@ -903,10 +903,20 @@ def _widgets_in(panel):
 
 def _said_in(panel):
     """Every label the Session's chat area is showing, as one string."""
+    return _said_by(_widgets_in(panel))
+
+
+def _said_by(widgets):
+    """
+    The same, over the widgets one test put there.
+
+    The panel is shared, so a test that measures what the chat carries measures
+    its own widgets rather than everything the module has rendered into it.
+    """
     from conftest import QtWidgets
 
     return " ".join(label.text()
-                    for widget in _widgets_in(panel)
+                    for widget in widgets
                     for label in widget.findChildren(QtWidgets.QLabel))
 
 
@@ -1384,44 +1394,112 @@ def _write_a_png(path):
     assert picture.save(path, "PNG")
 
 
-def test_the_part_stands_above_the_plan_at_the_gate(panel):
+def test_the_gate_links_to_the_document_rather_than_opening_it_in_the_chat(panel, tmp_path):
     """
-    The description is its own event since it became its own phase, and the
-    arrangement at the Gate is unchanged: "What the part is", above the Plan,
-    open — a description one click away is not read. What the panel shows is a
-    structure laid out, not a JSON dump, and the laying out is `core.design`'s,
-    so the panel is handed prose either way. FCC-86, FCC-93.
+    What stands above the Steps is the file the reading was written to, and the
+    description itself is in the file rather than in the chat: it is the run's
+    requirement, and a requirement is corrected where the run is planned from
+    (FCC-108). The link is the path the `part` event carries, so what a user
+    opens is that very file and not a copy of it.
 
     The panel is shared with the tests above, so it is the last of each that
     this one just put there.
     """
-    from core.events import DESIGN, PLAN, Event
+    from conftest import QtCore
 
+    from core.design import render
+    from core.events import DESIGN, PART, PLAN, Event
+
+    from ui.chat_widgets import DocumentLinkWidget
     from ui.plan_widget import PlanWidget
 
-    panel.on_event(Event(DESIGN, {"model": {
+    the_part = {
         "envelope": {"length": {"value": "80 mm", "flag": "read"}},
         "features": [{"id": "hole-8-left", "kind": "Ø8 through hole",
                       "position": {"the left end face": {"value": "15 mm",
                                                          "flag": "read"}}}],
-    }}))
+    }
+    document = str(tmp_path / "the-part-as-read.yaml")
+    before = len(_widgets_in(panel))
+    panel.on_event(Event(DESIGN, {"model": the_part}))
+    panel.on_event(Event(PART, {"path": document}))
     panel.on_event(Event(PLAN, {"steps": ["Sketch the plate"], "acceptance": []}))
     QT_APP.processEvents()
 
-    from ui.accordion_widget import AccordionWidget
-
     widgets = _widgets_in(panel)
-    described_at, how = max((i, w) for i, w in enumerate(widgets)
-                            if isinstance(w, AccordionWidget)
-                            and "What the part is" in w.toggle_button.text())
+    link_at, link = max((i, w) for i, w in enumerate(widgets)
+                        if isinstance(w, DocumentLinkWidget))
     plan_at = max(i for i, w in enumerate(widgets) if isinstance(w, PlanWidget))
 
-    assert described_at < plan_at, "the part rendered below the Plan it was described for"
-    assert how.content_area.isVisible(), "it is one click away, so it is not read"
-    said = _said_in(panel)
-    assert "length: 80 mm (read)" in said
-    assert "- hole-8-left" in said
-    assert "{" not in said.split("What the part is")[-1], "the Gate was shown a JSON dump"
+    assert link_at < plan_at, "the document linked below the Plan it was read for"
+    assert QtCore.QUrl.fromLocalFile(document).toString() in link.text_label.text(), \
+        "the link opens something other than the file the run wrote"
+    assert link.text_label.openExternalLinks(), "clicking the link opens nothing"
+    said = _said_by(widgets[before:])
+    assert render(the_part) not in said
+    assert "length: 80 mm (read)" not in said, "the description is in the chat"
+
+
+RECORDED_GATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "logs", "sessions",
+                             "fe663c12890b4d4497ad458136dfa880.jsonl")
+
+
+def test_the_recorded_gate_carries_none_of_the_description_it_used_to_open(panel):
+    """
+    The run whose Gate was approved unread, rendered again: the description its
+    two Design turns settled is not in the chat at all, and the chat is shorter
+    than the description it no longer opens. Both numbers are this test's, off
+    the session log.
+    """
+    from core.design import render
+    from core.events import DESIGN, PLAN, replay
+
+    events, _ = replay(RECORDED_GATE)
+    at_the_gate = events[:1 + next(i for i, event in enumerate(events)
+                                   if event.kind == PLAN)]
+    described = "\n".join(render(event.data["model"]) for event in at_the_gate
+                          if event.kind == DESIGN)
+    assert len(described.splitlines()) > 1_000, \
+        "this is no longer the run whose description filled the Gate"
+
+    before = len(_widgets_in(panel))
+    for event in at_the_gate:
+        panel.on_event(event)
+    QT_APP.processEvents()
+
+    said = _said_by(_widgets_in(panel)[before:])
+    assert described not in said
+    assert len(said) < len(described), \
+        "the Gate carries %d characters against the %d over %d lines it used to open" \
+        % (len(said), len(described), len(described.splitlines()))
+
+
+def test_what_was_decided_the_questions_and_the_criteria_all_stand_open(panel):
+    """
+    The three things the Steps are read beside. Each is short, and the Gate is
+    the only place any of them is correctable, so none of them is a click away
+    (ADR-0022).
+    """
+    from core.events import PLAN, Event
+
+    from ui.accordion_widget import AccordionWidget
+    from ui.plan_widget import PlanWidget
+
+    before = len(_widgets_in(panel))
+    panel.on_event(Event(PLAN, {
+        "steps": ["Bore the ring"],
+        "decided": ["envelope \u2192 thickness: 12 mm, off the section"],
+        "unanswered": ["what the ring is clamped to"],
+        "acceptance": ["the bore is \u00d812 through"]}))
+    QT_APP.processEvents()
+
+    beside = _widgets_in(panel)[before:]
+    assert any(isinstance(widget, PlanWidget) for widget in beside)
+    for heading in ("Decided for you", "Nobody answered these", "What it has to satisfy"):
+        row = next(widget for widget in beside if isinstance(widget, AccordionWidget)
+                   and heading in widget.toggle_button.text())
+        assert row.content_area.isVisible(), "%s is a click away" % heading
 
 
 def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(panel):

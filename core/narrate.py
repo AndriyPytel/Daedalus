@@ -20,9 +20,8 @@ dependency the wrong way.
 """
 from dataclasses import dataclass
 
-from core.design import render
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE, INTENT,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, INTENT,
     OUTSTANDING, PART, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
     STEP_STARTED, TOOL_RESULT, UNBUILT,
 )
@@ -41,8 +40,8 @@ class Narration:
     One event, in words.
 
     `line` is the sentence that belongs in the transcript. `title` and `body`
-    are the detail that folds away under it — a traceback, the part as
-    described, the attempts behind a block. `status` is the one-line progress
+    are the detail that folds away under it — a traceback, what the last run
+    left wrong, the attempts behind a block. `status` is the one-line progress
     note that replaces itself; an event carrying only a status says nothing
     permanent.
 
@@ -50,8 +49,9 @@ class Narration:
     the title is a field rather than the line doing double duty.
 
     All empty means the event is not prose: a Plan is its Steps, a tool call is
-    its code, an attachment is its picture, and reasoning is a stream rather
-    than a sentence.
+    its code, an attachment is its picture, reasoning is a stream rather than a
+    sentence, and the description is a file, said by the path the part event
+    carries.
     """
 
     line: str = ""
@@ -69,11 +69,12 @@ def narrate(event) -> Narration:
 
     Several kinds say less than they carry. The user's own answer is already in
     the transcript, so what is worth saying is that nobody gave one — or that
-    nobody had to, because the drawing answered it. A design is laid out rather
-    than shown as the JSON it travels as: the Gate is where a misreading is
-    cheap to correct, and a dump is not read. A part is given by its path,
-    because the file is the point — a reading is corrected by opening it, and
-    one run is compared with the last by diffing two of them. The Gate is a
+    nobody had to, because the drawing answered it. The description is not said
+    at all: it is a document, and what a document gets is a path. A part is
+    given by that path, because the file is the point — a description long
+    enough to be worth distilling is not read in a transcript wherever it is
+    put, it is corrected by opening the file the run is planned from, and one
+    run is compared with the last by diffing two of them. The Gate is a
     status rather than a line, since the panel already puts the question in a
     card of its own and the run is only waiting; except where nobody was asked,
     because a standing approval is a decision the user made once and is having
@@ -106,9 +107,6 @@ def narrate(event) -> Narration:
     if kind == ATTACHED:
         names = [file["name"] for file in data.get("files") or []]
         return Narration(line="Attached: " + ", ".join(names)) if names else _NOTHING
-
-    if kind == DESIGN:
-        return Narration(title="What the part is", body=render(data["model"]))
 
     if kind == PART:
         return Narration(line="The part as read: %s" % data.get("path", ""))

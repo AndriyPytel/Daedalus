@@ -1769,6 +1769,39 @@ def test_the_file_the_user_opens_is_the_document_the_run_was_planned_from():
     assert loop._acceptance_of(document) == request["what_the_plan_must_satisfy"]
 
 
+def test_a_value_corrected_in_the_file_is_the_one_the_run_is_planned_from(monkeypatch):
+    """
+    The Gate links to the file rather than showing the description, so the file
+    has to be the description the run is held to. Corrected between the writing
+    and the reading back — which is what a user does when the link opens on a
+    misread length — the correction is what Plan is handed (FCC-108).
+    """
+    written = part_file.saved
+
+    def corrects_the_length(model, source, **head):
+        path = written(model, source, **head)
+        with open(path, encoding="utf-8") as handle:
+            document = handle.read()
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(document.replace("80 mm", "999 mm"))
+        return path
+
+    monkeypatch.setattr(part_file, "saved", corrects_the_length)
+
+    _, events, llm, _ = drive([
+        design_reply(A_PART),
+        plan_reply("Only", satisfies=everything(A_PART)),
+        code_reply("box()"),
+        assertion_reply("assert True"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    handed = _turns_of(llm, "plan")[0]["what_the_part_is"]
+    assert "length: 999 mm" in handed, "the run was planned from something other than the file"
+    assert "80 mm" not in handed
+    assert "999 mm" in render(part_file.read(events.last(PART).data["path"]))
+
+
 def test_the_evidence_is_logged_beside_the_reading_distilled_out_of_it():
     """
     Nothing downstream needs the proof of a number, and whoever asks tomorrow

@@ -27,7 +27,8 @@ except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
-from .chat_widgets        import TextMessageWidget, AssistantMessageWidget, CodeBlockWidget
+from .chat_widgets        import (TextMessageWidget, AssistantMessageWidget,
+                                  CodeBlockWidget, DocumentLinkWidget)
 from .multi_tab_manager   import ChatSessionManager
 from .upload_widget       import UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
@@ -987,8 +988,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         What an event *says* is `core.narrate`'s, so the panel and the slice
         runner cannot word the same event differently. What is left here is
-        where a line goes, and the shapes that are not prose: the Steps of a
-        Plan, a block of code, a picture, reasoning as it streams.
+        where a line goes and what shape it takes: the Steps of a Plan, a block
+        of code, a picture, reasoning as it streams, and the path of the
+        document as a link that opens it.
 
         No calls back into the loop. A kind nobody narrates and nobody renders
         is simply not shown — nothing breaks.
@@ -1015,8 +1017,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._render_tool_call(data["name"], data["arguments"])
             return
 
-        if event.kind == ev.DESIGN:
-            self._render_design(narrate(event))
+        if event.kind == ev.PART:
+            self._render_part(narrate(event).line, data["path"])
             return
 
         if event.kind == ev.PLAN:
@@ -1094,24 +1096,22 @@ class CopilotPanel(QtWidgets.QDockWidget):
             label.setToolTip(name)
             self.add_chat_widget(label)
 
-    def _render_design(self, narration):
+    def _render_part(self, line, path):
         """
-        Above the Plan, and open: correcting a misreading at the Gate is the
-        whole point, and a description one click away is not read (FCC-47).
-        Being open is why this is not left to `_say` with the other rows.
+        Above the Plan, as a link: the Gate is the Steps and the document they
+        were built from, and a document is opened rather than poured into the
+        chat (FCC-47 argued the other way over a description that had not been
+        distilled yet, and a run's worth of one is read nowhere).
 
-        Its own event since the description became its own phase, so a replayed
-        transcript shows it standing before the Plan that used it (FCC-86). It
-        is laid out as a structure by `core.design`, not dumped as JSON — the
-        panel is handed prose either way (ADR-0019).
+        The link is the path the event carries, so what the user opens is the
+        file the run is planned, checked and built from, and a correction made
+        in it is a correction to the run (FCC-108). Its own shape rather than a
+        line through `_say`, the way a picture and a block of code are.
         """
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
-        how = AccordionWidget(narration.title)
-        self.add_chat_widget(how)
-        how.append_text(narration.body)
-        how.toggle_content()
+        self.add_chat_widget(DocumentLinkWidget(line, path))
 
     def _render_plan(self, steps, title, acceptance=(), unanswered=(), decided=()):
         """

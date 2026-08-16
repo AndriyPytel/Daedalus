@@ -10,9 +10,9 @@ and the only thing the panel asks of the loop is to start.
 import ast
 import os
 
-from core.events import COST, KINDS
+from core.events import COST, DESIGN, KINDS
 
-WRITTEN_NOT_SHOWN = {COST}
+WRITTEN_NOT_SHOWN = {COST, DESIGN}
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PANEL = os.path.join(ROOT, "ui", "copilot_panel.py")
@@ -38,10 +38,11 @@ def test_every_event_kind_is_shown():
     checked by running it, or rendered structurally by the panel because it is
     not a sentence — which is still a switch, and still parsed.
 
-    `WRITTEN_NOT_SHOWN` is the third way and has one member: what a call cost
-    is a number for the session log, not a sentence for the transcript, and it
-    is deliberately narrated by nobody. Naming it here is what keeps the rule
-    for every other kind.
+    `WRITTEN_NOT_SHOWN` is the third way and has two members, each written
+    somewhere a reader can go and shown by nobody: what a call cost is a number
+    for the session log rather than a sentence for the transcript, and the
+    description is a document of its own, said by the path the `part` event
+    carries. Naming them here is what keeps the rule for every other kind.
     """
     from core.narrate import Narration, narrate
 

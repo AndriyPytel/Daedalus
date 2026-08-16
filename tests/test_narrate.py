@@ -90,16 +90,15 @@ def test_what_the_run_was_asked_for_is_a_line_of_its_own():
         "What was asked for: Build the pipe clamp on this sheet."
 
 
-def test_the_part_is_a_row_that_carries_the_structure_laid_out():
+def test_the_description_is_not_said_and_the_file_it_went_to_is():
     """
-    Laid out rather than dumped: the Gate is where a misreading is cheap to
-    correct, and JSON is not read. FCC-93.
+    The description is a document, and a document is opened rather than said:
+    what the transcript carries is the path it was written to, which is the
+    file a misreading is corrected in and the run is planned from (FCC-108).
     """
-    said = narrate(an_event(DESIGN))
-
-    assert said.title == "What the part is"
-    assert said.body == "Envelope\n  length: 40 mm (read)"
-    assert not said.line, "the description is the row, not a line above it"
+    assert narrate(an_event(DESIGN)) == Narration()
+    assert narrate(an_event(PART)).line == \
+        "The part as read: " + SAMPLES[PART]["path"]
 
 
 def test_the_users_own_answer_is_not_repeated_back_at_them():

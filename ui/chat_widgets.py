@@ -1,3 +1,5 @@
+import html
+
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
 except ImportError:
@@ -63,6 +65,26 @@ class AssistantMessageWidget(QtWidgets.QWidget):
 
     def append_text(self, text: str):
         self.text_label.setText(self.text_label.text() + text)
+
+
+class DocumentLinkWidget(AssistantMessageWidget):
+    """
+    An assistant line that opens a file when it is clicked.
+
+    The description Design ends in is a document on disk, and the Plan Gate
+    stands over it by linking to it: what a user opens to correct a misreading
+    is the very file the run is planned from, not a rendering of it in the
+    chat. The text is escaped because the line carries a path, and a path is
+    whatever the drawing was called.
+    """
+
+    def __init__(self, text: str, path: str):
+        super().__init__()
+        self.text_label.setText('<a href="%s">%s</a>'
+                                % (QtCore.QUrl.fromLocalFile(path).toString(),
+                                   html.escape(text)))
+        self.text_label.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
+        self.text_label.setOpenExternalLinks(True)
 
 
 class CodeBlockWidget(QtWidgets.QWidget):
