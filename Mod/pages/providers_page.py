@@ -266,11 +266,20 @@ class ProvidersPage(QtWidgets.QWidget):
 
         return model_catalog.needs_base_url(provider)
 
+    @staticmethod
+    def _signs_itself_in(provider):
+        """A provider whose credential is the CLI's, so this page stores none."""
+        from core import model_catalog
+
+        return model_catalog.needs_no_key(provider)
+
     def _on_selection_changed(self, current, _prev):
         """
         Show the selected provider's credentials.
 
-        A local server's token is optional; a hosted provider's key is not.
+        A local server's token is optional; a hosted provider's key is not; a
+        provider signed in through its own CLI has none, and a key field for a
+        key nothing reads is a field that can only mislead.
         """
         if not current:
             self._set_editor_enabled(False)
@@ -291,6 +300,7 @@ class ProvidersPage(QtWidgets.QWidget):
             key = sm.get_api_key_for_provider(provider)
 
         local = self._wants_base_url(provider)
+        self.key_container.setVisible(not self._signs_itself_in(provider))
         self.base_url_container.setVisible(local)
         if local:
             self.base_url_edit.setText(
@@ -340,12 +350,15 @@ class ProvidersPage(QtWidgets.QWidget):
         """
         Test the connection the editor is showing.
 
-        A local server is identified by its address, everything else by its key.
+        A local server is identified by its address, everything else by its
+        key — except the provider that has neither, where there is nothing to
+        be missing and the test is about who is signed in.
         """
         local = self._wants_base_url(self._current_provider)
         key = self.key_edit.text().strip()
         base = self.base_url_edit.text().strip() if local else ""
-        missing = not base if local else not key
+        missing = (not base if local else not key) and not self._signs_itself_in(
+            self._current_provider)
         if missing:
             self.status_lbl.setText("No address" if local else "No key")
             self.status_lbl.setStyleSheet(_STATUS_STYLE)
@@ -366,7 +379,7 @@ class ProvidersPage(QtWidgets.QWidget):
     def _on_test_result(self, ok, msg):
         self.test_btn.setEnabled(True)
         if ok:
-            self.status_lbl.setText("✓ Success")
+            self.status_lbl.setText("✓ " + msg)
             self.status_lbl.setStyleSheet(_STATUS_STYLE + "color: #4caf50;")
         else:
             self.status_lbl.setText(f"✗ Error: {msg[:40]}…")

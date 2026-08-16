@@ -21,6 +21,12 @@ so in a word of its own.
 `intent` is what the run was asked to produce. It stands first, before anything
 has been read, so a session says what was wanted before it says what was found
 and a transcript can be judged against the request that opened it.
+
+`cost` is what one call to the provider spent — the amount and the model it was
+spent on. It is the only record of what a run costs there is; a provider that
+answers on a subscription is not billed by the token, so the number is what the
+same call would have cost through a key. It is written and not shown: a number
+per call is for the session log to keep, not a sentence for the transcript.
 """
 import json
 import time
@@ -47,12 +53,13 @@ OUTSTANDING = "outstanding"
 UNBUILT = "unbuilt"
 REVIEW_VERDICT = "review_verdict"
 BLOCKED = "blocked"
+COST = "cost"
 ERROR = "error"
 
 KINDS = (
     INTENT, THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
     GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED,
-    ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, BLOCKED, ERROR,
+    ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, BLOCKED, COST, ERROR,
 )
 
 

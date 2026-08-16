@@ -46,8 +46,8 @@ from dataclasses import replace
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, INTENT, PART,
-    PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, COST, ERROR, GATE, INTENT,
+    PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
     STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream, replay,
 )
 from core import loop, part_file, sheet_reader
@@ -3392,6 +3392,88 @@ def test_reasoning_is_streamed_tagged_with_the_phase_it_came_from():
         ("execute", "coding out loud"),
         ("review", "judging out loud"),
     ]
+
+
+class _OnASubscription(ScriptedLLMClient):
+    """
+    The scripted provider wearing the one attribute `ClaudeCodeClient` carries
+    and `ScriptedLLMClient` does not: what each call spent.
+    """
+
+    def stream(self, messages, **overrides):
+        self.last_cost = {"usd": 0.0049, "model": "sonnet"}
+        return super().stream(messages, **overrides)
+
+
+def on_a_subscription(turns):
+    return _OnASubscription(scripted(turns).turns)
+
+
+def a_clean_run(llm):
+    """One run over *llm* with nothing wrong in it, as what it produced."""
+    events = EventStream()
+    result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events)
+    return result, events
+
+
+CLEAN = [plan_reply("Only"), code_reply("box()"), verdict_reply("pass")]
+
+
+def test_a_phase_that_answers_without_thinking_leaves_the_accordion_empty():
+    """
+    Nothing is said in place of reasoning that did not arrive. The accordion
+    `ui/copilot_panel.py :: _render_thought` opens on a phase's first `thought`
+    and a model that did not think opens none — which is what every provider
+    without a reasoning stream already does, and what this route does at low
+    effort. A sentence explaining the ordinary case is one no other provider
+    needs.
+    """
+    _, events = a_clean_run(on_a_subscription(CLEAN))
+
+    assert events.of(THOUGHT) == []
+
+
+def test_a_run_on_a_provider_that_only_ever_sends_text_still_finishes():
+    """
+    A reply that is text and nothing else must not read as a phase that
+    streamed its reasoning and then stopped without answering.
+    """
+    result, events = a_clean_run(on_a_subscription(CLEAN))
+
+    assert result.ok
+    assert events.last(REVIEW_VERDICT).data["verdict"] == "pass"
+
+
+def test_every_call_writes_what_it_would_have_cost():
+    """
+    Nothing in the repo records what a run costs: `usage`, `tokens` and `cost`
+    appear in none of `logs/*.log`. The number is what the call would have cost
+    on the route that charges for it.
+    """
+    llm = on_a_subscription(CLEAN)
+
+    _, events = a_clean_run(llm)
+
+    spent = events.of(COST)
+    assert len(spent) == len(llm.calls)
+    assert spent[0].data == {"phase": "design", "usd": 0.0049, "model": "sonnet"}
+
+
+def test_what_a_call_cost_lands_in_the_session_log():
+    """`logs/sessions/*.jsonl` is permanent, where `logs/addon_*.log` rotates at ten files."""
+    llm = on_a_subscription(CLEAN)
+
+    _, events = a_clean_run(llm)
+
+    written = [line for line in events.as_log().splitlines() if '"kind": "cost"' in line]
+    assert len(written) == len(llm.calls)
+
+
+def test_a_provider_that_says_nothing_about_what_it_spent_writes_no_cost_event():
+    """The keyed route reports none, and an event carrying nothing is worse than no event."""
+    _, events, _, _ = drive(CLEAN)
+
+    assert events.of(COST) == []
 
 
 def test_the_stream_can_be_watched_live():

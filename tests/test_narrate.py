@@ -16,9 +16,10 @@ the field the wording turns on.
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, INTENT, KINDS,
-    OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
-    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, Event,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, COST, ERROR, GATE, INTENT,
+    KINDS, OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED,
+    QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT,
+    UNBUILT, Event,
 )
 from core.narrate import Narration, narrate
 
@@ -46,6 +47,7 @@ SAMPLES = {
               "entries": ["material: plain carbon steel (read)"]},
     REVIEW_VERDICT: {"verdict": "pass", "reason": "matches the Intent"},
     BLOCKED: {"reason": "The budget is spent.", "tried": []},
+    COST: {"phase": "design", "usd": 0.0049255, "model": "sonnet"},
     ERROR: {"message": "ValueError: no key"},
 }
 
@@ -57,6 +59,15 @@ def an_event(kind):
 def test_there_is_a_sample_for_every_kind():
     """The samples below are only worth something if they cover the stream."""
     assert set(SAMPLES) == set(KINDS)
+
+
+def test_what_a_call_cost_is_not_narrated():
+    """
+    The one kind that is written and not shown. A number per call belongs in
+    the session log, which is permanent; narrating it would put a price beside
+    every phase of a run the user is not being charged for.
+    """
+    assert narrate(an_event(COST)) == Narration()
 
 
 @pytest.mark.parametrize("kind", [PLAN, TOOL_CALL, THOUGHT])
