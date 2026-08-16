@@ -50,13 +50,13 @@ from core.events import (
     PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
     STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream, replay,
 )
-from core import loop, part_file, sheet_reader
+from core import design, loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
 from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
 from core.design import (
-    UNDER, carried_by_no_source, decided_for_you, distilled, entries, entry_at,
-    measured_from_what_is_gone, merge, pointing, read_off_the_wrong_view, render,
-    said_at,
+    UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
+    entries, entry_at, measured_from_what_is_gone, merge, pointing,
+    read_off_the_wrong_view, render, said_at,
 )
 from core.loop import (
     PROMPTS, Budgets, prompt, revisions_ceiling, run,
@@ -1663,7 +1663,7 @@ def test_plan_is_handed_the_document_and_not_everything_design_read():
     ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
 
     handed = _turns_of(llm, "plan")[0]["what_the_part_is"]
-    assert len(render(merge({}, THE_2023_CLAMP))) > 45_000, \
+    assert len(render(merge({}, THE_2023_CLAMP))) > 43_000, \
         "this is no longer the reading the run took"
     assert len(handed) < 9_000, "Plan is being handed the evidence again"
 
@@ -1831,7 +1831,7 @@ def test_two_entries_that_cannot_both_be_true_still_reach_the_gate():
     lost = [conflict for conflict in merge({}, THE_HOLE_THAT_CANNOT_BE_BOTH)["conflicts"]
             if conflict not in kept]
 
-    assert flagged in kept
+    assert dict(flagged, kind=design.A_CONFLICT) in kept
     assert flagged in events.last(DESIGN).data["model"]["conflicts"]
     assert [conflict for conflict in lost
             if conflict["about"] not in {standing["about"] for standing in kept}] == []
@@ -1936,6 +1936,114 @@ def test_a_run_asked_for_the_earlier_revision_re_measures_nothing():
     assert [entry["about"] for entry in entries(document)] == \
         [entry["about"] for entry in entries(phase_1)]
     assert entry_at(document, MEASURED_FROM_A_DELETED_FACE[0])["value"] == "108 mm"
+
+
+THE_LEFT_LUGS_OVERALL = "envelope \u2192 length between %s and the rightmost end face" \
+    % THE_LEFT_LUG_PLANE
+
+NAMED_WHAT_ENDED_THE_RUN = [
+    THE_LEFT_LUGS_OVERALL,
+    "envelope \u2192 Phase 2 finished-part length",
+    "features \u2192 angled-left-arm \u2192 73 mm extent",
+    "features \u2192 angled-left-arm \u2192 73 mm endpoint",
+]
+
+
+def test_the_log_of_the_recorded_run_keeps_one_entry_to_an_address():
+    """
+    The list the recorded run of the 2023 pipe clamp read past. It tripled
+    without a feature changing — the same 13 ids throughout — because the merge
+    drops an entry only where the whole record repeats, so one disagreement
+    written twice in two words was two entries and a re-read that spelled a
+    view differently was a third. The reading keeps all 33, because the merge
+    only ever grows (ADR-0019); the log beside the document keeps one to an
+    address, and the document keeps none of them at all — Plan is handed the
+    part and nothing that argues about it (FCC-156).
+
+    Twenty-five of the twenty-six say what they are about. The twenty-sixth
+    names the two views that disagree about the right-lug recess and no path at
+    all, so it addresses nothing and stands beside them all.
+    """
+    document, logged, _ = _the_clamp_as_it_was_read()
+    addressed = [conflict["about"] for conflict in logged["conflicts"]
+                 if "about" in conflict]
+
+    assert len(THE_2023_CLAMP["conflicts"]) == 33
+    assert len(logged["features"]) == len(THE_2023_CLAMP["features"]) == 13
+    assert len(logged["conflicts"]) == 26
+    assert len(set(addressed)) == len(addressed) == 25
+    assert "conflicts" not in document
+
+
+def test_every_entry_of_the_recorded_run_says_which_of_the_three_it_is():
+    """
+    Three kinds and no fourth: two readings that cannot both be true, a value
+    nothing on the part supplies, and a check that could not be run. The Gate
+    cannot act on a list where all three read alike — and a check that could
+    not be run is not a sheet that agrees with itself.
+
+    Twenty-five of the recorded run's are disagreements, which is what the
+    model writes into the section and what the merge finds. One is the gap
+    `placement` finds: the ring split is 3 mm wide and nothing places it in the
+    width. None is a check hazard, because no headless FreeCAD ran.
+    """
+    _, logged, _ = _the_clamp_as_it_was_read()
+    of_each_kind = {kind: [conflict for conflict in logged["conflicts"]
+                           if conflict["kind"] == kind] for kind in design.KINDS}
+
+    assert sum(len(found) for found in of_each_kind.values()) == 26
+    assert [len(of_each_kind[kind]) for kind in design.KINDS] == [25, 1, 0]
+    assert of_each_kind[design.A_GAP][0]["about"] == \
+        "features \u2192 ring-split \u2192 position \u2192 the width"
+
+
+def test_the_four_that_named_what_ended_the_run_stand_under_conflict():
+    """
+    The run stopped asking for the description to be corrected — "the values it
+    holds in conflict, and the datums and overalls a superseded feature left
+    behind". Four entries had named exactly that: the 108 mm overall measured
+    from the left lug the second page replaces, twice, and the 73 mm along the
+    arm measured to the ring contour rather than to the ring axis, twice. They
+    are readings that cannot both be true, so they stand where a user settling
+    the part looks, and not among the checks nobody could run.
+
+    Where a user reads them is the reading the Gate is shown, since the
+    document Plan is handed argues about nothing (FCC-156).
+    """
+    _, events, llm, _ = drive([
+        design_reply(THE_2023_CLAMP),
+        plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
+        code_reply("clamp()"),
+        assertion_reply("assert True, 'the clamp'"),
+        verdict_reply("pass"),
+    ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
+
+    logged = part_file.read(part_file.evidence(events.last(PART).data["path"]))
+    typed = {conflict.get("about"): conflict["kind"]
+             for conflict in logged["conflicts"]}
+    shown = render(events.last(DESIGN).data["model"])
+    under_conflict = shown.split(design.HEADED[design.A_CONFLICT])[1] \
+        .split(design.HEADED[design.A_GAP])[0]
+
+    assert [typed.get(at) for at in NAMED_WHAT_ENDED_THE_RUN] == \
+        [design.A_CONFLICT] * 4
+    assert all(at in under_conflict for at in NAMED_WHAT_ENDED_THE_RUN)
+    assert "In conflict" not in _turns_of(llm, "plan")[0]["what_the_part_is"]
+
+
+def test_a_second_design_pass_over_the_recorded_reading_adds_no_entry():
+    """
+    A re-read is where the list tripled: every check runs again over the grown
+    model and writes its findings again, in whatever words the pass used. The
+    reading grows and what stands out of it does not, because an address is
+    what makes two findings one and prose is what a pass varies.
+    """
+    read_once = merge({}, THE_2023_CLAMP)
+    read_again = merge(read_once, json.loads(json.dumps(THE_2023_CLAMP)))
+
+    assert len(read_once["conflicts"]) > len(THE_2023_CLAMP["conflicts"]) == 33
+    assert each_disagreement_once(read_again)["conflicts"] == \
+        each_disagreement_once(read_once)["conflicts"]
 
 
 ANSWERED_BEFORE_IT_DISTILLED = {
@@ -6182,7 +6290,11 @@ def test_a_sheet_that_agrees_with_itself_adds_nothing(tmp_path, monkeypatch):
 
 def test_without_a_freecad_to_build_in_the_description_is_untouched(
         tmp_path, monkeypatch):
-    """Degrades the way the rest of the reading does: silently and completely."""
+    """
+    Degrades the way the rest of the reading does: no disagreement found, and
+    the machine having no headless FreeCAD reads its drawing exactly as it did
+    before. What it says about the sheet is that nobody could check it.
+    """
     def no_headless_freecad(*_, **__):
         raise RuntimeError("No headless FreeCAD found.")
 
@@ -6190,7 +6302,9 @@ def test_without_a_freecad_to_build_in_the_description_is_untouched(
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
     monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
 
-    assert loop._the_geometry_disagrees(["a.pdf"], EventStream()) == []
+    assert [found["kind"] for found
+            in loop._the_geometry_disagrees(["a.pdf"], EventStream())] == \
+        [design.A_CHECK_HAZARD]
 
 
 def test_the_reading_is_never_built_in_the_addon_s_own_process(
@@ -6240,8 +6354,9 @@ def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
         tmp_path, monkeypatch):
     """
     Death is the normal outcome here (ADR-0002). A verdict nobody could reach
-    is no conflict, the sweep goes on to the next outline, and the run does not
-    know anything happened.
+    is no disagreement, the sweep goes on to the next outline, and the run
+    carries the outline it could not check as a hazard rather than as a clean
+    sheet.
     """
     class _AChildThatDied:
         def start(self):
@@ -6259,7 +6374,9 @@ def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatDied())
 
-    assert loop._the_geometry_disagrees(["a.pdf"], events) == []
+    assert [found["kind"] for found
+            in loop._the_geometry_disagrees(["a.pdf"], events)] == \
+        [design.A_CHECK_HAZARD]
     assert "the front view" in events.last(ERROR).data["message"], \
         "an unchecked reading is indistinguishable from a clean one"
 
@@ -6307,8 +6424,38 @@ def test_a_child_that_cannot_come_back_leaves_the_rest_unchecked_and_the_run_ali
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatCannotComeBack())
 
-    assert loop._the_geometry_disagrees(["a.pdf"], events) == []
+    assert [found["kind"] for found
+            in loop._the_geometry_disagrees(["a.pdf"], events)] == \
+        [design.A_CHECK_HAZARD]
     assert "the front view" in events.last(ERROR).data["message"]
+
+
+def test_an_outline_nobody_could_check_is_a_hazard_on_the_part(tmp_path, monkeypatch):
+    """
+    A sheet nothing was wrong with and a sheet nobody could check both reach
+    the Gate with no disagreement on them, and only one of the two is a
+    verdict. Said on the `ERROR` stream it is said where the Gate does not
+    look: the Gate reads the part. So it goes on the part, as the kind of entry
+    it is — a check that could not be run, which is neither a reading to choose
+    between nor a value to supply.
+    """
+    def no_headless_freecad(*_, **__):
+        raise RuntimeError("No headless FreeCAD found.")
+
+    sheet = _a_sheet_that_contradicts_itself(tmp_path)
+    events = EventStream()
+    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+
+    found = loop._the_geometry_disagrees(["a.pdf"], events)
+    reading = each_disagreement_once(merge({"features": []}, {"conflicts": found}))
+
+    assert [conflict["kind"] for conflict in found] == [design.A_CHECK_HAZARD]
+    assert "the front view" in found[0]["about"]
+    assert "the front view" in events.last(ERROR).data["message"]
+    assert [conflict["about"] for conflict in reading["conflicts"]] == \
+        [found[0]["about"]]
+    assert design.HEADED[design.A_CHECK_HAZARD] in render(reading)
 
 
 def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypatch):
@@ -6326,7 +6473,9 @@ def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypat
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
     monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
 
-    assert loop._the_geometry_disagrees(["a.pdf"], events) == []
+    assert [found["kind"] for found
+            in loop._the_geometry_disagrees(["a.pdf"], events)] == \
+        [design.A_CHECK_HAZARD]
     assert "the front view" in events.last(ERROR).data["message"]
 
 
@@ -6357,7 +6506,9 @@ def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch)
     monkeypatch.setattr(loop.preflight, "PreflightWorker",
                         lambda *_, **__: _AChildThatHangs())
 
-    assert loop._the_geometry_disagrees(["a.pdf"], events, budget=60.0) == []
+    assert [found["kind"] for found
+            in loop._the_geometry_disagrees(["a.pdf"], events, budget=60.0)] == \
+        [design.A_CHECK_HAZARD]
 
     assert len(asked) < 4, "the budget bounded nothing"
     assert max(asked) <= 60.0, "one outline was given more than the whole budget"

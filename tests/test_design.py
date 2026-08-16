@@ -10,8 +10,8 @@ import json
 
 from core import design
 from core.design import (
-    UNDER, corrected, crosswise, decided_for_you, distilled, entries, entry_at,
-    grounded, merge, read_off_the_wrong_view, render, said_at,
+    UNDER, corrected, crosswise, decided_for_you, distilled, each_disagreement_once,
+    entries, entry_at, grounded, merge, read_off_the_wrong_view, render, said_at,
     settled_by_the_tracing, where_the_direction_is,
 )
 
@@ -583,6 +583,90 @@ def test_a_conflict_and_a_gap_are_shown_apart_from_the_part():
     assert "stands: 20 mm (read)" in conflicts
     assert "was also said: 25 mm (read)" in conflicts
     assert "the general tolerance" in written.split("Not defined")[1]
+
+
+THE_SAME_DISAGREEMENT_TWICE = {
+    "features": [{"id": "the-arm", "kind": "the angled arm",
+                  "profile": _read("40 mm wide")}],
+    "conflicts": [{"about": "features \u2192 the-arm \u2192 profile, in VIEW C-C, on page 2",
+                   "stands": "the sheet prints it",
+                   "was_also_said": "the view draws it otherwise"},
+                  {"about": "features \u2192 the-arm \u2192 profile, in VIEW C-C, page 2",
+                   "stands": "the sheet prints 40 mm",
+                   "was_also_said": "the view draws it otherwise"}],
+}
+
+
+def test_one_disagreement_spelled_two_ways_is_one_entry():
+    """
+    The reader names a view after where it sits and the description writes down
+    what it read, so "VIEW C-C, on page 2" and "VIEW C-C, page 2" are one view
+    and the address they are written under is one address. Compared as they
+    stand they are two, and a re-read of the same sheet then manufactures a
+    disagreement nobody found — which is the same rule `_as_a_view` keeps for a
+    view a circle was traced round in, applied to what an entry is about.
+    """
+    reading = merge({}, THE_SAME_DISAGREEMENT_TWICE)
+    standing = each_disagreement_once(reading)["conflicts"]
+
+    assert len(reading["conflicts"]) == 2
+    assert [conflict["about"] for conflict in standing] == \
+        [THE_SAME_DISAGREEMENT_TWICE["conflicts"][0]["about"]]
+    assert render(reading).count("the view draws it otherwise") == 1
+    assert "conflicts" not in distilled(reading)
+
+
+A_PART_NOBODY_AGREES_ON = dict(
+    THE_PART,
+    conflicts=THE_PART["conflicts"] + [
+        {"about": "features \u2192 the-slot \u2192 axis",
+         "stands": "nothing records which way its axis points",
+         "kind": design.A_GAP},
+        {"about": "the line work traced in the front view",
+         "stands": "the solver could not be asked about it",
+         "kind": design.A_CHECK_HAZARD}],
+)
+
+
+def test_the_gate_reads_the_conflicts_grouped_by_kind():
+    """
+    Three kinds under three headings, because a user settles the three
+    differently: a reading that cannot stand beside another is theirs to
+    choose between, a value nothing supplies is theirs to give, and a check
+    nobody could run is neither — it is a sheet that was not read rather than
+    one that was read and agrees. Read as one flat column the recorded run put
+    four entries naming what ended it among twenty-nine that did not.
+    """
+    written = render(A_PART_NOBODY_AGREES_ON)
+    conflicts = written.split("In conflict")[1]
+
+    assert conflicts.index(design.HEADED[design.A_CONFLICT]) \
+        < conflicts.index(design.HEADED[design.A_GAP]) \
+        < conflicts.index(design.HEADED[design.A_CHECK_HAZARD])
+    assert "features \u2192 the-slot \u2192 axis" in \
+        conflicts.split(design.HEADED[design.A_GAP])[1] \
+        .split(design.HEADED[design.A_CHECK_HAZARD])[0]
+    assert "kind:" not in conflicts, "the heading already says which kind it is"
+
+
+A_CAVITY_NOTHING_PLACES_OR_POINTS = {
+    "features": [{"id": "the-slot", "kind": "the arm slot", "topology": "through",
+                  "height": _read("15 mm"), "seen_in": ["VIEW B"]}],
+}
+
+
+def test_a_value_nothing_on_the_part_supplies_is_a_gap_and_not_a_disagreement():
+    """
+    What `direction`, `placement` and `twice_over` find is nobody's second
+    reading: the slot has a size in the height and nothing placing it there, no
+    axis recorded, and no position at all. There is nothing for a user to
+    choose between, so it is a value they have to give — which is what a gap
+    is, and it is not what the Gate offers a choice about.
+    """
+    reading = each_disagreement_once(merge({}, A_CAVITY_NOTHING_PLACES_OR_POINTS))
+
+    assert {conflict["kind"] for conflict in reading["conflicts"]} == {design.A_GAP}
+    assert len(reading["conflicts"]) == 3
 
 
 def test_a_part_nobody_has_described_renders_as_nothing():
