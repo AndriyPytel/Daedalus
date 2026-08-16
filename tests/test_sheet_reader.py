@@ -52,6 +52,14 @@ def _shown_in(sheet, at):
     return [entry.seen_in for entry in sheet.printed if entry.at == at]
 
 
+def _costs(path):
+    """What a rendered picture costs the provider, by this module's own formula."""
+    from PIL import Image
+
+    width, height = Image.open(path).size
+    return sheet_reader._patches(sheet_reader.pymupdf.Rect(0, 0, width, height), 72)
+
+
 def _overlapping(sheet, box, page=1):
     """The crops of one page that show any part of a patch of it, by view name."""
     return {crop.name.split(", part")[0] for crop in sheet.crops
@@ -686,6 +694,73 @@ def test_the_sign_is_shown_against_the_number_it_was_drawn_against(sheet):
 
 
 @needs_pymupdf
+def test_the_printed_list_carries_the_callouts_and_not_the_title_block(sheet_2023):
+    """
+    The split `dimensions` already makes, made where the sheet is shown too. Of
+    the 230 strings the 2023 clamp prints, 121 stand inside the title block and
+    are a drawing number, a date, a scale and the small print. The 109 outside
+    it are the words of 58 callouts: what the draughtsman set on one line the
+    extractor hands over one word at a time.
+    """
+    in_the_title_block = [entry for entry in sheet_2023.printed
+                          if sheet_reader._in_the_title_block(entry, sheet_2023)]
+    callouts = sheet_reader._the_callouts(sheet_2023)
+    fragments = [entry for callout in callouts for entry in callout]
+
+    assert (len(sheet_2023.printed), len(in_the_title_block)) == (230, 121)
+    assert (len(fragments), len(callouts)) == (109, 58)
+    assert not [entry for entry in fragments
+                if sheet_reader._in_the_title_block(entry, sheet_2023)]
+    assert len(sheet_reader.dimensions(sheet_2023)) == 34
+    assert set(sheet_reader.dimensions(sheet_2023)) <= set(fragments), \
+        "a callout a part could be built from was cut with the title block"
+
+
+@needs_pymupdf
+def test_a_callout_is_shown_as_the_draughtsman_set_it_and_not_as_words(sheet_2023):
+    """
+    `\u00d86.6 THRU ALL` is three strings in the text layer and one callout on the
+    sheet, and read as three it is a bore, a note and a word nothing accounts
+    for.
+    """
+    said = sheet_reader._the_printed_list(sheet_2023)
+    callouts = {" ".join(entry.text for entry in callout): callout
+                for callout in sheet_reader._the_callouts(sheet_2023)}
+
+    assert len(callouts["6.6 THRU ALL"]) == 3
+    assert len(callouts["MAKE CHANGES AS INDICATED IN RED REVISION CLOUDS."]) == 8
+    assert "\u00d86.6 THRU ALL" in said
+    assert "\u00d86.6 X 8.0 THRU ALL" in said
+    assert "(C'BORE SLOT FOR M6 SHCS)" in said
+    assert "MAKE CHANGES AS INDICATED IN RED REVISION CLOUDS." in said
+    assert "PROPRIETARY AND CONFIDENTIAL" not in said
+    assert "SCALE" not in said
+
+
+@needs_pymupdf
+def test_one_design_call_carries_the_sheet_cut_to_what_it_can_prove(sheet_2023):
+    """
+    What one Design turn carries, on a phase that sends it again every turn.
+
+    The 30 pictures are what this module tiles and pays for deliberately and
+    the cut leaves them alone; the text is the sheet's record reduced to the
+    part's evidence. The 351 entities nothing can prove anything about would
+    be another 13,917 characters beside the 42,934 that go out, and they would
+    be carried again on every turn of the phase.
+    """
+    told = sheet_reader.shown(sheet_2023)
+    pictures = [piece["show"] for piece in told if "show" in piece]
+    characters = sum(len(piece["say"]) for piece in told if "say" in piece)
+    left_out = [entity for view in sheet_2023.drawn for entity in view.entities
+                if entity.role == "unclassified"]
+
+    assert (len(pictures), sum(_costs(path) for path in pictures)) == (30, 28384)
+    assert characters == 42934
+    assert characters < 45000, "the sheet grew back into the request"
+    assert sum(len(sheet_reader._said(entity)) for entity in left_out) == 13917
+
+
+@needs_pymupdf
 def test_a_crop_is_never_resized_at_the_far_end_for_costing_too_many_patches(sheet):
     """
     The cap that matters is not the long edge, and getting that wrong gave away
@@ -1066,6 +1141,36 @@ def test_the_reader_is_told_which_line_is_which(sheet_2023):
 
     assert "dimension line" in said
     assert "a contour is the part" not in said
+
+
+@needs_pymupdf
+def test_the_drawn_list_carries_what_carries_a_role_and_counts_the_rest(sheet_2023):
+    """
+    Of the 842 entities the 2023 clamp is drawn with, 89 are the draughtsman's
+    own and can be proved to be something — 32 `dimension`, 50 `leader`, 7
+    `centre` — and 402 are the contours traced off the pictures the views were
+    placed as, which are the part itself. The remaining 351 are an extension
+    line, a hatch stroke or an edge with nothing to say which, and read out
+    beside the rest they are where a 40 mm extension line becomes a 40 mm edge.
+
+    They stay in `drawn`, which is the record of the sheet; the list Design is
+    shown says how many it left out instead of looking complete.
+    """
+    entities = [entity for view in sheet_2023.drawn for entity in view.entities]
+    proved = [entity for entity in entities if entity.role != "unclassified"]
+    said = sheet_reader._the_drawn_list(sheet_2023)
+    named = [line for line in said.split("\n")
+             if line.startswith("    ") and not line.startswith("    (")]
+
+    assert (len(entities), len(proved)) == (842, 491)
+    assert len([entity for entity in proved if entity.source != "traced"]) == 89
+    assert {role: len([entity for entity in proved if entity.role == role])
+            for role in ("dimension", "leader", "centre", "contour")} == {
+        "dimension": 32, "leader": 50, "centre": 7, "contour": 402}
+    assert len(named) == 491
+    assert sum(int(line.split()[1]) for line in said.split("\n")
+               if "nothing could prove anything about" in line
+               and line.startswith("    (")) == 351
 
 
 @needs_pymupdf

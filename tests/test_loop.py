@@ -2554,6 +2554,41 @@ def test_design_is_told_what_the_sheet_prints_rather_than_asked_to_find_it():
     assert "\u00d8" in said, "nothing warned that the diameter sign is not in the layer"
 
 
+THE_PIPE_CLAMP = str(modelmania_harness.SHEETS[
+    "model-mania_-in-person-2023 copy.pdf"])
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_every_design_call_of_a_run_carries_the_sheet_cut_rather_than_whole():
+    """
+    The bundle rides on every turn of the phase, so what one call carries is
+    paid for again each time Design is asked anything — and it is asked once
+    more for every check of the description that the drawing can answer.
+
+    The run below is asked twice over the 2023 pipe clamp and carries 60
+    pictures and 86,702 characters between them, of which 42,934 is the sheet,
+    on each call. `tests/test_sheet_reader.py` produces that figure and what it
+    was cut from.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_DATUM), design_reply(A_DATUM),
+        plan_reply("Only", satisfies=everything(A_DATUM)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[THE_PIPE_CLAMP])
+
+    calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    blocks = [block for call in calls for block in call[-1]["content"]]
+    characters = sum(len(block["text"]) for block in blocks
+                     if block.get("type") == "text")
+    pictures = [block for block in blocks if block.get("type") == "image_url"]
+
+    assert (len(calls), len(pictures), characters) == (2, 60, 86702)
+    assert [sum(len(block["text"]) for block in call[-1]["content"][1:]
+                if block.get("type") == "text")
+            for call in calls] == [42934, 42934], "a call carried another sheet"
+
+
 @pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
 def test_a_callout_the_description_never_used_goes_back_to_design_naming_it():
     """

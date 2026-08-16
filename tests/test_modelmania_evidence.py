@@ -99,3 +99,52 @@ def test_the_document_carries_nothing_off_the_title_block_and_no_dead_feature(
          if not feature.get("superseded_by")]
     assert "superseded" in design.render(reading), "the reading kept no dead feature"
     assert "superseded" not in design.render(document)
+
+
+def test_nothing_the_document_needs_is_cut_out_of_what_design_is_shown(
+        modelmania_sheets):
+    """
+    The four sheets print 115 callouts a part could be built from and are drawn
+    with 961 contours traced off the pictures their views were placed as. Every
+    one of both reaches Design after the cut. What the cut leaves out is the
+    1,289 entities nothing on the sheet can prove anything about, and the title
+    block, which the sweep goes on carrying.
+    """
+    dimensions, contours, left_out = {}, {}, {}
+    for name, sheet in modelmania_sheets.items():
+        entities = [entity for view in sheet.drawn for entity in view.entities]
+        printed = {entry for callout in sheet_reader._the_callouts(sheet)
+                   for entry in callout}
+        said = sheet_reader._the_drawn_list(sheet)
+        named = [line[4:] for line in said.split("\n")
+                 if line.startswith("    ") and not line.startswith("    (")]
+
+        assert set(sheet_reader.dimensions(sheet)) <= printed, name
+        assert named == [sheet_reader._said(entity) for entity in entities
+                         if entity.role != "unclassified"], name
+        dimensions[name] = len(sheet_reader.dimensions(sheet))
+        contours[name] = len([entity for entity in entities
+                              if entity.role == "contour"])
+        left_out[name] = len([entity for entity in entities
+                              if entity.role == "unclassified"])
+
+    assert (sum(dimensions.values()), sum(contours.values()),
+            sum(left_out.values())) == (115, 961, 1289)
+
+
+def test_the_recorded_run_ends_in_the_document_it_ended_in_before_the_cut():
+    """
+    The other half of the criterion: the cut is right only if what comes out of
+    Design is no poorer for it. The recorded reading of the 2023 clamp distils
+    to 11 features and 46 Acceptance entries, and the run read every one of them
+    off the sheet this cut is measured on.
+    """
+    document = design.distilled(modelmania_harness.the_2023_clamp_as_read())
+
+    assert [feature["id"] for feature in document["features"]] == [
+        "outer-profile", "ring-bore", "ring-outer-cylinder", "right-lug",
+        "right-lug-hole", "right-lug-hex-recess", "arm-cutout", "ring-split",
+        "edge-fillets", "angled-left-arm", "left-arm-slot"]
+    assert len([entry["says"] for entry in design.entries(document)]) == 46
+    assert "envelope \u2192 depth front to rear between the exterior faces: 30 mm " \
+           "(read)" in [entry["says"] for entry in design.entries(document)]
