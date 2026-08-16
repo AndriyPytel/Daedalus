@@ -48,6 +48,23 @@ what makes two entries of a list the same thing, is `id` on a feature and `name`
 on a datum. What a rendered entry is headed by is wider than that, because a
 conflict is read by what it is about and a gap by what is missing, and neither is
 a thing the merge has to recognise again.
+
+An entry of `conflicts` is one of `KINDS` and says which: two readings that
+cannot both be true, a value nothing on the part supplies, or a check that
+could not be run. A user settles the three differently — choose, supply, read
+the sheet again — and a Gate handed one flat column cannot tell them apart, nor
+tell a sheet that agrees with itself from a sheet nobody could check. The kind
+is a field, written by whoever found the thing, because what a finding is is
+known where it is made and is a guess anywhere else. `A_CONFLICT` is what an
+entry that does not say reads as, since that is what the section is for and
+what `config/prompts/design.md` asks the model for.
+
+Its address is `about`, and one address carries one entry wherever the list is
+read: the log beside the document, and the reading the Gate is shown. The merge
+grows the list, so the same disagreement written twice in two words is two
+entries in it and a pass that spells a view differently is a third; which of
+them stands is decided by address and never by the prose — the same choice
+`_unconsumed` makes for the coverage check, and for the same reason.
 """
 import re
 
@@ -67,6 +84,18 @@ _IDENTITY = ("id", "name")
 _HEADED_BY = _IDENTITY + ("about", "what")
 
 _NOT_THE_PART = ("conflicts", "not_defined", "printed_on_the_sheet")
+
+A_CONFLICT = "conflict"
+
+A_GAP = "gap"
+
+A_CHECK_HAZARD = "check hazard"
+
+KINDS = (A_CONFLICT, A_GAP, A_CHECK_HAZARD)
+
+HEADED = {A_CONFLICT: "Two readings that cannot both be true",
+          A_GAP: "A value nothing on the part supplies",
+          A_CHECK_HAZARD: "A check that could not be run"}
 
 
 def merge(held, offered):
@@ -321,9 +350,9 @@ def direction(model) -> list:
     A hole, bore, slot or pocket therefore carries `axis`, and a profile, arc or
     rounded end carries `plane`, both as ordinary values — named by the datums
     they are measured against, so the acceptance measures a direction the same
-    way it measures a distance. Where one is missing this is a conflict, in the
-    same list `silhouette` writes to and settled the same way: by the user at
-    the Plan Gate, or by Design filling in the field it left out.
+    way it measures a distance. Where one is missing this is a gap, in the same
+    list `silhouette` writes to and settled the same way: by the user at the
+    Plan Gate, or by Design filling in the field it left out.
 
     The kinds that have an axis — the direction the hole is drilled, the slot
     cut, the pocket sunk — are listed short and literal, because a word that also
@@ -348,6 +377,7 @@ def direction(model) -> list:
                               "profile like everything else" % missing,
                     "was_also_said": str(feature.get("kind")
                                          or feature.get("topology") or ""),
+                    "kind": A_GAP,
                 })
     return found
 
@@ -853,6 +883,7 @@ def placement(model) -> list:
                           "defaults to centred" % (way, way),
                 "was_also_said": "%s: %s" % (_under(where, way),
                                              _one_value(feature[way]) or feature[way]),
+                "kind": A_GAP,
             })
     return found
 
@@ -906,6 +937,7 @@ def twice_over(model) -> list:
             "about": _under(where, "position"),
             "stands": stands,
             "was_also_said": str(feature.get("kind") or feature.get("topology") or ""),
+            "kind": A_GAP,
         })
     return found
 
@@ -925,9 +957,9 @@ def settled_by_nothing(model) -> list:
     nothing said what settled it, which is a value nobody can check.
 
     One rule rather than two, because it is one defect: the entry is incomplete,
-    and which field is missing follows from the flag. A conflict and not a
-    refusal, like every other reading defect — the run carries on and the user
-    settles it at the Gate.
+    and which field is missing follows from the flag. A gap and not a refusal,
+    like every other reading defect — the run carries on and the user settles
+    it at the Gate.
     """
     found = []
     for path, node in _each_value(model, ""):
@@ -939,6 +971,7 @@ def settled_by_nothing(model) -> list:
                           "afterwards where the value came from"
                           % (node.get("flag"), says),
                 "was_also_said": str(node.get("value") or ""),
+                "kind": A_GAP,
             })
     return found
 
@@ -1070,8 +1103,39 @@ def render(model) -> str:
         if not _filled(model.get(section)):
             continue
         written.append(_HEADINGS.get(section, str(section).replace("_", " ").capitalize()))
-        written.extend(_lines(model[section], "  "))
+        written.extend(_under_each_kind(model[section]) if section == "conflicts"
+                       else _lines(model[section], "  "))
     return "\n".join(written)
+
+
+def _under_each_kind(conflicts):
+    """
+    What nobody agrees on, one to an address, under a heading for each kind
+    there is any of.
+
+    A user does three different things with the three — choose between two
+    readings, supply a value nothing on the part carries, look at the sheet a
+    check never reached — and read as one column they are thirty-three
+    paragraphs to sort by hand. The recorded run's four entries that named what
+    ended it stood among twenty-nine that did not.
+
+    One to an address, because this is where a person reads the list and the
+    same disagreement written twice in two words is one disagreement to settle
+    (`each_disagreement_once`). The merge holds both and goes on holding them.
+
+    The kind is not written on the entry as well, because the heading it stands
+    under has just said it.
+    """
+    written = []
+    standing = _one_to_an_address(conflicts)
+    for kind in KINDS:
+        found = [{key: said for key, said in conflict.items() if key != "kind"}
+                 if isinstance(conflict, dict) else conflict
+                 for conflict in standing if _which_kind_it_is(conflict) == kind]
+        if found:
+            written.append("  " + HEADED[kind])
+            written.extend(_lines(found, "    "))
+    return written
 
 
 _THE_PROOF = ("from", "seen_in", "round_in")
@@ -1097,6 +1161,11 @@ def distilled(model) -> dict:
     against the drawing. What stays here is every address the Acceptance is
     derived from, so the description and the criteria still come off one model
     (ADR-0020).
+
+    A disagreement goes whole and is settled off the reading rather than off
+    this: Plan is handed the part and nothing that argues about it (FCC-156),
+    and the Gate reads what nobody agrees on where it stands — beside the
+    document, one entry to an address (`each_disagreement_once`).
 
     A gap is retired here for the same reason a dead datum's values are
     re-measured here: the merge only ever grows, so what nobody had supplied
@@ -1152,6 +1221,89 @@ def _without_the_evidence(node):
         return [_without_the_evidence(entry) for entry in node
                 if not _superseded(entry)]
     return node
+
+
+def each_disagreement_once(model) -> dict:
+    """
+    The reading with what nobody agrees on said once, each entry saying which
+    of `KINDS` it is.
+
+    The other half of what distillation leaves, and the half that is no part of
+    the document: Plan is handed the part and nothing that argues about it
+    (FCC-156), so the list stands in the log beside it and the user settles it
+    at the Gate off the reading they are shown.
+
+    Said once here and not in the merge, because the merge only ever grows: a
+    pass writes down what it found in the words it found it in, and which of
+    those entries is one disagreement is decided where the list is written down
+    and read out (ADR-0019, FCC-153).
+    """
+    standing = _one_to_an_address((model or {}).get("conflicts") or ())
+    return dict(model, conflicts=standing) if standing else model
+
+
+def _which_kind_it_is(conflict):
+    """
+    Which of `KINDS` an entry is, and `A_CONFLICT` for one that does not say.
+
+    Read off the entry and never off its prose. Two readings that cannot both
+    be true is what the section is for, what the prompt asks the model for and
+    what the merge writes, so an entry nobody typed is that one; a check that
+    finds a value nobody supplied or an outline nobody could ask about says so
+    where it is found.
+    """
+    said = _named(conflict, ("kind",))
+    return said if said in KINDS else A_CONFLICT
+
+
+def _one_to_an_address(conflicts):
+    """
+    The disagreements, one to an address, each saying which of the three it is.
+
+    The address is the merge's own path, which is what `_written` records in
+    `about` and what `entries` cites a value by, so two entries are the same
+    disagreement when they are about the same thing rather than when they are
+    worded alike. `_appended` compares whole records, which is why the recorded
+    run reached the Gate with one finding written three ways.
+
+    Compared the way a view's name is compared, because an outline's verdict is
+    addressed by the view it was traced in and the reader and the description
+    spell a view differently — the rule `_as_a_view` keeps for `round_in`,
+    applied to what an entry is about.
+
+    The first entry at an address is the one that stands, for the reason a
+    filled value stands: it is the earliest reading, and the later one is what
+    the merge goes on holding (ADR-0019). An entry about nothing addresses
+    nothing and stands beside them all.
+
+    Its kind is whatever was said at that address, which is not always said by
+    the entry that stands there: a check names the kind where it makes the
+    finding, and the same finding read back to Design and written down again in
+    the model's own words has lost it. An entry saying nothing is unclassified
+    rather than classified, so what another entry about the same thing says
+    governs it, and `A_CONFLICT` is what is left when nothing anywhere said.
+    """
+    kinds = {}
+    for conflict in conflicts:
+        at, said = _addressed_by(conflict), _named(conflict, ("kind",))
+        if at and said in KINDS:
+            kinds.setdefault(at, said)
+
+    seen = set()
+    standing = []
+    for conflict in conflicts:
+        at = _addressed_by(conflict)
+        if at and at in seen:
+            continue
+        seen.add(at)
+        standing.append(dict(conflict, kind=kinds.get(at) or _which_kind_it_is(conflict))
+                        if isinstance(conflict, dict) else conflict)
+    return standing
+
+
+def _addressed_by(conflict):
+    """What an entry is about, said the one way a view's name is said."""
+    return _as_a_view(_named(conflict, ("about",)) or "")
 
 
 def _answered(document, gap):

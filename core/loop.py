@@ -37,9 +37,10 @@ from typing import List
 
 from core.arithmetic import wrong_sums
 from core.design import (
-    ROUND_IN, UNDER, corrected, decided_for_you, distilled, entries, entry_at, merge,
-    nobody_carries_the_outside, read_off_the_wrong_view, render, said_at,
-    settled_by_the_tracing, what_the_trace_says, where_the_direction_is,
+    A_CHECK_HAZARD, ROUND_IN, UNDER, corrected, decided_for_you, distilled,
+    each_disagreement_once, entries, entry_at, merge, nobody_carries_the_outside,
+    read_off_the_wrong_view, render, said_at, settled_by_the_tracing,
+    what_the_trace_says, where_the_direction_is,
 )
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE, INTENT,
@@ -1816,7 +1817,8 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
 
     It ends in two steps: gather every piece of evidence there is, then distil
     it (ADR-0024). What leaves the phase is the document — what the part is —
-    and the evidence that settled it stays in the log beside the file, so every
+    and the evidence that settled it stays in the log beside the file, with
+    what nobody agrees on standing there one entry to an address, so every
     phase after this one is handed the part rather than the reading of it.
     `tests/test_loop.py` measures both against the recorded run of the 2023
     pipe clamp.
@@ -1849,7 +1851,8 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
                      if disagreements else the_part)
     the_part = _every_direction_settled(the_part, _round_evidence(attachments))
     the_part = _the_tracing_governs(the_part)
-    return _written_down(distilled(the_part), the_part, intent, attachments, events)
+    return _written_down(distilled(the_part), each_disagreement_once(the_part),
+                         intent, attachments, events)
 
 
 def _every_number_is_the_sheets(the_part, intent, attachments, llm, events, budgets,
@@ -1957,14 +1960,16 @@ def _the_geometry_disagrees(attachments, events, budget=A_READING_BUDGET):
     needs no correspondence at all, by the sheet measuring its own numbers
     (`Printed.measures`) and by `uncited`.
 
-    An outline the solver could not be asked about is said out loud, for the
-    same reason a re-read that found nothing says so: a sheet nothing was wrong
-    with and a sheet nobody could check both arrive at the Gate with no
-    conflict on them, and only one of the two is a verdict. A child that never
-    came up, a child that died and could not be replaced, and a budget that ran
-    out are all that same sentence: those outlines are unchecked and the run
-    goes on. Nothing here may end a run — that is what makes it a reading check
-    and not a Step.
+    An outline the solver could not be asked about arrives on the part as a
+    check hazard, for the same reason a re-read that found nothing says so: a
+    sheet nothing was wrong with and a sheet nobody could check both arrive at
+    the Gate with nothing to settle on them, and only one of the two is a
+    verdict. It stays on the `ERROR` stream as well, which is where a run is
+    read back from and not where a reading is settled. A child that never came
+    up, a child that died and could not be replaced, and a budget that ran out
+    are all that same sentence: those outlines are unchecked and the run goes
+    on. Nothing here may end a run — that is what makes it a reading check and
+    not a Step.
 
     `budget` is the phase's, not the outline's. A timeout each is no bound at
     all: a sweep can spend one timeout for every outline without returning a
@@ -1999,6 +2004,12 @@ def _the_geometry_disagrees(attachments, events, budget=A_READING_BUDGET):
                                    "outlines read off these sheets: %s. The run goes "
                                    "on; those outlines are unchecked."
                                    % (len(unchecked), ", ".join(sorted(set(unchecked)))))
+        found.extend({"about": "the line work traced in %s" % view,
+                      "stands": "the solver could not be asked about it, so nothing "
+                                "here says whether the view draws what the sheet "
+                                "prints",
+                      "kind": A_CHECK_HAZARD}
+                     for view in sorted(set(unchecked)))
     return found
 
 
@@ -2276,10 +2287,11 @@ def _written_down(document, gathered, intent, attachments, events):
     diff rather than two transcripts to compare (FCC-108).
 
     What is on disk is what came out of the distil step, and the whole of what
-    Design gathered is the log beside it. The reading is the requirement, and a
-    requirement nobody can hold in their head is one nobody checks; the proof of
-    each of its numbers is what a person goes looking for afterwards and no
-    phase needs, so it is a file with the same name and nothing reads it.
+    Design gathered is the log beside it, each disagreement in it said once.
+    The reading is the requirement, and a requirement nobody can hold in their
+    head is one nobody checks; the proof of each of its numbers is what a
+    person goes looking for afterwards and no phase needs, so it is a file with
+    the same name and nothing reads it.
 
     The Intent is written beside the sheet it was read off, because a reading
     is the requirement one run is held to, and what was asked is what makes it
