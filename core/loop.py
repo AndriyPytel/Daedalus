@@ -42,8 +42,8 @@ from core.design import (
     settled_by_the_tracing, what_the_trace_says, where_the_direction_is,
 )
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, DESIGN, ERROR, GATE, INTENT,
-    OUTSTANDING, PART, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, COST, DESIGN, ERROR, GATE,
+    INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT,
     EventStream,
 )
@@ -415,7 +415,14 @@ def _ask(llm, events, phase, system, user):
 
 
 def _streamed(llm, events, phase, system, user):
-    """One turn, as the text it wrote and whether it reasoned before writing it."""
+    """
+    One turn, as the text it wrote and whether it reasoned before writing it.
+
+    One fact about a call is not a `Chunk` and crosses the seam here, which is
+    the one place every phase's stream is consumed and the one that already
+    holds `events`: what the call spent. A client that says nothing about it —
+    the keyed one, the scripted one — emits nothing.
+    """
     text, thought = [], False
     for chunk in llm.stream([{"role": "system", "content": system},
                              {"role": "user", "content": user}]):
@@ -424,6 +431,10 @@ def _streamed(llm, events, phase, system, user):
             events.emit(THOUGHT, phase=phase, text=chunk.text)
         else:
             text.append(chunk.text)
+
+    spent = getattr(llm, "last_cost", None)
+    if spent:
+        events.emit(COST, phase=phase, usd=spent["usd"], model=spent["model"])
     return "".join(text), thought
 
 

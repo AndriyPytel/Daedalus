@@ -13,7 +13,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from core.model_catalog import api_base_for, fetch, needs_base_url, providers
+from core.model_catalog import (
+    CLAUDE, api_base_for, fetch, needs_base_url, needs_no_key, providers,
+)
 
 RECORDED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recorded")
 
@@ -176,7 +178,35 @@ def test_the_registry_names_every_provider_the_addon_can_reach():
     entitles you to is asked of the provider, so the file held nothing but the
     names and a fallback list that went stale.
     """
-    assert providers() == ["OpenAI", "Anthropic", "Google", "OpenCode Go", "Custom/Local"]
+    assert providers() == ["OpenAI", "Anthropic", CLAUDE, "Google", "OpenCode Go",
+                           "Custom/Local"]
+
+
+def test_the_subscription_is_configured_by_neither_a_key_nor_an_address():
+    """
+    The first provider with neither. The `claude` CLI holds the credential —
+    the subscription's own OAuth, which `apiKeySource: none` in the recorded
+    transcript is the proof of — so a page asking for a key would be asking for
+    something nothing reads.
+    """
+    assert needs_no_key(CLAUDE) is True
+    assert needs_base_url(CLAUDE) is False
+    assert not any(needs_no_key(provider) for provider in providers()
+                   if provider != CLAUDE)
+
+
+def test_the_subscriptions_models_are_the_clis_three_aliases():
+    """
+    `claude -p --model definitely-not-a-model` answers that it may not exist or
+    you may not have access to it — a validator, not a list, and there is no
+    `/models` endpoint to ask. An alias is the one bundled list that cannot go
+    stale, because it always points at the latest version.
+    """
+    assert fetch(CLAUDE, "") == [
+        {"id": "opus", "display": "opus"},
+        {"id": "sonnet", "display": "sonnet"},
+        {"id": "haiku", "display": "haiku"},
+    ]
 
 
 def test_opencode_go_is_configured_by_a_key_alone():

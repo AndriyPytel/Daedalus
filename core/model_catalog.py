@@ -13,15 +13,20 @@ import httpx
 
 TIMEOUT = 10.0
 
+CLAUDE = "Claude (subscription)"
+
 _DEFAULT_BASE = {
     "OpenAI": "https://api.openai.com/v1",
     "Anthropic": "https://api.anthropic.com/v1",
+    CLAUDE: "",
     "Google": "https://generativelanguage.googleapis.com/v1beta",
     "OpenCode Go": "https://opencode.ai/zen/go/v1",
     "Custom/Local": "",
 }
 
 _VENDORS = ("OpenAI", "Anthropic", "Google")
+
+_ALIASES = ("opus", "sonnet", "haiku")
 
 
 def providers() -> list[str]:
@@ -31,7 +36,19 @@ def providers() -> list[str]:
 
 def needs_base_url(provider: str) -> bool:
     """True for a provider whose address only the user knows — a local server."""
-    return not _DEFAULT_BASE.get(provider)
+    return not needs_no_key(provider) and not _DEFAULT_BASE.get(provider)
+
+
+def needs_no_key(provider: str) -> bool:
+    """
+    True for the provider that holds its own credential.
+
+    The `claude` CLI is signed in to a subscription, so there is neither a key
+    to store nor an address to type. Everywhere else in the addon "no key and
+    no address" means "not configured yet", which would leave this provider out
+    of the model list, out of `get_llm_credentials` and out of every fetch.
+    """
+    return provider == CLAUDE
 
 
 def api_base_for(provider: str, base_url: str = "") -> str | None:
@@ -109,7 +126,15 @@ def fetch(provider: str, api_key: str, base_url: str | None = None,
     ignores the header, one that does gets it, which is why the key field
     stays. Anthropic and Google both page their model lists, so each is asked
     for one page of 1000, which nobody is near.
+
+    The subscription answers out of this module rather than over a socket: its
+    CLI validates a model but cannot enumerate one, and its three aliases are
+    the only bundled list that cannot go stale, because each always points at
+    the latest version of its model.
     """
+    if needs_no_key(provider):
+        return [{"id": alias, "display": alias} for alias in _ALIASES]
+
     base = (base_url or _DEFAULT_BASE.get(provider, "")).rstrip("/")
     params = {}
 

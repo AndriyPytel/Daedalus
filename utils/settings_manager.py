@@ -157,8 +157,12 @@ class _SettingsManager(QObject):
         Raises ValueError if not configured.
 
         A local server is configured by its address; the token is optional, so
-        a missing key is only an error when there is no address either.
+        a missing key is only an error when there is no address either. A
+        provider that holds its own credential has neither, and is not asked
+        for one: the `claude` CLI is signed in to a subscription, and the key
+        this would demand is one nothing reads.
         """
+        from core import model_catalog
         from utils import provider_manager
         mid = model_id or self.get_last_model()
         if not mid:
@@ -174,7 +178,8 @@ class _SettingsManager(QObject):
 
         provider = entry["provider"]
         api_key  = self.get_api_key_for_provider(provider)
-        if not api_key and not self.get_base_url_for_provider(provider):
+        if (not api_key and not self.get_base_url_for_provider(provider)
+                and not model_catalog.needs_no_key(provider)):
             raise ValueError(
                 f"No API key for provider '{provider}'. Add one in Preferences → API & Providers."
             )

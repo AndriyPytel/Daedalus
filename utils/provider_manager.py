@@ -85,6 +85,9 @@ class _ProviderManager(QObject):
 
         A local server is configured by its address and may want no token; a
         hosted provider is configured by its key and has no address to give.
+        A provider that holds its own credential is configured by having the
+        CLI signed in, which is nothing this page stores — so it is always
+        usable here, and its Test button is what says whether it really is.
         """
         from core import model_catalog
         from utils import settings_manager
@@ -92,6 +95,8 @@ class _ProviderManager(QObject):
         sm = settings_manager.instance()
         key = sm.get_api_key_for_provider(provider)
         base = sm.get_base_url_for_provider(provider)
+        if model_catalog.needs_no_key(provider):
+            return ("", "")
         if model_catalog.needs_base_url(provider):
             return (key, base) if base else None
         return (key, base) if key else None
@@ -243,8 +248,17 @@ class _ProviderManager(QObject):
         list, so a passing test guarantees a populated combo.  Returns
         (success: bool, message: str).  Call from a QThread to avoid blocking
         the UI.
+
+        A provider with no key has no such request to make: its model list is
+        three aliases and costs nothing to be wrong about. What is worth
+        proving there is which account the CLI is signed in as, and on which
+        plan — and asking spends no call.
         """
         from core import model_catalog
+        if model_catalog.needs_no_key(provider):
+            from core import llm
+            return llm.signed_in()
+
         try:
             models = model_catalog.fetch(provider, api_key, base_url=base_url or None)
         except Exception as exc:
