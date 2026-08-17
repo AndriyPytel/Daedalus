@@ -145,6 +145,18 @@ follows a ring's outside is drawn on the elevation and cannot be drawn on the
 face it opens at — there is no centre in that plane for the arc to be struck
 from.
 
+**A full round is built, never filleted to.** A round whose radius is half the
+thickness it crosses meets itself: at that radius the face between its two
+sides has no width left, and OCC refuses to build it — the feature comes back
+invalid. Taking one edge at a time does not rescue it, because the first round
+consumes the whole face and the Step that asked for the one edge still standing
+finds two. A rib whose free top is a semicylinder across its thickness is
+planned as that shape and not as a fillet of the sharp one: the profile is
+drawn short of the round by its radius, and a circle of the full thickness is
+swept along the edge it was drawn short of.
+`tests/test_preflight_dressup_level2.py` holds the radius that is refused and
+the one that builds.
+
 **A Step handed back changes how it is built, never what it builds.** The
 plane it is drawn in, the direction it is cut, the feature it is cut from: those
 are yours to rewrite. The shape is the description's, and a Step that comes back

@@ -86,3 +86,68 @@ def test_the_same_fillet_small_enough_passes(worker):
     result = worker.check(rounding_the_top_face_at(0.4), None)
 
     assert result.ok, result.traceback
+
+
+A_RIB_4_MM_THICK = """
+import math
+import Part
+
+body = doc.addObject('PartDesign::Body', 'Body')
+profile = doc.addObject('Sketcher::SketchObject', 'Profile')
+body.addObject(profile)
+profile.Placement = App.Placement(App.Vector(0, 0, 0),
+                                  App.Rotation(App.Vector(1, 0, 0), 90))
+for a, b in (((5, 0), (50, 0)), ((50, 0), (50, 15)), ((50, 15), (5, 0))):
+    profile.addGeometry(Part.LineSegment(App.Vector(a[0], a[1], 0),
+                                         App.Vector(b[0], b[1], 0)), False)
+pad = doc.addObject('PartDesign::Pad', 'Pad')
+body.addObject(pad)
+pad.Profile = profile
+pad.Length = 4
+doc.recompute()
+
+along = App.Vector(45.0, 0.0, 15.0)
+along = along * (1.0 / along.Length)
+sloping = []
+for at, edge in enumerate(pad.Shape.Edges):
+    if not isinstance(edge.Curve, Part.Line):
+        continue
+    if abs(edge.Length - math.hypot(45.0, 15.0)) > 1e-6:
+        continue
+    ends = [vertex.Point for vertex in edge.Vertexes]
+    run = ends[1] - ends[0]
+    if abs(abs((run * (1.0 / run.Length)).dot(along)) - 1.0) > 1e-6:
+        continue
+    sloping.append(at)
+if len(sloping) != 2:
+    raise RuntimeError('the rib has 2 sloping top edges, found %d' % len(sloping))
+fillet = doc.addObject('PartDesign::Fillet', 'Fillet')
+body.addObject(fillet)
+fillet.Base = (pad, ['Edge%d' % (at + 1) for at in sloping])
+"""
+
+
+def rounding_the_rib_top_at(radius):
+    """The rib 4 mm thick, both edges of its sloping top rounded at once."""
+    return A_RIB_4_MM_THICK + "fillet.Radius = %s\ndoc.recompute()\n" % radius
+
+
+def test_a_full_round_at_half_the_thickness_is_refused(worker):
+    """
+    The radius at which the two rounds meet is the one OCC will not build: the
+    face between them has no width left at the moment they touch, so a full
+    round has to be built as the shape it is and cannot be filleted to.
+    """
+    result = worker.check(rounding_the_rib_top_at(2.0), None)
+
+    assert not result.ok, "a full round OCC refused was passed to the Document"
+
+
+def test_the_same_round_a_shade_under_half_the_thickness_builds(worker):
+    """
+    What separates the two is the degeneracy alone. The round that stops
+    0.001 mm short of meeting leaves a face between, and builds.
+    """
+    result = worker.check(rounding_the_rib_top_at(1.999), None)
+
+    assert result.ok, result.traceback
