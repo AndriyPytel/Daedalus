@@ -18,7 +18,9 @@ opinion about a Step that states no arithmetic at all. A claim is
 `<sum> = <number>`, where the left side is arithmetic and nothing else — no
 words, so `Set Type = ThroughAll` and `the Length = 30` are not claims — and it
 has to contain an operation, because `30 = 30` is a label rather than a sum
-somebody had to do.
+somebody had to do. Written as a chain, `<sum> = <sum> = <number>`, it is still
+one claim: the number at the end is the answer and everything before it is the
+working.
 
 Trigonometry is in degrees, because a drawing is in degrees. `cos(45)` read the
 way Python reads it is 0.5253, which is not a number on any sheet.
@@ -27,9 +29,10 @@ import ast
 import math
 import re
 
-_CLAIM = re.compile(
-    r"(?P<sum>(?:(?:cos|sin|tan|sqrt)\s*\(|[0-9]+(?:\.[0-9]+)?|[-+*/^×÷()°]|\s|mm)+?)"
-    r"=\s*(?P<answer>-?[0-9]+(?:\.[0-9]+)?)")
+_ARITHMETIC = r"(?:(?:cos|sin|tan|sqrt)\s*\(|[0-9]+(?:\.[0-9]+)?|[-+*/^×÷()°]|\s|mm)"
+
+_CLAIM = re.compile(r"(?:%s+?=\s*)+?-?[0-9]+(?:\.[0-9]+)?(?![0-9.])(?!%s*=)"
+                    % (_ARITHMETIC, _ARITHMETIC))
 
 _AN_OPERATION = re.compile(r"[-+*/^×÷]|cos|sin|tan|sqrt")
 
@@ -48,19 +51,33 @@ def wrong_sums(prose) -> list:
     Silent about everything else. A sum with a name in it, a division by zero, a
     power too big to evaluate — none of them is a Step that is wrong, and a Plan
     handed back over a sentence nobody can correct is worse than the sentence.
+
+    A chain is one claim, however many `=` it is written with. `11 / (2 *
+    cos(30°)) = 5.5 / 0.86603 = 6.351` states the working as well as the answer,
+    and every stretch of it is worked out against the *last* number rather than
+    against the one it happens to be written in front of. Read the other way the
+    Plan is refused for the working it showed: in the recorded run
+    (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`, the 2023 pipe
+    clamp) the hexagon Step wrote its circumradius that way twice, was told
+    `= 5.5, and it is 6.35` twice over a number it had right from the first
+    Plan, and the two revisions that went on the punctuation were the two the
+    run had left when the cutout came back unbuildable.
+
+    One line per chain, naming the first stretch that disagrees: the rest of a
+    chain is the same disagreement written again.
     """
     wrong = []
     for claim in _CLAIM.finditer(str(prose or "")):
-        written = claim.group("sum").strip()
-        if not _AN_OPERATION.search(written):
-            continue
-        comes_to = _worked_out(written)
-        if comes_to is None:
-            continue
-        if _rounds_to(comes_to, claim.group("answer")):
-            continue
-        wrong.append("%s = %s, and it is %s" % (written, claim.group("answer"),
-                                                _said(comes_to)))
+        written = [stretch.strip() for stretch in claim.group().split("=")]
+        answer = written.pop()
+        for sum_of_it in written:
+            if not _AN_OPERATION.search(sum_of_it):
+                continue
+            comes_to = _worked_out(sum_of_it)
+            if comes_to is None or _rounds_to(comes_to, answer):
+                continue
+            wrong.append("%s = %s, and it is %s" % (sum_of_it, answer, _said(comes_to)))
+            break
     return wrong
 
 

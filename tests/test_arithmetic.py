@@ -78,3 +78,26 @@ def test_every_sum_in_the_step_is_checked():
                        "65.5 + 42.5 = 109 mm")
 
     assert len(wrong) == 2
+
+
+def test_a_chain_is_one_claim_and_the_last_number_is_the_answer():
+    """
+    A Step that shows its working writes `a = b = c`, and the middle of a chain
+    is a stretch of the sum rather than an answer to it. Read as an answer, the
+    hexagon Step of the recorded run
+    (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`) was handed back
+    twice — `11 / (2 * cos(30°)) = 5.5, and it is 6.35` — over a circumradius it
+    had right in the first Plan it wrote, and the two revisions it spent were
+    the two the run needed when the cutout came back unbuildable.
+    """
+    assert wrong_sums("the circumradius is 11 / (2 * cos(30°)) = 5.5 / 0.86603 "
+                      "= 6.351 mm") == []
+    assert wrong_sums("the apothem is 11 / 2 = 5.5 mm and the circumradius is "
+                      "5.5 / cos(30°) = 5.5 / 0.866025 = 6.351 mm") == []
+
+    wrong = wrong_sums("the circumradius is 11 / (2 * cos(30°)) = 5.5 / 0.86603 "
+                       "= 5.9 mm")
+
+    assert len(wrong) == 1
+    assert "11 / (2 * cos(30°)) = 5.9" in wrong[0]
+    assert "6.35" in wrong[0]
