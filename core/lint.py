@@ -344,9 +344,14 @@ def _uncounted_selection(node: ast.Assign, counted: set):
     """
     The `x.Base = (obj, elements)` whose element list nothing counted, or None.
 
-    A list written out in the code states its own count; a variable and a
-    comprehension state nothing, and that is the whole of the failure — the
-    filter runs, finds what it finds, and the Step applies to that.
+    A list written out in the code states its own count; an uncounted variable
+    states nothing, and that is the whole of the failure — the filter runs,
+    finds what it finds, and the Step applies to that.
+
+    A comprehension inherits the count of what it walks. Walking a list the
+    Step counted and raised on, and dropping none of it, yields one name per
+    element of a length that has already been checked; an `if` in the
+    comprehension, or a source nothing counted, states nothing again.
     """
     for target in node.targets:
         if not (isinstance(target, ast.Attribute) and target.attr == "Base"):
@@ -358,7 +363,9 @@ def _uncounted_selection(node: ast.Assign, counted: set):
         if isinstance(elements, ast.Name) and elements.id not in counted:
             return ast.unparse(target)
         if isinstance(elements, (ast.ListComp, ast.GeneratorExp, ast.SetComp)):
-            return ast.unparse(target)
+            if not all(isinstance(gen.iter, ast.Name) and gen.iter.id in counted
+                       and not gen.ifs for gen in elements.generators):
+                return ast.unparse(target)
     return None
 
 

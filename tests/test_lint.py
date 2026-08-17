@@ -390,6 +390,40 @@ def test_a_selection_that_raises_on_the_count_is_accepted():
     assert lint(code).ok, lint(code).report()
 
 
+def test_a_comprehension_over_a_counted_list_is_accepted():
+    """
+    A comprehension states its count when every list it walks has been counted
+    and it drops nothing: it builds one name per element of a list the Step has
+    already raised on, so it cannot hand the feature fewer than the Step said.
+    """
+    code = (
+        "idx = sloping_edges(base.Shape)\n"
+        "if len(idx) != 2:\n"
+        "    raise RuntimeError('the rib has 2 sloping edges, found %d' % len(idx))\n"
+        "fillet.Base = (base, ['Edge%d' % (i + 1) for i in idx])\n"
+    )
+
+    assert lint(code).ok, lint(code).report()
+
+
+def test_a_comprehension_that_filters_a_counted_list_is_rejected():
+    """
+    An `if` inside the comprehension puts the count back where it started: the
+    list was counted, and what the filter keeps of it was not.
+    """
+    code = (
+        "idx = sloping_edges(base.Shape)\n"
+        "if len(idx) != 2:\n"
+        "    raise RuntimeError('the rib has 2 sloping edges, found %d' % len(idx))\n"
+        "fillet.Base = (base, ['Edge%d' % (i + 1) for i in idx if i > 3])\n"
+    )
+
+    result = lint(code)
+
+    assert not result.ok
+    assert "how many" in result.report()
+
+
 def test_the_reason_says_what_to_write_instead():
     reason = lint("refs = pick(base)\nfillet.Base = (base, refs)\n").report()
 
