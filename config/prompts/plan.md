@@ -138,6 +138,25 @@ solver to arrange what the coordinates already decided. Work the geometry out in
 coordinates and equations, and plan a constraint only where a parameter must
 genuinely be driven — where changing one value has to move the rest.
 
+**A profile closed by another feature's surface is drawn in the plane that
+surface is a curve in.** A cylinder is an arc in the plane square to its axis
+and a pair of straight lines in every plane parallel to it, so a recess that
+follows a ring's outside is drawn on the elevation and cannot be drawn on the
+face it opens at — there is no centre in that plane for the arc to be struck
+from.
+
+**A Step handed back changes how it is built, never what it builds.** The
+plane it is drawn in, the direction it is cut, the feature it is cut from: those
+are yours to rewrite. The shape is the description's, and a Step that comes back
+unbuildable is not permission to build something simpler. In the recorded run
+(`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`) the arm's cutout was
+closed on the ring's R25 outside and drawn on the arm's top face, where that
+outside is two straight lines; Execute refused it and said why, and the revision
+answered by dropping the arc for a plain rectangle. The rib the drawing draws
+was gone, the slot beside it was cut through the ring wall, and the R2 fillet
+the next Step asked for no longer had the metal to sit on — one Step rewritten
+into a part nobody had described.
+
 `what_the_part_is` is the whole of what somebody else established about the
 part — from the drawing they attached, and from every question that has already
 been answered. You do not get the picture itself. It is a finished piece of work
