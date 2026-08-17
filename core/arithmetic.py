@@ -23,24 +23,31 @@ one claim: the number at the end is the answer and everything before it is the
 working.
 
 Trigonometry is in degrees, because a drawing is in degrees. `cos(45)` read the
-way Python reads it is 0.5253, which is not a number on any sheet.
+way Python reads it is 0.5253, which is not a number on any sheet. The inverses
+answer in degrees for the same reason, and they are read whole: `atan(` is not
+the `tan(` its name ends with, and a slope written as `atan(15/45) = 18.43°`
+comes out where the same digits read as `tan` are 0.01.
 """
 import ast
 import math
 import re
 
-_ARITHMETIC = r"(?:(?:cos|sin|tan|sqrt)\s*\(|[0-9]+(?:\.[0-9]+)?|[-+*/^×÷()°]|\s|mm)"
+_ARITHMETIC = (r"(?:(?<![A-Za-z])(?:acos|asin|atan|cos|sin|tan|sqrt)\s*\("
+               r"|[0-9]+(?:\.[0-9]+)?|[-+*/^×÷()°]|\s|mm)")
 
 _CLAIM = re.compile(r"(?:%s+?=\s*)+?-?[0-9]+(?:\.[0-9]+)?(?![0-9.])(?!%s*=)"
                     % (_ARITHMETIC, _ARITHMETIC))
 
-_AN_OPERATION = re.compile(r"[-+*/^×÷]|cos|sin|tan|sqrt")
+_AN_OPERATION = re.compile(r"[-+*/^×÷]|(?<![A-Za-z])(?:acos|asin|atan|cos|sin|tan|sqrt)")
 
 _FUNCTIONS = {
     "cos": lambda value: math.cos(math.radians(value)),
     "sin": lambda value: math.sin(math.radians(value)),
     "tan": lambda value: math.tan(math.radians(value)),
     "sqrt": math.sqrt,
+    "acos": lambda value: math.degrees(math.acos(value)),
+    "asin": lambda value: math.degrees(math.asin(value)),
+    "atan": lambda value: math.degrees(math.atan(value)),
 }
 
 

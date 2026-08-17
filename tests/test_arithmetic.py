@@ -101,3 +101,36 @@ def test_a_chain_is_one_claim_and_the_last_number_is_the_answer():
     assert len(wrong) == 1
     assert "11 / (2 * cos(30°)) = 5.9" in wrong[0]
     assert "6.35" in wrong[0]
+
+
+def test_an_inverse_is_not_the_function_its_name_ends_with():
+    """
+    The recorded run
+    (`logs/sessions/45ee20f1f9a34c60a79bfd62d2dace8c.jsonl`) put the rib's
+    slope at `atan(15/45) = 18.43°`, which comes out. Read as the `tan` its
+    name ends with it is 0.01, and a revision went on rewriting a Plan whose
+    number was right all along.
+    """
+    assert wrong_sums("the upper face rises at atan(15/45) = 18.43° from the toe") == []
+    assert wrong_sums("the slope angle atan(15/45) = 18.435°") == []
+
+
+def test_an_inverse_that_does_not_come_out_is_still_wrong():
+    wrong = wrong_sums("the upper face rises at atan(15/45) = 12°")
+
+    assert len(wrong) == 1
+    assert "18.43" in wrong[0]
+
+
+def test_an_inverse_answers_in_degrees():
+    """A drawing is in degrees, so what asks an angle of a ratio answers in them."""
+    assert wrong_sums("asin(0.5) = 30°") == []
+    assert wrong_sums("acos(0.5) = 60°") == []
+
+
+def test_the_function_still_means_itself():
+    """The name the inverse ends with keeps its own meaning and its own answer."""
+    wrong = wrong_sums("the slope is tan(15/45) = 18.43°")
+
+    assert len(wrong) == 1
+    assert "0.01" in wrong[0]
