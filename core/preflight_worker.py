@@ -417,6 +417,110 @@ def _bodies_in_pieces(doc):
     return scattered
 
 
+_A_DRESSUP = {"PartDesign::Fillet": ("Radius", "makeFillet"),
+              "PartDesign::Chamfer": ("Size", "makeChamfer")}
+
+_SMALLER = (0.75, 0.5, 0.25)
+
+
+def _why_it_failed(obj):
+    """What the Document says about a feature in error, and what it will not."""
+    return ". ".join(said for said in (obj.getStatusString(),
+                                       _why_a_dressup_failed(obj)) if said)
+
+
+def _why_a_dressup_failed(obj):
+    """
+    What a fillet or a chamfer will not say for itself.
+
+    A PartDesign dressup OCC refuses says either nothing at all —
+    `getStatusString()` is the empty string, and `Fillet_R2
+    (PartDesign::Fillet): ` was the whole of the failure Execute was handed
+    (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`) — or `BRep_API:
+    command not done`, which names no edge and no size either. Both leave one
+    thing to change, how the selection is written, and it is rarely the thing
+    that is wrong: Execute rewrote the selection twice and then wrote nothing.
+
+    The exception survives one level down, so the same selection is built again
+    on the base feature's own shape, where `Standard_ConstructionError` is what
+    comes back. Two questions follow it, and both are answered by building it
+    again rather than by reasoning about it: which of the selected edges is the
+    one the set cannot carry, and whether the size is what will not fit. An
+    edge named and a radius that works are what tell Plan whether to change the
+    selection or the number.
+
+    `_SMALLER` is what to try instead: three quarters of the size asked for, a
+    half and a quarter. Three builds are what a Step that has already failed can
+    afford, and a size that fits nowhere in that range is a selection to change
+    rather than a number.
+    """
+    how = _A_DRESSUP.get(obj.TypeId)
+    base = getattr(obj, "Base", None)
+    if how is None or not base:
+        return ""
+    of_it, made = how
+    size = getattr(obj, of_it, None)
+    size = getattr(size, "Value", size)
+    shape = getattr(base[0], "Shape", None)
+    if not size or shape is None or shape.isNull():
+        return ""
+
+    chosen = _the_edges_of(shape, base[1])
+    refused = _refusal(shape, made, size, [edge for _, edge in chosen]) if chosen else ""
+    if not refused:
+        return ""
+
+    said = ("the same selection built on %s is refused with %s"
+            % (base[0].Name, refused))
+    for how_many in range(1, len(chosen) + 1):
+        if _refusal(shape, made, size, [edge for _, edge in chosen[:how_many]]):
+            said += (". %s is the first of the %d selected that will not build with the "
+                     "edges before it" % (chosen[how_many - 1][0], len(chosen)))
+            break
+    for share in _SMALLER:
+        if not _refusal(shape, made, size * share, [edge for _, edge in chosen]):
+            said += ". The whole selection builds at %s mm" % round(size * share, 3)
+            break
+    return said
+
+
+def _the_edges_of(shape, chosen):
+    """
+    The edges a dressup's sub-element names stand for, each under its own name.
+
+    A dressup is selected by edge or by face, and a face stands for every edge
+    of its outline. Named against the base shape rather than against the face,
+    so what comes back is what a Step can be written with.
+    """
+    edges = []
+    for name in chosen:
+        try:
+            element = shape.getElement(name)
+        except Exception:
+            continue
+        for edge in getattr(element, "Edges", [element]):
+            named = _the_name_of(shape, edge)
+            if named not in [was for was, _ in edges]:
+                edges.append((named, edge))
+    return edges
+
+
+def _the_name_of(shape, edge):
+    for at, one in enumerate(shape.Edges, start=1):
+        if one.isSame(edge):
+            return "Edge%d" % at
+    return "an edge"
+
+
+def _refusal(shape, made, size, edges):
+    """What the same dressup raises at Part level, or "" where it builds."""
+    try:
+        getattr(shape, made)(size, edges)
+    except Exception as exc:
+        return str(exc).strip() or exc.__class__.__name__
+    return ""
+
+
 _MOVES_MATERIAL = "PartDesign::Feature"
 
 _VOLUME_TOLERANCE = 1e-9
@@ -477,7 +581,7 @@ def preflight(request):
         FreeCAD.removeDocumentObserver(touched)
     doc.recompute()
 
-    failures = ["%s (%s): %s" % (o.Name, o.TypeId, o.getStatusString())
+    failures = ["%s (%s): %s" % (o.Name, o.TypeId, _why_it_failed(o))
                 for o in doc.Objects if o.State and "Invalid" in o.State]
     if failures:
         raise RuntimeError("recompute left these objects in error:\n" + "\n".join(failures))
