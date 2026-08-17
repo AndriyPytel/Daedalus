@@ -783,12 +783,14 @@
   },
   {
    "callout": "14",
-   "off_by": 0.01,
-   "the_sheet_measures": 14.01,
+   "off_by": 0.0,
+   "the_sheet_measures": 14.0,
    "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
   },
   {
    "callout": "7",
+   "off_by": 0.02,
+   "the_sheet_measures": 7.02,
    "view": "the lower centre of the sheet, the first one, on page 1, part 1 of 3"
   },
   {
@@ -832,8 +834,8 @@
   },
   {
    "callout": "108",
-   "off_by": -0.0,
-   "the_sheet_measures": 108.0,
+   "off_by": -0.03,
+   "the_sheet_measures": 107.97,
    "view": "the middle centre of the sheet, on page 1, part 2 of 3"
   },
   {
@@ -843,14 +845,14 @@
   },
   {
    "callout": "42.5",
-   "off_by": -0.02,
-   "the_sheet_measures": 42.48,
+   "off_by": -0.03,
+   "the_sheet_measures": 42.47,
    "view": "the middle centre of the sheet, on page 1, part 2 of 3"
   },
   {
    "callout": "65.5",
-   "off_by": 0.02,
-   "the_sheet_measures": 65.52,
+   "off_by": 0.0,
+   "the_sheet_measures": 65.5,
    "view": "the middle centre of the sheet, on page 1, part 1 of 3"
   },
   {
@@ -924,14 +926,14 @@
   },
   {
    "callout": "30",
-   "off_by": -0.01,
-   "the_sheet_measures": 29.99,
+   "off_by": -0.02,
+   "the_sheet_measures": 29.98,
    "view": "SECTION A-A, on page 1"
   },
   {
    "callout": "25",
-   "off_by": -0.02,
-   "the_sheet_measures": 24.98,
+   "off_by": -0.03,
+   "the_sheet_measures": 24.97,
    "view": "SECTION A-A, on page 1"
   },
   {

@@ -344,13 +344,18 @@ class Between:
 
     Reported and never concluded, the same way the leaders are: what those two
     points *are* — a face, an axis, a shoulder — stays with whoever can see the
-    view.
+    view. With one exception, and it is proved rather than read: a foot standing
+    on a chain line is standing on a centre line, and `on_a_centre_line` names
+    it. A distance measured from one is measured from the middle of the part,
+    not from a face, and that is the difference between a slot 14 wide sitting
+    symmetric on the mid-plane and a wall 7 in from the front of the part.
     """
     printed: float
     first: tuple
     second: tuple
     view: str = ""
     text: str = ""
+    on_a_centre_line: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -538,7 +543,8 @@ def _a_page(page, at, of_pages, into, legible_px, max_edge,
 
     on_this_page = [crop for crop in crops if crop.page == at]
     printed_before, leaders_before = len(printed), len(leaders)
-    scale, voters, measured, measuring = _measured(page, words)
+    spans, gaps = _spans(page)
+    scale, voters, measured, measured_by = _measured(words, spans, gaps)
     notation = _notation(page, words)
     printed.extend(Printed(text=str(w[4]).strip(),
                            at=(round(w[0], 1), round(w[1], 1)),
@@ -554,12 +560,12 @@ def _a_page(page, at, of_pages, into, legible_px, max_edge,
     circles = []
     drawn_before = len(drawn)
     drawn.extend(_drawn(page, named, printed_scale, page.parent, circles,
-                        measuring, leaders[leaders_before:]))
+                        list(measured_by.values()), leaders[leaders_before:]))
     _the_pixels_against_the_callouts(circles, printed[printed_before:],
                                      leaders[leaders_before:], notes,
                                      drawn[drawn_before:])
-    between.extend(_measured_between(page, words, measuring, named,
-                                     printed_scale))
+    between.extend(_measured_between(page, words, measured_by, named,
+                                     printed_scale, gaps))
 
 
 _A_REVISION = ("REVISION", "REVISIONS", "PHASE", "REV")
@@ -1806,6 +1812,14 @@ def _spans(page):
     is the draughtsman's own measuring apparatus, and its length is a number he
     committed to.
 
+    The gaps come back beside the spans, each with the span it was bridged
+    inside, because a break is not always the number's seat. A dimension too
+    small to hold its own arrows is drawn the other way out — the arrows stand
+    outside the extension lines and the line is drawn as two stubs pointing
+    away — and then the span is the two stubs and the *gap* is the distance
+    measured. Which of the two it is, is settled by where the number sits, and
+    that is `_the_span_measuring` and `_the_gap_measuring`.
+
     `A_TILT` is how far apart two segments' angles may be and still be the same
     drawn line, in degrees: a dimension line is plotted as one angle, and a
     degree of slack is rounding in the file rather than a second line.
@@ -1837,21 +1851,32 @@ def _spans(page):
             lines.setdefault((round(angle / A_TILT), round(standoff / A_SIDESTEP)),
                              []).append((min(at), max(at), angle, standoff))
 
-    spans = []
+    spans, gaps = [], []
     for pieces in lines.values():
         pieces.sort()
-        run = None
+        run, broken = None, []
         for first, last, angle, standoff in pieces:
             if run is None:
                 run = [first, last, angle, standoff]
             elif first - run[1] <= THE_TEXT_GAP:
+                if first > run[1]:
+                    broken.append((run[1], first))
                 run[1] = max(run[1], last)
             else:
-                spans.append(_a_span(*run))
-                run = [first, last, angle, standoff]
+                _a_span_and_its_gaps(run, broken, spans, gaps)
+                run, broken = [first, last, angle, standoff], []
         if run:
-            spans.append(_a_span(*run))
-    return [span for span in spans if span[0] >= A_SPAN]
+            _a_span_and_its_gaps(run, broken, spans, gaps)
+    return ([span for span in spans if span[0] >= A_SPAN],
+            [(span, gap) for span, gap in gaps if span[0] >= A_SPAN])
+
+
+def _a_span_and_its_gaps(run, broken, spans, gaps):
+    """One finished span, and every break the bridging closed over inside it."""
+    span = _a_span(*run)
+    spans.append(span)
+    gaps.extend((span, _a_span(first, last, run[2], run[3]))
+                for first, last in broken)
 
 
 def _a_span(first, last, angle, standoff):
@@ -1912,7 +1937,52 @@ def _the_span_measuring(spans, word):
     return best
 
 
-def _measured(page, words):
+def _the_gap_measuring(gaps, word):
+    """
+    The distance a number stands beside, where the arrows are drawn outside it.
+
+    A dimension too small to seat its own arrows is drawn inside out: the
+    extension lines carry the arrowheads on their far sides and the dimension
+    line is two stubs pointing away from what it measures, with the number set
+    off one of them. Bridged, the two stubs are one span the length of the whole
+    apparatus, and the distance the draughtsman committed to is the gap between
+    them.
+
+    Where the number sits is what tells the two apart, and it needs no new
+    tolerance: a broken dimension line seats its number *in* the break, and one
+    drawn inside out seats it against a stub, outside the break with its own box
+    still over the line — a number set at the very end of a stub is centred a
+    fraction past it, so it is the box that has to reach the span and not the
+    middle of it. On the 2023 sheet's lower view that is the difference between a
+    cutout 14 wide with 7 from the depth centre line out to each of its cheeks —
+    the two arrows of the 7 stand on the cheek and on the centre line — and the
+    16 mm recess a run read into it when nothing measured the 7 at all
+    (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`).
+    """
+    middle = ((word[0] + word[2]) / 2.0, (word[1] + word[3]) / 2.0)
+    corners = ((word[0], word[1]), (word[2], word[1]),
+               (word[0], word[3]), (word[2], word[3]))
+    best, best_at = None, BESIDE
+    for span, gap in gaps:
+        if gap[0] < A_SPAN:
+            continue
+        along, forward, start = span
+        away = (middle[0] - start[0], middle[1] - start[1])
+        standoff = abs(-forward[1] * away[0] + forward[0] * away[1])
+        down = forward[0] * away[0] + forward[1] * away[1]
+        opens = (forward[0] * (gap[2][0] - start[0])
+                 + forward[1] * (gap[2][1] - start[1]))
+        reach = sorted(forward[0] * (corner[0] - start[0])
+                       + forward[1] * (corner[1] - start[1]) for corner in corners)
+        if standoff > best_at or reach[-1] < 0.0 or reach[0] > along:
+            continue
+        if opens <= down <= opens + gap[0]:
+            continue
+        best, best_at = gap, standoff
+    return best
+
+
+def _measured(words, spans, gaps):
     """
     Every printed number beside the length of the line that measures it.
 
@@ -1923,9 +1993,13 @@ def _measured(page, words):
     number nobody had to see.
 
     Returns the millimetres one point is worth, the number of pairings that
-    voted for it, each measured word's own millimetres, and the spans that
-    measured them — which are the only lines on the sheet this module can prove
-    are dimension lines rather than edges.
+    voted for it, each measured word's own millimetres, and the span that
+    measured each of them — which are the only lines on the sheet this module
+    can prove are dimension lines rather than edges.
+
+    The spans and their gaps are the caller's, not this function's: the page is
+    grouped into lines once and read twice, here and by `_measured_between`,
+    which needs the same gaps to find the chain lines.
 
     `AGREED` is how close two votes on the scale have to be to be the same vote:
     two per cent of 0.7 mm/pt is 0.014, and the four sheets measured here vote
@@ -1936,19 +2010,18 @@ def _measured(page, words):
     0.05 mm and a false one lands 7 to 100 mm out, so the band is the empty
     ground between two populations rather than a tuned threshold.
     """
-    spans = _spans(page)
-    votes, measuring = [], []
+    votes, measuring = [], {}
     for at, word in enumerate(words):
         worth = _a_number(word[4])
         if worth is None:
             continue
-        span = _the_span_measuring(spans, word)
+        span = _the_span_measuring(spans, word) or _the_gap_measuring(gaps, word)
         if span:
-            measuring.append(span)
+            measuring[at] = span
             votes.append((at, worth, span[0], worth / span[0]))
 
     if not votes:
-        return None, 0, {}, []
+        return None, 0, {}, {}
 
     agreed = max((([vote for vote in votes
                     if abs(vote[3] - one[3]) <= AGREED * one[3]])
@@ -2523,7 +2596,7 @@ A_SQUARE = 0.2
 THE_FEET_AGREE = 0.5
 
 
-def _measured_between(page, words, measuring, named, millimetres_per_point):
+def _measured_between(page, words, measured_by, named, millimetres_per_point, gaps):
     """
     Each printed distance against the two points on the part it measures.
 
@@ -2533,12 +2606,12 @@ def _measured_between(page, words, measuring, named, millimetres_per_point):
 
     Checked against itself: two feet that do not measure what the sheet prints
     are the wrong two feet, and nothing is reported for that number. Measured
-    on the four sheets, 26 of 40 pairs come back and the 14 discarded are 1.7
-    to 25 mm out — the band cuts through nothing, and `THE_FEET_AGREE` is how
-    far the two feet may be from measuring what the sheet prints, in mm, before
-    the pair is discarded: where they disagree the module has followed the wrong
-    line, and it says nothing rather than writing a point of the part it cannot
-    stand behind.
+    on the four sheets, 35 of the 42 pairs both feet were found for come back
+    and the 7 discarded are 1.05 to 18.4 mm out — the band cuts through
+    nothing, and `THE_FEET_AGREE` is how far the two feet may be from measuring
+    what the sheet prints, in mm, before the pair is discarded: where they
+    disagree the module has followed the wrong line, and it says nothing rather
+    than writing a point of the part it cannot stand behind.
 
     `AN_OVERSHOOT` is how far past its dimension line an extension line runs, in
     points — a draughtsman draws it through and a little beyond, and 5.6 pt is
@@ -2551,17 +2624,18 @@ def _measured_between(page, words, measuring, named, millimetres_per_point):
     """
     limit = FRAME * page.rect.width * page.rect.height
     segments = _segments_in(page, page.rect, limit, dashed=False)
+    chain = _the_chain_lines(page, gaps)
     found = []
-    for word in words:
+    for at, word in enumerate(words):
         printed = _a_number(word[4])
-        if printed is None:
-            continue
-        span = _the_span_measuring(measuring, word)
-        if span is None:
+        span = measured_by.get(at)
+        if printed is None or span is None:
             continue
         feet = _the_feet_of(span, segments)
         if not all(feet):
             continue
+        on = _the_feet_on_a_centre_line(feet, span[1], chain)
+        feet = _the_feet_brought_together(feet, on, span[1])
         apart = _distance(*feet) * millimetres_per_point
         if abs(apart - printed) > THE_FEET_AGREE:
             continue
@@ -2569,8 +2643,105 @@ def _measured_between(page, words, measuring, named, millimetres_per_point):
         found.append(Between(
             printed=printed, view=view, text=str(word[4]).strip(),
             first=_in_millimetres(feet[0], rect, millimetres_per_point),
-            second=_in_millimetres(feet[1], rect, millimetres_per_point)))
+            second=_in_millimetres(feet[1], rect, millimetres_per_point),
+            on_a_centre_line=on))
     return found
+
+
+def _the_chain_lines(page, gaps):
+    """
+    Every line the page draws as a chain line, however the file draws it.
+
+    A centre line is long-dash-short-dash, and a file carries that two ways: a
+    dash pattern in the graphics state, which `_is_dashed` reads, or the dashes
+    drawn out as separate strokes, which it cannot. This draughtsman's are the
+    second — the depth centre line of the 2023 sheet's bottom view is seven red
+    strokes in a row and not one of them carries a pattern — and what proves it
+    is the strokes: three or more collinear pieces with a few points of paper
+    between them is a line somebody broke on purpose, and a line broken on
+    purpose is an axis or a plane of symmetry.
+
+    `AN_OVERSHOOT` is how wide those gaps may be. It is the draughtsman's own
+    gap either way — the one he leaves where his extension line takes over from
+    the chain line it is drawn off — and above it two collinear runs are two
+    lines that happen to be in a row, which is what chain dimensioning looks
+    like.
+
+    `gaps` is `_spans`' second half, handed down from the page rather than asked
+    for again. The dashed strokes are a different question and are still asked
+    of the page here.
+    """
+    limit = FRAME * page.rect.width * page.rect.height
+    chain = []
+    for one, other in _segments_in(page, page.rect, limit, dashed=True):
+        along = _distance(one, other)
+        if along >= A_MARK:
+            chain.append((along, ((other[0] - one[0]) / along,
+                                  (other[1] - one[1]) / along), one))
+    broken = {}
+    for span, gap in gaps:
+        broken.setdefault(span, []).append(gap[0])
+    chain.extend(span for span, its in broken.items()
+                 if len(its) >= 2 and max(its) <= AN_OVERSHOOT)
+    return chain
+
+
+def _the_feet_on_a_centre_line(feet, forward, chain):
+    """
+    Which of a dimension's two feet stands on a centre line rather than a face.
+
+    A distance taken off the middle of the part is drawn no differently from one
+    taken off a face — the same extension line, the same arrow — except at the
+    far end, where it runs into the chain line it was drawn off instead of into
+    the part. The chain line is the sheet's own notation for an axis or a plane
+    of symmetry, so this is the same arithmetic the feet are and not a reading
+    of the view.
+
+    Square to the dimension, because an extension line is: a chain line running
+    the way the dimension measures is the centre line of something else that the
+    foot happens to sit near, and it says nothing about what this foot stands
+    on.
+    """
+    on = []
+    for which, foot in zip(("first", "second"), feet):
+        for along, way, start in chain:
+            if abs(way[0] * forward[0] + way[1] * forward[1]) > A_SQUARE:
+                continue
+            away = (foot[0] - start[0], foot[1] - start[1])
+            down = way[0] * away[0] + way[1] * away[1]
+            if abs(-way[1] * away[0] + way[0] * away[1]) > ON_THE_SPAN:
+                continue
+            if -AN_OVERSHOOT <= down <= along + AN_OVERSHOOT:
+                on.append(which)
+                break
+    return tuple(on)
+
+
+def _the_feet_brought_together(feet, on, forward):
+    """
+    A foot standing on a centre line, read at the station the other foot stands
+    at.
+
+    An extension line drawn off a centre line stops where the chain line starts
+    and an extension line drawn off a face stops at the face, so the two ends
+    are nowhere near each other across the dimension — 84 pt apart on the 2023
+    sheet's `7`, which is 30 mm of a distance printed 7. The two feet are still
+    7 mm apart in the one direction the dimension measures, which is the only
+    direction it measures anything in, so the centre line's foot is taken along
+    its own line to the station the face's foot stands at. Nothing is invented:
+    the point moves along the centre line, which is what a centre line is.
+
+    Both feet on chain lines is left alone. There is no face in the pair to
+    bring anything to, and a pair the check then throws out is the honest end.
+    """
+    if len(on) != 1:
+        return feet
+    at = 0 if on[0] == "first" else 1
+    other = feet[1 - at]
+    down = ((feet[at][0] - other[0]) * forward[0]
+            + (feet[at][1] - other[1]) * forward[1])
+    brought = (other[0] + forward[0] * down, other[1] + forward[1] * down)
+    return (brought, other) if at == 0 else (other, brought)
 
 
 def _the_feet_of(span, segments):
@@ -2997,12 +3168,25 @@ def _the_between_list(sheet):
              "reading. Only the pairs that measure what the sheet prints are "
              "here; where they did not, the line was followed wrong and nothing "
              "is said. What each point *is* — a face, an axis, a shoulder — is "
-             "still yours to read."]
+             "still yours to read, except where a point stands on a centre "
+             "line and it says so: a centre line is an axis or a plane of "
+             "symmetry, so that distance is measured from the middle of the "
+             "part and not from a face."]
     for entry in sheet.between:
-        lines.append("  %s measures %s to %s — %s"
+        lines.append("  %s measures %s to %s%s — %s"
                      % (entry.text, spelt(entry.first), spelt(entry.second),
+                        _standing_on_a_centre_line(entry.on_a_centre_line),
                         entry.view))
     return "\n".join(lines)
+
+
+def _standing_on_a_centre_line(on):
+    """Which of a distance's two points stand on a centre line, in words."""
+    if not on:
+        return ""
+    if len(on) > 1:
+        return ", both of them on a centre line"
+    return ", the %s of them on a centre line" % on[0]
 
 
 def _the_drawn_list(sheet):

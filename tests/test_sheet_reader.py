@@ -745,7 +745,7 @@ def test_one_design_call_carries_the_sheet_cut_to_what_it_can_prove(sheet_2023):
     The 30 pictures are what this module tiles and pays for deliberately and
     the cut leaves them alone; the text is the sheet's record reduced to the
     part's evidence. The 351 entities nothing can prove anything about would
-    be another 13,917 characters beside the 42,934 that go out, and they would
+    be another 13,917 characters beside the 43,622 that go out, and they would
     be carried again on every turn of the phase.
     """
     told = sheet_reader.shown(sheet_2023)
@@ -755,7 +755,7 @@ def test_one_design_call_carries_the_sheet_cut_to_what_it_can_prove(sheet_2023):
                 if entity.role == "unclassified"]
 
     assert (len(pictures), sum(_costs(path) for path in pictures)) == (30, 28384)
-    assert characters == 42934
+    assert characters == 43622
     assert characters < 45000, "the sheet grew back into the request"
     assert sum(len(sheet_reader._said(entity)) for entity in left_out) == 13917
 
@@ -1424,11 +1424,13 @@ def test_a_printed_distance_reaches_the_two_points_it_measures(sheet):
 def test_a_pair_of_feet_that_does_not_measure_what_is_printed_is_not_reported(
         sheet_2023):
     """
-    The check on the follow. Of 40 printed numbers a span measures across the
-    four sheets, 26 pairs of feet come back measuring what the sheet prints and
-    14 are 1.7 to 25 mm out — those are the wrong lines, and the module says
-    nothing rather than reporting a point of the part it cannot stand behind.
+    The check on the follow. Of the 42 printed numbers a span measures and two
+    feet are found for across the four sheets, 35 pairs come back measuring what
+    the sheet prints and 7 are 1.05 to 18.4 mm out — those are the wrong lines,
+    and the module says nothing rather than reporting a point of the part it
+    cannot stand behind. Eleven of the 35 are the 2023 clamp's.
     """
+    assert len(sheet_2023.between) == 11
     for entry in sheet_2023.between:
         apart = sheet_reader._distance(entry.first, entry.second)
         assert abs(apart - entry.printed) <= sheet_reader.THE_FEET_AGREE, entry
@@ -1675,3 +1677,77 @@ def test_the_two_sheets_agree_on_far_fewer_numbers_than_either_alone(
     ]
 
     assert sum(agreed) <= 8, sum(agreed)
+
+
+@needs_pymupdf
+def test_a_dimension_drawn_with_its_arrows_outside_is_measured_too(sheet_2023):
+    """
+    A dimension too small to seat its arrows between its extension lines is
+    drawn inside out — arrows outside, the line as two stubs pointing away, the
+    number set off one of them — and the span the two stubs bridge into is the
+    whole apparatus rather than the distance. The 2023 clamp's cutout carries
+    one: `7`, from the depth centre line out to the near cheek of a 14 wide
+    cutout, printed at (48.3, 424.3) and measuring nothing at all until the gap
+    between the stubs was measured instead of the span across them. Design read
+    the datum it was left to guess at as the front face, described a 16 mm
+    recess the sheet does not draw, and the run ended blocked on the fillet that
+    would not fit the land it left
+    (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`).
+    """
+    seven = [entry for entry in sheet_2023.printed
+             if entry.text == "7" and entry.at == (48.3, 424.3)]
+
+    assert len(seven) == 1, "the 7 of the cutout is not on the sheet"
+    assert (seven[0].measures, seven[0].off_by) == (7.02, 0.02)
+
+
+@needs_pymupdf
+def test_the_numbers_the_sheet_measures_for_itself(sheet_2023):
+    """
+    Fourteen of the 2023 clamp's callouts are printed against a line the module
+    can prove measures them, and every one of the fourteen lands within 0.03 mm
+    of what is printed. The band is the evidence: a false pairing on these
+    sheets lands 7 to 100 mm out.
+    """
+    measured = [entry for entry in sheet_2023.printed if entry.measures is not None]
+
+    assert len(measured) == 14
+    assert max(abs(entry.off_by) for entry in measured) <= 0.03
+
+
+@needs_pymupdf
+def test_a_distance_taken_off_a_centre_line_says_so(sheet_2023):
+    """
+    The 7 of the 2023 clamp's cutout is measured from the depth centre line out
+    to the near cheek, and the 14 across both cheeks is the same feature said
+    twice. Read as an offset from the front face instead, the cutout comes out
+    16 wide with a 1 mm land beside a 14 mm slot, which is the part the recorded
+    run built and the fillet it then could not apply
+    (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`).
+
+    Nothing here reads the view: the foot of the 7's second extension line
+    stands on a chain line, which is the sheet's own notation for an axis, and
+    the point it stands at is the middle of the 14's two feet to two hundredths
+    of a millimetre.
+    """
+    lower = "the lower centre of the sheet, the first one, on page 1"
+    seven = [entry for entry in sheet_2023.between
+             if entry.printed == 7.0 and entry.view == lower]
+    fourteen = [entry for entry in sheet_2023.between
+                if entry.printed == 14.0 and entry.view == lower]
+
+    assert len(seven) == 1 and len(fourteen) == 1
+    assert seven[0].on_a_centre_line == ("second",)
+    assert fourteen[0].on_a_centre_line == ()
+    assert seven[0].first == fourteen[0].first, "the two do not start at one cheek"
+    assert abs(seven[0].second[1]
+               - (fourteen[0].first[1] + fourteen[0].second[1]) / 2) < 0.02
+
+
+@needs_pymupdf
+def test_the_centre_line_a_distance_is_taken_off_is_said_in_the_list(sheet_2023):
+    """Design is told which point is an axis, in the line the distance is on."""
+    said = sheet_reader._the_between_list(sheet_2023)
+
+    assert "the second of them on a centre line" in said
+    assert "measured from the middle of the part and not from a face" in said
