@@ -141,12 +141,57 @@ def _selection():
 REVIEW_VIEWS = ("viewIsometric", "viewFront", "viewTop", "viewRight")
 
 
+_A_3D_VIEW = "Gui::View3DInventor"
+
+
 def _active_view():
+    """
+    The Document's 3D view — the one with a camera, not the tab in front.
+
+    `ActiveDocument.ActiveView` is whichever MDI tab is active, and a
+    Spreadsheet or a TechDraw page of the same Document is one of them. Neither
+    has a camera, so with one of those in front `fitAll` raised AttributeError
+    out of a Step whose geometry was already in the Document, and out of the
+    Review capture at the end of a run.
+
+    Asking the view for a camera and falling back to `mdiViewsOfType` is how
+    FreeCAD's own Show module finds the viewport, in
+    `Mod/Show/SceneDetails/Camera.py`. That one indexes the list blindly; a
+    Document showing no 3D view at all is the case that returns None here.
+    """
     try:
         import FreeCADGui
-        return FreeCADGui.ActiveDocument.ActiveView
+        document = FreeCADGui.ActiveDocument
+        view = document.ActiveView
+        if hasattr(view, "getCamera"):
+            return view
+        views = document.mdiViewsOfType(_A_3D_VIEW)
+        return views[0] if views else None
     except (ImportError, AttributeError):
         return None
+
+
+def fit_view():
+    """
+    Put everything the Document shows back inside the viewport.
+
+    Every landed Step moves the user's camera, which is the opposite of what
+    `capture_review_views` does deliberately — and the reason is the same one.
+    The camera holds whatever zoom and centre it had before the run, while a
+    part is modelled at the scale its drawing gives it: a 3 mm bracket and a
+    900 mm frame both arrive somewhere off to one side, one of them a few
+    pixels across. The user is watching a Plan land Step by Step, and cannot
+    judge what they are being asked to approve if it is not on screen.
+
+    Orientation is left alone. Which way the part is turned is the user's
+    choice, and nothing here is a better one.
+
+    Headless there is no view and nothing to fit.
+    """
+    view = _active_view()
+    if view is None:
+        return
+    view.fitAll()
 
 
 def capture_review_views(paths, size=(800, 600)):

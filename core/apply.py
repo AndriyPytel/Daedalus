@@ -14,7 +14,7 @@ import threading
 from dataclasses import dataclass, field
 
 from core.events import ANSWER, QUESTION
-from core.freecad_tools import description
+from core.freecad_tools import description, fit_view
 from core.lint import lint
 from core.preflight import PreflightWorker, copy_of
 from core.preflight_worker import step_namespace
@@ -258,6 +258,10 @@ class ApplyPipeline:
         moved on assuming an object that was never created — code that defined
         a function to build the sketch and never called it is the shape of it.
         So a Step that created, deleted and modified nothing is a failure here.
+
+        A Step that lands is fitted into the viewport, which is the one place
+        anything moves the user's camera without being asked to — `fit_view`
+        holds why.
         """
         checked = lint(code, selection)
         if not checked.ok:
@@ -296,6 +300,7 @@ class ApplyPipeline:
                               tb.format_exception(type(exc), exc, exc.__traceback__)),
             )
 
+        self._dispatch(fit_view)
         described = self._dispatch(lambda: description(doc))
         created = [o["name"] for o in described["features"] if o["name"] not in before]
         self.owned.update(created)

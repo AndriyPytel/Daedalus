@@ -81,6 +81,29 @@ def test_a_clean_step_lands_and_reports_what_it_created(pipeline):
     assert [what for what, _ in pipeline.trace] == ["transaction"]
 
 
+def test_a_step_that_lands_puts_the_part_back_in_the_viewport(pipeline, monkeypatch):
+    """
+    The camera keeps whatever it was on before the run, so a part modelled at
+    the drawing's own scale lands a few pixels across or outside the viewport
+    altogether, and the user watching the Plan go by cannot see the Step they
+    are being asked to approve.
+    """
+    fitted = []
+    monkeypatch.setattr("core.apply.fit_view", lambda: fitted.append(True))
+
+    assert pipeline.apply("doc.recompute()").ok
+    assert fitted == [True]
+
+
+def test_a_step_that_never_reached_the_document_leaves_the_camera_alone(pipeline, monkeypatch):
+    fitted = []
+    monkeypatch.setattr("core.apply.fit_view", lambda: fitted.append(True))
+    pipeline.fake_worker.result = PreflightResult(ok=False, traceback="boom")
+
+    assert not pipeline.apply("doc.recompute()").ok
+    assert fitted == []
+
+
 def test_lint_runs_before_preflight_so_a_bad_step_costs_nothing(pipeline):
     result = pipeline.apply("fillet.Base = (box, ['Edge12'])")
 
@@ -205,7 +228,11 @@ def test_a_fillet_that_never_says_how_many_edges_never_reaches_preflight(pipelin
 def test_every_document_touch_goes_through_the_dispatcher():
     """
     Every document touch goes through the dispatcher: resolve the Document, read
-    it, copy it, run the transaction, describe what is there now.
+    it, copy it, run the transaction, fit the view, describe what is there now.
+
+    The viewport is one of them. A camera moved off the main thread is a Coin
+    scene graph touched from a worker, which is the crash the dispatcher exists
+    to prevent.
     """
     dispatched = []
 
@@ -219,4 +246,4 @@ def test_every_document_touch_goes_through_the_dispatcher():
 
     pipeline.apply("doc.recompute()")
 
-    assert len(dispatched) == 5
+    assert len(dispatched) == 6

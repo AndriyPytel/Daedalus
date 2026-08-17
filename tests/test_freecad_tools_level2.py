@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from core.freecad_tools import build_registry, description
+from core.freecad_tools import build_registry, description, fit_view
 from core.tools import ToolError
 
 pytestmark = pytest.mark.freecad
@@ -58,6 +58,14 @@ def test_snapshot_carries_the_selection_and_the_active_body(tools, part):
 
     assert snapshot["selection"] == []
     assert snapshot["active_body"] is None
+
+
+def test_fitting_the_view_where_there_is_no_view_is_not_a_failure():
+    """
+    Every landed Step fits the viewport, and the whole Level 2 suite applies
+    Steps without a GUI. A fit that raised here would fail every one of them.
+    """
+    assert fit_view() is None
 
 
 def test_the_overall_size_is_what_is_modelled(tools, part):
