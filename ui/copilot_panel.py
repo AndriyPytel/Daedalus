@@ -33,6 +33,7 @@ from .multi_tab_manager   import ChatSessionManager
 from .upload_widget       import UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
 from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
+from .queue_widget        import QueueWidget
 from utils import settings_manager
 from utils import provider_manager
 from ui.ui_helpers import UIHelpers
@@ -891,6 +892,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         screen.
         """
         self._plan_widget = None
+        self._queue_widget = None
         self._thought = None
         self._thought_phase = None
         self._current_step = 0
@@ -1199,6 +1201,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         from core.narrate import narrate
 
         data = event.data
+        self._update_queue(event)
 
         if event.kind == ev.THOUGHT:
             self._render_thought(data["phase"], data["text"])
@@ -1238,6 +1241,43 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if event.kind == ev.PLAN_REVISED:
             self._render_plan(data["steps"], "Revised Plan", data.get("acceptance", ()),
                               data.get("unanswered", ()), data.get("decided", ()))
+
+    def _update_queue(self, event):
+        """
+        The Queue's phase and Step marks.
+
+        Kept beside the narration rather than inside it: a mark is state
+        `narrate()` never carries, since it only ever returns words (FCC-172).
+        """
+        from core import events as ev
+        from core.loop import APPROVE
+
+        data = event.data
+
+        if event.kind == ev.INTENT:
+            self._queue_widget = QueueWidget()
+            self.add_chat_widget(self._queue_widget)
+            return
+
+        if not self._queue_widget:
+            return
+
+        if event.kind in (ev.PLAN, ev.PLAN_REVISED):
+            self._queue_widget.start_plan(data["steps"])
+        elif event.kind == ev.GATE and data.get("decision") == APPROVE:
+            self._queue_widget.start_execute()
+        elif event.kind == ev.STEP_STARTED:
+            self._queue_widget.step_started(data["index"])
+        elif event.kind == ev.APPLIED:
+            self._queue_widget.step_applied(data["step"])
+        elif event.kind == ev.UNBUILT:
+            self._queue_widget.step_unbuilt(data["step"])
+        elif event.kind == ev.ASSERTION:
+            self._queue_widget.start_review()
+        elif event.kind == ev.REVIEW_VERDICT:
+            self._queue_widget.finish_review()
+        elif event.kind in (ev.BLOCKED, ev.ERROR):
+            self._queue_widget.fail_current()
 
     def _say(self, narration):
         """

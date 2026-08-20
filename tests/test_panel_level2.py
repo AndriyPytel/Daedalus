@@ -955,6 +955,92 @@ def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
     assert "Review: pass" in said
 
 
+def _a_queue_transcript(path):
+    """
+    A full run's structural events, in the order `core.loop._run` emits
+    them: Intent, an approved Gate, one Step through to Applied, Assertion,
+    Review -- everything FCC-172's Queue widget reads a phase transition off.
+    """
+    from core.events import (APPLIED, ASSERTION, EventStream, GATE, INTENT, PLAN,
+                             REVIEW_VERDICT, STEP_STARTED)
+
+    stream = EventStream()
+    stream.log_to(path)
+    stream.emit(INTENT, text="a box, then a fillet")
+    stream.emit(PLAN, steps=["Make a box"])
+    stream.emit(GATE, decision="approve", standing=False)
+    stream.emit(STEP_STARTED, index=1, total=1, description="Make a box")
+    stream.emit(APPLIED, step=1, label="Box", created=["Box"])
+    stream.emit(ASSERTION, ok=True, code="assert True", confirmed=["It is a box"],
+               uncovered=[], traceback="")
+    stream.emit(REVIEW_VERDICT, verdict="pass", reason="Looks like a box.")
+
+
+def test_a_session_comes_back_with_its_queue_at_every_phase_done(panel, tmp_path):
+    """
+    The Queue is restored the same way the Plan and the transcript are: by
+    replaying the log through `on_event`, the one switch that also renders it
+    live (FCC-172).
+    """
+    from ui.queue_widget import ASSERTION, DESIGN, DONE, EXECUTE, PLAN, REVIEW
+
+    log = str(tmp_path / "queue-run.jsonl")
+    _a_queue_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("queue-run")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    queue = panel._queue_widget
+    assert queue is not None
+    for phase in (DESIGN, PLAN, EXECUTE, ASSERTION, REVIEW):
+        assert queue.phase_state(phase) == DONE, phase
+    assert queue.step_count() == 1
+    assert queue.step_state(1) == DONE
+
+
+def test_a_new_intent_opens_a_fresh_queue_running_design(panel, tmp_path):
+    from core.events import EventStream, INTENT
+    from ui.queue_widget import DESIGN, RUNNING
+
+    log = str(tmp_path / "fresh-run.jsonl")
+    stream = EventStream()
+    stream.log_to(log)
+    stream.emit(INTENT, text="a plain box")
+    index, _ = panel.chat_sessions.add_new_chat("fresh-run")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    queue = panel._queue_widget
+    assert queue is not None
+    assert queue.phase_state(DESIGN) == RUNNING
+
+
+def test_a_run_blocked_in_plan_marks_the_queue_plan_failed(panel, tmp_path):
+    from core.events import BLOCKED, EventStream, INTENT, PLAN
+    from ui.queue_widget import EXECUTE, FAILED, PLAN as QUEUE_PLAN, QUEUED
+
+    log = str(tmp_path / "blocked-run.jsonl")
+    stream = EventStream()
+    stream.log_to(log)
+    stream.emit(INTENT, text="an impossible box")
+    stream.emit(PLAN, steps=["Make a box"])
+    stream.emit(BLOCKED, reason="You rejected the Plan.", tried=[], provider_said="")
+    index, _ = panel.chat_sessions.add_new_chat("blocked-run")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    queue = panel._queue_widget
+    assert queue is not None
+    assert queue.phase_state(QUEUE_PLAN) == FAILED
+    assert queue.phase_state(EXECUTE) == QUEUED
+
+
 def test_a_session_recorded_before_the_step_render_went_away_still_opens(panel, tmp_path):
     """
     An old transcript carries `render` events, and this build has no such kind
