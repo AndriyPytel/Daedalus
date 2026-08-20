@@ -1201,6 +1201,75 @@ def test_a_run_blocked_in_plan_marks_the_queue_plan_failed(panel, tmp_path):
     assert queue.phase_state(EXECUTE) == QUEUED
 
 
+def _a_cost_transcript(path):
+    """Two calls, Design then Plan (FCC-176): the total after both is their sum."""
+    from core.events import COST, EventStream, INTENT
+
+    stream = EventStream()
+    stream.log_to(path)
+    stream.emit(INTENT, text="a box")
+    stream.emit(COST, phase="design", usd=0.04, model="sonnet")
+    stream.emit(COST, phase="plan", usd=0.09, model="sonnet")
+
+
+def test_a_new_chat_shows_the_zero_state(panel):
+    panel.new_chat()
+
+    assert panel.usage_label.text() == "$0.00"
+
+
+def test_cost_events_accumulate_into_one_running_total(panel):
+    from core.events import COST, Event
+
+    panel.new_chat()
+
+    panel.on_event(Event(COST, {"phase": "design", "usd": 0.04, "model": "sonnet"}))
+    assert panel.usage_label.text() == "$0.04"
+
+    panel.on_event(Event(COST, {"phase": "plan", "usd": 0.07, "model": "sonnet"}))
+    assert panel.usage_label.text() == "$0.11"
+
+
+def test_a_call_under_a_cent_still_shows_what_it_cost(panel):
+    from core.events import COST, Event
+
+    panel.new_chat()
+
+    panel.on_event(Event(COST, {"phase": "design", "usd": 0.0049, "model": "sonnet"}))
+
+    assert panel.usage_label.text() == "$0.0049"
+
+
+def test_a_new_intent_zeroes_the_total_mid_session(panel):
+    """
+    A follow-up Intent in the same open chat starts a second run, and the
+    total is the run's, not the Session's (Solution Notes: "cumulative cost
+    for the entire run from Intent to Review verdict") -- the same boundary
+    `_update_queue` already resets `_queue_widget` on (FCC-172).
+    """
+    from core.events import COST, INTENT, Event
+
+    panel.new_chat()
+    panel.on_event(Event(COST, {"phase": "design", "usd": 0.04, "model": "sonnet"}))
+    assert panel.usage_label.text() == "$0.04"
+
+    panel.on_event(Event(INTENT, {"text": "a second box"}))
+
+    assert panel.usage_label.text() == "$0.00"
+
+
+def test_a_restored_session_shows_its_final_total(panel, tmp_path):
+    log = str(tmp_path / "cost-run.jsonl")
+    _a_cost_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("cost-run")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    assert panel.usage_label.text() == "$0.13"
+
+
 def test_a_session_recorded_before_the_step_render_went_away_still_opens(panel, tmp_path):
     """
     An old transcript carries `render` events, and this build has no such kind

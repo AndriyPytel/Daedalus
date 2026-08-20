@@ -35,7 +35,7 @@ from .accordion_widget    import AccordionWidget
 from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
 from .queue_widget        import QueueWidget
 from ui.design_tokens     import RADIUS_SM, SPACE_XS, SPACE_SM
-from ui.typography        import BODY, css
+from ui.typography        import BODY, CAPTION, css
 from utils import settings_manager
 from utils import provider_manager
 from ui.ui_helpers import UIHelpers
@@ -79,6 +79,12 @@ def _build_qss() -> str:
         QLabel#StatusLine {{
             font-size: 11px;
             padding: 0px 15px 3px 15px;
+        }}
+
+        /* Usage/cost running total */
+        QLabel#UsageTotal {{
+            {css(CAPTION)}
+            padding: 0px {SPACE_XS}px;
         }}
 
         /* The empty chat still tells the user where they stand */
@@ -137,6 +143,26 @@ def _build_qss() -> str:
         }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     """
+
+
+def _format_cost(usd: float) -> str:
+    """
+    The running total, in dollars.
+
+    `core.events.COST` carries `usd` and `model` -- what the call actually
+    cost, already converted -- and nothing that counts tokens; the CLI route
+    reads `total_cost_usd` straight off the provider (`core/llm.py`) and the
+    keyed route emits no `cost` event at all (`core/loop.py :: _streamed`
+    reads `last_cost`, which `LiteLLMClient` never sets). A token count beside
+    the dollar figure would be invented rather than shown, so the total is
+    dollars alone (FCC-176).
+
+    Two decimal places round every call under a cent to `$0.00`; four is
+    enough of a call like that to still read as spent rather than free.
+    """
+    if usd and usd < 0.01:
+        return "$%.4f" % usd
+    return "$%.2f" % usd
 
 
 
@@ -654,6 +680,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         layout.addStretch()
 
+        self.usage_label = QtWidgets.QLabel("$0.00")
+        self.usage_label.setObjectName("UsageTotal")
+        layout.addWidget(self.usage_label)
+
         self.new_btn = QtWidgets.QPushButton()
         self.new_btn.setObjectName("HeaderButton")
         self.new_btn.setFixedSize(22, 22)
@@ -894,6 +924,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._current_step = 0
         self._question_card = None
         self._answers_to_enter = None
+        self._total_usd = 0.0
+        self._update_usage_total()
+
+    def _update_usage_total(self):
+        """Redraw the header's running total from `self._total_usd`."""
+        self.usage_label.setText(_format_cost(self._total_usd))
 
     def _became_the_live_session(self):
         """
@@ -1218,6 +1254,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         data = event.data
         self._update_queue(event)
+
+        if event.kind == ev.INTENT:
+            self._total_usd = 0.0
+            self._update_usage_total()
+
+        if event.kind == ev.COST:
+            self._total_usd += data["usd"]
+            self._update_usage_total()
+            return
 
         if event.kind == ev.THOUGHT:
             self._render_thought(data["phase"], data["text"])
