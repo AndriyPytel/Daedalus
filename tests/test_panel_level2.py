@@ -1946,7 +1946,7 @@ def test_a_review_verdict_shows_the_confirmation_card_figma_names(panel, tmp_pat
     assert labels == ["Approve", "Reject", "Start Over"], labels
 
     texts = [w.text() for w in card.findChildren(QtWidgets.QLabel)]
-    assert any("confirmed" in text for text in texts), texts
+    assert any("passed" in text for text in texts), texts
     assert any("mirrored" in text for text in texts), texts
 
     pictures = [w for w in card.findChildren(QtWidgets.QLabel) if w.pixmap()]
@@ -2025,6 +2025,90 @@ def test_a_new_intent_clears_the_review_verdict_that_would_have_shown_the_card(
     assert "Approve" not in labels
 
     panel._reset_render_state()
+
+
+def test_completing_assertion_with_every_check_passed_shows_the_results_card(panel):
+    """FCC-179, AC1: a green mark per confirmed entry, in the chat scroll."""
+    from core.events import ASSERTION, Event
+
+    from ui.accordion_widget import AccordionWidget
+    from ui.assertion_results_widget import AssertionResultsWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("assertion-passed")
+    panel.switch_session(index)
+
+    panel.on_event(Event(ASSERTION, {
+        "ok": True, "code": "assert True", "traceback": "", "uncovered": [],
+        "confirmed": ["Base height is 10mm", "Hole diameter is 5mm"]}))
+    QT_APP.processEvents()
+
+    cards = [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
+    assert len(cards) == 1, cards
+    rows = [row.toggle_button.text() for row in cards[0].findChildren(AccordionWidget)]
+    assert any("Base height is 10mm" in row for row in rows), rows
+    assert any("Hole diameter is 5mm" in row for row in rows), rows
+
+
+def test_completing_assertion_with_a_failed_check_shows_a_failed_row(panel):
+    """FCC-179, AC2: a red mark per `unmet` entry."""
+    from core.events import ASSERTION, Event
+
+    from ui.accordion_widget import AccordionWidget
+    from ui.assertion_results_widget import AssertionResultsWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("assertion-failed")
+    panel.switch_session(index)
+
+    panel.on_event(Event(ASSERTION, {
+        "ok": False, "code": "assert False", "traceback": "AssertionError",
+        "confirmed": [], "uncovered": [], "unmet": ["Lug height is 30mm"]}))
+    QT_APP.processEvents()
+
+    cards = [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
+    assert len(cards) == 1, cards
+    rows = [row.toggle_button.text() for row in cards[0].findChildren(AccordionWidget)]
+    assert any("Lug height is 30mm" in row for row in rows), rows
+
+
+def test_checks_that_could_not_be_written_keep_the_plain_narration_line(panel):
+    """
+    FCC-179's own fallback, the same shape FCC-178's is: `ok` is `None` when
+    the checks were never written at all, so there is no pass/fail count to
+    structure and the plain line `_assertion_said` already gives stays the
+    only thing shown, the way it did before this ticket.
+    """
+    from core.events import ASSERTION, Event
+
+    from ui.assertion_results_widget import AssertionResultsWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("assertion-unwritten")
+    panel.switch_session(index)
+
+    panel.on_event(Event(ASSERTION, {
+        "ok": None, "code": "", "confirmed": [], "uncovered": [], "traceback": ""}))
+    QT_APP.processEvents()
+
+    assert not [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
+    assert "could not be written" in _said_in(panel)
+
+
+def test_a_replayed_session_renders_the_assertion_results_card(panel, tmp_path):
+    """A restored Session never saw the checks run live, only the log (FCC-169)."""
+    from ui.accordion_widget import AccordionWidget
+    from ui.assertion_results_widget import AssertionResultsWidget
+
+    log = str(tmp_path / "assertion-run.jsonl")
+    _a_queue_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("assertion-run")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    cards = [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
+    assert len(cards) == 1, cards
+    rows = [row.toggle_button.text() for row in cards[0].findChildren(AccordionWidget)]
+    assert any("It is a box" in row for row in rows), rows
 
 
 def test_the_plan_gate_offers_exactly_one_build_button(panel):

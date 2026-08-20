@@ -35,6 +35,7 @@ from .accordion_widget    import AccordionWidget
 from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
 from .queue_widget        import QueueWidget
 from .review_verdict_widget import ReviewVerdictWidget
+from .assertion_results_widget import AssertionResultsWidget, summary_line
 from ui.design_tokens     import RADIUS_LG, RADIUS_MD, RADIUS_SM, RUNNING, SPACE_XS, SPACE_SM, WASH
 from ui.typography        import BODY, CAPTION, css
 from utils import settings_manager
@@ -173,6 +174,14 @@ def _build_qss() -> str:
             border-radius: 6px;
             padding: 3px 10px;
             font-size: 11px;
+        }}
+
+        /* Structured Assertion results (FCC-179) -- Figma's TestResults
+           gives radius 10 of its own, RADIUS_LG exactly; the wash is the
+           same one every other results card here separates itself with. */
+        QFrame#AssertionResultsCard {{
+            border-radius: {RADIUS_LG}px;
+            background-color: {WASH};
         }}
 
         /* Circular send button */
@@ -1344,6 +1353,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
                               data.get("unanswered", ()), data.get("decided", ()))
             return
 
+        if event.kind == ev.ASSERTION and data.get("ok") is not None:
+            self.add_chat_widget(AssertionResultsWidget(data))
+            return
+
         if event.kind == ev.STEP_STARTED:
             self._thought = None
             self._current_step = data["index"]
@@ -1623,16 +1636,23 @@ class CopilotPanel(QtWidgets.QDockWidget):
         from what `_update_review_evidence` already read off the stream, its
         `decided` signal answering the same waiting worker thread every other
         card here answers through `_answer_with`.
+
+        `assertion_line` is `summary_line`'s "N passed, M failed" (FCC-179)
+        where there is a pass/fail count to give -- the plain narration line
+        stays the fallback for the one case that is not a count at all, the
+        checks that could not be written.
         """
         from core.narrate import narrate
 
         self.status_line.setText("Waiting for you to review the result\u2026")
         self.status_line.setVisible(True)
 
+        assertion_data = self._last_assertion_event.data if self._last_assertion_event else {}
         card = ReviewVerdictWidget(
             view_paths=self._last_review_views,
-            assertion_line=(narrate(self._last_assertion_event).line
-                            if self._last_assertion_event else ""),
+            assertion_line=(summary_line(assertion_data)
+                            or (narrate(self._last_assertion_event).line
+                                if self._last_assertion_event else "")),
             verdict_line=narrate(self._last_review_verdict_event).line)
         answers = {"approve": lambda: accept, "reject": lambda: revise,
                   "start_over": lambda: start_over}
