@@ -404,6 +404,59 @@ def test_a_provider_that_is_not_openai_compatible_is_not_sent_stream_options():
     assert "stream_options" not in completion.kwargs
 
 
+def test_a_priced_streaming_call_sets_last_cost():
+    """
+    `anthropic_thinking_stream.json` is the one recording in this file whose
+    `usage` survives to a priceable `ModelResponse`: `message_start` carries
+    Anthropic's input and cache counts and the closing `message_delta` carries
+    the output count, and LiteLLM's own `ModelResponseIterator.chunk_parser`
+    turns both into a `Usage` on the chunk (checked directly against the
+    installed litellm 1.95.0 before writing this — `openai_stream.json` has
+    none at all). The dollar figure is `litellm.completion_cost` computed
+    offline from that recording's fixed token counts against the installed
+    price table, so it is pinned rather than merely asserted positive, the
+    house style `tests/test_loop.py:3780` sets for a subscription call.
+    """
+    client, _ = client_replaying(anthropic_chunks())
+    client.model = "claude-3-7-sonnet-20250219"
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert client.last_cost == {"usd": 0.004521, "model": "claude-3-7-sonnet-20250219"}
+
+
+def test_an_unpriced_model_leaves_last_cost_none_and_still_delivers_the_answer():
+    """
+    `gemini/` carries no fallback: checked directly, `completion_cost` prices
+    an unmapped `openai/`-prefixed model at a default $0.0001 rather than
+    raising, where an unmapped `gemini/` or `anthropic/` one raises "This
+    model isn't mapped yet." `gemini/totally-unknown-model` is picked to reach
+    that raise, which `_priced` must swallow without disturbing the reply
+    already streamed.
+    """
+    client, _ = client_replaying(openai_chunks())
+    client.model = "gemini/totally-unknown-model"
+
+    reply = collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert client.last_cost is None
+    assert reply.text == "I'll add a 10mm box."
+
+
+def test_last_cost_does_not_carry_over_to_a_call_that_says_nothing():
+    """A cleared `last_cost` is the same guarantee `ClaudeCodeClient` gives, on the keyed route."""
+    client, _ = client_replaying(anthropic_chunks())
+    client.model = "claude-3-7-sonnet-20250219"
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+    assert client.last_cost is not None
+
+    client._completion = lambda **kwargs: iter(openai_chunks())
+    client.model = "gemini/totally-unknown-model"
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert client.last_cost is None
+
+
 def test_no_thinking_key_when_the_provider_has_no_reasoning():
     client, completion = client_replaying(openai_chunks())
 
