@@ -34,7 +34,8 @@ from .upload_widget       import UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
 from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
 from .queue_widget        import QueueWidget
-from ui.design_tokens     import RADIUS_MD, RADIUS_SM, SPACE_XS, SPACE_SM, WASH
+from .review_verdict_widget import ReviewVerdictWidget
+from ui.design_tokens     import RADIUS_LG, RADIUS_MD, RADIUS_SM, RUNNING, SPACE_XS, SPACE_SM, WASH
 from ui.typography        import BODY, CAPTION, css
 from utils import settings_manager
 from utils import provider_manager
@@ -149,6 +150,26 @@ def _build_qss() -> str:
 
         /* Pill buttons */
         QPushButton#PillButton {{
+            border-radius: 6px;
+            padding: 3px 10px;
+            font-size: 11px;
+        }}
+
+        /* The Review verdict card (FCC-178) -- same wash and radius as the
+           Plan card beside it. Approve is the one filled button in the
+           panel: palette(highlight) is the sole palette role ADR-0011 still
+           lets this stylesheet ask for, everywhere else the running Step's
+           colour. Reject and Start Over are PillButton, unchanged --
+           Start Over subdued in Python instead, an opacity effect rather
+           than a colour of its own (review_verdict_widget.py). */
+        QFrame#ReviewVerdictCard {{
+            border-radius: {RADIUS_LG}px;
+            background-color: {WASH};
+        }}
+
+        QPushButton#ReviewApprove {{
+            background-color: {RUNNING};
+            border: none;
             border-radius: 6px;
             padding: 3px 10px;
             font-size: 11px;
@@ -957,6 +978,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._answers_to_enter = None
         self._total_usd = 0.0
         self._update_usage_total()
+        self._last_assertion_event = None
+        self._last_review_verdict_event = None
+        self._last_review_views = []
 
     def _update_usage_total(self):
         """Redraw the header's running total from `self._total_usd`."""
@@ -1285,10 +1309,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         data = event.data
         self._update_queue(event)
+        self._update_review_evidence(event)
 
         if event.kind == ev.INTENT:
             self._total_usd = 0.0
             self._update_usage_total()
+            self._last_assertion_event = None
+            self._last_review_verdict_event = None
+            self._last_review_views = []
 
         if event.kind == ev.COST:
             self._total_usd += data["usd"]
@@ -1370,6 +1398,32 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._queue_widget.finish_review()
         elif event.kind in (ev.BLOCKED, ev.ERROR):
             self._queue_widget.fail_current()
+
+    def _update_review_evidence(self, event):
+        """
+        What the Review verdict card shows, tracked off the stream as it
+        passes (FCC-178) -- kept beside the narration rather than inside it,
+        the same reason `_update_queue` is: a screenshot path and a raw
+        Assertion/Review event are not words `narrate()` returns.
+
+        Reset on `ASSERTION` rather than only at the top of a run: the
+        acceptance checks are the one event guaranteed to land, in the same
+        cycle, before `decided()` ever asks anything -- whether Review runs
+        after them or the cycle stops there -- so a verdict left over from an
+        earlier revision of this same run cannot be mistaken for the one
+        belonging to this cycle.
+        """
+        from core import events as ev
+
+        data = event.data
+
+        if event.kind == ev.ASSERTION:
+            self._last_assertion_event = event
+            self._last_review_verdict_event = None
+        elif event.kind == ev.TOOL_RESULT and data.get("name") == "review_views":
+            self._last_review_views = list((data.get("result") or {}).get("views") or [])
+        elif event.kind == ev.REVIEW_VERDICT:
+            self._last_review_verdict_event = event
 
     def _say(self, narration):
         """
@@ -1533,6 +1587,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
         it. Three answers, and the Gate's three are not them: REJECT stops a
         run and does not licence a restart, so "start over" needs a word of its
         own (FCC-77).
+
+        Whether Review ever ran is what tells the two askers behind this one
+        signal apart (FCC-178): the acceptance checks can fail and stop the
+        run before Review is asked anything, and `_last_review_verdict_event`
+        is `None` for exactly that case, since `_update_review_evidence`
+        clears it at the acceptance checks' own event. Review having run puts
+        up the Confirmation card the epic names -- Approve, Reject, Start
+        Over, with what Review looked at above them; without one this stays
+        the plain question, since there is no Review result yet to show.
         """
         from core.loop import ACCEPT, REVISE, START_OVER
 
@@ -1540,6 +1603,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.add_chat_widget(AssistantMessageWidget(
             "The result did not pass, after %d Step%s were applied:\n%s"
             % (applied, "" if applied == 1 else "s", failure.get("why", ""))))
+
+        if self._last_review_verdict_event is not None:
+            self._put_the_review_verdict(ACCEPT, REVISE, START_OVER)
+            return
 
         self._put_the_question(
             "Waiting for you to decide what to do\u2026",
@@ -1549,6 +1616,32 @@ class CopilotPanel(QtWidgets.QDockWidget):
             (("\u2713  Take it as it is", lambda: ACCEPT),
              ("\u270e  Fix it", lambda: REVISE),
              ("\u21ba  Start over", lambda: START_OVER)))
+
+    def _put_the_review_verdict(self, accept, revise, start_over):
+        """
+        The Confirmation card FCC-178 asks for: `ReviewVerdictWidget`, fed
+        from what `_update_review_evidence` already read off the stream, its
+        `decided` signal answering the same waiting worker thread every other
+        card here answers through `_answer_with`.
+        """
+        from core.narrate import narrate
+
+        self.status_line.setText("Waiting for you to review the result\u2026")
+        self.status_line.setVisible(True)
+
+        card = ReviewVerdictWidget(
+            view_paths=self._last_review_views,
+            assertion_line=(narrate(self._last_assertion_event).line
+                            if self._last_assertion_event else ""),
+            verdict_line=narrate(self._last_review_verdict_event).line)
+        answers = {"approve": lambda: accept, "reject": lambda: revise,
+                  "start_over": lambda: start_over}
+        card.decided.connect(lambda choice: self._answer_with(answers[choice]))
+
+        self._question_card = card
+        self._answers_to_enter = None
+        self._update_composer_enabled()
+        self.add_chat_widget(card)
 
     @QtCore.Slot(object)
     def on_missing_values(self, question):

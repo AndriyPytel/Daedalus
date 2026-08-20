@@ -1901,6 +1901,132 @@ def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(pane
     assert answered == [START_OVER]
 
 
+def _review_transcript_evidence(panel, tmp_path, verdict="fail",
+                                reason="the flange is mirrored"):
+    """
+    What `_update_review_evidence` reads off the stream before a Review
+    verdict's own `on_revision` is asked anything (FCC-178): the acceptance
+    checks, the four views `review_views` wrote, and the verdict itself.
+    """
+    from conftest import QtGui
+
+    from core.events import ASSERTION, Event, REVIEW_VERDICT, TOOL_RESULT
+
+    views = []
+    for name in ("iso.png", "front.png", "top.png", "right.png"):
+        path = str(tmp_path / name)
+        QtGui.QPixmap(40, 30).save(path)
+        views.append(path)
+
+    panel.on_event(Event(ASSERTION, {"ok": True, "code": "assert True",
+                                     "confirmed": ["the bore is centred"],
+                                     "uncovered": [], "traceback": ""}))
+    panel.on_event(Event(TOOL_RESULT, {"name": "review_views",
+                                       "result": {"views": views}}))
+    panel.on_event(Event(REVIEW_VERDICT, {"verdict": verdict, "reason": reason}))
+    return views
+
+
+def test_a_review_verdict_shows_the_confirmation_card_figma_names(panel, tmp_path):
+    """
+    FCC-178: once Review has run, the three-way question is Figma's
+    Confirmation card -- its own evidence above Approve / Reject / Start
+    Over -- not the plain question the acceptance checks fall back to when
+    Review never got the chance to run at all.
+    """
+    from conftest import QtWidgets
+
+    views = _review_transcript_evidence(panel, tmp_path)
+
+    panel.on_revision({"why": "the flange is mirrored", "applied": 5})
+    QT_APP.processEvents()
+
+    card = panel._question_card
+    labels = sorted(b.text() for b in card.findChildren(QtWidgets.QPushButton))
+    assert labels == ["Approve", "Reject", "Start Over"], labels
+
+    texts = [w.text() for w in card.findChildren(QtWidgets.QLabel)]
+    assert any("confirmed" in text for text in texts), texts
+    assert any("mirrored" in text for text in texts), texts
+
+    pictures = [w for w in card.findChildren(QtWidgets.QLabel) if w.pixmap()]
+    assert len(pictures) == len(views)
+
+    panel._reset_render_state()
+
+
+def test_clicking_approve_reject_and_start_over_on_the_verdict_card_answer_in_kind(
+        panel, tmp_path):
+    from conftest import QtWidgets
+
+    from core.loop import ACCEPT, REVISE, START_OVER
+
+    answered = []
+    monkeypatched = panel.ask.answer
+    panel.ask.answer = lambda value: (answered.append(value), monkeypatched(value))[0]
+
+    for label, expected in (("Reject", REVISE), ("Start Over", START_OVER),
+                            ("Approve", ACCEPT)):
+        _review_transcript_evidence(panel, tmp_path)
+        panel.on_revision({"why": "the flange is mirrored", "applied": 5})
+        QT_APP.processEvents()
+
+        _button(panel._question_card, label).click()
+        QT_APP.processEvents()
+
+        assert answered[-1] == expected, (label, answered)
+
+    panel.ask.answer = monkeypatched
+    panel._reset_render_state()
+
+
+def test_an_assertion_failure_before_review_keeps_the_plain_decision_card(panel, tmp_path):
+    """
+    The acceptance checks can fail before Review is ever asked anything --
+    there is no Review verdict to show, so this stays the plain question
+    FCC-178 leaves alone.
+    """
+    from conftest import QtWidgets
+
+    from core.events import ASSERTION, Event
+
+    panel.on_event(Event(ASSERTION, {"ok": False, "code": "assert False",
+                                     "confirmed": [], "uncovered": [],
+                                     "traceback": "AssertionError", "unmet": ["the bore"]}))
+
+    panel.on_revision({"why": "the bore is not centred", "applied": 3})
+    QT_APP.processEvents()
+
+    labels = sorted(b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton))
+    assert "Approve" not in labels
+    assert len(labels) == 3, labels
+
+    panel._reset_render_state()
+
+
+def test_a_new_intent_clears_the_review_verdict_that_would_have_shown_the_card(
+        panel, tmp_path):
+    """
+    A follow-up Intent in the same Session starts a new run: a Review
+    verdict left over from the run before must not turn its own decision
+    card into FCC-178's, since nothing was reviewed yet this time.
+    """
+    from conftest import QtWidgets
+
+    from core.events import Event, INTENT
+
+    _review_transcript_evidence(panel, tmp_path)
+    panel.on_event(Event(INTENT, {"text": "a second box"}))
+
+    panel.on_revision({"why": "no acceptance list", "applied": 1})
+    QT_APP.processEvents()
+
+    labels = sorted(b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton))
+    assert "Approve" not in labels
+
+    panel._reset_render_state()
+
+
 def test_the_plan_gate_offers_exactly_one_build_button(panel):
     """FCC-177: Build replaces Approve / Approve and carry on / Amend / Reject."""
     from conftest import QtWidgets
