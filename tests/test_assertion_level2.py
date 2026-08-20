@@ -136,6 +136,47 @@ assert not failed, "these did not hold:\\n" + "\\n".join(failed)
     assert _the_model_failed(result.traceback)
 
 
+def test_a_mixed_check_reports_what_held_beside_what_failed(worker):
+    """
+    The whole mechanism this ticket adds: `held` and `failed` are plain lists
+    the script itself builds, still readable out of the worker's namespace
+    after the single assert at the end raises — nothing here is inferred or
+    parsed back out of the traceback string.
+    """
+    one_right_one_wrong = """
+faces = [f for f in doc.getObject('NutBlank').Shape.Faces
+         if f.Surface.__class__.__name__ == 'Plane']
+upright = [f for f in faces if abs(f.Surface.Axis.z) < 1e-6]
+gaps = [a.Surface.Position.distanceToPlane(b.Surface.Position, b.Surface.Axis)
+        for a in upright for b in upright
+        if a.Surface.Axis.dot(b.Surface.Axis) < -0.999]
+across = max(abs(gap) for gap in gaps)
+cylinders = [f for f in doc.getObject('NutBlank').Shape.Faces
+             if f.Surface.__class__.__name__ == 'Cylinder']
+radius = min(f.Surface.Radius for f in cylinders)
+
+held = []
+failed = []
+if abs(across - 13.0) < 1e-6:
+    held.append("13 mm across the flats")
+else:
+    failed.append("13 mm across the flats")
+if abs(radius - 9.0) < 1e-6:
+    held.append("9.0 mm bore radius")
+else:
+    failed.append("9.0 mm bore radius")
+assert not failed, "these did not hold: " + "; ".join(failed)
+"""
+
+    result = check(worker, one_right_one_wrong)
+
+    assert not result.ok
+    assert result.held == ["13 mm across the flats"]
+    assert result.failed == ["9.0 mm bore radius"]
+    assert "9.0 mm bore radius" in result.traceback
+    assert _the_model_failed(result.traceback)
+
+
 @pytest.mark.parametrize("angle", [0, 17, 30, 45, 137])
 def test_the_flats_measure_13_however_the_nut_is_turned(worker, angle):
     """

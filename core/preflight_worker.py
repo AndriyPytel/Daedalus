@@ -567,6 +567,24 @@ def _features_that_moved_no_material(doc, created):
     return idle
 
 
+def _measured(namespace):
+    """
+    The assertion.md script's own `held` and `failed` lists, read back out of
+    the namespace it ran in rather than parsed from a traceback string.
+
+    `None`, not `[]`, for a name the script never defined — a Step's code has
+    no reason to define either, and an older or deviant check script may not
+    either, so absent has to read differently from "measured, and empty". Only
+    a list or a tuple counts: a Step happens to be free to call a local
+    variable `held` or `failed` for its own purposes, and whatever that is
+    must not be handed to the caller as an acceptance-entry list.
+    """
+    held = namespace.get("held")
+    failed = namespace.get("failed")
+    return (list(held) if isinstance(held, (list, tuple)) else None,
+            list(failed) if isinstance(failed, (list, tuple)) else None)
+
+
 def preflight(request):
     import FreeCAD
 
@@ -576,7 +594,16 @@ def preflight(request):
     touched = _Touched()
     FreeCAD.addDocumentObserver(touched)
     try:
-        exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
+        try:
+            exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
+        except AssertionError:
+            response = {"ok": False, "traceback": traceback.format_exc()}
+            held, failed = _measured(namespace)
+            if held is not None:
+                response["held"] = held
+            if failed is not None:
+                response["failed"] = failed
+            return response
     finally:
         FreeCAD.removeDocumentObserver(touched)
     doc.recompute()
@@ -617,6 +644,11 @@ def preflight(request):
         "deleted": sorted(touched.deleted),
         "modified": sorted(touched.modified()),
     }
+    held, failed = _measured(namespace)
+    if held is not None:
+        result["held"] = held
+    if failed is not None:
+        result["failed"] = failed
     render_path = request.get("render_path")
     if render_path:
         result["render"] = render(doc, render_path)

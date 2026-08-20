@@ -44,6 +44,11 @@ class PreflightResult:
 
     `created`, `deleted` and `modified` are what the Step actually did,
     observed rather than inferred from the code.
+
+    `held` and `failed` are an Assertion check's own measured lists
+    (`core/preflight_worker.py :: _measured`) — `None` where nothing measured
+    them, an ordinary Step included, rather than `[]`, which would read as
+    "measured, and nothing held or failed".
     """
 
     ok: bool
@@ -53,6 +58,8 @@ class PreflightResult:
     created: list = field(default_factory=list)
     deleted: list = field(default_factory=list)
     modified: list = field(default_factory=list)
+    held: list = None
+    failed: list = None
 
     @classmethod
     def from_response(cls, response):
@@ -63,15 +70,22 @@ class PreflightResult:
         again at the one call site, which is how a field the worker starts
         sending arrives at the parent and stops there — the two halves are
         separate processes and nothing links their spellings but this.
+
+        `held` and `failed` are read on both branches: an Assertion check's
+        `AssertionError` is exactly the branch where they carry the measured
+        lists, not only the `ok` one.
         """
+        held, failed = response.get("held"), response.get("failed")
         if not response.get("ok"):
-            return cls(ok=False, traceback=response.get("traceback", "Preflight failed"))
+            return cls(ok=False, traceback=response.get("traceback", "Preflight failed"),
+                       held=held, failed=failed)
         return cls(ok=True,
                    render=response.get("render"),
                    objects=response.get("objects", []),
                    created=response.get("created", []),
                    deleted=response.get("deleted", []),
-                   modified=response.get("modified", []))
+                   modified=response.get("modified", []),
+                   held=held, failed=failed)
 
 
 def find_freecadcmd():
