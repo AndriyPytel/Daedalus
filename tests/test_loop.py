@@ -7011,3 +7011,59 @@ def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
     assert events.first(PLAN_REVISED).data["because"] == "Execute could not build a Step"
     assert result.unmet == []
     assert tools.applied_codes() == ["pad()", "pad()", "recess()"]
+
+
+THE_LUG_FROM_A_PHOTO = {
+    "datums": [{"name": "the front face", "fixes": "the depth",
+                "is": "the front face of the plate"}],
+    "features": [
+        {"id": "boss-front", "kind": "cylindrical boss, through",
+         "topology": "through",
+         "axis": {"value": "perpendicular to the front face, along the depth",
+                  "flag": "read", "round_in": "the isometric render"},
+         "position": {"the front face": read("0 mm")}},
+    ],
+}
+
+THE_SAME_PICTURE_LOOKED_AT_AGAIN = {"features": [
+    {"id": "boss-front",
+     "axis": {"value": "perpendicular to the front face, along the depth",
+              "flag": "read", "round_in": "the isometric render"}}]}
+
+
+def test_a_conflict_a_photo_cannot_settle_is_flagged_assumed_rather_than_kept_as_read(
+        monkeypatch):
+    """
+    A single photo has nothing for `round_here` to trace, so a re-ask of the
+    same picture answers the same way it did the first time and `_corrected_by`
+    never earns its overrule. What the session that prompted this
+    (`logs/sessions/f5d8007284aa4a57845782918305d6f0.jsonl`) shows is that
+    reading standing untouched all the way to Plan and Execute, `flag: read`,
+    with the mount built coaxial with the bore on the strength of a guess the
+    part itself had already contradicted.
+    """
+    assert len(pointing(THE_LUG_FROM_A_PHOTO)) == 1
+
+    _traced(monkeypatch, {})
+    _re_read_as(monkeypatch, THE_SAME_PICTURE_LOOKED_AT_AGAIN)
+    settled = loop._the_directions_are_the_drawings(
+        json.loads(json.dumps(THE_LUG_FROM_A_PHOTO)), "Make it from the photo", [],
+        None, EventStream(), loop.Budgets(rereads=2), lambda: False)
+
+    axis = entry_at(settled, "features → boss-front → axis")
+    assert axis["flag"] == "assumed"
+    assert axis["value"] == "perpendicular to the front face, along the depth"
+    assert "either the axis or this position" in axis["because"]
+
+
+def test_a_conflict_the_tracing_settles_is_left_read_by_the_new_step(monkeypatch):
+    """
+    The closing step added to `_the_directions_are_the_drawings` only ever
+    reaches what the loop above it left standing — a tracing that did settle
+    the direction must not be second-guessed back down to `assumed`.
+    """
+    looked = _looked_at_the_view_again(monkeypatch, THE_CLAMP_READ_OFF_THE_WRONG_VIEW,
+                                       THE_VIEW_LOOKED_AT_AGAIN)
+
+    axis = entry_at(looked, "features → clamp-bore → axis")
+    assert axis["flag"] == "traced"

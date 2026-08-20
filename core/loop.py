@@ -2129,6 +2129,17 @@ def _the_directions_are_the_drawings(the_part, intent, attachments, llm, events,
 
     The re-reading stops where it stops finding fewer: a look that changed
     nothing will not change anything.
+
+    What is left when it stops is not always what a look could still fix. A
+    raster attachment has no line in it to trace — `round_here` is empty, a
+    re-ask of the same picture answers the same way it did the first time, and
+    no correction here ever measured anything. That is not the same as the
+    finding going away, and carrying the reading on as `read` says it is:
+    `_left_as_assumed` is the honest end of this phase, the one `_corrected_by`
+    has no evidence to reach — and it runs only once a look was actually taken
+    (`looked`), so a budget of zero re-reads leaves the model exactly as
+    untouched as it has always left it, rather than distrusting a reading
+    nobody has yet had the chance to put back to the drawing.
     """
     round_here = _round_evidence(attachments)
     found = read_off_the_wrong_view(the_part, round_here)
@@ -2150,6 +2161,38 @@ def _the_directions_are_the_drawings(the_part, intent, attachments, llm, events,
             break
         found = still
 
+    if not looked:
+        return the_part
+    still = read_off_the_wrong_view(the_part, round_here)
+    return _left_as_assumed(the_part, still) if still else the_part
+
+
+def _left_as_assumed(the_part, found):
+    """
+    A direction still contradicted after every re-read and every tracing, kept
+    at the value it was read at with `flag: assumed`.
+
+    Nothing here corrects a value — reaching this point means nobody had a
+    measurement to correct it with, which is exactly what `_the_directions_are_
+    the_drawings` could not settle. What changes is the confidence the part
+    claims for it: a `read` a check has caught contradicting itself is not a
+    reading any more, and carrying it as one hides a guess inside a fact the
+    Plan and the Gate would otherwise trust without question. The `because` is
+    the conflict itself — the words `stands` already holds — so what shows
+    above the Steps is why it is a guess, not only that it is one.
+
+    The whole entry travels, not just its `value`: `round_in` is what
+    `grounded` and `crosswise` read a feature's direction by, and a write that
+    dropped it would settle this finding by blinding the next check to it,
+    which is not the same as settling it.
+    """
+    for finding in found:
+        address = where_the_direction_is(the_part, str(finding.get("about") or ""))
+        held = entry_at(the_part, address)
+        if not isinstance(held, dict) or "value" not in held or held.get("flag") == "assumed":
+            continue
+        the_part = corrected(the_part, address, dict(held, flag="assumed"),
+                             finding["stands"])
     return the_part
 
 
