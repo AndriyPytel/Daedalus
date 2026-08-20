@@ -4,6 +4,8 @@ except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
+from ui.design_tokens import RADIUS_MD, SPACE_SM, SPACE_XS, WASH
+from ui.typography import BODY, CAPTION, LABEL, css
 from ui.ui_helpers import UIHelpers
 
 class HistoryItem(QtWidgets.QFrame):
@@ -14,6 +16,13 @@ class HistoryItem(QtWidgets.QFrame):
     what gives way — see resizeEvent. The time is dimmed by an effect rather
     than a colour: the theme decides what the text is, and this only says the
     time is worth less than the name (ADR-0011).
+
+    Name and time read `LABEL` and `CAPTION` off FCC-171's type scale, and
+    the hover wash reads `RADIUS_MD`/`WASH` off the same module — the pair
+    `ModelSelectorRow` already hovers a popup row with (FCC-175), reused
+    rather than a second version of the same idea. Figma names no Session
+    Picker component of its own (FCC-180's Solution Notes), so this is a
+    design-language translation, not a component the spec hands over.
     """
     selected = QtCore.Signal(int)
     deleted = QtCore.Signal(int)
@@ -27,18 +36,18 @@ class HistoryItem(QtWidgets.QFrame):
         self.setToolTip(document)
 
         layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(12, 0, 12, 0)
-        layout.setSpacing(8)
+        layout.setContentsMargins(SPACE_SM, 0, SPACE_SM, 0)
+        layout.setSpacing(SPACE_SM)
 
         self.title_label = QtWidgets.QLabel(name)
         self.title_label.setObjectName("HistoryTitle")
-        self.title_label.setStyleSheet("font-weight: 500; font-size: 13px; background: transparent;")
+        self.title_label.setStyleSheet(css(LABEL) + " background: transparent;")
         self.title_label.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
                                        QtWidgets.QSizePolicy.Preferred)
 
         self.time_label = QtWidgets.QLabel(self._format_relative_time(created_at))
         self.time_label.setObjectName("HistoryTime")
-        self.time_label.setStyleSheet("font-size: 11px; background: transparent;")
+        self.time_label.setStyleSheet(css(CAPTION) + " background: transparent;")
         self.time_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         dim = QtWidgets.QGraphicsOpacityEffect(self.time_label)
         dim.setOpacity(0.6)
@@ -63,14 +72,14 @@ class HistoryItem(QtWidgets.QFrame):
         layout.addWidget(self.del_btn)
 
         self.setStyleSheet("""
-            QFrame#HistoryItem {
-                border-radius: 8px;
+            QFrame#HistoryItem {{
+                border-radius: {radius}px;
                 background-color: transparent;
-            }
-            QFrame#HistoryItem:hover {
-                background-color: rgba(127, 127, 127, 40);
-            }
-        """)
+            }}
+            QFrame#HistoryItem:hover {{
+                background-color: {wash};
+            }}
+        """.format(radius=RADIUS_MD, wash=WASH))
 
     def showEvent(self, event):
         """
@@ -127,19 +136,19 @@ class HistoryPopup(QtWidgets.QFrame):
         frame.addWidget(container)
 
         vbox = QtWidgets.QVBoxLayout(container)
-        vbox.setContentsMargins(8, 12, 8, 12)
-        vbox.setSpacing(10)
+        vbox.setContentsMargins(SPACE_SM, SPACE_SM, SPACE_SM, SPACE_SM)
+        vbox.setSpacing(SPACE_SM)
 
         self.search_input = QtWidgets.QLineEdit()
         self.search_input.setPlaceholderText("Select a conversation")
         self.search_input.setObjectName("HistorySearch")
         self.search_input.setStyleSheet("""
-            QLineEdit#HistorySearch {
-                border-radius: 6px;
-                padding: 6px 10px;
-                font-size: 13px;
-            }
-        """)
+            QLineEdit#HistorySearch {{
+                border-radius: {radius}px;
+                padding: {pad_v}px {pad_h}px;
+                {type}
+            }}
+        """.format(radius=RADIUS_MD, pad_v=SPACE_XS, pad_h=SPACE_SM, type=css(BODY)))
         self.search_input.textChanged.connect(self.filter_items)
         vbox.addWidget(self.search_input)
 

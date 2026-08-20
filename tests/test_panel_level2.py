@@ -779,6 +779,16 @@ def test_the_document_a_session_worked_on_is_in_the_row_tooltip(panel):
     assert _a_row(document="Parts.FCStd").toolTip() == "Parts.FCStd"
 
 
+def test_the_row_name_and_time_take_their_type_from_the_design_system(panel):
+    """FCC-180: 13px/11px were not on the four-pair scale FCC-171 fixed."""
+    from ui.typography import CAPTION, LABEL, css
+
+    row = _a_row()
+
+    assert css(LABEL) in row.title_label.styleSheet()
+    assert css(CAPTION) in row.time_label.styleSheet()
+
+
 def _icon_drawn(button, size=14):
     """The fully-opaque colours the button's icon actually paints."""
     from conftest import QtGui
