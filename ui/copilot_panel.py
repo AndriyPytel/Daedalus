@@ -34,6 +34,8 @@ from .upload_widget       import UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
 from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
 from .queue_widget        import QueueWidget
+from ui.design_tokens     import RADIUS_SM, SPACE_XS, SPACE_SM
+from ui.typography        import BODY, css
 from utils import settings_manager
 from utils import provider_manager
 from ui.ui_helpers import UIHelpers
@@ -90,7 +92,7 @@ def _build_qss() -> str:
         }}
 
         /* Input card */
-        QFrame#InputContainer {{ border-radius: 12px; }}
+        QFrame#InputContainer {{ border-radius: {RADIUS_SM}px; }}
 
         /* The Plan Gate keeps a container: a decision the user has to make
            must not read as another paragraph of output. */
@@ -102,8 +104,14 @@ def _build_qss() -> str:
         QTextEdit#ChatInput {{
             border: none;
             background: transparent;
-            font-size: 14px;
-            padding: 4px 6px;
+            {css(BODY)}
+            padding: {SPACE_XS}px {SPACE_SM}px;
+        }}
+
+        /* Focus reads as a wash, not a colour of its own (ADR-0011) — the
+           same grey the Plan Gate separates itself with, at a lower alpha. */
+        QTextEdit#ChatInput:focus {{
+            background: rgba(127, 127, 127, 20);
         }}
 
         /* Pill buttons */
@@ -682,7 +690,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self.user_input = _PasteAwareTextEdit()
         self.user_input.setObjectName("ChatInput")
-        self.user_input.setPlaceholderText("Ask FreeCAD Copilot…")
+        self.user_input.setPlaceholderText("Describe what you want to build…")
         self.user_input.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.user_input.paste_image_requested.connect(
             lambda: self.upload_widget.handle_clipboard_paste()
@@ -1165,6 +1173,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._question_card.setEnabled(False)
             self._question_card = None
             self._answers_to_enter = None
+            self._update_composer_enabled()
         bundle = self._workers.get(self._current_log())
         if bundle is not None:
             bundle.pending_question = None
@@ -1177,6 +1186,25 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.send_button.setVisible(not running)
         self.stop_button.setVisible(running)
         self.stop_button.setEnabled(running)
+        self._update_composer_enabled()
+
+    def _update_composer_enabled(self):
+        """
+        Dark and unusable while the run holds the floor, back the moment it
+        gives it up — either because it ended or because a Gate is the one
+        asking, and a Gate's own answer (Amend, the values Plan was not given)
+        is typed here. Greyed the way `AccordionWidget.mark_as_reasoning`
+        subdues reasoning: an opacity effect, not a colour of its own
+        (ADR-0011).
+        """
+        enabled = not self._running or self._question_card is not None
+        self.user_input.setEnabled(enabled)
+        if enabled:
+            self.user_input.setGraphicsEffect(None)
+        else:
+            effect = QtWidgets.QGraphicsOpacityEffect(self.user_input)
+            effect.setOpacity(0.6)
+            self.user_input.setGraphicsEffect(effect)
 
     @QtCore.Slot(object)
     def on_event(self, event):
@@ -1546,6 +1574,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self._question_card = card
         self._answers_to_enter = enter
+        self._update_composer_enabled()
         self.add_chat_widget(card)
 
     def _answer_with(self, decide):
@@ -1556,6 +1585,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         card, self._question_card = self._question_card, None
         self._answers_to_enter = None
+        self._update_composer_enabled()
         if card is not None:
             card.setEnabled(False)
         self.status_line.setText("Working\u2026")

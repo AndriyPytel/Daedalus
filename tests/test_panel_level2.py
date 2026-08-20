@@ -125,6 +125,68 @@ def test_send_and_stop_share_one_slot(panel):
     assert (panel.stop_button.isVisible(), panel.send_button.isVisible()) == (False, True)
 
 
+def test_the_composer_shows_the_figma_placeholder(panel):
+    assert panel.user_input.placeholderText() == "Describe what you want to build\u2026"
+
+
+def test_the_composer_disables_and_greys_out_while_a_run_is_going(panel):
+    """
+    Greyed the way `mark_as_reasoning` dims a subdued accordion: an opacity
+    effect, not a colour, since the theme still decides what "disabled" looks
+    like (ADR-0011).
+    """
+    from conftest import QtWidgets
+
+    panel._set_running(True)
+    assert not panel.user_input.isEnabled()
+    effect = panel.user_input.graphicsEffect()
+    assert isinstance(effect, QtWidgets.QGraphicsOpacityEffect)
+    assert effect.opacity() < 1.0
+
+    panel._set_running(False)
+    assert panel.user_input.isEnabled()
+    assert panel.user_input.graphicsEffect() is None
+
+
+def test_the_composer_re_enables_at_a_gate_and_disables_once_it_is_answered(panel, monkeypatch):
+    """
+    A Gate's own answer is typed in the composer (Amend, the values Plan was
+    not given), so it must come back before the card does — and go dark again
+    the moment the run resumes, since nothing is being asked while it runs.
+    """
+    monkeypatch.setattr(panel.ask, "answer", lambda answer: None)
+
+    panel._set_running(True)
+    assert not panel.user_input.isEnabled()
+
+    panel.on_missing_values("How many teeth?")
+    QT_APP.processEvents()
+    assert panel.user_input.isEnabled(), "the composer is where the gate's answer is typed"
+
+    panel.user_input.setPlainText("20 teeth, module 2")
+    _button(panel._question_card, "Send").click()
+    QT_APP.processEvents()
+
+    assert not panel.user_input.isEnabled(), "the run resumed but the composer stayed open"
+
+    panel._set_running(False)
+
+
+def test_stopping_a_gate_answer_leaves_the_composer_dark_again(panel):
+    """Stop is also "the run still has the floor" — the card it takes down
+    must not leave the composer looking answerable a moment longer."""
+    panel._set_running(True)
+    panel.on_missing_values("How many teeth?")
+    QT_APP.processEvents()
+    assert panel.user_input.isEnabled()
+
+    panel.on_stop()
+    QT_APP.processEvents()
+
+    assert not panel.user_input.isEnabled()
+    panel._set_running(False)
+
+
 @pytest.mark.parametrize("status", [
     "Step 1/9: Create a sketch on the XY plane and draw the two circles at the computed centre",
     "Thinking: " + "the plan looks reasonable so I will start from the base sketch " * 2,
