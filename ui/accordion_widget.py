@@ -14,6 +14,9 @@ except ImportError:
     QtWidgets = QtGui
 from ui.ui_helpers import UIHelpers
 
+_TOGGLE_RULE = ("QPushButton { text-align: left; padding: 4px 0px; border: none; "
+                "background: transparent; font-size: 12px; font-weight: 600; %s}")
+
 
 class AccordionWidget(QtWidgets.QWidget):
     """
@@ -30,9 +33,7 @@ class AccordionWidget(QtWidgets.QWidget):
         layout.setSpacing(0)
 
         self.toggle_button = QtWidgets.QPushButton("▶  " + title)
-        self.toggle_button.setStyleSheet(
-            "QPushButton { text-align: left; padding: 4px 0px; border: none; "
-            "background: transparent; font-size: 12px; font-weight: 600; }")
+        self.toggle_button.setStyleSheet(_TOGGLE_RULE % "")
         self.toggle_button.setCursor(QtCore.Qt.PointingHandCursor)
         self.toggle_button.clicked.connect(self.toggle_content)
         layout.addWidget(self.toggle_button)
@@ -58,6 +59,29 @@ class AccordionWidget(QtWidgets.QWidget):
         streamed sentence across a dozen lines.
         """
         self.content_area.setText(self.content_area.text() + text)
+
+    def mark_as_reasoning(self):
+        """
+        Reads subdued next to an answer, the way `HistoryItem` dims its
+        timestamp: an opacity effect rather than a colour of its own, since
+        the theme still decides what the text is (ADR-0011, Figma's Chain of
+        Thought component).
+        """
+        effect = QtWidgets.QGraphicsOpacityEffect(self.content_area)
+        effect.setOpacity(0.6)
+        self.content_area.setGraphicsEffect(effect)
+
+    def tint_toggle(self, colour):
+        """
+        Colours the toggle line's own text -- semantic, not the theme
+        (`FAIL`/`SUCCESS`, ADR-0011), the way a pass/fail row needs to read
+        the same in every theme (`ui/assertion_results_widget.py`, FCC-179).
+
+        Rebuilt from `_TOGGLE_RULE` rather than appended to the stylesheet
+        already set: a bare `color:` outside a `QPushButton { … }` block is
+        not a rule Qt's style sheet parser accepts.
+        """
+        self.toggle_button.setStyleSheet(_TOGGLE_RULE % ("color: %s; " % colour))
 
     def start_pulsing(self):
         """The 'still working' signal — the one animation worth keeping."""

@@ -12,7 +12,7 @@ check is not what these tests are about.
 import inspect
 import json
 
-from core.events import BLOCKED, INTENT, PLAN, PLAN_REVISED, EventStream
+from core.events import BLOCKED, GATE, INTENT, PLAN, PLAN_REVISED, STEP_STARTED, EventStream
 from core.llm import ScriptedLLMClient
 from core.loop import (
     ACCEPT, AMEND, APPROVE, REJECT, REVISE, START_OVER, Approval, Budgets, run,
@@ -593,3 +593,46 @@ def test_amending_over_a_decision_replans_without_asking_it_again():
     revised = events.first(PLAN_REVISED)
     assert "R30" in revised.data["reason"]
     assert "half the 50 mm height" in json.dumps(revised.data["decided"])
+
+
+def test_approving_with_edited_steps_builds_the_edited_plan_not_the_generated_one():
+    """
+    FCC-177: the Plan Gate is edited directly now, not amended through the
+    model. Build hands back whatever `PlanWidget` holds at the moment it is
+    pressed, and that is what Execute runs against — not what Plan wrote.
+    """
+    gate = Gate(Approval(APPROVE, steps=("Create a 10mm box", "Fillet the top edge")))
+
+    _, events, tools = drive(
+        [plan_reply("Create a 10mm box"), code_reply("box()", "fillet()"),
+         verdict_reply("pass")], gate)
+
+    assert gate.shown == [["Create a 10mm box"]]
+    assert tools.applied_codes() == ["box()", "fillet()"]
+    assert events.first(STEP_STARTED).data["total"] == 2
+
+
+def test_approving_with_no_edited_steps_builds_the_plan_as_generated():
+    """Empty `Approval.steps` means unedited — nothing changes from before FCC-177."""
+    gate = Gate(Approval(APPROVE, steps=()))
+
+    _, _, tools = drive(
+        [plan_reply("Create a 10mm box"), code_reply("box()"), verdict_reply("pass")], gate)
+
+    assert tools.applied_codes() == ["box()"]
+
+
+def test_the_gate_event_carries_the_plan_that_was_actually_approved():
+    """
+    The Queue mirrors this Plan's Steps too (FCC-172); if Build edited the
+    count, the Queue is reading a stale one unless the approved `GATE` event
+    carries the Steps that will actually run.
+    """
+    gate = Gate(Approval(APPROVE, steps=("Only this one",)))
+
+    _, events, _ = drive(
+        [plan_reply("Create a 10mm box", "Fillet it"), code_reply("box()"),
+         verdict_reply("pass")], gate)
+
+    _, decided = events.of(GATE)
+    assert decided.data["steps"] == ["Only this one"]

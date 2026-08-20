@@ -236,11 +236,18 @@ class Approval:
     assumption they have not read reaches the Gate however standing the
     approval is: what stands is approval of the path, and an invented value is
     not the path.
+
+    `steps` is the Plan the Gate is actually approving, if it differs from
+    the one it was shown: the panel's Plan Gate is edited directly now, not
+    amended through the model (FCC-177), and Build hands back whatever it
+    holds at the moment it is pressed. Empty means unedited -- run continues
+    with the Steps `plan()` produced.
     """
 
     decision: str = APPROVE
     feedback: str = ""
     standing: bool = False
+    steps: tuple = ()
 
 
 def auto_approve(steps):
@@ -2855,15 +2862,17 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                     asked=bool(unread) or not standing["approval"], **overruled)
         if standing["approval"] and not unread:
             approval = Approval(APPROVE, standing=True)
-            events.emit(GATE, decision=APPROVE, standing=True)
+            events.emit(GATE, decision=APPROVE, standing=True, steps=list(steps))
         else:
             approval = gate(list(steps)) or Approval(APPROVE)
             standing["approval"] = bool(getattr(approval, "standing", False)
                                         and approval.decision == APPROVE)
             if approval.decision == APPROVE:
                 standing["read"] |= _assumed(steps)
+                if approval.steps:
+                    steps = list(approval.steps)
             events.emit(GATE, decision=approval.decision,
-                        standing=standing["approval"])
+                        standing=standing["approval"], steps=list(steps))
 
         if approval.decision == REJECT:
             applied = progress["applied"]

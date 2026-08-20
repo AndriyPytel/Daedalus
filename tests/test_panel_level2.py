@@ -125,6 +125,68 @@ def test_send_and_stop_share_one_slot(panel):
     assert (panel.stop_button.isVisible(), panel.send_button.isVisible()) == (False, True)
 
 
+def test_the_composer_shows_the_figma_placeholder(panel):
+    assert panel.user_input.placeholderText() == "Describe what you want to build\u2026"
+
+
+def test_the_composer_disables_and_greys_out_while_a_run_is_going(panel):
+    """
+    Greyed the way `mark_as_reasoning` dims a subdued accordion: an opacity
+    effect, not a colour, since the theme still decides what "disabled" looks
+    like (ADR-0011).
+    """
+    from conftest import QtWidgets
+
+    panel._set_running(True)
+    assert not panel.user_input.isEnabled()
+    effect = panel.user_input.graphicsEffect()
+    assert isinstance(effect, QtWidgets.QGraphicsOpacityEffect)
+    assert effect.opacity() < 1.0
+
+    panel._set_running(False)
+    assert panel.user_input.isEnabled()
+    assert panel.user_input.graphicsEffect() is None
+
+
+def test_the_composer_re_enables_at_a_gate_and_disables_once_it_is_answered(panel, monkeypatch):
+    """
+    A Gate's own answer is typed in the composer (Amend, the values Plan was
+    not given), so it must come back before the card does — and go dark again
+    the moment the run resumes, since nothing is being asked while it runs.
+    """
+    monkeypatch.setattr(panel.ask, "answer", lambda answer: None)
+
+    panel._set_running(True)
+    assert not panel.user_input.isEnabled()
+
+    panel.on_missing_values("How many teeth?")
+    QT_APP.processEvents()
+    assert panel.user_input.isEnabled(), "the composer is where the gate's answer is typed"
+
+    panel.user_input.setPlainText("20 teeth, module 2")
+    _button(panel._question_card, "Send").click()
+    QT_APP.processEvents()
+
+    assert not panel.user_input.isEnabled(), "the run resumed but the composer stayed open"
+
+    panel._set_running(False)
+
+
+def test_stopping_a_gate_answer_leaves_the_composer_dark_again(panel):
+    """Stop is also "the run still has the floor" — the card it takes down
+    must not leave the composer looking answerable a moment longer."""
+    panel._set_running(True)
+    panel.on_missing_values("How many teeth?")
+    QT_APP.processEvents()
+    assert panel.user_input.isEnabled()
+
+    panel.on_stop()
+    QT_APP.processEvents()
+
+    assert not panel.user_input.isEnabled()
+    panel._set_running(False)
+
+
 @pytest.mark.parametrize("status", [
     "Step 1/9: Create a sketch on the XY plane and draw the two circles at the computed centre",
     "Thinking: " + "the plan looks reasonable so I will start from the base sketch " * 2,
@@ -152,43 +214,141 @@ def test_a_long_status_line_does_not_widen_the_panel(panel, status):
 
 
 def test_the_empty_chat_says_where_the_user_stands(panel):
-    text = panel._empty_state.text()
+    """
+    Freshly built rather than `panel._empty_state` itself: the model fetch
+    that landed since the panel opened may already have moved the button off
+    whatever it showed when the transcript's own empty state was captured,
+    and that race is not what this test is for.
+    """
+    text = panel._build_empty_state().text()
     assert "Plan Gate" in text
-    assert panel.model_combo.currentText().strip() in text
+    assert panel.model_button.text().strip() in text
 
 
-def test_the_model_picker_groups_under_provider_headings(panel):
-    """A heading is a row that cannot be chosen — that is the whole mechanism."""
-    from conftest import QtCore
+def _selector_click(popup, text):
+    from ui.model_selector import _Row
 
-    from utils import provider_manager
-
-    if not provider_manager.instance().get_available_models():
-        pytest.skip("no API key on this machine, so there is nothing to group")
-
-    items = panel.model_combo.model()
-    headings = [items.item(row) for row in range(items.rowCount())
-                if not (items.item(row).flags() & QtCore.Qt.ItemIsSelectable)]
-
-    assert headings, "the model list is flat"
-    assert panel.model_combo.currentIndex() not in [items.indexFromItem(h).row()
-                                                    for h in headings]
+    for i in range(popup._list_layout.count()):
+        widget = popup._list_layout.itemAt(i).widget()
+        if isinstance(widget, _Row) and widget.text == text:
+            widget.clicked.emit()
+            return
+    raise AssertionError("no row %r in the selector's current step" % text)
 
 
-def test_the_combo_opens_on_a_stored_model_no_static_list_knows(panel, monkeypatch):
+_TWO_PROVIDERS = [
+    {"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"},
+    {"id": "o1", "display": "o1", "provider": "OpenAI"},
+    {"id": "claude-opus-4", "display": "Claude Opus 4", "provider": "Anthropic"},
+]
+
+
+def _mock_no_stored_model(monkeypatch):
+    """
+    The developer's own machine has a real stored model, in real FreeCAD
+    settings, that has nothing to do with `_TWO_PROVIDERS` below — read it
+    back and `_refresh_models` reaches for `_retire_model`, which would
+    overwrite that real setting with one of this test's fake ids.
+    """
+    from utils import settings_manager
+
+    monkeypatch.setattr(settings_manager.instance(), "get_last_model", lambda: "")
+
+
+def test_clicking_the_model_button_opens_the_provider_step(panel, monkeypatch):
+    """FCC-175: the popup opens on a flat list of providers, not their models."""
+    from ui.model_selector import PROVIDER_STEP
+
+    _mock_no_stored_model(monkeypatch)
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._open_model_selector()
+    QT_APP.processEvents()
+
+    assert panel.model_selector.isVisible()
+    assert panel.model_selector.step == PROVIDER_STEP
+    assert panel.model_selector.visible_rows() == ["OpenAI", "Anthropic"]
+    panel.model_selector.close()
+
+
+def test_choosing_a_provider_replaces_the_list_with_its_models(panel, monkeypatch):
+    """Not grouping — sequence: the provider list is gone once its models are up."""
+    from ui.model_selector import MODEL_STEP
+
+    _mock_no_stored_model(monkeypatch)
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._open_model_selector()
+    QT_APP.processEvents()
+
+    _selector_click(panel.model_selector, "OpenAI")
+    QT_APP.processEvents()
+
+    assert panel.model_selector.step == MODEL_STEP
+    assert panel.model_selector.visible_rows() == ["GPT-4o", "o1"]
+    panel.model_selector.close()
+
+
+def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypatch):
+    from utils import settings_manager
+
+    _mock_no_stored_model(monkeypatch)
+    written = []
+    monkeypatch.setattr(settings_manager.instance(), "set_last_model", written.append)
+
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._open_model_selector()
+    QT_APP.processEvents()
+    _selector_click(panel.model_selector, "Anthropic")
+    QT_APP.processEvents()
+    _selector_click(panel.model_selector, "Claude Opus 4")
+    QT_APP.processEvents()
+
+    assert not panel.model_selector.isVisible()
+    assert panel._current_model_id == "claude-opus-4"
+    assert panel.model_button.text() == "Claude Opus 4"
+    assert written == ["claude-opus-4"]
+
+
+def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkeypatch):
+    """
+    Reopening after a model is picked shows providers again, not the
+    last-selected provider's models (FCC-175's Acceptance Criteria).
+    """
+    from utils import settings_manager
+    from ui.model_selector import PROVIDER_STEP
+
+    _mock_no_stored_model(monkeypatch)
+    monkeypatch.setattr(settings_manager.instance(), "set_last_model", lambda model_id: None)
+
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._open_model_selector()
+    QT_APP.processEvents()
+    _selector_click(panel.model_selector, "OpenAI")
+    QT_APP.processEvents()
+    _selector_click(panel.model_selector, "GPT-4o")
+    QT_APP.processEvents()
+
+    panel._open_model_selector()
+    QT_APP.processEvents()
+
+    assert panel.model_selector.step == PROVIDER_STEP
+    assert panel.model_selector.visible_rows() == ["OpenAI", "Anthropic"]
+    panel.model_selector.close()
+
+
+def test_the_button_shows_a_stored_model_no_static_list_knows(panel, monkeypatch):
     """
     The stored id lives only in the provider's fetched list, which has not
-    landed when the panel is built. Falling through to the first selectable
-    row — GPT-4o — is FCC-41.
+    landed when the panel is built. Falling through to the first available
+    model — GPT-4o — is FCC-41.
     """
     from utils import provider_manager, settings_manager
 
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: True)
     monkeypatch.setattr(settings_manager.instance(), "get_last_model", lambda: "gpt-5.6-sol")
 
-    panel._refresh_model_combo([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
+    panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
-    assert panel.model_combo.currentData() == "gpt-5.6-sol"
+    assert panel._current_model_id == "gpt-5.6-sol"
 
 
 def test_a_failed_fetch_leaves_its_provider_still_awaited(monkeypatch):
@@ -222,9 +382,9 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
     monkeypatch.setattr(settings, "get_default_model", lambda: "gpt-4o")
     monkeypatch.setattr(settings, "set_last_model", written.append)
 
-    panel._refresh_model_combo([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
+    panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
-    assert panel.model_combo.currentData() == "gpt-4o"
+    assert panel._current_model_id == "gpt-4o"
     assert written == ["gpt-4o"]
     assert panel.status_line.isVisible()
     assert "gpt-5.6-sol" in panel.status_line.text()
@@ -240,9 +400,9 @@ def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, mon
     monkeypatch.setattr(settings, "get_default_model", lambda: "")
     monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
 
-    panel._refresh_model_combo([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
+    panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
-    assert panel.model_combo.currentData() == "gpt-4o"
+    assert panel._current_model_id == "gpt-4o"
     assert "switched to gpt-4o" in panel.status_line.text()
 
 
@@ -619,6 +779,16 @@ def test_the_document_a_session_worked_on_is_in_the_row_tooltip(panel):
     assert _a_row(document="Parts.FCStd").toolTip() == "Parts.FCStd"
 
 
+def test_the_row_name_and_time_take_their_type_from_the_design_system(panel):
+    """FCC-180: 13px/11px were not on the four-pair scale FCC-171 fixed."""
+    from ui.typography import CAPTION, LABEL, css
+
+    row = _a_row()
+
+    assert css(LABEL) in row.title_label.styleSheet()
+    assert css(CAPTION) in row.time_label.styleSheet()
+
+
 def _icon_drawn(button, size=14):
     """The fully-opaque colours the button's icon actually paints."""
     from conftest import QtGui
@@ -955,6 +1125,161 @@ def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
     assert "Review: pass" in said
 
 
+def _a_queue_transcript(path):
+    """
+    A full run's structural events, in the order `core.loop._run` emits
+    them: Intent, an approved Gate, one Step through to Applied, Assertion,
+    Review -- everything FCC-172's Queue widget reads a phase transition off.
+    """
+    from core.events import (APPLIED, ASSERTION, EventStream, GATE, INTENT, PLAN,
+                             REVIEW_VERDICT, STEP_STARTED)
+
+    stream = EventStream()
+    stream.log_to(path)
+    stream.emit(INTENT, text="a box, then a fillet")
+    stream.emit(PLAN, steps=["Make a box"])
+    stream.emit(GATE, decision="approve", standing=False)
+    stream.emit(STEP_STARTED, index=1, total=1, description="Make a box")
+    stream.emit(APPLIED, step=1, label="Box", created=["Box"])
+    stream.emit(ASSERTION, ok=True, code="assert True", confirmed=["It is a box"],
+               uncovered=[], traceback="")
+    stream.emit(REVIEW_VERDICT, verdict="pass", reason="Looks like a box.")
+
+
+def test_a_session_comes_back_with_its_queue_at_every_phase_done(panel, tmp_path):
+    """
+    The Queue is restored the same way the Plan and the transcript are: by
+    replaying the log through `on_event`, the one switch that also renders it
+    live (FCC-172).
+    """
+    from ui.queue_widget import ASSERTION, DESIGN, DONE, EXECUTE, PLAN, REVIEW
+
+    log = str(tmp_path / "queue-run.jsonl")
+    _a_queue_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("queue-run")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    queue = panel._queue_widget
+    assert queue is not None
+    for phase in (DESIGN, PLAN, EXECUTE, ASSERTION, REVIEW):
+        assert queue.phase_state(phase) == DONE, phase
+    assert queue.step_count() == 1
+    assert queue.step_state(1) == DONE
+
+
+def test_a_new_intent_opens_a_fresh_queue_running_design(panel, tmp_path):
+    from core.events import EventStream, INTENT
+    from ui.queue_widget import DESIGN, RUNNING
+
+    log = str(tmp_path / "fresh-run.jsonl")
+    stream = EventStream()
+    stream.log_to(log)
+    stream.emit(INTENT, text="a plain box")
+    index, _ = panel.chat_sessions.add_new_chat("fresh-run")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    queue = panel._queue_widget
+    assert queue is not None
+    assert queue.phase_state(DESIGN) == RUNNING
+
+
+def test_a_run_blocked_in_plan_marks_the_queue_plan_failed(panel, tmp_path):
+    from core.events import BLOCKED, EventStream, INTENT, PLAN
+    from ui.queue_widget import EXECUTE, FAILED, PLAN as QUEUE_PLAN, QUEUED
+
+    log = str(tmp_path / "blocked-run.jsonl")
+    stream = EventStream()
+    stream.log_to(log)
+    stream.emit(INTENT, text="an impossible box")
+    stream.emit(PLAN, steps=["Make a box"])
+    stream.emit(BLOCKED, reason="You rejected the Plan.", tried=[], provider_said="")
+    index, _ = panel.chat_sessions.add_new_chat("blocked-run")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    queue = panel._queue_widget
+    assert queue is not None
+    assert queue.phase_state(QUEUE_PLAN) == FAILED
+    assert queue.phase_state(EXECUTE) == QUEUED
+
+
+def _a_cost_transcript(path):
+    """Two calls, Design then Plan (FCC-176): the total after both is their sum."""
+    from core.events import COST, EventStream, INTENT
+
+    stream = EventStream()
+    stream.log_to(path)
+    stream.emit(INTENT, text="a box")
+    stream.emit(COST, phase="design", usd=0.04, model="sonnet")
+    stream.emit(COST, phase="plan", usd=0.09, model="sonnet")
+
+
+def test_a_new_chat_shows_the_zero_state(panel):
+    panel.new_chat()
+
+    assert panel.usage_label.text() == "$0.00"
+
+
+def test_cost_events_accumulate_into_one_running_total(panel):
+    from core.events import COST, Event
+
+    panel.new_chat()
+
+    panel.on_event(Event(COST, {"phase": "design", "usd": 0.04, "model": "sonnet"}))
+    assert panel.usage_label.text() == "$0.04"
+
+    panel.on_event(Event(COST, {"phase": "plan", "usd": 0.07, "model": "sonnet"}))
+    assert panel.usage_label.text() == "$0.11"
+
+
+def test_a_call_under_a_cent_still_shows_what_it_cost(panel):
+    from core.events import COST, Event
+
+    panel.new_chat()
+
+    panel.on_event(Event(COST, {"phase": "design", "usd": 0.0049, "model": "sonnet"}))
+
+    assert panel.usage_label.text() == "$0.0049"
+
+
+def test_a_new_intent_zeroes_the_total_mid_session(panel):
+    """
+    A follow-up Intent in the same open chat starts a second run, and the
+    total is the run's, not the Session's (Solution Notes: "cumulative cost
+    for the entire run from Intent to Review verdict") -- the same boundary
+    `_update_queue` already resets `_queue_widget` on (FCC-172).
+    """
+    from core.events import COST, INTENT, Event
+
+    panel.new_chat()
+    panel.on_event(Event(COST, {"phase": "design", "usd": 0.04, "model": "sonnet"}))
+    assert panel.usage_label.text() == "$0.04"
+
+    panel.on_event(Event(INTENT, {"text": "a second box"}))
+
+    assert panel.usage_label.text() == "$0.00"
+
+
+def test_a_restored_session_shows_its_final_total(panel, tmp_path):
+    log = str(tmp_path / "cost-run.jsonl")
+    _a_cost_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("cost-run")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    assert panel.usage_label.text() == "$0.13"
+
+
 def test_a_session_recorded_before_the_step_render_went_away_still_opens(panel, tmp_path):
     """
     An old transcript carries `render` events, and this build has no such kind
@@ -1145,22 +1470,31 @@ def test_pruning_takes_the_chat_area_with_the_session(sessions_are_the_tests_own
 
 def test_a_restored_session_owns_nothing(panel, tmp_path):
     """
-    Owned Objects are the live Session's. Reopening yesterday's must not grant
-    the assistant rights over objects it no longer owns.
+    Each Session's Owned Objects live on its own worker, not one shared one
+    (FCC-181). Reopening yesterday's Session must not grant the assistant
+    rights over objects another Session owns, and switching away from a
+    Session that does own something must not cost it that ownership either —
+    it is not reset on every switch any more, because the pipeline switching
+    away from is no longer the pipeline switching in.
     """
     from core.apply import ApplyPipeline
+
+    live = panel.chat_sessions.stack.currentIndex()
+    panel.worker.pipeline = ApplyPipeline(owned={"BoxFromTheLiveSession"})
 
     log = str(tmp_path / "old.jsonl")
     _a_transcript(log)
     index, _ = panel.chat_sessions.add_new_chat("old")
     panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
-    panel.worker.pipeline = ApplyPipeline(owned={"BoxFromAnotherSession"})
 
     panel.switch_session(index)
-
     panel.worker._get_tools()
     assert panel.worker.pipeline.owned == set(), \
         "the next Step would apply against another Session's Owned Objects"
+
+    panel.switch_session(live)
+    assert panel.worker.pipeline.owned == {"BoxFromTheLiveSession"}, \
+        "switching away and back cost the live Session its own Owned Objects"
 
 
 def test_a_new_session_owns_nothing(panel):
@@ -1198,18 +1532,66 @@ def test_returning_to_a_session_does_not_keep_another_ones_widgets(panel, tmp_pa
         panel._empty_state.parent() is not None, "empty state points at a dead widget"
 
 
-def test_switching_is_refused_while_a_run_is_in_flight(panel):
-    """A run narrates into the Session it started from; moving loses track of which."""
+def test_switching_mid_run_moves_the_panel_without_touching_the_run(panel):
+    """
+    A run narrates into the Session it started from, but the Session it
+    started from is no longer the only one the panel can show (FCC-181): each
+    Session runs on its own worker, so leaving one running and looking at
+    another is switching, not interrupting.
+    """
     first, _ = panel.chat_sessions.add_new_chat("running")
     second, _ = panel.chat_sessions.add_new_chat("elsewhere")
     panel.chat_sessions.switch_to(first)
+    first_bundle = panel._worker_for(panel.chat_sessions.get_session_info(first)["log"])
+    first_bundle.running = True
     panel._set_running(True)
+
+    panel.switch_session(second)
+
+    assert panel.chat_sessions.stack.currentIndex() == second, \
+        "a run in another Session refused a switch that no longer touches it"
+    assert first_bundle.running, "switching away stopped a run it did not start"
+    first_bundle.running = False
+
+
+def test_activating_a_documents_own_session_switches_the_panel_to_it(panel):
+    """
+    Bringing a Document's MDI tab forward in FreeCAD moves the panel to
+    whichever Session named that Document, without the user touching the
+    picker (FCC-181, AC).
+    """
+    import FreeCAD
+
+    doc = FreeCAD.newDocument("FCC181PanelFollowsMDI")
     try:
-        panel.switch_session(second)
-        assert panel.chat_sessions.stack.currentIndex() == first
-        assert "switching sessions" in panel.status_line.text()
+        elsewhere, _ = panel.chat_sessions.add_new_chat("elsewhere")
+        named, _ = panel.chat_sessions.add_new_chat("named")
+        panel.chat_sessions.name_document(
+            panel.chat_sessions.get_session_info(named)["log"], doc.Name)
+        panel.chat_sessions.switch_to(elsewhere)
+
+        panel.slotActivateDocument(doc)
+
+        assert panel.chat_sessions.stack.currentIndex() == named, \
+            "activating the Document did not bring its own Session forward"
     finally:
-        panel._set_running(False)
+        FreeCAD.closeDocument(doc.Name)
+
+
+def test_activating_an_unclaimed_document_leaves_the_panel_alone(panel):
+    """A Document nothing has been sent to yet has no Session to switch to."""
+    import FreeCAD
+
+    doc = FreeCAD.newDocument("FCC181PanelIgnoresUnclaimedDoc")
+    try:
+        index, _ = panel.chat_sessions.add_new_chat("current")
+        panel.chat_sessions.switch_to(index)
+
+        panel.slotActivateDocument(doc)
+
+        assert panel.chat_sessions.stack.currentIndex() == index
+    finally:
+        FreeCAD.closeDocument(doc.Name)
 
 
 def _button(card, text):
@@ -1529,6 +1911,293 @@ def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(pane
     assert answered == [START_OVER]
 
 
+def _review_transcript_evidence(panel, tmp_path, verdict="fail",
+                                reason="the flange is mirrored"):
+    """
+    What `_update_review_evidence` reads off the stream before a Review
+    verdict's own `on_revision` is asked anything (FCC-178): the acceptance
+    checks, the four views `review_views` wrote, and the verdict itself.
+    """
+    from conftest import QtGui
+
+    from core.events import ASSERTION, Event, REVIEW_VERDICT, TOOL_RESULT
+
+    views = []
+    for name in ("iso.png", "front.png", "top.png", "right.png"):
+        path = str(tmp_path / name)
+        QtGui.QPixmap(40, 30).save(path)
+        views.append(path)
+
+    panel.on_event(Event(ASSERTION, {"ok": True, "code": "assert True",
+                                     "confirmed": ["the bore is centred"],
+                                     "uncovered": [], "traceback": ""}))
+    panel.on_event(Event(TOOL_RESULT, {"name": "review_views",
+                                       "result": {"views": views}}))
+    panel.on_event(Event(REVIEW_VERDICT, {"verdict": verdict, "reason": reason}))
+    return views
+
+
+def test_a_review_verdict_shows_the_confirmation_card_figma_names(panel, tmp_path):
+    """
+    FCC-178: once Review has run, the three-way question is Figma's
+    Confirmation card -- its own evidence above Approve / Reject / Start
+    Over -- not the plain question the acceptance checks fall back to when
+    Review never got the chance to run at all.
+    """
+    from conftest import QtWidgets
+
+    views = _review_transcript_evidence(panel, tmp_path)
+
+    panel.on_revision({"why": "the flange is mirrored", "applied": 5})
+    QT_APP.processEvents()
+
+    card = panel._question_card
+    labels = sorted(b.text() for b in card.findChildren(QtWidgets.QPushButton))
+    assert labels == ["Approve", "Reject", "Start Over"], labels
+
+    texts = [w.text() for w in card.findChildren(QtWidgets.QLabel)]
+    assert any("passed" in text for text in texts), texts
+    assert any("mirrored" in text for text in texts), texts
+
+    pictures = [w for w in card.findChildren(QtWidgets.QLabel) if w.pixmap()]
+    assert len(pictures) == len(views)
+
+    panel._reset_render_state()
+
+
+def test_clicking_approve_reject_and_start_over_on_the_verdict_card_answer_in_kind(
+        panel, tmp_path):
+    from conftest import QtWidgets
+
+    from core.loop import ACCEPT, REVISE, START_OVER
+
+    answered = []
+    monkeypatched = panel.ask.answer
+    panel.ask.answer = lambda value: (answered.append(value), monkeypatched(value))[0]
+
+    for label, expected in (("Reject", REVISE), ("Start Over", START_OVER),
+                            ("Approve", ACCEPT)):
+        _review_transcript_evidence(panel, tmp_path)
+        panel.on_revision({"why": "the flange is mirrored", "applied": 5})
+        QT_APP.processEvents()
+
+        _button(panel._question_card, label).click()
+        QT_APP.processEvents()
+
+        assert answered[-1] == expected, (label, answered)
+
+    panel.ask.answer = monkeypatched
+    panel._reset_render_state()
+
+
+def test_an_assertion_failure_before_review_keeps_the_plain_decision_card(panel, tmp_path):
+    """
+    The acceptance checks can fail before Review is ever asked anything --
+    there is no Review verdict to show, so this stays the plain question
+    FCC-178 leaves alone.
+    """
+    from conftest import QtWidgets
+
+    from core.events import ASSERTION, Event
+
+    panel.on_event(Event(ASSERTION, {"ok": False, "code": "assert False",
+                                     "confirmed": [], "uncovered": [],
+                                     "traceback": "AssertionError", "unmet": ["the bore"]}))
+
+    panel.on_revision({"why": "the bore is not centred", "applied": 3})
+    QT_APP.processEvents()
+
+    labels = sorted(b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton))
+    assert "Approve" not in labels
+    assert len(labels) == 3, labels
+
+    panel._reset_render_state()
+
+
+def test_a_new_intent_clears_the_review_verdict_that_would_have_shown_the_card(
+        panel, tmp_path):
+    """
+    A follow-up Intent in the same Session starts a new run: a Review
+    verdict left over from the run before must not turn its own decision
+    card into FCC-178's, since nothing was reviewed yet this time.
+    """
+    from conftest import QtWidgets
+
+    from core.events import Event, INTENT
+
+    _review_transcript_evidence(panel, tmp_path)
+    panel.on_event(Event(INTENT, {"text": "a second box"}))
+
+    panel.on_revision({"why": "no acceptance list", "applied": 1})
+    QT_APP.processEvents()
+
+    labels = sorted(b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton))
+    assert "Approve" not in labels
+
+    panel._reset_render_state()
+
+
+def test_completing_assertion_with_every_check_passed_shows_the_results_card(panel):
+    """FCC-179, AC1: a green mark per confirmed entry, in the chat scroll."""
+    from core.events import ASSERTION, Event
+
+    from ui.accordion_widget import AccordionWidget
+    from ui.assertion_results_widget import AssertionResultsWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("assertion-passed")
+    panel.switch_session(index)
+
+    panel.on_event(Event(ASSERTION, {
+        "ok": True, "code": "assert True", "traceback": "", "uncovered": [],
+        "confirmed": ["Base height is 10mm", "Hole diameter is 5mm"]}))
+    QT_APP.processEvents()
+
+    cards = [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
+    assert len(cards) == 1, cards
+    rows = [row.toggle_button.text() for row in cards[0].findChildren(AccordionWidget)]
+    assert any("Base height is 10mm" in row for row in rows), rows
+    assert any("Hole diameter is 5mm" in row for row in rows), rows
+
+
+def test_completing_assertion_with_a_failed_check_shows_a_failed_row(panel):
+    """FCC-179, AC2: a red mark per `unmet` entry."""
+    from core.events import ASSERTION, Event
+
+    from ui.accordion_widget import AccordionWidget
+    from ui.assertion_results_widget import AssertionResultsWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("assertion-failed")
+    panel.switch_session(index)
+
+    panel.on_event(Event(ASSERTION, {
+        "ok": False, "code": "assert False", "traceback": "AssertionError",
+        "confirmed": [], "uncovered": [], "unmet": ["Lug height is 30mm"]}))
+    QT_APP.processEvents()
+
+    cards = [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
+    assert len(cards) == 1, cards
+    rows = [row.toggle_button.text() for row in cards[0].findChildren(AccordionWidget)]
+    assert any("Lug height is 30mm" in row for row in rows), rows
+
+
+def test_checks_that_could_not_be_written_keep_the_plain_narration_line(panel):
+    """
+    FCC-179's own fallback, the same shape FCC-178's is: `ok` is `None` when
+    the checks were never written at all, so there is no pass/fail count to
+    structure and the plain line `_assertion_said` already gives stays the
+    only thing shown, the way it did before this ticket.
+    """
+    from core.events import ASSERTION, Event
+
+    from ui.assertion_results_widget import AssertionResultsWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("assertion-unwritten")
+    panel.switch_session(index)
+
+    panel.on_event(Event(ASSERTION, {
+        "ok": None, "code": "", "confirmed": [], "uncovered": [], "traceback": ""}))
+    QT_APP.processEvents()
+
+    assert not [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
+    assert "could not be written" in _said_in(panel)
+
+
+def test_a_replayed_session_renders_the_assertion_results_card(panel, tmp_path):
+    """A restored Session never saw the checks run live, only the log (FCC-169)."""
+    from ui.accordion_widget import AccordionWidget
+    from ui.assertion_results_widget import AssertionResultsWidget
+
+    log = str(tmp_path / "assertion-run.jsonl")
+    _a_queue_transcript(log)
+    index, _ = panel.chat_sessions.add_new_chat("assertion-run")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    cards = [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
+    assert len(cards) == 1, cards
+    rows = [row.toggle_button.text() for row in cards[0].findChildren(AccordionWidget)]
+    assert any("It is a box" in row for row in rows), rows
+
+
+def test_the_plan_gate_offers_exactly_one_build_button(panel):
+    """FCC-177: Build replaces Approve / Approve and carry on / Amend / Reject."""
+    from conftest import QtWidgets
+
+    from core.events import Event, PLAN
+
+    panel.on_event(Event(PLAN, {"steps": ["Sketch the base", "Pad it"], "acceptance": []}))
+    QT_APP.processEvents()
+    panel.on_plan_gate(["Sketch the base", "Pad it"])
+    QT_APP.processEvents()
+
+    labels = [b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton)]
+    assert labels == ["\u2713  Build"], labels
+
+
+def test_clicking_build_answers_with_the_plan_as_generated_when_nothing_was_edited(
+        panel, monkeypatch):
+    from core.events import Event, PLAN
+    from core.loop import APPROVE
+
+    answered = []
+    monkeypatch.setattr(panel.ask, "answer", answered.append)
+
+    panel.on_event(Event(PLAN, {"steps": ["Sketch the base", "Pad it"], "acceptance": []}))
+    QT_APP.processEvents()
+    panel.on_plan_gate(["Sketch the base", "Pad it"])
+    QT_APP.processEvents()
+
+    _button(panel._question_card, "Build").click()
+    QT_APP.processEvents()
+
+    assert len(answered) == 1
+    assert answered[0].decision == APPROVE
+    assert list(answered[0].steps) == ["Sketch the base", "Pad it"]
+
+
+def test_clicking_build_answers_with_the_plan_as_edited(panel, monkeypatch):
+    """Editing, adding, and reordering all reach the answer Build sends. FCC-177."""
+    from core.events import Event, PLAN
+    from core.loop import APPROVE
+
+    answered = []
+    monkeypatch.setattr(panel.ask, "answer", answered.append)
+
+    panel.on_event(Event(PLAN, {"steps": ["Sketch the base", "Pad it"], "acceptance": []}))
+    QT_APP.processEvents()
+    panel._plan_widget._list.item(1).setText("Pad it to 10mm")
+    panel._plan_widget.add_step()
+    panel._plan_widget._list.item(2).setText("Fillet the top edge")
+    panel.on_plan_gate(["Sketch the base", "Pad it"])
+    QT_APP.processEvents()
+
+    _button(panel._question_card, "Build").click()
+    QT_APP.processEvents()
+
+    assert answered[0].decision == APPROVE
+    assert list(answered[0].steps) == \
+        ["Sketch the base", "Pad it to 10mm", "Fillet the top edge"]
+
+
+def test_clicking_build_locks_the_plan_widget(panel, monkeypatch):
+    from core.events import Event, PLAN
+
+    monkeypatch.setattr(panel.ask, "answer", lambda value: None)
+
+    panel.on_event(Event(PLAN, {"steps": ["Sketch the base"], "acceptance": []}))
+    QT_APP.processEvents()
+    plan_widget = panel._plan_widget
+    panel.on_plan_gate(["Sketch the base"])
+    QT_APP.processEvents()
+
+    _button(panel._question_card, "Build").click()
+    QT_APP.processEvents()
+
+    assert plan_widget.locked
+
+
 def test_stop_while_the_decision_is_open_releases_it_and_is_not_an_acceptance(panel):
     """
     `abandon` releases every waiting question with an Approval, which is not
@@ -1598,3 +2267,94 @@ def test_what_was_decided_for_the_user_stands_above_the_steps(panel):
     assert decided_at < plan_at, "the decisions rendered below the Steps they were made for"
     assert decided.content_area.isVisible(), "one click away is not read"
     assert "not the depth" in _said_in(panel)
+
+
+def test_reasoning_streams_inline_and_never_pins_to_the_status_line(panel):
+    """
+    FCC-173: the status line used to carry the last 90 characters of every
+    reasoning chunk (`copilot_panel.py:1073` before this ticket). Reasoning
+    now only ever lands in its own accordion, in the chat scroll.
+    """
+    from core.events import Event, THOUGHT
+
+    index, _ = panel.chat_sessions.add_new_chat("reasoning-run")
+    panel.switch_session(index)
+    before_text, before_visible = panel.status_line.text(), panel.status_line.isVisible()
+
+    long_thought = "the plan looks reasonable so I will start from the base sketch " * 3
+    panel.on_event(Event(THOUGHT, {"phase": "plan", "text": long_thought}))
+    QT_APP.processEvents()
+
+    assert panel.status_line.text() == before_text
+    assert panel.status_line.isVisible() == before_visible
+    assert long_thought in _said_in(panel)
+
+
+def test_reasoning_is_not_truncated_to_ninety_characters(panel):
+    """The 90-character clip was the status line's; the accordion never had it."""
+    from core.events import Event, THOUGHT
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("long-reasoning-run")
+    panel.switch_session(index)
+
+    chunks = ["thinking about the base sketch and its constraints, " * 2,
+              "then the fillet radius and how it interacts with the pocket depth " * 2]
+    for chunk in chunks:
+        panel.on_event(Event(THOUGHT, {"phase": "plan", "text": chunk}))
+    QT_APP.processEvents()
+
+    thinking = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)
+               and "Thinking" in w.toggle_button.text()]
+    assert thinking, "no reasoning accordion was rendered"
+    full_text = thinking[-1].content_area.text()
+    assert full_text == "".join(chunks)
+    assert len(full_text) > 90
+
+
+def test_a_run_with_no_reasoning_shows_no_thinking_accordion(panel):
+    """A model that emits no reasoning gets no empty placeholder for it. FCC-173."""
+    from core.events import Event, INTENT, PLAN
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("no-reasoning-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(INTENT, {"text": "a plain box"}))
+    panel.on_event(Event(PLAN, {"steps": ["Make a box"]}))
+    QT_APP.processEvents()
+
+    thinking = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)
+               and "Thinking" in w.toggle_button.text()]
+    assert not thinking
+
+
+def test_reasoning_reads_subdued_unlike_a_decision_the_plan_made(panel):
+    """
+    Figma's Chain of Thought component reads subdued next to an answer.
+    ADR-0011 forbids a colour of its own, so this is an opacity effect on the
+    reasoning accordion's text, the way `HistoryItem` dims its timestamp --
+    and it is what tells reasoning apart from an accordion that is not
+    reasoning, such as "Decided for you".
+    """
+    from core.events import Event, PLAN, THOUGHT
+    from ui.accordion_widget import AccordionWidget
+    from conftest import QtWidgets
+
+    index, _ = panel.chat_sessions.add_new_chat("subdued-reasoning-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "plan", "text": "weighing the two options"}))
+    panel.on_event(Event(PLAN, {"steps": ["Make a box"], "acceptance": [],
+                               "decided": ["radius → 3 mm"]}))
+    QT_APP.processEvents()
+
+    accordions = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)]
+    thinking = next(w for w in accordions if "Thinking" in w.toggle_button.text())
+    decided = next(w for w in accordions if "Decided for you" in w.toggle_button.text())
+
+    effect = thinking.content_area.graphicsEffect()
+    assert isinstance(effect, QtWidgets.QGraphicsOpacityEffect)
+    assert effect.opacity() < 1.0
+
+    assert decided.content_area.graphicsEffect() is None

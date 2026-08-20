@@ -148,6 +148,25 @@ class ChatSessionManager(QtWidgets.QWidget):
             self.stack.removeWidget(widget)
             widget.deleteLater()
 
+    def clear_page(self, position: int):
+        """
+        Empty a Session's page back to nothing, in place.
+
+        For a Session resynced from its transcript after running while it was
+        not on screen (FCC-181): the page already carries whatever it showed
+        the last time it was open, and replaying into it unemptied would land
+        the whole transcript a second time after that.
+        """
+        container = self.stack.widget(position)
+        if container is None or container.layout() is None:
+            return
+        layout = container.layout()
+        old_area = layout.itemAt(0).widget() if layout.count() else None
+        if old_area is not None:
+            layout.removeWidget(old_area)
+            old_area.deleteLater()
+        layout.addWidget(self._make_list())
+
     def load(self):
         """Rebuild the Sessions from the index, each with an empty chat area."""
         count = self.sessions.load()

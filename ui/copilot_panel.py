@@ -33,6 +33,11 @@ from .multi_tab_manager   import ChatSessionManager
 from .upload_widget       import UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
 from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
+from .queue_widget        import QueueWidget
+from .review_verdict_widget import ReviewVerdictWidget
+from .assertion_results_widget import AssertionResultsWidget, summary_line
+from ui.design_tokens     import RADIUS_LG, RADIUS_MD, RADIUS_SM, RUNNING, SPACE_XS, SPACE_SM, WASH
+from ui.typography        import BODY, CAPTION, css
 from utils import settings_manager
 from utils import provider_manager
 from ui.ui_helpers import UIHelpers
@@ -61,10 +66,6 @@ def _build_qss() -> str:
 
         QDockWidget::title {{ padding: 0px; height: 0px; }}
 
-        /* setMaxVisibleItems is documented to do nothing once a combo has a
-           stylesheet; this is the rule that unblocks it. */
-        QComboBox {{ combobox-popup: 0; }}
-
         /* Header icon buttons */
         QPushButton#HeaderButton {{
             background: transparent;
@@ -82,6 +83,12 @@ def _build_qss() -> str:
             padding: 0px 15px 3px 15px;
         }}
 
+        /* Usage/cost running total */
+        QLabel#UsageTotal {{
+            {css(CAPTION)}
+            padding: 0px {SPACE_XS}px;
+        }}
+
         /* The empty chat still tells the user where they stand */
         QLabel#EmptyState {{
             font-size: 12px;
@@ -89,7 +96,7 @@ def _build_qss() -> str:
         }}
 
         /* Input card */
-        QFrame#InputContainer {{ border-radius: 12px; }}
+        QFrame#InputContainer {{ border-radius: {RADIUS_SM}px; }}
 
         /* The Plan Gate keeps a container: a decision the user has to make
            must not read as another paragraph of output. */
@@ -98,20 +105,84 @@ def _build_qss() -> str:
             background-color: rgba(127, 127, 127, 40);
         }}
 
+        /* The Plan, editable until Build locks it (FCC-177). Figma's Plan
+           component gives only its outer box, no per-row detail, so the
+           radius and wash follow the Gate card beside it rather than a
+           number the spec does not carry. */
+        QFrame#PlanCard {{
+            border-radius: {RADIUS_MD}px;
+            background-color: {WASH};
+        }}
+
+        QListWidget#PlanSteps {{
+            border: none;
+            background: transparent;
+        }}
+
+        QListWidget#PlanSteps::item {{
+            padding: {SPACE_XS}px {SPACE_SM}px;
+            border-radius: {RADIUS_SM}px;
+        }}
+
+        QListWidget#PlanSteps::item:selected {{
+            background-color: {WASH};
+        }}
+
+        QPushButton#PlanAddStep {{
+            border: none;
+            background: transparent;
+            text-align: left;
+            padding: {SPACE_XS}px {SPACE_SM}px;
+            {css(CAPTION)}
+        }}
+
         QTextEdit#ChatInput {{
             border: none;
             background: transparent;
-            font-size: 14px;
-            padding: 4px 6px;
+            {css(BODY)}
+            padding: {SPACE_XS}px {SPACE_SM}px;
+        }}
+
+        /* Focus reads as a wash, not a colour of its own (ADR-0011) — the
+           same grey the Plan Gate separates itself with, at a lower alpha. */
+        QTextEdit#ChatInput:focus {{
+            background: rgba(127, 127, 127, 20);
         }}
 
         /* Pill buttons */
-        QPushButton#PillButton, QComboBox#PillButton {{
+        QPushButton#PillButton {{
             border-radius: 6px;
             padding: 3px 10px;
             font-size: 11px;
         }}
-        QComboBox#PillButton::drop-down {{ border: none; width: 14px; }}
+
+        /* The Review verdict card (FCC-178) -- same wash and radius as the
+           Plan card beside it. Approve is the one filled button in the
+           panel: palette(highlight) is the sole palette role ADR-0011 still
+           lets this stylesheet ask for, everywhere else the running Step's
+           colour. Reject and Start Over are PillButton, unchanged --
+           Start Over subdued in Python instead, an opacity effect rather
+           than a colour of its own (review_verdict_widget.py). */
+        QFrame#ReviewVerdictCard {{
+            border-radius: {RADIUS_LG}px;
+            background-color: {WASH};
+        }}
+
+        QPushButton#ReviewApprove {{
+            background-color: {RUNNING};
+            border: none;
+            border-radius: 6px;
+            padding: 3px 10px;
+            font-size: 11px;
+        }}
+
+        /* Structured Assertion results (FCC-179) -- Figma's TestResults
+           gives radius 10 of its own, RADIUS_LG exactly; the wash is the
+           same one every other results card here separates itself with. */
+        QFrame#AssertionResultsCard {{
+            border-radius: {RADIUS_LG}px;
+            background-color: {WASH};
+        }}
 
         /* Circular send button */
         QPushButton#SendButton {{
@@ -133,6 +204,26 @@ def _build_qss() -> str:
         }}
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
     """
+
+
+def _format_cost(usd: float) -> str:
+    """
+    The running total, in dollars.
+
+    `core.events.COST` carries `usd` and `model` -- what the call actually
+    cost, already converted -- and nothing that counts tokens; the CLI route
+    reads `total_cost_usd` straight off the provider (`core/llm.py`) and the
+    keyed route emits no `cost` event at all (`core/loop.py :: _streamed`
+    reads `last_cost`, which `LiteLLMClient` never sets). A token count beside
+    the dollar figure would be invented rather than shown, so the total is
+    dollars alone (FCC-176).
+
+    Two decimal places round every call under a cent to `$0.00`; four is
+    enough of a call like that to still read as spent rather than free.
+    """
+    if usd and usd < 0.01:
+        return "$%.4f" % usd
+    return "$%.2f" % usd
 
 
 
@@ -275,6 +366,7 @@ class LoopWorker(QtCore.QObject):
         self.ask = ask
         self.client = None
         self.pipeline = None
+        self.document = None
         self._stop = threading.Event()
 
     def stop(self):
@@ -294,14 +386,20 @@ class LoopWorker(QtCore.QObject):
         The pipeline outlives a run — it keeps the Session's Owned Objects — so
         the stream it narrates the Owned Object question into is set per run
         rather than at construction.
+
+        `self.document` is this Session's own bound Document (FCC-181), set by
+        the panel before the first Intent is sent and reused for every Intent
+        after that — a later focus change elsewhere must not redirect a Tool
+        call or an Apply that belongs to this Session.
         """
         from core.apply import ApplyPipeline
         from core.freecad_tools import build_registry
 
         if self.pipeline is None:
-            self.pipeline = ApplyPipeline(confirm=self.ask.about_objects_we_do_not_own)
+            self.pipeline = ApplyPipeline(document=self.document,
+                                          confirm=self.ask.about_objects_we_do_not_own)
         self.pipeline.events = events
-        return build_registry(pipeline=self.pipeline)
+        return build_registry(document=self.document, pipeline=self.pipeline)
 
     @QtCore.Slot(str, object, str, object)
     def do_work(self, intent: str, attachments: list, transcript: str,
@@ -378,6 +476,59 @@ RESTORE_CHUNK = 25
 ATTACHMENT_WIDTH = 320
 
 
+class _SessionWorker(QtCore.QObject):
+    """
+    One Session's own `LoopWorker`, on its own `QThread` (FCC-181).
+
+    Standing up one of these per Session — instead of the single global worker
+    this panel used to hold — is what makes two open Documents genuinely
+    parallel: each Session's Tool calls and Apply are bound to its own
+    `worker.document` (set once, from whichever Document is in focus when the
+    Session's first Intent is sent) rather than to `FreeCAD.ActiveDocument` at
+    the moment of the call, which is whichever Document the user happens to be
+    looking at right then. A Preflight Worker comes along for free: it lives on
+    `worker.pipeline`, and that pipeline is this Session's own.
+
+    `running`, `outstanding` and `sent_attachments` are what used to be the
+    panel's own single set of instance attributes — carried here instead, so a
+    Session backgrounded mid-run keeps its own state rather than sharing the
+    one the panel happens to be looking at. `dirty` is set when an event lands
+    for this Session while it is not the one on screen, so the panel knows to
+    resync from the transcript rather than trust stale widgets the next time it
+    is shown. `pending_question` is the one live Ask this Session is blocked
+    on, if any, so switching back to a Session parked at its Plan Gate puts the
+    same card up again instead of losing it.
+    """
+
+    request_work = QtCore.Signal(str, object, str, object)
+
+    def __init__(self, bridge: EventBridge, ask: AskTheUser):
+        super().__init__()
+        self.bridge = bridge
+        self.ask = ask
+        self.thread = QtCore.QThread()
+        self.worker = LoopWorker(bridge, ask)
+        self.worker.moveToThread(self.thread)
+        self.request_work.connect(self.worker.do_work)
+        self.running = False
+        self.outstanding: list = []
+        self.sent_attachments: list = []
+        self.dirty = False
+        self.pending_question = None
+        self.thread.start()
+
+    def shut_down(self, grace_ms: int):
+        """Stop the run, whatever it is in the middle of, and end the thread."""
+        self.worker.stop()
+        if self.worker.pipeline is not None:
+            self.worker.pipeline.shutdown()
+        if self.thread.isRunning():
+            self.thread.quit()
+            if not self.thread.wait(grace_ms):
+                self.thread.terminate()
+                self.thread.wait(1000)
+
+
 class CopilotPanel(QtWidgets.QDockWidget):
     """
     The dock: the panel's widgets, its worker thread, and the event stream
@@ -395,9 +546,18 @@ class CopilotPanel(QtWidgets.QDockWidget):
     or wrapping off entirely — widens the dock, and Qt does not give the width
     back when the text goes short again.
 
-    `_outstanding` is what the last run's acceptance checks left wrong, carried
-    into the next Intent typed against the same Document: a drawing that amends
-    a part must not be planned as though the part were sound.
+    One `_SessionWorker` per Session (FCC-181), in `self._workers`, keyed by
+    the Session's own log path — the same stable identity `name_document` and
+    `title_arrived` already key by, since a position shifts under pruning and a
+    log does not. `worker`, `thread`, `bridge` and `ask` stay as properties
+    resolving to whichever Session is currently on screen, so the rest of this
+    class — and the tests that already knew a panel had one worker — still
+    reads that way; what changed is that switching sessions now switches which
+    `_SessionWorker` those names resolve to, instead of resetting the one
+    worker everyone shared. `outstanding`, the acceptance checks a run left
+    wrong to carry into that Session's next Intent, lives on the
+    `_SessionWorker` for the same reason a Document does — it belongs to the
+    Session, not to whatever happens to be in front.
     """
 
     request_work = QtCore.Signal(str, object, str, object)
@@ -439,30 +599,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
         input_card = self._build_input_card()
         root_layout.addWidget(input_card)
 
-        self.thread = QtCore.QThread()
-        self.bridge = EventBridge()
-        self.ask = AskTheUser()
-        self.worker = LoopWorker(self.bridge, self.ask)
-        self.worker.moveToThread(self.thread)
-
-        self.request_work.connect(self.worker.do_work)
-        self.worker.finished.connect(self.on_run_finished)
-        self.worker.document_named.connect(self.on_document_named)
-        self.bridge.event.connect(self.on_event)
-        self.ask.plan_gate.connect(self.on_plan_gate)
-        self.ask.owned_objects.connect(self.on_owned_objects)
-        self.ask.missing_values.connect(self.on_missing_values)
-        self.ask.revision.connect(self.on_revision)
+        self._workers: dict[str, _SessionWorker] = {}
 
         self._running = False
-        self._outstanding: list = []
         self._empty_state = None
-        self._sent_attachments: list[str] = []
         self._title_threads = []
         self._reset_render_state()
 
-        self.thread.start()
-        
+        FreeCAD.addDocumentObserver(self)
+
         app = QtWidgets.QApplication.instance()
         if app:
             app.aboutToQuit.connect(self._cleanup_thread)
@@ -472,6 +617,110 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self.chat_sessions.load()
         self.new_chat()
+
+    @property
+    def worker(self) -> LoopWorker:
+        return self._worker_for(self._current_log()).worker
+
+    @property
+    def thread(self) -> QtCore.QThread:
+        return self._worker_for(self._current_log()).thread
+
+    @property
+    def bridge(self) -> EventBridge:
+        return self._worker_for(self._current_log()).bridge
+
+    @property
+    def ask(self) -> AskTheUser:
+        return self._worker_for(self._current_log()).ask
+
+    def _current_log(self):
+        info = self.chat_sessions.get_session_info(self.chat_sessions.stack.currentIndex())
+        return info["log"] if info else None
+
+    def _worker_for(self, log: str) -> _SessionWorker:
+        """
+        This Session's own worker, building it the first time it is asked for.
+
+        Built lazily rather than one per Session up front: most Sessions in the
+        picker never run again, and a QThread nobody uses is a thread this
+        panel would still have to stop on exit.
+        """
+        bundle = self._workers.get(log)
+        if bundle is None:
+            bundle = _SessionWorker(EventBridge(), AskTheUser())
+            bundle.worker.finished.connect(
+                lambda result, log=log: self.on_run_finished(result, log))
+            bundle.worker.document_named.connect(self.on_document_named)
+            bundle.bridge.event.connect(lambda event, log=log: self._route_event(log, event))
+            bundle.ask.plan_gate.connect(
+                lambda payload, log=log: self._route_ask(log, "plan_gate", payload))
+            bundle.ask.owned_objects.connect(
+                lambda payload, log=log: self._route_ask(log, "owned_objects", payload))
+            bundle.ask.missing_values.connect(
+                lambda payload, log=log: self._route_ask(log, "missing_values", payload))
+            bundle.ask.revision.connect(
+                lambda payload, log=log: self._route_ask(log, "revision", payload))
+            self._workers[log] = bundle
+        return bundle
+
+    def _bind_document(self, bundle: _SessionWorker):
+        """
+        Bind this Session's worker to whichever Document is in focus, once.
+
+        Read here rather than left for `build_registry`'s own fallback: this is
+        the one moment — the Session's first Intent — that "whichever Document
+        is in focus" and "the Document this Session is about" are guaranteed to
+        be the same Document (FCC-181). Every Intent after this one reuses the
+        binding regardless of what the user brings to front meanwhile.
+
+        Goes through `core.freecad_tools.active_document` rather than
+        `FreeCAD.ActiveDocument` directly — the panel reaching the Document on
+        its own is exactly what `test_registry_is_the_only_route.py` exists to
+        catch.
+        """
+        if bundle.worker.document is None:
+            from core.freecad_tools import active_document
+            bundle.worker.document = active_document()
+
+    def _route_event(self, log: str, event):
+        """
+        An event from *log*'s own worker: render it if that Session is on
+        screen, otherwise just remember it happened.
+
+        The event already reached the Session's own transcript on disk —
+        `LoopWorker.do_work` logs to it directly — so nothing here is lost by
+        not rendering it; `switch_session` resyncs from that transcript the
+        next time this Session is shown.
+        """
+        if log == self._current_log():
+            self.on_event(event)
+            return
+        bundle = self._workers.get(log)
+        if bundle:
+            bundle.dirty = True
+
+    def _route_ask(self, log: str, kind: str, payload):
+        """
+        A question from *log*'s own worker: put the card up if that Session is
+        on screen, otherwise hold it until the user switches back to it.
+
+        Recorded whichever way, not only while backgrounded: the panel resets
+        its render state on every switch, so a card left open when the user
+        looks away is gone from screen the instant they do, and has to be put
+        back up rather than lost, the same as one that arrived while away.
+        """
+        bundle = self._workers.get(log)
+        if bundle:
+            bundle.pending_question = (kind, payload)
+        if log == self._current_log():
+            self._dispatch_ask(kind, payload)
+
+    def _dispatch_ask(self, kind: str, payload):
+        {"plan_gate": self.on_plan_gate,
+         "owned_objects": self.on_owned_objects,
+         "missing_values": self.on_missing_values,
+         "revision": self.on_revision}[kind](payload)
 
     def _build_header(self):
         bar = QtWidgets.QWidget()
@@ -491,6 +740,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         layout.addWidget(self.title_label)
 
         layout.addStretch()
+
+        self.usage_label = QtWidgets.QLabel("$0.00")
+        self.usage_label.setObjectName("UsageTotal")
+        layout.addWidget(self.usage_label)
 
         self.new_btn = QtWidgets.QPushButton()
         self.new_btn.setObjectName("HeaderButton")
@@ -523,7 +776,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self.user_input = _PasteAwareTextEdit()
         self.user_input.setObjectName("ChatInput")
-        self.user_input.setPlaceholderText("Ask FreeCAD Copilot…")
+        self.user_input.setPlaceholderText("Describe what you want to build…")
         self.user_input.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.user_input.paste_image_requested.connect(
             lambda: self.upload_widget.handle_clipboard_paste()
@@ -547,16 +800,23 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.chip_bar.file_removed.connect(self.upload_widget.discard)
         strip.addWidget(self.upload_widget)
 
-        self.model_combo = QtWidgets.QComboBox()
-        self.model_combo.setObjectName("PillButton")
-        self.model_combo.setFixedHeight(24)
-        self.model_combo.setToolTip("Active LLM model")
-        self.model_combo.setMaxVisibleItems(12)
-        self._refresh_model_combo(provider_manager.instance().get_available_models())
-        self.model_combo.currentIndexChanged.connect(self._on_model_changed)
-        strip.addWidget(self.model_combo)
+        from .model_selector import ModelSelectorPopup
 
-        provider_manager.instance().models_changed.connect(self._refresh_model_combo)
+        self.model_button = QtWidgets.QPushButton()
+        self.model_button.setObjectName("PillButton")
+        self.model_button.setFixedHeight(24)
+        self.model_button.setToolTip("Active LLM model")
+        self.model_button.setLayoutDirection(QtCore.Qt.RightToLeft)
+        self.model_button.clicked.connect(self._open_model_selector)
+        strip.addWidget(self.model_button)
+
+        self.model_selector = ModelSelectorPopup(self)
+        self.model_selector.model_chosen.connect(self._on_model_selected)
+
+        self._models = []
+        self._current_model_id = None
+        self._refresh_models(provider_manager.instance().get_available_models())
+        provider_manager.instance().models_changed.connect(self._refresh_models)
         strip.addStretch()
 
         self.send_button = QtWidgets.QPushButton()
@@ -617,74 +877,57 @@ class CopilotPanel(QtWidgets.QDockWidget):
         which is black under every FreeCAD dark theme (ADR-0011).
         """
         super().showEvent(event)
-        for button, icon in ((self.new_btn, "plus"),
-                             (self.history_btn, "history"),
-                             (self.send_button, "arrow_up")):
-            button.setIcon(UIHelpers.get_icon(icon, size=18, on=button))
+        for button, icon, size in ((self.new_btn, "plus", 18),
+                                   (self.history_btn, "history", 18),
+                                   (self.send_button, "arrow_up", 18),
+                                   (self.model_button, "chevron_down", 12)):
+            button.setIcon(UIHelpers.get_icon(icon, size=size, on=button))
 
-    def _refresh_model_combo(self, models=None):
+    def _refresh_models(self, models=None):
         """
-        Rebuild the model combo, grouped under provider headings.
+        Recompute which model the button shows (FCC-175).
 
-        A heading is a row with its selectable and enabled flags cleared, so
-        grouping costs a QStandardItemModel and no custom popup widget — and
-        QComboBox's own type-to-jump keeps working over the whole list. A
-        heading is set apart by weight rather than by an indent, because
-        type-to-jump matches from the string's start.
-
-        While a provider's real list is still on its way, the last model is
-        kept as a row of its own: showing anything else is the flash of a model
-        the user never picked.
+        The stored id when the provider that owns it has confirmed it; the
+        stored id held bare while its provider's fetch is still in flight,
+        because showing anything else there is the flash of a model the user
+        never picked (FCC-41); the fallback `_retire_model` names once every
+        provider has answered and none offers it any more; or, with nothing
+        stored at all, the first model on offer.
         """
         if models is None:
             models = provider_manager.instance().get_available_models()
+        self._models = models
         last_id = settings_manager.instance().get_last_model()
 
-        self.model_combo.blockSignals(True)
-        items = QtGui.QStandardItemModel(self.model_combo)
         if not models:
-            items.appendRow(QtGui.QStandardItem("No models — add API key"))
-        else:
-            by_provider = {}
-            for model in models:
-                by_provider.setdefault(model["provider"], []).append(model)
-            bold = QtGui.QFont()
-            bold.setBold(True)
-            for provider, entries in by_provider.items():
-                heading = QtGui.QStandardItem(provider)
-                heading.setFlags(QtCore.Qt.NoItemFlags)
-                heading.setFont(bold)
-                items.appendRow(heading)
-                for model in entries:
-                    row = QtGui.QStandardItem(model["display"])
-                    row.setData(model["id"], QtCore.Qt.UserRole)
-                    items.appendRow(row)
-        self.model_combo.setModel(items)
+            self._set_current_model(None, "No models — add API key")
+            return
 
-        index = self.model_combo.findData(last_id) if last_id else -1
-        if index < 0 and last_id:
-            if models and not provider_manager.instance().awaiting_model_lists():
-                index = self.model_combo.findData(self._retire_model(last_id))
+        entry = next((m for m in models if m["id"] == last_id), None) if last_id else None
+        if entry is None and last_id:
+            if provider_manager.instance().awaiting_model_lists():
+                entry = {"id": last_id, "display": last_id, "provider": ""}
             else:
-                row = QtGui.QStandardItem(last_id)
-                row.setData(last_id, QtCore.Qt.UserRole)
-                items.insertRow(0, row)
-                index = 0
-        if index < 0:
-            index = 1 if models else 0
-        self.model_combo.setCurrentIndex(index)
-        self.model_combo.blockSignals(False)
+                fallback_id = self._retire_model(last_id)
+                entry = next((m for m in models if m["id"] == fallback_id), None)
+        if entry is None:
+            entry = models[0]
+
+        self._set_current_model(entry["id"], entry["display"])
+
+    def _set_current_model(self, model_id, display: str):
+        self._current_model_id = model_id
+        self.model_button.setText(display)
 
     def _retire_model(self, model_id: str) -> str:
         """
         Every provider has answered and none offers ``model_id``. Say so.
 
-        The fallback is the Preferences default, or row 1 — the first model
-        under the first heading — because that default is only a preference and
-        may never have been set.
+        The fallback is the Preferences default, or the first model on offer,
+        because that default is only a preference and may never have been set.
         """
         settings = settings_manager.instance()
-        fallback = settings.get_default_model() or self.model_combo.itemData(1)
+        fallback = settings.get_default_model() or self._models[0]["id"]
         settings.set_last_model(fallback)
         self.status_line.setText(
             "%s is no longer offered by its provider — switched to %s."
@@ -692,13 +935,16 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.status_line.setVisible(True)
         return fallback
 
-    def _on_model_changed(self, _idx: int):
+    def _open_model_selector(self):
+        self.model_selector.open_at(self._models, self.model_button)
+
+    def _on_model_selected(self, model_id: str):
         """Drops the client so the next send rebuilds it from settings."""
-        mid = self.model_combo.currentData()
-        if mid:
-            settings_manager.instance().set_last_model(mid)
-            if getattr(self, "worker", None):
-                self.worker.client = None
+        settings_manager.instance().set_last_model(model_id)
+        if getattr(self, "worker", None):
+            self.worker.client = None
+        entry = next((m for m in self._models if m["id"] == model_id), None)
+        self._set_current_model(model_id, entry["display"] if entry else model_id)
 
     def toggle_history(self):
         """
@@ -733,23 +979,32 @@ class CopilotPanel(QtWidgets.QDockWidget):
         screen.
         """
         self._plan_widget = None
+        self._queue_widget = None
         self._thought = None
         self._thought_phase = None
         self._current_step = 0
         self._question_card = None
         self._answers_to_enter = None
+        self._total_usd = 0.0
+        self._update_usage_total()
+        self._last_assertion_event = None
+        self._last_review_verdict_event = None
+        self._last_review_views = []
+
+    def _update_usage_total(self):
+        """Redraw the header's running total from `self._total_usd`."""
+        self.usage_label.setText(_format_cost(self._total_usd))
 
     def _became_the_live_session(self):
         """
-        Let go of the Session being left.
+        Let go of the render state of the Session being left.
 
-        Owned Objects are the live Session's alone — carried over, they would
-        let a Step delete an object the assistant created somewhere else
-        without ever asking.
+        Owned Objects no longer need clearing here (FCC-181): each Session
+        keeps its own `_SessionWorker`, so one Session's Owned Objects were
+        never reachable from another's to begin with.
         """
         self._reset_render_state()
         self._empty_state = None
-        self.worker.pipeline = None
 
     def rename_current_session(self):
         index = self.chat_sessions.stack.currentIndex()
@@ -764,26 +1019,52 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def switch_session(self, index: int):
         """
-        Open a Session, restoring its transcript the first time it is asked for.
+        Open a Session, resyncing what is shown to what actually happened.
 
-        Refused mid-run: a run narrates into the Session it was started from,
-        and moving out from under it loses track of which that was.
+        A run no longer holds the panel to the Session it started from
+        (FCC-181): each Session runs on its own `_SessionWorker`, so switching
+        away from one that is still going leaves it running rather than
+        blocking or losing it. What was missed while away is on that Session's
+        own transcript, and `restore_session` reads it back in — the same
+        chunked replay a reopened historical Session already used, asked for
+        again rather than only once, because a Session that kept running while
+        unseen has more on its transcript than the last time this replayed it.
         """
-        if self._running:
-            self.status_line.setText("Finish or stop this run before switching sessions.")
-            self.status_line.setVisible(True)
-            return
         self.chat_sessions.switch_to(index)
         self._became_the_live_session()
-        self.restore_session(index)
+        info = self.chat_sessions.get_session_info(index)
+        bundle = self._workers.get(info["log"]) if info else None
+        self.restore_session(index, resync=bool(bundle and bundle.dirty))
+        if bundle is None:
+            self._set_running(False)
+            return
+        bundle.dirty = False
+        self._set_running(bundle.running)
+        if bundle.pending_question is not None:
+            kind, payload = bundle.pending_question
+            self._dispatch_ask(kind, payload)
 
-    def restore_session(self, index: int):
-        """Replay the Session's log through the switch that rendered it live."""
+    def restore_session(self, index: int, resync: bool = False):
+        """
+        Replay the Session's log through the switch that rendered it live.
+
+        `resync` bypasses "already restored" and re-reads the whole transcript
+        regardless — for a Session whose worker kept running while it was not
+        on screen, so what were stale widgets are rebuilt from what the
+        transcript now actually holds (FCC-181). `clear_page` first, or the
+        replay would land its widgets after whatever this Session showed the
+        last time it was open, doubling everything that had already rendered.
+        """
         from core.events import replay
 
         info = self.chat_sessions.get_session_info(index)
-        if info is None or not self.chat_sessions.mark_restored(index):
+        if info is None:
             return
+        due = self.chat_sessions.mark_restored(index)
+        if not resync and not due:
+            return
+        if resync:
+            self.chat_sessions.clear_page(index)
 
         events, truncated = replay(info["log"])
         if not events:
@@ -839,11 +1120,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if confirmed != QtWidgets.QMessageBox.Yes:
             return
         self.chat_sessions.remove_session(index)
+        bundle = self._workers.pop(info["log"], None)
+        if bundle is not None:
+            bundle.shut_down(self.SHUTDOWN_GRACE_MS)
         self.update_header_title(self.chat_sessions.stack.currentIndex())
 
     def _build_empty_state(self):
         """One muted line, so an empty panel still says where the user stands."""
-        model = self.model_combo.currentText().strip() or "no model"
+        model = self.model_button.text().strip() or "no model"
         label = QtWidgets.QLabel(
             "%s. The Plan Gate asks before anything is written to your Document."
             % model)
@@ -872,7 +1156,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if not attached:
             return []
         try:
-            model = selected_model_name(self.model_combo.currentData())
+            model = selected_model_name(self._current_model_id)
         except Exception:
             return []
         return unusable_attachments(attached, model)
@@ -906,10 +1190,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
                 + "\n".join("• " + reason for reason in unusable)))
             return
 
-        self._name_session(index, session["log"], intent)
+        log = session["log"]
+        bundle = self._worker_for(log)
+        self._bind_document(bundle)
+
+        self._name_session(index, log, intent)
 
         attachments = self.chip_bar.get_and_clear()
-        self._sent_attachments = attachments
+        bundle.sent_attachments = attachments
 
         if self._empty_state is not None:
             self._empty_state.setParent(None)
@@ -919,11 +1207,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self._reset_render_state()
 
+        bundle.running = True
         self._set_running(True)
         self.status_line.setText("Planning…")
         self.status_line.setVisible(True)
-        self.request_work.emit(intent, attachments, session["log"],
-                               list(self._outstanding))
+        outstanding = list(bundle.outstanding)
+        self.request_work.emit(intent, attachments, log, outstanding)
+        bundle.request_work.emit(intent, attachments, log, outstanding)
 
     def _name_session(self, index: int, log: str, intent: str):
         """
@@ -971,6 +1261,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._question_card.setEnabled(False)
             self._question_card = None
             self._answers_to_enter = None
+            self._update_composer_enabled()
+        bundle = self._workers.get(self._current_log())
+        if bundle is not None:
+            bundle.pending_question = None
         self.worker.stop()
         self.stop_button.setEnabled(False)
         self.status_line.setText("Stopping after the current attempt…")
@@ -980,6 +1274,25 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.send_button.setVisible(not running)
         self.stop_button.setVisible(running)
         self.stop_button.setEnabled(running)
+        self._update_composer_enabled()
+
+    def _update_composer_enabled(self):
+        """
+        Dark and unusable while the run holds the floor, back the moment it
+        gives it up — either because it ended or because a Gate is the one
+        asking, and a Gate's own answer (Amend, the values Plan was not given)
+        is typed here. Greyed the way `AccordionWidget.mark_as_reasoning`
+        subdues reasoning: an opacity effect, not a colour of its own
+        (ADR-0011).
+        """
+        enabled = not self._running or self._question_card is not None
+        self.user_input.setEnabled(enabled)
+        if enabled:
+            self.user_input.setGraphicsEffect(None)
+        else:
+            effect = QtWidgets.QGraphicsOpacityEffect(self.user_input)
+            effect.setOpacity(0.6)
+            self.user_input.setGraphicsEffect(effect)
 
     @QtCore.Slot(object)
     def on_event(self, event):
@@ -1004,6 +1317,20 @@ class CopilotPanel(QtWidgets.QDockWidget):
         from core.narrate import narrate
 
         data = event.data
+        self._update_queue(event)
+        self._update_review_evidence(event)
+
+        if event.kind == ev.INTENT:
+            self._total_usd = 0.0
+            self._update_usage_total()
+            self._last_assertion_event = None
+            self._last_review_verdict_event = None
+            self._last_review_views = []
+
+        if event.kind == ev.COST:
+            self._total_usd += data["usd"]
+            self._update_usage_total()
+            return
 
         if event.kind == ev.THOUGHT:
             self._render_thought(data["phase"], data["text"])
@@ -1026,6 +1353,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
                               data.get("unanswered", ()), data.get("decided", ()))
             return
 
+        if event.kind == ev.ASSERTION and data.get("ok") is not None:
+            self.add_chat_widget(AssertionResultsWidget(data))
+            return
+
         if event.kind == ev.STEP_STARTED:
             self._thought = None
             self._current_step = data["index"]
@@ -1043,6 +1374,69 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if event.kind == ev.PLAN_REVISED:
             self._render_plan(data["steps"], "Revised Plan", data.get("acceptance", ()),
                               data.get("unanswered", ()), data.get("decided", ()))
+
+    def _update_queue(self, event):
+        """
+        The Queue's phase and Step marks.
+
+        Kept beside the narration rather than inside it: a mark is state
+        `narrate()` never carries, since it only ever returns words (FCC-172).
+        """
+        from core import events as ev
+        from core.loop import APPROVE
+
+        data = event.data
+
+        if event.kind == ev.INTENT:
+            self._queue_widget = QueueWidget()
+            self.add_chat_widget(self._queue_widget)
+            return
+
+        if not self._queue_widget:
+            return
+
+        if event.kind in (ev.PLAN, ev.PLAN_REVISED):
+            self._queue_widget.start_plan(data["steps"])
+        elif event.kind == ev.GATE and data.get("decision") == APPROVE:
+            self._queue_widget.start_execute(data.get("steps"))
+        elif event.kind == ev.STEP_STARTED:
+            self._queue_widget.step_started(data["index"])
+        elif event.kind == ev.APPLIED:
+            self._queue_widget.step_applied(data["step"])
+        elif event.kind == ev.UNBUILT:
+            self._queue_widget.step_unbuilt(data["step"])
+        elif event.kind == ev.ASSERTION:
+            self._queue_widget.start_review()
+        elif event.kind == ev.REVIEW_VERDICT:
+            self._queue_widget.finish_review()
+        elif event.kind in (ev.BLOCKED, ev.ERROR):
+            self._queue_widget.fail_current()
+
+    def _update_review_evidence(self, event):
+        """
+        What the Review verdict card shows, tracked off the stream as it
+        passes (FCC-178) -- kept beside the narration rather than inside it,
+        the same reason `_update_queue` is: a screenshot path and a raw
+        Assertion/Review event are not words `narrate()` returns.
+
+        Reset on `ASSERTION` rather than only at the top of a run: the
+        acceptance checks are the one event guaranteed to land, in the same
+        cycle, before `decided()` ever asks anything -- whether Review runs
+        after them or the cycle stops there -- so a verdict left over from an
+        earlier revision of this same run cannot be mistaken for the one
+        belonging to this cycle.
+        """
+        from core import events as ev
+
+        data = event.data
+
+        if event.kind == ev.ASSERTION:
+            self._last_assertion_event = event
+            self._last_review_verdict_event = None
+        elif event.kind == ev.TOOL_RESULT and data.get("name") == "review_views":
+            self._last_review_views = list((data.get("result") or {}).get("views") or [])
+        elif event.kind == ev.REVIEW_VERDICT:
+            self._last_review_verdict_event = event
 
     def _say(self, narration):
         """
@@ -1062,15 +1456,20 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.status_line.setVisible(True)
 
     def _render_thought(self, phase, text):
-        """Reasoning appends to one accordion per phase turn, as it forms."""
+        """
+        Reasoning appends to one accordion per phase turn, as it forms.
+
+        Only the chat scroll renders it: the status line never carries a
+        reasoning chunk, so a long chain of thought is read whole rather than
+        clipped to whatever fit in ninety characters (FCC-173).
+        """
         if self._thought is None or self._thought_phase != phase:
             self._thought = AccordionWidget("Thinking (%s)…" % phase)
             self._thought_phase = phase
+            self._thought.mark_as_reasoning()
             self.add_chat_widget(self._thought)
             self._thought.start_pulsing()
         self._thought.append_text(text)
-        self.status_line.setText(("Thinking: " + text.replace("\n", " "))[-90:])
-        self.status_line.setVisible(True)
 
     def _render_attachments(self, files):
         """
@@ -1168,23 +1567,31 @@ class CopilotPanel(QtWidgets.QDockWidget):
         The Plan Gate. One approval covers every Step; there is no per-Step
         approval, so this appears once per Plan and the run waits on it. A
         revised Plan is a new Plan and gets its own card (FCC-68).
+
+        One answer now, not four (FCC-177): the Plan is edited directly on
+        `self._plan_widget` -- a Step's text, an add, a delete, a drag to
+        reorder -- and Build reads whatever it holds at the moment it is
+        pressed, edited or as-generated, and locks the widget in the same
+        breath so nothing typed after Build changes what already ran.
         """
-        from core.loop import AMEND, APPROVE, REJECT, Approval
+        from core.loop import APPROVE, Approval
+
+        plan_widget = self._plan_widget
+
+        def build():
+            edited = list(plan_widget.steps()) if plan_widget else list(steps)
+            if plan_widget:
+                plan_widget.lock()
+            return Approval(APPROVE, steps=tuple(edited))
 
         self._put_the_question(
             "Waiting for you to approve the Plan\u2026",
             "Run this Plan? Approving covers all %d Steps \u2014 no Step is confirmed "
             "separately." % len(steps),
-            "To amend it, say what to change in the box below, then Amend. Approve and "
-            "carry on also covers the Plans this one is revised into, so the run does "
-            "not stop here again \u2014 you are still asked before anything of yours is "
-            "deleted, before the model is rebuilt, and about a result that did not pass.",
-            (("\u2713  Approve", lambda: Approval(APPROVE)),
-             ("\u23e9  Approve and carry on", lambda: Approval(APPROVE, standing=True)),
-             ("\u270e  Amend", lambda: self._from_composer(
-                 "Say what to change, then press Amend\u2026",
-                 lambda said: Approval(AMEND, said))),
-             ("\u2717  Reject", lambda: Approval(REJECT))))
+            "Click a Step to edit it, or add and remove Steps above, then Build. You are "
+            "still asked before anything of yours is deleted, before the model is "
+            "rebuilt, and about a result that did not pass.",
+            (("\u2713  Build", build),))
 
     @QtCore.Slot(object)
     def on_revision(self, failure):
@@ -1193,6 +1600,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
         it. Three answers, and the Gate's three are not them: REJECT stops a
         run and does not licence a restart, so "start over" needs a word of its
         own (FCC-77).
+
+        Whether Review ever ran is what tells the two askers behind this one
+        signal apart (FCC-178): the acceptance checks can fail and stop the
+        run before Review is asked anything, and `_last_review_verdict_event`
+        is `None` for exactly that case, since `_update_review_evidence`
+        clears it at the acceptance checks' own event. Review having run puts
+        up the Confirmation card the epic names -- Approve, Reject, Start
+        Over, with what Review looked at above them; without one this stays
+        the plain question, since there is no Review result yet to show.
         """
         from core.loop import ACCEPT, REVISE, START_OVER
 
@@ -1200,6 +1616,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.add_chat_widget(AssistantMessageWidget(
             "The result did not pass, after %d Step%s were applied:\n%s"
             % (applied, "" if applied == 1 else "s", failure.get("why", ""))))
+
+        if self._last_review_verdict_event is not None:
+            self._put_the_review_verdict(ACCEPT, REVISE, START_OVER)
+            return
 
         self._put_the_question(
             "Waiting for you to decide what to do\u2026",
@@ -1209,6 +1629,39 @@ class CopilotPanel(QtWidgets.QDockWidget):
             (("\u2713  Take it as it is", lambda: ACCEPT),
              ("\u270e  Fix it", lambda: REVISE),
              ("\u21ba  Start over", lambda: START_OVER)))
+
+    def _put_the_review_verdict(self, accept, revise, start_over):
+        """
+        The Confirmation card FCC-178 asks for: `ReviewVerdictWidget`, fed
+        from what `_update_review_evidence` already read off the stream, its
+        `decided` signal answering the same waiting worker thread every other
+        card here answers through `_answer_with`.
+
+        `assertion_line` is `summary_line`'s "N passed, M failed" (FCC-179)
+        where there is a pass/fail count to give -- the plain narration line
+        stays the fallback for the one case that is not a count at all, the
+        checks that could not be written.
+        """
+        from core.narrate import narrate
+
+        self.status_line.setText("Waiting for you to review the result\u2026")
+        self.status_line.setVisible(True)
+
+        assertion_data = self._last_assertion_event.data if self._last_assertion_event else {}
+        card = ReviewVerdictWidget(
+            view_paths=self._last_review_views,
+            assertion_line=(summary_line(assertion_data)
+                            or (narrate(self._last_assertion_event).line
+                                if self._last_assertion_event else "")),
+            verdict_line=narrate(self._last_review_verdict_event).line)
+        answers = {"approve": lambda: accept, "reject": lambda: revise,
+                  "start_over": lambda: start_over}
+        card.decided.connect(lambda choice: self._answer_with(answers[choice]))
+
+        self._question_card = card
+        self._answers_to_enter = None
+        self._update_composer_enabled()
+        self.add_chat_widget(card)
 
     @QtCore.Slot(object)
     def on_missing_values(self, question):
@@ -1306,6 +1759,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self._question_card = card
         self._answers_to_enter = enter
+        self._update_composer_enabled()
         self.add_chat_widget(card)
 
     def _answer_with(self, decide):
@@ -1316,9 +1770,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         card, self._question_card = self._question_card, None
         self._answers_to_enter = None
+        self._update_composer_enabled()
         if card is not None:
             card.setEnabled(False)
         self.status_line.setText("Working\u2026")
+        bundle = self._workers.get(self._current_log())
+        if bundle is not None:
+            bundle.pending_question = None
         self.ask.answer(answer)
 
     def _from_composer(self, nag, into):
@@ -1340,21 +1798,33 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.add_chat_widget(TextMessageWidget(said))
         return into(said)
 
-    @QtCore.Slot(object)
-    def on_run_finished(self, result):
+    def on_run_finished(self, result, log: str):
         """
         Ends the run and carries its unmet acceptance checks forward, whatever
         the run ended as, including a result the user took as it is: the entries
         are wrong in the Document either way, and the next Intent inherits them.
         A run that passed clears the list.
+
+        *log* names which Session finished — this Session's own worker keeps
+        running whether or not it is the one on screen (FCC-181), so the
+        bookkeeping happens here regardless, and only the widgets are guarded
+        behind "is this the Session being looked at right now".
         """
+        bundle = self._workers.get(log)
+        if bundle is None:
+            return
+        bundle.running = False
+        self.upload_widget.discard(*bundle.sent_attachments)
+        bundle.sent_attachments = []
+        bundle.outstanding = list(getattr(result, "unmet", None) or ())
+        if log != self._current_log():
+            bundle.dirty = True
+            return
+
         self._set_running(False)
-        self.upload_widget.discard(*self._sent_attachments)
-        self._sent_attachments = []
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
-        self._outstanding = list(getattr(result, "unmet", None) or ())
         if result is not None and result.ok:
             self.status_line.setVisible(False)
         else:
@@ -1384,27 +1854,70 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _cleanup_thread(self):
         """
-        Stop the worker, whatever it is in the middle of.
+        Stop every Session's worker, whatever each is in the middle of.
 
         `quit()` only asks a thread's event loop to end, and a run is not
         waiting for events — it is inside a call: parked on a question, or on
         a request in flight. Waiting on that without first releasing the
         question is FreeCAD hanging on exit, with no window left to answer
-        from. The headless FreeCAD behind Preflight is this panel's child
-        process and goes with it.
+        from. The headless FreeCAD behind each Session's own Preflight Worker
+        is this panel's child process and goes with it.
+
+        Every worker is told to stop before any thread is waited on
+        (FCC-181): a Session parked on a question blocks its own thread until
+        released, and waiting on one before releasing the next would serialise
+        what should be a handful of independent, already-blocked threads.
 
         `SHUTDOWN_GRACE_MS` is what a run in flight is given to notice it was
         stopped before the thread is ended from outside, long enough for a
         request already sent to unwind.
         """
-        self.worker.stop()
-        if self.worker.pipeline is not None:
-            self.worker.pipeline.shutdown()
-        if hasattr(self, 'thread') and self.thread.isRunning():
-            self.thread.quit()
-            if not self.thread.wait(self.SHUTDOWN_GRACE_MS):
-                self.thread.terminate()
-                self.thread.wait(1000)
+        FreeCAD.removeDocumentObserver(self)
+        for bundle in self._workers.values():
+            bundle.worker.stop()
+            if bundle.worker.pipeline is not None:
+                bundle.worker.pipeline.shutdown()
+        for bundle in self._workers.values():
+            if bundle.thread.isRunning():
+                bundle.thread.quit()
+                if not bundle.thread.wait(self.SHUTDOWN_GRACE_MS):
+                    bundle.thread.terminate()
+                    bundle.thread.wait(1000)
+
+    def slotDeletedDocument(self, document):
+        """
+        A Document closing ends whichever Session was bound to it (FCC-181).
+
+        FreeCAD calls every registered observer's `slotDeletedDocument` by
+        this exact name — no base class to inherit, just the method present.
+        The Session itself, its transcript and its place in the picker are
+        untouched; only the worker is torn down, the same as `delete_session`
+        tears one down, so nothing keeps running against a Document that is
+        no longer there to run against.
+        """
+        for log, bundle in list(self._workers.items()):
+            if bundle.worker.document is document:
+                bundle.shut_down(self.SHUTDOWN_GRACE_MS)
+                del self._workers[log]
+
+    def slotActivateDocument(self, document):
+        """
+        The MDI tab the user brought forward in FreeCAD moves the panel too.
+
+        `document.Name` is looked up against every Session's recorded
+        `"document"`, last one first — a Document worked on by more than one
+        Session (a second chat opened against the same file) resolves to
+        whichever of them ran most recently, since Sessions are only ever
+        appended and this index runs newest-last. A Document no Session has
+        named yet — nothing has been sent to it — leaves the panel where it
+        was; there is nothing to switch to.
+        """
+        for index in range(self.chat_sessions.count() - 1, -1, -1):
+            info = self.chat_sessions.get_session_info(index)
+            if info and info.get("document") == document.Name:
+                if index != self.chat_sessions.stack.currentIndex():
+                    self.switch_session(index)
+                return
 
     def closeEvent(self, event):
         self.upload_widget.discard_temporary()

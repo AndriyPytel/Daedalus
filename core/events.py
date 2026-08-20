@@ -25,8 +25,10 @@ and a transcript can be judged against the request that opened it.
 `cost` is what one call to the provider spent — the amount and the model it was
 spent on. It is the only record of what a run costs there is; a provider that
 answers on a subscription is not billed by the token, so the number is what the
-same call would have cost through a key. It is written and not shown: a number
-per call is for the session log to keep, not a sentence for the transcript.
+same call would have cost through a key. The panel accumulates it into one
+running total for the run rather than narrating each call: a hundred Design
+calls would otherwise be a hundred lines nobody reads (`ui/copilot_panel.py ::
+on_event`).
 """
 import json
 import time
