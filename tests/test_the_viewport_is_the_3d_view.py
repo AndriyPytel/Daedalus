@@ -59,6 +59,13 @@ class GuiDocument:
         return list(self._views) if type_name == "Gui::View3DInventor" else []
 
 
+class BoundDocument:
+    """A Session's own bound Document (FCC-181) — just enough for `.Name`."""
+
+    def __init__(self, name):
+        self.Name = name
+
+
 @pytest.fixture
 def gui(monkeypatch):
     def open_tabs(in_front, views):
@@ -67,6 +74,24 @@ def gui(monkeypatch):
         monkeypatch.setitem(sys.modules, "FreeCADGui", module)
 
     return open_tabs
+
+
+@pytest.fixture
+def two_documents_open(monkeypatch):
+    """
+    Two Documents open at once, one of them in front — the case no headless
+    FreeCAD can have, which is exactly the case a Session bound to the
+    unfocused one has to get right.
+    """
+    def open_both(front_view, background_view):
+        by_name = {"Front": GuiDocument(front_view, [front_view]),
+                  "Background": GuiDocument(background_view, [background_view])}
+        module = types.ModuleType("FreeCADGui")
+        module.ActiveDocument = by_name["Front"]
+        module.getDocument = lambda name: by_name[name]
+        monkeypatch.setitem(sys.modules, "FreeCADGui", module)
+
+    return open_both
 
 
 def test_a_spreadsheet_in_front_does_not_become_the_viewport(gui):
@@ -109,3 +134,29 @@ def test_review_with_no_3d_view_leaves_the_rasteriser_to_it(gui, tmp_path):
     gui(SpreadsheetView(), [])
 
     assert capture_review_views([str(tmp_path / "iso.png")]) == []
+
+
+def test_fit_view_moves_the_bound_documents_camera_not_the_focused_tabs(two_documents_open):
+    """
+    A Session bound to a Document (FCC-181) fits that Document's own view
+    through `FreeCADGui.getDocument(name)`, even while a different Document is
+    the one actually in front.
+    """
+    focused, background = View3D(), View3D()
+    two_documents_open(focused, background)
+
+    fit_view(BoundDocument("Background"))
+
+    assert (background.fits, focused.fits) == (1, 0)
+
+
+def test_capture_review_views_reads_the_bound_documents_view(two_documents_open, tmp_path):
+    focused, background = View3D(), View3D()
+    two_documents_open(focused, background)
+    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
+
+    written = capture_review_views(paths, BoundDocument("Background"))
+
+    assert written == paths
+    assert background.turned == list(REVIEW_VIEWS)
+    assert focused.turned == []

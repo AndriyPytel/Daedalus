@@ -275,6 +275,7 @@ class LoopWorker(QtCore.QObject):
         self.ask = ask
         self.client = None
         self.pipeline = None
+        self.document = None
         self._stop = threading.Event()
 
     def stop(self):
@@ -294,14 +295,20 @@ class LoopWorker(QtCore.QObject):
         The pipeline outlives a run — it keeps the Session's Owned Objects — so
         the stream it narrates the Owned Object question into is set per run
         rather than at construction.
+
+        `self.document` is this Session's own bound Document (FCC-181), set by
+        the panel before the first Intent is sent and reused for every Intent
+        after that — a later focus change elsewhere must not redirect a Tool
+        call or an Apply that belongs to this Session.
         """
         from core.apply import ApplyPipeline
         from core.freecad_tools import build_registry
 
         if self.pipeline is None:
-            self.pipeline = ApplyPipeline(confirm=self.ask.about_objects_we_do_not_own)
+            self.pipeline = ApplyPipeline(document=self.document,
+                                          confirm=self.ask.about_objects_we_do_not_own)
         self.pipeline.events = events
-        return build_registry(pipeline=self.pipeline)
+        return build_registry(document=self.document, pipeline=self.pipeline)
 
     @QtCore.Slot(str, object, str, object)
     def do_work(self, intent: str, attachments: list, transcript: str,
@@ -378,6 +385,59 @@ RESTORE_CHUNK = 25
 ATTACHMENT_WIDTH = 320
 
 
+class _SessionWorker(QtCore.QObject):
+    """
+    One Session's own `LoopWorker`, on its own `QThread` (FCC-181).
+
+    Standing up one of these per Session — instead of the single global worker
+    this panel used to hold — is what makes two open Documents genuinely
+    parallel: each Session's Tool calls and Apply are bound to its own
+    `worker.document` (set once, from whichever Document is in focus when the
+    Session's first Intent is sent) rather than to `FreeCAD.ActiveDocument` at
+    the moment of the call, which is whichever Document the user happens to be
+    looking at right then. A Preflight Worker comes along for free: it lives on
+    `worker.pipeline`, and that pipeline is this Session's own.
+
+    `running`, `outstanding` and `sent_attachments` are what used to be the
+    panel's own single set of instance attributes — carried here instead, so a
+    Session backgrounded mid-run keeps its own state rather than sharing the
+    one the panel happens to be looking at. `dirty` is set when an event lands
+    for this Session while it is not the one on screen, so the panel knows to
+    resync from the transcript rather than trust stale widgets the next time it
+    is shown. `pending_question` is the one live Ask this Session is blocked
+    on, if any, so switching back to a Session parked at its Plan Gate puts the
+    same card up again instead of losing it.
+    """
+
+    request_work = QtCore.Signal(str, object, str, object)
+
+    def __init__(self, bridge: EventBridge, ask: AskTheUser):
+        super().__init__()
+        self.bridge = bridge
+        self.ask = ask
+        self.thread = QtCore.QThread()
+        self.worker = LoopWorker(bridge, ask)
+        self.worker.moveToThread(self.thread)
+        self.request_work.connect(self.worker.do_work)
+        self.running = False
+        self.outstanding: list = []
+        self.sent_attachments: list = []
+        self.dirty = False
+        self.pending_question = None
+        self.thread.start()
+
+    def shut_down(self, grace_ms: int):
+        """Stop the run, whatever it is in the middle of, and end the thread."""
+        self.worker.stop()
+        if self.worker.pipeline is not None:
+            self.worker.pipeline.shutdown()
+        if self.thread.isRunning():
+            self.thread.quit()
+            if not self.thread.wait(grace_ms):
+                self.thread.terminate()
+                self.thread.wait(1000)
+
+
 class CopilotPanel(QtWidgets.QDockWidget):
     """
     The dock: the panel's widgets, its worker thread, and the event stream
@@ -395,9 +455,18 @@ class CopilotPanel(QtWidgets.QDockWidget):
     or wrapping off entirely — widens the dock, and Qt does not give the width
     back when the text goes short again.
 
-    `_outstanding` is what the last run's acceptance checks left wrong, carried
-    into the next Intent typed against the same Document: a drawing that amends
-    a part must not be planned as though the part were sound.
+    One `_SessionWorker` per Session (FCC-181), in `self._workers`, keyed by
+    the Session's own log path — the same stable identity `name_document` and
+    `title_arrived` already key by, since a position shifts under pruning and a
+    log does not. `worker`, `thread`, `bridge` and `ask` stay as properties
+    resolving to whichever Session is currently on screen, so the rest of this
+    class — and the tests that already knew a panel had one worker — still
+    reads that way; what changed is that switching sessions now switches which
+    `_SessionWorker` those names resolve to, instead of resetting the one
+    worker everyone shared. `outstanding`, the acceptance checks a run left
+    wrong to carry into that Session's next Intent, lives on the
+    `_SessionWorker` for the same reason a Document does — it belongs to the
+    Session, not to whatever happens to be in front.
     """
 
     request_work = QtCore.Signal(str, object, str, object)
@@ -439,30 +508,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
         input_card = self._build_input_card()
         root_layout.addWidget(input_card)
 
-        self.thread = QtCore.QThread()
-        self.bridge = EventBridge()
-        self.ask = AskTheUser()
-        self.worker = LoopWorker(self.bridge, self.ask)
-        self.worker.moveToThread(self.thread)
-
-        self.request_work.connect(self.worker.do_work)
-        self.worker.finished.connect(self.on_run_finished)
-        self.worker.document_named.connect(self.on_document_named)
-        self.bridge.event.connect(self.on_event)
-        self.ask.plan_gate.connect(self.on_plan_gate)
-        self.ask.owned_objects.connect(self.on_owned_objects)
-        self.ask.missing_values.connect(self.on_missing_values)
-        self.ask.revision.connect(self.on_revision)
+        self._workers: dict[str, _SessionWorker] = {}
 
         self._running = False
-        self._outstanding: list = []
         self._empty_state = None
-        self._sent_attachments: list[str] = []
         self._title_threads = []
         self._reset_render_state()
 
-        self.thread.start()
-        
+        FreeCAD.addDocumentObserver(self)
+
         app = QtWidgets.QApplication.instance()
         if app:
             app.aboutToQuit.connect(self._cleanup_thread)
@@ -472,6 +526,110 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self.chat_sessions.load()
         self.new_chat()
+
+    @property
+    def worker(self) -> LoopWorker:
+        return self._worker_for(self._current_log()).worker
+
+    @property
+    def thread(self) -> QtCore.QThread:
+        return self._worker_for(self._current_log()).thread
+
+    @property
+    def bridge(self) -> EventBridge:
+        return self._worker_for(self._current_log()).bridge
+
+    @property
+    def ask(self) -> AskTheUser:
+        return self._worker_for(self._current_log()).ask
+
+    def _current_log(self):
+        info = self.chat_sessions.get_session_info(self.chat_sessions.stack.currentIndex())
+        return info["log"] if info else None
+
+    def _worker_for(self, log: str) -> _SessionWorker:
+        """
+        This Session's own worker, building it the first time it is asked for.
+
+        Built lazily rather than one per Session up front: most Sessions in the
+        picker never run again, and a QThread nobody uses is a thread this
+        panel would still have to stop on exit.
+        """
+        bundle = self._workers.get(log)
+        if bundle is None:
+            bundle = _SessionWorker(EventBridge(), AskTheUser())
+            bundle.worker.finished.connect(
+                lambda result, log=log: self.on_run_finished(result, log))
+            bundle.worker.document_named.connect(self.on_document_named)
+            bundle.bridge.event.connect(lambda event, log=log: self._route_event(log, event))
+            bundle.ask.plan_gate.connect(
+                lambda payload, log=log: self._route_ask(log, "plan_gate", payload))
+            bundle.ask.owned_objects.connect(
+                lambda payload, log=log: self._route_ask(log, "owned_objects", payload))
+            bundle.ask.missing_values.connect(
+                lambda payload, log=log: self._route_ask(log, "missing_values", payload))
+            bundle.ask.revision.connect(
+                lambda payload, log=log: self._route_ask(log, "revision", payload))
+            self._workers[log] = bundle
+        return bundle
+
+    def _bind_document(self, bundle: _SessionWorker):
+        """
+        Bind this Session's worker to whichever Document is in focus, once.
+
+        Read here rather than left for `build_registry`'s own fallback: this is
+        the one moment — the Session's first Intent — that "whichever Document
+        is in focus" and "the Document this Session is about" are guaranteed to
+        be the same Document (FCC-181). Every Intent after this one reuses the
+        binding regardless of what the user brings to front meanwhile.
+
+        Goes through `core.freecad_tools.active_document` rather than
+        `FreeCAD.ActiveDocument` directly — the panel reaching the Document on
+        its own is exactly what `test_registry_is_the_only_route.py` exists to
+        catch.
+        """
+        if bundle.worker.document is None:
+            from core.freecad_tools import active_document
+            bundle.worker.document = active_document()
+
+    def _route_event(self, log: str, event):
+        """
+        An event from *log*'s own worker: render it if that Session is on
+        screen, otherwise just remember it happened.
+
+        The event already reached the Session's own transcript on disk —
+        `LoopWorker.do_work` logs to it directly — so nothing here is lost by
+        not rendering it; `switch_session` resyncs from that transcript the
+        next time this Session is shown.
+        """
+        if log == self._current_log():
+            self.on_event(event)
+            return
+        bundle = self._workers.get(log)
+        if bundle:
+            bundle.dirty = True
+
+    def _route_ask(self, log: str, kind: str, payload):
+        """
+        A question from *log*'s own worker: put the card up if that Session is
+        on screen, otherwise hold it until the user switches back to it.
+
+        Recorded whichever way, not only while backgrounded: the panel resets
+        its render state on every switch, so a card left open when the user
+        looks away is gone from screen the instant they do, and has to be put
+        back up rather than lost, the same as one that arrived while away.
+        """
+        bundle = self._workers.get(log)
+        if bundle:
+            bundle.pending_question = (kind, payload)
+        if log == self._current_log():
+            self._dispatch_ask(kind, payload)
+
+    def _dispatch_ask(self, kind: str, payload):
+        {"plan_gate": self.on_plan_gate,
+         "owned_objects": self.on_owned_objects,
+         "missing_values": self.on_missing_values,
+         "revision": self.on_revision}[kind](payload)
 
     def _build_header(self):
         bar = QtWidgets.QWidget()
@@ -741,15 +899,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _became_the_live_session(self):
         """
-        Let go of the Session being left.
+        Let go of the render state of the Session being left.
 
-        Owned Objects are the live Session's alone — carried over, they would
-        let a Step delete an object the assistant created somewhere else
-        without ever asking.
+        Owned Objects no longer need clearing here (FCC-181): each Session
+        keeps its own `_SessionWorker`, so one Session's Owned Objects were
+        never reachable from another's to begin with.
         """
         self._reset_render_state()
         self._empty_state = None
-        self.worker.pipeline = None
 
     def rename_current_session(self):
         index = self.chat_sessions.stack.currentIndex()
@@ -764,26 +921,52 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def switch_session(self, index: int):
         """
-        Open a Session, restoring its transcript the first time it is asked for.
+        Open a Session, resyncing what is shown to what actually happened.
 
-        Refused mid-run: a run narrates into the Session it was started from,
-        and moving out from under it loses track of which that was.
+        A run no longer holds the panel to the Session it started from
+        (FCC-181): each Session runs on its own `_SessionWorker`, so switching
+        away from one that is still going leaves it running rather than
+        blocking or losing it. What was missed while away is on that Session's
+        own transcript, and `restore_session` reads it back in — the same
+        chunked replay a reopened historical Session already used, asked for
+        again rather than only once, because a Session that kept running while
+        unseen has more on its transcript than the last time this replayed it.
         """
-        if self._running:
-            self.status_line.setText("Finish or stop this run before switching sessions.")
-            self.status_line.setVisible(True)
-            return
         self.chat_sessions.switch_to(index)
         self._became_the_live_session()
-        self.restore_session(index)
+        info = self.chat_sessions.get_session_info(index)
+        bundle = self._workers.get(info["log"]) if info else None
+        self.restore_session(index, resync=bool(bundle and bundle.dirty))
+        if bundle is None:
+            self._set_running(False)
+            return
+        bundle.dirty = False
+        self._set_running(bundle.running)
+        if bundle.pending_question is not None:
+            kind, payload = bundle.pending_question
+            self._dispatch_ask(kind, payload)
 
-    def restore_session(self, index: int):
-        """Replay the Session's log through the switch that rendered it live."""
+    def restore_session(self, index: int, resync: bool = False):
+        """
+        Replay the Session's log through the switch that rendered it live.
+
+        `resync` bypasses "already restored" and re-reads the whole transcript
+        regardless — for a Session whose worker kept running while it was not
+        on screen, so what were stale widgets are rebuilt from what the
+        transcript now actually holds (FCC-181). `clear_page` first, or the
+        replay would land its widgets after whatever this Session showed the
+        last time it was open, doubling everything that had already rendered.
+        """
         from core.events import replay
 
         info = self.chat_sessions.get_session_info(index)
-        if info is None or not self.chat_sessions.mark_restored(index):
+        if info is None:
             return
+        due = self.chat_sessions.mark_restored(index)
+        if not resync and not due:
+            return
+        if resync:
+            self.chat_sessions.clear_page(index)
 
         events, truncated = replay(info["log"])
         if not events:
@@ -839,6 +1022,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if confirmed != QtWidgets.QMessageBox.Yes:
             return
         self.chat_sessions.remove_session(index)
+        bundle = self._workers.pop(info["log"], None)
+        if bundle is not None:
+            bundle.shut_down(self.SHUTDOWN_GRACE_MS)
         self.update_header_title(self.chat_sessions.stack.currentIndex())
 
     def _build_empty_state(self):
@@ -906,10 +1092,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
                 + "\n".join("• " + reason for reason in unusable)))
             return
 
-        self._name_session(index, session["log"], intent)
+        log = session["log"]
+        bundle = self._worker_for(log)
+        self._bind_document(bundle)
+
+        self._name_session(index, log, intent)
 
         attachments = self.chip_bar.get_and_clear()
-        self._sent_attachments = attachments
+        bundle.sent_attachments = attachments
 
         if self._empty_state is not None:
             self._empty_state.setParent(None)
@@ -919,11 +1109,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self._reset_render_state()
 
+        bundle.running = True
         self._set_running(True)
         self.status_line.setText("Planning…")
         self.status_line.setVisible(True)
-        self.request_work.emit(intent, attachments, session["log"],
-                               list(self._outstanding))
+        outstanding = list(bundle.outstanding)
+        self.request_work.emit(intent, attachments, log, outstanding)
+        bundle.request_work.emit(intent, attachments, log, outstanding)
 
     def _name_session(self, index: int, log: str, intent: str):
         """
@@ -971,6 +1163,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._question_card.setEnabled(False)
             self._question_card = None
             self._answers_to_enter = None
+        bundle = self._workers.get(self._current_log())
+        if bundle is not None:
+            bundle.pending_question = None
         self.worker.stop()
         self.stop_button.setEnabled(False)
         self.status_line.setText("Stopping after the current attempt…")
@@ -1319,6 +1514,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if card is not None:
             card.setEnabled(False)
         self.status_line.setText("Working\u2026")
+        bundle = self._workers.get(self._current_log())
+        if bundle is not None:
+            bundle.pending_question = None
         self.ask.answer(answer)
 
     def _from_composer(self, nag, into):
@@ -1340,21 +1538,33 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.add_chat_widget(TextMessageWidget(said))
         return into(said)
 
-    @QtCore.Slot(object)
-    def on_run_finished(self, result):
+    def on_run_finished(self, result, log: str):
         """
         Ends the run and carries its unmet acceptance checks forward, whatever
         the run ended as, including a result the user took as it is: the entries
         are wrong in the Document either way, and the next Intent inherits them.
         A run that passed clears the list.
+
+        *log* names which Session finished — this Session's own worker keeps
+        running whether or not it is the one on screen (FCC-181), so the
+        bookkeeping happens here regardless, and only the widgets are guarded
+        behind "is this the Session being looked at right now".
         """
+        bundle = self._workers.get(log)
+        if bundle is None:
+            return
+        bundle.running = False
+        self.upload_widget.discard(*bundle.sent_attachments)
+        bundle.sent_attachments = []
+        bundle.outstanding = list(getattr(result, "unmet", None) or ())
+        if log != self._current_log():
+            bundle.dirty = True
+            return
+
         self._set_running(False)
-        self.upload_widget.discard(*self._sent_attachments)
-        self._sent_attachments = []
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
-        self._outstanding = list(getattr(result, "unmet", None) or ())
         if result is not None and result.ok:
             self.status_line.setVisible(False)
         else:
@@ -1384,27 +1594,70 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _cleanup_thread(self):
         """
-        Stop the worker, whatever it is in the middle of.
+        Stop every Session's worker, whatever each is in the middle of.
 
         `quit()` only asks a thread's event loop to end, and a run is not
         waiting for events — it is inside a call: parked on a question, or on
         a request in flight. Waiting on that without first releasing the
         question is FreeCAD hanging on exit, with no window left to answer
-        from. The headless FreeCAD behind Preflight is this panel's child
-        process and goes with it.
+        from. The headless FreeCAD behind each Session's own Preflight Worker
+        is this panel's child process and goes with it.
+
+        Every worker is told to stop before any thread is waited on
+        (FCC-181): a Session parked on a question blocks its own thread until
+        released, and waiting on one before releasing the next would serialise
+        what should be a handful of independent, already-blocked threads.
 
         `SHUTDOWN_GRACE_MS` is what a run in flight is given to notice it was
         stopped before the thread is ended from outside, long enough for a
         request already sent to unwind.
         """
-        self.worker.stop()
-        if self.worker.pipeline is not None:
-            self.worker.pipeline.shutdown()
-        if hasattr(self, 'thread') and self.thread.isRunning():
-            self.thread.quit()
-            if not self.thread.wait(self.SHUTDOWN_GRACE_MS):
-                self.thread.terminate()
-                self.thread.wait(1000)
+        FreeCAD.removeDocumentObserver(self)
+        for bundle in self._workers.values():
+            bundle.worker.stop()
+            if bundle.worker.pipeline is not None:
+                bundle.worker.pipeline.shutdown()
+        for bundle in self._workers.values():
+            if bundle.thread.isRunning():
+                bundle.thread.quit()
+                if not bundle.thread.wait(self.SHUTDOWN_GRACE_MS):
+                    bundle.thread.terminate()
+                    bundle.thread.wait(1000)
+
+    def slotDeletedDocument(self, document):
+        """
+        A Document closing ends whichever Session was bound to it (FCC-181).
+
+        FreeCAD calls every registered observer's `slotDeletedDocument` by
+        this exact name — no base class to inherit, just the method present.
+        The Session itself, its transcript and its place in the picker are
+        untouched; only the worker is torn down, the same as `delete_session`
+        tears one down, so nothing keeps running against a Document that is
+        no longer there to run against.
+        """
+        for log, bundle in list(self._workers.items()):
+            if bundle.worker.document is document:
+                bundle.shut_down(self.SHUTDOWN_GRACE_MS)
+                del self._workers[log]
+
+    def slotActivateDocument(self, document):
+        """
+        The MDI tab the user brought forward in FreeCAD moves the panel too.
+
+        `document.Name` is looked up against every Session's recorded
+        `"document"`, last one first — a Document worked on by more than one
+        Session (a second chat opened against the same file) resolves to
+        whichever of them ran most recently, since Sessions are only ever
+        appended and this index runs newest-last. A Document no Session has
+        named yet — nothing has been sent to it — leaves the panel where it
+        was; there is nothing to switch to.
+        """
+        for index in range(self.chat_sessions.count() - 1, -1, -1):
+            info = self.chat_sessions.get_session_info(index)
+            if info and info.get("document") == document.Name:
+                if index != self.chat_sessions.stack.currentIndex():
+                    self.switch_session(index)
+                return
 
     def closeEvent(self, event):
         self.upload_widget.discard_temporary()

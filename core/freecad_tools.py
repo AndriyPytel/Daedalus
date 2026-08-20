@@ -144,9 +144,29 @@ REVIEW_VIEWS = ("viewIsometric", "viewFront", "viewTop", "viewRight")
 _A_3D_VIEW = "Gui::View3DInventor"
 
 
-def _active_view():
+def active_document():
+    """
+    Whichever Document is in focus right now, or None with nothing open.
+
+    The sanctioned route this module already is for the Document is what a
+    Session's worker binds through, too: its first Intent asks this once, to
+    settle which Document that Session is about (FCC-181), rather than the
+    panel reaching `FreeCAD.ActiveDocument` on its own and being caught by
+    `test_registry_is_the_only_route.py`.
+    """
+    import FreeCAD
+    return FreeCAD.ActiveDocument
+
+
+def _active_view(document=None):
     """
     The Document's 3D view — the one with a camera, not the tab in front.
+
+    `document=None` reads `FreeCADGui.ActiveDocument`, whichever MDI tab is
+    active in the whole GUI. A Session bound to its own Document (FCC-181)
+    passes it explicitly and reaches that Document's view through
+    `FreeCADGui.getDocument(name)` instead, so a Step landing in a Document
+    the user is not currently looking at still moves the right camera.
 
     `ActiveDocument.ActiveView` is whichever MDI tab is active, and a
     Spreadsheet or a TechDraw page of the same Document is one of them. Neither
@@ -161,17 +181,18 @@ def _active_view():
     """
     try:
         import FreeCADGui
-        document = FreeCADGui.ActiveDocument
-        view = document.ActiveView
+        gui_document = (FreeCADGui.getDocument(document.Name) if document is not None
+                        else FreeCADGui.ActiveDocument)
+        view = gui_document.ActiveView
         if hasattr(view, "getCamera"):
             return view
-        views = document.mdiViewsOfType(_A_3D_VIEW)
+        views = gui_document.mdiViewsOfType(_A_3D_VIEW)
         return views[0] if views else None
     except (ImportError, AttributeError):
         return None
 
 
-def fit_view():
+def fit_view(document=None):
     """
     Put everything the Document shows back inside the viewport.
 
@@ -183,18 +204,22 @@ def fit_view():
     pixels across. The user is watching a Plan land Step by Step, and cannot
     judge what they are being asked to approve if it is not on screen.
 
+    `document` is the Session's own bound Document (FCC-181); left None this
+    reads whichever MDI tab is in front, which is wrong the moment two
+    Documents are open and the user is looking at the other one.
+
     Orientation is left alone. Which way the part is turned is the user's
     choice, and nothing here is a better one.
 
     Headless there is no view and nothing to fit.
     """
-    view = _active_view()
+    view = _active_view(document)
     if view is None:
         return
     view.fitAll()
 
 
-def capture_review_views(paths, size=(800, 600)):
+def capture_review_views(paths, document=None, size=(800, 600)):
     """
     The four views Review judges, captured once, camera put back afterwards.
 
@@ -204,6 +229,9 @@ def capture_review_views(paths, size=(800, 600)):
     to pass one. The spellings were checked against libFreeCADGui rather than
     recalled.
 
+    `document` is the Session's own bound Document (FCC-181), read through
+    `FreeCADGui.getDocument(name)` rather than whichever tab is in front.
+
     Returns the paths actually written — empty with no GUI, which is what
     leaves the headless fallback to the Preflight Worker's rasteriser.
 
@@ -211,7 +239,7 @@ def capture_review_views(paths, size=(800, 600)):
     view to be moved, and a run that ends with the part face-on because Review
     looked at it last has damaged something that belongs to them.
     """
-    view = _active_view()
+    view = _active_view(document)
     if view is None:
         return []
 

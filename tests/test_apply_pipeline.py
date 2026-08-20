@@ -89,15 +89,15 @@ def test_a_step_that_lands_puts_the_part_back_in_the_viewport(pipeline, monkeypa
     are being asked to approve.
     """
     fitted = []
-    monkeypatch.setattr("core.apply.fit_view", lambda: fitted.append(True))
+    monkeypatch.setattr("core.apply.fit_view", lambda doc: fitted.append(doc))
 
     assert pipeline.apply("doc.recompute()").ok
-    assert fitted == [True]
+    assert fitted == [pipeline.document]
 
 
 def test_a_step_that_never_reached_the_document_leaves_the_camera_alone(pipeline, monkeypatch):
     fitted = []
-    monkeypatch.setattr("core.apply.fit_view", lambda: fitted.append(True))
+    monkeypatch.setattr("core.apply.fit_view", lambda doc: fitted.append(doc))
     pipeline.fake_worker.result = PreflightResult(ok=False, traceback="boom")
 
     assert not pipeline.apply("doc.recompute()").ok
@@ -223,6 +223,20 @@ def test_a_fillet_that_never_says_how_many_edges_never_reaches_preflight(pipelin
     assert "how many" in result.traceback
     assert pipeline.fake_worker.checked == []
     assert pipeline.trace == []
+
+
+def test_review_views_reads_the_pipelines_own_document(pipeline, monkeypatch):
+    """
+    Review captures the Session's own bound Document (FCC-181), not whichever
+    tab is in front — the same Document `apply` just landed the Step on.
+    """
+    seen = []
+    monkeypatch.setattr("core.freecad_tools.capture_review_views",
+                        lambda paths, doc: seen.append(doc) or paths)
+
+    pipeline.review_views()
+
+    assert seen == [pipeline.document]
 
 
 def test_every_document_touch_goes_through_the_dispatcher():

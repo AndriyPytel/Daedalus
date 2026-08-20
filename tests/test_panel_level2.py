@@ -1145,22 +1145,31 @@ def test_pruning_takes_the_chat_area_with_the_session(sessions_are_the_tests_own
 
 def test_a_restored_session_owns_nothing(panel, tmp_path):
     """
-    Owned Objects are the live Session's. Reopening yesterday's must not grant
-    the assistant rights over objects it no longer owns.
+    Each Session's Owned Objects live on its own worker, not one shared one
+    (FCC-181). Reopening yesterday's Session must not grant the assistant
+    rights over objects another Session owns, and switching away from a
+    Session that does own something must not cost it that ownership either —
+    it is not reset on every switch any more, because the pipeline switching
+    away from is no longer the pipeline switching in.
     """
     from core.apply import ApplyPipeline
+
+    live = panel.chat_sessions.stack.currentIndex()
+    panel.worker.pipeline = ApplyPipeline(owned={"BoxFromTheLiveSession"})
 
     log = str(tmp_path / "old.jsonl")
     _a_transcript(log)
     index, _ = panel.chat_sessions.add_new_chat("old")
     panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
-    panel.worker.pipeline = ApplyPipeline(owned={"BoxFromAnotherSession"})
 
     panel.switch_session(index)
-
     panel.worker._get_tools()
     assert panel.worker.pipeline.owned == set(), \
         "the next Step would apply against another Session's Owned Objects"
+
+    panel.switch_session(live)
+    assert panel.worker.pipeline.owned == {"BoxFromTheLiveSession"}, \
+        "switching away and back cost the live Session its own Owned Objects"
 
 
 def test_a_new_session_owns_nothing(panel):
@@ -1198,18 +1207,66 @@ def test_returning_to_a_session_does_not_keep_another_ones_widgets(panel, tmp_pa
         panel._empty_state.parent() is not None, "empty state points at a dead widget"
 
 
-def test_switching_is_refused_while_a_run_is_in_flight(panel):
-    """A run narrates into the Session it started from; moving loses track of which."""
+def test_switching_mid_run_moves_the_panel_without_touching_the_run(panel):
+    """
+    A run narrates into the Session it started from, but the Session it
+    started from is no longer the only one the panel can show (FCC-181): each
+    Session runs on its own worker, so leaving one running and looking at
+    another is switching, not interrupting.
+    """
     first, _ = panel.chat_sessions.add_new_chat("running")
     second, _ = panel.chat_sessions.add_new_chat("elsewhere")
     panel.chat_sessions.switch_to(first)
+    first_bundle = panel._worker_for(panel.chat_sessions.get_session_info(first)["log"])
+    first_bundle.running = True
     panel._set_running(True)
+
+    panel.switch_session(second)
+
+    assert panel.chat_sessions.stack.currentIndex() == second, \
+        "a run in another Session refused a switch that no longer touches it"
+    assert first_bundle.running, "switching away stopped a run it did not start"
+    first_bundle.running = False
+
+
+def test_activating_a_documents_own_session_switches_the_panel_to_it(panel):
+    """
+    Bringing a Document's MDI tab forward in FreeCAD moves the panel to
+    whichever Session named that Document, without the user touching the
+    picker (FCC-181, AC).
+    """
+    import FreeCAD
+
+    doc = FreeCAD.newDocument("FCC181PanelFollowsMDI")
     try:
-        panel.switch_session(second)
-        assert panel.chat_sessions.stack.currentIndex() == first
-        assert "switching sessions" in panel.status_line.text()
+        elsewhere, _ = panel.chat_sessions.add_new_chat("elsewhere")
+        named, _ = panel.chat_sessions.add_new_chat("named")
+        panel.chat_sessions.name_document(
+            panel.chat_sessions.get_session_info(named)["log"], doc.Name)
+        panel.chat_sessions.switch_to(elsewhere)
+
+        panel.slotActivateDocument(doc)
+
+        assert panel.chat_sessions.stack.currentIndex() == named, \
+            "activating the Document did not bring its own Session forward"
     finally:
-        panel._set_running(False)
+        FreeCAD.closeDocument(doc.Name)
+
+
+def test_activating_an_unclaimed_document_leaves_the_panel_alone(panel):
+    """A Document nothing has been sent to yet has no Session to switch to."""
+    import FreeCAD
+
+    doc = FreeCAD.newDocument("FCC181PanelIgnoresUnclaimedDoc")
+    try:
+        index, _ = panel.chat_sessions.add_new_chat("current")
+        panel.chat_sessions.switch_to(index)
+
+        panel.slotActivateDocument(doc)
+
+        assert panel.chat_sessions.stack.currentIndex() == index
+    finally:
+        FreeCAD.closeDocument(doc.Name)
 
 
 def _button(card, text):

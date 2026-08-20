@@ -300,7 +300,7 @@ class ApplyPipeline:
                               tb.format_exception(type(exc), exc, exc.__traceback__)),
             )
 
-        self._dispatch(fit_view)
+        self._dispatch(lambda: fit_view(doc))
         described = self._dispatch(lambda: description(doc))
         created = [o["name"] for o in described["features"] if o["name"] not in before]
         self.owned.update(created)
@@ -337,8 +337,9 @@ class ApplyPipeline:
         """
         from core.freecad_tools import REVIEW_VIEWS, capture_review_views
 
+        doc = self._dispatch(self._active)
         paths = [self._render_path() for _ in REVIEW_VIEWS]
-        views = self._dispatch(lambda: capture_review_views(paths))
+        views = self._dispatch(lambda: capture_review_views(paths, doc))
         return views or self._rasterised()
 
     def _rasterised(self):
