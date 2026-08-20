@@ -34,7 +34,7 @@ from .upload_widget       import UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
 from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
 from .queue_widget        import QueueWidget
-from ui.design_tokens     import RADIUS_SM, SPACE_XS, SPACE_SM
+from ui.design_tokens     import RADIUS_MD, RADIUS_SM, SPACE_XS, SPACE_SM, WASH
 from ui.typography        import BODY, CAPTION, css
 from utils import settings_manager
 from utils import provider_manager
@@ -101,6 +101,37 @@ def _build_qss() -> str:
         QFrame#GateCard {{
             border-radius: 12px;
             background-color: rgba(127, 127, 127, 40);
+        }}
+
+        /* The Plan, editable until Build locks it (FCC-177). Figma's Plan
+           component gives only its outer box, no per-row detail, so the
+           radius and wash follow the Gate card beside it rather than a
+           number the spec does not carry. */
+        QFrame#PlanCard {{
+            border-radius: {RADIUS_MD}px;
+            background-color: {WASH};
+        }}
+
+        QListWidget#PlanSteps {{
+            border: none;
+            background: transparent;
+        }}
+
+        QListWidget#PlanSteps::item {{
+            padding: {SPACE_XS}px {SPACE_SM}px;
+            border-radius: {RADIUS_SM}px;
+        }}
+
+        QListWidget#PlanSteps::item:selected {{
+            background-color: {WASH};
+        }}
+
+        QPushButton#PlanAddStep {{
+            border: none;
+            background: transparent;
+            text-align: left;
+            padding: {SPACE_XS}px {SPACE_SM}px;
+            {css(CAPTION)}
         }}
 
         QTextEdit#ChatInput {{
@@ -1326,7 +1357,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if event.kind in (ev.PLAN, ev.PLAN_REVISED):
             self._queue_widget.start_plan(data["steps"])
         elif event.kind == ev.GATE and data.get("decision") == APPROVE:
-            self._queue_widget.start_execute()
+            self._queue_widget.start_execute(data.get("steps"))
         elif event.kind == ev.STEP_STARTED:
             self._queue_widget.step_started(data["index"])
         elif event.kind == ev.APPLIED:
@@ -1469,23 +1500,31 @@ class CopilotPanel(QtWidgets.QDockWidget):
         The Plan Gate. One approval covers every Step; there is no per-Step
         approval, so this appears once per Plan and the run waits on it. A
         revised Plan is a new Plan and gets its own card (FCC-68).
+
+        One answer now, not four (FCC-177): the Plan is edited directly on
+        `self._plan_widget` -- a Step's text, an add, a delete, a drag to
+        reorder -- and Build reads whatever it holds at the moment it is
+        pressed, edited or as-generated, and locks the widget in the same
+        breath so nothing typed after Build changes what already ran.
         """
-        from core.loop import AMEND, APPROVE, REJECT, Approval
+        from core.loop import APPROVE, Approval
+
+        plan_widget = self._plan_widget
+
+        def build():
+            edited = list(plan_widget.steps()) if plan_widget else list(steps)
+            if plan_widget:
+                plan_widget.lock()
+            return Approval(APPROVE, steps=tuple(edited))
 
         self._put_the_question(
             "Waiting for you to approve the Plan\u2026",
             "Run this Plan? Approving covers all %d Steps \u2014 no Step is confirmed "
             "separately." % len(steps),
-            "To amend it, say what to change in the box below, then Amend. Approve and "
-            "carry on also covers the Plans this one is revised into, so the run does "
-            "not stop here again \u2014 you are still asked before anything of yours is "
-            "deleted, before the model is rebuilt, and about a result that did not pass.",
-            (("\u2713  Approve", lambda: Approval(APPROVE)),
-             ("\u23e9  Approve and carry on", lambda: Approval(APPROVE, standing=True)),
-             ("\u270e  Amend", lambda: self._from_composer(
-                 "Say what to change, then press Amend\u2026",
-                 lambda said: Approval(AMEND, said))),
-             ("\u2717  Reject", lambda: Approval(REJECT))))
+            "Click a Step to edit it, or add and remove Steps above, then Build. You are "
+            "still asked before anything of yours is deleted, before the model is "
+            "rebuilt, and about a result that did not pass.",
+            (("\u2713  Build", build),))
 
     @QtCore.Slot(object)
     def on_revision(self, failure):

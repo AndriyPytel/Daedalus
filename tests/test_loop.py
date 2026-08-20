@@ -1453,7 +1453,7 @@ def test_the_plan_gate_leaves_both_ends_of_its_wait_on_the_stream():
 
     opened, decided = events.of(GATE)
     assert opened.data == {"steps": 1, "asked": True}
-    assert decided.data == {"decision": "approve", "standing": False}
+    assert decided.data == {"decision": "approve", "standing": False, "steps": ["Add a box"]}
     kinds = [e.kind for e in events]
     assert kinds.index(PLAN) < kinds.index(GATE) < kinds.index(STEP_STARTED)
 

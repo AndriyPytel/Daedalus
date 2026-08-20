@@ -1901,6 +1901,83 @@ def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(pane
     assert answered == [START_OVER]
 
 
+def test_the_plan_gate_offers_exactly_one_build_button(panel):
+    """FCC-177: Build replaces Approve / Approve and carry on / Amend / Reject."""
+    from conftest import QtWidgets
+
+    from core.events import Event, PLAN
+
+    panel.on_event(Event(PLAN, {"steps": ["Sketch the base", "Pad it"], "acceptance": []}))
+    QT_APP.processEvents()
+    panel.on_plan_gate(["Sketch the base", "Pad it"])
+    QT_APP.processEvents()
+
+    labels = [b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton)]
+    assert labels == ["\u2713  Build"], labels
+
+
+def test_clicking_build_answers_with_the_plan_as_generated_when_nothing_was_edited(
+        panel, monkeypatch):
+    from core.events import Event, PLAN
+    from core.loop import APPROVE
+
+    answered = []
+    monkeypatch.setattr(panel.ask, "answer", answered.append)
+
+    panel.on_event(Event(PLAN, {"steps": ["Sketch the base", "Pad it"], "acceptance": []}))
+    QT_APP.processEvents()
+    panel.on_plan_gate(["Sketch the base", "Pad it"])
+    QT_APP.processEvents()
+
+    _button(panel._question_card, "Build").click()
+    QT_APP.processEvents()
+
+    assert len(answered) == 1
+    assert answered[0].decision == APPROVE
+    assert list(answered[0].steps) == ["Sketch the base", "Pad it"]
+
+
+def test_clicking_build_answers_with_the_plan_as_edited(panel, monkeypatch):
+    """Editing, adding, and reordering all reach the answer Build sends. FCC-177."""
+    from core.events import Event, PLAN
+    from core.loop import APPROVE
+
+    answered = []
+    monkeypatch.setattr(panel.ask, "answer", answered.append)
+
+    panel.on_event(Event(PLAN, {"steps": ["Sketch the base", "Pad it"], "acceptance": []}))
+    QT_APP.processEvents()
+    panel._plan_widget._list.item(1).setText("Pad it to 10mm")
+    panel._plan_widget.add_step()
+    panel._plan_widget._list.item(2).setText("Fillet the top edge")
+    panel.on_plan_gate(["Sketch the base", "Pad it"])
+    QT_APP.processEvents()
+
+    _button(panel._question_card, "Build").click()
+    QT_APP.processEvents()
+
+    assert answered[0].decision == APPROVE
+    assert list(answered[0].steps) == \
+        ["Sketch the base", "Pad it to 10mm", "Fillet the top edge"]
+
+
+def test_clicking_build_locks_the_plan_widget(panel, monkeypatch):
+    from core.events import Event, PLAN
+
+    monkeypatch.setattr(panel.ask, "answer", lambda value: None)
+
+    panel.on_event(Event(PLAN, {"steps": ["Sketch the base"], "acceptance": []}))
+    QT_APP.processEvents()
+    plan_widget = panel._plan_widget
+    panel.on_plan_gate(["Sketch the base"])
+    QT_APP.processEvents()
+
+    _button(panel._question_card, "Build").click()
+    QT_APP.processEvents()
+
+    assert plan_widget.locked
+
+
 def test_stop_while_the_decision_is_open_releases_it_and_is_not_an_acceptance(panel):
     """
     `abandon` releases every waiting question with an Approval, which is not

@@ -137,16 +137,21 @@ class QueueWidget(QtWidgets.QFrame):
         self._steps_container.setVisible(False)
         self._repaint_phases()
 
-    def start_execute(self):
+    def start_execute(self, steps=None):
         """
         The Plan is approved: Plan is done, Execute is running.
 
         The foreseen Steps are only built here, not at `start_plan` -- a Plan
-        still open for amendment has not foreseen anything yet.
+        still open for editing has not foreseen anything yet. *steps*
+        overrides what `start_plan` foresaw with what the Gate actually
+        approved, when the two differ (FCC-177: the Plan Gate is edited
+        directly, so what runs is not always what `start_plan` was shown).
         """
         if self._states[PLAN] != FAILED:
             self._states[PLAN] = DONE
         self._states[EXECUTE] = RUNNING
+        if steps is not None:
+            self._foreseen = list(steps)
         self._build_steps()
         self._steps_container.setVisible(True)
         self._repaint_phases()

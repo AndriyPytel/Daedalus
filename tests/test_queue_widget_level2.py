@@ -61,6 +61,23 @@ def test_entering_execute_lists_the_foreseen_steps_queued_until_they_start():
     assert queue.step_state(2) == QUEUED
 
 
+def test_start_execute_takes_the_gates_steps_over_what_plan_foresaw():
+    """
+    The Plan Gate is edited directly now (FCC-177): if Build changed the
+    count or the text, the Queue's own foreseen list is the one thing left
+    still describing the unedited Plan unless the approved Gate hands its
+    Steps to `start_execute` too.
+    """
+    from ui.queue_widget import QUEUED
+
+    queue = _widget()
+    queue.start_plan(["Create sketch for base", "Pad the sketch"])
+    queue.start_execute(["Create sketch for base", "Pad the sketch", "Fillet the top edge"])
+
+    assert queue.step_count() == 3
+    assert queue.step_state(3) == QUEUED
+
+
 def test_a_step_starting_moves_it_from_queued_to_running():
     from ui.queue_widget import RUNNING
 
