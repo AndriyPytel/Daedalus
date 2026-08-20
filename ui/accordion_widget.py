@@ -59,6 +59,17 @@ class AccordionWidget(QtWidgets.QWidget):
         """
         self.content_area.setText(self.content_area.text() + text)
 
+    def mark_as_reasoning(self):
+        """
+        Reads subdued next to an answer, the way `HistoryItem` dims its
+        timestamp: an opacity effect rather than a colour of its own, since
+        the theme still decides what the text is (ADR-0011, Figma's Chain of
+        Thought component).
+        """
+        effect = QtWidgets.QGraphicsOpacityEffect(self.content_area)
+        effect.setOpacity(0.6)
+        self.content_area.setGraphicsEffect(effect)
+
     def start_pulsing(self):
         """The 'still working' signal — the one animation worth keeping."""
         self._effect = QtWidgets.QGraphicsOpacityEffect(self.toggle_button)

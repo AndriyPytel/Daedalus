@@ -1297,15 +1297,20 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.status_line.setVisible(True)
 
     def _render_thought(self, phase, text):
-        """Reasoning appends to one accordion per phase turn, as it forms."""
+        """
+        Reasoning appends to one accordion per phase turn, as it forms.
+
+        Only the chat scroll renders it: the status line never carries a
+        reasoning chunk, so a long chain of thought is read whole rather than
+        clipped to whatever fit in ninety characters (FCC-173).
+        """
         if self._thought is None or self._thought_phase != phase:
             self._thought = AccordionWidget("Thinking (%s)…" % phase)
             self._thought_phase = phase
+            self._thought.mark_as_reasoning()
             self.add_chat_widget(self._thought)
             self._thought.start_pulsing()
         self._thought.append_text(text)
-        self.status_line.setText(("Thinking: " + text.replace("\n", " "))[-90:])
-        self.status_line.setVisible(True)
 
     def _render_attachments(self, files):
         """

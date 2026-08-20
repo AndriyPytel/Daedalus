@@ -1741,3 +1741,94 @@ def test_what_was_decided_for_the_user_stands_above_the_steps(panel):
     assert decided_at < plan_at, "the decisions rendered below the Steps they were made for"
     assert decided.content_area.isVisible(), "one click away is not read"
     assert "not the depth" in _said_in(panel)
+
+
+def test_reasoning_streams_inline_and_never_pins_to_the_status_line(panel):
+    """
+    FCC-173: the status line used to carry the last 90 characters of every
+    reasoning chunk (`copilot_panel.py:1073` before this ticket). Reasoning
+    now only ever lands in its own accordion, in the chat scroll.
+    """
+    from core.events import Event, THOUGHT
+
+    index, _ = panel.chat_sessions.add_new_chat("reasoning-run")
+    panel.switch_session(index)
+    before_text, before_visible = panel.status_line.text(), panel.status_line.isVisible()
+
+    long_thought = "the plan looks reasonable so I will start from the base sketch " * 3
+    panel.on_event(Event(THOUGHT, {"phase": "plan", "text": long_thought}))
+    QT_APP.processEvents()
+
+    assert panel.status_line.text() == before_text
+    assert panel.status_line.isVisible() == before_visible
+    assert long_thought in _said_in(panel)
+
+
+def test_reasoning_is_not_truncated_to_ninety_characters(panel):
+    """The 90-character clip was the status line's; the accordion never had it."""
+    from core.events import Event, THOUGHT
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("long-reasoning-run")
+    panel.switch_session(index)
+
+    chunks = ["thinking about the base sketch and its constraints, " * 2,
+              "then the fillet radius and how it interacts with the pocket depth " * 2]
+    for chunk in chunks:
+        panel.on_event(Event(THOUGHT, {"phase": "plan", "text": chunk}))
+    QT_APP.processEvents()
+
+    thinking = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)
+               and "Thinking" in w.toggle_button.text()]
+    assert thinking, "no reasoning accordion was rendered"
+    full_text = thinking[-1].content_area.text()
+    assert full_text == "".join(chunks)
+    assert len(full_text) > 90
+
+
+def test_a_run_with_no_reasoning_shows_no_thinking_accordion(panel):
+    """A model that emits no reasoning gets no empty placeholder for it. FCC-173."""
+    from core.events import Event, INTENT, PLAN
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("no-reasoning-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(INTENT, {"text": "a plain box"}))
+    panel.on_event(Event(PLAN, {"steps": ["Make a box"]}))
+    QT_APP.processEvents()
+
+    thinking = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)
+               and "Thinking" in w.toggle_button.text()]
+    assert not thinking
+
+
+def test_reasoning_reads_subdued_unlike_a_decision_the_plan_made(panel):
+    """
+    Figma's Chain of Thought component reads subdued next to an answer.
+    ADR-0011 forbids a colour of its own, so this is an opacity effect on the
+    reasoning accordion's text, the way `HistoryItem` dims its timestamp --
+    and it is what tells reasoning apart from an accordion that is not
+    reasoning, such as "Decided for you".
+    """
+    from core.events import Event, PLAN, THOUGHT
+    from ui.accordion_widget import AccordionWidget
+    from conftest import QtWidgets
+
+    index, _ = panel.chat_sessions.add_new_chat("subdued-reasoning-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "plan", "text": "weighing the two options"}))
+    panel.on_event(Event(PLAN, {"steps": ["Make a box"], "acceptance": [],
+                               "decided": ["radius → 3 mm"]}))
+    QT_APP.processEvents()
+
+    accordions = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)]
+    thinking = next(w for w in accordions if "Thinking" in w.toggle_button.text())
+    decided = next(w for w in accordions if "Decided for you" in w.toggle_button.text())
+
+    effect = thinking.content_area.graphicsEffect()
+    assert isinstance(effect, QtWidgets.QGraphicsOpacityEffect)
+    assert effect.opacity() < 1.0
+
+    assert decided.content_area.graphicsEffect() is None
