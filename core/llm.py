@@ -91,7 +91,14 @@ class Chunk:
 
 
 class LiteLLMClient:
-    """Streams from any provider LiteLLM supports."""
+    """
+    Streams from any provider LiteLLM supports.
+
+    `last_cost` follows `ClaudeCodeClient`'s own contract: `None` in
+    `__init__`, cleared at the top of every `stream()`, and set only for the
+    call that produced it — the same reason applies here, held over a call
+    that ends without a price would be billed the previous call's number.
+    """
 
     def __init__(self, model: str, api_key: str, api_base: str = None,
                  thinking_budget: int = None, completion: Callable = None):
@@ -99,6 +106,7 @@ class LiteLLMClient:
         self.api_key = api_key
         self.api_base = api_base
         self.thinking_budget = thinking_budget
+        self.last_cost = None
         self._completion = completion
 
     def stream(self, messages: list, **overrides) -> Iterator[Chunk]:
@@ -110,7 +118,14 @@ class LiteLLMClient:
         gateway's model is exactly what it has no entry for. Usage is asked for
         on an OpenAI-compatible endpoint because a gateway that is not asked
         can end a stream without a word about why, and a cut-off reply then
-        looks complete.
+        looks complete — the same `openai/` gate leaves a bare `api_base`
+        model unpriced too, not because pricing is wrong but because LiteLLM
+        was never asked for usage on that stream.
+
+        Every raw chunk is kept, on top of whatever the caller already
+        accumulates from the yielded Chunks, so `_priced` can reassemble them
+        once the stream ends cleanly. Negligible for one phase's reply; still a
+        real retention for the call's duration that did not exist before.
         """
         completion = self._completion
         if completion is None:
@@ -136,8 +151,11 @@ class LiteLLMClient:
         if self.model.startswith("openai/"):
             kwargs.setdefault("stream_options", {"include_usage": True})
 
+        self.last_cost = None
+        chunks = []
         try:
             for raw in completion(**kwargs):
+                chunks.append(raw)
                 for chunk in _deltas(raw):
                     yield chunk
                 if _stopped_for_length(raw):
@@ -149,6 +167,10 @@ class LiteLLMClient:
             if refusal is None:
                 raise
             raise refusal from exc
+
+        cost = _priced(self.model, chunks, messages)
+        if cost is not None:
+            self.last_cost = {"usd": cost, "model": self.model}
 
 
 def _may_reason(model) -> bool:
@@ -183,6 +205,35 @@ def _output_cap(model, wanted) -> int:
     except Exception:
         known = None
     return min(wanted, known) if known else wanted
+
+
+def _priced(model, chunks, messages):
+    """
+    What the raw stream *chunks* would have cost against *model*'s price
+    table, or None.
+
+    Mid-stream, LiteLLM writes cost onto `CustomStreamWrapper`'s own
+    `logging_obj` — an object `stream()` never holds — so this is the
+    documented manual route instead: `stream_chunk_builder` needs the full
+    *messages* list to reassemble the chunks into a normal `ModelResponse`,
+    and `completion_cost` prices that. Checked against the installed litellm
+    (1.95.0, an `AdditionalPythonPackage` to the FreeCAD interpreter and not
+    the repo's `.venv`).
+
+    A model LiteLLM has no price table entry for raises out of
+    `completion_cost` rather than pricing at zero — a gateway's, the same kind
+    `_may_reason` and `_output_cap` already give the benefit of the doubt to —
+    and that is caught here, narrowly around these two calls alone, so a
+    genuine bug in the reassembly still raises rather than reading as just
+    another unpriced model.
+    """
+    import litellm
+
+    try:
+        built = litellm.stream_chunk_builder(chunks, messages=messages)
+        return litellm.completion_cost(completion_response=built, model=model)
+    except Exception:
+        return None
 
 
 def _deltas(raw) -> Iterator[Chunk]:

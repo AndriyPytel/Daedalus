@@ -3852,6 +3852,38 @@ def test_a_provider_that_says_nothing_about_what_it_spent_writes_no_cost_event()
     assert events.of(COST) == []
 
 
+def test_a_keyed_provider_that_prices_writes_a_cost_event_through_the_unchanged_seam():
+    """
+    The proof the header stops reading $0.00 for a keyed call: `_streamed` is
+    the one seam every phase's stream is consumed through and this change does
+    not touch it — only `LiteLLMClient` gains a `last_cost`. Reuses the
+    recording `tests/test_llm.py::test_a_priced_streaming_call_sets_last_cost`
+    prices, the one in the suite whose usage survives through to a
+    `ModelResponse` LiteLLM can price.
+    """
+    from litellm.llms.anthropic.chat.handler import ModelResponseIterator
+
+    from core.llm import LiteLLMClient
+    from core.loop import _streamed
+
+    recorded_path = os.path.join(os.path.dirname(__file__), "recorded",
+                                 "anthropic_thinking_stream.json")
+    with open(recorded_path, encoding="utf-8") as f:
+        recorded = json.load(f)
+    it = ModelResponseIterator(streaming_response=None, sync_stream=True)
+    chunks = [it.chunk_parser(event) for event in recorded]
+
+    llm = LiteLLMClient(model="claude-3-7-sonnet-20250219", api_key="k",
+                        completion=lambda **kwargs: iter(chunks))
+    events = EventStream()
+
+    _streamed(llm, events, "design", "system", "user")
+
+    assert [e.data for e in events.of(COST)] == [
+        {"phase": "design", "usd": 0.004521, "model": "claude-3-7-sonnet-20250219"}
+    ]
+
+
 def test_the_stream_can_be_watched_live():
     seen = []
     events = EventStream()
