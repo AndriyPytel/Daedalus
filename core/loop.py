@@ -1377,6 +1377,12 @@ class Checked:
     failed — `confirmed` is empty, `failed` is False, and Review judges the
     whole list alone.
 
+    `confirmed` is what the check script itself measured and found true, read
+    back out of its own `held` list rather than inferred as everything the
+    model did not name `uncovered` — so it is not only the success branch's:
+    a run whose checks failed on some entries and held on others carries both
+    a non-empty `confirmed` and a non-empty `unmet`.
+
     `unmet` is the entries that did not hold, named one by one. The traceback
     says the same thing in prose, and prose is what Plan reads; this is what
     survives the end of the run.
@@ -1470,6 +1476,13 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     same budget a Step gets — read as a failed model it would send Plan to
     rebuild a part that is already right.
 
+    `confirmed` is the check script's own `held` list where the worker
+    measured one, on the failing branch as much as the passing one — not
+    everything the model did not call `uncovered`, which is a claim about
+    what the model looked at rather than a measurement of what it found true.
+    An envelope failure and a check the phase never wrote both leave
+    `confirmed` empty by construction, having measured nothing to confirm.
+
     The envelope is measured first and without asking anybody: three sizes
     against three sizes is arithmetic, and a run that built the wrong part
     should not have to wait for a provider to say so. The entries a retry
@@ -1525,7 +1538,9 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         events.emit(TOOL_RESULT, name="check_assertions", result=result)
 
         if result.get("ok"):
-            confirmed = [entry for entry in acceptance if entry not in uncovered]
+            held = result.get("held")
+            confirmed = list(held) if held is not None else \
+                [entry for entry in acceptance if entry not in uncovered]
             checked = Checked(confirmed=confirmed, uncovered=uncovered)
             events.emit(ASSERTION, ok=True, code=code, confirmed=confirmed,
                         uncovered=uncovered, traceback="")
@@ -1533,11 +1548,15 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
         traceback = result.get("traceback") or "The checks failed without saying why."
         if _the_model_failed(traceback):
-            unmet = _unmet_in(traceback) or list(acceptance)
-            events.emit(ASSERTION, ok=False, code=code, confirmed=[],
+            held = result.get("held")
+            confirmed = list(held) if held is not None else []
+            worker_failed = result.get("failed")
+            unmet = list(worker_failed) if worker_failed is not None else \
+                (_unmet_in(traceback) or list(acceptance))
+            events.emit(ASSERTION, ok=False, code=code, confirmed=confirmed,
                         uncovered=uncovered, traceback=traceback, unmet=unmet)
-            return Checked(failed=True, traceback=traceback, uncovered=uncovered,
-                           unmet=unmet)
+            return Checked(failed=True, confirmed=confirmed, traceback=traceback,
+                           uncovered=uncovered, unmet=unmet)
 
         attempts.append({"code": code, "traceback": traceback})
 
@@ -1556,14 +1575,19 @@ def _unmet_in(traceback):
     """
     The acceptance entries a failed check named, one per entry.
 
+    The fallback for a failure the worker's own `failed` list did not cover —
+    the envelope check, which never builds one, and a check script that
+    raised without following the assertion.md shape at all. Where a script
+    did build `failed`, the caller reads that directly, off the same
+    namespace `held` comes off; this is what is left for the traceback string
+    that stands in for it, parsed rather than returned as data because that
+    string is what a broken or older script leaves behind.
+
     The checks end in a single assert whose message lists every entry that did
     not hold, separated by semicolons — the Assertion prompt specifies that
     shape, so this reads it rather than guessing at one. A Document that does
     not recompute has no entry list at all: nothing was measured, so nothing
     can be named, and the caller falls back to the whole list.
-
-    Parsed rather than returned as data because the checks are code the model
-    writes and runs in another process; what comes back is a traceback.
     """
     for line in traceback.strip().splitlines():
         if _DID_NOT_HOLD not in line:

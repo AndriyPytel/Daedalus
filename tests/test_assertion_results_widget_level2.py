@@ -78,6 +78,34 @@ def test_a_failing_run_shows_one_row_per_unmet_entry():
     assert [row.toggle_button.text() for row in rows] == ["\u25b6  Lug height is 30mm"]
 
 
+def _mixed(confirmed=("Base height is 10mm",), unmet=("Lug height is 30mm",),
+           code="assert not failed"):
+    return {"ok": False, "code": code, "confirmed": list(confirmed), "uncovered": [],
+            "traceback": "AssertionError: these did not hold: x", "unmet": list(unmet)}
+
+
+def test_a_mixed_result_shows_a_passed_row_and_a_failed_row_together():
+    """
+    FCC-169: a run where the checks measured some entries true and some
+    false, proved against this widget unmodified -- it already iterates
+    `confirmed` and `unmet` independently, so a mixed `ASSERTION` renders a
+    mixed card with no change to `AssertionResultsWidget` at all.
+    """
+    from ui.accordion_widget import AccordionWidget
+    from ui.assertion_results_widget import FAIL, SUCCESS, summary_line
+
+    data = _mixed()
+    card = _widget(data)
+
+    assert summary_line(data) == "1 passed, 1 failed"
+
+    rows = card.findChildren(AccordionWidget)
+    assert [row.toggle_button.text() for row in rows] == [
+        "\u25b6  Base height is 10mm", "\u25b6  Lug height is 30mm"]
+    assert SUCCESS in rows[0].toggle_button.styleSheet()
+    assert FAIL in rows[1].toggle_button.styleSheet()
+
+
 def test_a_passed_row_is_marked_with_the_semantic_success_colour():
     from ui.assertion_results_widget import SUCCESS
     from ui.accordion_widget import AccordionWidget

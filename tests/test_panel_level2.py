@@ -2080,6 +2080,34 @@ def test_completing_assertion_with_a_failed_check_shows_a_failed_row(panel):
     assert any("Lug height is 30mm" in row for row in rows), rows
 
 
+def test_completing_assertion_with_a_mixed_result_shows_both_rows_in_one_card(panel):
+    """
+    End-to-end proof that a run measuring some entries true and some false
+    renders a mixed card: `AssertionResultsWidget` is untouched by this
+    change, and already iterates `confirmed` and `unmet` independently.
+    """
+    from core.events import ASSERTION, Event
+
+    from ui.accordion_widget import AccordionWidget
+    from ui.assertion_results_widget import AssertionResultsWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("assertion-mixed")
+    panel.switch_session(index)
+
+    panel.on_event(Event(ASSERTION, {
+        "ok": False, "code": "assert not failed", "traceback": "AssertionError: "
+        "these did not hold: Lug height is 30mm",
+        "confirmed": ["Base height is 10mm"], "uncovered": [],
+        "unmet": ["Lug height is 30mm"]}))
+    QT_APP.processEvents()
+
+    cards = [w for w in _widgets_in(panel) if isinstance(w, AssertionResultsWidget)]
+    assert len(cards) == 1, cards
+    rows = [row.toggle_button.text() for row in cards[0].findChildren(AccordionWidget)]
+    assert any("Base height is 10mm" in row for row in rows), rows
+    assert any("Lug height is 30mm" in row for row in rows), rows
+
+
 def test_checks_that_could_not_be_written_keep_the_plain_narration_line(panel):
     """
     FCC-179's own fallback, the same shape FCC-178's is: `ok` is `None` when

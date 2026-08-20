@@ -2270,6 +2270,8 @@ def test_the_envelope_check_runs_against_the_document_and_can_fail_it():
     ran = [args["code"] for name, args in tools.calls if name == "check_assertions"]
     assert "optimalBoundingBox" in ran[0], "the envelope was not measured first"
     assert events.first(ASSERTION).data["unmet"], "nothing was reported unmet"
+    assert events.first(ASSERTION).data["confirmed"] == [], \
+        "the envelope check measures nothing to confirm"
     assert not any(call[0]["content"] == prompt("assertion") for call in llm.calls), \
         "a provider was asked to write checks for a part already known to be wrong"
 
@@ -4667,6 +4669,8 @@ def test_a_check_that_cannot_be_written_lets_review_judge_alone():
     assert result.ok
     assert events.first(PLAN_REVISED) is None
     assert events.first(ASSERTION).data["ok"] is None, "an unwritable check is not a verdict"
+    assert events.first(ASSERTION).data["confirmed"] == [], \
+        "a check that never ran measured nothing to confirm"
 
 
 def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
@@ -5174,6 +5178,74 @@ def test_the_assertion_event_names_the_entries_and_not_only_the_traceback():
     assert events.first(ASSERTION).data["unmet"] == [
         "envelope \u2192 across the flats: 13.0 mm (read)",
         "envelope \u2192 height: 6.5 mm (read)"]
+
+
+MIXED_TRACEBACK = ('Traceback (most recent call last):\n'
+                   '  File "<step>", line 3, in <module>\n'
+                   "AssertionError: these did not hold: envelope \u2192 height: 6.5 mm "
+                   "(read)\n")
+
+
+def assertion_mixed(confirmed, unmet, traceback):
+    """The worker's own reply for a check that measured some entries true, others not."""
+    return {"ok": False, "traceback": traceback, "held": list(confirmed), "failed": list(unmet)}
+
+
+def test_a_mixed_result_reports_both_what_held_and_what_did_not():
+    """
+    The change this ticket makes: a run that measured some entries true and
+    some false reports both, read off the worker's own `held` and `failed`
+    rather than the failure branch's old hardcoded `confirmed=[]`.
+    """
+    _, events, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        checks=[assertion_mixed([ACCEPTANCE[0]], [ACCEPTANCE[1]], MIXED_TRACEBACK)],
+        decide=lambda failure: "accept",
+    )
+
+    data = events.first(ASSERTION).data
+    assert data["confirmed"] == [ACCEPTANCE[0]]
+    assert data["unmet"] == [ACCEPTANCE[1]]
+    assert sorted(data["confirmed"] + data["unmet"] + data["uncovered"]) == sorted(ACCEPTANCE)
+
+
+def test_a_passing_runs_confirmed_is_measured_not_inferred():
+    """
+    A script that measured fewer entries than the acceptance list has, without
+    declaring the rest `uncovered`, yields a `confirmed` shorter than the
+    list — the entry it never touched is silently missing from both
+    `confirmed` and `unmet`, rather than inferred as held.
+    """
+    _, events, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        verdict_reply("pass"),
+        checks=[{"ok": True, "held": [ACCEPTANCE[0]]}],
+    )
+
+    data = events.first(ASSERTION).data
+    assert data["confirmed"] == [ACCEPTANCE[0]]
+    assert ACCEPTANCE[1] not in data["confirmed"]
+    assert ACCEPTANCE[1] not in (data.get("unmet") or [])
+
+
+def test_a_check_that_measured_but_never_defined_held_still_reports_confirmed_empty():
+    """
+    A script written to the shape before this ticket — a single `failed` list
+    and no `held` — has nothing this phase can call `held`, so `confirmed`
+    falls back to today's `[]`. `unmet` is still read straight off the
+    worker's own `failed` rather than parsed from the traceback, which is
+    how it differs from `_unmet_in(ASSERT_FAILED)`'s wording of the same
+    entry.
+    """
+    _, events, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"), assertion_reply(CHECKS),
+        checks=[{"ok": False, "traceback": ASSERT_FAILED, "failed": [ACCEPTANCE[0]]}],
+        decide=lambda failure: "accept",
+    )
+
+    data = events.first(ASSERTION).data
+    assert data["confirmed"] == []
+    assert data["unmet"] == [ACCEPTANCE[0]]
 
 
 def test_a_document_that_cannot_recompute_leaves_the_whole_list_outstanding():

@@ -315,6 +315,11 @@ class ApplyPipeline:
         a check whose whole point is to change nothing. The copy is what makes
         it read-only — this process never touches the live Document at all, so
         even a check that tried to write could not.
+
+        `held` and `failed` carry the check script's own measured lists
+        (`PreflightResult`) up as they are — `None` where nothing measured
+        them, a list otherwise — and it is the caller's to decide what that
+        means, the same way it already decides what `ok` and `traceback` mean.
         """
         doc = self._dispatch(self._active)
         if doc is None:
@@ -325,7 +330,8 @@ class ApplyPipeline:
             checked = self.worker.check(code, document=copy)
         finally:
             _discard(copy)
-        return {"ok": bool(checked.ok), "traceback": checked.traceback or ""}
+        return {"ok": bool(checked.ok), "traceback": checked.traceback or "",
+                "held": checked.held, "failed": checked.failed}
 
     def review_views(self):
         """

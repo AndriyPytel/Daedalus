@@ -31,15 +31,25 @@ the geometry itself rather than reporting them covered.
 `recompute`, no deletion. You are reading a part, not building one. `doc`,
 `App`, `FreeCAD`, `Part`, `Sketcher` and `PartDesign` are in scope.
 
-Every entry of the list is measured, in the order the list gives them, and
-**one** assert at the very end names every entry that did not hold. The name of
-an entry is the entry itself:
+Every entry of the list is measured, in the order the list gives them, into
+one of two lists — `held` for what it found true and `failed` for what it did
+not — and **one** assert at the very end names every entry that did not hold.
+The name of an entry is the entry itself:
 
+    held = []
     failed = []
-    if not abs(width - 13.0) <= 0.5:
+    if abs(width - 13.0) <= 0.5:
+        held.append("13 mm across the flats")
+    else:
         failed.append("13 mm across the flats")
     ...
     assert not failed, "these did not hold: " + "; ".join(failed)
+
+`held` is read back after the script runs, whether the assert passes or not —
+it is what lets a mixed result say which entries held and which did not,
+rather than only the ones that failed. A run told only what failed cannot
+tell an entry that passed from an entry nobody looked at; `held` is what
+tells them apart.
 
 One assert per entry instead stops at the first that fails, and every entry
 under it goes unmeasured. A recorded run put the material third in the list,
