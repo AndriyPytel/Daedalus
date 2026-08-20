@@ -64,10 +64,6 @@ def _build_qss() -> str:
 
         QDockWidget::title {{ padding: 0px; height: 0px; }}
 
-        /* setMaxVisibleItems is documented to do nothing once a combo has a
-           stylesheet; this is the rule that unblocks it. */
-        QComboBox {{ combobox-popup: 0; }}
-
         /* Header icon buttons */
         QPushButton#HeaderButton {{
             background: transparent;
@@ -115,12 +111,11 @@ def _build_qss() -> str:
         }}
 
         /* Pill buttons */
-        QPushButton#PillButton, QComboBox#PillButton {{
+        QPushButton#PillButton {{
             border-radius: 6px;
             padding: 3px 10px;
             font-size: 11px;
         }}
-        QComboBox#PillButton::drop-down {{ border: none; width: 14px; }}
 
         /* Circular send button */
         QPushButton#SendButton {{
@@ -714,16 +709,23 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.chip_bar.file_removed.connect(self.upload_widget.discard)
         strip.addWidget(self.upload_widget)
 
-        self.model_combo = QtWidgets.QComboBox()
-        self.model_combo.setObjectName("PillButton")
-        self.model_combo.setFixedHeight(24)
-        self.model_combo.setToolTip("Active LLM model")
-        self.model_combo.setMaxVisibleItems(12)
-        self._refresh_model_combo(provider_manager.instance().get_available_models())
-        self.model_combo.currentIndexChanged.connect(self._on_model_changed)
-        strip.addWidget(self.model_combo)
+        from .model_selector import ModelSelectorPopup
 
-        provider_manager.instance().models_changed.connect(self._refresh_model_combo)
+        self.model_button = QtWidgets.QPushButton()
+        self.model_button.setObjectName("PillButton")
+        self.model_button.setFixedHeight(24)
+        self.model_button.setToolTip("Active LLM model")
+        self.model_button.setLayoutDirection(QtCore.Qt.RightToLeft)
+        self.model_button.clicked.connect(self._open_model_selector)
+        strip.addWidget(self.model_button)
+
+        self.model_selector = ModelSelectorPopup(self)
+        self.model_selector.model_chosen.connect(self._on_model_selected)
+
+        self._models = []
+        self._current_model_id = None
+        self._refresh_models(provider_manager.instance().get_available_models())
+        provider_manager.instance().models_changed.connect(self._refresh_models)
         strip.addStretch()
 
         self.send_button = QtWidgets.QPushButton()
@@ -784,74 +786,57 @@ class CopilotPanel(QtWidgets.QDockWidget):
         which is black under every FreeCAD dark theme (ADR-0011).
         """
         super().showEvent(event)
-        for button, icon in ((self.new_btn, "plus"),
-                             (self.history_btn, "history"),
-                             (self.send_button, "arrow_up")):
-            button.setIcon(UIHelpers.get_icon(icon, size=18, on=button))
+        for button, icon, size in ((self.new_btn, "plus", 18),
+                                   (self.history_btn, "history", 18),
+                                   (self.send_button, "arrow_up", 18),
+                                   (self.model_button, "chevron_down", 12)):
+            button.setIcon(UIHelpers.get_icon(icon, size=size, on=button))
 
-    def _refresh_model_combo(self, models=None):
+    def _refresh_models(self, models=None):
         """
-        Rebuild the model combo, grouped under provider headings.
+        Recompute which model the button shows (FCC-175).
 
-        A heading is a row with its selectable and enabled flags cleared, so
-        grouping costs a QStandardItemModel and no custom popup widget — and
-        QComboBox's own type-to-jump keeps working over the whole list. A
-        heading is set apart by weight rather than by an indent, because
-        type-to-jump matches from the string's start.
-
-        While a provider's real list is still on its way, the last model is
-        kept as a row of its own: showing anything else is the flash of a model
-        the user never picked.
+        The stored id when the provider that owns it has confirmed it; the
+        stored id held bare while its provider's fetch is still in flight,
+        because showing anything else there is the flash of a model the user
+        never picked (FCC-41); the fallback `_retire_model` names once every
+        provider has answered and none offers it any more; or, with nothing
+        stored at all, the first model on offer.
         """
         if models is None:
             models = provider_manager.instance().get_available_models()
+        self._models = models
         last_id = settings_manager.instance().get_last_model()
 
-        self.model_combo.blockSignals(True)
-        items = QtGui.QStandardItemModel(self.model_combo)
         if not models:
-            items.appendRow(QtGui.QStandardItem("No models — add API key"))
-        else:
-            by_provider = {}
-            for model in models:
-                by_provider.setdefault(model["provider"], []).append(model)
-            bold = QtGui.QFont()
-            bold.setBold(True)
-            for provider, entries in by_provider.items():
-                heading = QtGui.QStandardItem(provider)
-                heading.setFlags(QtCore.Qt.NoItemFlags)
-                heading.setFont(bold)
-                items.appendRow(heading)
-                for model in entries:
-                    row = QtGui.QStandardItem(model["display"])
-                    row.setData(model["id"], QtCore.Qt.UserRole)
-                    items.appendRow(row)
-        self.model_combo.setModel(items)
+            self._set_current_model(None, "No models — add API key")
+            return
 
-        index = self.model_combo.findData(last_id) if last_id else -1
-        if index < 0 and last_id:
-            if models and not provider_manager.instance().awaiting_model_lists():
-                index = self.model_combo.findData(self._retire_model(last_id))
+        entry = next((m for m in models if m["id"] == last_id), None) if last_id else None
+        if entry is None and last_id:
+            if provider_manager.instance().awaiting_model_lists():
+                entry = {"id": last_id, "display": last_id, "provider": ""}
             else:
-                row = QtGui.QStandardItem(last_id)
-                row.setData(last_id, QtCore.Qt.UserRole)
-                items.insertRow(0, row)
-                index = 0
-        if index < 0:
-            index = 1 if models else 0
-        self.model_combo.setCurrentIndex(index)
-        self.model_combo.blockSignals(False)
+                fallback_id = self._retire_model(last_id)
+                entry = next((m for m in models if m["id"] == fallback_id), None)
+        if entry is None:
+            entry = models[0]
+
+        self._set_current_model(entry["id"], entry["display"])
+
+    def _set_current_model(self, model_id, display: str):
+        self._current_model_id = model_id
+        self.model_button.setText(display)
 
     def _retire_model(self, model_id: str) -> str:
         """
         Every provider has answered and none offers ``model_id``. Say so.
 
-        The fallback is the Preferences default, or row 1 — the first model
-        under the first heading — because that default is only a preference and
-        may never have been set.
+        The fallback is the Preferences default, or the first model on offer,
+        because that default is only a preference and may never have been set.
         """
         settings = settings_manager.instance()
-        fallback = settings.get_default_model() or self.model_combo.itemData(1)
+        fallback = settings.get_default_model() or self._models[0]["id"]
         settings.set_last_model(fallback)
         self.status_line.setText(
             "%s is no longer offered by its provider — switched to %s."
@@ -859,13 +844,16 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.status_line.setVisible(True)
         return fallback
 
-    def _on_model_changed(self, _idx: int):
+    def _open_model_selector(self):
+        self.model_selector.open_at(self._models, self.model_button)
+
+    def _on_model_selected(self, model_id: str):
         """Drops the client so the next send rebuilds it from settings."""
-        mid = self.model_combo.currentData()
-        if mid:
-            settings_manager.instance().set_last_model(mid)
-            if getattr(self, "worker", None):
-                self.worker.client = None
+        settings_manager.instance().set_last_model(model_id)
+        if getattr(self, "worker", None):
+            self.worker.client = None
+        entry = next((m for m in self._models if m["id"] == model_id), None)
+        self._set_current_model(model_id, entry["display"] if entry else model_id)
 
     def toggle_history(self):
         """
@@ -1039,7 +1027,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _build_empty_state(self):
         """One muted line, so an empty panel still says where the user stands."""
-        model = self.model_combo.currentText().strip() or "no model"
+        model = self.model_button.text().strip() or "no model"
         label = QtWidgets.QLabel(
             "%s. The Plan Gate asks before anything is written to your Document."
             % model)
@@ -1068,7 +1056,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if not attached:
             return []
         try:
-            model = selected_model_name(self.model_combo.currentData())
+            model = selected_model_name(self._current_model_id)
         except Exception:
             return []
         return unusable_attachments(attached, model)

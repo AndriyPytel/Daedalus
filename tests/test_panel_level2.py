@@ -214,43 +214,141 @@ def test_a_long_status_line_does_not_widen_the_panel(panel, status):
 
 
 def test_the_empty_chat_says_where_the_user_stands(panel):
-    text = panel._empty_state.text()
+    """
+    Freshly built rather than `panel._empty_state` itself: the model fetch
+    that landed since the panel opened may already have moved the button off
+    whatever it showed when the transcript's own empty state was captured,
+    and that race is not what this test is for.
+    """
+    text = panel._build_empty_state().text()
     assert "Plan Gate" in text
-    assert panel.model_combo.currentText().strip() in text
+    assert panel.model_button.text().strip() in text
 
 
-def test_the_model_picker_groups_under_provider_headings(panel):
-    """A heading is a row that cannot be chosen — that is the whole mechanism."""
-    from conftest import QtCore
+def _selector_click(popup, text):
+    from ui.model_selector import _Row
 
-    from utils import provider_manager
-
-    if not provider_manager.instance().get_available_models():
-        pytest.skip("no API key on this machine, so there is nothing to group")
-
-    items = panel.model_combo.model()
-    headings = [items.item(row) for row in range(items.rowCount())
-                if not (items.item(row).flags() & QtCore.Qt.ItemIsSelectable)]
-
-    assert headings, "the model list is flat"
-    assert panel.model_combo.currentIndex() not in [items.indexFromItem(h).row()
-                                                    for h in headings]
+    for i in range(popup._list_layout.count()):
+        widget = popup._list_layout.itemAt(i).widget()
+        if isinstance(widget, _Row) and widget.text == text:
+            widget.clicked.emit()
+            return
+    raise AssertionError("no row %r in the selector's current step" % text)
 
 
-def test_the_combo_opens_on_a_stored_model_no_static_list_knows(panel, monkeypatch):
+_TWO_PROVIDERS = [
+    {"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"},
+    {"id": "o1", "display": "o1", "provider": "OpenAI"},
+    {"id": "claude-opus-4", "display": "Claude Opus 4", "provider": "Anthropic"},
+]
+
+
+def _mock_no_stored_model(monkeypatch):
+    """
+    The developer's own machine has a real stored model, in real FreeCAD
+    settings, that has nothing to do with `_TWO_PROVIDERS` below — read it
+    back and `_refresh_models` reaches for `_retire_model`, which would
+    overwrite that real setting with one of this test's fake ids.
+    """
+    from utils import settings_manager
+
+    monkeypatch.setattr(settings_manager.instance(), "get_last_model", lambda: "")
+
+
+def test_clicking_the_model_button_opens_the_provider_step(panel, monkeypatch):
+    """FCC-175: the popup opens on a flat list of providers, not their models."""
+    from ui.model_selector import PROVIDER_STEP
+
+    _mock_no_stored_model(monkeypatch)
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._open_model_selector()
+    QT_APP.processEvents()
+
+    assert panel.model_selector.isVisible()
+    assert panel.model_selector.step == PROVIDER_STEP
+    assert panel.model_selector.visible_rows() == ["OpenAI", "Anthropic"]
+    panel.model_selector.close()
+
+
+def test_choosing_a_provider_replaces_the_list_with_its_models(panel, monkeypatch):
+    """Not grouping — sequence: the provider list is gone once its models are up."""
+    from ui.model_selector import MODEL_STEP
+
+    _mock_no_stored_model(monkeypatch)
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._open_model_selector()
+    QT_APP.processEvents()
+
+    _selector_click(panel.model_selector, "OpenAI")
+    QT_APP.processEvents()
+
+    assert panel.model_selector.step == MODEL_STEP
+    assert panel.model_selector.visible_rows() == ["GPT-4o", "o1"]
+    panel.model_selector.close()
+
+
+def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypatch):
+    from utils import settings_manager
+
+    _mock_no_stored_model(monkeypatch)
+    written = []
+    monkeypatch.setattr(settings_manager.instance(), "set_last_model", written.append)
+
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._open_model_selector()
+    QT_APP.processEvents()
+    _selector_click(panel.model_selector, "Anthropic")
+    QT_APP.processEvents()
+    _selector_click(panel.model_selector, "Claude Opus 4")
+    QT_APP.processEvents()
+
+    assert not panel.model_selector.isVisible()
+    assert panel._current_model_id == "claude-opus-4"
+    assert panel.model_button.text() == "Claude Opus 4"
+    assert written == ["claude-opus-4"]
+
+
+def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkeypatch):
+    """
+    Reopening after a model is picked shows providers again, not the
+    last-selected provider's models (FCC-175's Acceptance Criteria).
+    """
+    from utils import settings_manager
+    from ui.model_selector import PROVIDER_STEP
+
+    _mock_no_stored_model(monkeypatch)
+    monkeypatch.setattr(settings_manager.instance(), "set_last_model", lambda model_id: None)
+
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._open_model_selector()
+    QT_APP.processEvents()
+    _selector_click(panel.model_selector, "OpenAI")
+    QT_APP.processEvents()
+    _selector_click(panel.model_selector, "GPT-4o")
+    QT_APP.processEvents()
+
+    panel._open_model_selector()
+    QT_APP.processEvents()
+
+    assert panel.model_selector.step == PROVIDER_STEP
+    assert panel.model_selector.visible_rows() == ["OpenAI", "Anthropic"]
+    panel.model_selector.close()
+
+
+def test_the_button_shows_a_stored_model_no_static_list_knows(panel, monkeypatch):
     """
     The stored id lives only in the provider's fetched list, which has not
-    landed when the panel is built. Falling through to the first selectable
-    row — GPT-4o — is FCC-41.
+    landed when the panel is built. Falling through to the first available
+    model — GPT-4o — is FCC-41.
     """
     from utils import provider_manager, settings_manager
 
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: True)
     monkeypatch.setattr(settings_manager.instance(), "get_last_model", lambda: "gpt-5.6-sol")
 
-    panel._refresh_model_combo([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
+    panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
-    assert panel.model_combo.currentData() == "gpt-5.6-sol"
+    assert panel._current_model_id == "gpt-5.6-sol"
 
 
 def test_a_failed_fetch_leaves_its_provider_still_awaited(monkeypatch):
@@ -284,9 +382,9 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
     monkeypatch.setattr(settings, "get_default_model", lambda: "gpt-4o")
     monkeypatch.setattr(settings, "set_last_model", written.append)
 
-    panel._refresh_model_combo([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
+    panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
-    assert panel.model_combo.currentData() == "gpt-4o"
+    assert panel._current_model_id == "gpt-4o"
     assert written == ["gpt-4o"]
     assert panel.status_line.isVisible()
     assert "gpt-5.6-sol" in panel.status_line.text()
@@ -302,9 +400,9 @@ def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, mon
     monkeypatch.setattr(settings, "get_default_model", lambda: "")
     monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
 
-    panel._refresh_model_combo([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
+    panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
-    assert panel.model_combo.currentData() == "gpt-4o"
+    assert panel._current_model_id == "gpt-4o"
     assert "switched to gpt-4o" in panel.status_line.text()
 
 
