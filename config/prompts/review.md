@@ -10,6 +10,14 @@ diameter and an axis; whether it is a bore or a boss is what the views are
 for. Raw sketch geometry is deliberately not there, so a coordinate you were
 not given is not a coordinate you may assume.
 
+Where you are shown what the user attached with the Intent, judge more than
+whether the same features exist: judge where each one sits and which way it
+points against its neighbours — centred or off to one side, coaxial with
+another feature or standing apart from it, facing the view or turned away
+from it. Two results can carry the same features and the same counts and
+still not be the same part; a feature moved or turned the wrong way passes a
+check for its existence and fails the one that matters.
+
 You are deliberately not told how it was produced — no plan, no code, no
 reasoning. Judge the outcome alone.
 
