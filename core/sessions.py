@@ -89,7 +89,8 @@ class Sessions:
         Sessions and delete their logs (FCC-42).
         """
         self._index.write([
-            {key: session[key] for key in ("name", "created_at", "document", "log")}
+            {key: session[key]
+             for key in ("name", "created_at", "document", "document_id", "log")}
             for session in self._sessions if session.get("indexed")
         ])
 
@@ -116,6 +117,7 @@ class Sessions:
             "name": name,
             "created_at": time.time(),
             "document": document,
+            "document_id": "",
             "log": self._index.new_log(),
             "restored": True,
             "indexed": False,
@@ -124,6 +126,7 @@ class Sessions:
     def _append(self, record) -> int:
         session = dict(record)
         session.setdefault("restored", False)
+        session.setdefault("document_id", "")
         self._sessions.append(session)
         return len(self._sessions) - 1
 
@@ -202,13 +205,26 @@ class Sessions:
         self._save()
         return True
 
-    def name_document(self, log: str, document: str) -> bool:
-        """Record which Document a Session worked on, so the picker can say so."""
+    def name_document(self, log: str, document: str, document_id: str = "") -> bool:
+        """
+        Record which Document a Session worked on, so the picker can say so.
+
+        Two things are kept because they answer two questions. The name is
+        what the user calls the file and is what the picker shows. The id is
+        the Document's own `Uid`, and it is what a Document is recognised by:
+        FreeCAD calls every unsaved Document "Unnamed", so a Session that ran
+        against yesterday's unsaved Document is matched by name to the empty
+        one created this morning, and the panel opens the wrong chat.
+        """
         for session in self._sessions:
-            if session["log"] == log and session["document"] != document:
-                session["document"] = document
-                self._save()
-                return True
+            if session["log"] != log:
+                continue
+            if session["document"] == document and session.get("document_id") == document_id:
+                return False
+            session["document"] = document
+            session["document_id"] = document_id
+            self._save()
+            return True
         return False
 
     def remove(self, index: int) -> bool:

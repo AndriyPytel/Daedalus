@@ -21,7 +21,7 @@ except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
-from ui.design_tokens import FAIL, RUNNING as RUNNING_COLOUR, SPACE_SM, SPACE_XS
+from ui.design_tokens import FAIL, ICON, RUNNING as RUNNING_COLOUR, SPACE_MD, SPACE_SM, SPACE_XS
 from ui.typography import BODY, BODY_STRONG, css
 from ui.ui_helpers import UIHelpers
 
@@ -33,8 +33,8 @@ FAILED = "failed"
 _ICON = {PENDING: "circle", RUNNING: "circle_dot", DONE: "circle_check", FAILED: "circle_x"}
 _MARK_COLOUR = {RUNNING: RUNNING_COLOUR, FAILED: FAIL}
 
-_MARKER_SIZE = 14
-_TRASH_SIZE = 14
+_MARKER_SIZE = ICON
+_TRASH_SIZE = ICON
 
 
 class _StepDelegate(QtWidgets.QStyledItemDelegate):
@@ -78,7 +78,7 @@ class PlanWidget(QtWidgets.QFrame):
         self._states = []
 
         self._outer = QtWidgets.QVBoxLayout(self)
-        self._outer.setContentsMargins(SPACE_SM, SPACE_XS, SPACE_SM, SPACE_XS)
+        self._outer.setContentsMargins(SPACE_MD, SPACE_MD, SPACE_MD, SPACE_MD)
         self._outer.setSpacing(SPACE_XS)
 
         self._title = QtWidgets.QLabel(title)
@@ -100,7 +100,7 @@ class PlanWidget(QtWidgets.QFrame):
         self._add_button = QtWidgets.QPushButton(" Add Step")
         self._add_button.setObjectName("PlanAddStep")
         self._add_button.setFlat(True)
-        self._add_button.setIcon(UIHelpers.get_icon("plus", size=14, on=self._add_button))
+        self._add_button.setIcon(UIHelpers.get_icon("plus", size=ICON, on=self._add_button))
         self._add_button.clicked.connect(self.add_step)
         self._outer.addWidget(self._add_button)
 
@@ -189,7 +189,7 @@ class PlanWidget(QtWidgets.QFrame):
                 self._list.item(row).setIcon(
                     UIHelpers.get_icon("circle", size=_MARKER_SIZE, on=self._list))
             self._add_button.setIcon(
-                UIHelpers.get_icon("plus", size=14, on=self._add_button))
+                UIHelpers.get_icon("plus", size=ICON, on=self._add_button))
 
     def _append_item(self, text):
         item = QtWidgets.QListWidgetItem(text)
@@ -219,20 +219,22 @@ class PlanWidget(QtWidgets.QFrame):
 
     def _paint(self, position):
         """
-        Pending and done carry no colour -- the icon already says which, and a
-        colour of our own is a light-theme value under a dark theme
-        (ADR-0011). Running and failed do: those two must read the same in
-        every theme, and `palette(highlight)` is the one role FreeCAD's themes
-        keep meaningful.
+        The state goes on the mark, not on the row: this design language
+        reports by swapping a glyph and never by repainting what it is
+        reporting on, so a failed Step is a Step with a cross in front of it
+        rather than a red paragraph (`ui/queue_widget.py` marks the same way).
+
+        Pending and done carry no colour at all -- the icon already says
+        which, and a colour of our own is a light-theme value under a dark
+        theme (ADR-0011). Failed carries the one semantic red ADR-0011 keeps,
+        and running `palette(highlight)`, the one role FreeCAD's themes keep
+        meaningful.
         """
         icon_label, text_label = self._rows[position]
         state = self._states[position]
         icon_label.setPixmap(
-            UIHelpers.get_icon(_ICON[state], size=_MARKER_SIZE, on=text_label)
+            UIHelpers.get_icon(_ICON[state], size=_MARKER_SIZE, on=text_label,
+                               colour=_MARK_COLOUR.get(state))
             .pixmap(_MARKER_SIZE, _MARKER_SIZE))
-        style = css(BODY_STRONG if state == RUNNING else BODY)
-        colour = _MARK_COLOUR.get(state)
-        if colour:
-            style = "color:%s; %s" % (colour, style)
-        text_label.setStyleSheet(style)
+        text_label.setStyleSheet(css(BODY_STRONG if state == RUNNING else BODY))
         text_label.setText("%d.  %s" % (position + 1, self._steps[position]))

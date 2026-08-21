@@ -46,9 +46,10 @@ from dataclasses import replace
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, COST, ERROR, GATE, INTENT,
-    PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
-    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream, replay,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
+    GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
+    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT,
+    EventStream, replay,
 )
 from core import design, loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
@@ -3676,9 +3677,11 @@ def test_the_event_stream_of_a_clean_run():
     ])
 
     assert [e.kind for e in events] == [
-        INTENT, THOUGHT, PLAN, GATE, GATE,
-        THOUGHT, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
-        THOUGHT, REVIEW_VERDICT,
+        INTENT,
+        CALL_STARTED, COST,
+        CALL_STARTED, THOUGHT, COST, PLAN, GATE, GATE,
+        CALL_STARTED, THOUGHT, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, THOUGHT, COST, REVIEW_VERDICT,
     ]
 
 
@@ -3697,10 +3700,12 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
     ], attachments=[RENDER_PNG])
 
     assert [e.kind for e in events] == [
-        INTENT, ATTACHED, DESIGN, PART, PLAN, GATE, GATE,
-        STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
-        TOOL_CALL, TOOL_RESULT, ASSERTION,
-        REVIEW_VERDICT,
+        INTENT, ATTACHED,
+        CALL_STARTED, COST, DESIGN, PART,
+        CALL_STARTED, COST, PLAN, GATE, GATE,
+        CALL_STARTED, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
+        CALL_STARTED, COST, REVIEW_VERDICT,
     ]
 
 
@@ -3711,11 +3716,13 @@ def test_the_event_stream_of_a_retried_run():
     )
 
     assert [e.kind for e in events] == [
-        INTENT, PLAN, GATE, GATE,
-        STEP_STARTED,
+        INTENT,
+        CALL_STARTED, COST,
+        CALL_STARTED, COST, PLAN, GATE, GATE,
+        CALL_STARTED, COST, STEP_STARTED,
         TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
-        TOOL_CALL, TOOL_RESULT, APPLIED,
-        REVIEW_VERDICT,
+        CALL_STARTED, COST, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, COST, REVIEW_VERDICT,
     ]
 
 
@@ -3727,7 +3734,10 @@ def test_the_event_stream_of_a_blocked_run():
     )
 
     assert [e.kind for e in events] == [
-        INTENT, PLAN, GATE, GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
+        INTENT,
+        CALL_STARTED, COST,
+        CALL_STARTED, COST, PLAN, GATE, GATE,
+        CALL_STARTED, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
         PREFLIGHT_FAILED, BLOCKED,
     ]
 
@@ -3774,9 +3784,13 @@ def test_reasoning_is_streamed_tagged_with_the_phase_it_came_from():
 
 class _OnASubscription(ScriptedLLMClient):
     """
-    The scripted provider wearing the one attribute `ClaudeCodeClient` carries
-    and `ScriptedLLMClient` does not: what each call spent.
+    The scripted provider wearing the attributes `ClaudeCodeClient` carries
+    and `ScriptedLLMClient` does not: what each call spent, and the model.
     """
+
+    def __init__(self, turns):
+        super().__init__(turns)
+        self.model = "sonnet"
 
     def stream(self, messages, **overrides):
         self.last_cost = {"usd": 0.0049, "model": "sonnet"}
@@ -3834,7 +3848,11 @@ def test_every_call_writes_what_it_would_have_cost():
 
     spent = events.of(COST)
     assert len(spent) == len(llm.calls)
-    assert spent[0].data == {"phase": "design", "usd": 0.0049, "model": "sonnet"}
+    assert spent[0].data["phase"] == "design"
+    assert spent[0].data["usd"] == 0.0049
+    assert spent[0].data["model"] == "sonnet"
+    assert "seconds" in spent[0].data
+    assert isinstance(spent[0].data["seconds"], float)
 
 
 def test_what_a_call_cost_lands_in_the_session_log():
@@ -3847,11 +3865,23 @@ def test_what_a_call_cost_lands_in_the_session_log():
     assert len(written) == len(llm.calls)
 
 
-def test_a_provider_that_says_nothing_about_what_it_spent_writes_no_cost_event():
-    """The keyed route reports none, and an event carrying nothing is worse than no event."""
+def test_a_provider_that_says_nothing_about_what_it_spent_writes_cost_with_only_seconds():
+    """
+    COST is emitted for every call with seconds always present.
+
+    When the provider reports no price (ScriptedLLMClient has no last_cost),
+    the usd field is absent.
+    """
     _, events, _, _ = drive(CLEAN)
 
-    assert events.of(COST) == []
+    cost_events = events.of(COST)
+    assert len(cost_events) == 4
+    for cost in cost_events:
+        assert "seconds" in cost.data
+        assert isinstance(cost.data["seconds"], float)
+        assert "usd" not in cost.data
+        assert "phase" in cost.data
+        assert "model" in cost.data
 
 
 def test_a_keyed_provider_that_prices_writes_a_cost_event_through_the_unchanged_seam():
@@ -3881,9 +3911,13 @@ def test_a_keyed_provider_that_prices_writes_a_cost_event_through_the_unchanged_
 
     _streamed(llm, events, "design", "system", "user")
 
-    assert [e.data for e in events.of(COST)] == [
-        {"phase": "design", "usd": 0.004521, "model": "claude-3-7-sonnet-20250219"}
-    ]
+    cost_events = [e.data for e in events.of(COST)]
+    assert len(cost_events) == 1
+    assert cost_events[0]["phase"] == "design"
+    assert cost_events[0]["usd"] == 0.004521
+    assert cost_events[0]["model"] == "claude-3-7-sonnet-20250219"
+    assert "seconds" in cost_events[0]
+    assert isinstance(cost_events[0]["seconds"], float)
 
 
 def test_the_stream_can_be_watched_live():

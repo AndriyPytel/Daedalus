@@ -2,55 +2,88 @@
 """
 One collapsible row in the transcript.
 
-Not a card. Thinking, tool calls and errors all take this shape: a toggle line
-and, under it, wrapped text laid out in the column itself. What it used to be —
-a QTextEdit inside the chat's own scroll area, animated to a magic 1000 — is
-what truncated long thinking and what stole the mouse wheel from the chat (ADR-0011).
+Thinking, tool calls and errors all take this shape: a toggle line and, under
+it, wrapped text laid out in the column itself. What it used to be — a
+QTextEdit inside the chat's own scroll area, animated to a magic 1000 — is what
+truncated long thinking and what stole the mouse wheel from the chat (ADR-0011).
+
+Boxed or not, by what the row is. Reasoning and a folded list carry nothing of
+their own and rely on the column for their edges, which is the cheapest way
+this design language separates anything. A call the run made is the one shape
+Figma's Tool card gives a border to: a hairline and no fill, so that a
+transcript of a dozen calls stays a column of outlines rather than a stack of
+filled slabs.
 """
+import time
+
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
 except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
+from ui.design_tokens import ICON, ICON_DENSE, SPACE_COMPOSER, SPACE_MD, SPACE_SM, SPACE_XS
+from ui.typography import CAPTION, LABEL, css
 from ui.ui_helpers import UIHelpers
 
-_TOGGLE_RULE = ("QPushButton { text-align: left; padding: 4px 0px; border: none; "
-                "background: transparent; font-size: 12px; font-weight: 600; %s}")
+_TOGGLE_RULE = ("QPushButton { text-align: left; padding: %dpx 0px; border: none; "
+                "background: transparent; min-width: 0px; %s }" % (SPACE_XS, css(LABEL)))
 
 
-class AccordionWidget(QtWidgets.QWidget):
+class AccordionWidget(QtWidgets.QFrame):
     """
     A toggle row with text that shows and hides beneath it.
 
     The content is plain text, not rich: a traceback says `<module>`, and QLabel
     guesses rich text by default.
+
+    A QFrame rather than a plain widget because a plain one paints neither a
+    border nor a background from the stylesheet, whatever the rule says.
     """
 
-    def __init__(self, title: str = "Thinking..."):
+    def __init__(self, title: str = "Thinking...", code: bool = False,
+                 boxed: bool = False):
         super().__init__()
+        if boxed:
+            self.setObjectName("ToolCard")
         layout = QtWidgets.QVBoxLayout(self)
-        layout.setContentsMargins(12, 2, 24, 2)
+        pad = SPACE_COMPOSER if boxed else 0
+        layout.setContentsMargins(pad, pad, pad, pad)
         layout.setSpacing(0)
 
-        self.toggle_button = QtWidgets.QPushButton("▶  " + title)
-        self.toggle_button.setStyleSheet(_TOGGLE_RULE % "")
+        header = QtWidgets.QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(SPACE_XS)
+
+        self.mark = QtWidgets.QLabel()
+        self.mark.setVisible(False)
+        header.addWidget(self.mark)
+
+        self.toggle_button = QtWidgets.QPushButton(title)
+        self.toggle_button.setStyleSheet(_TOGGLE_RULE)
         self.toggle_button.setCursor(QtCore.Qt.PointingHandCursor)
         self.toggle_button.clicked.connect(self.toggle_content)
-        layout.addWidget(self.toggle_button)
+        header.addWidget(self.toggle_button)
+        layout.addLayout(header)
 
         self.content_area = QtWidgets.QLabel()
         self.content_area.setWordWrap(True)
         self.content_area.setTextFormat(QtCore.Qt.PlainText)
         self.content_area.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         self.content_area.setStyleSheet(
-            "QLabel { font-family: %s; font-size: 11px; padding: 2px 0px 6px 14px; }"
-            % UIHelpers.get_monospace_font())
+            "QLabel { %s %s padding: 0px 0px %dpx %dpx; }"
+            % ("font-family: %s;" % UIHelpers.get_monospace_font() if code else "",
+               css(CAPTION), SPACE_SM, SPACE_MD))
         self.content_area.setVisible(False)
         layout.addWidget(self.content_area)
 
         self._is_expanded = False
+        self._detail = True
         self._anim = None
         self._effect = None
+        self._clock = None
+        self._since = 0.0
+        self._title = title
+        self._paint_chevron()
 
     def append_text(self, text: str):
         """
@@ -59,32 +92,73 @@ class AccordionWidget(QtWidgets.QWidget):
         streamed sentence across a dozen lines.
         """
         self.content_area.setText(self.content_area.text() + text)
+        if not self._detail:
+            self._detail = True
+            self.setCursor(QtCore.Qt.ArrowCursor)
+            self.toggle_button.setCursor(QtCore.Qt.PointingHandCursor)
+            self._paint_chevron()
+
+    def opens_onto_nothing(self):
+        """
+        Closes the row and takes its disclosure mark away until there is
+        something under it.
+
+        A chevron is a promise that a click shows more, and the one route this
+        panel runs on withholds the words of its reasoning: the row still has
+        to go up, since a phase that says nothing for four minutes reads as a
+        run that has died, but it must not offer to open onto an empty label.
+        `append_text` gives the mark back at the first word that does arrive.
+        """
+        self._detail = False
+        self._is_expanded = False
+        self.content_area.setVisible(False)
+        self.toggle_button.setIcon(QtGui.QIcon())
+        self.toggle_button.setCursor(QtCore.Qt.ArrowCursor)
 
     def mark_as_reasoning(self):
         """
-        Reads subdued next to an answer, the way `HistoryItem` dims its
-        timestamp: an opacity effect rather than a colour of its own, since
-        the theme still decides what the text is (ADR-0011, Figma's Chain of
-        Thought component).
+        The brain Figma's Reasoning header carries, and text that reads
+        subdued next to an answer.
+
+        Subdued the way `HistoryItem` dims its timestamp: an opacity effect
+        rather than a colour of its own, since the theme still decides what
+        the text is (ADR-0011, Figma's Chain of Thought component).
+
+        The brain is `ICON` and the chevron beside it `ICON_DENSE`, which is
+        what those two names are for: 16 is the mark that says what the row is
+        and sits beside its words, 12 is the disclosure mark inline in them.
+        The transcript carries one other kind of row that opens, and telling a
+        phase of reasoning from a call the run made has to survive a glance
+        down a column of them.
         """
+        self.mark.setPixmap(
+            UIHelpers.get_icon("brain", size=ICON, on=self.toggle_button)
+            .pixmap(ICON, ICON))
+        self.mark.setVisible(True)
         effect = QtWidgets.QGraphicsOpacityEffect(self.content_area)
         effect.setOpacity(0.6)
         self.content_area.setGraphicsEffect(effect)
 
-    def tint_toggle(self, colour):
-        """
-        Colours the toggle line's own text -- semantic, not the theme
-        (`FAIL`/`SUCCESS`, ADR-0011), the way a pass/fail row needs to read
-        the same in every theme (`ui/assertion_results_widget.py`, FCC-179).
-
-        Rebuilt from `_TOGGLE_RULE` rather than appended to the stylesheet
-        already set: a bare `color:` outside a `QPushButton { … }` block is
-        not a rule Qt's style sheet parser accepts.
-        """
-        self.toggle_button.setStyleSheet(_TOGGLE_RULE % ("color: %s; " % colour))
-
     def start_pulsing(self):
-        """The 'still working' signal — the one animation worth keeping."""
+        """
+        The 'still working' signal — the one animation worth keeping — and,
+        beside the title, how long it has been working.
+
+        A pulse says the run is alive; it does not say whether this has been
+        going for ten seconds or for six minutes, and that is the question
+        the user asks a panel that has said nothing for a while. Nothing on
+        any route can say how long the model will take (no provider reports a
+        budget or a remaining time mid-stream), so the panel says the one
+        thing that is true and useful: how long it has already been. The
+        count stays on the row once it stops, because "that phase took four
+        minutes" is worth keeping in the transcript.
+        """
+        self._title = self.toggle_button.text()
+        self._since = time.monotonic()
+        self._clock = QtCore.QTimer(self)
+        self._clock.setInterval(1000)
+        self._clock.timeout.connect(self._say_how_long)
+        self._clock.start()
         self._effect = QtWidgets.QGraphicsOpacityEffect(self.toggle_button)
         self.toggle_button.setGraphicsEffect(self._effect)
         self._anim = QtCore.QPropertyAnimation(self._effect, b"opacity")
@@ -96,7 +170,16 @@ class AccordionWidget(QtWidgets.QWidget):
         self._anim.setEasingCurve(QtCore.QEasingCurve.InOutSine)
         self._anim.start()
 
+    def _say_how_long(self):
+        seconds = int(time.monotonic() - self._since)
+        self.toggle_button.setText(
+            "%s  ·  %d:%02d" % (self._title, seconds // 60, seconds % 60))
+
     def stop_pulsing(self):
+        if self._clock:
+            self._say_how_long()
+            self._clock.stop()
+            self._clock = None
         if self._anim:
             self._anim.stop()
             self._anim = None
@@ -106,8 +189,25 @@ class AccordionWidget(QtWidgets.QWidget):
             self._effect = None
 
     def toggle_content(self):
+        if not self._detail:
+            return
         self._is_expanded = not self._is_expanded
         self.content_area.setVisible(self._is_expanded)
-        raw = self.toggle_button.text()
-        self.toggle_button.setText(raw.replace("▶  ", "▼  ", 1) if self._is_expanded
-                                   else raw.replace("▼  ", "▶  ", 1))
+        self._paint_chevron()
+
+    def _paint_chevron(self):
+        """
+        The disclosure mark, from the icon set rather than from the two
+        triangles the font happens to carry.
+
+        `chevron_down` is drawn once and rotated for the closed state: the set
+        has the one shape, and a glyph is not a shape -- it is whatever the
+        user's font decided, at whatever weight, and it does not take the
+        icon tint the rest of the panel is drawn with.
+        """
+        icon = UIHelpers.get_icon("chevron_down", size=ICON_DENSE, on=self.toggle_button)
+        if not self._is_expanded:
+            pixmap = icon.pixmap(ICON_DENSE, ICON_DENSE).transformed(
+                QtGui.QTransform().rotate(-90), QtCore.Qt.SmoothTransformation)
+            icon = QtGui.QIcon(pixmap)
+        self.toggle_button.setIcon(icon)

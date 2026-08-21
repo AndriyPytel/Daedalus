@@ -148,7 +148,18 @@ class _SettingsManager(QObject):
         self._grp().SetString("LastUsedModel", model_id)
         self.last_model_changed.emit(model_id)
 
+    def get_effort(self) -> str:
+        """
+        How hard the model is asked to think, as `core.llm.EFFORTS` spells it.
 
+        Empty until the user picks one, and `core.llm` is what decides what
+        empty means: the levels are its dial, and a value stored here that it
+        no longer offers must not become a flag nobody can spell.
+        """
+        return self._grp().GetString("Effort", "")
+
+    def set_effort(self, level: str):
+        self._grp().SetString("Effort", level)
 
     def get_llm_credentials(self, model_id: str = None):
         """

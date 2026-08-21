@@ -12,7 +12,10 @@ check is not what these tests are about.
 import inspect
 import json
 
-from core.events import BLOCKED, GATE, INTENT, PLAN, PLAN_REVISED, STEP_STARTED, EventStream
+from core.events import (
+    BLOCKED, CALL_STARTED, COST, GATE, INTENT, PLAN, PLAN_REVISED, STEP_STARTED,
+    THOUGHT, EventStream,
+)
 from core.llm import ScriptedLLMClient
 from core.loop import (
     ACCEPT, AMEND, APPROVE, REJECT, REVISE, START_OVER, Approval, Budgets, run,
@@ -46,7 +49,13 @@ class Gate:
 
 
 def test_no_step_executes_before_the_user_approves():
-    """The Plan was shown to the gate before anything was applied."""
+    """
+    The Plan was shown to the gate before anything was applied.
+
+    CALL_STARTED, COST, and THOUGHT are per-call bookkeeping and say nothing
+    about the order of the run, so they are filtered out before checking that
+    the structural events arrive in the right sequence.
+    """
     gate = Gate(Approval(APPROVE))
 
     _, events, tools = drive(
@@ -54,7 +63,7 @@ def test_no_step_executes_before_the_user_approves():
 
     assert gate.shown == [["Create a 10mm box"]]
     assert tools.applied_codes() == ["box()"]
-    kinds = [e.kind for e in events]
+    kinds = [e.kind for e in events if e.kind not in (CALL_STARTED, COST, THOUGHT)]
     assert kinds[:2] == [INTENT, PLAN]
 
 

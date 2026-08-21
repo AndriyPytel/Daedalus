@@ -80,11 +80,34 @@ def test_a_second_intent_changes_nothing(sessions, index):
     assert [record["name"] for record in index.records] == ["A 20-tooth gear"]
 
 
-def test_the_index_carries_only_the_four_durable_fields(sessions, index):
+def test_the_index_carries_only_the_durable_fields(sessions, index):
     """Whatever shows a Session is the caller's; none of it is written down."""
     _with_an_intent(sessions, "A 20-tooth gear")
 
-    assert set(index.records[0]) == {"name", "created_at", "document", "log"}
+    assert set(index.records[0]) == {"name", "created_at", "document",
+                                     "document_id", "log"}
+
+
+def test_a_document_is_recognised_by_its_own_id_not_by_its_name(sessions):
+    """
+    FreeCAD calls every unsaved Document "Unnamed": a Session is matched to
+    the Document it worked on by the id, or a new empty Document reopens an
+    old chat.
+    """
+    position = sessions.add("Flange")
+    log = sessions.at(position)["log"]
+    sessions.begin(position, "Flange")
+
+    assert sessions.name_document(log, "Unnamed", "3a991267-6863")
+    assert sessions.at(position)["document"] == "Unnamed"
+    assert sessions.at(position)["document_id"] == "3a991267-6863"
+
+
+def test_a_session_that_never_ran_has_no_document_id(sessions):
+    """Nothing was sent, so nothing recognises it: it matches no Document."""
+    position = sessions.add("Flange")
+
+    assert sessions.at(position)["document_id"] == ""
 
 
 def test_the_session_bound_holds_without_a_restart(sessions, index, monkeypatch):

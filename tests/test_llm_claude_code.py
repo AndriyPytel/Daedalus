@@ -30,6 +30,7 @@ from core import llm, loop
 from core.llm import (
     REASONING,
     TEXT,
+    Chunk,
     ClaudeCodeClient,
     ProviderRefused,
     find_claude,
@@ -216,13 +217,16 @@ def test_the_thinking_arrives_as_reasoning_before_the_answer():
     assert "".join(c.text for c in chunks if c.kind == REASONING).startswith("The user is asking")
 
 
-def test_thinking_the_provider_withholds_the_words_of_is_reported_as_its_count():
+def test_thinking_the_provider_withholds_the_words_of_is_reported_once_and_wordlessly():
     """
     `sonnet` streams the thinking it did without its words: `thinking_delta`
     carrying `""` and a rising `estimated_tokens`, 245 thinking tokens on the
-    `result`, and not a word of them. The count is what reaches the panel — the
-    provider's own measurement of work happening, where an empty chunk would
-    open an accordion with nothing in it.
+    `result`, and not a word of them.
+
+    One wordless chunk reaches the panel, whatever the number of deltas. That
+    the model is reasoning is worth a row on a phase that takes minutes; the
+    count is not, and reported per delta it filled one 45-minute session with
+    1506 lines saying how much rather than why.
     """
     client, _ = client_replaying(THINKING_REDACTED)
 
@@ -230,12 +234,16 @@ def test_thinking_the_provider_withholds_the_words_of_is_reported_as_its_count()
     thought = [chunk.text for chunk in chunks if chunk.kind == REASONING]
 
     assert _result(THINKING_REDACTED)["usage"]["output_tokens_details"]["thinking_tokens"] == 245
-    assert thought == ["thinking… ~50 tokens\n", "thinking… ~150 tokens\n"]
+    assert thought == [""]
     assert TEXT in {chunk.kind for chunk in chunks}
 
 
-def test_a_thinking_delta_with_neither_words_nor_a_count_is_dropped():
-    """The last of the recorded three carries `""` and no estimate; there is nothing to say."""
+def test_three_withheld_deltas_are_still_one_chunk():
+    """
+    The recording carries three `thinking_delta`s -- two with a count, one with
+    neither words nor a count. A phase reasoning is one fact however many
+    deltas carry it, and the third says nothing even by that measure.
+    """
     client, _ = client_replaying(THINKING_REDACTED)
 
     reasoning = [c for c in client.stream(a_turn()) if c.kind == REASONING]
@@ -243,7 +251,7 @@ def test_a_thinking_delta_with_neither_words_nor_a_count_is_dropped():
     withheld = [event for event in _events(THINKING_REDACTED)
                 if (((event.get("event") or {}).get("delta") or {}).get("type") == "thinking_delta")]
     assert len(withheld) == 3
-    assert len(reasoning) == 2
+    assert reasoning == [Chunk(REASONING, "")]
 
 
 def test_a_reply_with_no_thinking_in_it_is_all_text():
@@ -370,7 +378,7 @@ def test_a_call_that_never_answers_ends_the_run_rather_than_hanging_it():
 
 def test_the_ceiling_a_call_waits_under_is_the_one_its_own_effort_measured():
     """A call is made at one effort, and the wait it is allowed is that effort's."""
-    assert ClaudeCodeClient(MODEL).timeout == llm._CEILING[llm._SUBSCRIPTION_EFFORT]
+    assert ClaudeCodeClient(MODEL).timeout == llm._CEILING[llm.effort()]
 
 
 def test_every_effort_the_dial_offers_leaves_room_for_the_design_call_it_buys():
@@ -465,18 +473,44 @@ def test_the_reply_is_asked_for_as_it_forms_rather_than_when_it_is_finished():
     assert "--include-partial-messages" in spawn.argv
 
 
-def test_the_effort_is_this_route_s_own_and_not_the_keyed_route_s():
+def test_the_call_is_made_at_the_effort_the_user_set(monkeypatch):
+    """The dial in the composer is what reaches the CLI, per call."""
+    from utils import settings_manager
+
+    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: "high")
+    client, spawn = client_replaying()
+    collect(client.stream(a_turn()))
+
+    assert spawn.argv[spawn.argv.index("--effort") + 1] == "high"
+
+
+def test_an_effort_the_dial_no_longer_offers_falls_back(monkeypatch):
     """
-    `_REASONING_EFFORT`'s `low` exists against a model circling invisibly in its
-    own reasoning; here the circling streams and the call is bounded, so low
-    would only buy the cheapest thinking on the route that does not bill it by
-    the token.
+    A level stored by some older build is a flag no route can spell, and the
+    CLI answers a bad `--effort` by refusing the call.
     """
+    from utils import settings_manager
+
+    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: "xhigh")
     client, spawn = client_replaying()
     collect(client.stream(a_turn()))
 
     assert spawn.argv[spawn.argv.index("--effort") + 1] == llm._SUBSCRIPTION_EFFORT
-    assert llm._SUBSCRIPTION_EFFORT != llm._REASONING_EFFORT
+
+
+def test_the_wait_a_call_is_allowed_moves_with_the_dial(monkeypatch):
+    """
+    A ceiling that does not move with the effort cuts the answer off rather
+    than bounding it: one sheet through Design is 52 s at low and 668 s at
+    high.
+    """
+    from utils import settings_manager
+
+    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: "low")
+    assert ClaudeCodeClient(MODEL).timeout == llm._CEILING["low"]
+
+    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: "high")
+    assert ClaudeCodeClient(MODEL).timeout == llm._CEILING["high"]
 
 
 def test_the_subscription_is_the_credential_rather_than_a_key():

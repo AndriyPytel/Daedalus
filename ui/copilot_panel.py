@@ -15,7 +15,11 @@ stylesheet is geometry and typography, which no theme has an opinion about.
 Session is opened: small enough that no single turn is felt, large enough that
 a short Session lands in one. `ATTACHMENT_WIDTH` is how wide an attached
 picture is shown in the chat: wide enough to recognise the drawing, narrow
-enough that it is not the whole transcript.
+enough that it is not the whole transcript. `OPEN_AT_MOST` is how many entries
+a list beside the Plan may hold and still stand open — see `_render_plan`.
+`FOLDS_OVER` is how long a narrated line may be before it folds into a row of
+its own, and `TITLE_KEPT` how much of its first sentence titles that row — see
+`_say`.
 """
 import threading
 
@@ -28,16 +32,18 @@ except ImportError:
     QtWidgets = QtGui
 
 from .chat_widgets        import (TextMessageWidget, AssistantMessageWidget,
-                                  CodeBlockWidget, DocumentLinkWidget)
+                                  DocumentLinkWidget)
 from .multi_tab_manager   import ChatSessionManager
-from .upload_widget       import UploadWidget, FileChipBar
+from .upload_widget       import FileChip, UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
 from .plan_widget         import PlanWidget, DONE as PLAN_DONE, FAILED as PLAN_FAILED
 from .queue_widget        import QueueWidget
 from .review_verdict_widget import ReviewVerdictWidget
 from .assertion_results_widget import AssertionResultsWidget, summary_line
-from ui.design_tokens     import RADIUS_LG, RADIUS_MD, RADIUS_SM, RUNNING, SPACE_XS, SPACE_SM, WASH
-from ui.typography        import BODY, CAPTION, css
+from ui.design_tokens     import (CONTROL, CONTROL_DENSE, HAIRLINE, ICON, ICON_DENSE, RADIUS_CONTROL,
+                                  RADIUS_SURFACE, RUNNING, SPACE_COMPOSER, SPACE_MD,
+                                  SPACE_SM, SPACE_XS, WASH)
+from ui.typography        import BODY, BODY_STRONG, CAPTION, LABEL, css
 from utils import settings_manager
 from utils import provider_manager
 from ui.ui_helpers import UIHelpers
@@ -53,6 +59,22 @@ def _build_qss() -> str:
     hands these widgets to FreeCAD's global stylesheet, including themes that
     did not exist when this was written.
 
+    The rules follow AI Elements' own grammar (`docs/research/fcc169-ai-elements-visual-grammar.md`,
+    read off the user's Figma file). Three of its rules decide most of what is
+    below. Separation takes the cheapest form that still reads: nothing, then a
+    one-pixel hairline with no fill, then a wash, and a filled surface only for
+    the handful of things meant to be taken for a panel of their own — the
+    composer, the Plan, a results card. State is never a repaint: a control
+    keeps its fill and swaps its icon, which is why nothing here has a
+    `:disabled` or an error colour. And exactly one control on screen carries
+    the accent fill — Send, or the primary answer to whatever is being asked.
+
+    Where the keyboard is is the one exception, and it is not a state of the
+    control: a field that does not say it has focus is a field the user cannot
+    tell they are typing into. It is drawn in the accent, since that is what
+    the accent is for, and on the hairline the composer already has, so it
+    costs no layout.
+
     Where a rule pins a dimension it also resets padding and border: Qt's
     min/max-width size the content rect, and the theme's padding is added on
     top of them.
@@ -61,27 +83,31 @@ def _build_qss() -> str:
         /* Panel root */
         QWidget {{
             font-family: {UIHelpers.get_ui_font()};
-            font-size: 13px;
+            {css(BODY)}
         }}
 
         QDockWidget::title {{ padding: 0px; height: 0px; }}
 
-        /* Header icon buttons */
-        QPushButton#HeaderButton {{
-            background: transparent;
+        /* The header, ruled off from the transcript under it */
+        QFrame#HeaderBar {{
             border: none;
-            font-size: 16px;
-            padding: 0px;
-            border-radius: 4px;
-            min-width: 22px; max-width: 22px;
-            min-height: 22px; max-height: 22px;
+            border-bottom: 1px solid {HAIRLINE};
         }}
 
-        /* Status line */
-        QLabel#StatusLine {{
-            font-size: 11px;
-            padding: 0px 15px 3px 15px;
+        QLabel#HeaderTitle {{ {css(BODY_STRONG)} }}
+
+        /* Icon-only actions: one hit-target size, a wash under the pointer,
+           and no other state. */
+        QPushButton#IconButton {{
+            background: transparent;
+            border: none;
+            border-radius: {RADIUS_CONTROL}px;
+            padding: 0px;
+            min-width: {CONTROL}px; max-width: {CONTROL}px;
+            min-height: {CONTROL}px; max-height: {CONTROL}px;
         }}
+
+        QPushButton#IconButton:hover {{ background-color: {WASH}; }}
 
         /* Usage/cost running total */
         QLabel#UsageTotal {{
@@ -91,27 +117,57 @@ def _build_qss() -> str:
 
         /* The empty chat still tells the user where they stand */
         QLabel#EmptyState {{
-            font-size: 12px;
-            padding: 24px 20px;
+            {css(CAPTION)}
+            padding: {SPACE_MD}px;
         }}
 
-        /* Input card */
-        QFrame#InputContainer {{ border-radius: {RADIUS_SM}px; }}
-
-        /* The Plan Gate keeps a container: a decision the user has to make
-           must not read as another paragraph of output. */
-        QFrame#GateCard {{
-            border-radius: 12px;
-            background-color: rgba(127, 127, 127, 40);
-        }}
-
-        /* The Plan, editable until Build locks it (FCC-177). Figma's Plan
-           component gives only its outer box, no per-row detail, so the
-           radius and wash follow the Gate card beside it rather than a
-           number the spec does not carry. */
-        QFrame#PlanCard {{
-            border-radius: {RADIUS_MD}px;
+        /* The composer: a surface, so a fill and a hairline both, and the one
+           twelve in the spacing scale around the text. */
+        QFrame#InputContainer {{
             background-color: {WASH};
+            border: 1px solid {HAIRLINE};
+            border-radius: {RADIUS_SURFACE}px;
+            margin: 0px {SPACE_MD}px {SPACE_MD}px {SPACE_MD}px;
+        }}
+
+        /* Which of the panel's fields the keyboard is in. The hairline is
+           already there, so the ring costs no layout: the same one pixel,
+           repainted in the accent. */
+        QFrame#InputContainer[focused="true"] {{
+            border: 1px solid {RUNNING};
+        }}
+
+        QTextEdit#ChatInput {{
+            border: none;
+            background: transparent;
+            {css(BODY)}
+            padding: {SPACE_COMPOSER}px;
+        }}
+
+        /* The Queue, pinned above the composer: a hairline and no fill --
+           the fills belong to what the reader stops on, and this is read at a
+           glance rather than stopped on. */
+        QFrame#QueueCard {{
+            border: 1px solid {HAIRLINE};
+            border-radius: {RADIUS_SURFACE}px;
+            margin: 0px {SPACE_MD}px {SPACE_SM}px {SPACE_MD}px;
+        }}
+
+        QFrame#QueueRow {{ border-radius: {RADIUS_CONTROL}px; }}
+
+        QFrame#QueueRow:hover {{ background-color: {WASH}; }}
+
+        /* What is being asked is asked in the open: the Confirmation this
+           follows carries no card at all, and the accent on its answer is
+           what marks it out. */
+        QFrame#GateCard {{ border: none; }}
+
+        /* The Plan, editable until Build locks it (FCC-177): the one thing
+           on screen at the Gate that is read as an object, so a surface. */
+        QFrame#PlanCard {{
+            background-color: {WASH};
+            border: 1px solid {HAIRLINE};
+            border-radius: {RADIUS_SURFACE}px;
         }}
 
         QListWidget#PlanSteps {{
@@ -120,8 +176,8 @@ def _build_qss() -> str:
         }}
 
         QListWidget#PlanSteps::item {{
-            padding: {SPACE_XS}px {SPACE_SM}px;
-            border-radius: {RADIUS_SM}px;
+            padding: {SPACE_XS}px {ICON + SPACE_SM}px {SPACE_XS}px {SPACE_SM}px;
+            border-radius: {RADIUS_CONTROL}px;
         }}
 
         QListWidget#PlanSteps::item:selected {{
@@ -133,67 +189,80 @@ def _build_qss() -> str:
             background: transparent;
             text-align: left;
             padding: {SPACE_XS}px {SPACE_SM}px;
+            min-width: 0px;
             {css(CAPTION)}
         }}
 
-        QTextEdit#ChatInput {{
-            border: none;
-            background: transparent;
-            {css(BODY)}
-            padding: {SPACE_XS}px {SPACE_SM}px;
-        }}
-
-        /* Focus reads as a wash, not a colour of its own (ADR-0011) — the
-           same grey the Plan Gate separates itself with, at a lower alpha. */
-        QTextEdit#ChatInput:focus {{
-            background: rgba(127, 127, 127, 20);
-        }}
-
-        /* Pill buttons */
+        /* An action offered beside a primary one: a label, a hairline, and no
+           fill of its own. */
         QPushButton#PillButton {{
-            border-radius: 6px;
-            padding: 3px 10px;
-            font-size: 11px;
+            border: 1px solid {HAIRLINE};
+            border-radius: {RADIUS_CONTROL}px;
+            padding: 0px {SPACE_SM}px;
+            min-width: 0px;
+            {css(LABEL)}
         }}
 
-        /* The Review verdict card (FCC-178) -- same wash and radius as the
-           Plan card beside it. Approve is the one filled button in the
-           panel: palette(highlight) is the sole palette role ADR-0011 still
-           lets this stylesheet ask for, everywhere else the running Step's
-           colour. Reject and Start Over are PillButton, unchanged --
-           Start Over subdued in Python instead, an opacity effect rather
-           than a colour of its own (review_verdict_widget.py). */
-        QFrame#ReviewVerdictCard {{
-            border-radius: {RADIUS_LG}px;
+        QPushButton#PillButton:hover {{ background-color: {WASH}; }}
+
+        /* A control that is picked between rather than pressed: the composer's
+           strip, where the attach button sets the idiom -- no edge, no fill,
+           and a wash under the pointer. An outline here would fence off what
+           is a current value rather than a thing to press. */
+        QPushButton#PickerButton {{
+            background: transparent;
+            border: none;
+            border-radius: {RADIUS_CONTROL}px;
+            padding: 0px {SPACE_XS}px;
+            min-width: 0px;
+            {css(LABEL)}
+        }}
+
+        QPushButton#PickerButton:hover {{ background-color: {WASH}; }}
+
+        /* The Review verdict card (FCC-178) and the acceptance checks
+           (FCC-179): both are results, and a result is a surface. */
+        QFrame#ReviewVerdictCard, QFrame#AssertionResultsCard {{
             background-color: {WASH};
+            border: 1px solid {HAIRLINE};
+            border-radius: {RADIUS_SURFACE}px;
         }}
 
-        QPushButton#ReviewApprove {{
+        /* A call the run made, in the shape Figma's Tool card takes: a
+           hairline, no fill, and the control radius rather than a surface's. */
+        QFrame#ToolCard {{
+            border: 1px solid {HAIRLINE};
+            border-radius: {RADIUS_CONTROL}px;
+        }}
+
+        /* The one accent-filled control on screen -- Send, or the answer the
+           card being shown is asking for. The glyph takes the colour the
+           theme pairs with that fill; left at the ordinary foreground it is
+           the one contrast a theme guarantees, broken by hand. */
+        QPushButton#PrimaryButton, QPushButton#ReviewApprove {{
             background-color: {RUNNING};
+            color: palette(highlighted-text);
             border: none;
-            border-radius: 6px;
-            padding: 3px 10px;
-            font-size: 11px;
+            border-radius: {RADIUS_CONTROL}px;
+            padding: {SPACE_SM}px {SPACE_MD}px;
+            min-width: 0px;
+            {css(LABEL)}
         }}
 
-        /* Structured Assertion results (FCC-179) -- Figma's TestResults
-           gives radius 10 of its own, RADIUS_LG exactly; the wash is the
-           same one every other results card here separates itself with. */
-        QFrame#AssertionResultsCard {{
-            border-radius: {RADIUS_LG}px;
-            background-color: {WASH};
-        }}
-
-        /* Circular send button */
+        /* Send and Stop: the glyph alone, in the idiom the attach button and
+           the pickers beside them already use. A filled pill here was the one
+           thing in the composer's strip wearing a colour, and it read as a
+           second primary action next to the Plan Gate's. */
         QPushButton#SendButton {{
+            background: transparent;
             border: none;
+            border-radius: {RADIUS_CONTROL}px;
             padding: 0px;
-            border-radius: 15px;
-            font-size: 15px;
-            font-weight: bold;
-            min-width: 30px; max-width: 30px;
-            min-height: 30px; max-height: 30px;
+            min-width: {CONTROL}px; max-width: {CONTROL}px;
+            min-height: {CONTROL}px; max-height: {CONTROL}px;
         }}
+
+        QPushButton#SendButton:hover {{ background-color: {WASH}; }}
 
         /* Scrollbars */
         QScrollBar:vertical {{
@@ -226,16 +295,82 @@ def _format_cost(usd: float) -> str:
     return "$%.2f" % usd
 
 
+def _format_elapsed(seconds: float) -> str:
+    """
+    Wall-clock duration, zero-padded to M:SS when under an hour, H:MM:SS when over.
+
+    90 seconds -> "1:30"
+    3660 seconds -> "1:01:00"
+    45 seconds -> "0:45"
+    """
+    if seconds < 0:
+        seconds = 0
+
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{secs:02d}"
+    else:
+        return f"{minutes}:{secs:02d}"
+
+
+def _folded(line: str) -> "QtWidgets.QWidget":
+    """
+    *line* as a closed row titled by its first sentence.
+
+    The title is a sentence rather than a label of our own, because what is
+    being folded is prose the run wrote and the panel cannot summarise: the
+    first sentence is the one part of it written to be read first.
+    """
+    head = line.strip().split(". ")[0].split("\n")[0].strip()
+    row = AccordionWidget(head[:TITLE_KEPT] + ("…" if len(head) > TITLE_KEPT else ""))
+    row.append_text(line)
+    return row
+
+
+def _beside_the_intent(widget) -> "QtWidgets.QWidget":
+    """
+    *widget* pushed to the right margin, where the user's own turn stands.
+
+    What the run was shown is part of what the user said, so an attachment
+    lines up under their bubble rather than at the left margin the run
+    answers from.
+    """
+    row = QtWidgets.QWidget()
+    layout = QtWidgets.QHBoxLayout(row)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addStretch(1)
+    layout.addWidget(widget)
+    return row
+
+
 
 class _PasteAwareTextEdit(QtWidgets.QTextEdit):
     """The composer: Enter sends, Shift+Enter inserts a newline, Ctrl+V images
     go to the UploadWidget.
 
     A pasted image is consumed here rather than handed on, so its raw bytes
-    never land in the text field."""
+    never land in the text field.
+
+    `focus_changed` is how the card around it knows to draw its focus ring.
+    The ring belongs on the card, not on this widget -- the border and the
+    fill the user reads as "the composer" are the card's -- and Qt has no
+    `:focus-within`, so the field that actually takes the keyboard has to say
+    so out loud."""
 
     paste_image_requested = QtCore.Signal()
     send_requested = QtCore.Signal()
+    focus_changed = QtCore.Signal(bool)
+
+    def focusInEvent(self, event: QtGui.QFocusEvent):
+        super().focusInEvent(event)
+        self.focus_changed.emit(True)
+
+    def focusOutEvent(self, event: QtGui.QFocusEvent):
+        super().focusOutEvent(event)
+        self.focus_changed.emit(False)
 
     def keyPressEvent(self, event: QtGui.QKeyEvent):
         if event.key() == QtCore.Qt.Key_V and (event.modifiers() & QtCore.Qt.ControlModifier):
@@ -358,7 +493,7 @@ class LoopWorker(QtCore.QObject):
     """
 
     finished = QtCore.Signal(object)
-    document_named = QtCore.Signal(str, str)
+    document_named = QtCore.Signal(str, str, str)
 
     def __init__(self, bridge: EventBridge, ask: AskTheUser):
         super().__init__()
@@ -431,7 +566,8 @@ class LoopWorker(QtCore.QObject):
         tools = self._get_tools(events)
         try:
             self.document_named.emit(transcript,
-                                     str(tools.call("snapshot").get("document") or ""))
+                                     str(tools.call("snapshot").get("document") or ""),
+                                     str(getattr(self.document, "Uid", "") or ""))
         except Exception:
             pass
 
@@ -474,6 +610,14 @@ class _TitleThread(QtCore.QThread):
 RESTORE_CHUNK = 25
 
 ATTACHMENT_WIDTH = 320
+
+OPEN_AT_MOST = 5
+
+FOLDS_OVER = 400
+
+TITLE_KEPT = 70
+
+PICKER_SHARE = 0.35
 
 
 class _SessionWorker(QtCore.QObject):
@@ -572,7 +716,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.setWidget(root)
 
         root_layout = QtWidgets.QVBoxLayout(root)
-        root_layout.setContentsMargins(0, 0, 0, 15)
+        root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
         header = self._build_header()
@@ -588,13 +732,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.history_popup.session_selected.connect(self.switch_session)
         self.history_popup.session_deleted.connect(self.delete_session)
 
-        self.status_line = QtWidgets.QLabel("")
-        self.status_line.setObjectName("StatusLine")
-        self.status_line.setVisible(False)
-        self.status_line.setWordWrap(True)
-        self.status_line.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
-                                       QtWidgets.QSizePolicy.Preferred)
-        root_layout.addWidget(self.status_line)
+        self._queue_widget = QueueWidget()
+        root_layout.addWidget(self._queue_widget)
 
         input_card = self._build_input_card()
         root_layout.addWidget(input_card)
@@ -723,17 +862,16 @@ class CopilotPanel(QtWidgets.QDockWidget):
          "revision": self.on_revision}[kind](payload)
 
     def _build_header(self):
-        bar = QtWidgets.QWidget()
+        bar = QtWidgets.QFrame()
         bar.setObjectName("HeaderBar")
         bar.setFixedHeight(44)
 
         layout = QtWidgets.QHBoxLayout(bar)
-        layout.setContentsMargins(12, 0, 12, 0)
-        layout.setSpacing(6)
+        layout.setContentsMargins(SPACE_MD, SPACE_SM, SPACE_SM, SPACE_SM)
+        layout.setSpacing(SPACE_XS)
 
         self.title_label = QtWidgets.QLabel("New Chat")
         self.title_label.setObjectName("HeaderTitle")
-        self.title_label.setStyleSheet("font-weight: 600; font-size: 13px;")
         self.title_label.setToolTip("Double-click to rename this session")
         self.title_label.setCursor(QtCore.Qt.IBeamCursor)
         self.title_label.mouseDoubleClickEvent = lambda event: self.rename_current_session()
@@ -741,23 +879,23 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         layout.addStretch()
 
-        self.usage_label = QtWidgets.QLabel("$0.00")
+        self.usage_label = QtWidgets.QLabel("$0.00  0:00")
         self.usage_label.setObjectName("UsageTotal")
         layout.addWidget(self.usage_label)
 
         self.new_btn = QtWidgets.QPushButton()
-        self.new_btn.setObjectName("HeaderButton")
-        self.new_btn.setFixedSize(22, 22)
+        self.new_btn.setObjectName("IconButton")
+        self.new_btn.setFixedSize(CONTROL, CONTROL)
         self.new_btn.setToolTip("New chat session")
-        self.new_btn.setIcon(UIHelpers.get_icon("plus", size=18, on=self.new_btn))
+        self.new_btn.setIcon(UIHelpers.get_icon("plus", size=ICON, on=self.new_btn))
         self.new_btn.clicked.connect(self.new_chat)
         layout.addWidget(self.new_btn)
 
         self.history_btn = QtWidgets.QPushButton()
-        self.history_btn.setObjectName("HeaderButton")
-        self.history_btn.setFixedSize(22, 22)
+        self.history_btn.setObjectName("IconButton")
+        self.history_btn.setFixedSize(CONTROL, CONTROL)
         self.history_btn.setToolTip("Chat history")
-        self.history_btn.setIcon(UIHelpers.get_icon("history", size=18, on=self.history_btn))
+        self.history_btn.setIcon(UIHelpers.get_icon("history", size=ICON, on=self.history_btn))
         self.history_btn.clicked.connect(self.toggle_history)
         layout.addWidget(self.history_btn)
 
@@ -766,9 +904,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
     def _build_input_card(self) -> QtWidgets.QFrame:
         card = QtWidgets.QFrame()
         card.setObjectName("InputContainer")
+        card.setProperty("focused", "false")
+        self._input_card = card
 
         inner = QtWidgets.QVBoxLayout(card)
-        inner.setContentsMargins(0, 6, 0, 8)
+        inner.setContentsMargins(0, 0, 0, 0)
         inner.setSpacing(0)
 
         self.chip_bar = FileChipBar()
@@ -782,42 +922,56 @@ class CopilotPanel(QtWidgets.QDockWidget):
             lambda: self.upload_widget.handle_clipboard_paste()
         )
         self.user_input.send_requested.connect(self.on_send)
+        self.user_input.focus_changed.connect(self._ring_the_composer)
         self.user_input.textChanged.connect(self._fit_composer_to_text)
         inner.addWidget(self.user_input)
         self._fit_composer_to_text()
 
-        div = QtWidgets.QFrame()
-        div.setFrameShape(QtWidgets.QFrame.HLine)
-        div.setStyleSheet("QFrame { margin: 0 12px; }")
-        inner.addWidget(div)
-
         strip = QtWidgets.QHBoxLayout()
-        strip.setContentsMargins(8, 5, 8, 3)
-        strip.setSpacing(6)
+        strip.setContentsMargins(SPACE_SM, SPACE_SM, SPACE_SM, SPACE_SM)
+        strip.setSpacing(SPACE_SM)
 
         self.upload_widget = UploadWidget()
         self.upload_widget.file_attached.connect(self.chip_bar.add_file)
         self.chip_bar.file_removed.connect(self.upload_widget.discard)
         strip.addWidget(self.upload_widget)
 
-        from .model_selector import ModelSelectorPopup
+        from .model_selector import EffortPopup, ModelSelectorPopup
 
         self.model_button = QtWidgets.QPushButton()
-        self.model_button.setObjectName("PillButton")
-        self.model_button.setFixedHeight(24)
+        self.model_button.setObjectName("PickerButton")
+        self.model_button.setFixedHeight(CONTROL_DENSE)
+        self.model_button.setSizePolicy(QtWidgets.QSizePolicy.Maximum,
+                                        QtWidgets.QSizePolicy.Fixed)
         self.model_button.setToolTip("Active LLM model")
         self.model_button.setLayoutDirection(QtCore.Qt.RightToLeft)
+        self._model_display = ""
         self.model_button.clicked.connect(self._open_model_selector)
         strip.addWidget(self.model_button)
 
         self.model_selector = ModelSelectorPopup(self)
         self.model_selector.model_chosen.connect(self._on_model_selected)
 
+        self.effort_button = QtWidgets.QPushButton()
+        self.effort_button.setObjectName("PickerButton")
+        self.effort_button.setFixedHeight(CONTROL_DENSE)
+        self.effort_button.setSizePolicy(QtWidgets.QSizePolicy.Maximum,
+                                         QtWidgets.QSizePolicy.Fixed)
+        self.effort_button.setToolTip("How hard the model is asked to think")
+        self.effort_button.setLayoutDirection(QtCore.Qt.RightToLeft)
+        self.effort_button.clicked.connect(self._open_effort_selector)
+        strip.addWidget(self.effort_button)
+
+        self.effort_selector = EffortPopup(self)
+        self.effort_selector.effort_chosen.connect(self._on_effort_selected)
+        self._show_effort()
+
         self._models = []
         self._current_model_id = None
         self._refresh_models(provider_manager.instance().get_available_models())
         provider_manager.instance().models_changed.connect(self._refresh_models)
         strip.addStretch()
+        strip.addSpacing(SPACE_MD)
 
         self.send_button = QtWidgets.QPushButton()
         self.send_button.setObjectName("SendButton")
@@ -825,8 +979,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.send_button.clicked.connect(self.on_send)
         strip.addWidget(self.send_button)
 
-        self.stop_button = QtWidgets.QPushButton("■")
+        self.stop_button = QtWidgets.QPushButton()
         self.stop_button.setObjectName("SendButton")
+        self.stop_button.setIcon(UIHelpers.get_icon("square", size=ICON, on=self.stop_button))
         self.stop_button.setToolTip("Stop after the current attempt")
         self.stop_button.clicked.connect(self.on_stop)
         self.stop_button.setVisible(False)
@@ -834,6 +989,20 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         inner.addLayout(strip)
         return card
+
+    def _ring_the_composer(self, focused: bool):
+        """
+        The composer says which of the panel's fields the keyboard is in.
+
+        A dynamic property and a repolish rather than a stylesheet of the
+        card's own: a second `setStyleSheet` on the card would drop the
+        panel-wide rule that gives it its fill, its radius and its margin,
+        and Qt only re-reads a property-keyed selector when the style is
+        asked to.
+        """
+        self._input_card.setProperty("focused", "true" if focused else "false")
+        self._input_card.style().unpolish(self._input_card)
+        self._input_card.style().polish(self._input_card)
 
     def _fit_composer_to_text(self):
         """
@@ -847,9 +1016,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         document = self.user_input.document()
         document.setTextWidth(self.user_input.viewport().width())
-        one_row = QtGui.QFontMetrics(self.user_input.font()).lineSpacing() + 16
+        padding = 2 * SPACE_COMPOSER
+        one_row = QtGui.QFontMetrics(self.user_input.font()).lineSpacing() + padding
         ceiling = max(one_row, int(self.height() * 0.4))
-        wanted = int(document.size().height()) + 16
+        wanted = int(document.size().height()) + padding
 
         self.user_input.setFixedHeight(min(max(wanted, one_row), ceiling))
         self.user_input.setVerticalScrollBarPolicy(
@@ -858,15 +1028,17 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def resizeEvent(self, event):
         """
-        Refits the composer, whose ceiling is a fraction of the panel's height
-        and so moves with it.
+        Refits the composer and the model pill, both of which are sized as a
+        fraction of the panel and so move with it.
 
-        The composer is looked for rather than assumed: Qt resizes the dock
-        while __init__ is still building it.
+        Each is looked for rather than assumed: Qt resizes the dock while
+        __init__ is still building it.
         """
         super().resizeEvent(event)
         if getattr(self, "user_input", None):
             self._fit_composer_to_text()
+        if getattr(self, "_model_display", None):
+            self._fit_the_model_pill()
 
     def showEvent(self, event):
         """
@@ -877,10 +1049,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
         which is black under every FreeCAD dark theme (ADR-0011).
         """
         super().showEvent(event)
-        for button, icon, size in ((self.new_btn, "plus", 18),
-                                   (self.history_btn, "history", 18),
-                                   (self.send_button, "arrow_up", 18),
-                                   (self.model_button, "chevron_down", 12)):
+        for button, icon, size in ((self.new_btn, "plus", ICON),
+                                   (self.history_btn, "history", ICON),
+                                   (self.send_button, "send", ICON),
+                                   (self.stop_button, "square", ICON),
+                                   (self.model_button, "chevron_down", ICON_DENSE)):
             button.setIcon(UIHelpers.get_icon(icon, size=size, on=button))
 
     def _refresh_models(self, models=None):
@@ -916,8 +1089,45 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._set_current_model(entry["id"], entry["display"])
 
     def _set_current_model(self, model_id, display: str):
+        """
+        The model pill, and the effort pill beside it: whether the choice of
+        how hard to think means anything is a property of the model, so it is
+        re-read every time the model changes.
+        """
         self._current_model_id = model_id
-        self.model_button.setText(display)
+        self._model_display = display
+        self.model_button.setToolTip("Active LLM model — %s" % display)
+        self._fit_the_model_pill()
+        self._show_effort()
+
+    def _fit_the_model_pill(self):
+        """
+        The model's name is elided to `PICKER_SHARE` of the panel's width, and
+        the name in full moves to the tooltip.
+
+        The pill sizes itself to its own text, and a provider's name for a
+        model is not a name -- `claude-sonnet-4-5-20250929` and
+        `gemini-2.5-flash-preview-05-20` are the ids the OpenAI-shaped routes
+        hand back where a display name is missing. At that length the pill and
+        the effort pill beside it are the whole strip, and Send is pushed to
+        the edge of a docked panel; the attach button that sets the idiom for
+        that row is 28 pixels wide. A share of the panel rather than a fixed
+        ceiling because the panel is dockable and floats at any width, so a
+        ceiling comfortable at one width is either wasteful or useless at the
+        other.
+
+        The share is of the whole pill, not of its text: the chevron beside
+        the name and the stylesheet's padding are what the strip actually
+        loses, so the button is asked what its own chrome costs rather than
+        told, and the number left over is what the name is elided to.
+        """
+        metrics = QtGui.QFontMetrics(self.model_button.font())
+        self.model_button.setText(self._model_display)
+        chrome = (self.model_button.sizeHint().width()
+                  - metrics.horizontalAdvance(self._model_display))
+        room = max(CONTROL, int(self.width() * PICKER_SHARE) - chrome)
+        self.model_button.setText(
+            metrics.elidedText(self._model_display, QtCore.Qt.ElideRight, room))
 
     def _retire_model(self, model_id: str) -> str:
         """
@@ -929,10 +1139,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         settings = settings_manager.instance()
         fallback = settings.get_default_model() or self._models[0]["id"]
         settings.set_last_model(fallback)
-        self.status_line.setText(
+        self._queue_widget.now(
             "%s is no longer offered by its provider — switched to %s."
             % (model_id, fallback))
-        self.status_line.setVisible(True)
         return fallback
 
     def _open_model_selector(self):
@@ -946,18 +1155,83 @@ class CopilotPanel(QtWidgets.QDockWidget):
         entry = next((m for m in self._models if m["id"] == model_id), None)
         self._set_current_model(model_id, entry["display"] if entry else model_id)
 
+    def _open_effort_selector(self):
+        """
+        Offers the levels the routes take, unless this model cannot reason at
+        all: a picker that changes nothing is a picker that lies, so the
+        trigger says so in its tooltip and does not open.
+        """
+        from core.llm import EFFORTS, effort_is_honoured
+
+        if not effort_is_honoured(settings_manager.instance().get_last_model()):
+            return
+        self.effort_selector.open_at(list(EFFORTS), self.effort_button)
+
+    def _on_effort_selected(self, level: str):
+        """Drops the client so the next send is asked to think the new way."""
+        settings_manager.instance().set_effort(level)
+        if getattr(self, "worker", None):
+            self.worker.client = None
+        self._show_effort()
+
+    def _show_effort(self):
+        """
+        The pill carries the level in force, and says when the model will
+        ignore it.
+
+        The level is read from `core.llm` and not from settings: what is
+        stored may be empty, or a level from an older build, and the panel
+        must show what the next run will actually be asked for.
+
+        A model with no reasoning to spend cannot honour the choice, and the
+        honest thing is to say so where the choice is made rather than to
+        take it and drop it (`core.llm.effort_is_honoured`).
+        """
+        from core.llm import effort, effort_is_honoured
+
+        honoured = effort_is_honoured(settings_manager.instance().get_last_model())
+        self.effort_button.setText(effort())
+        self.effort_button.setEnabled(honoured)
+        self.effort_button.setToolTip(
+            "How hard the model is asked to think" if honoured
+            else "This model does no reasoning of its own")
+        self.effort_button.setIcon(
+            UIHelpers.get_icon("chevron_down", size=ICON_DENSE, on=self.effort_button))
+
     def toggle_history(self):
         """
         The picker is populated from the indexed Sessions only, each carrying
         its own position: a Session enters the picker when it gets its name, on
         its first Intent, and the live empty Session is on screen rather than in
         the history.
+
+        It shows the Document in front of the user, not the archive: a chat
+        belongs to the file it was about, and the twenty chats about the other
+        twenty files are noise while this one is open. Everything is still
+        reachable — a Document nothing has been said about, or one whose
+        chats have all been pruned, falls back to the whole list rather than
+        to an empty popup.
         """
         if self.history_popup.isVisible():
             self.history_popup.close()
         else:
-            self.history_popup.populate(self.chat_sessions.indexed_sessions())
+            self.history_popup.populate(self._sessions_worth_showing())
             self.history_popup.drop_from_the_dock()
+
+    def _sessions_worth_showing(self) -> list:
+        """The indexed Sessions of the Document in focus, or all of them."""
+        from core.freecad_tools import active_document
+
+        try:
+            identity = str(getattr(active_document(), "Uid", "") or "")
+        except Exception:
+            identity = ""
+        rows = self.chat_sessions.indexed_sessions()
+        if not identity:
+            return rows
+        here = [(position, info) for position, info in rows
+                if info.get("document_id") == identity]
+        return here or rows
 
     def new_chat(self):
         """
@@ -979,21 +1253,35 @@ class CopilotPanel(QtWidgets.QDockWidget):
         screen.
         """
         self._plan_widget = None
-        self._queue_widget = None
         self._thought = None
         self._thought_phase = None
         self._current_step = 0
         self._question_card = None
         self._answers_to_enter = None
         self._total_usd = 0.0
+        self._run_start_time = None
+        self._last_event_time = None
+        self._last_tool_call_time = None
+        self._last_tool_call_widget = None
+        self._last_tool_call_name = None
         self._update_usage_total()
         self._last_assertion_event = None
         self._last_review_verdict_event = None
         self._last_review_views = []
 
     def _update_usage_total(self):
-        """Redraw the header's running total from `self._total_usd`."""
-        self.usage_label.setText(_format_cost(self._total_usd))
+        """
+        Redraw the header's running total from `self._total_usd` and elapsed time.
+
+        Time is computed from event.at deltas (run start to last event), so a
+        replayed session shows the same duration the live run showed.
+        """
+        elapsed_seconds = 0.0
+        if self._run_start_time is not None and self._last_event_time is not None:
+            elapsed_seconds = self._last_event_time - self._run_start_time
+
+        time_str = _format_elapsed(elapsed_seconds)
+        self.usage_label.setText(f"{_format_cost(self._total_usd)}  {time_str}")
 
     def _became_the_live_session(self):
         """
@@ -1002,8 +1290,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
         Owned Objects no longer need clearing here (FCC-181): each Session
         keeps its own `_SessionWorker`, so one Session's Owned Objects were
         never reachable from another's to begin with.
+
+        The Queue is pinned above the composer rather than left behind in the
+        transcript, so it is one of the things a Session lets go of: it stood
+        down here, and whatever the Session being opened had running is put
+        back by the replay that follows.
         """
         self._reset_render_state()
+        self._queue_widget.stand_down()
         self._empty_state = None
 
     def rename_current_session(self):
@@ -1101,12 +1395,19 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.add_chat_widget(AssistantMessageWidget(
                 "This transcript ends mid-event — FreeCAD closed while the run was writing. "
                 "Everything above it survived."))
-        self.status_line.setVisible(False)
+        self._queue_widget.now("")
 
     @QtCore.Slot(str, str)
-    def on_document_named(self, transcript: str, document: str):
-        """Record which Document a Session worked on, so history can say so."""
-        self.chat_sessions.name_document(transcript, document)
+    def on_document_named(self, transcript: str, document: str, document_id: str):
+        """
+        Record which Document a Session worked on, so history can say so and
+        so the panel can recognise that Document again.
+
+        The name is what the picker shows; the id is the Document's own `Uid`,
+        which is what it is recognised by — every unsaved Document in FreeCAD
+        is called "Unnamed" (`slotActivateDocument`).
+        """
+        self.chat_sessions.name_document(transcript, document, document_id)
 
     def delete_session(self, index: int):
         info = self.chat_sessions.get_session_info(index)
@@ -1202,15 +1503,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if self._empty_state is not None:
             self._empty_state.setParent(None)
             self._empty_state = None
-        self.add_chat_widget(TextMessageWidget(intent))
         self.user_input.clear()
 
         self._reset_render_state()
 
         bundle.running = True
         self._set_running(True)
-        self.status_line.setText("Planning…")
-        self.status_line.setVisible(True)
+        self._queue_widget.now("Planning…")
         outstanding = list(bundle.outstanding)
         self.request_work.emit(intent, attachments, log, outstanding)
         bundle.request_work.emit(intent, attachments, log, outstanding)
@@ -1267,7 +1566,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             bundle.pending_question = None
         self.worker.stop()
         self.stop_button.setEnabled(False)
-        self.status_line.setText("Stopping after the current attempt…")
+        self._queue_widget.now("Stopping after the current attempt…")
 
     def _set_running(self, running: bool):
         self._running = running
@@ -1312,23 +1611,38 @@ class CopilotPanel(QtWidgets.QDockWidget):
         and some of them also change the Plan widget's marks. The revised Steps
         are rendered afterwards, so they stand under the line that says they
         were revised.
+
+        `INTENT` is the user's own turn, so it takes the user's bubble and not
+        the narrated line: rendered here rather than at Send, a Session read
+        back out of its transcript opens the same way the live one did, and
+        the prompt is shown once instead of twice.
         """
         from core import events as ev
         from core.narrate import narrate
 
         data = event.data
-        self._update_queue(event)
-        self._update_review_evidence(event)
 
         if event.kind == ev.INTENT:
             self._total_usd = 0.0
+            self._run_start_time = event.at
+            self._last_event_time = event.at
             self._update_usage_total()
             self._last_assertion_event = None
             self._last_review_verdict_event = None
             self._last_review_views = []
+            self.add_chat_widget(TextMessageWidget(data.get("text", "")))
+            self._update_queue(event)
+            return
+
+        self._update_queue(event)
+        self._update_review_evidence(event)
+
+        if event.kind == ev.CALL_STARTED:
+            return
 
         if event.kind == ev.COST:
-            self._total_usd += data["usd"]
+            self._total_usd += data.get("usd", 0.0)
+            self._last_event_time = event.at
             self._update_usage_total()
             return
 
@@ -1341,8 +1655,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
             return
 
         if event.kind == ev.TOOL_CALL:
-            self._render_tool_call(data["name"], data["arguments"])
+            self._render_tool_call(data["name"], data["arguments"], event.at)
             return
+
+        if event.kind == ev.TOOL_RESULT:
+            self._time_the_tool_call(event.at)
 
         if event.kind == ev.PART:
             self._render_part(narrate(event).line, data["path"])
@@ -1369,18 +1686,36 @@ class CopilotPanel(QtWidgets.QDockWidget):
         elif event.kind == ev.BLOCKED and self._plan_widget and self._current_step:
             self._plan_widget.mark(self._current_step, PLAN_FAILED)
 
-        self._say(narrate(event))
+        if not self._card_will_repeat_it(event):
+            self._say(narrate(event))
 
         if event.kind == ev.PLAN_REVISED:
             self._render_plan(data["steps"], "Revised Plan", data.get("acceptance", ()),
                               data.get("unanswered", ()), data.get("decided", ()))
 
+    @staticmethod
+    def _card_will_repeat_it(event) -> bool:
+        """
+        Whether the verdict card about to go up already carries this event's
+        line, in which case the transcript does not need it twice.
+
+        A Review that did not pass is always followed by a question -- the
+        loop returns on `pass` and asks on everything else -- and the card
+        that asks it is headed by the very sentence `narrate()` returns.
+        Said again above it, the same words read as two verdicts.
+        """
+        from core import events as ev
+
+        return (event.kind == ev.REVIEW_VERDICT
+                and event.data.get("verdict") != "pass")
+
     def _update_queue(self, event):
         """
-        The Queue's phase and Step marks.
+        The Queue's phase and Step marks and elapsed times.
 
-        Kept beside the narration rather than inside it: a mark is state
-        `narrate()` never carries, since it only ever returns words (FCC-172).
+        Time tracking uses event.at deltas so replayed sessions show the same
+        durations the live run showed. CALL_STARTED starts the live call clock;
+        COST ends it.
         """
         from core import events as ev
         from core.loop import APPROVE
@@ -1388,29 +1723,39 @@ class CopilotPanel(QtWidgets.QDockWidget):
         data = event.data
 
         if event.kind == ev.INTENT:
-            self._queue_widget = QueueWidget()
-            self.add_chat_widget(self._queue_widget)
+            self._queue_widget.reset(at=event.at)
             return
 
-        if not self._queue_widget:
+        if event.kind == ev.CALL_STARTED:
+            phase = data.get("phase")
+            ceiling = data.get("ceiling")
+            self._queue_widget.call_started(phase, ceiling, event.at)
             return
 
-        if event.kind in (ev.PLAN, ev.PLAN_REVISED):
-            self._queue_widget.start_plan(data["steps"])
+        if event.kind == ev.COST:
+            self._queue_widget.call_ended(event.at)
+            return
+
+        if event.kind == ev.PART:
+            self._queue_widget.design_written(at=event.at)
+        elif event.kind in (ev.PLAN, ev.PLAN_REVISED):
+            self._queue_widget.start_plan(data["steps"], at=event.at)
         elif event.kind == ev.GATE and data.get("decision") == APPROVE:
-            self._queue_widget.start_execute(data.get("steps"))
+            self._queue_widget.start_execute(data.get("steps"), at=event.at)
         elif event.kind == ev.STEP_STARTED:
-            self._queue_widget.step_started(data["index"])
+            self._queue_widget.step_started(data["index"], at=event.at)
         elif event.kind == ev.APPLIED:
-            self._queue_widget.step_applied(data["step"])
+            self._queue_widget.step_applied(data["step"], at=event.at)
         elif event.kind == ev.UNBUILT:
-            self._queue_widget.step_unbuilt(data["step"])
+            self._queue_widget.step_unbuilt(data["step"], at=event.at)
+        elif event.kind == ev.PREFLIGHT_FAILED:
+            self._queue_widget.step_failed(data["step"], at=event.at)
         elif event.kind == ev.ASSERTION:
-            self._queue_widget.start_review()
+            self._queue_widget.start_review(at=event.at)
         elif event.kind == ev.REVIEW_VERDICT:
-            self._queue_widget.finish_review()
+            self._queue_widget.finish_review(at=event.at)
         elif event.kind in (ev.BLOCKED, ev.ERROR):
-            self._queue_widget.fail_current()
+            self._queue_widget.fail_current(at=event.at)
 
     def _update_review_evidence(self, event):
         """
@@ -1440,36 +1785,52 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _say(self, narration):
         """
-        Put a narrated event where it belongs: a bubble, a collapsible row, or
-        the status line that replaces itself.
+        Put a narrated event where it belongs: a line in the transcript, a
+        collapsible row, or the Queue's line about what is happening now.
+
+        A line past `FOLDS_OVER` folds into a row of its own. Design says what
+        it could not settle in the drawing's own words, and one such paragraph
+        in the run this was built against ran to 1,900 characters -- four
+        screens of a docked panel, standing between the user and the Plan they
+        opened the panel to read. Folded, its first sentence is the title and
+        the rest is one click away.
         """
         if narration.line:
-            self.add_chat_widget(AssistantMessageWidget(narration.line))
+            self.add_chat_widget(_folded(narration.line)
+                                 if len(narration.line) > FOLDS_OVER
+                                 else AssistantMessageWidget(narration.line))
 
         if narration.title:
-            row = AccordionWidget(narration.title)
+            row = AccordionWidget(narration.title, code=True)
             self.add_chat_widget(row)
             row.append_text(narration.body)
 
         if narration.status:
-            self.status_line.setText(narration.status)
-            self.status_line.setVisible(True)
+            self._queue_widget.now(narration.status)
 
     def _render_thought(self, phase, text):
         """
         Reasoning appends to one accordion per phase turn, as it forms.
 
-        Only the chat scroll renders it: the status line never carries a
-        reasoning chunk, so a long chain of thought is read whole rather than
-        clipped to whatever fit in ninety characters (FCC-173).
+        Only the chat scroll renders it: the Queue never carries a reasoning
+        chunk, so a long chain of thought is read whole rather than clipped to
+        whatever fit in ninety characters (FCC-173).
+
+        A wordless chunk is the subscription route saying the model is
+        reasoning and that the words are withheld (`core/llm.py`). The row
+        goes up all the same, pulsing, because a phase that takes four minutes
+        has to show it is alive -- and it does not open, since a row that
+        opens onto nothing is worse than one that says it has nothing.
         """
         if self._thought is None or self._thought_phase != phase:
             self._thought = AccordionWidget("Thinking (%s)…" % phase)
             self._thought_phase = phase
             self._thought.mark_as_reasoning()
+            self._thought.opens_onto_nothing()
             self.add_chat_widget(self._thought)
             self._thought.start_pulsing()
-        self._thought.append_text(text)
+        if text:
+            self._thought.append_text(text)
 
     def _render_attachments(self, files):
         """
@@ -1486,14 +1847,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
             name = attached.get("name") or ""
             picture = QtGui.QPixmap(attached.get("path") or "")
             if picture.isNull():
-                self.add_chat_widget(TextMessageWidget("📎 %s" % name))
+                self.add_chat_widget(_beside_the_intent(
+                    FileChip(name or attached.get("path") or "", removable=False)))
                 continue
             label = QtWidgets.QLabel()
             label.setPixmap(picture.scaledToWidth(
                 min(ATTACHMENT_WIDTH, picture.width()),
                 QtCore.Qt.SmoothTransformation))
             label.setToolTip(name)
-            self.add_chat_widget(label)
+            self.add_chat_widget(_beside_the_intent(label))
 
     def _render_part(self, line, path):
         """
@@ -1516,50 +1878,102 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         The Plan's Steps, with what surrounds them at the Gate.
 
-        Values the model settled for itself stand above the Steps and open:
-        nothing is asked between the attachment and the Gate, so such a value
-        is read here or it is not read at all, and it is read before the Steps
-        built on it (ADR-0022). The questions nobody answered stand above the
-        acceptance criteria and open, since those Steps carry values the Plan
-        chose for itself and the Gate is the only place to overrule them. The
-        criteria stand under the Steps and open for the same reason: the Gate is
-        the only place a wrong criterion is correctable.
+        Values the model settled for itself stand above the Steps: nothing is
+        asked between the attachment and the Gate, so such a value is read
+        here or it is not read at all, and it is read before the Steps built
+        on it (ADR-0022). The questions nobody answered stand above the
+        acceptance criteria, since those Steps carry values the Plan chose for
+        itself and the Gate is the only place to overrule them. The criteria
+        stand under the Steps for the same reason: the Gate is the only place
+        a wrong criterion is correctable.
+
+        Each of the three says in its heading how many it holds, and each
+        stands open while it is short enough to be read where it stands.
+        `OPEN_AT_MOST` is where that stops: the session this was measured
+        against decided 22 values and set 40 acceptance criteria, each a
+        sentence long, and opened those two alone are some four screens of
+        dense text between the user and the Build button -- a Gate nobody
+        scrolls to the bottom of is not read either. Past that the row folds
+        and the count carries it: "40 criteria" is the part that has to be
+        seen, and the click is for the reader who wants the forty.
+
+        Few is not the same as short: the four values that run settled for
+        itself are four paragraphs of a conflict it could not resolve, 1,900
+        characters between the user and the Plan. A list stands open while it
+        is both short in entries and short in words, `FOLDS_OVER` being the
+        second budget.
         """
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
-        if decided:
-            settled = AccordionWidget("Decided for you")
-            self.add_chat_widget(settled)
-            settled.append_text("\n".join("• " + str(line) for line in decided))
-            settled.toggle_content()
+        def beside_the_steps(heading, entries):
+            if not entries:
+                return
+            row = AccordionWidget("%s (%d)" % (heading, len(entries)))
+            self.add_chat_widget(row)
+            listed = "\n".join("• " + str(entry) for entry in entries)
+            row.append_text(listed)
+            if len(entries) <= OPEN_AT_MOST and len(listed) <= FOLDS_OVER:
+                row.toggle_content()
+
+        beside_the_steps("Decided for you", decided)
         self._plan_widget = PlanWidget(steps, title=title)
         self.add_chat_widget(self._plan_widget)
-        if unanswered:
-            open_questions = AccordionWidget("Nobody answered these — the Plan chose")
-            self.add_chat_widget(open_questions)
-            open_questions.append_text("\n".join("• " + str(q) for q in unanswered))
-            open_questions.toggle_content()
-        if acceptance:
-            criteria = AccordionWidget("What it has to satisfy")
-            self.add_chat_widget(criteria)
-            criteria.append_text("\n".join("• " + str(entry) for entry in acceptance))
-            criteria.toggle_content()
+        beside_the_steps("Nobody answered these — the Plan chose", unanswered)
+        beside_the_steps("What it has to satisfy", acceptance)
 
-    def _render_tool_call(self, name, arguments):
+    def _render_tool_call(self, name, arguments, event_time):
         """
-        A call that is not code takes one collapsible shape in the stream, not
-        three (ADR-0011).
+        A call takes one collapsible shape in the stream, not three (ADR-0011),
+        and it says which Step it belongs to.
+
+        The code of a Step is the longest thing the transcript ever carries and
+        the least often read: shown open, four Steps of it are the whole panel,
+        and the run reads as though nothing is happening between them. Named
+        and closed, the line that scrolls past says what is running -- which is
+        what a user watching a long run is actually looking for -- and the code
+        is one click away. Every call the loop makes to build geometry carries
+        `code`; before this, those were the only ones with no name on them at
+        all, so a run's visible history was the two calls that read the
+        drawing.
+
+        Duration is added when TOOL_RESULT arrives, from event.at deltas.
         """
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
-        if "code" in arguments:
-            self.add_chat_widget(CodeBlockWidget(arguments["code"]))
-        else:
-            row = AccordionWidget(name)
-            self.add_chat_widget(row)
-            row.append_text(str(arguments))
+        title = ("Step %d — %s" % (self._current_step, name) if self._current_step
+                 else name)
+        row = AccordionWidget(title, code=True, boxed=True)
+        self.add_chat_widget(row)
+        row.append_text(arguments["code"] if "code" in arguments else str(arguments))
+
+        self._last_tool_call_time = event_time
+        self._last_tool_call_widget = row
+        self._last_tool_call_name = name
+
+    def _time_the_tool_call(self, at):
+        """
+        How long the call that just answered took, put on its own closed row.
+
+        On the row rather than in the transcript as a line of its own: a run
+        takes nine of these and a line each would be nine lines saying a
+        number. The row is already there and already says which call it was,
+        and the seconds are what tell a look that cost a provider turn from
+        one that cost a millisecond.
+
+        `TOOL_RESULT` still narrates after this -- the loop's calls are
+        sequential, so the row being timed is always the last one opened.
+        """
+        if not (self._last_tool_call_widget and self._last_tool_call_time):
+            return
+        named = ("Step %d — %s" % (self._current_step, self._last_tool_call_name)
+                 if self._current_step else self._last_tool_call_name)
+        self._last_tool_call_widget.toggle_button.setText(
+            "%s  (%.1fs)" % (named, at - self._last_tool_call_time))
+        self._last_tool_call_widget = None
+        self._last_tool_call_time = None
+        self._last_tool_call_name = None
 
     @QtCore.Slot(object)
     def on_plan_gate(self, steps):
@@ -1591,7 +2005,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             "Click a Step to edit it, or add and remove Steps above, then Build. You are "
             "still asked before anything of yours is deleted, before the model is "
             "rebuilt, and about a result that did not pass.",
-            (("\u2713  Build", build),))
+            (("Build", build),))
 
     @QtCore.Slot(object)
     def on_revision(self, failure):
@@ -1608,27 +2022,32 @@ class CopilotPanel(QtWidgets.QDockWidget):
         clears it at the acceptance checks' own event. Review having run puts
         up the Confirmation card the epic names -- Approve, Reject, Start
         Over, with what Review looked at above them; without one this stays
-        the plain question, since there is no Review result yet to show.
+        the plain question, since there is no Review result yet to show, and
+        the reason is said above it in a line of its own.
+
+        Said above the card as well, that line is the third place the same
+        sentence appears in one screen: the card is headed by it, and Review
+        emitted it before either.
         """
         from core.loop import ACCEPT, REVISE, START_OVER
 
         applied = failure.get("applied", 0)
-        self.add_chat_widget(AssistantMessageWidget(
-            "The result did not pass, after %d Step%s were applied:\n%s"
-            % (applied, "" if applied == 1 else "s", failure.get("why", ""))))
-
         if self._last_review_verdict_event is not None:
             self._put_the_review_verdict(ACCEPT, REVISE, START_OVER)
             return
+
+        self.add_chat_widget(AssistantMessageWidget(
+            "The result did not pass, after %d Step%s were applied:\n%s"
+            % (applied, "" if applied == 1 else "s", failure.get("why", ""))))
 
         self._put_the_question(
             "Waiting for you to decide what to do\u2026",
             "What should happen to what has been built?",
             "Take it as it is ends the run and keeps the model. Fix it keeps the model "
             "and plans the rest. Start over lets the next Plan delete it and build again.",
-            (("\u2713  Take it as it is", lambda: ACCEPT),
-             ("\u270e  Fix it", lambda: REVISE),
-             ("\u21ba  Start over", lambda: START_OVER)))
+            (("Take it as it is", lambda: ACCEPT),
+             ("Fix it", lambda: REVISE),
+             ("Start over", lambda: START_OVER)))
 
     def _put_the_review_verdict(self, accept, revise, start_over):
         """
@@ -1644,8 +2063,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         from core.narrate import narrate
 
-        self.status_line.setText("Waiting for you to review the result\u2026")
-        self.status_line.setVisible(True)
+        self._queue_widget.now("Waiting for you to review the result\u2026")
 
         assertion_data = self._last_assertion_event.data if self._last_assertion_event else {}
         card = ReviewVerdictWidget(
@@ -1682,8 +2100,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
             "",
             "Answer in the box below, then Send. Or let the Copilot choose \u2014 it will "
             "write each assumed value into the Plan, so you can still correct it.",
-            (("\u21a9  Send", send),
-             ("\u270e  You decide", lambda: "")),
+            (("Send", send),
+             ("You decide", lambda: "")),
             enter=send)
 
     @QtCore.Slot(object)
@@ -1705,8 +2123,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
             "%s did not create %s in this session, so this is your own work. Ctrl+Z will "
             "still undo it as one Step."
             % ("The assistant", "these" if len(deletes) > 1 else "it"),
-            (("\u2713  Allow", lambda: True),
-             ("\u2717  Refuse", lambda: False)))
+            (("Allow", lambda: True),
+             ("Refuse", lambda: False)))
 
     def _put_the_question(self, waiting_for, prompt, note, choices, enter=None):
         """
@@ -1726,35 +2144,44 @@ class CopilotPanel(QtWidgets.QDockWidget):
         `enter` is the choice the composer's Enter key takes, where there is
         one. Only the question that is answered by typing has it: Enter at the
         Plan Gate would amend a Plan the user was reading, not approving.
+
+        The first choice is the one the card is asking for, so it is drawn as
+        the panel's one filled button and laid out last: the buttons are right
+        aligned and read outwards from the corner the eye ends at, which is
+        where a confirmation puts what it wants pressed.
+
+        The question is asked without a card of its own -- the design system's
+        own Confirmation is plain rows and two buttons. What marks it out is
+        the filled button, which is the only one on screen while it is up.
         """
-        self.status_line.setText(waiting_for)
-        self.status_line.setVisible(True)
+        self._queue_widget.now(waiting_for)
 
         card = QtWidgets.QFrame()
         card.setObjectName("GateCard")
         layout = QtWidgets.QVBoxLayout(card)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(SPACE_SM)
 
         if prompt:
             asked = QtWidgets.QLabel(prompt)
             asked.setWordWrap(True)
-            asked.setStyleSheet("font-size: 12px; font-weight: 600;")
+            asked.setStyleSheet(css(LABEL))
             layout.addWidget(asked)
 
         explained = QtWidgets.QLabel(note)
         explained.setWordWrap(True)
-        explained.setStyleSheet("font-size: 11px;")
+        explained.setStyleSheet(css(CAPTION))
         layout.addWidget(explained)
 
         buttons = QtWidgets.QHBoxLayout()
-        buttons.setSpacing(6)
-        for label, decide in choices:
+        buttons.setSpacing(SPACE_SM)
+        buttons.addStretch()
+        for position, (label, decide) in reversed(list(enumerate(choices))):
             button = QtWidgets.QPushButton(label)
-            button.setObjectName("PillButton")
+            button.setObjectName("PrimaryButton" if position == 0 else "PillButton")
+            button.setCursor(QtCore.Qt.PointingHandCursor)
             button.clicked.connect(lambda _=False, d=decide: self._answer_with(d))
             buttons.addWidget(button)
-        buttons.addStretch()
         layout.addLayout(buttons)
 
         self._question_card = card
@@ -1763,7 +2190,25 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.add_chat_widget(card)
 
     def _answer_with(self, decide):
-        """Close the card on an answer; leave it up when there is not one yet."""
+        """
+        Close the card on an answer; leave it up when there is not one yet.
+
+        An answered card is spent, and says so in the two ways this panel has
+        of saying it. The accent leaves: nothing is being asked any more, and
+        the stylesheet's own rule is that exactly one control on screen wears
+        the accent fill, so the button that wore it is demoted to the outline
+        every secondary answer beside it already had. And the card is disabled
+        and subdued -- an opacity effect, not a colour of its own (ADR-0011,
+        `AccordionWidget.mark_as_reasoning`).
+
+        Disabling alone changed nothing anyone could see, which is why the
+        demotion is here at all: `background-color` is written by the
+        stylesheet, and a stylesheet rule outranks the disabled palette Qt
+        would otherwise grey the button with. The demotion is a change of
+        `objectName` and a repolish rather than a stylesheet of the button's
+        own, because a rule set on the widget would drop the panel's, and
+        `PillButton` is already the shape wanted.
+        """
         answer = decide()
         if answer is None:
             return
@@ -1772,8 +2217,16 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._answers_to_enter = None
         self._update_composer_enabled()
         if card is not None:
+            for button in card.findChildren(QtWidgets.QPushButton):
+                if button.objectName() in ("PrimaryButton", "ReviewApprove"):
+                    button.setObjectName("PillButton")
+                    button.style().unpolish(button)
+                    button.style().polish(button)
             card.setEnabled(False)
-        self.status_line.setText("Working\u2026")
+            spent = QtWidgets.QGraphicsOpacityEffect(card)
+            spent.setOpacity(0.45)
+            card.setGraphicsEffect(spent)
+        self._queue_widget.now("Working\u2026")
         bundle = self._workers.get(self._current_log())
         if bundle is not None:
             bundle.pending_question = None
@@ -1826,11 +2279,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._thought.stop_pulsing()
             self._thought = None
         if result is not None and result.ok:
-            self.status_line.setVisible(False)
+            self._queue_widget.now("")
         else:
-            self.status_line.setText("Stopped. Your Document is unchanged beyond the "
-                                     "Steps already applied.")
-            self.status_line.setVisible(True)
+            self._queue_widget.now("Stopped. Your Document is unchanged beyond the "
+                                   "Steps already applied.")
 
     def add_chat_widget(self, widget: QtWidgets.QWidget):
         """
@@ -1904,17 +2356,25 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         The MDI tab the user brought forward in FreeCAD moves the panel too.
 
-        `document.Name` is looked up against every Session's recorded
-        `"document"`, last one first — a Document worked on by more than one
-        Session (a second chat opened against the same file) resolves to
+        The Document's `Uid` is looked up against every Session's recorded
+        `"document_id"`, last one first — a Document worked on by more than
+        one Session (a second chat opened against the same file) resolves to
         whichever of them ran most recently, since Sessions are only ever
         appended and this index runs newest-last. A Document no Session has
-        named yet — nothing has been sent to it — leaves the panel where it
+        worked on — nothing has been sent to it — leaves the panel where it
         was; there is nothing to switch to.
+
+        The `Uid` and not `Name`: FreeCAD calls every unsaved Document
+        "Unnamed", so matching on the name made a brand-new empty Document
+        open the chat of some older unsaved one, which is the panel losing
+        the user's place for no reason they can see.
         """
+        identity = str(getattr(document, "Uid", "") or "")
+        if not identity:
+            return
         for index in range(self.chat_sessions.count() - 1, -1, -1):
             info = self.chat_sessions.get_session_info(index)
-            if info and info.get("document") == document.Name:
+            if info and info.get("document_id") == identity:
                 if index != self.chat_sessions.stack.currentIndex():
                     self.switch_session(index)
                 return

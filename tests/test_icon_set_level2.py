@@ -1,13 +1,18 @@
 """
-Level 2 -- the icon asset directory FCC-171 adds, rendered for real.
+Level 2 -- the icon asset directory, rendered for real.
 
-`ui/icons/` is FCC-171's asset directory: the addon's existing Feather-style
-outlines moved out of `ui_helpers.py`, plus the five shapes the phase/Step
-status marks and the model-selector trigger need
-(docs/research/fcc167-ai-elements-figma-spec.md names the Lucide set these
-come from). `UIHelpers.get_icon` is the one place that reads them.
+`ui/icons/` holds one SVG per name and `UIHelpers.get_icon` is the one place
+that reads them. The set is Untitled UI Icons (MIT) throughout, save `brain`,
+which the free Untitled UI distribution does not have and which comes from
+Lucide -- the set Figma's own Reasoning header flattened.
+
+Every file has to survive the rasteriser `get_icon` puts it through: a 24x24
+viewBox to scale from, and the literal `currentColor` for the tint to replace.
+A file that parses but carries a baked colour renders black on a dark panel,
+which is the defect ADR-0011 exists about, and it renders without raising.
 """
 import os
+import re
 
 import pytest
 
@@ -15,9 +20,10 @@ from conftest import NO_QT, QT_APP
 
 pytestmark = pytest.mark.freecad
 
-OLD_ICONS = ("eye_open", "eye_closed", "factory", "user", "trash", "refresh", "plus",
-             "image", "file_text", "attachment", "close", "arrow_up", "history")
-NEW_ICONS = ("circle", "circle_dot", "circle_check", "circle_x", "chevron_down")
+ICONS = ("arrow_up", "attachment", "brain", "chevron_down", "circle", "circle_check",
+         "circle_dot", "circle_x", "close", "eye_closed", "eye_open", "factory",
+         "file_text", "history", "image", "plus", "refresh", "send", "square",
+         "trash", "user")
 
 
 def _opaque_pixels(icon, size):
@@ -33,16 +39,54 @@ def _opaque_pixels(icon, size):
 def test_every_icon_the_addon_names_has_a_file():
     from ui.ui_helpers import ICON_DIR
 
-    for name in OLD_ICONS + NEW_ICONS:
+    for name in ICONS:
         assert os.path.isfile(os.path.join(ICON_DIR, "%s.svg" % name)), name
 
 
-def test_a_new_icon_renders_at_the_requested_size():
+def test_the_directory_holds_nothing_the_set_does_not_name():
+    """An icon nobody names is one nobody re-drew when the set changed hands."""
+    from ui.ui_helpers import ICON_DIR
+
+    found = {name[:-len(".svg")] for name in os.listdir(ICON_DIR)
+             if name.endswith(".svg")}
+    assert found == set(ICONS)
+
+
+def test_every_icon_is_drawn_on_the_grid_the_tint_scales_from():
+    """
+    24x24 and `currentColor`, on every file, whatever set it came from.
+
+    `get_icon` scales the viewBox to whatever size is asked for and swaps
+    `currentColor` for a literal before rasterising. A file with its own
+    width, or with a colour baked in, comes out the wrong size or the wrong
+    colour -- and it comes out without raising, which is why this is a test
+    and not a review note.
+    """
+    from ui.ui_helpers import ICON_DIR
+
+    offenders = {}
+    for name in ICONS:
+        with open(os.path.join(ICON_DIR, "%s.svg" % name), encoding="utf-8") as handle:
+            markup = handle.read()
+        wrong = []
+        if 'viewBox="0 0 24 24"' not in markup:
+            wrong.append("no 24x24 viewBox")
+        if "currentColor" not in markup:
+            wrong.append("no currentColor")
+        if re.search(r"<svg[^>]*\s(?:width|height)=", markup):
+            wrong.append("pins its own size")
+        if wrong:
+            offenders[name] = wrong
+
+    assert not offenders, offenders
+
+
+def test_an_icon_renders_at_the_requested_size():
     if QT_APP is None:
         pytest.skip(NO_QT)
     from ui.ui_helpers import UIHelpers
 
-    for name in NEW_ICONS:
+    for name in ICONS:
         icon = UIHelpers.get_icon(name, size=18)
         assert _opaque_pixels(icon, 18), name
         assert icon.pixmap(18, 18).size().toTuple() == (18, 18), name

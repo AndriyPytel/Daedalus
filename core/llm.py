@@ -25,14 +25,19 @@ and answers with nothing, so `_OUTPUT_BUDGET` sets one; read it like the
 Anthropic thinking budget, because the request may cost four times it. Told
 nothing about effort, kimi-k3 circled one drawing for ten minutes and never
 left its own reasoning, and "medium" bought no less of it — the cap turns that
-into an error, and `_REASONING_EFFORT` is the only dial there is against
-reaching it. `_SUBSCRIPTION_EFFORT` is the other end of the same dial, for the
-route that is not billed by the token: there the circling is visible, because
-the reasoning streams, and it is bounded, because the call has a ceiling that
-moves with the dial — so the low setting would only buy the cheapest thinking a
-subscription can. It sits at `medium`: on one sheet through Design `high` spent
-41,704 tokens of thinking against `medium`'s 26,117 and four minutes more of
-the wait, and Design is one phase of a run that has several.
+into an error, and the effort dial is the only thing there is against reaching
+it. `EFFORTS` is that dial, offered in the composer and stored in settings, and
+both routes are told what it says: `--effort` on the subscription route, and
+`reasoning_effort` or an Anthropic thinking budget on a key. Its default is
+`medium`: on one sheet through Design `high` spent 41,704 tokens of thinking
+against `medium`'s 26,117 and four minutes more of the wait, and Design is one
+phase of a run that has several.
+
+The CLI takes two levels past `high`, and neither is offered. Nothing here has
+measured them, and `_CEILING` — the timeout that has to move with the dial or
+it cuts the answer off — is derived from measurements of the three that are.
+An unmeasured level would be a ceiling made up, which is the failure that
+ceiling exists to prevent.
 
 `IMAGE_SUFFIXES` and `PDF_SUFFIXES` are what the providers take, and what the
 attach dialog offers. A PDF is a full attachment rather than a second-class
@@ -58,7 +63,7 @@ _REASONING_EFFORT = "low"
 
 _SUBSCRIPTION_EFFORT = "medium"
 
-_THINKING_WITHHELD = "thinking… ~%d tokens\n"
+EFFORTS = ("low", "medium", "high")
 
 _PREFIX = {
     "OpenAI": "openai",
@@ -144,7 +149,7 @@ class LiteLLMClient:
         if self.thinking_budget:
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
         elif _may_reason(self.model):
-            kwargs.setdefault("reasoning_effort", _REASONING_EFFORT)
+            kwargs.setdefault("reasoning_effort", effort())
             kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
         kwargs.setdefault("max_tokens",
                           _output_cap(self.model, (self.thinking_budget or _OUTPUT_BUDGET) * 4))
@@ -349,6 +354,50 @@ _CEILING = {"low": 300.0, "medium": 900.0, "high": 1500.0}
 
 CALL_TIMEOUT = _CEILING[_SUBSCRIPTION_EFFORT]
 
+_THINKING_BUDGET = {"low": 1024, "medium": 2048, "high": 4096}
+
+
+def effort() -> str:
+    """
+    The dial, as the user last set it.
+
+    Falls back rather than trusting what is stored: a level the settings hold
+    from some older build is a flag no route can spell, and the CLI answers a
+    bad `--effort` by refusing the call.
+    """
+    from utils import settings_manager
+
+    chosen = settings_manager.instance().get_effort()
+    return chosen if chosen in EFFORTS else _SUBSCRIPTION_EFFORT
+
+
+def effort_is_honoured(model_id: str = None) -> bool:
+    """
+    Whether asking *model_id* to think harder changes anything at all.
+
+    The subscription route always honours it -- `--effort` is the CLI's own
+    flag -- and so does Anthropic on a key, where the dial moves the thinking
+    budget. Anywhere else it is LiteLLM's table that knows, and the table
+    lives behind an import that costs seconds: the panel asks this while it is
+    being built, so the question is only put to LiteLLM when something else
+    has already paid to load it. Unknown means yes, the same benefit of the
+    doubt `_may_reason` gives a gateway's own model.
+    """
+    import sys
+
+    from core import model_catalog
+    from utils import settings_manager
+
+    try:
+        provider, mid, _ = settings_manager.instance().get_llm_credentials(model_id)
+    except Exception:
+        return True
+    if model_catalog.needs_no_key(provider) or provider == "Anthropic":
+        return True
+    if "litellm" not in sys.modules:
+        return True
+    return _may_reason(litellm_model_name(provider, mid))
+
 _CLAUDE_CANDIDATES = (
     os.path.expanduser("~/.local/bin/claude"),
     "/usr/local/bin/claude",
@@ -450,9 +499,12 @@ class ClaudeCodeClient:
     What the provider withholds is not the same as what it did not do: `sonnet`
     streams its thinking as `thinking_delta` carrying `""` and an
     `estimated_tokens` count — 245 thinking tokens on one recorded call, and
-    not a word of them — where `haiku` streams the words. Both reach the panel:
-    the words where there are words, and the count where there are none, which
-    is a measurement the provider made rather than a timer standing in for one.
+    not a word of them — where `haiku` streams the words. Only the words reach
+    the panel. The count answers "how much", and the one question the panel
+    asks reasoning is "why": a 45-minute session showed 1506 lines of
+    `thinking… ~N tokens`, none of which said anything about the part that was
+    built. Where the words are withheld the phase runs without narrating
+    itself, and the status line is what says the run is alive.
 
     `_DISALLOWED_TOOLS` is the tool list one CLI build reported. Naming a tool
     a build does not have costs nothing, and a tool a later build adds is a
@@ -469,7 +521,7 @@ class ClaudeCodeClient:
     `timeout` is a ceiling and not a measurement. The CLI has none of its own
     where the keyed route leans on LiteLLM's, and a subprocess that never
     answers is the parent's problem. It is per call rather than per run, and it
-    follows `_SUBSCRIPTION_EFFORT`, because the dial buys thinking and the
+    follows the dial the user set, because the dial buys thinking and the
     thinking is the wait: one sheet through Design is 52 s at `low`, 429 s at
     `medium` and 668 s at `high`, nearly all of it spent before the first word
     of the answer (`tests/recorded/claude-code-design-effort.jsonl`). A ceiling
@@ -481,9 +533,9 @@ class ClaudeCodeClient:
     """
 
     def __init__(self, model: str, spawn: Callable = None,
-                 timeout: float = CALL_TIMEOUT):
+                 timeout: float = None):
         self.model = model
-        self.timeout = timeout
+        self.timeout = _CEILING[effort()] if timeout is None else timeout
         self.last_cost = None
         self._spawn = spawn
 
@@ -523,6 +575,15 @@ class ClaudeCodeClient:
         lines: a `claude` that writes nothing is read with a blocking loop, and
         nothing arrives to check the time against. The kill is what ends that
         loop, and `overdue` is what says the end was ours.
+
+        Thinking whose words the provider withholds is reported once per call,
+        as one wordless chunk. That the model reasoned is a fact worth the
+        panel's row -- a phase that takes four minutes has to say it is doing
+        something -- and it is the only fact this route gives: `sonnet` and
+        `opus` stream the thinking as an empty string and a rising token
+        count, and the words never follow. One chunk rather than one per
+        delta, because the count was reported before and 1506 lines of it
+        filled a 45-minute session with a number nobody can act on.
         """
         overdue = threading.Event()
 
@@ -537,6 +598,7 @@ class ClaudeCodeClient:
             process.stdin.flush()
             process.stdin.close()
 
+            said_it_was_thinking = False
             for line in process.stdout:
                 event = _parsed(line)
                 if event is None:
@@ -544,6 +606,9 @@ class ClaudeCodeClient:
                 refusal = _refusal_in(event, self.model)
                 if refusal is not None:
                     raise refusal
+                if _withheld_thinking(event) and not said_it_was_thinking:
+                    said_it_was_thinking = True
+                    yield Chunk(REASONING, "")
                 for chunk in _said(event):
                     yield chunk
                 if event.get("total_cost_usd") is not None:
@@ -605,11 +670,10 @@ def _invocation(model: str, system_prompt: str) -> list:
     """
     The command line one call is made with, in the order it was measured.
 
-    The effort is `_SUBSCRIPTION_EFFORT` and not `_REASONING_EFFORT`: the low
-    one exists against a model circling invisibly in its own reasoning, and here
-    the circling streams and the call is bounded, so what low would still do is
-    buy the cheapest thinking on the one route that does not bill it by the
-    token.
+    The effort is whatever the user set (`effort`), because on this route it
+    is the one dial that changes the answer and the one the panel offers: the
+    low end exists against a model circling invisibly in its own reasoning,
+    and here the circling streams and the call is bounded.
 
     `--include-partial-messages` is what makes it a stream at all: without it
     the CLI answers with the finished `assistant` message and the `result`, no
@@ -624,7 +688,7 @@ def _invocation(model: str, system_prompt: str) -> list:
         "--verbose",
         "--model", model,
         "--system-prompt-file", system_prompt,
-        "--effort", _SUBSCRIPTION_EFFORT,
+        "--effort", effort(),
         "--no-session-persistence",
         "--safe-mode",
         "--strict-mcp-config",
@@ -699,6 +763,22 @@ def _parsed(line: str):
     return event if isinstance(event, dict) else None
 
 
+def _withheld_thinking(event: dict) -> bool:
+    """
+    Whether *event* is thinking the provider is doing but not showing.
+
+    `thinking_delta` carrying no words and a token count: `sonnet` and `opus`
+    on this route reason that way for minutes at a time, and a panel told
+    nothing at all cannot tell that from a call that has hung.
+    """
+    if event.get("type") != "stream_event":
+        return False
+    delta = ((event.get("event") or {}).get("delta") or {})
+    return (delta.get("type") == "thinking_delta"
+            and not delta.get("thinking")
+            and bool(delta.get("estimated_tokens")))
+
+
 def _said(event: dict) -> Iterator[Chunk]:
     """
     The text one event carries.
@@ -709,11 +789,14 @@ def _said(event: dict) -> Iterator[Chunk]:
     `signature_delta` arrives beside the thinking and is dropped: it signs a
     thinking block for a later turn, and every call here is a turn of its own.
 
-    Thinking that arrives without its words is reported as the count the
-    provider does give. `sonnet` streams `thinking_delta` carrying `""` and a
-    rising `estimated_tokens`; the words never come, and the run is thinking all
-    the same. The count is what the provider measured, not a timer standing in
-    for one.
+    Thinking that arrives without its words yields nothing. `sonnet` and `opus`
+    on this route stream `thinking_delta` carrying `""` and a rising
+    `estimated_tokens`, and the words never come; `haiku` streams the words
+    through this same branch. A count is not a reason: reporting it filled a
+    45-minute session's transcript with 1506 lines of `thinking… ~N tokens`,
+    which says how much was spent and nothing about why the run concluded what
+    it did. Where the words are withheld the panel says the phase is running
+    and stays quiet about the rest.
     """
     if event.get("type") != "stream_event":
         return
@@ -721,11 +804,8 @@ def _said(event: dict) -> Iterator[Chunk]:
     if streamed.get("type") != "content_block_delta":
         return
     delta = streamed.get("delta") or {}
-    if delta.get("type") == "thinking_delta":
-        if delta.get("thinking"):
-            yield Chunk(REASONING, delta["thinking"])
-        elif delta.get("estimated_tokens"):
-            yield Chunk(REASONING, _THINKING_WITHHELD % delta["estimated_tokens"])
+    if delta.get("type") == "thinking_delta" and delta.get("thinking"):
+        yield Chunk(REASONING, delta["thinking"])
     if delta.get("type") == "text_delta" and delta.get("text"):
         yield Chunk(TEXT, delta["text"])
 
@@ -790,6 +870,7 @@ class ScriptedLLMClient:
     """
 
     def __init__(self, turns: Iterable = ()):
+        self.model = "scripted"
         self.turns: List = list(turns)
         self.calls: List[list] = []
 

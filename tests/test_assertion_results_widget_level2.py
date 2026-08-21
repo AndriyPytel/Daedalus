@@ -10,6 +10,12 @@ summary count, and the per-entry expand to the code that ran. The wiring
 from a live `core.events.Event` to this widget, and the fallback for the one
 case it renders nothing for, is `tests/test_panel_level2.py`'s, the same
 split `test_review_verdict_widget_level2.py` draws for the Review card.
+
+FCC-169 rebuilt this card to Figma's `TestResults` anatomy: the tests below
+that touch icon colour and progress proportion are this file's part of that
+-- rule 1 of the ten (`docs/research/fcc169-ai-elements-visual-grammar.md`
+D), a row is never recoloured to report its state, only the mark beside it
+and the word after it change.
 """
 import pytest
 
@@ -34,6 +40,23 @@ def _widget(data):
     from ui.assertion_results_widget import AssertionResultsWidget
 
     return AssertionResultsWidget(data)
+
+
+def _opaque_pixels(pixmap):
+    from conftest import QtGui
+
+    image = pixmap.toImage()
+    return [QtGui.QColor(image.pixelColor(x, y))
+            for y in range(image.height())
+            for x in range(image.width())
+            if QtGui.QColor(image.pixelColor(x, y)).alpha() == 255]
+
+
+def _mark_of(row):
+    from conftest import QtWidgets
+
+    container = row.parent()
+    return next(w for w in container.findChildren(QtWidgets.QLabel) if not w.pixmap().isNull())
 
 
 def test_the_summary_line_counts_passed_only_when_nothing_failed():
@@ -63,7 +86,7 @@ def test_a_passing_run_shows_one_row_per_confirmed_entry():
 
     rows = card.findChildren(AccordionWidget)
     assert [row.toggle_button.text() for row in rows] == \
-        ["\u25b6  Base height is 10mm", "\u25b6  Hole diameter is 5mm"]
+        ["Base height is 10mm", "Hole diameter is 5mm"]
 
     heading = next(w for w in card.findChildren(QtWidgets.QLabel) if w.text() == "2 passed")
     assert heading is not None
@@ -75,7 +98,7 @@ def test_a_failing_run_shows_one_row_per_unmet_entry():
     card = _widget(_failing())
 
     rows = card.findChildren(AccordionWidget)
-    assert [row.toggle_button.text() for row in rows] == ["\u25b6  Lug height is 30mm"]
+    assert [row.toggle_button.text() for row in rows] == ["Lug height is 30mm"]
 
 
 def _mixed(confirmed=("Base height is 10mm",), unmet=("Lug height is 30mm",),
@@ -92,7 +115,7 @@ def test_a_mixed_result_shows_a_passed_row_and_a_failed_row_together():
     mixed card with no change to `AssertionResultsWidget` at all.
     """
     from ui.accordion_widget import AccordionWidget
-    from ui.assertion_results_widget import FAIL, SUCCESS, summary_line
+    from ui.assertion_results_widget import summary_line
 
     data = _mixed()
     card = _widget(data)
@@ -101,29 +124,86 @@ def test_a_mixed_result_shows_a_passed_row_and_a_failed_row_together():
 
     rows = card.findChildren(AccordionWidget)
     assert [row.toggle_button.text() for row in rows] == [
-        "\u25b6  Base height is 10mm", "\u25b6  Lug height is 30mm"]
-    assert SUCCESS in rows[0].toggle_button.styleSheet()
-    assert FAIL in rows[1].toggle_button.styleSheet()
+        "Base height is 10mm", "Lug height is 30mm"]
 
 
 def test_a_passed_row_is_marked_with_the_semantic_success_colour():
-    from ui.assertion_results_widget import SUCCESS
     from ui.accordion_widget import AccordionWidget
+    from ui.assertion_results_widget import SUCCESS
 
     card = _widget(_passing(confirmed=("Base height is 10mm",)))
 
     row = card.findChildren(AccordionWidget)[0]
-    assert SUCCESS in row.toggle_button.styleSheet()
+    painted = {colour.name() for colour in _opaque_pixels(_mark_of(row).pixmap())}
+    assert painted == {SUCCESS}
 
 
 def test_a_failed_row_is_marked_with_the_semantic_fail_colour():
-    from ui.assertion_results_widget import FAIL
     from ui.accordion_widget import AccordionWidget
+    from ui.assertion_results_widget import FAIL
 
     card = _widget(_failing())
 
     row = card.findChildren(AccordionWidget)[0]
-    assert FAIL in row.toggle_button.styleSheet()
+    painted = {colour.name() for colour in _opaque_pixels(_mark_of(row).pixmap())}
+    assert painted == {FAIL}
+
+
+def test_a_failed_row_does_not_recolour_its_container_or_its_text():
+    """
+    Rule 1 of the ten: state is never a repaint. Only `_mark_of` (the leading
+    icon) and the trailing status word change between a passed and a failed
+    row -- the row's own container keeps no background of its own, and the
+    description text carries no colour, semantic or otherwise.
+    """
+    from ui.accordion_widget import AccordionWidget
+    from ui.assertion_results_widget import FAIL, SUCCESS
+
+    card = _widget(_failing())
+
+    row = card.findChildren(AccordionWidget)[0]
+    container = row.parent()
+
+    assert container.styleSheet() == ""
+    assert SUCCESS not in row.toggle_button.styleSheet()
+    assert FAIL not in row.toggle_button.styleSheet()
+
+
+def test_a_trailing_status_word_follows_each_row():
+    from conftest import QtWidgets
+
+    from ui.accordion_widget import AccordionWidget
+
+    card = _widget(_mixed())
+
+    rows = card.findChildren(AccordionWidget)
+    words = [row.parent().findChild(QtWidgets.QLabel, "AssertionRowStatus").text()
+             for row in rows]
+    assert words == ["passed", "failed"]
+
+
+def test_the_progress_track_is_proportional_to_the_counts():
+    from ui.assertion_results_widget import _progress_fractions
+
+    assert _progress_fractions(passed=3, failed=1) == (0.75, 0.25, 0.0)
+    assert _progress_fractions(passed=0, failed=0) == (0.0, 0.0, 1.0)
+
+
+def test_the_cards_progress_track_matches_its_own_counts():
+    from ui.assertion_results_widget import _ProgressTrack
+
+    card = _widget(_mixed(confirmed=("a", "b", "c"), unmet=("d",)))
+
+    track = card.findChildren(_ProgressTrack)[0]
+    assert track.fractions == (0.75, 0.25, 0.0)
+
+
+def test_checks_that_could_not_be_written_render_no_rows():
+    from ui.accordion_widget import AccordionWidget
+
+    card = _widget({"ok": None, "code": "", "confirmed": [], "uncovered": []})
+
+    assert card.findChildren(AccordionWidget) == []
 
 
 def test_clicking_an_entry_expands_it_to_the_code_that_ran():
@@ -141,11 +221,3 @@ def test_clicking_an_entry_expands_it_to_the_code_that_ran():
 
     assert row.content_area.isVisible()
     assert row.content_area.text() == "assert True  # measured"
-
-
-def test_checks_that_could_not_be_written_render_no_rows():
-    from ui.accordion_widget import AccordionWidget
-
-    card = _widget({"ok": None, "code": "", "confirmed": [], "uncovered": []})
-
-    assert card.findChildren(AccordionWidget) == []

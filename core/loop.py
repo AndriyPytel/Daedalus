@@ -43,10 +43,10 @@ from core.design import (
     what_the_trace_says, where_the_direction_is,
 )
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, COST, DESIGN, ERROR, GATE,
-    INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
-    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT,
-    EventStream,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, DESIGN,
+    ERROR, GATE, INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED,
+    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
+    TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream,
 )
 from core import part_file, preflight, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
@@ -426,11 +426,32 @@ def _streamed(llm, events, phase, system, user):
     """
     One turn, as the text it wrote and whether it reasoned before writing it.
 
-    One fact about a call is not a `Chunk` and crosses the seam here, which is
+    Two facts about a call are not a `Chunk` and cross the seam here, which is
     the one place every phase's stream is consumed and the one that already
-    holds `events`: what the call spent. A client that says nothing about it —
-    the keyed one, the scripted one — emits nothing.
+    holds `events`: what the call spent, and how long the user waited for it.
+    Both are recorded for every call, whatever the client is — a client that
+    reports no price still costs the wait, and the wait is the number the
+    panel has to show while nothing else is happening.
+
+    The pair is what makes a silent call legible: `call_started` with no `cost`
+    after it, in a session log, is a call that never came back. That is why
+    the start is on the wire at all rather than inferred from the event before
+    it, which would count the loop's own work between two calls as part of the
+    second one.
+
+    `ceiling` is the wall-clock the call is killed at, and only the
+    subscription route has one (`core/llm.py :: ClaudeCodeClient`); a keyed
+    call runs to whatever the provider does, so the field is absent rather
+    than invented.
     """
+    ceiling = getattr(llm, "timeout", None)
+    model = getattr(llm, "model", None)
+    started = {"phase": phase, "model": model}
+    if ceiling is not None:
+        started["ceiling"] = ceiling
+    events.emit(CALL_STARTED, **started)
+
+    start = time.time()
     text, thought = [], False
     for chunk in llm.stream([{"role": "system", "content": system},
                              {"role": "user", "content": user}]):
@@ -441,8 +462,11 @@ def _streamed(llm, events, phase, system, user):
             text.append(chunk.text)
 
     spent = getattr(llm, "last_cost", None)
+    paid = {"phase": phase, "seconds": time.time() - start,
+            "model": spent["model"] if spent else model}
     if spent:
-        events.emit(COST, phase=phase, usd=spent["usd"], model=spent["model"])
+        paid["usd"] = spent["usd"]
+    events.emit(COST, **paid)
     return "".join(text), thought
 
 

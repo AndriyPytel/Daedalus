@@ -192,25 +192,25 @@ def test_stopping_a_gate_answer_leaves_the_composer_dark_again(panel):
     "Thinking: " + "the plan looks reasonable so I will start from the base sketch " * 2,
     "Applied → " + "A" * 300,
 ])
-def test_a_long_status_line_does_not_widen_the_panel(panel, status):
+def test_a_long_line_on_the_queue_does_not_widen_the_panel(panel, status):
     """
-    The status line is outside the transcript's QScrollArea, so its minimum
-    width is the panel's. Unwrapped, a Step description made the dock wider —
-    and Qt does not give the width back when the text goes short again, so the
-    user lost the dock width they had set. FCC-21.
+    What the Queue says is happening now is outside the transcript's
+    QScrollArea, so its minimum width is the panel's. Unwrapped, a Step
+    description made the dock wider — and Qt does not give the width back when
+    the text goes short again, so the user lost the dock width they had set.
+    FCC-21, inherited by the Queue from the status line it replaced.
 
     The dock's own minimumSizeHint only follows its child once shown, which
     the fixture's panel is not. The child is where the width is decided.
     """
     contents = panel.widget()
-    panel.status_line.setVisible(True)
-    panel.status_line.setText("Working…")
+    panel._queue_widget.now("Working…")
     narrow = contents.minimumSizeHint().width()
 
-    panel.status_line.setText(status)
+    panel._queue_widget.now(status)
 
     assert contents.minimumSizeHint().width() == narrow, \
-        "the panel's minimum width follows the status line's text"
+        "the panel's minimum width follows what the Queue says"
 
 
 def test_the_empty_chat_says_where_the_user_stands(panel):
@@ -255,6 +255,45 @@ def _mock_no_stored_model(monkeypatch):
     monkeypatch.setattr(settings_manager.instance(), "get_last_model", lambda: "")
 
 
+def test_the_composer_carries_the_effort_in_force(panel):
+    """
+    FCC-169: how hard the model thinks is a choice made where the model is
+    chosen, so it can be changed between two runs and compared.
+    """
+    from core.llm import effort
+
+    assert panel.effort_button.text() == effort()
+
+
+def test_picking_an_effort_stores_it_and_shows_it(panel, monkeypatch):
+    """The pill says what the next run will be asked for, not what was stored."""
+    from core import llm
+    from utils import settings_manager
+
+    stored = []
+    monkeypatch.setattr(settings_manager.instance(), "set_effort", stored.append)
+    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: stored[-1] if stored else "")
+
+    panel._on_effort_selected("high")
+
+    assert stored == ["high"]
+    assert panel.effort_button.text() == "high"
+    assert llm.effort() == "high"
+
+
+def test_a_model_that_cannot_reason_is_not_offered_the_choice(panel, monkeypatch):
+    """A picker that changes nothing is a picker that lies."""
+    from ui import copilot_panel
+
+    monkeypatch.setattr("core.llm.effort_is_honoured", lambda model_id=None: False)
+    panel._show_effort()
+    panel._open_effort_selector()
+
+    assert not panel.effort_button.isEnabled()
+    assert not panel.effort_selector.isVisible()
+    assert "no reasoning" in panel.effort_button.toolTip()
+
+
 def test_clicking_the_model_button_opens_the_provider_step(panel, monkeypatch):
     """FCC-175: the popup opens on a flat list of providers, not their models."""
     from ui.model_selector import PROVIDER_STEP
@@ -285,6 +324,46 @@ def test_choosing_a_provider_replaces_the_list_with_its_models(panel, monkeypatc
     assert panel.model_selector.step == MODEL_STEP
     assert panel.model_selector.visible_rows() == ["GPT-4o", "o1"]
     panel.model_selector.close()
+
+
+def test_the_picker_opens_above_the_button_that_opens_it(panel, monkeypatch):
+    """
+    FCC-169: the trigger is at the bottom of a docked panel, so a list that
+    drops down drops off the screen.
+    """
+    from conftest import QtCore
+
+    _mock_no_stored_model(monkeypatch)
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._open_model_selector()
+    QT_APP.processEvents()
+
+    popup = panel.model_selector
+    button_top = panel.model_button.mapToGlobal(QtCore.QPoint(0, 0)).y()
+    assert popup.geometry().bottom() <= button_top
+    popup.close()
+
+
+def test_a_picker_with_more_models_than_room_scrolls_inside_itself(panel, monkeypatch):
+    """
+    FCC-169: the list is capped by the room the screen has, and what does not
+    fit is scrolled to — never a popup taller than the display it is on.
+    """
+    _mock_no_stored_model(monkeypatch)
+    panel._refresh_models([{"id": "m%d" % n, "display": "Model %d" % n,
+                            "provider": "OpenAI"} for n in range(200)])
+    panel._open_model_selector()
+    QT_APP.processEvents()
+    _selector_click(panel.model_selector, "OpenAI")
+    QT_APP.processEvents()
+
+    popup = panel.model_selector
+    popup._reflow()
+    room = popup.screen().availableGeometry()
+    assert popup.height() <= room.height()
+    assert popup.geometry().top() >= room.top()
+    assert popup._scroll.verticalScrollBar().maximum() > 0
+    popup.close()
 
 
 def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypatch):
@@ -333,6 +412,158 @@ def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkey
     assert panel.model_selector.step == PROVIDER_STEP
     assert panel.model_selector.visible_rows() == ["OpenAI", "Anthropic"]
     panel.model_selector.close()
+
+
+def test_the_picker_has_no_window_frame(panel, monkeypatch):
+    """
+    FCC-169: no border around the popup — a real OS window frame would be
+    one no ``ADR-0011`` colour or ``design_tokens`` radius could match, since
+    the platform paints it, not the theme.
+    """
+    from conftest import QtCore
+
+    _mock_no_stored_model(monkeypatch)
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._open_model_selector()
+    QT_APP.processEvents()
+
+    flags = panel.model_selector.windowFlags()
+    assert flags & QtCore.Qt.Popup
+    assert flags & QtCore.Qt.FramelessWindowHint
+    panel.model_selector.close()
+
+
+def test_neither_popup_draws_a_border(panel, monkeypatch):
+    """
+    FCC-169: the user asked twice for no border around the model picker, and
+    the same read applies to the history popup — the opaque fill and its
+    radius are the whole edge either popup has, not a hairline on top of it.
+    """
+    _mock_no_stored_model(monkeypatch)
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._open_model_selector()
+    QT_APP.processEvents()
+    assert "border:" not in panel.model_selector._container.styleSheet()
+    panel.model_selector.close()
+
+    panel.toggle_history()
+    QT_APP.processEvents()
+    assert "border:" not in panel.history_popup._container.styleSheet()
+    panel.history_popup.close()
+
+
+def test_the_popups_own_fill_is_opaque_and_comes_from_the_anchor_theme(panel, monkeypatch):
+    """
+    FCC-169: a ``Qt.Popup`` is top-level and has nothing behind it, so a
+    translucent fill composites onto whatever the platform hands a bare
+    top-level window instead of the docked panel it floats over — white,
+    regardless of FreeCAD's own dark theme, which is what the user
+    photographed twice. Both popups must be fully opaque and paint the exact
+    colour ``UIHelpers.surface_colour`` reads off the widget they open from,
+    not a fixed value of their own.
+
+    The sampled pixel sits inside each popup's own margin, left of where its
+    first child starts and away from the rounded corners `RADIUS_SURFACE`
+    clips — a point guaranteed to be the fill and nothing painted over it.
+    """
+    from conftest import QtGui
+    from ui.ui_helpers import UIHelpers
+
+    _mock_no_stored_model(monkeypatch)
+    panel._refresh_models(_TWO_PROVIDERS)
+
+    original = panel.styleSheet()
+    panel.setStyleSheet("QWidget { background-color: #123456; }\n" + original)
+    QT_APP.processEvents()
+    try:
+        expected = UIHelpers.surface_colour(panel.model_button)
+        assert expected == "#123456"
+
+        panel._open_model_selector()
+        QT_APP.processEvents()
+        image = panel.model_selector.grab().toImage()
+        fill = QtGui.QColor(image.pixelColor(1, image.height() // 2))
+        assert fill.alpha() == 255
+        assert fill.name() == expected
+        panel.model_selector.close()
+
+        panel.toggle_history()
+        QT_APP.processEvents()
+        image = panel.history_popup.grab().toImage()
+        fill = QtGui.QColor(image.pixelColor(1, image.height() // 2))
+        assert fill.alpha() == 255
+        assert fill.name() == expected
+        panel.history_popup.close()
+    finally:
+        panel.setStyleSheet(original)
+        QT_APP.processEvents()
+
+
+def test_the_picker_opens_below_when_that_side_has_more_room(monkeypatch):
+    """
+    FCC-169's default is above, but only because the trigger this addon has
+    is at the bottom of a docked panel. A trigger near the top of the screen
+    has it the other way round, and the measurement in ``_reflow`` is what
+    has to notice that, not the direction itself.
+    """
+    from conftest import QtCore, QtWidgets
+    from ui.model_selector import ModelSelectorPopup
+
+    host = QtWidgets.QWidget()
+    host.resize(420, 800)
+    host.move(0, 0)
+    button = QtWidgets.QPushButton("GPT-4o", host)
+    button.move(20, 10)
+    button.resize(120, 24)
+    host.show()
+    QT_APP.processEvents()
+
+    popup = ModelSelectorPopup(host)
+    popup.open_at(_TWO_PROVIDERS, button)
+    QT_APP.processEvents()
+
+    button_bottom = button.mapToGlobal(QtCore.QPoint(0, button.height())).y()
+    assert popup.geometry().top() >= button_bottom
+    popup.close()
+    host.close()
+
+
+def test_the_current_model_is_marked_by_a_check_not_a_recolour(panel, monkeypatch):
+    """
+    Rule 1 of the visual grammar's ten: state is never a repaint. The row for
+    the model already in use gets a trailing check icon; every other row in
+    the same list gets none, and neither gets a stylesheet of its own.
+    """
+    from ui.model_selector import _Row
+
+    _mock_no_stored_model(monkeypatch)
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel.model_button.setText("GPT-4o")
+    panel._open_model_selector()
+    QT_APP.processEvents()
+    _selector_click(panel.model_selector, "OpenAI")
+    QT_APP.processEvents()
+
+    rows = {widget.text: widget
+           for i in range(panel.model_selector._list_layout.count())
+           for widget in [panel.model_selector._list_layout.itemAt(i).widget()]
+           if isinstance(widget, _Row)}
+
+    assert rows["GPT-4o"]._check_icon.isVisible()
+    assert not rows["o1"]._check_icon.isVisible()
+    panel.model_selector.close()
+
+
+def test_a_row_is_between_control_dense_and_control_tall():
+    """
+    The visual grammar's row-height range for a compact list, not a value of
+    its own picked to look right in one screenshot.
+    """
+    from ui.design_tokens import CONTROL, CONTROL_DENSE
+    from ui.model_selector import _Row
+
+    row = _Row("OpenAI")
+    assert CONTROL_DENSE <= row.height() <= CONTROL
 
 
 def test_the_button_shows_a_stored_model_no_static_list_knows(panel, monkeypatch):
@@ -386,8 +617,8 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
 
     assert panel._current_model_id == "gpt-4o"
     assert written == ["gpt-4o"]
-    assert panel.status_line.isVisible()
-    assert "gpt-5.6-sol" in panel.status_line.text()
+    assert panel._queue_widget.isVisible()
+    assert "gpt-5.6-sol" in _now_on(panel)
 
 
 def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, monkeypatch):
@@ -403,7 +634,7 @@ def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, mon
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
     assert panel._current_model_id == "gpt-4o"
-    assert "switched to gpt-4o" in panel.status_line.text()
+    assert "switched to gpt-4o" in _now_on(panel)
 
 
 def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
@@ -1071,6 +1302,11 @@ def _widgets_in(panel):
             if layout.itemAt(i).widget() is not None]
 
 
+def _now_on(panel):
+    """What the pinned Queue says is happening, in full rather than elided."""
+    return panel._queue_widget._now_label._full
+
+
 def _said_in(panel):
     """Every label the Session's chat area is showing, as one string."""
     return _said_by(_widgets_in(panel))
@@ -1225,7 +1461,7 @@ def _a_cost_transcript(path):
 def test_a_new_chat_shows_the_zero_state(panel):
     panel.new_chat()
 
-    assert panel.usage_label.text() == "$0.00"
+    assert panel.usage_label.text() == "$0.00  0:00"
 
 
 def test_cost_events_accumulate_into_one_running_total(panel):
@@ -1233,11 +1469,11 @@ def test_cost_events_accumulate_into_one_running_total(panel):
 
     panel.new_chat()
 
-    panel.on_event(Event(COST, {"phase": "design", "usd": 0.04, "model": "sonnet"}))
-    assert panel.usage_label.text() == "$0.04"
+    panel.on_event(Event(COST, {"phase": "design", "usd": 0.04, "model": "sonnet", "seconds": 1.0}))
+    assert panel.usage_label.text().startswith("$0.04")
 
-    panel.on_event(Event(COST, {"phase": "plan", "usd": 0.07, "model": "sonnet"}))
-    assert panel.usage_label.text() == "$0.11"
+    panel.on_event(Event(COST, {"phase": "plan", "usd": 0.07, "model": "sonnet", "seconds": 1.0}))
+    assert panel.usage_label.text().startswith("$0.11")
 
 
 def test_a_call_under_a_cent_still_shows_what_it_cost(panel):
@@ -1245,9 +1481,9 @@ def test_a_call_under_a_cent_still_shows_what_it_cost(panel):
 
     panel.new_chat()
 
-    panel.on_event(Event(COST, {"phase": "design", "usd": 0.0049, "model": "sonnet"}))
+    panel.on_event(Event(COST, {"phase": "design", "usd": 0.0049, "model": "sonnet", "seconds": 1.0}))
 
-    assert panel.usage_label.text() == "$0.0049"
+    assert panel.usage_label.text().startswith("$0.0049")
 
 
 def test_a_new_intent_zeroes_the_total_mid_session(panel):
@@ -1260,12 +1496,12 @@ def test_a_new_intent_zeroes_the_total_mid_session(panel):
     from core.events import COST, INTENT, Event
 
     panel.new_chat()
-    panel.on_event(Event(COST, {"phase": "design", "usd": 0.04, "model": "sonnet"}))
-    assert panel.usage_label.text() == "$0.04"
+    panel.on_event(Event(COST, {"phase": "design", "usd": 0.04, "model": "sonnet", "seconds": 1.0}))
+    assert panel.usage_label.text().startswith("$0.04")
 
     panel.on_event(Event(INTENT, {"text": "a second box"}))
 
-    assert panel.usage_label.text() == "$0.00"
+    assert panel.usage_label.text().startswith("$0.00")
 
 
 def test_a_restored_session_shows_its_final_total(panel, tmp_path):
@@ -1277,7 +1513,7 @@ def test_a_restored_session_shows_its_final_total(panel, tmp_path):
 
     panel.switch_session(index)
 
-    assert panel.usage_label.text() == "$0.13"
+    assert panel.usage_label.text().startswith("$0.13")
 
 
 def test_a_session_recorded_before_the_step_render_went_away_still_opens(panel, tmp_path):
@@ -1567,13 +1803,37 @@ def test_activating_a_documents_own_session_switches_the_panel_to_it(panel):
         elsewhere, _ = panel.chat_sessions.add_new_chat("elsewhere")
         named, _ = panel.chat_sessions.add_new_chat("named")
         panel.chat_sessions.name_document(
-            panel.chat_sessions.get_session_info(named)["log"], doc.Name)
+            panel.chat_sessions.get_session_info(named)["log"], doc.Name, doc.Uid)
         panel.chat_sessions.switch_to(elsewhere)
 
         panel.slotActivateDocument(doc)
 
         assert panel.chat_sessions.stack.currentIndex() == named, \
             "activating the Document did not bring its own Session forward"
+    finally:
+        FreeCAD.closeDocument(doc.Name)
+
+
+def test_a_new_unsaved_document_does_not_reopen_an_older_unsaved_ones_chat(panel):
+    """
+    Every unsaved Document in FreeCAD is called "Unnamed", so a name is not
+    an identity: the panel must stay where it is rather than open the chat of
+    some older file the user is not looking at.
+    """
+    import FreeCAD
+
+    doc = FreeCAD.newDocument("FCC169FreshDocument")
+    try:
+        elsewhere, _ = panel.chat_sessions.add_new_chat("elsewhere")
+        older, _ = panel.chat_sessions.add_new_chat("older")
+        panel.chat_sessions.name_document(
+            panel.chat_sessions.get_session_info(older)["log"],
+            doc.Name, "a-document-that-is-long-gone")
+        panel.chat_sessions.switch_to(elsewhere)
+
+        panel.slotActivateDocument(doc)
+
+        assert panel.chat_sessions.stack.currentIndex() == elsewhere
     finally:
         FreeCAD.closeDocument(doc.Name)
 
@@ -1671,6 +1931,130 @@ def test_enter_while_a_question_is_open_answers_it_rather_than_starting_a_run(pa
     assert panel.user_input.toPlainText() == "", "the composer kept the answer"
 
 
+def test_an_answered_card_is_spent_and_says_so(panel, monkeypatch):
+    """
+    Build is pressed once. Disabling alone changed nothing anyone could see:
+    the accent fill is written by the stylesheet, and a stylesheet rule
+    outranks the disabled palette Qt would otherwise grey the button with, so
+    the button sat there looking exactly as pressable as before. Subdued the
+    way this panel subdues anything -- an opacity effect (ADR-0011).
+    """
+    from conftest import QtWidgets
+
+    monkeypatch.setattr(panel.ask, "answer", lambda answer: None)
+
+    panel.on_plan_gate(["Sketch the hex profile", "Pad it 6.5 mm"])
+    QT_APP.processEvents()
+    card = panel._question_card
+    build = _button(card, "Build")
+
+    def fill():
+        painted = build.grab().toImage()
+        return painted.pixelColor(build.width() // 2, 2).name()
+
+    asking = fill()
+    build.click()
+    QT_APP.processEvents()
+
+    assert not build.isEnabled(), "Build can be pressed a second time"
+    assert fill() != asking, "the answered Build is painted the same as the one still asking"
+    assert build.objectName() != "PrimaryButton", \
+        "the card is answered and still wears the screen's one accent fill"
+    effect = card.graphicsEffect()
+    assert isinstance(effect, QtWidgets.QGraphicsOpacityEffect)
+    assert effect.opacity() < 1.0
+
+
+def test_the_composers_controls_stay_narrow_under_freecads_own_theme(panel):
+    """
+    FreeCAD's stylesheet is `QPushButton { min-width: 80px; }`, and an id rule
+    only overrides the properties it names. Silent about `min-width`, the
+    attach button was 80px wide where it asked for 20 and each picker was 88,
+    so `+ sonnet medium` was three quarters of a docked panel and Send sat on
+    the edge of it. `setFixedSize` did not save the attach button: a
+    stylesheet minimum feeds `minimumSizeHint`, which is what the layout asks.
+
+    Measured against the theme's own rule rather than a bare panel, because a
+    bare panel is exactly where the defect does not show. The whole strip, not
+    each control: what the user loses is the room the three of them take
+    together.
+    """
+    from ui.design_tokens import CONTROL, ICON, SPACE_XS
+
+    panel.setStyleSheet(panel.styleSheet() + "\nQPushButton { min-width: 80px; }")
+    try:
+        panel._set_current_model("x", "sonnet")
+        QT_APP.processEvents()
+
+        attach = panel.upload_widget.upload_btn
+        assert attach.width() == ICON + SPACE_XS, "the theme widened the attach button"
+        assert panel.send_button.width() == CONTROL
+
+        strip = (panel.model_button.geometry().right()
+                 - panel.upload_widget.geometry().left())
+        assert strip < panel.width() // 2, \
+            "the attach button and the model pill are half the panel between them"
+    finally:
+        panel.setStyleSheet(panel.styleSheet().replace(
+            "\nQPushButton { min-width: 80px; }", ""))
+        QT_APP.processEvents()
+
+
+def test_the_composer_says_when_the_keyboard_is_in_it(panel):
+    """
+    A field with no focus mark is a field the user cannot tell they are typing
+    into. The mark is the composer card's own hairline repainted in the accent
+    -- Qt has no `:focus-within`, so the card carries a property the field
+    that actually takes the keyboard sets.
+
+    The window is activated first: Qt delivers no FocusIn to a widget whose
+    window is not the active one, and the popups earlier tests open leave it
+    somewhere else.
+    """
+    from ui.copilot_panel import _build_qss
+
+    panel.activateWindow()
+    panel.raise_()
+    panel.user_input.clearFocus()
+    QT_APP.processEvents()
+    assert panel._input_card.property("focused") == "false"
+
+    panel.user_input.setFocus()
+    QT_APP.processEvents()
+    assert panel._input_card.property("focused") == "true"
+
+    panel.user_input.clearFocus()
+    QT_APP.processEvents()
+    assert panel._input_card.property("focused") == "false"
+
+    assert 'QFrame#InputContainer[focused="true"]' in _build_qss(), \
+        "nothing in the stylesheet draws the ring the property asks for"
+
+
+def test_a_model_name_too_long_for_the_strip_is_elided_not_shown_whole(panel):
+    """
+    The pill sizes itself to its own text, and `claude-sonnet-4-5-20250929` is
+    what the OpenAI-shaped routes hand back where a display name is missing.
+    At that length the two pickers are the whole composer strip and Send is
+    pushed off the edge of a docked panel. The name in full moves to the
+    tooltip, where nothing is measured by it.
+    """
+    from ui.copilot_panel import PICKER_SHARE
+
+    panel._set_current_model("x", "claude-sonnet-4-5-20250929-thinking-preview")
+    QT_APP.processEvents()
+
+    shown = panel.model_button.text()
+    assert shown != "claude-sonnet-4-5-20250929-thinking-preview"
+    assert shown.endswith("\u2026"), shown
+    assert panel.model_button.width() <= int(panel.width() * PICKER_SHARE)
+    assert "claude-sonnet-4-5-20250929-thinking-preview" in panel.model_button.toolTip()
+
+    panel._set_current_model("x", "GPT-4o")
+    QT_APP.processEvents()
+    assert panel.model_button.text() == "GPT-4o", "a short name is elided too"
+
+
 def test_stopping_releases_a_waiting_question(panel):
     panel.on_missing_values("How many teeth?")
     QT_APP.processEvents()
@@ -1730,6 +2114,10 @@ def test_an_attached_picture_stays_in_the_chat_after_the_chips_clear(panel, tmp_
     """
     `chip_bar.get_and_clear()` took the chips off the bar and nothing replaced
     them, so the user could not see what the run had been shown. FCC-88.
+
+    The picture stands in a row of its own, pushed to the right margin where
+    the Intent it came with stands, so it is looked for among a transcript
+    entry's children rather than among the entries themselves.
     """
     from conftest import QtWidgets
 
@@ -1742,9 +2130,9 @@ def test_an_attached_picture_stays_in_the_chat_after_the_chips_clear(panel, tmp_
                                                "path": str(drawing)}]}))
     QT_APP.processEvents()
 
-    shown = [w for w in _widgets_in(panel)
-             if isinstance(w, QtWidgets.QLabel) and w.pixmap() is not None
-             and not w.pixmap().isNull()]
+    shown = [label for widget in _widgets_in(panel)
+             for label in widget.findChildren(QtWidgets.QLabel)
+             if label.pixmap() is not None and not label.pixmap().isNull()]
     assert shown, "the picture is not in the transcript"
     assert shown[-1].toolTip() == "bracket.png"
 
@@ -1884,6 +2272,30 @@ def test_what_was_decided_the_questions_and_the_criteria_all_stand_open(panel):
         assert row.content_area.isVisible(), "%s is a click away" % heading
 
 
+def test_a_long_list_beside_the_steps_folds_and_says_how_many_it_holds(panel):
+    """
+    The measured session decided 22 values and set 40 acceptance criteria, each
+    a sentence long. Open, those two alone stand between the user and the Build
+    button; the count in the heading is what keeps a folded row a fact.
+    """
+    from core.events import PLAN, Event
+
+    from ui.accordion_widget import AccordionWidget
+    from ui.copilot_panel import OPEN_AT_MOST
+
+    many = ["criterion %d" % n for n in range(OPEN_AT_MOST + 1)]
+
+    before = len(_widgets_in(panel))
+    panel.on_event(Event(PLAN, {"steps": ["Bore the ring"], "acceptance": many}))
+    QT_APP.processEvents()
+
+    row = next(widget for widget in _widgets_in(panel)[before:]
+               if isinstance(widget, AccordionWidget)
+               and "What it has to satisfy" in widget.toggle_button.text())
+    assert row.toggle_button.text().endswith("(%d)" % len(many))
+    assert not row.content_area.isVisible(), "a list this long stands open"
+
+
 def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(panel):
     """
     Take it, fix it, start again. The last is the one the Plan Gate has no word
@@ -1909,6 +2321,35 @@ def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(pane
     QT_APP.processEvents()
 
     assert answered == [START_OVER]
+
+
+def test_the_verdict_the_card_is_headed_by_is_not_also_said_above_it(panel, tmp_path):
+    """
+    A Review that did not pass is always followed by the card that asks what
+    to do about it, and that card is headed by the very sentence `narrate()`
+    returns for the verdict. Said in the transcript as well, the same words
+    read as two verdicts, one of them apparently already answered.
+    """
+    _review_transcript_evidence(panel, tmp_path)
+
+    assert "the flange is mirrored" not in _said_in(panel)
+
+    panel.on_revision({"why": "the flange is mirrored", "applied": 5})
+    QT_APP.processEvents()
+
+    assert _said_in(panel).count("the flange is mirrored") == 1
+
+    panel._reset_render_state()
+
+
+def test_a_review_that_passed_still_says_so_in_the_transcript(panel, tmp_path):
+    """The other half: nothing asks anything after a pass, so the line is all there is."""
+    _review_transcript_evidence(panel, tmp_path, verdict="pass",
+                                reason="it matches the drawing")
+
+    assert "it matches the drawing" in _said_in(panel)
+
+    panel._reset_render_state()
 
 
 def _review_transcript_evidence(panel, tmp_path, verdict="fail",
@@ -2161,7 +2602,7 @@ def test_the_plan_gate_offers_exactly_one_build_button(panel):
     QT_APP.processEvents()
 
     labels = [b.text() for b in panel._question_card.findChildren(QtWidgets.QPushButton)]
-    assert labels == ["\u2713  Build"], labels
+    assert labels == ["Build"], labels
 
 
 def test_clicking_build_answers_with_the_plan_as_generated_when_nothing_was_edited(
@@ -2297,7 +2738,7 @@ def test_what_was_decided_for_the_user_stands_above_the_steps(panel):
     assert "not the depth" in _said_in(panel)
 
 
-def test_reasoning_streams_inline_and_never_pins_to_the_status_line(panel):
+def test_reasoning_streams_inline_and_never_pins_to_the_queue(panel):
     """
     FCC-173: the status line used to carry the last 90 characters of every
     reasoning chunk (`copilot_panel.py:1073` before this ticket). Reasoning
@@ -2307,15 +2748,111 @@ def test_reasoning_streams_inline_and_never_pins_to_the_status_line(panel):
 
     index, _ = panel.chat_sessions.add_new_chat("reasoning-run")
     panel.switch_session(index)
-    before_text, before_visible = panel.status_line.text(), panel.status_line.isVisible()
+    before_text, before_visible = _now_on(panel), panel._queue_widget.isVisible()
 
     long_thought = "the plan looks reasonable so I will start from the base sketch " * 3
     panel.on_event(Event(THOUGHT, {"phase": "plan", "text": long_thought}))
     QT_APP.processEvents()
 
-    assert panel.status_line.text() == before_text
-    assert panel.status_line.isVisible() == before_visible
+    assert _now_on(panel) == before_text
+    assert panel._queue_widget.isVisible() == before_visible
     assert long_thought in _said_in(panel)
+
+
+def test_a_wordless_thought_is_a_row_that_does_not_open(panel):
+    """
+    The subscription route says it is reasoning and withholds the words, so
+    the row goes up to prove the run is alive — and offers nothing to open,
+    since a row that opens onto an empty label is worse than one that says it
+    has nothing.
+    """
+    from core.events import Event, THOUGHT
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("wordless-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "design", "text": ""}))
+    QT_APP.processEvents()
+
+    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+    row.toggle_content()
+
+    assert not row.content_area.isVisible(), "a row with nothing in it opened"
+    assert row.toggle_button.icon().isNull(), "it still promised a disclosure"
+
+
+def test_a_thought_that_arrives_late_gets_its_chevron_back(panel):
+    """A route that does stream the words turns the same row into a real one."""
+    from core.events import Event, THOUGHT
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("late-words-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "design", "text": ""}))
+    panel.on_event(Event(THOUGHT, {"phase": "design", "text": "the boss is the datum"}))
+    QT_APP.processEvents()
+
+    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+    row.toggle_content()
+
+    assert row.content_area.isVisible()
+    assert "the boss is the datum" in _said_in(panel)
+
+
+def test_the_thinking_row_says_how_long_it_has_been_thinking(panel):
+    """
+    No route can say how long a model will take, so the panel says how long
+    it has taken — the question a user asks a panel that has gone quiet.
+    """
+    from core.events import Event, THOUGHT
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("slow-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "design", "text": ""}))
+    QT_APP.processEvents()
+    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+    row._since -= 83
+    row._say_how_long()
+
+    assert "1:23" in row.toggle_button.text()
+    assert "Thinking (design)" in row.toggle_button.text()
+
+
+def test_the_thinking_row_wears_the_brain_figma_puts_on_it(panel):
+    """
+    Figma's Reasoning header is a brain and its words; the chevron beside it
+    is a disclosure mark and says nothing about what the row holds. A column
+    of rows that all open, and all read `Thinking`/`Step 3 — ...`, is told
+    apart at a glance by the mark or it is read line by line.
+
+    The mark is a tinted pixmap rather than a glyph, for the reason the
+    chevron is: a glyph is whatever the user's font decided, at whatever
+    weight, and it does not take the icon tint (`_paint_chevron`).
+    """
+    from core.events import Event, THOUGHT, TOOL_CALL
+    from ui.accordion_widget import AccordionWidget
+    from ui.design_tokens import ICON
+
+    index, _ = panel.chat_sessions.add_new_chat("brain-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "design", "text": "measuring the flats"}))
+    QT_APP.processEvents()
+    thinking = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+
+    assert thinking.mark.isVisible(), "the reasoning row carries no mark"
+    assert thinking.mark.pixmap().size().toTuple() == (ICON, ICON)
+
+    panel.on_event(Event(TOOL_CALL, {"name": "run_script", "arguments": {"code": "pass"}}))
+    QT_APP.processEvents()
+    call = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+
+    assert not call.mark.isVisible(), \
+        "a call the run made wears the brain too, so the mark tells nothing apart"
 
 
 def test_reasoning_is_not_truncated_to_ninety_characters(panel):
@@ -2386,3 +2923,139 @@ def test_reasoning_reads_subdued_unlike_a_decision_the_plan_made(panel):
     assert effect.opacity() < 1.0
 
     assert decided.content_area.graphicsEffect() is None
+
+
+def test_the_part_event_closes_design_on_the_queue_before_any_plan(panel, tmp_path):
+    """
+    The wiring for FCC-194: `PART` is what says Design ended, and a Plan that
+    takes half an hour to answer must not leave the Queue with no row Running.
+    """
+    from core.events import EventStream, INTENT, PART
+    from ui.queue_widget import DESIGN, DONE, PLAN as QUEUE_PLAN, RUNNING
+
+    log = str(tmp_path / "part-run.jsonl")
+    stream = EventStream()
+    stream.log_to(log)
+    stream.emit(INTENT, text="a plain box")
+    stream.emit(PART, path=str(tmp_path / "box.part.json"))
+    index, _ = panel.chat_sessions.add_new_chat("part-run")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    queue = panel._queue_widget
+    assert queue.phase_state(DESIGN) == DONE
+    assert queue.phase_state(QUEUE_PLAN) == RUNNING
+
+
+
+def test_preflight_failed_is_wired_and_marks_the_step_failed(panel, tmp_path):
+    """
+    Regression guard: PREFLIGHT_FAILED was deleted from _update_queue, so
+    step_failed became unreachable dead code and a failed Step stayed painted
+    Running. The suite stayed green while this was broken.
+    """
+    from core.events import EventStream, INTENT, PLAN, GATE, STEP_STARTED, PREFLIGHT_FAILED
+    from ui.queue_widget import FAILED
+
+    log = str(tmp_path / "preflight-fail.jsonl")
+    stream = EventStream()
+    stream.log_to(log)
+    stream.emit(INTENT, text="a box")
+    stream.emit(PLAN, steps=["Make a box"], acceptance=[])
+    stream.emit(GATE, decision="approve")
+    stream.emit(STEP_STARTED, index=1, total=1, description="Make a box")
+    stream.emit(PREFLIGHT_FAILED, step=1, attempt=1, traceback="AttributeError: Support")
+
+    index, _ = panel.chat_sessions.add_new_chat("preflight-fail")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    queue = panel._queue_widget
+    assert queue._step_states[0] == FAILED
+
+
+def test_review_duration_is_nonzero(panel, tmp_path):
+    """
+    Review starts when Assertion ends (ASSERTION event), not when the verdict
+    arrives. This test guards against calling both phase_started and
+    phase_ended on the same REVIEW_VERDICT event, which leaves Review with
+    zero duration.
+    """
+    from core.events import EventStream, INTENT, PLAN, GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED, ASSERTION, REVIEW_VERDICT
+    import time
+
+    log = str(tmp_path / "review-duration.jsonl")
+    stream = EventStream()
+    stream.log_to(log)
+
+    t0 = time.time()
+    stream.emit(INTENT, text="a box")
+    stream.emit(PLAN, steps=["Box"], acceptance=[])
+    stream.emit(GATE, decision="approve")
+    stream.emit(STEP_STARTED, index=1, total=1, description="Box")
+    stream.emit(TOOL_CALL, name="apply_step", arguments={"code": "box()"})
+    stream.emit(TOOL_RESULT, name="apply_step", result={"status": "applied"})
+    stream.emit(APPLIED, step=1, label="Box", created=["Pad"])
+
+    assertion_time = time.time()
+    stream.emit(ASSERTION, ok=True, confirmed=[], uncovered=[])
+
+    time.sleep(0.1)
+
+    verdict_time = time.time()
+    stream.emit(REVIEW_VERDICT, verdict="pass", reason="Good")
+
+    index, _ = panel.chat_sessions.add_new_chat("review-duration")
+    panel.chat_sessions.get_session_info(index)["log"] = log
+    panel.chat_sessions.get_session_info(index)["restored"] = False
+
+    panel.switch_session(index)
+
+    queue = panel._queue_widget
+    review_start = queue._phase_start_times.get("review")
+    review_end = queue._phase_end_times.get("review")
+
+    assert review_start is not None, "Review should have a start time"
+    assert review_end is not None, "Review should have an end time"
+    assert review_end > review_start, "Review duration should be non-zero"
+    assert abs((review_end - review_start) - (verdict_time - assertion_time)) < 0.01
+
+
+def test_a_tool_result_still_says_what_came_back_after_it_is_timed(panel):
+    """
+    The duration goes on the call's own row (FCC-193). What the call answered
+    is a separate sentence, and the Queue's line is where it has always gone —
+    timing a row must not swallow it.
+    """
+    from core.events import Event, INTENT, TOOL_CALL, TOOL_RESULT
+
+    panel.on_event(Event(kind=INTENT, data={"text": "a plain box"}))
+    panel.on_event(Event(kind=TOOL_CALL, data={"name": "snapshot", "arguments": {}}))
+    panel.on_event(Event(kind=TOOL_RESULT,
+                         data={"name": "snapshot", "result": {"status": "empty document"}}))
+    QT_APP.processEvents()
+
+    said = panel._queue_widget._now_label._full
+    assert "snapshot" in said and "empty document" in said, said
+
+
+def test_a_tool_call_row_carries_how_long_the_call_took(panel):
+    from core.events import Event, INTENT, TOOL_CALL, TOOL_RESULT
+    from ui.accordion_widget import AccordionWidget
+
+    panel.on_event(Event(kind=INTENT, data={"text": "a plain box"}))
+    panel.on_event(Event(kind=TOOL_CALL, data={"name": "review_views", "arguments": {}},
+                         at=1000.0))
+    panel.on_event(Event(kind=TOOL_RESULT,
+                         data={"name": "review_views", "result": {"status": "done"}},
+                         at=1003.2))
+    QT_APP.processEvents()
+
+    history = panel.chat_sessions.get_current_chat_history()
+    titles = [row.toggle_button.text()
+              for row in history.widget().findChildren(AccordionWidget)]
+    assert any("(3.2s)" in title for title in titles), titles

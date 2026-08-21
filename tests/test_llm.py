@@ -317,14 +317,15 @@ def test_thinking_budget_is_requested_when_configured():
 def test_a_reasoning_model_is_told_how_hard_to_think():
     """
     Uncapped, kimi-k3 spent ten minutes circling one dimension and never left
-    its own reasoning, and "medium" bought no less of it (FCC-108).
+    its own reasoning (FCC-108). What it is told is the dial, which is
+    `medium` until the user moves it.
     """
     client, completion = client_replaying(openai_chunks())
     client.model = "openai/kimi-k3"
 
     collect(client.stream([{"role": "user", "content": "hi"}]))
 
-    assert completion.kwargs["reasoning_effort"] == "low"
+    assert completion.kwargs["reasoning_effort"] == "medium"
 
 
 def test_a_model_that_does_not_reason_is_not_told_how_hard_to_think():

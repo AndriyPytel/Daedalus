@@ -16,10 +16,10 @@ the field the wording turns on.
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, COST, ERROR, GATE, INTENT,
-    KINDS, OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED,
-    QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT,
-    UNBUILT, Event,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
+    GATE, INTENT, KINDS, OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED,
+    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
+    TOOL_CALL, TOOL_RESULT, UNBUILT, Event,
 )
 from core.narrate import Narration, narrate
 
@@ -47,7 +47,8 @@ SAMPLES = {
               "entries": ["material: plain carbon steel (read)"]},
     REVIEW_VERDICT: {"verdict": "pass", "reason": "matches the Intent"},
     BLOCKED: {"reason": "The budget is spent.", "tried": []},
-    COST: {"phase": "design", "usd": 0.0049255, "model": "sonnet"},
+    CALL_STARTED: {"phase": "plan", "model": "sonnet", "ceiling": 900.0},
+    COST: {"phase": "design", "usd": 0.0049255, "model": "sonnet", "seconds": 12.3},
     ERROR: {"message": "ValueError: no key"},
 }
 

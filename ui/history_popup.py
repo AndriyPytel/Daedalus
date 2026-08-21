@@ -4,7 +4,8 @@ except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
-from ui.design_tokens import RADIUS_MD, SPACE_SM, SPACE_XS, WASH
+from ui.design_tokens import (CONTROL_DENSE, RADIUS_CONTROL, RADIUS_SURFACE, SPACE_SM,
+                              SPACE_XS, WASH)
 from ui.typography import BODY, CAPTION, LABEL, css
 from ui.ui_helpers import UIHelpers
 
@@ -18,7 +19,7 @@ class HistoryItem(QtWidgets.QFrame):
     time is worth less than the name (ADR-0011).
 
     Name and time read `LABEL` and `CAPTION` off FCC-171's type scale, and
-    the hover wash reads `RADIUS_MD`/`WASH` off the same module — the pair
+    the hover wash reads `RADIUS_CONTROL`/`WASH` off the same module — the pair
     `ModelSelectorRow` already hovers a popup row with (FCC-175), reused
     rather than a second version of the same idea. Figma names no Session
     Picker component of its own (FCC-180's Solution Notes), so this is a
@@ -65,9 +66,11 @@ class HistoryItem(QtWidgets.QFrame):
                 background: transparent;
                 border: none;
                 border-radius: 4px;
+                padding: 0px;
+                min-width: %dpx; max-width: %dpx;
                 font-size: 14px;
             }
-        """)
+        """ % (CONTROL_DENSE, CONTROL_DENSE))
         self.del_btn.clicked.connect(lambda: self.deleted.emit(self.index))
         layout.addWidget(self.del_btn)
 
@@ -79,7 +82,7 @@ class HistoryItem(QtWidgets.QFrame):
             QFrame#HistoryItem:hover {{
                 background-color: {wash};
             }}
-        """.format(radius=RADIUS_MD, wash=WASH))
+        """.format(radius=RADIUS_CONTROL, wash=WASH))
 
     def showEvent(self, event):
         """
@@ -117,9 +120,21 @@ class HistoryPopup(QtWidgets.QFrame):
     """
     Antigravity-style floating popup with session list.
 
-    The container is opaque, so the theme paints it: translucent needed a
-    colour of its own (ADR-0011).
+    ``PopupContainer`` is opaque and carries no border: a translucent wash
+    composites onto whatever a bare top-level window is handed rather than
+    the dock this popup floats over, which is white regardless of FreeCAD's
+    own theme, and the user asked twice for no border around a popup like
+    this. `drop_from_the_dock` resolves the fill against the dock itself,
+    the one widget always at hand there, once FreeCAD's global stylesheet
+    has painted it (`UIHelpers.surface_colour`, ADR-0011's one exception).
+
+    `CEILING` caps the popup the way `QueueWidget` caps its own open list —
+    sized to its content up to a fraction of the dock's own height, so a
+    short session list is a short popup rather than the fixed 400px box this
+    used to be, empty room and an oversized scrollbar included.
     """
+    CEILING = 0.6
+
     session_selected = QtCore.Signal(int)
     session_deleted = QtCore.Signal(int)
 
@@ -127,15 +142,14 @@ class HistoryPopup(QtWidgets.QFrame):
         super().__init__(parent)
         self.setWindowFlags(QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint)
         self.setObjectName("HistoryPopup")
-        self.setFixedHeight(400)
 
-        container = QtWidgets.QFrame(self)
-        container.setObjectName("PopupContainer")
+        self._container = QtWidgets.QFrame(self)
+        self._container.setObjectName("PopupContainer")
         frame = QtWidgets.QVBoxLayout(self)
         frame.setContentsMargins(0, 0, 0, 0)
-        frame.addWidget(container)
+        frame.addWidget(self._container)
 
-        vbox = QtWidgets.QVBoxLayout(container)
+        vbox = QtWidgets.QVBoxLayout(self._container)
         vbox.setContentsMargins(SPACE_SM, SPACE_SM, SPACE_SM, SPACE_SM)
         vbox.setSpacing(SPACE_SM)
 
@@ -148,7 +162,7 @@ class HistoryPopup(QtWidgets.QFrame):
                 padding: {pad_v}px {pad_h}px;
                 {type}
             }}
-        """.format(radius=RADIUS_MD, pad_v=SPACE_XS, pad_h=SPACE_SM, type=css(BODY)))
+        """.format(radius=RADIUS_CONTROL, pad_v=SPACE_XS, pad_h=SPACE_SM, type=css(BODY)))
         self.search_input.textChanged.connect(self.filter_items)
         vbox.addWidget(self.search_input)
 
@@ -156,6 +170,7 @@ class HistoryPopup(QtWidgets.QFrame):
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
         self.scroll.setStyleSheet("background: transparent;")
         
         self.list_container = QtWidgets.QWidget()
@@ -204,11 +219,42 @@ class HistoryPopup(QtWidgets.QFrame):
             if isinstance(widget, HistoryItem):
                 widget.setVisible(text in widget.title_label.text().lower())
 
+    def _content_height(self):
+        """
+        How tall the popup would be with every row it holds on screen right
+        now, measured off the search bar and the list rather than a cached
+        `sizeHint` -- a row `populate` just inserted has not had its layout
+        request answered yet and would still measure as it did before the
+        insertion (the same read `ui/model_selector.py::_laid_out` avoids,
+        for the same reason).
+        """
+        self.list_layout.activate()
+        container_layout = self._container.layout()
+        container_layout.activate()
+        margins = container_layout.contentsMargins()
+        return (margins.top() + margins.bottom()
+                + self.search_input.sizeHint().height()
+                + container_layout.spacing()
+                + self.list_container.sizeHint().height())
+
     def drop_from_the_dock(self):
-        """Down from the top of the copilot dock, exactly as wide as it is."""
+        """
+        Down from the top of the copilot dock, exactly as wide as it is, and
+        tall enough for its content up to `CEILING` of the dock's own height
+        -- never the fixed 400px box a two-row history used to open as.
+
+        The fill is resolved against *area* -- the dock's own widget, already
+        painted by FreeCAD's global stylesheet -- rather than the search
+        input or a row, neither of which carries a background of its own to
+        read back (ADR-0011; `UIHelpers.surface_colour`).
+        """
         dock = self.parentWidget()
         area = dock.widget() or dock
+        self._container.setStyleSheet(
+            "QFrame#PopupContainer { background-color: %s; border-radius: %dpx; }"
+            % (UIHelpers.surface_colour(area), RADIUS_SURFACE))
         self.setFixedWidth(area.width())
+        self.setFixedHeight(min(self._content_height(), int(area.height() * self.CEILING)))
         self.move(area.mapToGlobal(QtCore.QPoint(0, 0)))
         self.show()
         self.search_input.setFocus()

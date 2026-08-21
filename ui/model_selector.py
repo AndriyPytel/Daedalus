@@ -12,6 +12,11 @@ a reopen after choosing a model shows providers again, not that model's list.
 Its rows read the same ``[{id, display, provider}]`` shape
 ``ProviderManager.get_available_models`` hands the picker it replaces, so a
 provider with no configured key never reaches it either.
+
+FCC-169's user verdict on the first cut of this: no frame around it, and it
+must open *upward*. The trigger sits at the bottom of a narrow docked panel
+(the composer's tool strip), so a popup that always drops down runs off the
+bottom of the screen — see ``_reflow``.
 """
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
@@ -19,35 +24,111 @@ except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
-from ui.design_tokens import RADIUS_MD, SPACE_SM, SPACE_XS, WASH
+from ui.design_tokens import (CONTROL, ICON, RADIUS_CONTROL,
+                              RADIUS_SURFACE, SPACE_XS, SPACE_SM, WASH)
 from ui.typography import BODY, BODY_STRONG, css
+from ui.ui_helpers import UIHelpers
 
 PROVIDER_STEP = "provider"
 MODEL_STEP = "model"
 
 
+def _screen_for(widget) -> QtGui.QScreen:
+    """
+    The screen *widget* is currently on, however this Qt binding can say so.
+
+    ``QWidget.screen()`` only exists from Qt 5.14 — FreeCAD's own PySide
+    shim has it (it re-exports PySide6), but a bare PySide2 might not, so
+    this falls back to asking the application which screen owns the
+    widget's global position, and falls back again to the primary screen for
+    a widget that is not on screen yet (``screenAt`` can return ``None``).
+    """
+    getter = getattr(widget, "screen", None)
+    if callable(getter):
+        found = getter()
+        if found is not None:
+            return found
+    found = QtGui.QGuiApplication.screenAt(widget.mapToGlobal(QtCore.QPoint(0, 0)))
+    return found or QtWidgets.QApplication.primaryScreen()
+
+
+def _laid_out(layout) -> QtCore.QSize:
+    """
+    How much room *layout*'s widgets need, read off the widgets themselves.
+
+    A widget pinned with `setFixedHeight` keeps the size hint it had before
+    the pin -- the pin is a minimum and a maximum, and a hint is neither --
+    so the larger of the two is what the layout will actually give it. A row
+    is asked to work its own layout out first, since one built and measured
+    in the same turn of the event loop has not done it yet and answers with a
+    default that fits none of its text.
+    """
+    margins = layout.contentsMargins()
+    width = height = 0
+    for position in range(layout.count()):
+        widget = layout.itemAt(position).widget()
+        if widget is None:
+            continue
+        if widget.layout() is not None:
+            widget.layout().activate()
+        hint = widget.sizeHint()
+        height += max(hint.height(), widget.minimumHeight())
+        height += layout.spacing() if position else 0
+        width = max(width, hint.width(), widget.minimumWidth())
+    return QtCore.QSize(width + margins.left() + margins.right(),
+                        height + margins.top() + margins.bottom())
+
+
 class _Row(QtWidgets.QFrame):
     """
-    One selectable line, a label with a hover wash instead of a colour of its
-    own (ADR-0011) — the same wash `HistoryItem` hovers with.
+    One selectable line: a label, a hover wash instead of a colour of its own
+    (ADR-0011) — the same wash `HistoryItem` hovers with — and, for the model
+    row that is the one currently active, a trailing check rather than a
+    recolour (rule 1 of the visual grammar's ten: state is never a repaint).
+
+    Nothing leads the label. The design puts a brand mark there and this
+    addon ships none, and the one glyph that could stand in for all of them
+    stands for nothing: the same mark against every row says only that there
+    is a mark. The check is `circle_check`, the only checkmark in the set.
     """
 
     clicked = QtCore.Signal()
 
-    def __init__(self, text):
+    def __init__(self, text, checked=False):
         super().__init__()
         self.text = text
+        self._checked = checked
         self.setObjectName("ModelSelectorRow")
         self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setFixedHeight(CONTROL)
         self.setStyleSheet(
             "QFrame#ModelSelectorRow { border-radius: %dpx; background: transparent; }"
-            "QFrame#ModelSelectorRow:hover { background-color: %s; }" % (RADIUS_MD, WASH))
+            "QFrame#ModelSelectorRow:hover { background-color: %s; }" % (RADIUS_CONTROL, WASH))
 
         layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(SPACE_SM, SPACE_XS, SPACE_SM, SPACE_XS)
+        layout.setContentsMargins(SPACE_SM, 0, SPACE_SM, 0)
+        layout.setSpacing(SPACE_XS)
+
         label = QtWidgets.QLabel(text)
         label.setStyleSheet(css(BODY) + "background: transparent;")
-        layout.addWidget(label)
+        layout.addWidget(label, 1)
+
+        self._check_icon = QtWidgets.QLabel()
+        self._check_icon.setFixedSize(ICON, ICON)
+        layout.addWidget(self._check_icon)
+        self._check_icon.setVisible(checked)
+
+    def showEvent(self, event):
+        """
+        The check is tinted once the row is on screen, like every other icon in
+        the addon — asked any earlier it still answers with the OS palette,
+        not the one FreeCAD's global stylesheet has since painted it with
+        (ADR-0011).
+        """
+        super().showEvent(event)
+        if self._checked:
+            self._check_icon.setPixmap(
+                UIHelpers.get_icon("circle_check", size=ICON, on=self).pixmap(ICON, ICON))
 
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
@@ -55,54 +136,197 @@ class _Row(QtWidgets.QFrame):
         super().mousePressEvent(event)
 
 
-class ModelSelectorPopup(QtWidgets.QFrame):
+class _ListPopup(QtWidgets.QFrame):
     """
-    A floating, opaque popup — the theme paints it, translucent would need a
-    colour of its own (ADR-0011) — that closes itself the moment a model is
-    chosen, or the moment the user clicks outside it (``Qt.Popup``).
+    A floating, opaque list that closes itself the moment something is picked
+    or the user clicks outside it (``Qt.Popup``).
 
-    ``step`` names which list is on screen; ``visible_rows`` is the clickable
-    rows on it, in order — a provider's own name is never one of them, so
-    step 2's own heading does not count as a choice.
+    ``PopupContainer`` reads as a floating surface the way the visual
+    grammar's separation-strategy level 4 does elsewhere in this addon
+    (`InputContainer`, `PlanCard`), minus the hairline: a top-level
+    ``Qt.Popup`` has nothing behind it, so a hairline is the one edge this
+    surface can still afford to skip and the fill is what has to carry the
+    whole of it — the user asked twice for no border around this picker. The
+    fill itself is resolved when the popup opens, not here: it has to be
+    `UIHelpers.surface_colour(anchor)`, the anchor's own theme, not a wash
+    that composites onto whatever a bare top-level window is handed, which is
+    white regardless of FreeCAD's own dark theme. Radius stays
+    `RADIUS_SURFACE`: the grammar's own `ModelSelectorContent` uses a 14px
+    radius this design system has no token for, and every other floating card
+    in this addon already uses `RADIUS_SURFACE` (10), which reads as "this
+    addon's popovers" more than one borrowed number would.
+    `Qt.Popup | Qt.FramelessWindowHint` drops the OS window frame so the fill
+    and its radius are the only edge this popup has.
+
+    ``visible_rows`` is the clickable rows on it, in order — a heading is
+    never one of them, so a list's own title does not count as a choice. The
+    rows sit in a scroll area capped by `_reflow` to whatever room was
+    measured above or below the trigger, so a long list scrolls in place
+    rather than growing the popup past the screen.
     """
-
-    model_chosen = QtCore.Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowFlags(QtCore.Qt.Popup | QtCore.Qt.FramelessWindowHint)
-        self.setObjectName("ModelSelectorPopup")
-        self._models = []
-        self.step = PROVIDER_STEP
+        self._anchor = None
 
-        container = QtWidgets.QFrame(self)
-        container.setObjectName("PopupContainer")
-        outer = QtWidgets.QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(container)
+        self._container = QtWidgets.QFrame(self)
+        self._container.setObjectName("PopupContainer")
 
-        self._list_layout = QtWidgets.QVBoxLayout(container)
-        self._list_layout.setContentsMargins(SPACE_XS, SPACE_XS, SPACE_XS, SPACE_XS)
+        self._scroll = QtWidgets.QScrollArea(self._container)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self._scroll.setStyleSheet("background: transparent;")
+
+        list_container = QtWidgets.QWidget()
+        list_container.setStyleSheet("background: transparent;")
+        self._list_layout = QtWidgets.QVBoxLayout(list_container)
+        self._list_layout.setContentsMargins(0, 0, 0, 0)
         self._list_layout.setSpacing(0)
+        self._scroll.setWidget(list_container)
 
-    def open_at(self, models: list, anchor: QtWidgets.QWidget):
-        """Opens on the provider step, under *anchor*, sized to its content."""
-        self._models = list(models)
-        self._show_providers()
-        self.move(anchor.mapToGlobal(QtCore.QPoint(0, anchor.height())))
-        self.show()
-        self.adjustSize()
+    def _dress(self, anchor: QtWidgets.QWidget):
+        """
+        Take the anchor's theme and stand against it.
+
+        The fill is resolved per open rather than once at construction: the
+        anchor is not known until a caller opens the popup against one, and
+        the theme it carries can change between one open and the next.
+        """
+        self._anchor = anchor
+        self._container.setStyleSheet(
+            "QFrame#PopupContainer { background-color: %s; border-radius: %dpx; }"
+            % (UIHelpers.surface_colour(anchor), RADIUS_SURFACE))
+
+    def _reflow(self):
+        """
+        Sizes and places the popup against `self._anchor`, never off-screen.
+
+        Measures the room above and below the trigger on its own screen
+        first, picks whichever side has more of it — above by default, below
+        only when that measurement says below actually has more room, per
+        FCC-169 — then caps the scroll area to that room so a long list
+        scrolls inside the popup instead of growing it past the screen edge.
+
+        `self._container` and `self._scroll` are positioned with an explicit
+        `setGeometry` rather than a `QVBoxLayout` wrapping them: a popup this
+        method repositions on every step change needs a `QLayout` on a
+        *top-level* widget to never react on its own, and it does not — a
+        layout invalidated by a child (here, `self._scroll` growing from the
+        provider step's two rows to a longer model list) schedules a
+        deferred re-layout of its own that lands after this method returns
+        and silently overwrites the size just computed, back to the size the
+        popup had before this call. `inset` is `SPACE_XS`, the fill's own
+        padding and nothing else now the hairline border is gone, measured by
+        hand for the same reason: reading it back off a layout's sizeHint is
+        exactly the read this method exists to avoid.
+
+        The list is measured off its own rows rather than by asking the
+        container how big it wants to be. A row added or removed posts a
+        layout request answered a turn of the event loop later, and until it
+        is answered the container answers with the size it had before the step
+        change -- or with zero, for one built into a popup never yet shown.
+        """
+        if self._anchor is None:
+            return
+
+        anchor = self._anchor
+        anchor_rect = QtCore.QRect(anchor.mapToGlobal(QtCore.QPoint(0, 0)), anchor.size())
+        screen_rect = _screen_for(anchor).availableGeometry()
+
+        space_above = anchor_rect.top() - screen_rect.top()
+        space_below = screen_rect.bottom() - anchor_rect.bottom()
+        open_above = space_above >= space_below
+        available = max(space_above, space_below)
+
+        gap = SPACE_XS
+        inset = SPACE_XS
+        content_size = _laid_out(self._scroll.widget().layout())
+
+        scroll_height = min(content_size.height(), max(available - gap - 2 * inset, CONTROL))
+        width = max(content_size.width() + 2 * inset, anchor.width())
+        width = min(width, screen_rect.width())
+        height = scroll_height + 2 * inset
+
+        self._container.setGeometry(0, 0, width, height)
+        self._scroll.setGeometry(inset, inset, width - 2 * inset, scroll_height)
+
+        x = anchor_rect.left()
+        x = max(screen_rect.left(), min(x, screen_rect.right() - width + 1))
+
+        if open_above:
+            y = anchor_rect.top() - gap - height
+        else:
+            y = anchor_rect.bottom() + gap
+        y = max(screen_rect.top(), min(y, screen_rect.bottom() - height + 1))
+
+        self.setFixedSize(width, height)
+        self.move(x, y)
+
+    def _current_label(self) -> str:
+        """What the trigger says it is set to, which is what carries the check."""
+        get_text = getattr(self._anchor, "text", None)
+        return get_text() if callable(get_text) else ""
 
     def visible_rows(self) -> list:
         return [self._list_layout.itemAt(i).widget().text
                 for i in range(self._list_layout.count())
                 if isinstance(self._list_layout.itemAt(i).widget(), _Row)]
 
+    def _heading(self, text: str):
+        heading = QtWidgets.QLabel(text)
+        heading.setStyleSheet(css(BODY_STRONG) + "background: transparent;")
+        heading.setContentsMargins(SPACE_SM, SPACE_XS, SPACE_SM, SPACE_XS)
+        self._list_layout.addWidget(heading)
+
     def _clear(self):
         while self._list_layout.count():
             item = self._list_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            widget = item.widget()
+            if widget:
+                widget.hide()
+                widget.deleteLater()
+
+
+class ModelSelectorPopup(_ListPopup):
+    """
+    The model picker: providers first, then that provider's models in place.
+
+    ``step`` names which list is on screen.
+    """
+
+    model_chosen = QtCore.Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("ModelSelectorPopup")
+        self._models = []
+        self._current_display = ""
+        self.step = PROVIDER_STEP
+
+    def open_at(self, models: list, anchor: QtWidgets.QWidget):
+        """
+        Opens on the provider step, against *anchor* — above it when there is
+        more room above than below, below it otherwise (`_reflow`), sized to
+        its content up to whatever room that measurement found.
+
+        The current model is read off *anchor*'s own label (`_set_current_model`
+        already put it there) rather than as a new parameter: the public API
+        this popup keeps for `copilot_panel.py` is `open_at(models, button)`,
+        unchanged since FCC-175, and the button's text is the one place this
+        call already carries that information.
+
+        The fill is resolved here too, against the same *anchor*, rather than
+        once at construction: the anchor is not known until a caller opens the
+        popup against one, and the theme it carries can change between one
+        open and the next.
+        """
+        self._models = list(models)
+        self._dress(anchor)
+        self._current_display = self._current_label()
+        self._show_providers()
+        self.show()
 
     def _show_providers(self):
         self.step = PROVIDER_STEP
@@ -115,23 +339,55 @@ class ModelSelectorPopup(QtWidgets.QFrame):
             row = _Row(provider)
             row.clicked.connect(lambda p=provider: self._show_models(p))
             self._list_layout.addWidget(row)
-        self.adjustSize()
+        self._reflow()
 
     def _show_models(self, provider: str):
         self.step = MODEL_STEP
         self._clear()
-        heading = QtWidgets.QLabel(provider)
-        heading.setStyleSheet(css(BODY_STRONG) + "background: transparent;")
-        heading.setContentsMargins(SPACE_SM, SPACE_XS, SPACE_SM, SPACE_XS)
-        self._list_layout.addWidget(heading)
+        self._heading(provider)
         for model in self._models:
             if model["provider"] != provider:
                 continue
-            row = _Row(model["display"])
+            row = _Row(model["display"], checked=model["display"] == self._current_display)
             row.clicked.connect(lambda m=model["id"]: self._choose(m))
             self._list_layout.addWidget(row)
-        self.adjustSize()
+        self._reflow()
 
     def _choose(self, model_id: str):
         self.model_chosen.emit(model_id)
+        self.close()
+
+
+class EffortPopup(_ListPopup):
+    """
+    How hard the model is asked to think, in one flat list.
+
+    A second picker rather than a setting in a dialog because it is the same
+    kind of choice as the model and is made at the same moment -- the user
+    changes it to compare one run against the next, which is the whole reason
+    it exists. The levels are the routes' own, not names of ours: what the
+    Claude Code CLI takes as `--effort` and what LiteLLM normalises as
+    `reasoning_effort` (docs/research is in `/tmp` -- see `core.llm`).
+
+    A model that cannot reason at all is not offered the choice: the trigger
+    says so and never opens this list, since a picker that changes nothing is
+    a picker that lies.
+    """
+
+    effort_chosen = QtCore.Signal(str)
+
+    def open_at(self, levels: list, anchor: QtWidgets.QWidget):
+        """*levels* in the order they are offered, the current one checked."""
+        self._dress(anchor)
+        current = self._current_label()
+        self._clear()
+        for level in levels:
+            row = _Row(level, checked=level == current)
+            row.clicked.connect(lambda chosen=level: self._choose(chosen))
+            self._list_layout.addWidget(row)
+        self._reflow()
+        self.show()
+
+    def _choose(self, level: str):
+        self.effort_chosen.emit(level)
         self.close()

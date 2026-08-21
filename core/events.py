@@ -22,13 +22,21 @@ so in a word of its own.
 has been read, so a session says what was wanted before it says what was found
 and a transcript can be judged against the request that opened it.
 
-`cost` is what one call to the provider spent — the amount and the model it was
-spent on. It is the only record of what a run costs there is; a provider that
-answers on a subscription is not billed by the token, so the number is what the
-same call would have cost through a key. The panel accumulates it into one
-running total for the run rather than narrating each call: a hundred Design
-calls would otherwise be a hundred lines nobody reads (`ui/copilot_panel.py ::
-on_event`).
+`call_started` marks when a provider call begins, carrying the phase, model,
+and timeout ceiling in seconds when one is set (subscription route only). It is
+emitted before the stream opens and pairs with the `cost` that follows: a
+`call_started` with no matching `cost` after it is a call that died without
+answering, which is the log-side answer to whether a silent call hung.
+
+`cost` is what one call to the provider spent — the wall-clock time and the
+amount, when a price is known. The `seconds` field is always present, measured
+from when the call opened to when it completed. The `usd` field is present only
+when the client reported a price: a provider that answers on a subscription is
+not billed by the token, so the number is what the same call would have cost
+through a key, and a scripted run emits no price at all. The panel accumulates
+the cost into one running total for the run rather than narrating each call: a
+hundred Design calls would otherwise be a hundred lines nobody reads
+(`ui/copilot_panel.py :: on_event`).
 """
 import json
 import time
@@ -55,13 +63,15 @@ OUTSTANDING = "outstanding"
 UNBUILT = "unbuilt"
 REVIEW_VERDICT = "review_verdict"
 BLOCKED = "blocked"
+CALL_STARTED = "call_started"
 COST = "cost"
 ERROR = "error"
 
 KINDS = (
     INTENT, THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
     GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED,
-    ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, BLOCKED, COST, ERROR,
+    ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, BLOCKED, CALL_STARTED, COST,
+    ERROR,
 )
 
 

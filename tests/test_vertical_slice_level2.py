@@ -23,8 +23,8 @@ import pytest
 
 from core.apply import ApplyPipeline
 from core.events import (
-    APPLIED, BLOCKED, INTENT, PLAN, REVIEW_VERDICT, STEP_STARTED, TOOL_CALL,
-    TOOL_RESULT, EventStream,
+    APPLIED, BLOCKED, CALL_STARTED, COST, INTENT, PLAN, REVIEW_VERDICT,
+    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
 )
 from core.freecad_tools import build_registry
 from core.llm import ScriptedLLMClient
@@ -327,9 +327,13 @@ def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
     """
     Every event the panel draws the run from. The six Tool calls are the five
     applies plus the one review_views the loop drives at the end.
+
+    CALL_STARTED, COST, and THOUGHT are per-call bookkeeping and say nothing
+    about the order of the run, so they are filtered out before checking the
+    structural event sequence.
     """
     events = slice_run["events"]
-    kinds = [e.kind for e in events]
+    kinds = [e.kind for e in events if e.kind not in (CALL_STARTED, COST, THOUGHT)]
 
     assert kinds[:2] == [INTENT, PLAN]
     assert len(events.of(STEP_STARTED)) == 5

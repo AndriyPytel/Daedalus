@@ -20,12 +20,16 @@ class UIHelpers:
         The named icon's raw markup, read from `ui/icons/<name>.svg`, or
         `None` if that file does not exist.
 
-        FCC-171's asset directory: the addon's own thirteen Feather-style
-        outlines, plus the five Lucide-style shapes
-        (docs/research/fcc167-ai-elements-figma-spec.md names the set) the
-        Queue phase marks, the Step status marks and the model-selector
-        trigger need. `currentColor` stands in for the colour, same as
-        before this moved out of a Python dict.
+        The set is Untitled UI Icons (untitleduico/icons, MIT), one file per
+        name, 24x24 with a 2px stroke and round caps -- the whole directory is
+        one hand rather than the Feather outlines and Lucide shapes it was
+        assembled from, which agreed on a grid but not on a weight or a
+        corner. `brain` is the one exception and is Lucide's, because the free
+        Untitled UI distribution has no brain and Figma's own Reasoning header
+        (component `2008:15945`, `<BrainIcon>`) is a flattened Lucide `brain`.
+
+        `currentColor` stands in for the colour: `get_icon` replaces it with a
+        literal before the SVG is rasterised, so every file must carry it.
         """
         path = os.path.join(ICON_DIR, "%s.svg" % name)
         try:
@@ -35,7 +39,7 @@ class UIHelpers:
             return None
 
     @staticmethod
-    def get_icon(name, size=24, on=None):
+    def get_icon(name, size=24, on=None, colour=None):
         """
         Returns a QIcon from the SVG map, tinted to match the widget *on*.
 
@@ -47,6 +51,14 @@ class UIHelpers:
         callers re-tint on show rather than trusting construction time. The
         role read is the widget's own foregroundRole rather than a fixed one: a
         button's stylesheet colour lands in ButtonText and a list's in Text.
+
+        *colour* overrides that for the one thing colour is still allowed to
+        say: which state something is in. The design language this panel
+        follows never repaints a row or a button to report a state — the mark
+        beside it changes instead — so the semantic colours ADR-0011 keeps land
+        on a glyph and nowhere else. A `palette(role)` is resolved here rather
+        than by the caller, because a rasteriser needs a literal and this is
+        the one place in the addon allowed to ask the palette for one.
         """
         svg_text = UIHelpers._icon_svg(name)
         if not svg_text:
@@ -54,7 +66,12 @@ class UIHelpers:
 
         source = QtWidgets.QApplication if on is None else on
         role = QtGui.QPalette.WindowText if on is None else on.foregroundRole()
-        color = source.palette().color(role).name()
+        if colour and colour.startswith("palette("):
+            named = colour[len("palette("):-1]
+            role = getattr(QtGui.QPalette,
+                           "".join(part.capitalize() for part in named.split("-")))
+            colour = source.palette().color(role).name()
+        color = colour or source.palette().color(role).name()
 
         styled_svg = svg_text.replace("currentColor", color)
         
@@ -69,6 +86,49 @@ class UIHelpers:
         painter.end()
         
         return QtGui.QIcon(pixmap)
+
+    @staticmethod
+    def surface_colour(on):
+        """
+        An opaque hex colour for a popup's own fill, resolved from *on* -- the
+        widget the popup opens against, never `QApplication`.
+
+        `Qt.Popup | Qt.FramelessWindowHint` makes a top-level window with
+        nothing behind it, so a translucent wash (`WASH`) composites onto
+        whatever the platform hands a bare top-level window instead of the
+        docked panel it floats over -- white, under the theme this addon is
+        meant to wear (ADR-0011). The fix is to stop being translucent: read
+        an opaque colour off the theme instead, at the one site allowed to
+        ask a palette for one (the same exception `get_icon` already uses).
+
+        `on.window()` rather than *on* itself: a ghost control (a button
+        with `background: transparent`) answers its own `Window` role with
+        whatever Qt's style engine leaves there once that rule is applied,
+        which is not the panel's fill -- the top-level ancestor is where
+        FreeCAD's global stylesheet actually wrote a `background-color` rule
+        for Qt's polish step to carry into a `QPalette`, the same mechanism
+        `get_icon`'s `color:` read already relies on. Forced fully opaque on
+        the way out, because a theme's own alpha is not this popup's to
+        inherit -- it is what makes itself opaque, not the colour it reads.
+        """
+        colour = QtGui.QColor(on.window().palette().color(QtGui.QPalette.Window))
+        colour.setAlpha(255)
+        return colour.name(QtGui.QColor.HexRgb)
+
+    @staticmethod
+    def ink_colour(on):
+        """
+        The colour *on* writes its own text in, as a literal.
+
+        For the one thing a stylesheet cannot reach: the `<a>` inside a rich
+        text QLabel. Qt paints a link with `QPalette.Link`, which is the OS's
+        blue and belongs to no theme this addon wears -- a bright blue,
+        underlined path is the loudest thing in the transcript and says the
+        wrong thing about a file the user opens once (ADR-0011). Written in
+        the same ink as the sentence around it, the link is marked by being
+        clickable and by the sentence saying so.
+        """
+        return on.palette().color(on.foregroundRole()).name(QtGui.QColor.HexRgb)
 
     @staticmethod
     def get_header_style():

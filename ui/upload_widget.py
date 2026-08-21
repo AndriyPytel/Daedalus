@@ -14,15 +14,22 @@ try:
 except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
+from ui.design_tokens import CONTROL_DENSE, ICON, RADIUS_CONTROL, SPACE_XS, WASH
 from ui.ui_helpers import UIHelpers
 
 
-class _FileChip(QtWidgets.QWidget):
+class FileChip(QtWidgets.QWidget):
     """
-    [📄 filename ×] or [🖼 filename ×] removable chip.
+    [📄 filename ×] or [🖼 filename ×] chip, removable while it is still an
+    attachment and fixed once it is a record of one.
 
     The chip is a translucent grey rather than a colour, so it works over any
     theme (ADR-0011).
+
+    The transcript shows the same chip for a file it could not draw -- a PDF
+    has no thumbnail, and the name of the drawing a run was given is worth more
+    than the paperclip character that stood there. Nothing in a transcript is
+    taken back, so that one carries no remove button at all.
     """
 
     remove_requested = QtCore.Signal(str)
@@ -32,8 +39,9 @@ class _FileChip(QtWidgets.QWidget):
         ".pdf": "file_text",
     }
 
-    def __init__(self, filepath: str):
+    def __init__(self, filepath: str, removable: bool = True):
         super().__init__()
+        self._removable = removable
         self.filepath = filepath
         ext  = os.path.splitext(filepath)[1].lower()
         icon_name = self._ICON_MAP.get(ext, "attachment")
@@ -63,23 +71,29 @@ class _FileChip(QtWidgets.QWidget):
                 font-size: 14px;
                 font-weight: bold;
                 padding: 0px;
+                min-width: 0px;
                 margin-top: -2px;
             }
         """)
         self.btn.clicked.connect(lambda: self.remove_requested.emit(self.filepath))
         self.btn.setVisible(False)
-        self.layout.addWidget(self.btn)
+        self.btn.setEnabled(removable)
+        if removable:
+            self.layout.addWidget(self.btn)
+        else:
+            self.btn.setParent(None)
 
         self.setStyleSheet("""
-            _FileChip {
+            FileChip {
                 border-radius: 12px;
                 background: rgba(127, 127, 127, 40);
             }
         """)
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         self.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Fixed)
 
     def enterEvent(self, event):
-        self.btn.setVisible(True)
+        self.btn.setVisible(self._removable)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
@@ -107,7 +121,7 @@ class FileChipBar(QtWidgets.QWidget):
     def add_file(self, filepath: str):
         if filepath in self._files:
             return
-        chip = _FileChip(filepath)
+        chip = FileChip(filepath)
         chip.remove_requested.connect(self.remove_file)
         insert_pos = self._layout.count() - 1
         self._layout.insertWidget(insert_pos, chip)
@@ -149,6 +163,17 @@ class UploadWidget(QtWidgets.QWidget):
     """
     A minimal "+" icon button that opens a file dialog.
     Chips are rendered by the FileChipBar (owned by copilot_panel).
+
+    It is the dense control height, not the full one the header uses: it sits
+    in the composer's tool strip beside the model pill, and a row of controls
+    that are two different heights reads as a misalignment rather than as a
+    hierarchy.
+
+    Its width is the icon plus one 4, not the square the height would make it.
+    A square hit target puts 4 px of empty button either side of a 16 px glyph
+    that has nothing beside it to balance, and the strip reads as a gap before
+    the pickers rather than as a control. The height is the token, because that
+    is what the row aligns on; the width is not, because nothing aligns on it.
     """
 
     file_attached = QtCore.Signal(str)
@@ -159,18 +184,13 @@ class UploadWidget(QtWidgets.QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.upload_btn = QtWidgets.QPushButton()
-        self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=20, on=self.upload_btn))
-        self.upload_btn.setFixedSize(28, 28)
+        self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=ICON, on=self.upload_btn))
+        self.upload_btn.setFixedSize(ICON + SPACE_XS, CONTROL_DENSE)
         self.upload_btn.setToolTip("Attach a drawing — an image or a PDF")
-        self.upload_btn.setStyleSheet("""
-            QPushButton {
-                border: none;
-                background: transparent;
-                font-size: 18px;
-                font-weight: bold;
-                padding: 0px;
-            }
-        """)
+        self.upload_btn.setStyleSheet(
+            "QPushButton { border: none; background: transparent; padding: 0px;"
+            " min-width: 0px; border-radius: %dpx; }"
+            "QPushButton:hover { background-color: %s; }" % (RADIUS_CONTROL, WASH))
         self.upload_btn.clicked.connect(self.open_file_dialog)
         layout.addWidget(self.upload_btn)
 
@@ -178,7 +198,7 @@ class UploadWidget(QtWidgets.QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=20, on=self.upload_btn))
+        self.upload_btn.setIcon(UIHelpers.get_icon("plus", size=ICON, on=self.upload_btn))
 
     def open_file_dialog(self):
         """

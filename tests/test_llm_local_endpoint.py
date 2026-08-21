@@ -77,5 +77,5 @@ def test_how_hard_to_think_reaches_a_model_litellm_has_no_entry_for(local_endpoi
 
     collect(client.stream([{"role": "user", "content": "Describe it."}]))
 
-    assert server.last_body["reasoning_effort"] == "low"
+    assert server.last_body["reasoning_effort"] == "medium"
     assert "allowed_openai_params" not in server.last_body, "our plumbing leaked into the request"

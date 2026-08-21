@@ -13,6 +13,7 @@ time it is shown, so opening the panel with a hundred Sessions in history costs
 nothing until one is read.
 """
 from core.sessions import Sessions
+from ui.design_tokens import SPACE_MD, SPACE_SM
 
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
@@ -61,6 +62,18 @@ class ChatSessionManager(QtWidgets.QWidget):
 
         The scroll animation is held on the scroll area because nothing else
         references it and Qt would otherwise collect it mid-flight.
+
+        The gutter belongs to this column, not to each widget in it: SPACE_MD
+        on all four sides, the way AI Elements' Conversation carries the
+        padding its messages fill. Set on the widgets instead, the two add up
+        wherever a card follows a message, and a widget that forgets sits edge
+        to edge beside one that does not.
+
+        The gap between them is the default SPACE_SM rather than the SPACE_MD
+        that design language puts between two turns: a turn there is one
+        widget holding its own sub-blocks, and here a turn is a dozen rows
+        added to this column one at a time, so the gap between turns would be
+        the gap between every line of one.
         """
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
@@ -69,8 +82,8 @@ class ChatSessionManager(QtWidgets.QWidget):
         
         container = QtWidgets.QWidget()
         vl = QtWidgets.QVBoxLayout(container)
-        vl.setSpacing(2)
-        vl.setContentsMargins(0, 0, 0, 0)
+        vl.setSpacing(SPACE_SM)
+        vl.setContentsMargins(SPACE_MD, SPACE_MD, SPACE_MD, SPACE_MD)
         vl.addStretch(1)
         scroll.setWidget(container)
 
@@ -221,8 +234,8 @@ class ChatSessionManager(QtWidgets.QWidget):
         if self.sessions.rename(index, new_name):
             self.session_renamed.emit(index, new_name.strip())
 
-    def name_document(self, log: str, document: str):
-        self.sessions.name_document(log, document)
+    def name_document(self, log: str, document: str, document_id: str = ""):
+        self.sessions.name_document(log, document, document_id)
 
     def get_current_chat_history(self) -> QtWidgets.QScrollArea | None:
         container = self.stack.currentWidget()

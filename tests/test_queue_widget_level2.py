@@ -184,3 +184,83 @@ def test_a_failed_phase_does_not_advance_when_the_run_carries_on_regardless():
     queue.start_plan(["Create sketch for base, revised"])
 
     assert queue.phase_state(PLAN) == FAILED
+
+def test_a_step_whose_attempt_did_not_build_reads_failed_until_one_lands():
+    """
+    Two failed attempts on Step 4 behind a Queue that still showed Step 4
+    running is what the stalled session looked like from the outside.
+    """
+    from ui.queue_widget import DONE, FAILED, RUNNING
+
+    queue = _widget()
+    queue.start_plan(["Sketch the base", "Pad it"])
+    queue.start_execute()
+    queue.step_started(2)
+    assert queue.step_state(2) == RUNNING
+
+    queue.step_failed(2)
+    assert queue.step_state(2) == FAILED
+
+    queue.step_applied(2)
+    assert queue.step_state(2) == DONE, "a Step that recovered stayed red"
+
+
+def test_the_part_written_down_closes_design_and_starts_plan():
+    """
+    `PART` is the one event that means Design is over (FCC-194), and Plan is
+    already running by the time it lands.
+    """
+    from ui.queue_widget import DESIGN, DONE, PLAN, RUNNING
+
+    queue = _widget()
+    queue.design_written()
+
+    assert queue.phase_state(DESIGN) == DONE
+    assert queue.phase_state(PLAN) == RUNNING
+
+
+def test_a_plan_answered_after_the_part_leaves_both_where_they_are():
+    from ui.queue_widget import DESIGN, DONE, PLAN, RUNNING
+
+    queue = _widget()
+    queue.design_written()
+    queue.start_plan(["Make a box"])
+
+    assert queue.phase_state(DESIGN) == DONE
+    assert queue.phase_state(PLAN) == RUNNING
+
+
+def test_a_design_that_wrote_no_part_is_closed_by_the_plan_that_follows_it():
+    """
+    `part_file.saved` can return nothing, and then no `PART` is emitted at
+    all. Design Running under a Running Plan is a state no run is ever in, so
+    the Plan closes it (FCC-194).
+    """
+    from ui.queue_widget import DESIGN, DONE, PLAN, RUNNING
+
+    queue = _widget()
+    queue.start_plan(["Make a box"])
+
+    assert queue.phase_state(DESIGN) == DONE
+    assert queue.phase_state(PLAN) == RUNNING
+
+
+def test_exactly_one_phase_is_running_from_the_part_to_the_plan():
+    from ui.queue_widget import PHASES, RUNNING
+
+    queue = _widget()
+    for act in (lambda: None, queue.design_written,
+                lambda: queue.start_plan(["Make a box"])):
+        act()
+        running = [phase for phase in PHASES if queue.phase_state(phase) == RUNNING]
+        assert len(running) == 1, running
+
+
+def test_a_design_that_failed_is_not_reopened_by_the_part():
+    from ui.queue_widget import DESIGN, FAILED
+
+    queue = _widget()
+    queue.fail_current()
+    queue.design_written()
+
+    assert queue.phase_state(DESIGN) == FAILED

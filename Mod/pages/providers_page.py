@@ -111,7 +111,7 @@ class ProvidersPage(QtWidgets.QWidget):
         self.add_btn = QtWidgets.QPushButton("Add Custom Provider")
         self.add_btn.setIcon(UIHelpers.get_icon("plus", size=16, on=self.add_btn))
         self.add_btn.setStyleSheet(
-            "QPushButton { border-radius: 6px; padding: 6px; }"
+            "QPushButton { border-radius: 6px; padding: 6px; min-width: 0px; }"
         )
         self.add_btn.clicked.connect(self._add_custom_provider)
         left_layout.addWidget(self.add_btn)
@@ -163,7 +163,7 @@ class ProvidersPage(QtWidgets.QWidget):
         self.visibility_btn.setToolTip("Show/Hide Key")
         self._update_visibility_icon(False)
         self.visibility_btn.setStyleSheet(
-            "QPushButton { background: transparent; border-radius: 6px; }"
+            "QPushButton { background: transparent; border-radius: 6px; min-width: 0px; }"
         )
         self.visibility_btn.toggled.connect(self._toggle_visibility)
         key_hbox.addWidget(self.visibility_btn)
@@ -175,7 +175,7 @@ class ProvidersPage(QtWidgets.QWidget):
         self.test_btn = QtWidgets.QPushButton("Test Connection")
         self.test_btn.setIcon(UIHelpers.get_icon("refresh", size=16, on=self.test_btn))
         self.test_btn.setStyleSheet(
-            "QPushButton { border-radius: 6px; padding: 6px 16px; }"
+            "QPushButton { border-radius: 6px; padding: 6px 16px; min-width: 0px; }"
         )
         self.test_btn.clicked.connect(self._run_test)
         test_row.addWidget(self.test_btn)
