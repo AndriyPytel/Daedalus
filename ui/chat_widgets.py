@@ -1,6 +1,3 @@
-import html
-import os
-
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
 except ImportError:
@@ -8,18 +5,56 @@ except ImportError:
     QtWidgets = QtGui
 from ui.design_tokens import RADIUS_SURFACE, SPACE_COMPOSER, SPACE_MD, WASH
 from ui.typography import BODY, css
-from ui.ui_helpers import UIHelpers
 
 
-NAME_KEPT = 28
+class _BubbleLabel(QtWidgets.QLabel):
+    """
+    A wrapped label as wide as its own words, up to a share of the column.
 
+    `QLabel.sizeHint` stops meaning anything once the label wraps: it is an
+    internal compromise made at no width in particular, and it comes back
+    smaller the more room the label is given -- 119px for four words that need
+    145px on one line, and 83px for the same four once a 400px maximum was
+    set. Under the bubble's `Maximum` size policy that guess is a ceiling
+    nothing can pass, which is how a four-word message wrapped into four lines
+    in a dock wide enough for forty.
 
-def _cut_to_fit(name: str) -> str:
-    """*name* with its middle elided, where it is longer than `NAME_KEPT`."""
-    if len(name) <= NAME_KEPT:
-        return name
-    head = (NAME_KEPT - 1) // 2
-    return name[:head] + "…" + name[len(name) - (NAME_KEPT - 1 - head):]
+    `QFontMetrics` is not the answer either: it measures a string, and the
+    label lays out a paragraph. "Зроби модель з першої фази" advances 195px
+    and the padding is 32, but the label needs 234 before it will keep the
+    sentence on one line -- 7px more than the metrics say, so the last word
+    wrapped and a 445px panel showed a 225px bubble. The width is asked of the
+    label instead: the narrowest one that costs no more lines than the cap
+    does, found by bisection because `heightForWidth` only ever falls as the
+    width rises. The metrics stay as the floor, because a single unbreakable
+    word never costs a second line and the search would otherwise run to 1px.
+    """
+
+    def __init__(self, text: str = ""):
+        super().__init__(text)
+        self.setWordWrap(True)
+        self._cap = 10_000
+
+    def cap_at(self, width: int):
+        self._cap = width
+        self.updateGeometry()
+
+    def sizeHint(self):
+        metrics = QtGui.QFontMetrics(self.font())
+        margins = self.contentsMargins()
+        narrowest = min(max(metrics.horizontalAdvance(line)
+                            for line in self.text().split("\n"))
+                        + margins.left() + margins.right() + 2 * self.margin(),
+                        self._cap)
+        widest = self._cap
+        fewest = self.heightForWidth(widest)
+        while narrowest < widest:
+            between = (narrowest + widest) // 2
+            if self.heightForWidth(between) <= fewest:
+                widest = between
+            else:
+                narrowest = between + 1
+        return QtCore.QSize(narrowest, self.heightForWidth(narrowest))
 
 
 class TextMessageWidget(QtWidgets.QWidget):
@@ -36,14 +71,15 @@ class TextMessageWidget(QtWidgets.QWidget):
     The margins are the scrolling column's; this widget adds none.
     """
 
+    SHORT_OF_THE_COLUMN = 0.78
+
     def __init__(self, text: str = ""):
         super().__init__()
         layout = QtWidgets.QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addStretch(1)
 
-        self.text_label = QtWidgets.QLabel(text)
-        self.text_label.setWordWrap(True)
+        self.text_label = _BubbleLabel(text)
         self.text_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         self.text_label.setStyleSheet(
             "QLabel { background-color: %s; border-radius: %dpx; "
@@ -54,6 +90,10 @@ class TextMessageWidget(QtWidgets.QWidget):
                                       QtWidgets.QSizePolicy.Preferred)
         layout.addWidget(self.text_label)
         self.setLayout(layout)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.text_label.cap_at(int(self.width() * self.SHORT_OF_THE_COLUMN))
 
 
 class AssistantMessageWidget(QtWidgets.QWidget):
@@ -83,41 +123,3 @@ class AssistantMessageWidget(QtWidgets.QWidget):
 
     def append_text(self, text: str):
         self.text_label.setText(self.text_label.text() + text)
-
-
-class DocumentLinkWidget(AssistantMessageWidget):
-    """
-    An assistant line that opens a file when it is clicked.
-
-    The description Design ends in is a document on disk, and the Plan Gate
-    stands over it by linking to it: what a user opens to correct a misreading
-    is the very file the run is planned from, not a rendering of it in the
-    chat. The text is escaped because the line carries a path, and a path is
-    whatever the drawing was called.
-
-    The link is written in the same ink as the sentence it ends, not in
-    Qt's own `QPalette.Link` blue: the addon wears the user's theme and owns
-    no colour of its own (ADR-0011), and a bright underlined path is the
-    loudest thing in a transcript that has a Plan in it.
-
-    The path is taken out of the sentence and the file name is what is
-    clicked. A `Library/Application Support/...` path set as link text wraps
-    across three lines of underlined blue and is the loudest thing in the
-    transcript, which is the wrong emphasis for a file a user opens once. The
-    name is cut in the middle for the same reason, since a name this addon
-    writes ends in a run id and a timestamp: `NAME_KEPT` characters is what
-    fits one line beside its sentence at the panel's usual width. The whole
-    path stays reachable as the tooltip.
-    """
-
-    def __init__(self, text: str, path: str):
-        super().__init__()
-        name = _cut_to_fit(os.path.basename(path) or path)
-        prose = text.replace(path, "").strip().rstrip(":").strip()
-        self.text_label.setText(
-            '%s <a href="%s" style="color: %s; text-decoration: none;">%s</a>'
-            % (html.escape(prose), QtCore.QUrl.fromLocalFile(path).toString(),
-               UIHelpers.ink_colour(self.text_label), html.escape(name)))
-        self.text_label.setToolTip(path)
-        self.text_label.setTextInteractionFlags(QtCore.Qt.TextBrowserInteraction)
-        self.text_label.setOpenExternalLinks(True)

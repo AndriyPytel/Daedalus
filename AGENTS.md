@@ -1,0 +1,45 @@
+# FreeCadCopilot
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in YouTrack, project `FCC`, via the `yt` CLI — not GitHub Issues. Project config: `youtrack.md`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary as YouTrack tags — `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+In the YouTrack knowledge base, not in the repo — `FCC-A-3` Project Overview, `FCC-A-1` Glossary, `FCC-A-5` Architecture Decisions (ADR-0001 … ADR-0011). See `docs/agents/domain.md`.
+
+## YouTrack
+
+Work for this repo lives in YouTrack, not GitHub Issues. Project config: `youtrack.md`.
+The `myga-*` skills drive it; `docs/agents/issue-tracker.md` has the plain `yt` conventions.
+
+## Comments
+
+No comments. A measurement, a constraint, a rejected alternative — anything a
+reader has to know and cannot read off the code — goes in the docstring of the
+function, class or module it belongs to. That is where someone looking for it
+goes, and it is what `help()` prints.
+
+Never in a comment, and never anywhere: the story of the change (`used to be`,
+`had been`, `now also`), the statistics of the run that produced it, or a
+ticket id. The commit message and the ticket hold those, and they are the two
+places that stay true.
+
+Machine-readable pragmas — `# type:`, `# noqa:`, a shebang, an encoding line —
+are not prose and are exempt.
+
+`tests/test_the_code_says_why_not_what.py` enforces this over `core`, `ui`,
+`utils`, `tools` and `Mod`.
+
+## Measurements
+
+A number in an Acceptance Criterion is produced by a test, from the sheets in
+`tests/modelmania` or the sessions in `logs/`. A measurement that lives only in
+a docstring or a commit message is a claim: the next change moves it and
+nothing says so.

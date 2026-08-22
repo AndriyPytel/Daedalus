@@ -824,6 +824,53 @@ def test_a_wrapped_message_gets_the_height_its_text_needs(panel):
         % (message.height(), needed))
 
 
+def test_a_short_message_gets_a_bubble_as_wide_as_its_words(panel):
+    """
+    A wrapped QLabel's `sizeHint` is a guess Qt makes at no width in
+    particular, and it comes back smaller the more room the label is given.
+    Under a Maximum size policy that guess is the ceiling the bubble can never
+    pass, so four words wrapped into four lines in a dock wide enough for
+    forty.
+    """
+    from conftest import QtGui
+
+    from ui.chat_widgets import TextMessageWidget
+
+    words = "зроби модель гайки m10"
+    panel.resize(700, 700)
+    QT_APP.processEvents()
+    message = panel.add_chat_widget(TextMessageWidget(words))
+    for _ in range(6):
+        QT_APP.processEvents()
+
+    natural = QtGui.QFontMetrics(message.text_label.font()).horizontalAdvance(words)
+    assert message.text_label.width() >= natural, (
+        "a bubble %dpx wide for words that need %dpx"
+        % (message.text_label.width(), natural))
+
+
+def test_a_long_title_on_a_folded_row_does_not_widen_the_panel(panel):
+    """
+    The row's title is a QPushButton, which neither wraps nor elides: a
+    narration long enough to fold is exactly the narration long enough to push
+    the transcript's column past the viewport, and the column's horizontal
+    scrollbar is off, so what does not fit is unreachable rather than
+    scrolled to. FCC-21 again, one widget along.
+    """
+    from ui.accordion_widget import AccordionWidget
+
+    panel.resize(420, 700)
+    panel.add_chat_widget(AccordionWidget(
+        "Reading the sheet, the two circles are on the same centre line " * 6))
+    for _ in range(6):
+        QT_APP.processEvents()
+
+    scroll = panel.chat_sessions.get_current_chat_history()
+    assert scroll.widget().width() <= scroll.viewport().width(), (
+        "the transcript is %dpx wide inside a %dpx viewport it cannot scroll"
+        % (scroll.widget().width(), scroll.viewport().width()))
+
+
 def test_the_transcript_stays_where_the_user_scrolled_it(panel):
     """
     Reading back through a run must survive the next event. Following the
@@ -2155,6 +2202,29 @@ def test_an_attachment_whose_file_has_gone_renders_its_name(panel):
     assert "pasted.png" in _said_in(panel)
 
 
+def test_a_file_card_opens_the_file_it_names(monkeypatch):
+    """
+    A card in the transcript is what a user clicks to look at a drawing again,
+    and the drawing is a PDF the panel has no viewer for: the file is handed to
+    whatever the desktop opens it with, as a `file://` URL rather than a path.
+    """
+    from conftest import QtCore, QtGui
+
+    from ui.upload_widget import FileChip
+
+    opened = []
+    monkeypatch.setattr(QtGui.QDesktopServices, "openUrl", lambda url: opened.append(url))
+    chip = FileChip("/tmp/mm25-p1-1.pdf", removable=False)
+
+    QtGui.QGuiApplication.sendEvent(chip, QtGui.QMouseEvent(
+        QtCore.QEvent.MouseButtonRelease, QtCore.QPointF(4, 4),
+        QtCore.Qt.LeftButton, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier))
+
+    assert [u.toLocalFile() for u in opened] == ["/tmp/mm25-p1-1.pdf"]
+    assert chip.cursor().shape() == QtCore.Qt.PointingHandCursor, \
+        "nothing says the card can be clicked"
+
+
 def _write_a_png(path):
     """A file Qt itself will decode — the panel renders it through QPixmap."""
     from conftest import QtCore, QtGui
@@ -2164,24 +2234,24 @@ def _write_a_png(path):
     assert picture.save(path, "PNG")
 
 
-def test_the_gate_links_to_the_document_rather_than_opening_it_in_the_chat(panel, tmp_path):
+def test_the_gate_cards_the_document_rather_than_opening_it_in_the_chat(panel, tmp_path):
     """
     What stands above the Steps is the file the reading was written to, and the
     description itself is in the file rather than in the chat: it is the run's
     requirement, and a requirement is corrected where the run is planned from
-    (FCC-108). The link is the path the `part` event carries, so what a user
-    opens is that very file and not a copy of it.
+    (FCC-108). It is carded rather than underlined, on the one file shape the
+    design has, so that what the run wrote reads the same as what the user
+    attached; the card carries the path the `part` event carries, so what a
+    user opens is that very file and not a copy of it.
 
     The panel is shared with the tests above, so it is the last of each that
     this one just put there.
     """
-    from conftest import QtCore
-
     from core.design import render
     from core.events import DESIGN, PART, PLAN, Event
 
-    from ui.chat_widgets import DocumentLinkWidget
     from ui.plan_widget import PlanWidget
+    from ui.upload_widget import FileChip
 
     the_part = {
         "envelope": {"length": {"value": "80 mm", "flag": "read"}},
@@ -2197,14 +2267,14 @@ def test_the_gate_links_to_the_document_rather_than_opening_it_in_the_chat(panel
     QT_APP.processEvents()
 
     widgets = _widgets_in(panel)
-    link_at, link = max((i, w) for i, w in enumerate(widgets)
-                        if isinstance(w, DocumentLinkWidget))
+    card_at, card = max((i, chip) for i, w in enumerate(widgets)
+                        for chip in w.findChildren(FileChip))
     plan_at = max(i for i, w in enumerate(widgets) if isinstance(w, PlanWidget))
 
-    assert link_at < plan_at, "the document linked below the Plan it was read for"
-    assert QtCore.QUrl.fromLocalFile(document).toString() in link.text_label.text(), \
-        "the link opens something other than the file the run wrote"
-    assert link.text_label.openExternalLinks(), "clicking the link opens nothing"
+    assert card_at < plan_at, "the document carded below the Plan it was read for"
+    assert card.filepath == document, \
+        "the card opens something other than the file the run wrote"
+    assert "the-part-as-read.yaml" in _said_by([card]), "the card does not name the file"
     said = _said_by(widgets[before:])
     assert render(the_part) not in said
     assert "length: 80 mm (read)" not in said, "the description is in the chat"
@@ -2846,6 +2916,9 @@ def test_the_thinking_row_wears_the_brain_figma_puts_on_it(panel):
 
     assert thinking.mark.isVisible(), "the reasoning row carries no mark"
     assert thinking.mark.pixmap().size().toTuple() == (ICON, ICON)
+    assert thinking.mark.width() == ICON, (
+        "the mark is %dpx wide and the words start that far in"
+        % thinking.mark.width())
 
     panel.on_event(Event(TOOL_CALL, {"name": "run_script", "arguments": {"code": "pass"}}))
     QT_APP.processEvents()
@@ -3059,3 +3132,51 @@ def test_a_tool_call_row_carries_how_long_the_call_took(panel):
     titles = [row.toggle_button.text()
               for row in history.widget().findChildren(AccordionWidget)]
     assert any("(3.2s)" in title for title in titles), titles
+
+
+def test_the_end_of_a_run_reaches_the_panel_on_the_gui_thread(panel):
+    """
+    The crash this addon shipped with: `LoopWorker` is moved onto a QThread,
+    and `finished` was connected to a lambda closing over the transcript. Qt
+    takes the sender as the context of a connection made to a plain callable,
+    so the comparison was the worker thread against itself, the connection
+    resolved to a direct call, and `on_run_finished` ran on the worker thread
+    -- `_set_running`, then `_queue_widget.now(...)`. FreeCAD printed sixteen
+    `QObject::setParent: ... different thread` warnings and one
+    `QObject::killTimer: ... another thread`, then segfaulted inside
+    `queue_widget.py :: _Elided.set_full`.
+
+    Fired through the worker's own event loop rather than from here, because
+    emitting on the GUI thread is the one case that passes either way.
+    """
+    from conftest import QtCore
+
+    log = panel._current_log()
+    bundle = panel._worker_for(log)
+    main = QtCore.QThread.currentThread()
+    ran_on = {}
+
+    saved = panel._set_running
+    panel._set_running = lambda running: ran_on.setdefault(
+        "slot", QtCore.QThread.currentThread())
+
+    class Fire(QtCore.QObject):
+        @QtCore.Slot()
+        def go(self):
+            ran_on["emitted_from"] = QtCore.QThread.currentThread()
+            bundle.worker.finished.emit(None, log)
+
+    fire = Fire()
+    fire.moveToThread(bundle.thread)
+    try:
+        QtCore.QMetaObject.invokeMethod(fire, "go", QtCore.Qt.QueuedConnection)
+        deadline = QtCore.QElapsedTimer()
+        deadline.start()
+        while len(ran_on) < 2 and deadline.elapsed() < 10000:
+            QT_APP.processEvents()
+    finally:
+        panel._set_running = saved
+
+    assert ran_on.get("emitted_from") not in (None, main), \
+        "the signal has to be emitted from the worker thread for this to mean anything"
+    assert ran_on.get("slot") == main

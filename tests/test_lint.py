@@ -439,3 +439,25 @@ def test_a_selection_the_user_made_needs_no_count():
 
 def test_a_base_that_is_not_a_selection_is_untouched():
     assert lint("pad.Base = sketch\npocket.Profile = sketch\n").ok
+
+
+def test_writing_the_deprecated_midplane_is_refused():
+    """
+    FreeCAD 1.1 warns on every write to `Midplane` and prints two lines per
+    extrusion into the Report view; `SideType` is what replaced it, and
+    `SideType='Symmetric'` is what `Midplane=True` meant. The prompt no longer
+    teaches the old spelling, and this is what catches the run that writes it
+    anyway.
+    """
+    result = lint("pad.Midplane = True")
+
+    assert not result.ok
+    assert "SideType" in result.report()
+
+
+def test_reading_midplane_is_untouched():
+    """
+    Only the write warns. `describe_type` reports it as a property that exists
+    and a Step is free to look at what is already there.
+    """
+    assert lint("was = pad.Midplane").ok

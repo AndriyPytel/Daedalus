@@ -69,6 +69,8 @@ def test_the_failure_says_what_happened_and_what_to_do(worker):
     assert "neither removed nor added any material" in said, said
     assert "Bore1" in said, "the failure does not name the feature: %s" % said
     assert "Reversed" in said, "the failure does not say how to fix it: %s" % said
+    assert "SideType" in said and "Midplane" not in said, \
+        "the failure names the property FreeCAD warns on every write to: %s" % said
 
 
 def test_the_same_pocket_the_right_way_round_passes(worker):

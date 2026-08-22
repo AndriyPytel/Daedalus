@@ -22,6 +22,25 @@ somebody had to do. Written as a chain, `<sum> = <sum> = <number>`, it is still
 one claim: the number at the end is the answer and everything before it is the
 working.
 
+The number at the end has to be the end. Three shapes read like an answer and
+are not one, all three measured against real Plan prose
+(`logs/sessions/5d9249424bce45d2b25485002ba1c630.jsonl`): a fraction written
+as the answer, `15/45 = 1/3`, is not a claim of `1` — `1` is immediately
+followed by `/3` — and was read that way regardless, `15/45 = 1, and it is
+0.33`, over a slope that was right. A chain whose last stretch is a sum
+rather than a number, `18 + 2 = 20 mm = 5 + 15 mm`, is not
+`<sum> = <sum> = <number>` — it ends in `5 + 15`, another sum, not a
+number — and reading `5` off it as the answer, `18 + 2 = 5, and it is 20`,
+cost a second revision in the same run over an addition nobody got wrong.
+Either way, a number immediately followed by an operator and a digit is
+working, not an answer, and is not read as one. A square-root sign is
+arithmetic: `√(3025 + 336) = 57.97` is a claim, `√` read as `sqrt` before it
+is worked out, and a wrong one is still caught — `√(16) = 5` is reported.
+`²` (superscript two) is not read: `55²` fails to parse as Python and that
+stretch is silently skipped, the same as `w / 2` or `10 / 0` are skipped, and
+the recorded false positive never needed it read, because the stretch it
+depended on, `√(3025 + 336) = 57.97`, came out correct on its own.
+
 Trigonometry is in degrees, because a drawing is in degrees. `cos(45)` read the
 way Python reads it is 0.5253, which is not a number on any sheet. The inverses
 answer in degrees for the same reason, and they are read whole: `atan(` is not
@@ -33,12 +52,13 @@ import math
 import re
 
 _ARITHMETIC = (r"(?:(?<![A-Za-z])(?:acos|asin|atan|cos|sin|tan|sqrt)\s*\("
-               r"|[0-9]+(?:\.[0-9]+)?|[-+*/^×÷()°]|\s|mm)")
+               r"|[0-9]+(?:\.[0-9]+)?|[-+*/^×÷()°√]|\s|mm)")
 
-_CLAIM = re.compile(r"(?:%s+?=\s*)+?-?[0-9]+(?:\.[0-9]+)?(?![0-9.])(?!%s*=)"
+_CLAIM = re.compile(r"(?:%s+?=\s*)+?-?[0-9]+(?:\.[0-9]+)?(?![0-9.])"
+                    r"(?!\s*[-+*/^×÷]\s*-?[0-9])(?!%s*=)"
                     % (_ARITHMETIC, _ARITHMETIC))
 
-_AN_OPERATION = re.compile(r"[-+*/^×÷]|(?<![A-Za-z])(?:acos|asin|atan|cos|sin|tan|sqrt)")
+_AN_OPERATION = re.compile(r"[-+*/^×÷√]|(?<![A-Za-z])(?:acos|asin|atan|cos|sin|tan|sqrt)")
 
 _FUNCTIONS = {
     "cos": lambda value: math.cos(math.radians(value)),
@@ -97,7 +117,8 @@ def _worked_out(written):
 
 
 def _as_python(written):
-    for sign, means in (("×", "*"), ("÷", "/"), ("^", "**"), ("°", ""), ("mm", "")):
+    for sign, means in (("×", "*"), ("÷", "/"), ("^", "**"), ("°", ""), ("mm", ""),
+                         ("√", "sqrt")):
         written = written.replace(sign, means)
     return written
 

@@ -116,6 +116,37 @@ def modelmania_sheets(tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def the_suite_does_not_talk_to_the_network(monkeypatch):
+    """
+    Loopback is the only address a test may connect to.
+
+    A panel built here runs the real send path, and that path names the Session
+    with one short call to whichever provider the developer has configured: a
+    real request, on their own key, out of a unit test. The reply came back on
+    a QThread that outlived the test, and the next test's `processEvents()`
+    dispatched its signal into a lock the thread still held — the whole run
+    stopped there. The local-endpoint and model-catalog tests speak to HTTP
+    servers they stand up themselves on 127.0.0.1, so loopback stays open.
+    """
+    import socket
+
+    def refuse(address):
+        host = address[0] if isinstance(address, tuple) else ""
+        if host in ("", "localhost", "127.0.0.1", "::1"):
+            return
+        raise RuntimeError("the suite does not talk to the network: %r" % (address,))
+
+    for name in ("connect", "connect_ex"):
+        reaching_out = getattr(socket.socket, name)
+
+        def guarded(self, address, _reaching_out=reaching_out):
+            refuse(address)
+            return _reaching_out(self, address)
+
+        monkeypatch.setattr(socket.socket, name, guarded)
+
+
+@pytest.fixture(autouse=True)
 def readings_go_to_a_temporary_directory(tmp_path, monkeypatch):
     """
     Where a run writes the part it read, for the length of one test.

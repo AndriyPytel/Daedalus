@@ -134,3 +134,44 @@ def test_the_function_still_means_itself():
 
     assert len(wrong) == 1
     assert "0.01" in wrong[0]
+
+
+def test_a_fraction_written_as_the_answer_is_not_a_claim():
+    """
+    The recorded run (`logs/sessions/5d9249424bce45d2b25485002ba1c630.jsonl`)
+    wrote a slope as `15/45 = 1/3`, and the bare `1` of `1/3` was read as the
+    answer, reporting `15/45 = 1, and it is 0.33` over a slope that was right.
+    An answer immediately followed by `/` and a digit is a fraction, not a
+    number, and is not a claim.
+    """
+    assert wrong_sums("of slope 15/45 = 1/3 (the finished top edge rises 15 mm "
+                      "over the 45 mm ...)") == []
+
+
+def test_a_square_root_sign_is_read():
+    """
+    The same run wrote a spine length as `√(55² + 18.33²) = √(3025 + 336) =
+    57.97 mm`. With `√` unread the match started after it, dropping the root
+    and reporting `(3025 + 336) = 57.97, and it is 3361`.
+    """
+    assert wrong_sums("a spine of length √(55² + 18.33²) = √(3025 + 336) = "
+                      "57.97 mm") == []
+
+
+def test_a_square_root_that_does_not_come_out_is_still_wrong():
+    """Fixing the false positive above must not make `√` a blanket exemption."""
+    wrong = wrong_sums("the spine is √(16) = 5 mm")
+
+    assert len(wrong) == 1
+    assert "4" in wrong[0]
+
+
+def test_a_chain_that_ends_in_a_sum_is_not_a_claim():
+    """
+    The same run wrote `18 + 2 = 20 mm = 5 + 15 mm`, a chain whose last
+    stretch is a sum rather than a number. The regex stopped on the bare `5`
+    of `5 + 15` and reported `18 + 2 = 5, and it is 20` over an addition
+    nobody got wrong.
+    """
+    assert wrong_sums("the finished crest top is 18 + 2 = 20 mm = 5 + 15 mm "
+                      "above the top face") == []

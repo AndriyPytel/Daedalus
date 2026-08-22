@@ -3124,7 +3124,68 @@ _THE_TITLE_BLOCK = ("SCALE:", "SCALE", "DRAWN", "PROJECTION", "CONFIDENTIAL")
 _A_DIMENSION = ("\u00d8", "\u2300", "R", "(", ")", "\u00b0", "\u00b1", "X", "\u00d7")
 
 
-def shown(sheet):
+def view_names(sheet):
+    """
+    The views on the sheet, in the order a reader meets them.
+
+    One name per view: a tiled crop's own "`, part N of M`" is stripped, since
+    that names a tile and not a view, so a name this returns is exactly what
+    `shown(sheet, views=...)` matches against and what `seen_in`, `Drawn.view`
+    and `Between.view` already say elsewhere.
+
+    A `shape_only` crop — a placed picture no region of ink reached, the
+    isometric in the corner of these sheets — counts as a view of its own. It
+    has no `Drawn` entry, because nothing traced it, and usually no callout of
+    its own either; leaving it out would still show its picture in a full call
+    and give a caller no name to ask for that same picture alone.
+    """
+    if sheet is None:
+        return []
+    names = []
+    for crop in sheet.crops:
+        view = _the_view_of(crop.name)
+        if view not in names:
+            names.append(view)
+    return names
+
+
+def _the_view_of(name):
+    """
+    A crop's, a printed string's or a leader's own name, narrowed to the view
+    it belongs to.
+
+    A tile is named after its view with "`, part N of M`" appended
+    (`_part_named`), so stripping that suffix is the join back from a tile, a
+    `seen_in` or a `Drawn.view` to the one name `view_names` hands out for it.
+    """
+    return name.split(", part ")[0] if name else name
+
+
+def _a_list(names):
+    """Several view names as the one sentence names them."""
+    if len(names) == 1:
+        return names[0]
+    return " and ".join(names)
+
+
+def _the_introduction(sheet, names):
+    """The sentence that opens `shown`, honest about whether it is the whole sheet or a slice of it."""
+    said = ("The drawing `%s`, rendered here rather than sent whole, so "
+            "the callouts are legible. The first picture is the sheet as "
+            "laid out — use it to see where the views are and what refers "
+            "to what. " % os.path.basename(sheet.source))
+    if names is None:
+        return said + ("The pictures after it are the same sheet close up, "
+                       "one per view, and they are what the numbers should "
+                       "be read from.")
+    if len(names) == 1:
+        return said + ("The picture after it is %s, close up, and is what "
+                       "the numbers should be read from." % _a_list(names))
+    return said + ("The pictures after it are %s, close up, and are what "
+                   "the numbers should be read from." % _a_list(names))
+
+
+def shown(sheet, views=None):
     """
     The sheet as the sequence of things to say and pictures to show, in order.
 
@@ -3132,27 +3193,38 @@ def shown(sheet):
     the caller's business and already written once, in the loop. This decides
     what is worth showing and what has to be said beside it, which is the part
     that belongs to the sheet.
+
+    `views` narrows this to a subset of `view_names(sheet)`: their pictures,
+    and their slice of what is printed, leadered, measured between two points
+    and drawn. `None` — the default — is the whole sheet, unchanged. The sheet
+    overview and the notes are not sliced: they are not any one view's, they
+    are the sheet's, and a caller asking about one view still needs to see
+    where it sits and what the sheet could not read.
+
+    A printed string with no `seen_in` — the title block, mostly, and the odd
+    word no crop's rectangle reaches — belongs to no view and so is in no
+    slice; it is only ever in the unfiltered list.
     """
     if sheet is None:
         return []
 
-    told = [{"say": "The drawing `%s`, rendered here rather than sent whole, so "
-                    "the callouts are legible. The first picture is the sheet as "
-                    "laid out — use it to see where the views are and what refers "
-                    "to what. The pictures after it are the same sheet close up, "
-                    "one per view, and they are what the numbers should be read "
-                    "from." % os.path.basename(sheet.source)},
+    names = list(dict.fromkeys(views)) if views is not None else None
+    wanted = set(names) if names is not None else None
+
+    told = [{"say": _the_introduction(sheet, names)},
             {"show": sheet.overview}]
 
     for page, overview in enumerate(sheet.overviews or [sheet.overview], start=1):
+        page_crops = [crop for crop in sheet.crops if crop.page == page
+                      and (wanted is None or _the_view_of(crop.name) in wanted)]
+        if not page_crops:
+            continue
         if page > 1:
             told.append({"say": "Page %d of the drawing, as laid out:" % page})
             told.append({"show": overview})
         said_tiled = set()
-        for crop in sheet.crops:
-            if crop.page != page:
-                continue
-            view = crop.name.split(", part ")[0]
+        for crop in page_crops:
+            view = _the_view_of(crop.name)
             tiled = any(one.page == page and one.name == view
                        for one in sheet.wholes)
             if tiled and view not in said_tiled:
@@ -3172,19 +3244,27 @@ def shown(sheet):
             told.append({"show": crop.path})
 
     if sheet.printed:
-        told.append({"say": _the_printed_list(sheet)})
+        said = _the_printed_list(sheet, wanted)
+        if said is not None:
+            told.append({"say": said})
     if sheet.leaders:
-        told.append({"say": _the_leader_list(sheet)})
+        said = _the_leader_list(sheet, wanted)
+        if said is not None:
+            told.append({"say": said})
     if sheet.between:
-        told.append({"say": _the_between_list(sheet)})
+        said = _the_between_list(sheet, wanted)
+        if said is not None:
+            told.append({"say": said})
     if sheet.drawn:
-        told.append({"say": _the_drawn_list(sheet)})
+        said = _the_drawn_list(sheet, wanted)
+        if said is not None:
+            told.append({"say": said})
     for note in sheet.notes:
         told.append({"say": note})
     return told
 
 
-def _the_printed_list(sheet):
+def _the_printed_list(sheet, views=None):
     """
     The callouts the sheet prints, as printed and with the view each is in.
 
@@ -3192,6 +3272,9 @@ def _the_printed_list(sheet):
     is exact; grouped into the lines the draughtsman set, so it is a callout and
     not the words an extractor split one into; and without the title block,
     which is the record of the sheet rather than of the part.
+
+    `views` keeps only the callouts whose `seen_in` names one of them, and
+    returns `None` rather than a header nobody asked for where none do.
     """
     lines = ["Every callout the sheet's own text layer carries, extracted from "
              "the file rather than read off the picture, with the view it is in. "
@@ -3199,7 +3282,11 @@ def _the_printed_list(sheet):
              "list `printed_on_the_sheet` has to account for. The title block is "
              "not here: a drawing number, a date and a scale are printed on the "
              "sheet and are not values of the part."]
+    added = False
     for callout in _the_callouts(sheet):
+        if views is not None and _the_view_of(callout[0].seen_in) not in views:
+            continue
+        added = True
         where = " — %s" % callout[0].seen_in if callout[0].seen_in else ""
         measured = "".join(
             "; the sheet measures %.1f mm between the faces this one's "
@@ -3208,22 +3295,46 @@ def _the_printed_list(sheet):
         lines.append("  %s%s%s" % (
             " ".join(entry.notation + entry.text for entry in callout),
             where, measured))
+    if views is not None and not added:
+        return None
     return "\n".join(lines)
 
 
-def _the_leader_list(sheet):
+def _the_leader_list(sheet, views=None):
+    """
+    Where each callout's leader runs.
+
+    `views` keeps only the leaders whose callout is `seen_in` one of them — the
+    join is the callout's own text and position, matched back to `sheet.printed`
+    the way `_showing` matched it in the first place, because a leader carries
+    neither a view nor a page of its own.
+    """
     lines = ["Where each callout's leader runs, traced through the file's own "
              "line work rather than judged by eye. The point given is where the "
              "line ends — the end the arrowhead is on, so it is the feature the "
              "callout is *of*. What that feature is is still yours to read."]
+    seen_in = None
+    if views is not None:
+        seen_in = {}
+        for entry in sheet.printed:
+            seen_in.setdefault((entry.text, entry.at), entry.seen_in)
+    added = False
     for entry in sheet.leaders:
+        if views is not None:
+            key = (entry["callout"], entry["printed_at"])
+            if _the_view_of(seen_in.get(key, "")) not in views:
+                continue
+        added = True
         lines.append("  %s printed at %s — its leader reaches %s"
                      % (entry["callout"], entry["printed_at"],
                         entry["its_leader_reaches"]))
+    if views is not None and not added:
+        return None
     return "\n".join(lines)
 
 
-def _the_between_list(sheet):
+def _the_between_list(sheet, views=None):
+    """`views` keeps only the entries whose own `view` names one of them."""
     lines = ["Each printed distance against the two points on the part it is "
              "measured between, in the same millimetres as the line work below. "
              "A dimension line is drawn across the two faces its number "
@@ -3236,11 +3347,17 @@ def _the_between_list(sheet):
              "line and it says so: a centre line is an axis or a plane of "
              "symmetry, so that distance is measured from the middle of the "
              "part and not from a face."]
+    added = False
     for entry in sheet.between:
+        if views is not None and entry.view not in views:
+            continue
+        added = True
         lines.append("  %s measures %s to %s%s — %s"
                      % (entry.text, spelt(entry.first), spelt(entry.second),
                         _standing_on_a_centre_line(entry.on_a_centre_line),
                         entry.view))
+    if views is not None and not added:
+        return None
     return "\n".join(lines)
 
 
@@ -3253,7 +3370,7 @@ def _standing_on_a_centre_line(on):
     return ", the %s of them on a centre line" % on[0]
 
 
-def _the_drawn_list(sheet):
+def _the_drawn_list(sheet, views=None):
     """
     The line work each view is drawn with, as far as it can be proved to be
     anything.
@@ -3264,6 +3381,9 @@ def _the_drawn_list(sheet):
     is a number nobody was invited to build from. They stay in `drawn`, because
     that is the record of the sheet, and are kept out of here, because this is
     a record of the part — the same split `_the_printed_list` makes.
+
+    `views` keeps only the entries whose own `view` names one of them, and
+    `round_in` alongside them.
     """
     lines = ["The line work each view is drawn with, taken out of the file and "
              "converted to millimetres of the part. Coordinates are millimetres "
@@ -3290,7 +3410,8 @@ def _the_drawn_list(sheet):
              "number, never to supply one. One marked `read` is that same "
              "measurement carrying the size the sheet prints against it, which "
              "a callout's leader reached and agreed with."]
-    round_here = round_in(sheet)
+    round_here = {view: diameters for view, diameters in round_in(sheet).items()
+                 if views is None or view in views}
     if round_here:
         lines.append(
             "What each view is round in, which is the one thing the drawing "
@@ -3300,10 +3421,14 @@ def _the_drawn_list(sheet):
             "is round in, in `round_in`.")
         for view, diameters in round_here.items():
             lines.append("  %s: %s" % (view, ", ".join(
-                "\u00d8%.2f" % wide for wide in diameters)))
+                "Ø%.2f" % wide for wide in diameters)))
+    added = False
     for drawn in sheet.drawn:
         if not drawn.entities:
             continue
+        if views is not None and drawn.view not in views:
+            continue
+        added = True
         lines.append("  %s%s:" % (
             drawn.view,
             " — its body was placed as a picture, so what follows is its "
@@ -3321,6 +3446,8 @@ def _the_drawn_list(sheet):
         if drawn.traced_left_out:
             lines.append("    (and %d traced entities of the smaller outlines, "
                          "left out)" % drawn.traced_left_out)
+    if views is not None and not added:
+        return None
     return "\n".join(lines)
 
 

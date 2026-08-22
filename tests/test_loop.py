@@ -177,6 +177,25 @@ def design_reply(model=None, question="", thinking=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
+def _first_pass_turns(model, attachments, question=""):
+    """
+    The scripted replies one `_first_pass` costs today: the same
+    `design_reply` repeated once per page-sized group `core.loop._the_groups`
+    cuts *attachments* into, plus one more for the reconciling call — or the
+    single reply it always was where nothing groups (no attachment, or one
+    `sheet_reader` cannot read).
+
+    Every copy answers alike on purpose: the merge the fan-out ends in is
+    order-independent and idempotent over the same model (ADR-0019), so which
+    of the concurrent group calls a scripted turn happens to land on does not
+    change what the run ends up holding, and a test does not have to predict
+    the race to script one.
+    """
+    groups = loop._the_groups(list(attachments))
+    calls = len(groups) + 1 if groups else 1
+    return [design_reply(model, question=question)] * calls
+
+
 def code_reply(*codes, label="Step", thinking=None, first=1):
     """
     One Execute turn: the code for every Step it was asked to write (FCC-95).
@@ -2700,27 +2719,35 @@ THE_PIPE_CLAMP = str(modelmania_harness.SHEETS[
 
 
 @pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
-def test_every_design_call_of_a_run_carries_the_sheet_cut_rather_than_whole():
+def test_every_design_call_of_a_run_carries_a_page_and_not_the_whole_sheet():
     """
-    The first call over a sheet carries the whole of it — the phase has not
-    looked at the drawing yet, so there is nothing to narrow to. The run below
-    is a first pass over the 2023 pipe clamp and its evidence alone, the body
-    set aside, is 27 pictures and 43,923 characters. `tests/test_sheet_reader.py`
-    produces that figure and what it was cut from.
+    The first pass is one call per page now, not one call over the whole
+    sheet (`core/loop.py :: _first_pass`) — the 2023 pipe clamp is two pages,
+    so it costs two page-sized calls and one reconciling call that sees no
+    pictures at all, rather than the single 27-picture, 43,923 character call
+    this used to be. `tests/test_design_payload.py` measures the same three
+    calls' totals against the two Model Mania sheets.
     """
     _, _, llm, _ = drive([
-        design_reply(A_DATUM), design_reply(A_DATUM),
+        *_first_pass_turns(A_DATUM, [THE_PIPE_CLAMP]), design_reply(A_DATUM),
         plan_reply("Only", satisfies=everything(A_DATUM)),
         code_reply("box()"),
         verdict_reply("pass"),
     ], attachments=[THE_PIPE_CLAMP])
 
     calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
-    evidence = calls[0][-1]["content"][:-1]
-    characters = sum(len(block["text"]) for block in evidence if block.get("type") == "text")
-    pictures = [block for block in evidence if block.get("type") == "image_url"]
+    assert len(calls) == 4, "first pass (2 pages + reconcile) plus the re-read A_DATUM provokes"
 
-    assert (len(calls), len(pictures), characters) == (2, 27, 43923)
+    page_calls, reconciling = calls[:2], calls[2]
+    for evidence in (call[-1]["content"][:-1] for call in page_calls):
+        pictures = [block for block in evidence if block.get("type") == "image_url"]
+        assert 0 < len(pictures) < 27, \
+            "a page-sized call carried the whole sheet rather than its own page"
+
+    reconciling_evidence = reconciling[-1]["content"][:-1]
+    assert not [block for block in reconciling_evidence if block.get("type") == "image_url"], \
+        "the reconciling call was shown a picture"
+    assert reconciling_evidence, "the reconciling call saw nothing of the sheet at all"
 
 
 @pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
@@ -2728,19 +2755,20 @@ def test_a_re_read_over_a_named_callout_is_shown_only_the_views_it_is_printed_in
     """
     A_DATUM leaves enough of the pipe clamp's own callouts uncited that
     `_every_callout_accounted_for` sends Design back to the sheet — and the
-    missing callouts are printed in one view apiece, so the second call is
-    the overview plus that view rather than the whole 27-picture, 43,923
-    character sheet the first call carried.
+    missing callouts are printed in one view apiece, so that call is the
+    overview plus that view rather than a whole page's own worth of crops, the
+    same narrowing a page-sized first-pass call gets, minus the printed list
+    `_first_pass` keeps and a re-read does not (`_the_evidence`).
     """
     _, _, llm, _ = drive([
-        design_reply(A_DATUM), design_reply(A_DATUM),
+        *_first_pass_turns(A_DATUM, [THE_PIPE_CLAMP]), design_reply(A_DATUM),
         plan_reply("Only", satisfies=everything(A_DATUM)),
         code_reply("box()"),
         verdict_reply("pass"),
     ], attachments=[THE_PIPE_CLAMP])
 
     calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
-    re_read = calls[1][-1]["content"][:-1]
+    re_read = calls[-1][-1]["content"][:-1]
     characters = sum(len(block["text"]) for block in re_read if block.get("type") == "text")
     pictures = [block for block in re_read if block.get("type") == "image_url"]
 
@@ -2758,13 +2786,14 @@ def test_a_callout_the_description_never_used_goes_back_to_design_naming_it():
     and the question that comes back says the number.
     """
     thin = {"envelope": {"length": read("150 mm")}}
-    llm = ScriptedLLMClient([design_reply(thin), design_reply({}),
+    llm = ScriptedLLMClient([*_first_pass_turns(thin, [MODEL_MANIA]), design_reply({}),
                              plan_reply("Only"), code_reply("box()"),
                              verdict_reply("pass")])
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
-    asked = json.loads(llm.calls[1][-1]["content"][-1]["text"])
+    design_calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    asked = json.loads(design_calls[-1][-1]["content"][-1]["text"])
     assert "the_question" in asked, "Design was not sent back to the sheet at all"
     assert "40" in asked["the_question"]
 
@@ -2776,14 +2805,14 @@ def test_looking_again_stops_when_it_stops_finding_anything():
     same nothing twice, is a sheet that does not carry the value — and the run
     carries on with what it had rather than spending the budget proving it.
     """
-    result, _, llm, _ = drive([design_reply(A_DATUM), design_reply({}),
+    result, _, llm, _ = drive([*_first_pass_turns(A_DATUM, [MODEL_MANIA]), design_reply({}),
                                plan_reply("Only"), code_reply("box()"),
                                verdict_reply("pass")],
                               attachments=[MODEL_MANIA])
 
     assert result.ok, "the run did not finish: the re-look kept going"
     design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
-    assert len(design_turns) == 2, \
+    assert len(design_turns) == 3, \
         "the sheet was asked again after it had already answered with nothing"
 
 
@@ -2794,7 +2823,7 @@ def test_the_second_look_is_bounded_by_the_re_read_ceiling():
     otherwise loop for as long as the sheet has numbers on it.
     """
     llm = ScriptedLLMClient(
-        [design_reply({"envelope": {"length": read("150 mm")}})]
+        _first_pass_turns({"envelope": {"length": read("150 mm")}}, [MODEL_MANIA])
         + [design_reply({"envelope": {"width %d" % at: read("%d mm" % at)}})
            for at in (40, 35, 30, 20, 10)]
         + [plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
@@ -2803,7 +2832,7 @@ def test_the_second_look_is_bounded_by_the_re_read_ceiling():
         budgets=Budgets(rereads=2), attachments=[MODEL_MANIA])
 
     design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
-    assert len(design_turns) <= 3, "the re-look ran past its ceiling"
+    assert len(design_turns) <= 4, "the re-look ran past its ceiling"
 
 
 THE_2023_SHEET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelmania",
@@ -2872,7 +2901,8 @@ def test_a_re_read_of_the_two_page_2023_sheet_still_knows_what_was_asked():
 
     _, _, llm, _ = _a_run_that_reads_the_sheet_every_way(THE_2023_SHEET, intent)
 
-    re_reads = _asked_of_design(llm)[1:]
+    groups = len(loop._the_groups([THE_2023_SHEET]))
+    re_reads = _asked_of_design(llm)[groups:]
     assert re_reads, "the sheet provoked no re-read at all"
     assert [turn for turn in re_reads if turn.get("intent") == intent] == re_reads
     assert all("the_part_as_you_described_it" in turn for turn in re_reads), \
@@ -6317,14 +6347,18 @@ def test_design_is_given_the_line_work_of_the_views_in_millimetres():
     user and then invented them.
 
     So the geometry goes out beside the strings, in the part's own millimetres,
-    said to be measurable rather than decorative.
+    said to be measurable rather than decorative. It rides with `_reconciled`
+    now, as `_words_only`'s own list, rather than with a page-sized call: a
+    page-sized call is narrowed to its own pictures and the printed-callout
+    list, and the drawn line work is sheet-wide, not one page's.
     """
-    llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")])
+    llm = ScriptedLLMClient([*_first_pass_turns(A_DATUM, [MODEL_MANIA]),
+                             plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
-    said = _said_to_design(llm)
+    groups = len(loop._the_groups([MODEL_MANIA]))
+    said = _said_to_design(llm, at=groups)
     assert "line work" in said, "the views' own geometry never reached Design"
     assert "arc R" in said or "line (" in said, "the line work arrived with no entities"
     assert "derived" in said, \

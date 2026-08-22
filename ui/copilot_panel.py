@@ -31,8 +31,7 @@ except ImportError:
     from PySide import QtCore, QtGui
     QtWidgets = QtGui
 
-from .chat_widgets        import (TextMessageWidget, AssistantMessageWidget,
-                                  DocumentLinkWidget)
+from .chat_widgets        import TextMessageWidget, AssistantMessageWidget
 from .multi_tab_manager   import ChatSessionManager
 from .upload_widget       import FileChip, UploadWidget, FileChipBar
 from .accordion_widget    import AccordionWidget
@@ -346,6 +345,22 @@ def _beside_the_intent(widget) -> "QtWidgets.QWidget":
     return row
 
 
+def _at_the_left_margin(widget) -> "QtWidgets.QWidget":
+    """
+    *widget* held to the left margin, where the run's own turn stands.
+
+    A chip sizes itself to its name, and a layout given one with nothing beside
+    it centres it in the column; the stretch on the right is what keeps it
+    lined up with the sentence above it.
+    """
+    row = QtWidgets.QWidget()
+    layout = QtWidgets.QHBoxLayout(row)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.addWidget(widget)
+    layout.addStretch(1)
+    return row
+
+
 
 class _PasteAwareTextEdit(QtWidgets.QTextEdit):
     """The composer: Enter sends, Shift+Enter inserts a newline, Ctrl+V images
@@ -488,11 +503,25 @@ class LoopWorker(QtCore.QObject):
     It never reports progress itself — the event stream does that. All this
     signals is that the run is over.
 
+    `finished` carries the transcript the run belongs to, so the panel can
+    connect a bound method of its own rather than a lambda closing over it.
+    This object lives on the worker thread, and Qt uses the *sender* as the
+    context of a connection made to a plain callable — so an `AutoConnection`
+    to a lambda compares the worker thread against itself, resolves to a
+    direct call, and runs the panel's slot on the worker thread. That is a
+    widget tree and a QTimer built off the GUI thread, measured as sixteen
+    `QObject::setParent: ... different thread` warnings, one
+    `QObject::killTimer: ... another thread`, and a segfault inside
+    `queue_widget.py :: _Elided.set_full`. A bound method of a main-thread
+    QObject gives Qt that QObject as the context instead, which is what makes
+    the hop queued. `Qt.QueuedConnection` on the lambda does not help: it
+    still posts to the context's thread, and the context is still this object.
+
     The client is held rather than built per run, and is dropped so that the
     next run rebuilds it from settings when the model changes.
     """
 
-    finished = QtCore.Signal(object)
+    finished = QtCore.Signal(object, str)
     document_named = QtCore.Signal(str, str, str)
 
     def __init__(self, bridge: EventBridge, ask: AskTheUser):
@@ -575,7 +604,7 @@ class LoopWorker(QtCore.QObject):
             client = self._get_client()
         except ValueError as exc:
             events.emit(ev.ERROR, message=str(exc))
-            self.finished.emit(None)
+            self.finished.emit(None, transcript)
             return
 
         try:
@@ -585,10 +614,10 @@ class LoopWorker(QtCore.QObject):
                          ask=self.ask.about_missing_values,
                          decide=self.ask.about_the_revision,
                          outstanding=list(outstanding or ()))
-            self.finished.emit(result)
+            self.finished.emit(result, transcript)
         except Exception as exc:
             events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
-            self.finished.emit(None)
+            self.finished.emit(None, transcript)
 
 
 class _TitleThread(QtCore.QThread):
@@ -784,12 +813,21 @@ class CopilotPanel(QtWidgets.QDockWidget):
         Built lazily rather than one per Session up front: most Sessions in the
         picker never run again, and a QThread nobody uses is a thread this
         panel would still have to stop on exit.
+
+        Which of these may close over *log* in a lambda is decided by where
+        the sender lives, not by what the slot does. `bridge` and `ask` are
+        built here and stay on the GUI thread, so Qt — which takes the sender
+        as the context of a connection made to a plain callable — still sees
+        two different threads at emit time and queues the hop. Only `worker`
+        is moved onto the QThread (`_SessionWorker.__init__`), so a lambda on
+        one of its signals is a direct call on that thread; its two go to
+        bound methods of this panel, and `finished` carries the transcript so
+        that it can.
         """
         bundle = self._workers.get(log)
         if bundle is None:
             bundle = _SessionWorker(EventBridge(), AskTheUser())
-            bundle.worker.finished.connect(
-                lambda result, log=log: self.on_run_finished(result, log))
+            bundle.worker.finished.connect(self.on_run_finished)
             bundle.worker.document_named.connect(self.on_document_named)
             bundle.bridge.event.connect(lambda event, log=log: self._route_event(log, event))
             bundle.ask.plan_gate.connect(
@@ -1859,20 +1897,26 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _render_part(self, line, path):
         """
-        Above the Plan, as a link: the Gate is the Steps and the document they
+        Above the Plan, on a card: the Gate is the Steps and the document they
         were built from, and a document is opened rather than poured into the
         chat (FCC-47 argued the other way over a description that had not been
         distilled yet, and a run's worth of one is read nowhere).
 
-        The link is the path the event carries, so what the user opens is the
-        file the run is planned, checked and built from, and a correction made
-        in it is a correction to the run (FCC-108). Its own shape rather than a
-        line through `_say`, the way a picture and a block of code are.
+        The card carries the path the event carries, so what the user opens is
+        the file the run is planned, checked and built from, and a correction
+        made in it is a correction to the run (FCC-108). It is the `FileChip`
+        the user's own attachments wear: a file is one shape in the design
+        whichever side of the transcript wrote it, and an underlined path
+        wrapped across three lines was the loudest thing in the chat. It stands
+        at the left margin the run answers from rather than under the user's
+        bubble, because the run is what wrote it.
         """
         if self._thought:
             self._thought.stop_pulsing()
             self._thought = None
-        self.add_chat_widget(DocumentLinkWidget(line, path))
+        self.add_chat_widget(AssistantMessageWidget(
+            line.replace(path, "").strip().rstrip(":").strip()))
+        self.add_chat_widget(_at_the_left_margin(FileChip(path, removable=False)))
 
     def _render_plan(self, steps, title, acceptance=(), unanswered=(), decided=()):
         """

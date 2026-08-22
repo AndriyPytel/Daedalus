@@ -624,8 +624,9 @@ def preflight(request):
               "A Pocket travels along the *negative* of its sketch normal unless Reversed is "
               "True, so the sketch has to sit on the face the cut starts from with its normal "
               "pointing out of the material, or carry Reversed=True when it does not. Check "
-              "the sign against the Body's BoundBox and use Type='ThroughAll' or Midplane for "
-              "a through hole rather than a length that may run the wrong way."
+              "the sign against the Body's BoundBox and use Type='ThroughAll' or "
+              "SideType='Symmetric' for a through hole rather than a length that may run "
+              "the wrong way."
         )
 
     scattered = _bodies_in_pieces(doc)

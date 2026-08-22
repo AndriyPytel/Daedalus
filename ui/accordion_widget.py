@@ -38,6 +38,14 @@ class AccordionWidget(QtWidgets.QFrame):
 
     A QFrame rather than a plain widget because a plain one paints neither a
     border nor a background from the stylesheet, whatever the rule says.
+
+    The mark is fixed to `ICON` and the title is `Ignored` horizontally, which
+    is what makes the row a row. A QLabel left to its own policy took half the
+    header's spare width -- 178px of it beside a 16px pixmap -- and the words
+    started in the middle of the panel. A QPushButton neither wraps nor
+    elides, so a narration long enough to fold was also long enough to push
+    the transcript's column past its viewport, and that column does not scroll
+    sideways: what did not fit was unreachable rather than scrolled to.
     """
 
     def __init__(self, title: str = "Thinking...", code: bool = False,
@@ -55,10 +63,13 @@ class AccordionWidget(QtWidgets.QFrame):
         header.setSpacing(SPACE_XS)
 
         self.mark = QtWidgets.QLabel()
+        self.mark.setFixedSize(ICON, ICON)
         self.mark.setVisible(False)
         header.addWidget(self.mark)
 
         self.toggle_button = QtWidgets.QPushButton(title)
+        self.toggle_button.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
+                                         QtWidgets.QSizePolicy.Preferred)
         self.toggle_button.setStyleSheet(_TOGGLE_RULE)
         self.toggle_button.setCursor(QtCore.Qt.PointingHandCursor)
         self.toggle_button.clicked.connect(self.toggle_content)

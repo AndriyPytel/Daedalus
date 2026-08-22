@@ -125,10 +125,17 @@ def _selection():
     Element names from a live selection are explicit user input and are the
     one sanctioned source of an `Edge12` (ADR-0005). Headless has no GUI and
     therefore no selection.
+
+    Read on the main thread, like every other Gui touch: the `snapshot` tool
+    asks for this at the start of a run and again on every Step, and the loop
+    that asks is on the worker thread. The import is local because
+    `core.apply` imports this module.
     """
     try:
         import FreeCADGui
-        selection = FreeCADGui.Selection.getSelectionEx()
+
+        from core.apply import on_main_thread
+        selection = on_main_thread(FreeCADGui.Selection.getSelectionEx)
     except (ImportError, AttributeError):
         return []
 
@@ -257,9 +264,18 @@ def capture_review_views(paths, document=None, size=(800, 600)):
 
 
 def _active_body(doc):
+    """
+    The Body the user is working in, or the only one there is.
+
+    `ActiveDocument.ActiveView` is the Gui's state and is read on the main
+    thread for the reason `_selection` is.
+    """
     try:
         import FreeCADGui
-        body = FreeCADGui.ActiveDocument.ActiveView.getActiveObject("pdbody")
+
+        from core.apply import on_main_thread
+        body = on_main_thread(
+            lambda: FreeCADGui.ActiveDocument.ActiveView.getActiveObject("pdbody"))
     except (ImportError, AttributeError):
         body = None
     if body is not None:

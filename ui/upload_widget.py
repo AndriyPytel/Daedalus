@@ -18,6 +18,23 @@ from ui.design_tokens import CONTROL_DENSE, ICON, RADIUS_CONTROL, SPACE_XS, WASH
 from ui.ui_helpers import UIHelpers
 
 
+NAME_KEPT = 22
+
+
+def _cut_to_fit(name: str) -> str:
+    """
+    *name* with its middle elided, where it is longer than `NAME_KEPT`.
+
+    The middle rather than the tail: a name this addon writes ends in a run id
+    and a timestamp, and the extension is the one part of it that says what
+    clicking the chip will open.
+    """
+    if len(name) <= NAME_KEPT:
+        return name
+    head = (NAME_KEPT - 1) // 2
+    return name[:head] + "…" + name[len(name) - (NAME_KEPT - 1 - head):]
+
+
 class FileChip(QtWidgets.QWidget):
     """
     [📄 filename ×] or [🖼 filename ×] chip, removable while it is still an
@@ -29,7 +46,13 @@ class FileChip(QtWidgets.QWidget):
     The transcript shows the same chip for a file it could not draw -- a PDF
     has no thumbnail, and the name of the drawing a run was given is worth more
     than the paperclip character that stood there. Nothing in a transcript is
-    taken back, so that one carries no remove button at all.
+    taken back, so that one carries no remove button at all. It is the one file
+    shape the design has, so the document a run writes wears it too.
+
+    Clicking one opens the file where the desktop opens it. The addon has no
+    viewer of its own and a drawing is looked at again in the middle of a run;
+    `core.sheet_reader` renders a page, but it is the evidence pipeline rather
+    than a thumbnailer and would run its whole analysis on the GUI thread.
     """
 
     remove_requested = QtCore.Signal(str)
@@ -45,9 +68,7 @@ class FileChip(QtWidgets.QWidget):
         self.filepath = filepath
         ext  = os.path.splitext(filepath)[1].lower()
         icon_name = self._ICON_MAP.get(ext, "attachment")
-        name = os.path.basename(filepath)
-        if len(name) > 22:
-            name = name[:19] + "…"
+        name = _cut_to_fit(os.path.basename(filepath) or filepath)
 
         self.layout = QtWidgets.QHBoxLayout(self)
         self.layout.setContentsMargins(8, 4, 8, 4)
@@ -91,6 +112,12 @@ class FileChip(QtWidgets.QWidget):
         """)
         self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         self.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Fixed)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        self.setToolTip(filepath)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(self.filepath))
 
     def enterEvent(self, event):
         self.btn.setVisible(self._removable)

@@ -1018,6 +1018,114 @@ def test_a_view_that_fits_in_one_crop_is_not_sent_twice(sheet_2023):
 
 
 @needs_pymupdf
+def test_view_names_lists_each_view_once_in_reading_order(sheet):
+    """
+    One name per view, a tile's own tail stripped, in the order the crops
+    that carry them were built — the mm25 sheet meets `SECTION B-B` first and
+    `the upper right of the sheet` (its isometric) last.
+    """
+    names = sheet_reader.view_names(sheet)
+
+    assert names[0] == "SECTION B-B"
+    assert names[-1] == "the upper right of the sheet"
+    assert len(names) == len(set(names)), "a view was named twice"
+    assert all(", part " not in name for name in names)
+
+
+def test_view_names_of_no_sheet_is_nothing():
+    assert sheet_reader.view_names(None) == []
+
+
+@needs_pymupdf
+def test_shown_with_no_views_is_unchanged(sheet):
+    """The default is the whole sheet: passing `views=None` is not a fourth thing."""
+    assert sheet_reader.shown(sheet) == sheet_reader.shown(sheet, views=None)
+
+
+@needs_pymupdf
+def test_shown_for_one_view_sends_only_its_own_pictures(sheet):
+    """
+    `the middle left of the sheet` fits in one crop: asking for it sends the
+    sheet overview and that one crop, and no other view's picture.
+    """
+    told = sheet_reader.shown(sheet, views=["the middle left of the sheet"])
+    pictures = [piece["show"] for piece in told if "show" in piece]
+    own = next(crop for crop in sheet.crops
+              if crop.name == "the middle left of the sheet")
+
+    assert pictures == [sheet.overview, own.path]
+
+
+@needs_pymupdf
+def test_shown_for_one_view_slices_the_line_work_and_the_between_list(sheet):
+    """
+    `SECTION A-A`'s own entities and its own printed distances are here; the
+    line work `SECTION B-B` was drawn with is not, even though the full sheet
+    carries both under one `drawn` heading.
+    """
+    told = sheet_reader.shown(sheet, views=["SECTION A-A"])
+    said = "\n".join(piece["say"] for piece in told if "say" in piece)
+
+    assert "SECTION A-A:" in said
+    assert "SECTION B-B:" not in said
+    assert "SECTION A-A" in sheet_reader._the_between_list(sheet)
+    assert sheet_reader._the_between_list(sheet, {"SECTION A-A"}) is not None
+    assert "SECTION B-B" not in sheet_reader._the_between_list(sheet, {"SECTION A-A"})
+
+
+@needs_pymupdf
+def test_shown_for_a_tiled_view_still_ties_its_pieces_together(sheet):
+    """
+    A tiled view asked for on its own still says how its pieces fit — the
+    sheet overview it points back at is shown regardless of `views`, because
+    that overview is the sheet's, not any one view's.
+    """
+    told = sheet_reader.shown(sheet, views=["SECTION B-B"])
+    pictures = [piece["show"] for piece in told if "show" in piece]
+    said = "\n".join(piece["say"] for piece in told if "say" in piece)
+    own = [crop.path for crop in sheet.crops if crop.name.startswith("SECTION B-B,")]
+
+    assert "SECTION B-B is tiled below" in said
+    assert pictures == [sheet.overview] + own
+
+
+@needs_pymupdf
+def test_shown_for_a_shape_only_view_still_says_what_it_is(sheet):
+    """The isometric asked for on its own is still captioned as not a source for numbers."""
+    told = sheet_reader.shown(sheet, views=["the upper right of the sheet"])
+    said = "\n".join(piece["say"] for piece in told if "say" in piece)
+
+    assert "not a source for numbers" in said
+
+
+@needs_pymupdf
+def test_the_introduction_names_what_was_asked_for(sheet):
+    one = sheet_reader.shown(sheet, views=["SECTION A-A"])[0]["say"]
+    two = sheet_reader.shown(sheet, views=["SECTION A-A", "SECTION B-B"])[0]["say"]
+    whole = sheet_reader.shown(sheet)[0]["say"]
+
+    assert "The picture after it is SECTION A-A, close up, and is what" in one
+    assert "SECTION A-A and SECTION B-B, close up, and are what" in two
+    assert "the same sheet close up, one per view" in whole
+
+
+@needs_pymupdf
+def test_every_view_name_round_trips_through_shown(sheet):
+    """Every name `view_names` hands out is one `shown` can be asked for."""
+    for view in sheet_reader.view_names(sheet):
+        told = sheet_reader.shown(sheet, views=[view])
+        assert any("show" in piece for piece in told), view
+
+
+@needs_pymupdf
+def test_a_view_not_on_the_sheet_gets_nothing_of_its_own(sheet):
+    told = sheet_reader.shown(sheet, views=["VIEW Z-Z"])
+    pictures = [piece["show"] for piece in told if "show" in piece]
+
+    assert pictures == [sheet.overview]
+
+
+@needs_pymupdf
 def test_a_bore_the_tracer_could_only_get_part_of_is_still_evidence(sheet_2023):
     """
     The Ø42 clamp bore is drawn in the middle centre view and the tracer never

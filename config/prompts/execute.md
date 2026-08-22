@@ -112,8 +112,9 @@ and is reported Up-to-date and Valid. The traceback names the feature and the
 volume either side of it. Do not answer it by making the cut bigger — the size
 was right and the direction was wrong. Read the sign off the Body's `BoundBox`
 at execution time, and prefer the property that states the intent: `ThroughAll`
-for a through hole, `Midplane` for one cut symmetrically, `Reversed` where the
-sketch has to sit on the far face.
+for a through hole, `SideType='Symmetric'` for one cut symmetrically,
+`Reversed` where the sketch has to sit on the far face. `Midplane` is
+deprecated and warns on every write; `SideType` replaced it.
 
 **A Document that already has the part in it is a part to edit, not a site to
 clear.** Where a Step changes something that exists, change the object that
