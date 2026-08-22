@@ -477,9 +477,28 @@ class AskTheUser(QtCore.QObject):
         return answer if answer in DECISIONS else REVISE
 
     def _ask(self, signal, payload):
+        """
+        Emit the question, then block until someone answers it.
+
+        A receiver in this object's own thread answers inside `emit`, so the
+        Event is already set and the wait returns at once. A receiver anywhere
+        else answers later, over a queued connection, and the wait is what
+        holds the worker until it does.
+
+        The third case is the dangerous one: asked from this object's own
+        thread with nobody to answer inline. The queued answer can only be
+        delivered by an event loop this very thread is now blocked out of, so
+        `wait()` never returns and the process deadlocks with no traceback and
+        no CPU to show for it. Refusing to wait names the fault instead.
+        """
         self._answered.clear()
         self._answer = None
         signal.emit(payload)
+        if not self._answered.is_set() and QtCore.QThread.currentThread() == self.thread():
+            raise RuntimeError(
+                "%s was asked on the thread that has to answer it; "
+                "no event loop can deliver the answer." % signal
+            )
         self._answered.wait()
         return self._answer
 
