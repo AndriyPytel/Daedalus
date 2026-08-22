@@ -182,6 +182,8 @@ HELD_BY_A_PICTURE = 0.4
 
 IN_THE_REGION = 0.5
 
+SHAPE_LONG_EDGE = 600
+
 
 @dataclass(frozen=True)
 class Crop:
@@ -190,12 +192,19 @@ class Crop:
 
     `rect` is where it came from on the page, in the page's own units, so a
     callout's coordinates can be said to be inside it.
+
+    `shape_only` is set on a placed picture no region of ink ever reached — the
+    isometric in the corner of every one of these sheets, whose own callouts
+    are read elsewhere and whose outline is the only thing worth having. It is
+    rendered once, at a resolution that carries the shape and not the paper's
+    fine print.
     """
     name: str
     path: str
     rect: tuple
     dpi: int = 0
     page: int = 1
+    shape_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -365,7 +374,9 @@ class Sheet:
 
     `wholes` is the views that had to be cut up, each one whole in a single
     picture. They are not in `crops`, because a callout belongs to the piece
-    that shows it legibly and this is the picture that shows how the pieces fit.
+    that shows it legibly and this is the picture that shows how the pieces
+    fit — a fact `shown()` now says in words instead of spending a second
+    picture on, since the sheet overview already carries every view whole.
 
     `drawn` is one entry per view, the geometry the draughtsman drew it with,
     and `between` is each printed distance against the two points on the part it
@@ -540,6 +551,16 @@ def _a_page(page, at, of_pages, into, legible_px, max_edge,
                               path=_render(page, part, dpi, into,
                                            "crop-%02d" % (len(crops) + 1)),
                               rect=_as_tuple(part), dpi=dpi, page=at))
+
+    orphans = _orphan_pictures(regions, page.get_image_info(), page.rect)
+    orphan_names = _names_for(regions + orphans, words, page.rect)[len(regions):]
+    for box, label in zip(orphans, orphan_names):
+        shape = _shape_dpi(box)
+        crops.append(Crop(name=_on_page(label, at, of_pages),
+                          path=_render(page, box, shape, into,
+                                       "shape-%02d" % (len(crops) + 1)),
+                          rect=_as_tuple(box), dpi=shape, page=at,
+                          shape_only=True))
 
     on_this_page = [crop for crop in crops if crop.page == at]
     printed_before, leaders_before = len(printed), len(leaders)
@@ -992,6 +1013,44 @@ def _shared(box, region, area):
     if overlap.is_empty:
         return 0.0
     return (overlap.width * overlap.height) / area if area else 0.0
+
+
+def _orphan_pictures(regions, pictures, page_rect):
+    """
+    The placed pictures none of the sheet's regions ever reached.
+
+    `_the_region_holding_the_picture` already answers "is this picture in a
+    region worth speaking of" for the tracer; a no is the same fact this asks
+    for, that the picture is not read here as a source of numbers and never
+    became a crop. The isometric in the corner of every one of these sheets
+    is exactly that picture — measured at 6% to 16% covered by the regions
+    that do exist, the rest of it visible only inside the sheet overview.
+
+    A bbox off the page or with no area is not a view: `mm25-p2.pdf` places
+    one at x from -35 to 0, a sliver `page_rect` does not contain at all.
+    """
+    found = []
+    for picture in pictures:
+        box = pymupdf.Rect(*picture["bbox"])
+        if (box & page_rect).is_empty:
+            continue
+        if _the_region_holding_the_picture(box, regions) is not None:
+            continue
+        found.append(box)
+    return found
+
+
+def _shape_dpi(rect):
+    """
+    The resolution a shape-only picture is rendered at.
+
+    Nothing on it is read, so `_dpi_for`'s legibility budget does not apply —
+    `SHAPE_LONG_EDGE` is sized instead for the outline and orientation this
+    picture is kept for, at a cost measured on `tests/modelmania` at under 420
+    visual tokens against `_dpi_for`'s several thousand.
+    """
+    longest = max(rect.width, rect.height) / 72.0
+    return max(72, int(SHAPE_LONG_EDGE / longest)) if longest else 72
 
 
 def _covering(regions, boxes, page_rect):
@@ -3089,22 +3148,27 @@ def shown(sheet):
         if page > 1:
             told.append({"say": "Page %d of the drawing, as laid out:" % page})
             told.append({"show": overview})
-        shown_whole = set()
+        said_tiled = set()
         for crop in sheet.crops:
             if crop.page != page:
                 continue
             view = crop.name.split(", part ")[0]
-            whole = next((one for one in sheet.wholes
-                          if one.page == page and one.name == view), None)
-            if whole is not None and view not in shown_whole:
-                shown_whole.add(view)
-                told.append({"say": "%s, whole. The pictures after it are this "
-                                    "same view close up, in pieces, and they are "
-                                    "what the numbers are read from — this one is "
-                                    "how the pieces fit together and how this view "
-                                    "lines up with the others." % view})
-                told.append({"show": whole.path})
-            told.append({"say": "%s:" % crop.name})
+            tiled = any(one.page == page and one.name == view
+                       for one in sheet.wholes)
+            if tiled and view not in said_tiled:
+                said_tiled.add(view)
+                told.append({"say": "%s is tiled below, into the pieces the "
+                                    "numbers are read from. The sheet overview "
+                                    "already shown is this same view whole — "
+                                    "check it for how the pieces fit together "
+                                    "and how this view lines up with the "
+                                    "others." % view})
+            if crop.shape_only:
+                told.append({"say": "%s: a placed picture no callout reaches, "
+                                    "shown for its shape and how it stands — "
+                                    "not a source for numbers." % crop.name})
+            else:
+                told.append({"say": "%s:" % crop.name})
             told.append({"show": crop.path})
 
     if sheet.printed:

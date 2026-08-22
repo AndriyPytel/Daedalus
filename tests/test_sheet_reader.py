@@ -76,8 +76,9 @@ def test_the_crops_are_rendered_far_above_the_cap_the_sheet_used_to_arrive_at(sh
     enough to matter. The crops exist to end that, so the DPI has to clear it by
     a distance rather than by a little.
     """
-    assert sheet.crops, "a sheet with views on it produced no crops"
-    assert all(crop.dpi >= 250 for crop in sheet.crops), \
+    legible = [crop for crop in sheet.crops if not crop.shape_only]
+    assert legible, "a sheet with views on it produced no crops"
+    assert all(crop.dpi >= 250 for crop in legible), \
         "a crop was rendered at the resolution that was already misreading"
 
 
@@ -349,12 +350,16 @@ def test_the_sheet_is_shown_whole_before_it_is_shown_close_up(sheet):
     The overview is not decoration: without it the close-ups are a pile of
     unplaced fragments, and `seen_in` has nothing to be measured against. It
     goes first because it is what the rest are read against.
+
+    A tiled view's own whole picture is not among the pictures shown — the
+    overview already carries it — so what is shown is one overview plus one
+    picture per crop, not per crop and whole.
     """
     told = sheet_reader.shown(sheet)
     pictures = [piece["show"] for piece in told if "show" in piece]
 
     assert pictures[0] == sheet.overview
-    assert len(pictures) == len(sheet.crops) + len(sheet.wholes) + 1
+    assert len(pictures) == len(sheet.crops) + 1
 
 
 @needs_pymupdf
@@ -742,11 +747,13 @@ def test_one_design_call_carries_the_sheet_cut_to_what_it_can_prove(sheet_2023):
     """
     What one Design turn carries, on a phase that sends it again every turn.
 
-    The 30 pictures are what this module tiles and pays for deliberately and
-    the cut leaves them alone; the text is the sheet's record reduced to the
-    part's evidence. The 351 entities nothing can prove anything about would
-    be another 13,917 characters beside the 43,622 that go out, and they would
-    be carried again on every turn of the phase.
+    The 27 pictures are what this module tiles, traces and pays for
+    deliberately and the cut leaves them alone — a tiled view's whole picture
+    is said rather than sent again, and a picture no region reaches is one
+    low-cost crop instead of nothing. The text is the sheet's record reduced
+    to the part's evidence. The 351 entities nothing can prove anything about
+    would be another 13,917 characters beside the 43,923 that go out, and
+    they would be carried again on every turn of the phase.
     """
     told = sheet_reader.shown(sheet_2023)
     pictures = [piece["show"] for piece in told if "show" in piece]
@@ -754,8 +761,8 @@ def test_one_design_call_carries_the_sheet_cut_to_what_it_can_prove(sheet_2023):
     left_out = [entity for view in sheet_2023.drawn for entity in view.entities
                 if entity.role == "unclassified"]
 
-    assert (len(pictures), sum(_costs(path) for path in pictures)) == (30, 28384)
-    assert characters == 43622
+    assert (len(pictures), sum(_costs(path) for path in pictures)) == (27, 21291)
+    assert characters == 43923
     assert characters < 45000, "the sheet grew back into the request"
     assert sum(len(sheet_reader._said(entity)) for entity in left_out) == 13917
 
@@ -985,17 +992,22 @@ def test_a_view_too_big_for_one_crop_is_still_shown_whole_once(sheet_2023):
 
 
 @needs_pymupdf
-def test_the_whole_view_is_shown_before_its_pieces(sheet_2023):
+def test_the_whole_view_is_said_not_shown_before_its_pieces(sheet_2023):
+    """
+    The overview already carries a tiled view whole, so the sentence tying its
+    pieces together is what precedes them now, and the whole's own picture is
+    not among what is shown at all.
+    """
     told = sheet_reader.shown(sheet_2023)
     whole = sheet_2023.wholes[0]
-    at = [n for n, piece in enumerate(told) if piece.get("show") == whole.path]
+    shown_paths = {piece["show"] for piece in told if "show" in piece}
 
-    assert len(at) == 1, "the view whole was shown %d times" % len(at)
+    assert whole.path not in shown_paths
+    at = next(n for n, piece in enumerate(told)
+             if "say" in piece and "how the pieces fit together" in piece["say"])
     first_piece = next(n for n, piece in enumerate(told)
-                       if piece.get("show", "").endswith(".png")
-                       and n > at[0])
-    assert first_piece > at[0]
-    assert "how the pieces fit together" in told[at[0] - 1]["say"]
+                       if piece.get("show", "").endswith(".png") and n > at)
+    assert first_piece > at
 
 
 @needs_pymupdf
@@ -1549,6 +1561,91 @@ def test_what_a_picture_has_inside_a_region_is_measured_off_the_four_sheets():
     assert max(clipped) == pytest.approx(0.36, abs=0.04), clipped
     assert len(alongside) == 1, alongside
     assert alongside[0] == pytest.approx(0.55, abs=0.02)
+
+
+@needs_pymupdf
+def test_a_picture_no_region_reaches_becomes_a_shape_only_crop():
+    """
+    The isometric in the corner of the 2024 sheet is a placed picture at most
+    0.21 covered by the regions the ink pipeline finds — the same "no region
+    worth speaking of" picture `_the_region_holding_the_picture` already
+    refuses to trace. `_orphan_pictures` is what turns that refusal into a
+    crop instead of into nothing: measured on page 1, two placed pictures are
+    orphaned this way, at (521.68, 0.0) and (523.23, 154.55).
+    """
+    import pymupdf
+
+    path = os.path.join(os.path.dirname(__file__), "modelmania",
+                        "model-mania-2024.pdf")
+    page = pymupdf.open(path)[0]
+    words = [w for w in page.get_text("words") if str(w[4]).strip()]
+    regions = sheet_reader._the_regions_of(page, words)
+
+    orphans = sheet_reader._orphan_pictures(regions, page.get_image_info(),
+                                            page.rect)
+
+    corners = {(round(box.x0, 1), round(box.y0, 1)) for box in orphans}
+    assert (521.7, 0.0) in corners
+    assert (523.2, 154.5) in corners
+
+
+@needs_pymupdf
+def test_an_off_page_bbox_is_never_orphaned_into_a_crop():
+    """
+    Page 2 of the 2023 sheet places a picture at x from -34.8 to 0 — a sliver
+    `page_rect` does not contain at all, not a view with a corner nobody drew.
+    `_orphan_pictures` has to reject it on its own terms rather than lean on
+    the region pipeline happening not to reach it either.
+    """
+    import pymupdf
+
+    page_rect = pymupdf.Rect(0, 0, 792, 612)
+    off_page = {"bbox": (-34.8, 486.1, 0.0, 612.0)}
+    empty = {"bbox": (100.0, 100.0, 100.0, 250.0)}
+
+    assert sheet_reader._orphan_pictures([], [off_page], page_rect) == []
+    assert sheet_reader._orphan_pictures([], [empty], page_rect) == []
+
+
+@needs_pymupdf
+def test_a_shape_only_crop_is_one_render_at_a_fraction_of_the_usual_cost(
+        sheet_2023):
+    """
+    Nothing on this picture is read, so it is not rendered at `_dpi_for`'s
+    legibility budget: measured on the 2023 sheet, its two shape-only crops
+    land at 112-126 DPI against the sheet's own 150-600 DPI range, each under
+    500 visual tokens where an ordinary crop is budgeted up to `THE_BUDGET`
+    (1568).
+    """
+    from PIL import Image
+
+    shape_crops = [crop for crop in sheet_2023.crops if crop.shape_only]
+    assert shape_crops
+
+    for crop in shape_crops:
+        assert crop.dpi < 150
+        with Image.open(crop.path) as picture:
+            width, height = picture.size
+        visual_tokens = width * height / 750
+        assert visual_tokens < 500, (crop.name, visual_tokens)
+
+
+@needs_pymupdf
+def test_a_shape_only_crop_says_it_carries_no_callouts(sheet_2023):
+    """
+    A crop the model has never been shown before needs to be told what it is
+    looking at, or a shape with no numbers on it reads as a crop that lost
+    its numbers rather than as one that never had any.
+    """
+    told = sheet_reader.shown(sheet_2023)
+    shape_names = {crop.name for crop in sheet_2023.crops if crop.shape_only}
+    assert shape_names
+
+    said = [piece["say"] for piece in told if "say" in piece]
+    for name in shape_names:
+        matches = [text for text in said
+                  if text.startswith(name) and "not a source for numbers" in text]
+        assert matches, "%s: no sentence says it carries no callouts" % name
 
 
 @needs_pymupdf
