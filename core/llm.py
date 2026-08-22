@@ -8,7 +8,8 @@ or an API key.
 
 ADR-0004 — LiteLLM is the single unified client. `tools/spike_litellm.py`
 holds the evidence that it carries Anthropic thinking blocks through the
-stream and honours `cache_control`.
+stream and honours `cache_control` — on the `anthropic/` route, which is what
+`cache_control_supported` names, since the spike never exercised the others.
 
 ADR-0025 amends it in part. `ClaudeCodeClient` answers a phase on a
 subscription the user already pays for, as a subprocess and not a package —
@@ -88,6 +89,24 @@ class ProviderRefused(Exception):
         self.said = said
 
 
+class StreamCutOff(ProviderRefused):
+    """
+    The provider closed the stream with no terminal chunk: no finish_reason,
+    no usage, no `[DONE]`, and no exception either — the reply simply stops.
+
+    Measured against the opencode gateway with raw HTTP and no LiteLLM in the
+    call at all: of seven long streams four closed this way, after 5 to 100
+    seconds of output, while three ran 45 to 180 seconds to a clean finish. A
+    plain text reply carrying no reasoning is cut off as readily as a thinking
+    one, so this is the connection rather than the model, and there is no
+    duration to stay under (anomalyco/opencode#44148).
+
+    Retryable, which is the only reason it is not a plain `ProviderRefused`:
+    the same call sent again usually lands, and retrying is what opencode's
+    own client does with it.
+    """
+
+
 @dataclass(frozen=True)
 class Chunk:
     """One piece of a streamed reply. `kind` is REASONING or TEXT."""
@@ -153,11 +172,13 @@ class LiteLLMClient:
             kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
         kwargs.setdefault("max_tokens",
                           _output_cap(self.model, (self.thinking_budget or _OUTPUT_BUDGET) * 4))
-        if self.model.startswith("openai/"):
+        openai_compatible = self.model.startswith("openai/")
+        if openai_compatible:
             kwargs.setdefault("stream_options", {"include_usage": True})
 
         self.last_cost = None
         chunks = []
+        finished = False
         try:
             for raw in completion(**kwargs):
                 chunks.append(raw)
@@ -165,6 +186,7 @@ class LiteLLMClient:
                     yield chunk
                 if _stopped_for_length(raw):
                     raise _truncated(self.model, kwargs.get("max_tokens"))
+                finished = finished or _finished(raw)
         except ProviderRefused:
             raise
         except Exception as exc:
@@ -172,6 +194,9 @@ class LiteLLMClient:
             if refusal is None:
                 raise
             raise refusal from exc
+
+        if openai_compatible and not finished:
+            raise _cut_off(self.model)
 
         cost = _priced(self.model, chunks, messages)
         if cost is not None:
@@ -259,6 +284,24 @@ def _stopped_for_length(raw) -> bool:
     """The provider marking a reply as cut off. Dropped, this looks like a bad answer."""
     return any(getattr(choice, "finish_reason", None) == "length"
                for choice in getattr(raw, "choices", None) or [])
+
+
+def _finished(raw) -> bool:
+    """
+    The terminal chunk an OpenAI-compatible endpoint owes every stream. Its
+    absence over a whole stream is the connection dropped, not a short answer.
+    """
+    return any(getattr(choice, "finish_reason", None)
+               for choice in getattr(raw, "choices", None) or [])
+
+
+def _cut_off(model) -> StreamCutOff:
+    return StreamCutOff(
+        "%s closed the stream before it answered — no end marker, no reason given. "
+        "This is the connection rather than the model; sending the Intent again "
+        "usually gets through, and another provider gets through more often." % model,
+        "the stream ended with no finish_reason",
+    )
 
 
 def _truncated(model, cap) -> ProviderRefused:
@@ -904,6 +947,23 @@ def _as_chunks(turn) -> List[Chunk]:
             chunks.append(Chunk(TEXT, turn["text"]))
         return chunks
     return list(turn)
+
+
+def cache_control_supported(model: str) -> bool:
+    """
+    Whether a `cache_control` block on a message reaches the wire as a cache
+    breakpoint rather than as a key the provider was never asked about.
+
+    `tools/spike_litellm.py` is the evidence, and it is narrower than ADR-0004's
+    own claim: LiteLLM carries `cache_control` through to
+    `AnthropicConfig.transform_request` for a model routed through Anthropic's
+    own API, which is `model.startswith("anthropic/")` and nothing else here —
+    not the `openai/` gateway, not a bare `api_base` model LiteLLM has never
+    heard of, and not `ClaudeCodeClient`'s subscription CLI, which never spoke
+    to this transform in the first place. Guessing yes for one of those risks
+    nothing on the wire; guessing no costs one field nobody reads.
+    """
+    return bool(model) and model.startswith("anthropic/")
 
 
 def litellm_model_name(provider: str, model_id: str) -> str:

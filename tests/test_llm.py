@@ -19,7 +19,9 @@ from core.llm import (
     LiteLLMClient,
     ProviderRefused,
     ScriptedLLMClient,
+    StreamCutOff,
     accepts_pdf,
+    cache_control_supported,
     litellm_model_name,
     unusable_attachments,
 )
@@ -45,6 +47,15 @@ def openai_chunks():
     from litellm.types.utils import ModelResponseStream
 
     return [ModelResponseStream(**event) for event in _load("openai_stream.json")]
+
+
+def cut_off_chunks():
+    """
+    Recorded OpenAI SSE with its terminal chunk removed: what a stream the
+    provider closes mid-reply arrives as — no finish_reason, no usage, no
+    [DONE], and no exception either.
+    """
+    return openai_chunks()[:-1]
 
 
 def truncated_chunks():
@@ -396,6 +407,48 @@ def test_an_openai_compatible_gateway_is_asked_to_report_what_it_spent():
     assert completion.kwargs["stream_options"] == {"include_usage": True}
 
 
+def test_a_gateway_that_closes_the_stream_mid_reply_says_so():
+    """
+    Measured against the opencode gateway with raw HTTP and no LiteLLM in the
+    call: four of seven long streams closed with no terminal chunk at all
+    (anomalyco/opencode#44148). Read as a finished answer, that is a phase
+    silently missing its reply.
+    """
+    client, _ = client_replaying(cut_off_chunks())
+    client.model = "openai/kimi-k3"
+
+    with pytest.raises(StreamCutOff) as cut:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "closed the stream" in str(cut.value)
+
+
+def test_a_cut_off_stream_does_not_blame_the_model_for_thinking():
+    """A plain text reply with no reasoning in it is cut off just as readily."""
+    client, _ = client_replaying(cut_off_chunks())
+    client.model = "openai/kimi-k3"
+
+    with pytest.raises(StreamCutOff) as cut:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "effort" not in str(cut.value) and "thinks less" not in str(cut.value)
+
+
+def test_a_stream_that_ends_on_its_own_terminal_chunk_is_left_alone():
+    client, _ = client_replaying(openai_chunks())
+    client.model = "openai/kimi-k3"
+
+    assert collect(client.stream([{"role": "user", "content": "hi"}]))
+
+
+def test_a_provider_that_reports_no_finish_reason_at_all_is_left_alone():
+    """The check reads the terminal chunk an OpenAI-compatible endpoint owes; no other route promises one."""
+    client, _ = client_replaying(anthropic_chunks()[:-1])
+    client.model = "anthropic/claude-3-7-sonnet-20250219"
+
+    assert collect(client.stream([{"role": "user", "content": "hi"}]))
+
+
 def test_a_provider_that_is_not_openai_compatible_is_not_sent_stream_options():
     client, completion = client_replaying(anthropic_chunks())
     client.model = "anthropic/claude-3-7-sonnet-20250219"
@@ -488,6 +541,18 @@ def test_cache_control_on_a_message_is_passed_through_untouched():
     collect(client.stream(messages))
 
     assert completion.kwargs["messages"][0]["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+@pytest.mark.parametrize("model,supported", [
+    ("anthropic/claude-3-7-sonnet-20250219", True),
+    ("openai/kimi-k3", False),
+    ("gemini/gemini-2.5-pro", False),
+    ("sonnet", False),
+    ("scripted", False),
+    (None, False),
+])
+def test_cache_control_is_only_claimed_supported_on_the_route_the_spike_measured(model, supported):
+    assert cache_control_supported(model) is supported
 
 
 @pytest.mark.parametrize("provider,model_id,expected", [

@@ -53,7 +53,7 @@ from core.events import (
 )
 from core import design, loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
-from core.llm import TEXT, Chunk, ProviderRefused, ScriptedLLMClient
+from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
 from core.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
@@ -1364,6 +1364,92 @@ def test_a_step_the_reply_left_out_fails_that_step_and_not_the_run():
     assert "no code for Step 2" in failure.data["traceback"]
 
 
+def test_a_step_left_out_with_no_reason_records_what_the_reply_carried():
+    """
+    Case 2 of the three ways `execute()` can leave a Step without code: a
+    reply that numbered other Steps but not this one, with no `unbuildable`
+    to say why. The recorded run could not tell this apart from a reply that
+    said nothing at all — this is what closes that hole.
+    """
+    result, events, _, _ = drive(
+        [
+            plan_reply("First", "Second"),
+            code_reply("first()"),
+            code_reply("second()", first=2),
+            verdict_reply("pass"),
+        ],
+    )
+
+    assert result.ok
+    failure = events.first(PREFLIGHT_FAILED)
+    assert "keys: steps" in failure.data["traceback"]
+    assert "steps carried: [1], with code: [1]" in failure.data["traceback"]
+
+
+def test_a_reply_with_nothing_usable_says_so_in_the_traceback():
+    """
+    Case 3: no `steps`, no `unbuildable`, no `obsolete`, no `look` — a reply
+    Execute cannot be asked to explain itself over twice, because the second
+    ask is what `_ask` already spent asking for the shape it did answer in.
+    """
+    result, events, _, _ = drive(
+        [
+            plan_reply("Only"),
+            json.dumps({"note": "not sure what to build here"}),
+            code_reply("built()"),
+            verdict_reply("pass"),
+        ],
+    )
+
+    assert result.ok
+    failure = events.first(PREFLIGHT_FAILED)
+    assert failure.data["attempt"] == 1
+    assert "no code for Step 1" in failure.data["traceback"]
+    assert "keys: note" in failure.data["traceback"]
+    assert "not sure what to build here" in failure.data["traceback"]
+
+
+def test_the_rendering_of_what_was_said_is_capped_not_the_reply():
+    """
+    An Execute reply carries the code for a whole Plan. What travels in the
+    traceback is the shape of the reply, not its content — the numbers, never
+    the code — so a Step's worth of code arriving beside the one left out
+    cannot make the traceback the size of the reply that produced it.
+    """
+    result, events, _, _ = drive(
+        [
+            plan_reply("First", "Second"),
+            json.dumps({"steps": [{"step": 1, "code": "x" * 5000, "label": "Step"}]}),
+            code_reply("second()", first=2),
+            verdict_reply("pass"),
+        ],
+    )
+
+    assert result.ok
+    failure = events.first(PREFLIGHT_FAILED)
+    assert failure.data["step"] == 2
+    assert "x" * 100 not in failure.data["traceback"]
+    assert len(failure.data["traceback"]) < 500
+
+
+def test_a_step_that_lands_is_unaffected_by_what_the_reply_said():
+    """
+    `said` only ever reaches the traceback of the Step it was missing for — a
+    reply that wrote code for every Step asked has nothing to render and
+    nothing shows up.
+    """
+    result, events, _, _ = drive(
+        [
+            plan_reply("First", "Second"),
+            code_reply("first()", "second()"),
+            verdict_reply("pass"),
+        ],
+    )
+
+    assert result.ok
+    assert events.first(PREFLIGHT_FAILED) is None
+
+
 def test_the_reason_a_recompute_failed_reaches_the_next_attempts_request():
     """
     The reason has to be in the request, not merely on the event stream — a
@@ -1511,6 +1597,43 @@ def test_a_step_left_out_with_a_reason_hands_back_without_spending_attempts():
     assert revised.data["because"] == "Execute could not build a Step"
 
 
+def test_an_unbuildable_reply_on_a_retry_hands_back_instead_of_being_asked_again():
+    """
+    Matched to the recorded run
+    (`logs/sessions/5d9249424bce45d2b25485002ba1c630.jsonl`, Step 6 of 13,
+    twice over): attempt 1 carried a real traceback, and Execute's *second*
+    reply was `unbuildable` rather than another attempt at the code. The
+    reason was discarded because the handback only fired on a Step's first
+    attempt — the loop asked a third time, spent the whole
+    `attempts_per_step` budget on two provider calls that recorded nothing
+    but the synthetic "no code for Step 6", and Plan never learned why. The
+    reason has to reach the handback on whichever attempt it arrives.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Fillet the root edges of the lug"),
+        code_reply("fillet_root()"),
+        json.dumps({"unbuildable": "the fillet radius exceeds the material at "
+                                   "the root edge; there is nothing left to round."}),
+        plan_reply("Fillet the root edges at a smaller radius"),
+        code_reply("fillet_root_smaller()"),
+        verdict_reply("pass"),
+    ], applies=[failed("Fillet (Part::Fillet): FilletId is not part of the shape")])
+
+    assert result.ok
+    assert tools.applied_codes() == ["fillet_root()", "fillet_root_smaller()"]
+    first_plan, retry, after_replan = _turns_of(llm, "execute")
+    assert "your_failed_attempts_at_this_step" not in first_plan
+    assert retry["your_failed_attempts_at_this_step"] == [
+        {"code": "fillet_root()",
+         "traceback": "Fillet (Part::Fillet): FilletId is not part of the shape"}]
+    assert "your_failed_attempts_at_this_step" not in after_replan, \
+        "handed back after the second reply, not asked a third time within the same Plan"
+    assert len(events.of(PREFLIGHT_FAILED)) == 1, "the real failure was the only attempt spent"
+    revised = events.first(PLAN_REVISED)
+    assert "nothing left to round" in revised.data["reason"]
+    assert revised.data["because"] == "Execute could not build a Step"
+
+
 def test_an_obsolete_step_is_never_applied():
     _, _, _, tools = drive([
         plan_reply("Obsolete one"),
@@ -1600,7 +1723,7 @@ def test_an_attachment_reaches_the_design_phase_as_a_picture():
     content = llm.calls[0][-1]["content"]
     images = [block for block in content if block.get("type") == "image_url"]
 
-    assert "Build this bracket" in content[0]["text"]
+    assert "Build this bracket" in content[-1]["text"]
     assert len(images) == 1
     assert images[0]["image_url"]["url"].startswith("data:image/png;base64,")
     assert RENDER_PNG not in json.dumps(content), "the path was sent instead of the bytes"
@@ -2500,13 +2623,27 @@ def test_a_run_with_nothing_to_read_writes_no_reading():
     assert not events.of(PART)
 
 
+def _user_blocks(llm, at=0):
+    """
+    Every content block a call's user turns carried, in order — one turn on a
+    first pass, two (the original evidence, then the short nudge) on a retry
+    that went out as `_asked_again`'s second turn of the conversation.
+    """
+    blocks = []
+    for message in llm.calls[at]:
+        if message["role"] != "user":
+            continue
+        content = message["content"]
+        blocks.extend(content if isinstance(content, list) else [{"type": "text", "text": content}])
+    return blocks
+
+
 def _pictures_shown(llm, at=0):
-    return [block for block in llm.calls[at][-1]["content"]
-            if block.get("type") == "image_url"]
+    return [block for block in _user_blocks(llm, at) if block.get("type") == "image_url"]
 
 
 def _said_to_design(llm, at=0):
-    return "\n".join(block.get("text", "") for block in llm.calls[at][-1]["content"]
+    return "\n".join(block.get("text", "") for block in _user_blocks(llm, at)
                       if block.get("type") == "text")
 
 
@@ -2514,9 +2651,10 @@ def _asked_of_design(llm):
     """
     The body of every Design turn, in order. Not `_turns_of`: a Design request
     is content blocks rather than one string, because the sheet rides with it,
-    and the body is the first of them.
+    and the body is the last of them — the evidence goes out first, so it is a
+    stable prefix a repeated Design turn can cache (`core/loop.py :: design`).
     """
-    return [json.loads(call[-1]["content"][0]["text"]) for call in llm.calls
+    return [json.loads(call[-1]["content"][-1]["text"]) for call in llm.calls
             if call[0]["content"] == prompt("design")]
 
 
@@ -2564,14 +2702,11 @@ THE_PIPE_CLAMP = str(modelmania_harness.SHEETS[
 @pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
 def test_every_design_call_of_a_run_carries_the_sheet_cut_rather_than_whole():
     """
-    The bundle rides on every turn of the phase, so what one call carries is
-    paid for again each time Design is asked anything — and it is asked once
-    more for every check of the description that the drawing can answer.
-
-    The run below is asked twice over the 2023 pipe clamp and carries 60
-    pictures and 88,078 characters between them, of which 43,622 is the sheet,
-    on each call. `tests/test_sheet_reader.py` produces that figure and what it
-    was cut from.
+    The first call over a sheet carries the whole of it — the phase has not
+    looked at the drawing yet, so there is nothing to narrow to. The run below
+    is a first pass over the 2023 pipe clamp and its evidence alone, the body
+    set aside, is 27 pictures and 43,923 characters. `tests/test_sheet_reader.py`
+    produces that figure and what it was cut from.
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM), design_reply(A_DATUM),
@@ -2581,15 +2716,37 @@ def test_every_design_call_of_a_run_carries_the_sheet_cut_rather_than_whole():
     ], attachments=[THE_PIPE_CLAMP])
 
     calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
-    blocks = [block for call in calls for block in call[-1]["content"]]
-    characters = sum(len(block["text"]) for block in blocks
-                     if block.get("type") == "text")
-    pictures = [block for block in blocks if block.get("type") == "image_url"]
+    evidence = calls[0][-1]["content"][:-1]
+    characters = sum(len(block["text"]) for block in evidence if block.get("type") == "text")
+    pictures = [block for block in evidence if block.get("type") == "image_url"]
 
-    assert (len(calls), len(pictures), characters) == (2, 60, 88078)
-    assert [sum(len(block["text"]) for block in call[-1]["content"][1:]
-                if block.get("type") == "text")
-            for call in calls] == [43622, 43622], "a call carried another sheet"
+    assert (len(calls), len(pictures), characters) == (2, 27, 43923)
+
+
+@pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
+def test_a_re_read_over_a_named_callout_is_shown_only_the_views_it_is_printed_in():
+    """
+    A_DATUM leaves enough of the pipe clamp's own callouts uncited that
+    `_every_callout_accounted_for` sends Design back to the sheet — and the
+    missing callouts are printed in one view apiece, so the second call is
+    the overview plus that view rather than the whole 27-picture, 43,923
+    character sheet the first call carried.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_DATUM), design_reply(A_DATUM),
+        plan_reply("Only", satisfies=everything(A_DATUM)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[THE_PIPE_CLAMP])
+
+    calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    re_read = calls[1][-1]["content"][:-1]
+    characters = sum(len(block["text"]) for block in re_read if block.get("type") == "text")
+    pictures = [block for block in re_read if block.get("type") == "image_url"]
+
+    assert (len(pictures), characters) == (3, 396)
+    assert len(pictures) < 27 and characters < 43923, \
+        "the re-read carried the whole sheet rather than the views in play"
 
 
 @pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
@@ -2607,7 +2764,7 @@ def test_a_callout_the_description_never_used_goes_back_to_design_naming_it():
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
-    asked = json.loads(llm.calls[1][-1]["content"][0]["text"])
+    asked = json.loads(llm.calls[1][-1]["content"][-1]["text"])
     assert "the_question" in asked, "Design was not sent back to the sheet at all"
     assert "40" in asked["the_question"]
 
@@ -3668,6 +3825,35 @@ def test_a_reply_that_is_all_reasoning_and_no_answer_is_not_called_malformed():
     assert events.first(ERROR) is not None
 
 
+def _cut_off():
+    """The gateway closing the stream mid-reply, as the client reports it."""
+    return [Chunk(REASONING, "Reading the Intent."),
+            StreamCutOff("openai/kimi-k3 closed the stream before it answered.")]
+
+
+def test_a_stream_the_provider_cut_off_is_sent_again_rather_than_failing():
+    """
+    The opencode gateway closes a long stream at random — four of seven,
+    measured against it with raw HTTP and no client in the call
+    (anomalyco/opencode#44148). The same call sent again usually lands, which
+    is what opencode's own client does with it, so a run that gives up on the
+    first one throws away a phase for nothing.
+    """
+    result, _, llm, _ = drive([_cut_off(), plan_reply("Only"),
+                               code_reply("box()"), verdict_reply("pass", "Good.")])
+
+    assert result.ok
+    assert len(llm.calls) == 5, "design, Plan twice, Execute, Review"
+
+
+def test_a_provider_that_keeps_cutting_the_stream_is_given_up_on():
+    """Three, because a gateway cutting every one of them is down rather than unlucky."""
+    result, _, llm, _ = drive([_cut_off(), _cut_off(), _cut_off(), plan_reply("Only")])
+
+    assert not result.ok
+    assert len(llm.calls) == 4, "design, then Plan three times"
+
+
 def test_the_event_stream_of_a_clean_run():
     """Execute's reasoning stands before the first Step starts rather than inside it: it is reasoning about the whole Plan, and it is spent before any Step runs (FCC-95). What a Step still has of its own is `step_started`, the apply and `applied`."""
     _, events, _, _ = drive([
@@ -4090,7 +4276,7 @@ def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan
     run(GEAR, llm=llm, tools=tools.registry, attachments=[RENDER_PNG],
         ask=lambda _: "module 2, 20 teeth, 10 thick, ⌀8 bore")
 
-    told = json.loads(llm.calls[1][-1]["content"][0]["text"])
+    told = json.loads(llm.calls[1][-1]["content"][-1]["text"])
     assert told["the_question"] == MISSING
     assert told["the_answer_you_were_given"] == "module 2, 20 teeth, 10 thick, ⌀8 bore"
 
@@ -4271,7 +4457,7 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
 
     re_read = llm.calls[2][-1]["content"]
     assert [b for b in re_read if b.get("type") == "image_url"], "it re-read without the sheet"
-    asked_again = json.loads(re_read[0]["text"])
+    asked_again = json.loads(re_read[-1]["text"])
     assert asked_again["the_question"] == THROUGH_OR_NOT
     assert asked_again["the_part_as_you_described_it"] == distilled(A_PART)
 
@@ -4401,7 +4587,7 @@ def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
     assert [answer.data["by"] for answer in events.of(ANSWER)] \
         == ["drawing", "nobody", "drawing"]
     re_read = llm.calls[4][-1]["content"]
-    assert json.loads(re_read[0]["text"])["the_question"] == "q2"
+    assert json.loads(re_read[-1]["text"])["the_question"] == "q2"
     assert [b for b in re_read if b.get("type") == "image_url"], "it re-read without the sheet"
 
 
@@ -5696,6 +5882,8 @@ def test_the_same_failure_twice_is_told_not_to_write_a_third_variation():
     assert "Do not write a third variation" in said
     assert "Change the *direction* this time" in said
     assert "Reversed" in said and "ThroughAll" in said
+    assert "SideType" in said and "Midplane" not in said, \
+        "the advice names the property FreeCAD warns on every write to"
     assert "not the size of the cut" in said
 
 
@@ -6071,7 +6259,7 @@ def test_a_part_whose_outside_nobody_carries_goes_back_to_the_drawing():
         attachments=[RENDER_PNG])
 
     assert result.ok, result.reason
-    asked = json.loads(llm.calls[1][-1]["content"][0]["text"])
+    asked = json.loads(llm.calls[1][-1]["content"][-1]["text"])
     assert "outer profile" in asked["the_question"], asked.get("the_question")
     assert events.first(QUESTION) is None, \
         "the user was asked about a contour the drawing settled"
@@ -6113,7 +6301,7 @@ def test_a_shape_the_drawing_will_not_say_is_settled_and_shown_at_the_gate():
 
     assert result.ok, result.reason
     assert asked == [], "the user was asked for the contour: %s" % asked
-    told = json.loads(llm.calls[2][-1]["content"][0]["text"])["the_question"]
+    told = json.loads(llm.calls[2][-1]["content"][-1]["text"])["the_question"]
     assert "settle it yourself" in told and "because" in told
     decided = json.dumps(events.first(PLAN).data["decided"])
     assert "read off the silhouette" in decided
@@ -6196,10 +6384,10 @@ def test_a_phase_that_answered_in_prose_is_asked_once_more_rather_than_ending_th
 
 def test_the_re_ask_quotes_what_the_phase_said_and_names_the_shape():
     """
-    A directive about JSON in general is one the last reply already disobeyed.
-    What makes the second turn different is the model's own sentence handed
-    back to it, with the one thing that is nearly always true of it: the
-    sentence is the answer, in the wrong clothes.
+    The retry is a second turn of the same conversation: the model's own
+    sentence comes back as its own assistant message, and the nudge that
+    follows it is short because the sentence is right there above it, not
+    quoted into a fresh copy of the request.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -6208,10 +6396,56 @@ def test_the_re_ask_quotes_what_the_phase_said_and_names_the_shape():
         verdict_reply("pass"),
     ])
 
-    asked_again = llm.calls[3][-1]["content"]
+    retry = llm.calls[3]
 
-    assert "I need to check the Hole feature's properties first." in asked_again
-    assert "asks for the look *in* the JSON" in asked_again
+    assert retry[-2]["role"] == "assistant"
+    assert "I need to check the Hole feature's properties first." in retry[-2]["content"]
+    assert retry[-1]["role"] == "user"
+    assert "asks for the look *in* the JSON" in retry[-1]["content"]
+
+
+def test_the_evidence_is_cache_marked_only_on_the_route_that_honours_it():
+    """
+    `core/llm.py :: cache_control_supported` names the one route the spike
+    measured. Everywhere else the block goes out exactly as it would have
+    without this change — no `cache_control` key at all — so a provider that
+    was never asked about it is not handed one either.
+    """
+    from core.events import EventStream
+
+    anthropic = ScriptedLLMClient([design_reply(A_CUBE)])
+    anthropic.model = "anthropic/claude-3-7-sonnet-20250219"
+    loop.design({"intent": "Build this"}, anthropic, EventStream(), attachments=[RENDER_PNG])
+
+    evidence = anthropic.calls[0][-1]["content"][:-1]
+    assert evidence and evidence[-1].get("cache_control") == {"type": "ephemeral"}
+    assert all("cache_control" not in block for block in evidence[:-1])
+
+    scripted_client = ScriptedLLMClient([design_reply(A_CUBE)])
+    loop.design({"intent": "Build this"}, scripted_client, EventStream(), attachments=[RENDER_PNG])
+
+    other_evidence = scripted_client.calls[0][-1]["content"][:-1]
+    assert other_evidence and all("cache_control" not in block for block in other_evidence)
+
+
+def test_the_evidence_goes_out_before_the_changing_body():
+    """
+    A stable prefix has to be a prefix: the evidence is byte-identical turn to
+    turn and the body is not, so the evidence goes first and the body last —
+    reversed, the body's own change would be the first thing that differs and
+    nothing after it could be read from a cache either.
+    """
+    from core.events import EventStream
+
+    llm = ScriptedLLMClient([design_reply(A_CUBE), design_reply(A_CUBE)])
+    loop.design({"intent": "Build this"}, llm, EventStream(), attachments=[RENDER_PNG])
+    loop.design({"intent": "Build this, revised"}, llm, EventStream(), attachments=[RENDER_PNG])
+
+    for call in llm.calls:
+        assert call[-1]["content"][0].get("type") == "image_url"
+        assert call[-1]["content"][-1].get("type") == "text"
+    assert llm.calls[0][-1]["content"][:-1] == llm.calls[1][-1]["content"][:-1], \
+        "the evidence differed between two turns that showed the same sheet"
 
 
 def test_the_re_ask_of_a_phase_that_is_shown_pictures_keeps_the_pictures():
@@ -6230,7 +6464,6 @@ def test_the_re_ask_of_a_phase_that_is_shown_pictures_keeps_the_pictures():
     ], attachments=[RENDER_PNG])
 
     assert _pictures_shown(llm, at=1), "the re-ask went out without the drawing"
-    assert "carried no JSON object" in _said_to_design(llm, at=1)
 
 
 def test_a_revision_is_shown_the_plan_it_is_revising():

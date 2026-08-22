@@ -50,7 +50,7 @@ from core.events import (
 )
 from core import part_file, preflight, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
-from core.llm import REASONING, ProviderRefused
+from core.llm import REASONING, ProviderRefused, StreamCutOff, cache_control_supported
 from core.tools import ToolError
 
 DESIGN_PHASE = "design"
@@ -366,6 +366,8 @@ PROMPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 
 _TRAPS_PLACEHOLDER = "{{traps}}"
 
+_CUT_OFF_ATTEMPTS = 3
+
 
 def prompt(phase):
     """
@@ -391,12 +393,15 @@ def _ask(llm, events, phase, system, user):
     Reasoning is emitted chunk by chunk rather than aggregated at the end, so the
     user can tell early whether the assistant has understood them.
 
-    A reply carrying no object is asked once more, quoting what it said. Every
-    phase here answers in JSON and some models will not, or will not
-    consistently: measured on the gateway, kimi-k3 replied to Execute with "I
-    need to check the Hole feature's properties before writing the counterbore
-    steps" — which is a *look*, and a look is a key of the object Execute
-    replies with, so the model had the answer and wrote it as a sentence
+    A reply carrying no object is asked once more, as a second turn of the same
+    conversation rather than a second copy of the first (`_asked_again`): the
+    original `user` — Design's evidence among it, tens of thousands of tokens —
+    goes out once, whatever the phase answers on. Every phase here answers in
+    JSON and some models will not, or will not consistently: measured on the
+    gateway, kimi-k3 replied to Execute with "I need to check the Hole
+    feature's properties before writing the counterbore steps" — which is a
+    *look*, and a look is a key of the object Execute replies with, so the
+    model had the answer and wrote it as a sentence
     (`logs/sessions/ea390959745a453488138fddcc879635.jsonl`). One re-ask costs a
     turn; the alternative cost the run, ten approved Steps into it.
 
@@ -404,15 +409,24 @@ def _ask(llm, events, phase, system, user):
     A model that will not answer in the shape twice is not going to on the
     third, and a loop of re-asks would spend the run proving it.
 
-    Reasoning and then no answer is a third case, measured against the same
-    gateway: kimi-k3 ends such a stream on "stop", under its own cap, having
-    written reasoning and no answer. Running out of room is the other cause of
-    an empty reply and arrives as a refusal, not as this.
+    Reasoning and then no answer is a third case, and it is asked again the
+    same way rather than left to fail outright: there is no reply text to hand
+    back as the assistant's turn, so the reasoning stream stands in for it
+    (`_asked_again`). Of the last 20 sessions, 11 touched Design and 8 of those
+    died exactly here, 70-640 s in — one more turn, built from thought rather
+    than an answer, is worth trying before the phase is told it did not
+    answer.
+
+    On an OpenAI-compatible route reasoning with no terminal chunk at all is
+    the provider closing the connection and is named as that instead
+    (`core/llm.py :: StreamCutOff`), measured with raw HTTP and no client in
+    the call at all. Running out of room is the other cause of an empty reply
+    and arrives as a refusal, not as this.
     """
-    body, thought = _streamed(llm, events, phase, system, user)
+    body, thought, reasoning = _streamed(llm, events, phase, system, user)
     if not isinstance(_object_of(body), dict):
-        body, thought = _streamed(llm, events, phase, system,
-                                  _in_the_shape_this_time(user, body))
+        body, thought, reasoning = _streamed(llm, events, phase, system, user,
+                                             prior=_asked_again(body, reasoning))
 
     if thought and not body.strip():
         raise PhaseError(
@@ -422,9 +436,10 @@ def _ask(llm, events, phase, system, user):
     return _as_json(body, phase)
 
 
-def _streamed(llm, events, phase, system, user):
+def _streamed(llm, events, phase, system, user, prior=()):
     """
-    One turn, as the text it wrote and whether it reasoned before writing it.
+    One turn, as the text it wrote, whether it reasoned before writing it, and
+    the reasoning itself.
 
     Two facts about a call are not a `Chunk` and cross the seam here, which is
     the one place every phase's stream is consumed and the one that already
@@ -443,7 +458,33 @@ def _streamed(llm, events, phase, system, user):
     subscription route has one (`core/llm.py :: ClaudeCodeClient`); a keyed
     call runs to whatever the provider does, so the field is absent rather
     than invented.
+
+    A stream the provider closed mid-reply is sent again rather than carried
+    on with (`core/llm.py :: StreamCutOff`). It is a dropped connection, not
+    an answer, and it is random: of seven long streams measured against the
+    opencode gateway four were cut and three finished, so the second attempt
+    usually lands. Three attempts, because a gateway that cuts all three is
+    down rather than unlucky, and each one costs the whole phase again.
+
+    Every attempt is a `call_started` and a `cost` of its own, the abandoned
+    ones included: a phase that took four minutes over three connections is
+    four minutes the panel has to account for.
+
+    `prior` is `_asked_again`'s two messages — the model's own last reply as
+    an assistant turn, then the nudge — appended after the first user turn
+    rather than sent as a fresh call, so a retry pays for `system` and `user`
+    once, on the wire, whatever the client does with its own context.
     """
+    for attempt in range(_CUT_OFF_ATTEMPTS):
+        try:
+            return _one_call(llm, events, phase, system, user, prior)
+        except StreamCutOff:
+            if attempt == _CUT_OFF_ATTEMPTS - 1:
+                raise
+
+
+def _one_call(llm, events, phase, system, user, prior=()):
+    """The turn itself, priced whether it answered or the connection went."""
     ceiling = getattr(llm, "timeout", None)
     model = getattr(llm, "model", None)
     started = {"phase": phase, "model": model}
@@ -452,27 +493,28 @@ def _streamed(llm, events, phase, system, user):
     events.emit(CALL_STARTED, **started)
 
     start = time.time()
-    text, thought = [], False
-    for chunk in llm.stream([{"role": "system", "content": system},
-                             {"role": "user", "content": user}]):
-        if chunk.kind == REASONING:
-            thought = True
-            events.emit(THOUGHT, phase=phase, text=chunk.text)
-        else:
-            text.append(chunk.text)
+    text, reasoning, thought = [], [], False
+    messages = [{"role": "system", "content": system},
+               {"role": "user", "content": user}] + list(prior)
+    try:
+        for chunk in llm.stream(messages):
+            if chunk.kind == REASONING:
+                thought = True
+                reasoning.append(chunk.text)
+                events.emit(THOUGHT, phase=phase, text=chunk.text)
+            else:
+                text.append(chunk.text)
+    finally:
+        spent = getattr(llm, "last_cost", None)
+        paid = {"phase": phase, "seconds": time.time() - start,
+                "model": spent["model"] if spent else model}
+        if spent:
+            paid["usd"] = spent["usd"]
+        events.emit(COST, **paid)
+    return "".join(text), thought, "".join(reasoning)
 
-    spent = getattr(llm, "last_cost", None)
-    paid = {"phase": phase, "seconds": time.time() - start,
-            "model": spent["model"] if spent else model}
-    if spent:
-        paid["usd"] = spent["usd"]
-    events.emit(COST, **paid)
-    return "".join(text), thought
 
-
-_IN_THE_SHAPE = (
-    "Your last reply carried no JSON object, so nothing could be done with it. "
-    "You said:\n%s\n\n"
+_ASKED_AGAIN = (
     "Answer again, and put the JSON object this phase takes in the reply. Whatever you "
     "said above is either one of that object's own keys or it is not the answer: a phase "
     "that needs to look something up first asks for the look *in* the JSON, and a phase "
@@ -481,19 +523,25 @@ _IN_THE_SHAPE = (
 )
 
 
-def _in_the_shape_this_time(user, said):
+def _asked_again(body, reasoning):
     """
-    The same request again, with what came back quoted and the shape restated.
+    The retry as a second turn of the same conversation: the model's own last
+    reply, handed back as its own assistant message, then a short nudge asking
+    for the object — not the original `user` sent again with a directive
+    stapled on. The evidence a phase like Design carries is in that original
+    `user`, once, and a retry that resent it was a second prefill of the same
+    tens of thousands of tokens for the sake of one sentence at the end.
 
-    It quotes the model back to itself, because a directive about JSON in
-    general is one the last reply already disobeyed, and it names the one thing
-    that is nearly always what happened: the sentence *is* the answer, in the
-    wrong clothes.
+    `reasoning` stands in for `body` when there is no reply to hand back — a
+    turn spent entirely on thought and nothing after it. There is no promise
+    the tail of a chain of thought reads as an answer; there is a promise it
+    reads as *something*, which a blank assistant turn does not, and which is
+    what a retry needs to be a turn of this conversation rather than a demand
+    into empty air.
     """
-    directive = _IN_THE_SHAPE % (said or "").strip()[:400]
-    if isinstance(user, list):
-        return list(user) + [{"type": "text", "text": directive}]
-    return "%s\n\n%s" % (user, directive)
+    said = (body or reasoning or "").strip() or "(nothing was said)"
+    return [{"role": "assistant", "content": said},
+            {"role": "user", "content": _ASKED_AGAIN}]
 
 
 def _as_image(path):
@@ -601,7 +649,7 @@ def _sheets(attachments):
             if sheet is not None]
 
 
-def _the_evidence(attachments):
+def _the_evidence(attachments, views=None):
     """
     What Design is shown: the sheet cut up and its text layer extracted.
 
@@ -615,6 +663,14 @@ def _the_evidence(attachments):
     An attachment `sheet_reader` cannot open is sent exactly as it was before.
     That is the whole fallback: no PyMuPDF, no Pillow, a format neither of them
     knows, and the phase is back to what it did yesterday.
+
+    `views` narrows a turn that is not the first pass to the overview plus the
+    named views, rather than the whole sheet: a re-read Design is sent back to
+    the sheet for one thing already knows which view that thing is printed in
+    (`_every_callout_accounted_for`), and resending every other view's crops
+    with it pays for pictures the question never mentions. `None`, the first
+    pass's default, keeps everything — a run that has not looked at the sheet
+    yet has nothing to narrow to.
     """
     shown = []
     for path in attachments:
@@ -624,7 +680,7 @@ def _the_evidence(attachments):
             if picture:
                 shown.append(picture)
             continue
-        for piece in sheet_reader.shown(sheet):
+        for piece in _narrowed(sheet_reader.shown(sheet), _wanted_paths(sheet, views)):
             if "say" in piece:
                 shown.append({"type": "text", "text": piece["say"]})
             else:
@@ -634,7 +690,54 @@ def _the_evidence(attachments):
     return shown
 
 
-def design(body, llm, events, attachments=()):
+def _wanted_paths(sheet, views):
+    """
+    The picture paths a narrowed turn keeps: the sheet overview, always, and
+    the whole/crop pictures of the named `views` — or `None`, meaning every
+    picture, when `views` itself is `None`.
+
+    Read off `sheet`'s own fields rather than off `shown()`'s prose, so this
+    does not depend on how a view is announced, only on which picture belongs
+    to it — `sheet_reader.shown(sheet)`'s signature is the only promise this
+    makes use of.
+    """
+    if views is None:
+        return None
+    wanted = set(views)
+    paths = {sheet.overview}
+    paths.update(sheet.overviews or ())
+    paths.update(whole.path for whole in sheet.wholes if whole.name in wanted)
+    paths.update(crop.path for crop in sheet.crops
+                 if crop.name.split(", part ")[0] in wanted)
+    return paths
+
+
+def _narrowed(told, paths):
+    """
+    *told* kept down to `paths` — or all of it, when `paths` is `None`.
+
+    A `say` that introduces a picture is kept exactly when that picture is; a
+    `say` with no picture after it is one of the sheet-wide lists (the printed
+    callouts, the leaders, the notes) and is dropped on a narrowed turn along
+    with the pictures — what a narrowed turn asks about has already named the
+    callout it wants, in the question, so the sheet's own account of every
+    callout is not needed again to answer it.
+    """
+    if paths is None:
+        return told
+    kept = []
+    for index, piece in enumerate(told):
+        if "show" in piece:
+            if piece["show"] in paths:
+                kept.append(piece)
+            continue
+        following = told[index + 1] if index + 1 < len(told) else None
+        if following is not None and "show" in following and following["show"] in paths:
+            kept.append(piece)
+    return kept
+
+
+def design(body, llm, events, attachments=(), views=None):
     """
     One Design turn: what it adds to the part, and what it needs a person for.
 
@@ -657,14 +760,29 @@ def design(body, llm, events, attachments=()):
     narrows what is described, because what the drawing prints is on the part
     whether the run was asked about it or not.
 
+    `views` is `_the_evidence`'s own narrowing, passed through rather than
+    applied here: this is where the evidence and the body meet, not where
+    either is decided.
+
+    The evidence goes out first and the body — the one part of the request
+    that changes turn to turn — last, so the evidence is a stable prefix
+    rather than the tail of a message that starts differently every time. On
+    the one route measured to honour it (`core/llm.py :: cache_control_supported`)
+    its last block carries `cache_control`, so a run's second and later Design
+    turns read the prefix from cache instead of paying to send it again; on
+    every other route the block carries an extra key the provider was never
+    asked about and nothing here relies on it doing anything with it.
+
     Hands back what to merge and what Design wants asked. A reply that is not a
     model grows the part by nothing, which is the same case as a sheet that does
     not answer: the run carries on with what it already had rather than losing
     it, the way an acceptance list nobody wrote is not fatal either.
     """
+    evidence = _the_evidence(attachments, views)
+    if evidence and cache_control_supported(getattr(llm, "model", None)):
+        evidence = evidence[:-1] + [dict(evidence[-1], cache_control={"type": "ephemeral"})]
     reply = _ask(llm, events, DESIGN_PHASE, prompt(DESIGN_PHASE),
-                 [{"type": "text", "text": json.dumps(body, indent=2, default=str)}]
-                 + _the_evidence(attachments))
+                 evidence + [{"type": "text", "text": json.dumps(body, indent=2, default=str)}])
     the_part = reply.get("design")
     return (the_part if isinstance(the_part, dict) else {},
             str(reply.get("question") or "").strip())
@@ -979,11 +1097,20 @@ class Written:
     `unbuildable` is why a Step was left out, from a reply that wrote code for
     the others. A complaint that arrives beside working code is about that Step
     and no more, and it is the only thing that lets Plan write it differently.
+
+    `said` is what a reply that left a Step without code and without a reason
+    carried instead, rendered by `_said`. It is set whenever a reply could
+    leave a Step uncovered — a reply that numbered some Steps but not all, and
+    the empty reply at the end of a turn that spent its looks — because from
+    here that is the only account of what the model answered: a Step with no
+    code and no `said` is a run that spent a provider call and kept nothing
+    of it.
     """
 
     steps: dict = field(default_factory=dict)
     obsolete: str = None
     unbuildable: str = None
+    said: str = None
 
     def for_step(self, number) -> ExecuteOutcome:
         return self.steps.get(number) or ExecuteOutcome()
@@ -1088,7 +1215,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         if written:
             return Written(steps=written,
                            unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
-                           if (reply.get("unbuildable") or reply.get("obsolete")) else None)
+                           if (reply.get("unbuildable") or reply.get("obsolete")) else None,
+                           said=_said(reply, start))
         if reply.get("obsolete"):
             return Written(obsolete=str(reply["obsolete"]))
         if reply.get("unbuildable"):
@@ -1097,7 +1225,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             break
         looked.append(_look(tools, reply["look"], events, looks))
 
-    return Written()
+    return Written(said=_said(reply, start))
 
 
 _FAILED_THIS_WAY = (
@@ -1105,9 +1233,10 @@ _FAILED_THIS_WAY = (
      "the cut ran the wrong way or missed the solid. It is not the size of the cut "
      "and it is not how the profile is built: the same shape, extruded the other "
      "way, is the whole of the fix. Change the *direction* this time — set "
-     "`Reversed`, set `Type='ThroughAll'` or `Midplane`, or put the sketch on the "
-     "opposite face — and check the sign against the Body's BoundBox before you "
-     "commit to it. Rewriting the same extrusion more legibly will fail "
+     "`Reversed`, set `Type='ThroughAll'` or `SideType='Symmetric'`, or put the "
+     "sketch on the opposite face — and check the sign against the Body's "
+     "BoundBox before you commit to it. Rewriting the same extrusion more "
+     "legibly will fail "
      "identically."),
     ("left a Body in more than one piece",
      "the profiles in one sketch do not meet, so they padded into separate lumps. "
@@ -1182,6 +1311,46 @@ def _written(replied, start):
         written[number if isinstance(number, int) else position] = ExecuteOutcome(
             code=str(entry["code"]), label=str(entry.get("label") or "Copilot Step"))
     return written
+
+
+def _said(reply, start):
+    """
+    A reply that could leave a Step without code, rendered short enough to
+    travel: what it was, not what it wrote.
+
+    Capped at 300 characters. This same string reaches `PREFLIGHT_FAILED`, then
+    `progress["tried"]`, then the handback to Plan, and an Execute reply
+    carries the code for a whole Plan — recording it whole would put that code
+    back into the next request and into the transcript, which is the cost this
+    exists to avoid, not to move.
+
+    Three things, in order: the reply's top-level keys, so a reply that had
+    nothing usable says so rather than rendering empty; for `steps`, which
+    Step numbers it carried and which of those had code, since a Step missing
+    from that second list and not the first is the whole of what a reply that
+    numbered other Steps but not this one did; and, for every other key, its
+    value where that value is a short string — `unbuildable`, `obsolete`, or
+    whatever else a model answered with instead of code — truncated with it.
+    """
+    keys = sorted(reply)
+    parts = ["keys: %s" % ", ".join(keys) if keys else "keys: none"]
+    steps = reply.get("steps")
+    if isinstance(steps, list):
+        carried, coded = [], []
+        for position, entry in enumerate(steps, start=start + 1):
+            if not isinstance(entry, dict):
+                continue
+            number = entry.get("step")
+            number = number if isinstance(number, int) else position
+            carried.append(number)
+            if entry.get("code"):
+                coded.append(number)
+        parts.append("steps carried: %s, with code: %s" % (carried, coded))
+    for key, value in reply.items():
+        if key == "steps" or not isinstance(value, str):
+            continue
+        parts.append("%s: %s" % (key, value))
+    return "; ".join(parts)[:300]
 
 
 def _lookable(tools):
@@ -2459,6 +2628,16 @@ def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
 
     The re-reading stops where it stops finding fewer: a look that changed
     nothing will not change anything.
+
+    Not narrowed to a view the way `_every_callout_accounted_for`'s re-read is
+    (`_the_evidence`'s `views`). That narrowing is sound because
+    `sheet_reader.dimensions` ties a missed callout to the view it is printed
+    in directly; `why` here is quoted out of the model's own prose
+    (`nobody_carries_the_outside`), before `_the_sweep_is_the_sheets` has even
+    put the sheet's own account of itself on the part, and nothing on the path
+    to it names a view with the same certainty. Guessing a view and being wrong
+    would hide the very picture the silhouette is drawn in, which is worse
+    than the pictures this keeps sending — so this keeps sending all of them.
     """
     why = nobody_carries_the_outside(the_part)
     looked = 0
@@ -2538,7 +2717,7 @@ def _every_callout_accounted_for(the_part, intent, attachments, llm, events, bud
         grew, _ = design({"intent": intent,
                           "the_part_as_you_described_it": the_part,
                           "the_question": _look_again_at(missed)},
-                         llm, events, attachments)
+                         llm, events, attachments, views=_views_of(attachments, missed))
         if not grew:
             break
         the_part = merge(the_part, grew)
@@ -2554,6 +2733,31 @@ def _uncited(attachments, the_part):
     for sheet in _sheets(attachments):
         missed.extend(sheet_reader.uncited(sheet, the_part))
     return missed
+
+
+def _views_of(attachments, missed):
+    """
+    The views `missed`'s callouts are printed in, or `None` where that is not
+    knowable — a callout `sheet_reader.dimensions` cannot place on a named
+    view, or one this sweep does not find at all, most often because it is
+    printed on a second attached sheet the loop over `_sheets` has not reached
+    yet when it does.
+
+    A miss here costs the part — the very failure `_every_callout_accounted_for`
+    exists to catch — so `None` keeps the whole sheet in play rather than
+    narrow to a guess: a false alarm on the narrowing costs one extra view's
+    worth of pictures, and a wrong narrowing hides the one the model needs.
+    """
+    wanted = set(missed)
+    views = set()
+    for sheet in _sheets(attachments):
+        for entry in sheet_reader.dimensions(sheet):
+            if entry.text in wanted:
+                wanted.discard(entry.text)
+                if not entry.seen_in:
+                    return None
+                views.add(entry.seen_in)
+    return None if wanted or not views else views
 
 
 def _look_again_at(missed):
@@ -3147,7 +3351,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             events.emit(STEP_STARTED, index=index + 1, total=len(steps), description=step)
 
         outcome = written.for_step(index + 1)
-        if not outcome.code and written.unbuildable and not attempts:
+        if not outcome.code and written.unbuildable:
             if not _changes_the_shape(step):
                 cited = list(cites[index]) if index < len(cites) else []
                 unbuilt.append({"step": step, "why": written.unbuildable,
@@ -3169,9 +3373,11 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             result = tools.call("apply_step", arguments)
             events.emit(TOOL_RESULT, name="apply_step", result=result)
         else:
-            result = {"status": "failed", "traceback":
-                      "You replied with no code for Step %d. Write it, and every Step "
-                      "after it." % (index + 1)}
+            no_code = ("You replied with no code for Step %d. Write it, and every Step "
+                      "after it." % (index + 1))
+            if written.said:
+                no_code = "%s\n%s" % (no_code, written.said)
+            result = {"status": "failed", "traceback": no_code}
 
         if result.get("status") == "applied":
             progress["applied"] += 1
