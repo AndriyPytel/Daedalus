@@ -51,7 +51,7 @@ from core.events import (
     TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream,
 )
 from core import part_file, preflight, sheet_reader, sketch_check
-from core.freecad_tools import TRAPS
+from core import traps as trap_store
 from core.llm import REASONING, ProviderRefused, StreamCutOff, cache_control_supported
 from core.tools import ToolError
 
@@ -381,11 +381,14 @@ def prompt(phase):
 
     The traps are the one thing not in the file. They are knowledge about a
     specific FreeCAD build, not copy to tune, so they stay in code and land at
-    the placeholder the file chooses.
+    the placeholder the file chooses — the seed TRAPS plus whatever proposals
+    `core/traps.py` has on record as approved (FCC-184). A pending proposal is
+    not in this list; that is what "pending" means.
     """
     with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
         body = handle.read().strip()
-    return body.replace(_TRAPS_PLACEHOLDER, "\n".join("- " + trap for trap in TRAPS))
+    return body.replace(_TRAPS_PLACEHOLDER,
+                         "\n".join("- " + trap for trap in trap_store.active_traps()))
 
 
 def _ask(llm, events, phase, system, user):
