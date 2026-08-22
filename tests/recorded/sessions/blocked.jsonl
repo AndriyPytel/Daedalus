@@ -1,0 +1,5 @@
+{"at": 1786973942.486121, "data": {"text": "Build this bracket"}, "kind": "intent"}
+{"at": 1786973942.486253, "data": {"files": [{"name": "bracket.png", "path": "/private/var/folders/_1/zdwq9btn2tqcjbf38kms2n1c0000gp/T/pytest-of-apytel/pytest-911/test_send_hands_the_attachment0/bracket.png"}]}, "kind": "attached"}
+{"at": 1786973946.981218, "data": {"phase": "design", "text": "thinking\u2026 ~50 tokens\n"}, "kind": "thought"}
+{"at": 1786973951.139123, "data": {"model": "opus", "phase": "design", "usd": 0.014854499999999998}, "kind": "cost"}
+{"at": 1786973951.139498, "data": {"provider_said": "", "reason": "Stopped by you. Everything applied so far is still in the Document; undo it Step by Step if you want it gone.", "tried": []}, "kind": "blocked"}
