@@ -20,12 +20,19 @@ overridden on recompute."). This is intentionally strict rather than fuzzy:
 a paraphrase that shares no prefix is treated as a new proposal, on the
 theory that a missed duplicate costs one approval click and a false "already
 exists" costs a lost trap.
+
+
+Given an `EventStream`, every proposal, approval and decline emits the
+matching `core/events.py` kind, so FCC-191's measurement of a Session log can
+report a trap-proposal rate: the store itself stays optional, since FCC-184's
+own tests build one bare, with no stream at all.
 """
 import json
 import os
 import time
 import uuid
 
+from core.events import TRAP_APPROVED, TRAP_DECLINED, TRAP_PROPOSED
 from core.freecad_tools import TRAPS
 
 PENDING = "pending"
@@ -105,9 +112,16 @@ class TrapStore:
     decision.
     """
 
-    def __init__(self, storage=None):
+    def __init__(self, storage=None, events=None):
         self._storage = storage if storage is not None else TrapStorage()
+        self._events = events
         self._proposals = self._storage.read()
+
+    def _emit(self, kind, proposal, **extra):
+        if self._events is None:
+            return
+        self._events.emit(kind, id=proposal["id"], description=proposal["description"],
+                          phase=proposal["phase"], **extra)
 
     def seed_traps(self) -> list:
         return list(TRAPS)
@@ -134,6 +148,7 @@ class TrapStore:
         }
         self._proposals.append(proposal)
         self._storage.write(self._proposals)
+        self._emit(TRAP_PROPOSED, proposal, evidence=evidence)
         return dict(proposal)
 
     def approve(self, proposal_id) -> dict:
@@ -147,6 +162,8 @@ class TrapStore:
             if proposal["id"] == proposal_id:
                 proposal["status"] = status
                 self._storage.write(self._proposals)
+                kind = TRAP_APPROVED if status == APPROVED else TRAP_DECLINED
+                self._emit(kind, proposal)
                 return dict(proposal)
         raise KeyError(proposal_id)
 

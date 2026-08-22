@@ -108,3 +108,35 @@ def test_compare_with_no_runs_on_one_side_is_zero_not_a_crash():
 
     assert "n=0" in table
     assert "n=1" in table
+
+
+def test_a_run_reports_the_traps_it_proposed_approved_and_declined():
+    """Three proposed, one of them approved and a different one declined."""
+    result = measure(_fixture("traps.jsonl"))
+
+    assert len(result.traps_proposed) == 3
+    assert "A Sweep along a datum line loses its Twist setting on recompute" \
+        in result.traps_proposed
+    assert result.traps_approved == (
+        "A Sweep along a datum line loses its Twist setting on recompute",
+    )
+    assert result.traps_declined == (
+        "A Draft Mirror across a non-planar face silently produces no shape",
+    )
+
+
+def test_a_run_with_no_trap_events_reports_empty_tuples():
+    result = measure(_fixture("reached_verdict.jsonl"))
+
+    assert result.traps_proposed == ()
+    assert result.traps_approved == ()
+    assert result.traps_declined == ()
+
+
+def test_compare_reports_the_trap_proposal_rate():
+    table = compare(
+        [_fixture("reached_verdict.jsonl")], [_fixture("traps.jsonl")],
+        baseline_label="main", experiment_label="rlm-version",
+    )
+
+    assert _cells(table, "trap proposal rate") == ["0.0%", "100.0%"]

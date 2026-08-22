@@ -1,6 +1,7 @@
 """
 The trap store — seed traps, proposals, and the propose-and-approve gate
-`prompt(phase)` reads from (FCC-184).
+`prompt(phase)` reads from (FCC-184). FCC-191 makes each proposal, approval
+and decline visible on an `EventStream`, when the store is built with one.
 """
 import json
 
@@ -8,6 +9,7 @@ import pytest
 
 from core import loop as loop_module
 from core import traps as trap_store
+from core.events import TRAP_APPROVED, TRAP_DECLINED, TRAP_PROPOSED, EventStream
 from core.freecad_tools import TRAPS
 from core.traps import DuplicateTrap, TrapStorage, TrapStore
 
@@ -96,3 +98,73 @@ def test_the_store_survives_a_round_trip_through_disk(tmp_path):
 
     assert proposal["description"] in reloaded.active_traps()
     assert reloaded.pending_proposals() == []
+
+
+def test_a_store_built_with_no_stream_emits_nothing(store):
+    proposal = store.propose_trap(
+        "A Sweep along a datum line loses its Twist setting on recompute",
+        evidence="Step 4: Sweep feature Touched after Twist was set to 90 deg",
+        phase="execute",
+    )
+    store.approve(proposal["id"])
+
+
+def test_a_proposal_emits_trap_proposed_with_its_evidence_and_phase(tmp_path):
+    events = EventStream()
+    store = TrapStore(storage=TrapStorage(path=str(tmp_path / "trap_proposals.json")),
+                      events=events)
+
+    proposal = store.propose_trap(
+        "A Sweep along a datum line loses its Twist setting on recompute",
+        evidence="Step 4: Sweep feature Touched after Twist was set to 90 deg",
+        phase="execute",
+    )
+
+    [event] = events.of(TRAP_PROPOSED)
+    assert event.data["id"] == proposal["id"]
+    assert event.data["description"] == proposal["description"]
+    assert event.data["evidence"] == proposal["evidence"]
+    assert event.data["phase"] == "execute"
+
+
+def test_an_approval_emits_trap_approved_and_a_decline_emits_trap_declined(tmp_path):
+    events = EventStream()
+    store = TrapStore(storage=TrapStorage(path=str(tmp_path / "trap_proposals.json")),
+                      events=events)
+
+    approved = store.propose_trap(
+        "A Sweep along a datum line loses its Twist setting on recompute",
+        evidence="Step 4: Sweep feature Touched after Twist was set to 90 deg",
+        phase="execute",
+    )
+    declined = store.propose_trap(
+        "A Draft Mirror across a non-planar face silently produces no shape",
+        evidence="Step 6: Mirror feature Valid but Shape.isNull() is True",
+        phase="review",
+    )
+
+    store.approve(approved["id"])
+    store.decline(declined["id"])
+
+    assert len(events.of(TRAP_PROPOSED)) == 2
+    [approval] = events.of(TRAP_APPROVED)
+    assert approval.data["id"] == approved["id"]
+    assert approval.data["description"] == approved["description"]
+    [decline] = events.of(TRAP_DECLINED)
+    assert decline.data["id"] == declined["id"]
+    assert decline.data["description"] == declined["description"]
+
+
+def test_a_duplicate_proposal_is_refused_before_anything_is_emitted(tmp_path):
+    events = EventStream()
+    store = TrapStore(storage=TrapStorage(path=str(tmp_path / "trap_proposals.json")),
+                      events=events)
+
+    with pytest.raises(DuplicateTrap):
+        store.propose_trap(
+            "Sketch attachment goes through AttachmentSupport + MapMode, not Placement",
+            evidence="repeated across three runs",
+            phase="design",
+        )
+
+    assert len(events) == 0
