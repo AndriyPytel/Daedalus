@@ -96,7 +96,7 @@ class Namespace:
         return buffer.getvalue()
 
 
-def ask(llm, events, phase, system, user, tools, budgets):
+def ask(llm, events, phase, system, user, tools, budgets, namespace=None):
     """
     One phase's turn, the way `_ask` gives it, but able to spend bounded turns
     finding things out first.
@@ -106,6 +106,15 @@ def ask(llm, events, phase, system, user, tools, budgets):
     second, silent one in this function would only hide a caller that forgot
     to think about it. A caller that means the default says so, with
     `Budgets()` of its own.
+
+    `namespace` is optional so that one call still gets a fresh `Namespace`
+    the way it always has. A caller that holds several calls of one phase
+    invocation together — Assertion across its retries (FCC-189) — passes the
+    same `Namespace` into each, so a name a `run` action bound on one call is
+    still bound on the next: the persistence FCC-183 built stays inside one
+    call otherwise, and a phase that measures the same result more than once
+    a run would have no way to keep what the first measurement already
+    worked out.
 
     `budgets.agent_turns` bounds the whole conversation, this call's own turn
     and every action it takes together — without it a model that keeps
@@ -135,7 +144,7 @@ def ask(llm, events, phase, system, user, tools, budgets):
     """
     from core.loop import PhaseError, _as_json, _asked_again, _object_of, _streamed
 
-    namespace = Namespace()
+    namespace = namespace if namespace is not None else Namespace()
     prior = []
     looks_taken = 0
     last_action = "sent its first turn"

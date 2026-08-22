@@ -1908,9 +1908,20 @@ assert all(abs(a - b) <= %s for a, b in zip(built, asked)), (
 
 
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
-              after_a_retry=()):
+              after_a_retry=(), agentic=False):
     """
     Write checks for the acceptance list and run them against the result.
+
+    `agentic` is the same seam Plan already has onto `core/agent.py :: ask`
+    (FCC-183, FCC-189): off by default, so every existing call still goes
+    through `_ask` and asks the model exactly once per attempt. Turned on,
+    one `Namespace` is opened before the retry loop and threaded through
+    every attempt's call to `ask` rather than one made fresh per call, so a
+    name a `run` action binds while writing the first attempt's checks is
+    still bound while writing the second's — the retry that used to start
+    over from nothing can now build on what the failed attempt already
+    worked out. `tools` and `budgets` are only read for this when `agentic`
+    is set, the same way Plan's are.
 
     A fourth context, not Review and not Preflight. Review judges and is
     deliberately not told how the result was produced (ADR-0003), so it cannot
@@ -1964,6 +1975,9 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                         uncovered=[], traceback=traceback, unmet=unmet)
             return Checked(failed=True, traceback=traceback, unmet=unmet)
 
+    from core.agent import Namespace, ask as _agent_ask
+
+    namespace = Namespace() if agentic else None
     attempts = []
     for _ in range(budgets.attempts_per_step):
         if cancelled():
@@ -1971,8 +1985,13 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         if attempts:
             request["your_failed_attempts_at_the_checks"] = list(attempts)
 
-        reply = _ask(llm, events, ASSERTION_PHASE, prompt(ASSERTION_PHASE),
-                     json.dumps(request, indent=2, default=str))
+        if agentic:
+            reply = _agent_ask(llm, events, ASSERTION_PHASE, prompt(ASSERTION_PHASE),
+                               json.dumps(request, indent=2, default=str), tools, budgets,
+                               namespace=namespace)
+        else:
+            reply = _ask(llm, events, ASSERTION_PHASE, prompt(ASSERTION_PHASE),
+                         json.dumps(request, indent=2, default=str))
         code = str(reply.get("code") or "").strip()
         uncovered = [str(entry) for entry in (reply.get("uncovered") or ())]
         if not code:
