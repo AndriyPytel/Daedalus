@@ -98,6 +98,13 @@ class Budgets:
     reach the last Step of one: a recorded run spent both on the types it built
     with and was left declaring the eighth of eight Steps unbuildable for want
     of a material uuid one free call would have given it (FCC-146).
+
+    `agent_turns` bounds `core/agent.py :: ask`, the conversation a phase may
+    hold with itself before it has to answer — every look and every run of
+    code together, not `looks_per_turn` again. Ten is `looks_per_turn` plus
+    room for the code a look's answer gets spent on and the turn that finally
+    answers, so a conversation that spends its whole look budget still has
+    turns left to act on what it found (FCC-183).
     """
 
     attempts_per_step: int = 3
@@ -105,6 +112,7 @@ class Budgets:
     revisions: int = 3
     looks_per_turn: int = 6
     rereads: int = 3
+    agent_turns: int = 10
 
 
 def revisions_ceiling(budgets, steps) -> int:
@@ -1052,9 +1060,19 @@ class Plan:
 
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered=(),
-         revising=(), looking=(), looked=()):
+         revising=(), looking=(), looked=(), tools=None, budgets=None, agentic=False):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
+
+    `agentic` is the seam onto `core/agent.py :: ask` (FCC-183): off by
+    default, so every existing call still goes through `_ask` unchanged and
+    is asked exactly once. Turned on, Plan may spend a bounded turn looking
+    something up or running code before it answers, instead of the question
+    it would otherwise hand back for the caller-level loop
+    (`_plan_once_it_knows_enough`) to settle a whole `_ask` later. `tools`
+    and `budgets` are only read when `agentic` is set; a caller that turns it
+    on without them is a caller that forgot, so `core/agent.py :: ask` is the
+    one that says so, not a silent no-op here.
 
     Plan never sees the picture. It is handed the part Design describes instead,
     under one key and in the words the user approved at the Plan Gate, and told
@@ -1107,8 +1125,13 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
     if looked:
         request["what_the_tools_say"] = list(looked)
 
-    reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
-                 json.dumps(request, indent=2, default=str))
+    if agentic:
+        from core.agent import ask as _agent_ask
+        reply = _agent_ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
+                           json.dumps(request, indent=2, default=str), tools, budgets)
+    else:
+        reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
+                     json.dumps(request, indent=2, default=str))
     steps, satisfies, cites = _steps_of(reply.get("steps", []))
 
     look = reply.get("look")
