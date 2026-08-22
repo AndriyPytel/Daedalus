@@ -19,7 +19,8 @@ from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, KINDS, OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, UNBUILT, Event,
+    TOOL_CALL, TOOL_RESULT, TRAP_APPROVED, TRAP_DECLINED, TRAP_PROPOSED,
+    UNBUILT, Event,
 )
 from core.narrate import Narration, narrate
 
@@ -50,6 +51,14 @@ SAMPLES = {
     CALL_STARTED: {"phase": "plan", "model": "sonnet", "ceiling": 900.0},
     COST: {"phase": "design", "usd": 0.0049255, "model": "sonnet", "seconds": 12.3},
     ERROR: {"message": "ValueError: no key"},
+    TRAP_PROPOSED: {"id": "620ede8b", "description": "A Sweep along a datum line "
+                    "loses its Twist setting on recompute",
+                    "evidence": "Step 4: Sweep feature Touched after Twist was set "
+                    "to 90 deg", "phase": "execute"},
+    TRAP_APPROVED: {"id": "620ede8b", "description": "A Sweep along a datum line "
+                    "loses its Twist setting on recompute", "phase": "execute"},
+    TRAP_DECLINED: {"id": "60eea80f", "description": "A Draft Mirror across a "
+                    "non-planar face silently produces no shape", "phase": "review"},
 }
 
 
@@ -69,6 +78,15 @@ def test_what_a_call_cost_is_not_narrated():
     every phase of a run the user is not being charged for.
     """
     assert narrate(an_event(COST)) == Narration()
+
+
+@pytest.mark.parametrize("kind", [TRAP_PROPOSED, TRAP_APPROVED, TRAP_DECLINED])
+def test_a_trap_event_is_written_and_not_narrated(kind):
+    """
+    A proposal is for the human reviewing it and the ticket comment FCC-191
+    reads the counts from, not for the transcript of the run that raised it.
+    """
+    assert narrate(an_event(kind)) == Narration()
 
 
 @pytest.mark.parametrize("kind", [PLAN, TOOL_CALL, THOUGHT])

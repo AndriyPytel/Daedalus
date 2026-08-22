@@ -8,6 +8,13 @@ provider calls cost, and how long the run took wall clock. Every one of those
 reads straight off the event stream `core/events.py :: replay` already
 parses, so this module has no FreeCAD import and runs anywhere the Python is.
 
+FCC-191 adds what `core/traps.py` proposed, approved and declined on this
+run: the descriptions, not just a count, since "which traps" is the question
+a ticket comment needs answered, not only "how many". A `TrapStore` built
+with no `EventStream` (FCC-184's own tests do this) leaves a Session log with
+none of these three kinds, so a run measured from that log reports empty
+tuples rather than a crash.
+
 A run can carry more than one `review_verdict` (Review fails a Step, Plan
 revises, Review runs again) or more than one `blocked` in principle, so both
 read the last of their kind — the one that stands once the run stopped
@@ -21,11 +28,11 @@ documents that a subscription route emits `cost` with no `usd` at all, so a
 run entirely on a subscription costs 0.0 here, not "unknown".
 """
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from core.events import (
     APPLIED, BLOCKED, COST, PLAN_REVISED, PREFLIGHT_FAILED, REVIEW_VERDICT,
-    STEP_STARTED, replay,
+    STEP_STARTED, TRAP_APPROVED, TRAP_DECLINED, TRAP_PROPOSED, replay,
 )
 
 
@@ -40,6 +47,9 @@ class Measurement:
     cost_usd: float
     wall_clock_seconds: float
     truncated: bool
+    traps_proposed: Tuple[str, ...]
+    traps_approved: Tuple[str, ...]
+    traps_declined: Tuple[str, ...]
 
 
 def measure(path: str) -> Measurement:
@@ -56,6 +66,12 @@ def measure(path: str) -> Measurement:
         cost_usd=sum(event.data.get("usd") or 0 for event in events if event.kind == COST),
         wall_clock_seconds=(events[-1].at - events[0].at) if len(events) >= 2 else 0.0,
         truncated=truncated,
+        traps_proposed=tuple(event.data.get("description") for event in events
+                             if event.kind == TRAP_PROPOSED),
+        traps_approved=tuple(event.data.get("description") for event in events
+                             if event.kind == TRAP_APPROVED),
+        traps_declined=tuple(event.data.get("description") for event in events
+                             if event.kind == TRAP_DECLINED),
     )
 
 
@@ -80,6 +96,7 @@ _ROWS = (
     ("avg Preflight failures", lambda ms: _average(ms, lambda m: m.preflight_failures), "{:.1f}"),
     ("avg cost (USD)", lambda ms: _average(ms, lambda m: m.cost_usd), "{:.4f}"),
     ("avg run time (s)", lambda ms: _average(ms, lambda m: m.wall_clock_seconds), "{:.1f}"),
+    ("trap proposal rate", lambda ms: _rate(ms, lambda m: len(m.traps_proposed) > 0), "{:.1%}"),
 )
 
 

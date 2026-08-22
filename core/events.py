@@ -37,6 +37,16 @@ through a key, and a scripted run emits no price at all. The panel accumulates
 the cost into one running total for the run rather than narrating each call: a
 hundred Design calls would otherwise be a hundred lines nobody reads
 (`ui/copilot_panel.py :: on_event`).
+
+`trap_proposed`, `trap_approved` and `trap_declined` are `core/traps.py`'s
+`TrapStore` talking, carrying the proposal's `id`, `description`, `phase` and
+(on `trap_proposed` only) `evidence`: a proposal a human never acts on is
+still a proposal, so it leaves `trap_proposed` on its own, and the approval or
+decline that eventually resolves it is a second, separate event rather than a
+status rewritten in place, the same way `plan` and `plan_revised` are two
+events rather than one plan mutated. A `TrapStore` built with no stream, the
+way FCC-184's own tests build it, emits nothing: the stream is optional, not
+required.
 """
 import json
 import time
@@ -66,12 +76,15 @@ BLOCKED = "blocked"
 CALL_STARTED = "call_started"
 COST = "cost"
 ERROR = "error"
+TRAP_PROPOSED = "trap_proposed"
+TRAP_APPROVED = "trap_approved"
+TRAP_DECLINED = "trap_declined"
 
 KINDS = (
     INTENT, THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
     GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED,
     ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, BLOCKED, CALL_STARTED, COST,
-    ERROR,
+    ERROR, TRAP_PROPOSED, TRAP_APPROVED, TRAP_DECLINED,
 )
 
 

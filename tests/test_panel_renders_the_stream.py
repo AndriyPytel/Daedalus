@@ -10,9 +10,9 @@ and the only thing the panel asks of the loop is to start.
 import ast
 import os
 
-from core.events import DESIGN, KINDS
+from core.events import DESIGN, KINDS, TRAP_APPROVED, TRAP_DECLINED, TRAP_PROPOSED
 
-WRITTEN_NOT_SHOWN = {DESIGN}
+WRITTEN_NOT_SHOWN = {DESIGN, TRAP_PROPOSED, TRAP_APPROVED, TRAP_DECLINED}
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PANEL = os.path.join(ROOT, "ui", "copilot_panel.py")
@@ -38,11 +38,13 @@ def test_every_event_kind_is_shown():
     checked by running it, or rendered structurally by the panel because it is
     not a sentence — which is still a switch, and still parsed.
 
-    `WRITTEN_NOT_SHOWN` is the third way and has one member: the description is
-    a document of its own, said by the path the `part` event carries rather
-    than by the paragraph itself. Naming it here is what keeps the rule for
-    every other kind. `cost` is in the structural set instead: `on_event`
+    `WRITTEN_NOT_SHOWN` is the third way. The description is a document of its
+    own, said by the path the `part` event carries rather than by the
+    paragraph itself. `cost` is in the structural set instead: `on_event`
     accumulates it into one running total rather than narrating each call.
+    The three trap kinds are FCC-191's ticket-comment measurement talking to
+    the Session log, not the run's own transcript, so the panel has nothing
+    to show for them yet.
     """
     from core.narrate import Narration, narrate
 
