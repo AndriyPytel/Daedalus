@@ -116,12 +116,22 @@ def test_a_step_that_exhausts_its_attempts_hands_back_to_plan():
 
 
 def test_the_wrapper_off_never_touches_core_agent_ask(monkeypatch):
+    """
+    Execute with the wrapper off must not reach the agent seam.
+
+    Plan reaches it on every run of its own accord, so refusing the whole
+    module would only re-assert FCC-186. The claim this ticket owns is
+    narrower: no call arrives naming the Execute phase.
+    """
     from core import agent as agent_module
 
-    def refuses(*args, **kwargs):
-        raise AssertionError("agentic=False must never call core.agent.ask")
+    real = agent_module.ask
 
-    monkeypatch.setattr(agent_module, "ask", refuses)
+    def watched(llm, events, phase, *args, **kwargs):
+        assert phase != loop.EXECUTE_PHASE, "agentic=False must never call core.agent.ask"
+        return real(llm, events, phase, *args, **kwargs)
+
+    monkeypatch.setattr(agent_module, "ask", watched)
 
     result, events, _, tools = drive([
         plan_reply("30mm cube", "10mm hole"),

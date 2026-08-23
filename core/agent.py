@@ -96,7 +96,7 @@ class Namespace:
         return buffer.getvalue()
 
 
-def ask(llm, events, phase, system, user, tools, budgets, namespace=None):
+def ask(llm, events, phase, system, user, tools, budgets, namespace=None, looks_taken=0):
     """
     One phase's turn, the way `_ask` gives it, but able to spend bounded turns
     finding things out first.
@@ -128,7 +128,10 @@ def ask(llm, events, phase, system, user, tools, budgets, namespace=None):
     spend a look against (`core/loop.py`), read here rather than duplicated:
     a look through the agent is still a look, and a Tool call taken through
     an action and one taken through the caller-level `_look` loop draw on one
-    allowance, not two.
+    allowance, not two. `looks_taken` is where that allowance already stands
+    when this call opens, so a caller mid-way through spending it
+    (`core/loop.py :: _plan_once_it_knows_enough`) hands in the remainder
+    rather than this call starting from a fresh six every turn (FCC-186).
 
     A reply carrying no object is asked again once, in the middle of one turn
     of this conversation rather than instead of it — exactly what `_ask`
@@ -146,7 +149,6 @@ def ask(llm, events, phase, system, user, tools, budgets, namespace=None):
 
     namespace = namespace if namespace is not None else Namespace()
     prior = []
-    looks_taken = 0
     last_action = "sent its first turn"
 
     for _ in range(budgets.agent_turns):
