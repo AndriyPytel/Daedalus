@@ -1701,6 +1701,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._total_usd += data.get("usd", 0.0)
             self._last_event_time = event.at
             self._update_usage_total()
+            self._the_thinking_stops()
             return
 
         if event.kind == ev.THOUGHT:
@@ -1732,7 +1733,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             return
 
         if event.kind == ev.STEP_STARTED:
-            self._thought = None
+            self._the_thinking_stops()
             self._current_step = data["index"]
             if self._plan_widget:
                 self._plan_widget.highlight(data["index"])
@@ -1865,6 +1866,26 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if narration.status:
             self._queue_widget.now(narration.status)
 
+    def _the_thinking_stops(self):
+        """
+        The row a phase was thinking in, left as a record rather than a clock.
+
+        Every route out of a thinking row goes through here, because a row let
+        go of without `stop_pulsing` keeps a `QTimer` for the life of the
+        panel, and two routes let go of one: Design labels its phase per page
+        of the drawing, so the row is replaced mid-run, and `STEP_STARTED`
+        drops the reference. Such a row read 35:05 in a 34-minute run — past
+        the header's own total, which counts `event.at` where the row counts
+        the wall.
+
+        `COST` is the end of a call, and it is the event that stops the count:
+        the artefacts rendered after it — a Plan, a call, the document — are
+        the loop's own work, not the model's.
+        """
+        if self._thought:
+            self._thought.stop_pulsing()
+        self._thought = None
+
     def _render_thought(self, phase, text):
         """
         Reasoning appends to one accordion per phase turn, as it forms.
@@ -1880,6 +1901,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         opens onto nothing is worse than one that says it has nothing.
         """
         if self._thought is None or self._thought_phase != phase:
+            self._the_thinking_stops()
             self._thought = AccordionWidget("Thinking (%s)…" % phase)
             self._thought_phase = phase
             self._thought.mark_as_reasoning()
