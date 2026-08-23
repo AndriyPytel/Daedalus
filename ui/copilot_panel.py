@@ -2386,6 +2386,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
         `SHUTDOWN_GRACE_MS` is what a run in flight is given to notice it was
         stopped before the thread is ended from outside, long enough for a
         request already sent to unwind.
+
+        A `_TitleThread` in `self._title_threads` has no stop flag to set —
+        `core.session_title.generate` is one blocking call, not a loop — so
+        the grace period here is the only chance it gets to finish on its
+        own before this panel stops tracking it.
         """
         FreeCAD.removeDocumentObserver(self)
         for bundle in self._workers.values():
@@ -2398,6 +2403,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
                 if not bundle.thread.wait(self.SHUTDOWN_GRACE_MS):
                     bundle.thread.terminate()
                     bundle.thread.wait(1000)
+        for thread in list(self._title_threads):
+            if thread.isRunning():
+                if not thread.wait(self.SHUTDOWN_GRACE_MS):
+                    thread.terminate()
+                    thread.wait(1000)
 
     def slotDeletedDocument(self, document):
         """
