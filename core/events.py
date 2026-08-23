@@ -47,6 +47,16 @@ status rewritten in place, the same way `plan` and `plan_revised` are two
 events rather than one plan mutated. A `TrapStore` built with no stream, the
 way FCC-184's own tests build it, emits nothing: the stream is optional, not
 required.
+
+`consult` and `consult_response` are the one edge from Execute to Plan
+(FCC-168, FCC-188): a Preflight failure with attempts still to spend, and the
+Step's `promise` handed to Plan unchanged along with `failure_reason`, so the
+advice that comes back on `consult_response` is judged the same way a plain
+retry already is — Preflight measures the same `promise` next attempt, so
+advice that changes it fails there and the existing hand-back edge fires,
+never a second gate of its own. Neither `tool_call` nor `thought` carries
+`step_number`/`promise`/`failure_reason` as a matter of shape, which is why
+this is two kinds of its own rather than a repurposing of either.
 """
 import json
 import time
@@ -79,12 +89,14 @@ ERROR = "error"
 TRAP_PROPOSED = "trap_proposed"
 TRAP_APPROVED = "trap_approved"
 TRAP_DECLINED = "trap_declined"
+CONSULT = "consult"
+CONSULT_RESPONSE = "consult_response"
 
 KINDS = (
     INTENT, THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
     GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED,
     ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, BLOCKED, CALL_STARTED, COST,
-    ERROR, TRAP_PROPOSED, TRAP_APPROVED, TRAP_DECLINED,
+    ERROR, TRAP_PROPOSED, TRAP_APPROVED, TRAP_DECLINED, CONSULT, CONSULT_RESPONSE,
 )
 
 

@@ -10,9 +10,13 @@ and the only thing the panel asks of the loop is to start.
 import ast
 import os
 
-from core.events import DESIGN, KINDS, TRAP_APPROVED, TRAP_DECLINED, TRAP_PROPOSED
+from core.events import (
+    CONSULT, CONSULT_RESPONSE, DESIGN, KINDS, TRAP_APPROVED, TRAP_DECLINED,
+    TRAP_PROPOSED,
+)
 
-WRITTEN_NOT_SHOWN = {DESIGN, TRAP_PROPOSED, TRAP_APPROVED, TRAP_DECLINED}
+WRITTEN_NOT_SHOWN = {DESIGN, TRAP_PROPOSED, TRAP_APPROVED, TRAP_DECLINED,
+                     CONSULT, CONSULT_RESPONSE}
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PANEL = os.path.join(ROOT, "ui", "copilot_panel.py")
@@ -44,7 +48,10 @@ def test_every_event_kind_is_shown():
     accumulates it into one running total rather than narrating each call.
     The three trap kinds are FCC-191's ticket-comment measurement talking to
     the Session log, not the run's own transcript, so the panel has nothing
-    to show for them yet.
+    to show for them yet. `consult` and `consult_response` are FCC-188's:
+    on the event stream from the day they exist (ADR-0003), rendering them as
+    the sentence a person reads is left as a Level-2 check on the ticket that
+    added them.
     """
     from core.narrate import Narration, narrate
 
