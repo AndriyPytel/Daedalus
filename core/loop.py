@@ -68,6 +68,26 @@ NOT_A_LOOK = ("apply_step", "review_views", "check_assertions")
 _VIEW_NAMES = ("isometric", "the front", "above", "the right")
 
 
+def agentic_from_env():
+    """
+    `RLM_AGENTIC` read fresh on every call, not cached at import, so a test
+    may set it with `monkeypatch` and see the change without a reimport.
+
+    Unset means neither seam is told anything, so each keeps the value it
+    shipped with: Plan's own call inside `run()` stays `True` and `run()`'s
+    `agentic` parameter, which only reaches Execute, stays whatever its
+    caller already passes (`False` for every caller today). Set to `off`,
+    both go `False`; set to anything else non-empty, both go `True`. Design
+    and Assertion have no caller that ever offers them `agentic` at all
+    (FCC-186's own seams for those two are unreached from `run()`), so no
+    value of this variable moves them.
+    """
+    value = os.environ.get("RLM_AGENTIC")
+    if value is None:
+        return None
+    return value.strip().lower() not in ("off", "0", "false")
+
+
 class PhaseError(Exception):
     """A phase gave back something the loop cannot act on."""
 
@@ -3387,7 +3407,8 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                        the_part=grown, unanswered=asking.unanswered, revising=revising,
                        looking=_lookable(tools) if for_the_build else (),
                        looked=asking.looked_up, tools=tools, budgets=budgets,
-                       agentic=True, looks_taken=asking.looks, traps=traps)
+                       agentic=agentic_from_env() is not False,
+                       looks_taken=asking.looks, traps=traps)
         asking.looks += _looks_spent(events, since)
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))
