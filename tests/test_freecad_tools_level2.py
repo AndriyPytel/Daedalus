@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from core.freecad_tools import build_registry, description, fit_view
+from core.freecad_tools import TRAPS, build_registry, description, fit_view
 from core.tools import ToolError
 
 pytestmark = pytest.mark.freecad
@@ -491,3 +491,24 @@ def test_no_open_document_is_a_tool_error_not_a_crash():
 
     with pytest.raises(ToolError, match="no open Document"):
         registry.call("snapshot")
+
+
+def test_traps_carries_the_seed_taxonomy_classes_not_yet_in_it():
+    """
+    `fcc-failure-taxonomy-seed.md` (449 sessions, 152 `preflight_failed`
+    tracebacks) named three failure classes no seed trap already covers: an
+    enum property rejecting a spelling nothing lists in advance, a fillet
+    that fails with no diagnostic tying it to its own radius, and a Pad or
+    Pocket whose sketch has more than one disjoint wire. `TRAPS` fixes its
+    count so a silent drop or an accidental duplicate fails this test rather
+    than reading as a passing run.
+    """
+    assert len(TRAPS) == 18
+
+    for substring in (
+        "getEnumerationsOfProperty",
+        "BRep_API: command not done",
+        "more than one solid",
+    ):
+        assert any(substring in trap for trap in TRAPS), \
+            "no TRAPS entry carries %r" % substring
