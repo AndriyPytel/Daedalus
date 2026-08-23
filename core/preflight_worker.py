@@ -30,6 +30,7 @@ shutdown message: the parent kills the process rather than asking it to go.
 """
 import difflib
 import json
+import linecache
 import math
 import os
 import sys
@@ -585,6 +586,33 @@ def _measured(namespace):
             list(failed) if isinstance(failed, (list, tuple)) else None)
 
 
+def register_step_source(code):
+    """
+    Put a Step's own source into `linecache` under the name `exec(compile(...))`
+    gives it, `"<step>"`, so a frame that lands there prints the line that
+    failed instead of nothing. `"<step>"` is not a file on disk; `linecache`
+    otherwise has nowhere to read it from.
+    """
+    linecache.cache["<step>"] = (len(code), None, code.splitlines(True), "<step>")
+
+
+def trimmed_traceback(exc):
+    """
+    Format *exc* with the worker's own `exec(compile(...))` frame cut off the
+    top, so only the Step's frames — from `"<step>"` down — and the standard
+    call into `preflight()` or `run_in_transaction()` above it reach the reader.
+
+    An exception that never passes through a `"<step>"` frame (an error raised
+    by the worker itself, not the Step it ran) keeps its traceback whole
+    rather than losing it to a search that never matches.
+    """
+    tb = exc.__traceback__
+    trimmed = tb
+    while trimmed is not None and trimmed.tb_frame.f_code.co_filename != "<step>":
+        trimmed = trimmed.tb_next
+    return "".join(traceback.format_exception(type(exc), exc, trimmed or tb))
+
+
 def preflight(request):
     import FreeCAD
 
@@ -595,9 +623,10 @@ def preflight(request):
     FreeCAD.addDocumentObserver(touched)
     try:
         try:
+            register_step_source(request["code"])
             exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
-        except AssertionError:
-            response = {"ok": False, "traceback": traceback.format_exc()}
+        except AssertionError as exc:
+            response = {"ok": False, "traceback": trimmed_traceback(exc)}
             held, failed = _measured(namespace)
             if held is not None:
                 response["held"] = held
@@ -703,7 +732,7 @@ def serve(stdin=None, respond=respond):
         try:
             respond(_ASKED_FOR[request.get("do") or "step"](request))
         except BaseException as exc:
-            respond({"ok": False, "traceback": traceback.format_exc() + introspect(exc)})
+            respond({"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)})
 
 
 if __name__ in ("__main__", "preflight_worker"):
