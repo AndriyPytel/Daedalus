@@ -554,6 +554,31 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
     assert "Let a Step fail" in execute_system
 
 
+def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup():
+    """
+    FCC-205: nowhere named the order a part is planned in, nor why it matters.
+    A boolean — a Pad added to the solid, a Pocket or a Hole cut out of it, a
+    Shell hollowing it — does not add to the Shape the Steps before it built,
+    it replaces it, so a reference Execute worked out against the geometry
+    before the boolean runs is a reference into a Shape already gone. Fillets
+    and chamfers are planned last because that is the only order in which the
+    edges their Step names are still the edges the boolean before them built.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    _, plan_system, execute_system, _ = (" ".join(text.split()) for text in _system_messages(llm))
+
+    assert "base, then addition, then subtraction" in plan_system
+    assert "fillet or a chamfer only once every one of those stands" in plan_system
+    assert "boolean" in plan_system and "replaces it" in plan_system
+
+    assert "computed off `Shape.Faces`" in execute_system
+    assert "before the boolean that invalidates it" in execute_system
+
+
 def test_the_reading_rules_moved_to_the_design_phase_whole():
     """
     FCC-59's rules were live in plan.md and did not hold, so FCC-86 moved who
