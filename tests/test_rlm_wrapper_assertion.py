@@ -15,7 +15,9 @@ exactly as `tests/test_agent.py` and `tests/test_loop.py :: FakeTools` already
 do, and every model turn comes from `ScriptedLLMClient`.
 """
 import json
+from unittest.mock import Mock
 
+from core import agent
 from core.events import ASSERTION, EventStream, THOUGHT, TOOL_CALL, TOOL_RESULT
 from core.llm import ScriptedLLMClient
 from core.loop import Budgets, assertion
@@ -165,3 +167,34 @@ def test_assertion_still_receives_no_channel_to_any_other_phase_when_wrapped_as_
     for event in events.of(THOUGHT):
         text = str(event.data.get("text") or "")
         assert "Step" not in text and "Plan" not in text
+
+
+def test_assertion_delegates_a_check_to_rlm_and_says_so_on_the_stream(monkeypatch):
+    """
+    The delegation seam Design already exercises
+    (`tests/test_design_agent_wrapper.py`) is `core/agent.py :: ask` itself,
+    not something Design's own call site adds — `assertion()`'s `agentic`
+    branch reaches the very same `ask`, so a `{"delegate": ...}` reply is
+    read here exactly as Design reads one: `rlm` is called with the request
+    named, and a `THOUGHT` names the delegation before the phase's own final
+    answer.
+    """
+    tools = _tools(checks=[{"ok": True, "held": ACCEPTANCE}])
+    llm = ScriptedLLMClient([
+        json.dumps({"delegate": {"page": "the tolerance note"}}),
+        json.dumps({"code": "assert True"}),
+    ])
+    spawned = Mock(return_value={"answer": "read off the tolerance note"})
+    monkeypatch.setattr(agent, "rlm", spawned)
+    events = EventStream()
+
+    checked = assertion(ACCEPTANCE, DESCRIBED, tools, llm, events,
+                         budgets=_budgets(), agentic=True)
+
+    assert checked.failed is False
+    assert spawned.call_count == 1
+    called_with = spawned.call_args.args
+    assert any("the tolerance note" in str(argument) for argument in called_with)
+
+    thoughts = [event.data["text"] for event in events.of(THOUGHT)]
+    assert any("delegat" in text and "the tolerance note" in text for text in thoughts)
