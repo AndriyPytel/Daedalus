@@ -158,6 +158,22 @@ def test_a_step_that_throws_leaves_the_document_untouched(doc, worker, tmp_path)
     assert [o.Name for o in doc.Objects] == before, "an aborted transaction left debris"
 
 
+def test_run_in_transactions_own_exec_frame_is_cut_from_the_traceback(doc):
+    """The frame that actually failed is the Step's, not `run_in_transaction`'s."""
+    from core.preflight_worker import trimmed_traceback
+
+    try:
+        run_in_transaction(doc, "doc.addObject('Part::Box', 'B')\nraise RuntimeError('halfway')\n")
+    except RuntimeError as exc:
+        formatted = trimmed_traceback(exc)
+    else:
+        raise AssertionError("run_in_transaction did not raise")
+
+    assert 'File "<step>", line 2' in formatted
+    assert "raise RuntimeError('halfway')" in formatted
+    assert "run_in_transaction" not in formatted
+
+
 def test_code_that_crashes_the_core_never_reaches_the_document(doc, tmp_path):
     """
     Code that crashes the core never reaches the document, and this process
