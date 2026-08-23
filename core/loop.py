@@ -1368,7 +1368,7 @@ class Written:
 
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
-            looks=None, entries=()):
+            looks=None, entries=(), agentic=False):
     """
     Write the code for every Step from `start` to the end of the Plan, in one turn.
 
@@ -1420,6 +1420,19 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     one at a time. Voiding the whole Plan there is how a recorded run threw
     away Steps nobody had attempted and replanned three times over with nothing
     applied.
+
+    `agentic` is the seam onto `core/agent.py :: ask` (FCC-183), threaded
+    through here as FCC-187 does for Execute: off by default, so every
+    existing caller still writes the code for a turn through `_ask`, spending
+    the look budget the countdown below already enforces. Turned on, the
+    whole turn — every look and every `run` action — goes through one call to
+    `core.agent.ask` instead, which enforces its own look budget
+    (`budgets.looks_per_turn`) and its own turn ceiling (`budgets.agent_turns`)
+    the countdown below has no equivalent of, so the two paths bound the turn
+    differently by construction, not by oversight. What `run` buys here is an
+    action that executes code against the Document's own Tools and the
+    Snapshot already on the namespace, rather than only reading one Tool at a
+    time.
     """
     budgets = budgets or Budgets()
     request = {"steps": [{"step": number, "do": prose}
@@ -1444,6 +1457,17 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             request["you_have_failed_this_the_same_way_twice"] = again
 
     looked = list(looks.still_true()) if looks is not None else []
+
+    if agentic:
+        from core.agent import ask as _agent_ask
+
+        request["tools_you_may_look_with"] = _lookable(tools)
+        if looked:
+            request["what_you_looked_at"] = looked
+        reply = _agent_ask(llm, events, EXECUTE_PHASE, prompt(EXECUTE_PHASE),
+                           json.dumps(request, indent=2, default=str), tools, budgets)
+        return _resolved(reply, start) or Written(said=_said(reply, start))
+
     for remaining in range(budgets.looks_per_turn, -1, -1):
         request["tools_you_may_look_with"] = _lookable(tools) if remaining else []
         if not remaining:
@@ -1462,21 +1486,37 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         reply = _ask(llm, events, EXECUTE_PHASE, prompt(EXECUTE_PHASE),
                      json.dumps(request, indent=2, default=str))
 
-        written = _written(reply.get("steps"), start)
-        if written:
-            return Written(steps=written,
-                           unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
-                           if (reply.get("unbuildable") or reply.get("obsolete")) else None,
-                           said=_said(reply, start))
-        if reply.get("obsolete"):
-            return Written(obsolete=str(reply["obsolete"]))
-        if reply.get("unbuildable"):
-            return Written(unbuildable=str(reply["unbuildable"]))
+        resolved = _resolved(reply, start)
+        if resolved:
+            return resolved
         if not reply.get("look") or not remaining:
             break
         looked.append(_look(tools, reply["look"], events, looks))
 
     return Written(said=_said(reply, start))
+
+
+def _resolved(reply, start):
+    """
+    One Execute reply, settled: the Steps it wrote, the Plan it called
+    `obsolete`, the Step it could not build, or nothing where the reply is
+    still a look to take.
+
+    Shared between the countdown loop above and the agentic branch, which
+    reaches its own final object by a different route (`core/agent.py ::
+    ask`) but has to be read the same way once it has one.
+    """
+    written = _written(reply.get("steps"), start)
+    if written:
+        return Written(steps=written,
+                       unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
+                       if (reply.get("unbuildable") or reply.get("obsolete")) else None,
+                       said=_said(reply, start))
+    if reply.get("obsolete"):
+        return Written(obsolete=str(reply["obsolete"]))
+    if reply.get("unbuildable"):
+        return Written(unbuildable=str(reply["unbuildable"]))
+    return None
 
 
 _FAILED_THIS_WAY = (
@@ -2182,7 +2222,7 @@ class _Asking:
 
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
         gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
-        outstanding=()) -> LoopResult:
+        outstanding=(), agentic=False) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
 
@@ -2203,6 +2243,11 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     a second drawing is not built on top of a part that already failed its
     first (FCC-98). It comes back out on the result, still outstanding or not,
     for whoever drives the next run.
+
+    `agentic` reaches Execute's own seam (`core/loop.py :: execute`, FCC-187):
+    off by default, so every existing caller of `run` still writes each turn's
+    code through `_ask`, unchanged. It does not touch Plan's separate `agentic`
+    seam (FCC-183), which `run` does not offer a caller yet.
     """
     events = events if events is not None else EventStream()
     events.emit(INTENT, text=intent)
@@ -2226,7 +2271,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     try:
         return outcome(_run(intent, llm, tools, events, budgets,
                             cancelled or (lambda: False), gate, progress, attachments,
-                            ask, decide, list(outstanding)))
+                            ask, decide, list(outstanding), agentic))
     except Stopped:
         return outcome(_block(events, "Stopped by you. Everything applied so far is still in "
                                       "the Document; undo it Step by Step if you want it "
@@ -3199,7 +3244,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
 
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
-         decide=revise_by_default, outstanding=()):
+         decide=revise_by_default, outstanding=(), agentic=False):
     """
     The run itself: describe the part, plan it, gate it, build it, judge it.
 
@@ -3405,7 +3450,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                           progress["applied"])
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part["the_part"]), looks,
-                                planned.acceptance, planned.cites)
+                                planned.acceptance, planned.cites, agentic)
         applied = progress["applied"]
 
         if outcome["handback"] and stuck["applied"] == applied \
@@ -3540,7 +3585,7 @@ def _also_check(acceptance, outstanding):
 
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
-                  as_described="", looks=None, entries=(), cites=()):
+                  as_described="", looks=None, entries=(), cites=(), agentic=False):
     """
     One pass over the Plan: written in one call, applied one Step at a time.
 
@@ -3582,6 +3627,12 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     recorded run spent three provider calls and 55 seconds arriving at a stop
     that was decided the moment the last of eight Steps was the one that could
     not be built.
+
+    `agentic` is passed straight to every `execute()` call this makes, off by
+    default (FCC-187): the retry loop below and its `attempts_per_step` ceiling
+    are unchanged either way, because a Step still lands or fails the same way
+    Preflight already decides it — what changes is only how the code for a
+    turn got written.
     """
     if cancelled():
         raise Stopped()
@@ -3592,7 +3643,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     unbuilt = []
     looks = looks if looks is not None else Looks()
     written = execute(steps, tools, llm, events, budgets=budgets, as_described=as_described,
-                      looks=looks, entries=entries)
+                      looks=looks, entries=entries, agentic=agentic)
 
     while index < len(steps):
         if cancelled():
@@ -3668,7 +3719,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         if cancelled():
             raise Stopped()
         written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
-                          looks, entries)
+                          looks, entries, agentic)
 
     return {"obsolete": None, "handback": None, "description": described,
             "tried": [], "unbuilt": unbuilt, "retried": sorted(
