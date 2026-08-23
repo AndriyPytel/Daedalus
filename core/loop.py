@@ -799,7 +799,8 @@ def _narrowed(told, paths):
 
 
 def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
-          keep_printed=False, pictures=True, agentic=False, tools=None, budgets=None):
+          keep_printed=False, pictures=True, agentic=False, tools=None, budgets=None,
+          traps=None):
     """
     One Design turn: what it adds to the part, and what it needs a person for.
 
@@ -854,6 +855,11 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
     namespace buys it nothing (ADR-0019 leaves nothing for it to build with);
     delegation is the whole of what being an agent adds here. `tools` and
     `budgets` are only read when `agentic` is set, the same as Plan's.
+
+    `traps` is a `TrapStore` (FCC-184) a caller already has open for this
+    run, passed straight through to `core/agent.py :: ask` so a turn may
+    also propose a trap it met on the sheet (FCC-185). `None` where a caller
+    has none — nothing here opens one of its own.
     """
     evidence = _the_evidence(attachments, views, keep_printed, pictures)
     if evidence and cache_control_supported(getattr(llm, "model", None)):
@@ -861,7 +867,8 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
     user = evidence + [{"type": "text", "text": json.dumps(body, indent=2, default=str)}]
     if agentic:
         from core.agent import ask as _agent_ask
-        reply = _agent_ask(llm, events, phase, prompt(DESIGN_PHASE), user, tools, budgets)
+        reply = _agent_ask(llm, events, phase, prompt(DESIGN_PHASE), user, tools, budgets,
+                           traps=traps)
     else:
         reply = _ask(llm, events, phase, prompt(DESIGN_PHASE), user)
     the_part = reply.get("design")
@@ -1078,7 +1085,7 @@ class Plan:
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered=(),
          revising=(), looking=(), looked=(), tools=None, budgets=None, agentic=False,
-         looks_taken=0):
+         looks_taken=0, traps=None):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
 
@@ -1099,6 +1106,10 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
     own, and both draw on the one allowance — a caller that already spent
     part of it hands in what remains rather than this call being handed a
     fresh ceiling underneath the one already in play (FCC-186).
+
+    `traps` is a `TrapStore` (FCC-184) a caller already has open for this
+    run, forwarded to `core/agent.py :: ask` unchanged so a turn may propose
+    a trap it met while planning (FCC-185); `None` where a caller has none.
 
     Plan never sees the picture. It is handed the part Design describes instead,
     under one key and in the words the user approved at the Plan Gate, and told
@@ -1155,7 +1166,7 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
         from core.agent import ask as _agent_ask
         reply = _agent_ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
                            json.dumps(request, indent=2, default=str), tools, budgets,
-                           looks_taken=looks_taken)
+                           looks_taken=looks_taken, traps=traps)
     else:
         reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
                      json.dumps(request, indent=2, default=str))
@@ -1395,7 +1406,7 @@ class Written:
 
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
-            looks=None, entries=(), agentic=False):
+            looks=None, entries=(), agentic=False, traps=None):
     """
     Write the code for every Step from `start` to the end of the Plan, in one turn.
 
@@ -1460,6 +1471,11 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     action that executes code against the Document's own Tools and the
     Snapshot already on the namespace, rather than only reading one Tool at a
     time.
+
+    `traps` is a `TrapStore` (FCC-184) a caller already has open for this
+    run, forwarded to `core/agent.py :: ask` unchanged so a turn may propose
+    a trap it met while writing the code (FCC-185); `None` where a caller
+    has none.
     """
     budgets = budgets or Budgets()
     request = {"steps": [{"step": number, "do": prose}
@@ -1492,7 +1508,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         if looked:
             request["what_you_looked_at"] = looked
         reply = _agent_ask(llm, events, EXECUTE_PHASE, prompt(EXECUTE_PHASE),
-                           json.dumps(request, indent=2, default=str), tools, budgets)
+                           json.dumps(request, indent=2, default=str), tools, budgets,
+                           traps=traps)
         return _resolved(reply, start) or Written(said=_said(reply, start))
 
     for remaining in range(budgets.looks_per_turn, -1, -1):
@@ -1990,7 +2007,7 @@ assert all(abs(a - b) <= %s for a, b in zip(built, asked)), (
 
 
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
-              after_a_retry=(), agentic=False):
+              after_a_retry=(), agentic=False, traps=None):
     """
     Write checks for the acceptance list and run them against the result.
 
@@ -2004,6 +2021,11 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     over from nothing can now build on what the failed attempt already
     worked out. `tools` and `budgets` are only read for this when `agentic`
     is set, the same way Plan's are.
+
+    `traps` is a `TrapStore` (FCC-184) a caller already has open for this
+    run, forwarded to `core/agent.py :: ask` unchanged so an attempt may
+    propose a trap it met while writing the checks (FCC-185); `None` where a
+    caller has none.
 
     A fourth context, not Review and not Preflight. Review judges and is
     deliberately not told how the result was produced (ADR-0003), so it cannot
@@ -2070,7 +2092,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         if agentic:
             reply = _agent_ask(llm, events, ASSERTION_PHASE, prompt(ASSERTION_PHASE),
                                json.dumps(request, indent=2, default=str), tools, budgets,
-                               namespace=namespace)
+                               namespace=namespace, traps=traps)
         else:
             reply = _ask(llm, events, ASSERTION_PHASE, prompt(ASSERTION_PHASE),
                          json.dumps(request, indent=2, default=str))

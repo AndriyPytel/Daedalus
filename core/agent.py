@@ -40,6 +40,19 @@ its own. Nothing bounds how many times one `ask` call may itself delegate —
 each delegation still spends one of *this* call's `budgets.agent_turns`, but
 the child it spawns spends a fresh ceiling of its own, so a chain of phases
 that only ever delegate costs turns at every level before any of them raises.
+
+A fourth action, `{"trap": {"description": "...", "evidence": "..."}}`, closes
+FCC-185's one remaining gap: proposing a trap is the model's own judgement
+call on meeting a repeating quirk, not something any phase decides for it, so
+it belongs here rather than hard-coded into `core/loop.py :: design` alone —
+one action serves Design, Plan, Execute and Assertion at once, wherever a
+caller hands `ask` a `TrapStore` (FCC-184). `propose_trap` is called with
+`ask`'s own `phase`, so `TRAP_PROPOSED` names whichever phase proposed it
+with no plumbing beyond passing the store through. A call with no store, or a
+proposal `TrapStore.propose_trap` rejects as a duplicate of a seed trap,
+answers with `{"error": ...}` for the next turn to read — never an
+exception, the same as a `look` an absent Tool refuses or a `delegate` that
+never answered.
 """
 import json
 import traceback
@@ -49,6 +62,7 @@ from io import StringIO
 from core.events import THOUGHT, TOOL_CALL, TOOL_RESULT
 from core.llm import ProviderRefused, StreamCutOff
 from core.tools import ToolError
+from core.traps import DuplicateTrap
 
 _NOTHING_SAID = "(nothing was said)"
 
@@ -110,7 +124,8 @@ class Namespace:
         return buffer.getvalue()
 
 
-def ask(llm, events, phase, system, user, tools, budgets, namespace=None, looks_taken=0):
+def ask(llm, events, phase, system, user, tools, budgets, namespace=None, looks_taken=0,
+       traps=None):
     """
     One phase's turn, the way `_ask` gives it, but able to spend bounded turns
     finding things out first.
@@ -158,6 +173,13 @@ def ask(llm, events, phase, system, user, tools, budgets, namespace=None, looks_
     A `run` action's own `PhaseError` is not caught here either — it is
     `Namespace.run`'s to let through, and this loop's job is only to not get
     in its way.
+
+    `traps` is optional the same way `namespace` is: a caller with a
+    `TrapStore` open for this run hands it in so a `trap` action can reach
+    `propose_trap`; a caller with none still gets a call that never raises
+    for proposing one, because `{"trap": ...}` is refused exactly as a
+    `look` with no matching Tool is, not exempted from the model's own
+    choice of actions.
     """
     from core.loop import PhaseError, _as_json, _asked_again, _object_of, _streamed
 
@@ -197,6 +219,13 @@ def ask(llm, events, phase, system, user, tools, budgets, namespace=None, looks_
         if isinstance(delegate, dict) and delegate:
             last_action = "delegating %s to a sub-agent" % _named_by(delegate)
             result = _delegated(llm, events, phase, system, delegate, tools, budgets)
+            prior = prior + _turn_of(body, reasoning, result)
+            continue
+
+        trap = reply.get("trap")
+        if isinstance(trap, dict) and trap:
+            last_action = "proposing a trap"
+            result = _proposed_trap(traps, trap, phase)
             prior = prior + _turn_of(body, reasoning, result)
             continue
 
@@ -251,6 +280,23 @@ def _run_code(namespace, code, events):
     output = namespace.run(code)
     events.emit(TOOL_RESULT, name="run", result={"output": output})
     return {"output": output}
+
+
+def _proposed_trap(traps, trap, phase):
+    """One `trap` action: `TrapStore.propose_trap` under this call's own
+    `phase`, or the `{"error": ...}` that stands in for it where there is no
+    store to propose into, or where the store already holds the same trap in
+    its seed layer. `TrapStore` emits `TRAP_PROPOSED` itself when it was
+    built with an `EventStream` — nothing here duplicates that."""
+    if traps is None:
+        return {"error": "no trap store is open for this call; propose nothing, and "
+                         "answer with what you already know instead."}
+    description = str(trap.get("description") or "")
+    evidence = str(trap.get("evidence") or "")
+    try:
+        return {"proposed": traps.propose_trap(description, evidence=evidence, phase=phase)}
+    except DuplicateTrap as exc:
+        return {"error": str(exc)}
 
 
 def _named_by(delegate):
