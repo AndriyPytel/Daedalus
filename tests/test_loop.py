@@ -399,10 +399,17 @@ def _system_messages(llm):
 
 
 def _turns_of(llm, phase):
-    """Every request body that phase was sent, in order — one entry per provider call."""
+    """
+    Every request body that phase was sent, in order — one entry per provider call.
+
+    Matched by prefix, not equality: Execute's system prompt grows a ledger
+    section past the static file once this run has a failure to carry (FCC-2
+    item 2), and the bare `prompt(phase)` this compares against is always
+    that section's prefix.
+    """
     system = prompt(phase)
     return [json.loads(call[-1]["content"]) for call in llm.calls
-            if call[0]["content"] == system]
+            if call[0]["content"].startswith(system)]
 
 
 @pytest.mark.parametrize("turn, phase",
@@ -1150,10 +1157,13 @@ def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run()
 
     `revisions=0` keeps this on the terminal path: since FCC-61 a Step that
     cannot be built hands back to Plan, and this test is about the attempt, not
-    about the handback.
+    about the handback. One Step total means every one of these is a trailing
+    gap, so the first is free (`trailing_gap_retries`'s default of one) and
+    only the three after it are charged against `attempts_per_step` — four
+    attempts, not three, and every one of them is scripted for.
     """
     result, events, _, _ = drive(
-        [plan_reply("Add a sketch")] + [look_reply("supported_types")] * 9,
+        [plan_reply("Add a sketch")] + [look_reply("supported_types")] * 12,
         budgets=Budgets(looks_per_turn=2, attempts_per_step=3, revisions=0),
     )
 
@@ -1162,8 +1172,89 @@ def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run()
     blocked = events.first(BLOCKED)
     assert blocked is not None
     assert "Step 1 of 1" in blocked.data["reason"]
-    assert len(blocked.data["tried"]) == 3
+    assert len(blocked.data["tried"]) == 4
     assert all("no code for Step 1" in t["traceback"] for t in blocked.data["tried"])
+    assert all("ran out of room" in t["traceback"] for t in blocked.data["tried"])
+
+
+def test_a_step_that_never_writes_its_tail_still_terminates():
+    """
+    A trailing gap that recurs on every single call of a Step still bounds:
+    `trailing_gap_retries` free continuations, then `attempts_per_step`
+    charged ones, then a handback — never an unbounded re-ask. `looks_per_turn=0`
+    keeps each attempt to one provider call so the arithmetic is exact: 3 free
+    plus 1 charged is 4 tried, from exactly 4 scripted replies and not a 5th —
+    `ScriptedLLMClient` raises if the loop reaches for one.
+    """
+    result, events, _, _ = drive(
+        [plan_reply("Only")] + [json.dumps({"note": "not sure what to build here"})] * 4,
+        budgets=Budgets(looks_per_turn=0, attempts_per_step=1, revisions=0,
+                        trailing_gap_retries=3),
+    )
+
+    assert not result.ok
+    blocked = events.first(BLOCKED)
+    assert blocked is not None
+    assert len(blocked.data["tried"]) == 4
+
+
+def test_a_trailing_gaps_free_continuation_does_not_count_against_attempts_per_step():
+    """
+    `attempts_per_step=1` alone would block on the first failure; the one free
+    trailing-gap continuation `trailing_gap_retries` grants (its default) means
+    the Step is tried twice before that single-attempt budget is actually spent.
+    """
+    result, events, _, _ = drive(
+        [plan_reply("Only")] + [json.dumps({"note": "not sure what to build here"})] * 2,
+        budgets=Budgets(looks_per_turn=0, attempts_per_step=1, revisions=0),
+    )
+
+    assert not result.ok
+    blocked = events.first(BLOCKED)
+    assert blocked is not None
+    assert len(blocked.data["tried"]) == 2
+
+
+def test_an_interior_gap_gets_no_free_continuation():
+    """
+    A Step skipped while a later one in the same reply got code is not room
+    pressure, so it spends `attempts_per_step` from the first occurrence —
+    `attempts_per_step=1` blocks on it immediately, unlike the trailing-gap
+    case above.
+    """
+    result, events, _, _ = drive(
+        [
+            plan_reply("First", "Second", "Third"),
+            json.dumps({"steps": [{"step": 1, "code": "first()"},
+                                  {"step": 3, "code": "third()"}]}),
+        ],
+        budgets=Budgets(attempts_per_step=1, revisions=0),
+    )
+
+    assert not result.ok
+    blocked = events.first(BLOCKED)
+    assert blocked is not None
+    assert len(blocked.data["tried"]) == 1
+    assert "skipped a Step it could have written" in blocked.data["tried"][0]["traceback"]
+
+
+def test_steps_applied_before_a_trailing_gap_stay_applied():
+    """
+    A reply that wrote Step 1 and ran dry on Step 2 does not undo Step 1 —
+    the free continuation is for the tail Execute did not finish, not a
+    reason to revisit what already landed.
+    """
+    result, _, _, tools = drive(
+        [
+            plan_reply("First", "Second"),
+            code_reply("first()"),
+            code_reply("second()", first=2),
+            verdict_reply("pass"),
+        ],
+    )
+
+    assert result.ok
+    assert tools.applied_codes() == ["first()", "second()"]
 
 
 def test_execute_cannot_apply_its_own_code_through_a_look():
@@ -1381,6 +1472,53 @@ def test_a_step_the_reply_left_out_fails_that_step_and_not_the_run():
     failure = events.first(PREFLIGHT_FAILED)
     assert failure.data["step"] == 2
     assert "no code for Step 2" in failure.data["traceback"]
+
+
+def test_a_trailing_gap_says_it_ran_out_of_room_and_steers_shorter():
+    """
+    Step 2 is the Plan's last Step and nothing after it got code either — the
+    reply ran out of room rather than judging the Step, so the retry is told
+    to write shorter code rather than asked to judge it differently.
+    """
+    result, events, _, _ = drive(
+        [
+            plan_reply("First", "Second"),
+            code_reply("first()"),
+            code_reply("second()", first=2),
+            verdict_reply("pass"),
+        ],
+    )
+
+    assert result.ok
+    failure = events.first(PREFLIGHT_FAILED)
+    assert failure.data["step"] == 2
+    assert "ran out of room before finishing this reply" in failure.data["traceback"]
+    assert "nothing after it either" in failure.data["traceback"]
+    assert "shorter this time" in failure.data["traceback"]
+
+
+def test_an_interior_gap_says_a_step_was_skipped_not_that_room_ran_out():
+    """
+    Step 2 is missing while Step 3, after it, carries code in the same reply —
+    the model could write further down and skipped this one, which is a
+    different failure than running dry and gets no "shorter this time" steer.
+    """
+    result, events, _, _ = drive(
+        [
+            plan_reply("First", "Second", "Third"),
+            json.dumps({"steps": [{"step": 1, "code": "first()"},
+                                  {"step": 3, "code": "third()"}]}),
+            code_reply("second()", "third()", first=2),
+            verdict_reply("pass"),
+        ],
+    )
+
+    assert result.ok
+    failure = events.first(PREFLIGHT_FAILED)
+    assert failure.data["step"] == 2
+    assert "skipped a Step it could have written" in failure.data["traceback"]
+    assert "ran out of room" not in failure.data["traceback"]
+    assert "shorter this time" not in failure.data["traceback"]
 
 
 def test_a_step_left_out_with_no_reason_records_what_the_reply_carried():
@@ -6015,6 +6153,201 @@ def test_a_step_that_failed_variously_does_not_tell_plan_to_change_the_step():
        budgets=Budgets(attempts_per_step=3))
 
     assert "Rewording it" not in json.dumps(llm.calls[4])
+
+
+NO_ENUM = ("Traceback (most recent call last):\n"
+           "ValueError: 'Foo' is not part of the enumeration\n")
+
+
+def test_ledger_dedupes_the_same_classified_failure():
+    from core.ledger import Ledger
+    from core.loop import _FAILED_THIS_WAY
+
+    ledger = Ledger(_FAILED_THIS_WAY)
+    ledger.record("Cut the hooks", NO_MATERIAL)
+    ledger.record("Cut the hooks", NO_MATERIAL)
+
+    rendered = ledger.render()
+    assert rendered.count("Cut the hooks") == 1
+    assert "(x2)" in rendered
+
+
+def test_ledger_keeps_a_trailing_gap_and_an_interior_gap_as_two_lines():
+    """
+    A model that ran dry and a model that skipped a Step it could write are
+    different failures, so they must not dedupe into the one
+    `_UNCLASSIFIED_LABEL` line this table had no entry for before them.
+    """
+    from core.ledger import Ledger
+    from core.loop import _FAILED_THIS_WAY
+
+    ledger = Ledger(_FAILED_THIS_WAY)
+    ledger.record("Cut the hooks", "You replied with no code for Step 4, and nothing "
+                                   "after it either — you ran out of room before "
+                                   "finishing this reply.")
+    ledger.record("Cut the hooks", "You replied with no code for Step 2, but wrote "
+                                   "code for a Step after it — you skipped a Step it "
+                                   "could have written.")
+
+    rendered = ledger.render()
+    assert rendered.count("Cut the hooks") == 2
+    assert "ran out of room and left the Plan's tail with no code" in rendered
+    assert "skipped a Step it could have written while writing later ones" in rendered
+
+
+def test_ledger_caps_by_lines_dropping_the_oldest():
+    """
+    `classify()` can return at most `len(phrase_table) + 1` distinct labels
+    (`core/ledger.py`), so no realistic run's own attempts can exceed
+    `max_lines` through the public API — `_enforce_caps` trims the line count
+    defensively, against a classifier that returned more labels than its own
+    table has, and this constructs exactly that to test it.
+    """
+    from core.ledger import Ledger
+
+    ledger = Ledger(())
+    ledger._entries["first"] = ["Cut the hooks", 1]
+    ledger._entries["second"] = ["Fillet the edges", 1]
+    ledger._entries["third"] = ["Pocket the boss", 1]
+    assert ledger.max_lines == 1
+
+    ledger._enforce_caps()
+
+    assert len(ledger.render().split("\n")) == 1
+    assert "Cut the hooks" not in ledger.render(), "the oldest entry was not the one dropped"
+    assert "Fillet the edges" not in ledger.render(), "the oldest entry was not the one dropped"
+    assert "Pocket the boss" in ledger.render()
+
+
+def test_ledger_caps_by_characters_dropping_the_oldest():
+    """
+    `max_lines` is already saturated at the vocabulary's own size — the one
+    thing that still grows a render past `max_chars` is the "(xN)" a
+    classification already at maximum length grows once it recurs enough
+    times. A run that fails every known way once, at maximum Step length,
+    then keeps failing its most familiar way is exactly that: the least
+    useful entry (the oldest, the first one seen) is what has to go so the
+    entry the run is *still* hitting stays legible.
+    """
+    from core.ledger import Ledger
+    from core.loop import _FAILED_THIS_WAY
+
+    ledger = Ledger(_FAILED_THIS_WAY)
+    long_step = "A" * 60
+    for phrase, _, __ in _FAILED_THIS_WAY:
+        ledger.record(long_step, "Traceback:\n%s\n" % phrase)
+    ledger.record(long_step, "ZeroDivisionError: nope")
+    first_seen = next(iter(ledger._entries))
+    assert len(ledger.render()) == ledger.max_chars
+
+    for _ in range(30):
+        ledger.record(long_step, "Traceback:\n%s\n" % _FAILED_THIS_WAY[-1][0])
+
+    assert len(ledger.render()) <= ledger.max_chars
+    assert first_seen not in ledger._entries, "the oldest entry was not the one dropped"
+    assert "(x31)" in ledger.render()
+
+
+def test_ledger_caps_are_derived_from_the_phrase_table_not_invented():
+    from core.ledger import Ledger, _UNCLASSIFIED_LABEL
+    from core.loop import _FAILED_THIS_WAY
+
+    ledger = Ledger(_FAILED_THIS_WAY)
+
+    assert ledger.max_lines == len(_FAILED_THIS_WAY) + 1
+
+    labels = sorted((label for _, __, label in _FAILED_THIS_WAY), key=len, reverse=True)
+    worst_labels = (labels + [_UNCLASSIFIED_LABEL])[:ledger.max_lines]
+    worst_step = "x" * 60
+    expected = sum(len("- %s: %s" % (worst_step, label)) for label in worst_labels) \
+        + (len(worst_labels) - 1)
+    assert ledger.max_chars == expected
+
+
+def test_ledger_lines_never_contain_code_or_a_traceback():
+    from core.ledger import Ledger
+    from core.loop import _FAILED_THIS_WAY
+
+    ledger = Ledger(_FAILED_THIS_WAY)
+    ledger.record("Pocket the boss", NO_MATERIAL)
+
+    rendered = ledger.render()
+    assert "Traceback" not in rendered
+    assert "PocketHook" not in rendered, "the traceback's own detail leaked into the ledger"
+    assert "def " not in rendered and "()" not in rendered
+
+
+def test_an_unclassified_failure_is_still_represented_not_dropped():
+    from core.ledger import Ledger, _UNCLASSIFIED_LABEL
+    from core.loop import _FAILED_THIS_WAY
+
+    ledger = Ledger(_FAILED_THIS_WAY)
+    ledger.record("Do something odd", "ZeroDivisionError: division by zero")
+
+    rendered = ledger.render()
+    assert "Do something odd" in rendered
+    assert _UNCLASSIFIED_LABEL in rendered
+
+
+def test_the_ledger_survives_a_step_landing_and_reaches_the_next_steps_prompt():
+    """
+    Step 1 fails once and lands; Step 2's retry — after a *different* failure
+    of its own — still carries what Step 1 failed at, because `attempts`
+    resets on land (`core/loop.py:3626`) and the ledger must not.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks", "Fillet the edges"),
+        code_reply("first_bad()", "second()"),
+        code_reply("first_good()", "second()"),
+        code_reply("second_again()", first=2),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_MATERIAL), None, failed("boom")])
+
+    step_2_retry = _system_messages(llm)[4]
+    assert "Cut the hooks" in step_2_retry
+    assert "moved no material" in step_2_retry
+
+
+def test_the_ledger_reaches_plans_request_on_replan():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("one()"), code_reply("two()"), code_reply("three()"),
+        plan_reply("Cut the hooks, differently"),
+        code_reply("four()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_MATERIAL)] * 3, budgets=Budgets(attempts_per_step=3))
+
+    replan_request = _turns_of(llm, "plan")[1]
+    assert "already_failed_this_way" in replan_request
+    assert "Cut the hooks" in replan_request["already_failed_this_way"]
+    assert "def " not in replan_request["already_failed_this_way"]
+
+
+def test_a_lint_rejection_fires_the_same_way_twice():
+    from core.lint import LintResult
+
+    rejected = LintResult(["The code does not parse: invalid syntax (line 3)"]).report()
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"), code_reply("third()"),
+        verdict_reply("pass"),
+    ], applies=[failed(rejected), failed(rejected)])
+
+    said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
+    assert "not valid Python" in said
+
+
+def test_changed_nothing_fires_the_same_way_twice():
+    from core.apply import _CHANGED_NOTHING
+
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"), code_reply("third()"),
+        verdict_reply("pass"),
+    ], applies=[failed(_CHANGED_NOTHING), failed(_CHANGED_NOTHING)])
+
+    said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
+    assert "Document is unchanged" in said
 
 
 def gate_that(*answers):
