@@ -1701,10 +1701,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._total_usd += data.get("usd", 0.0)
             self._last_event_time = event.at
             self._update_usage_total()
+            self._the_thinking_stops()
             return
 
         if event.kind == ev.THOUGHT:
             self._render_thought(data["phase"], data["text"])
+            return
+
+        if event.kind == ev.WRITING:
+            self._render_writing(data["phase"], data["text"])
             return
 
         if event.kind == ev.ATTACHED:
@@ -1732,7 +1737,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             return
 
         if event.kind == ev.STEP_STARTED:
-            self._thought = None
+            self._the_thinking_stops()
             self._current_step = data["index"]
             if self._plan_widget:
                 self._plan_widget.highlight(data["index"])
@@ -1865,6 +1870,26 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if narration.status:
             self._queue_widget.now(narration.status)
 
+    def _the_thinking_stops(self):
+        """
+        The row a phase was thinking in, left as a record rather than a clock.
+
+        Every route out of a thinking row goes through here, because a row let
+        go of without `stop_pulsing` keeps a `QTimer` for the life of the
+        panel, and two routes let go of one: Design labels its phase per page
+        of the drawing, so the row is replaced mid-run, and `STEP_STARTED`
+        drops the reference. Such a row read 35:05 in a 34-minute run — past
+        the header's own total, which counts `event.at` where the row counts
+        the wall.
+
+        `COST` is the end of a call, and it is the event that stops the count:
+        the artefacts rendered after it — a Plan, a call, the document — are
+        the loop's own work, not the model's.
+        """
+        if self._thought:
+            self._thought.stop_pulsing()
+        self._thought = None
+
     def _render_thought(self, phase, text):
         """
         Reasoning appends to one accordion per phase turn, as it forms.
@@ -1879,10 +1904,30 @@ class CopilotPanel(QtWidgets.QDockWidget):
         has to show it is alive -- and it does not open, since a row that
         opens onto nothing is worse than one that says it has nothing.
         """
-        if self._thought is None or self._thought_phase != phase:
-            self._thought = AccordionWidget("Thinking (%s)…" % phase)
-            self._thought_phase = phase
-            self._thought.mark_as_reasoning()
+        self._one_row_per_turn("Thinking (%s)…" % phase, ("thought", phase), text,
+                               reasoning=True)
+
+    def _render_writing(self, phase, text):
+        """
+        The reply as it forms, in a row of its own beside the reasoning.
+
+        A row of its own because the two are not the same thing and their two
+        counts are worth reading apart: the reply is what the phase will be
+        held to, and it accounts for the larger wait — 22.4 minutes of a
+        recorded run's 23.6 minutes of provider time fell after the last
+        reasoning chunk of every call, with nothing on the panel for any of
+        it. It wears no brain: it is not the model deciding, it is the answer.
+        """
+        self._one_row_per_turn("Writing (%s)…" % phase, ("writing", phase), text)
+
+    def _one_row_per_turn(self, title, turn, text, reasoning=False):
+        """One accordion per turn of a phase, opened on its first chunk."""
+        if self._thought is None or self._thought_phase != turn:
+            self._the_thinking_stops()
+            self._thought = AccordionWidget(title)
+            self._thought_phase = turn
+            if reasoning:
+                self._thought.mark_as_reasoning()
             self._thought.opens_onto_nothing()
             self.add_chat_widget(self._thought)
             self._thought.start_pulsing()

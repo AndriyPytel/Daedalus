@@ -67,8 +67,10 @@ def test_a_run_that_proposes_nothing_has_the_same_event_kinds_as_before():
     ])
 
     assert [event.kind for event in events] == [
-        "intent", "call_started", "cost", "design", "part", "call_started", "cost",
-        "plan", "gate", "gate", "call_started", "cost", "step_started", "tool_call",
-        "tool_result", "applied", "call_started", "cost", "tool_call", "tool_result",
-        "assertion", "call_started", "cost", "review_verdict",
+        "intent", "call_started", "writing", "cost", "design", "part",
+        "call_started", "writing", "cost", "plan", "gate", "gate",
+        "call_started", "writing", "cost", "step_started", "tool_call",
+        "tool_result", "applied", "call_started", "writing", "cost", "tool_call",
+        "tool_result", "assertion", "call_started", "writing", "cost",
+        "review_verdict",
     ]
