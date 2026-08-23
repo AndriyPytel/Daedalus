@@ -1708,6 +1708,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._render_thought(data["phase"], data["text"])
             return
 
+        if event.kind == ev.WRITING:
+            self._render_writing(data["phase"], data["text"])
+            return
+
         if event.kind == ev.ATTACHED:
             self._render_attachments(data["files"])
             return
@@ -1900,11 +1904,30 @@ class CopilotPanel(QtWidgets.QDockWidget):
         has to show it is alive -- and it does not open, since a row that
         opens onto nothing is worse than one that says it has nothing.
         """
-        if self._thought is None or self._thought_phase != phase:
+        self._one_row_per_turn("Thinking (%s)…" % phase, ("thought", phase), text,
+                               reasoning=True)
+
+    def _render_writing(self, phase, text):
+        """
+        The reply as it forms, in a row of its own beside the reasoning.
+
+        A row of its own because the two are not the same thing and their two
+        counts are worth reading apart: the reply is what the phase will be
+        held to, and it accounts for the larger wait — 22.4 minutes of a
+        recorded run's 23.6 minutes of provider time fell after the last
+        reasoning chunk of every call, with nothing on the panel for any of
+        it. It wears no brain: it is not the model deciding, it is the answer.
+        """
+        self._one_row_per_turn("Writing (%s)…" % phase, ("writing", phase), text)
+
+    def _one_row_per_turn(self, title, turn, text, reasoning=False):
+        """One accordion per turn of a phase, opened on its first chunk."""
+        if self._thought is None or self._thought_phase != turn:
             self._the_thinking_stops()
-            self._thought = AccordionWidget("Thinking (%s)…" % phase)
-            self._thought_phase = phase
-            self._thought.mark_as_reasoning()
+            self._thought = AccordionWidget(title)
+            self._thought_phase = turn
+            if reasoning:
+                self._thought.mark_as_reasoning()
             self._thought.opens_onto_nothing()
             self.add_chat_widget(self._thought)
             self._thought.start_pulsing()

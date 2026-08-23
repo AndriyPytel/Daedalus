@@ -57,6 +57,13 @@ advice that changes it fails there and the existing hand-back edge fires,
 never a second gate of its own. Neither `tool_call` nor `thought` carries
 `step_number`/`promise`/`failure_reason` as a matter of shape, which is why
 this is two kinds of its own rather than a repurposing of either.
+
+`writing` is the reply forming, chunk by chunk, the way `thought` is the
+reasoning before it. It is a kind of its own because the two are read
+differently — reasoning is the model deciding and may be withheld by the
+route, the reply is what the phase will be held to — and because the wait it
+accounts for is the larger one: 22.4 minutes of a recorded run's 23.6 minutes
+of provider time fell after the last `thought` of every call.
 """
 import json
 import time
@@ -65,6 +72,7 @@ from typing import Any, Callable, Dict, List, Tuple
 
 INTENT = "intent"
 THOUGHT = "thought"
+WRITING = "writing"
 QUESTION = "question"
 ANSWER = "answer"
 ATTACHED = "attached"
@@ -93,7 +101,7 @@ CONSULT = "consult"
 CONSULT_RESPONSE = "consult_response"
 
 KINDS = (
-    INTENT, THOUGHT, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
+    INTENT, THOUGHT, WRITING, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
     GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED,
     ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, BLOCKED, CALL_STARTED, COST,
     ERROR, TRAP_PROPOSED, TRAP_APPROVED, TRAP_DECLINED, CONSULT, CONSULT_RESPONSE,

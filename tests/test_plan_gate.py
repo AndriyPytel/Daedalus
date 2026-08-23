@@ -14,7 +14,7 @@ import json
 
 from core.events import (
     BLOCKED, CALL_STARTED, COST, GATE, INTENT, PLAN, PLAN_REVISED, STEP_STARTED,
-    THOUGHT, EventStream,
+    THOUGHT, WRITING, EventStream,
 )
 from core.llm import ScriptedLLMClient
 from core.loop import (
@@ -52,7 +52,7 @@ def test_no_step_executes_before_the_user_approves():
     """
     The Plan was shown to the gate before anything was applied.
 
-    CALL_STARTED, COST, and THOUGHT are per-call bookkeeping and say nothing
+    CALL_STARTED, COST, THOUGHT and WRITING are per-call bookkeeping and say nothing
     about the order of the run, so they are filtered out before checking that
     the structural events arrive in the right sequence.
     """
@@ -63,7 +63,7 @@ def test_no_step_executes_before_the_user_approves():
 
     assert gate.shown == [["Create a 10mm box"]]
     assert tools.applied_codes() == ["box()"]
-    kinds = [e.kind for e in events if e.kind not in (CALL_STARTED, COST, THOUGHT)]
+    kinds = [e.kind for e in events if e.kind not in (CALL_STARTED, COST, THOUGHT, WRITING)]
     assert kinds[:2] == [INTENT, PLAN]
 
 

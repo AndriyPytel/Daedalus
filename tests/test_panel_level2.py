@@ -2892,6 +2892,34 @@ def test_the_thinking_row_says_how_long_it_has_been_thinking(panel):
     assert "Thinking (design)" in row.toggle_button.text()
 
 
+def test_the_words_a_phase_writes_open_a_row_of_their_own(panel):
+    """
+    The reply is not the reasoning: it forms after it, it is what the phase
+    will be held to, and the wait it accounts for is the larger one. Its own
+    row, so the two counts are read apart — a phase that thought for one
+    minute and wrote for four is a different phase from the reverse.
+    """
+    from core.events import Event, THOUGHT, WRITING
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("writing-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "plan", "text": "two Steps, then"}))
+    QT_APP.processEvents()
+    thinking = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+
+    panel.on_event(Event(WRITING, {"phase": "plan", "text": '{"steps": ['}))
+    panel.on_event(Event(WRITING, {"phase": "plan", "text": '"Pad the profile"]}'}))
+    QT_APP.processEvents()
+    writing = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+
+    assert writing is not thinking
+    assert thinking._clock is None
+    assert "Writing (plan)" in writing.toggle_button.text()
+    assert '{"steps": ["Pad the profile"]}' in _said_in(panel)
+
+
 def test_the_thinking_row_of_a_finished_phase_stops_counting_when_the_next_row_opens(panel):
     """
     A row whose phase is over is a record, not a clock. Design reads a drawing
