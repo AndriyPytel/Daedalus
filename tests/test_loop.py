@@ -63,6 +63,7 @@ from core.loop import (
     PROMPTS, Budgets, prompt, revisions_ceiling, run,
 )
 from core.tools import ToolError, ToolRegistry
+from core.traps import TrapStorage, TrapStore
 from tests import modelmania_harness
 
 SNAPSHOT = {"document": "Unnamed", "objects": [], "object_count": 0,
@@ -381,16 +382,28 @@ def scripted(turns, attachments=()):
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
           views=None, checks=(), attachments=(), decide=None, outstanding=(),
           agentic=False, consult=False):
-    """Run the loop over scripted turns and hand back everything to assert on."""
+    """
+    Run the loop over scripted turns and hand back everything to assert on.
+
+    Its own `TrapStore`, over a fresh temp file every call: `run`'s own
+    default resolves to the real proposals file beside FreeCAD's session
+    logs, which this machine's FreeCAD makes importable even under pytest —
+    a test that let that default stand would read and write the developer's
+    own trap proposals, and a description proposed by one test would show
+    up a duplicate in the next (FCC-191).
+    """
     llm = scripted(turns, attachments)
     tools = FakeTools(applies, views=views, checks=checks)
     events = EventStream()
+    traps = TrapStore(storage=TrapStorage(
+        path=os.path.join(tempfile.mkdtemp(), "trap_proposals.json")), events=events)
     kwargs = {"ask": ask} if ask is not None else {}
     if decide is not None:
         kwargs["decide"] = decide
     result = run(intent, llm=llm, tools=tools.registry, events=events,
                  budgets=budgets or Budgets(), attachments=list(attachments),
-                 outstanding=list(outstanding), agentic=agentic, consult=consult, **kwargs)
+                 outstanding=list(outstanding), agentic=agentic, consult=consult,
+                 traps=traps, **kwargs)
     return result, events, llm, tools
 
 

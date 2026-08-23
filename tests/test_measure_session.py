@@ -5,9 +5,14 @@ Fixtures under `tests/recorded/sessions/` are real Session logs, copied in
 whole from `logs/sessions/`, so the numbers below are read off an actual run
 rather than invented.
 """
+import json
 import os
 
+from core.events import EventStream
+from core.loop import Budgets, run
 from core.measure import Measurement, compare, measure
+from core.traps import TrapStorage, TrapStore
+from tests.test_loop import FakeTools, code_reply, plan_reply, scripted, verdict_reply
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "recorded", "sessions")
 
@@ -131,6 +136,37 @@ def test_a_run_with_no_trap_events_reports_empty_tuples():
     assert result.traps_proposed == ()
     assert result.traps_approved == ()
     assert result.traps_declined == ()
+
+
+def test_a_real_run_that_proposes_a_trap_is_measured_with_it(tmp_path):
+    """
+    FCC-191's own gap: a Session log came off `core/loop.py :: run` itself,
+    not a hand-built `EventStream`, so this is the one test in the suite
+    that proves the store `run` now opens actually reaches this module's
+    numbers rather than only the `TrapStore` unit tests it was checked
+    against.
+    """
+    log_path = str(tmp_path / "run.jsonl")
+    events = EventStream()
+    events.log_to(log_path)
+    traps = TrapStore(storage=TrapStorage(path=str(tmp_path / "trap_proposals.json")),
+                      events=events)
+    trap = json.dumps({"trap": {
+        "description": "Draft cube() twice loses the second body silently",
+        "evidence": "Step 2 log: two Part::Box named Box, only one visible",
+    }})
+    llm = scripted([trap, plan_reply("Add a box"),
+                    code_reply("doc.addObject('Part::Box', 'Box')"), verdict_reply("pass")])
+    tools = FakeTools()
+
+    result = run("Make a box", llm=llm, tools=tools.registry, events=events,
+                budgets=Budgets(), traps=traps)
+
+    assert result.ok
+    measured = measure(log_path)
+    assert measured.traps_proposed == (
+        "Draft cube() twice loses the second body silently",
+    )
 
 
 def test_compare_reports_the_trap_proposal_rate():
