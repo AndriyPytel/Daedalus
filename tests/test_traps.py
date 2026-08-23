@@ -168,3 +168,20 @@ def test_a_duplicate_proposal_is_refused_before_anything_is_emitted(tmp_path):
         )
 
     assert len(events) == 0
+
+
+def test_a_proposal_duplicating_one_already_made_this_run_is_refused(store):
+    """
+    The dedupe `_duplicates_seed` does against `TRAPS` has to hold against
+    this store's own proposals too, not only the seed layer — a run's Plan
+    and Execute share one `TrapStore` (FCC-191), and a quirk Plan already
+    raised is not a second trap because Execute met it too.
+    """
+    store.propose_trap("Draft cube() twice loses the second body silently",
+                       evidence="Plan's own reading of the log", phase="plan")
+
+    with pytest.raises(DuplicateTrap):
+        store.propose_trap("Draft cube() twice loses the second body silently",
+                           evidence="Execute hit it too", phase="execute")
+
+    assert len(store.pending_proposals()) == 1

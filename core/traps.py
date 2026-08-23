@@ -9,17 +9,23 @@ FCC-170's whole point — the agent proposes, the human approves) until
 `prompt()` call picks it up. `TrapStore.decline` removes it from the pending
 list for good.
 
-A proposal is judged a duplicate of a seed trap by substring, not a model
-call: normalize both texts (casefold, collapse whitespace) and compare — equal,
-or either one a prefix of the other. The prefix leg exists because a proposal
-can restate only the first sentence of a multi-sentence seed trap, which is
-still the same trap (see FCC-184's own worked example: "Sketch attachment
-goes through AttachmentSupport + MapMode, not Placement" against the seed
-trap that continues ". Setting Placement on an attached sketch is silently
-overridden on recompute."). This is intentionally strict rather than fuzzy:
-a paraphrase that shares no prefix is treated as a new proposal, on the
-theory that a missed duplicate costs one approval click and a false "already
-exists" costs a lost trap.
+A proposal is judged a duplicate — of a seed trap, or of a proposal this
+store already holds — by substring, not a model call: normalize both texts
+(casefold, collapse whitespace) and compare — equal, or either one a prefix of
+the other. The prefix leg exists because a proposal can restate only the
+first sentence of a multi-sentence trap, which is still the same trap (see
+FCC-184's own worked example: "Sketch attachment goes through
+AttachmentSupport + MapMode, not Placement" against the seed trap that
+continues ". Setting Placement on an attached sketch is silently overridden
+on recompute."). This is intentionally strict rather than fuzzy: a paraphrase
+that shares no prefix is treated as a new proposal, on the theory that a
+missed duplicate costs one approval click and a false "already exists" costs
+a lost trap.
+
+Checked against this store's own proposals too because `core/loop.py :: run`
+opens one `TrapStore` per run and hands it to every phase (FCC-191): a quirk
+Plan already raised is not a second trap because Execute met it as well, and
+without this check the same text would land twice, once from each phase.
 
 
 Given an `EventStream`, every proposal, approval and decline emits the
@@ -41,22 +47,27 @@ DECLINED = "declined"
 
 
 class DuplicateTrap(Exception):
-    """Raised by `propose_trap` when the text already exists in the seed layer."""
+    """Raised by `propose_trap` when the text already exists in the seed
+    layer or among this store's own proposals."""
 
 
 def _normalized(text):
     return " ".join(text.split()).casefold()
 
 
-def _duplicates_seed(description):
+def _duplicates(description, others):
     normalized = _normalized(description)
-    for seed in TRAPS:
-        normalized_seed = _normalized(seed)
-        if normalized == normalized_seed:
+    for other in others:
+        normalized_other = _normalized(other)
+        if normalized == normalized_other:
             return True
-        if normalized_seed.startswith(normalized) or normalized.startswith(normalized_seed):
+        if normalized_other.startswith(normalized) or normalized.startswith(normalized_other):
             return True
     return False
+
+
+def _duplicates_seed(description):
+    return _duplicates(description, TRAPS)
 
 
 class TrapStorage:
@@ -138,6 +149,8 @@ class TrapStore:
     def propose_trap(self, description, evidence, phase) -> dict:
         if _duplicates_seed(description):
             raise DuplicateTrap("This trap already exists (seed layer).")
+        if _duplicates(description, (p["description"] for p in self._proposals)):
+            raise DuplicateTrap("This trap has already been proposed in this run.")
         proposal = {
             "id": uuid.uuid4().hex,
             "description": description,

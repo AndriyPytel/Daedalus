@@ -2367,7 +2367,7 @@ class _Asking:
 
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
         gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
-        outstanding=(), agentic=False, consult=False) -> LoopResult:
+        outstanding=(), agentic=False, consult=False, traps=None) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
 
@@ -2399,10 +2399,29 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     existing caller still retries a failed Step exactly as it did before this
     existed, and turning it on costs nothing beyond the calls it was already
     going to make — a consult spends no budget of its own.
+
+    `traps` is the `TrapStore` this run proposes into, threaded to Plan and
+    Execute the way `budgets` and `tools` already are (FCC-191): a quirk
+    Plan meets is still on record when Execute meets it too, because both
+    spend the same call to `core/agent.py :: ask`'s `trap` action against
+    the one store. `None`, the default every real caller means, opens one
+    of its own — bare, the way `core/traps.py`'s own default does, which
+    resolves to the real proposals file beside the session logs when this
+    is FreeCAD and reads and writes nothing when it is not. A caller that
+    already has one open — a test that must not touch that real file,
+    Level 2's own multi-run session — hands it in instead, the same as it
+    would its own `EventStream`. Design's and Assertion's own turns never
+    reach `agentic` from here — `run` does not offer a caller either seam
+    yet (see `agentic`'s own paragraph above) — so passing `traps` into
+    Design's re-read turns would thread a parameter through a dozen private
+    helpers for a branch nothing here ever takes; Assertion's direct call
+    still receives the store, since that one costs nothing beyond the
+    argument.
     """
     events = events if events is not None else EventStream()
     events.emit(INTENT, text=intent)
     budgets = budgets or Budgets()
+    traps = traps if traps is not None else trap_store.TrapStore(events=events)
     progress = {"applied": 0, "tried": [], "unmet": list(outstanding), "satisfied": []}
 
     def outcome(result):
@@ -2422,7 +2441,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     try:
         return outcome(_run(intent, llm, tools, events, budgets,
                             cancelled or (lambda: False), gate, progress, attachments,
-                            ask, decide, list(outstanding), agentic, consult))
+                            ask, decide, list(outstanding), agentic, consult, traps))
     except Stopped:
         return outcome(_block(events, "Stopped by you. Everything applied so far is still in "
                                       "the Document; undo it Step by Step if you want it "
@@ -3286,7 +3305,7 @@ def _one_direction_per_step(mixed):
 
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
-                               revising=()):
+                               revising=(), traps=None):
     """
     Plan, letting it ask for what the description did not carry (FCC-25).
 
@@ -3355,6 +3374,9 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     happened, which is the first thing anybody reading a stalled run wants to
     know. A run that cannot move is a different matter and is stopped where
     progress is measured, not here (FCC-132).
+
+    `traps` is `run`'s own `TrapStore` (FCC-191), forwarded to `plan()`
+    unchanged so a Plan turn may propose a trap it met deciding the Steps.
     """
     grown, for_the_build = the_part, False
     while True:
@@ -3365,7 +3387,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                        the_part=grown, unanswered=asking.unanswered, revising=revising,
                        looking=_lookable(tools) if for_the_build else (),
                        looked=asking.looked_up, tools=tools, budgets=budgets,
-                       agentic=True, looks_taken=asking.looks)
+                       agentic=True, looks_taken=asking.looks, traps=traps)
         asking.looks += _looks_spent(events, since)
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))
@@ -3407,7 +3429,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
 
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
-         decide=revise_by_default, outstanding=(), agentic=False, consult=False):
+         decide=revise_by_default, outstanding=(), agentic=False, consult=False, traps=None):
     """
     The run itself: describe the part, plan it, gate it, build it, judge it.
 
@@ -3479,7 +3501,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     def replan(feedback=None, revising=()):
         planned, part["the_part"] = _plan_once_it_knows_enough(
             intent, tools.call("snapshot"), llm, events, budgets, part["the_part"],
-            cancelled, asking, tools, feedback, attachments, revising)
+            cancelled, asking, tools, feedback, attachments, revising, traps)
         return planned
 
     def decided(why, applied):
@@ -3613,7 +3635,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                           progress["applied"])
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part["the_part"]), looks,
-                                planned.acceptance, planned.cites, agentic, consult)
+                                planned.acceptance, planned.cites, agentic, consult, traps)
         applied = progress["applied"]
 
         if outcome["handback"] and stuck["applied"] == applied \
@@ -3640,7 +3662,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         not_reached = _not_reached(outcome.get("unbuilt") or [], checking)
         acceptance = [entry for entry in checking if entry not in not_reached]
         checked = (assertion(acceptance, described, tools, llm, events, budgets,
-                             cancelled, after_a_retry=outcome.get("retried"))
+                             cancelled, after_a_retry=outcome.get("retried"), traps=traps)
                    if acceptance else None)
         progress["unmet"] = (list(checked.unmet) if checked is not None else []) \
             + list(not_reached)
@@ -3749,7 +3771,7 @@ def _also_check(acceptance, outstanding):
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), agentic=False,
-                  consult=False):
+                  consult=False, traps=None):
     """
     One pass over the Plan: written in one call, applied one Step at a time.
 
@@ -3805,6 +3827,11 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     `consult_plan` spends nothing of its own — it is bounded by the number of
     failures a Step can have, which `attempts_per_step` already bounds — and
     its advice only ever reaches a retry that was going to happen anyway.
+
+    `traps` is the one `TrapStore` `run` opened for this run (FCC-191),
+    passed straight to every `execute()` call this makes so a Step Execute
+    writes may propose a trap under the same store Plan already spent
+    against.
     """
     if cancelled():
         raise Stopped()
@@ -3815,7 +3842,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     unbuilt = []
     looks = looks if looks is not None else Looks()
     written = execute(steps, tools, llm, events, budgets=budgets, as_described=as_described,
-                      looks=looks, entries=entries, agentic=agentic)
+                      looks=looks, entries=entries, agentic=agentic, traps=traps)
 
     while index < len(steps):
         if cancelled():
@@ -3894,7 +3921,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         if cancelled():
             raise Stopped()
         written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
-                          looks, entries, agentic, advice)
+                          looks, entries, agentic, advice, traps)
 
     return {"obsolete": None, "handback": None, "description": described,
             "tried": [], "unbuilt": unbuilt, "retried": sorted(
