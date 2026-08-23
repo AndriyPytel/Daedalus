@@ -9,6 +9,17 @@ object an earlier Step created, look an object up by the name that Step gave it
 states is a number you write down; a number that depends on geometry is
 arithmetic the code does at execution time.
 
+**A selection computed off `Shape.Faces`, `Shape.Edges` or the like runs
+before the boolean that invalidates it, never after.** A Pad, a Pocket, a Hole
+or a Shell does not add to the Shape Execute already found — it replaces it,
+so a face or edge read off the old one is a reference into a Shape that no
+longer exists once the boolean has run. Read what a later Step's fillet or
+chamfer is going to need — a position, a normal, an axis, whatever identifies
+it — while the Shape it is read off is still the one the boolean is about to
+consume, and look the feature up again by that property once the boolean has
+run, rather than keeping the `Face` or `Edge` object itself past the operation
+that invalidates it.
+
 `what_each_entry_says` is the description addressed: the entry a Step cites
 against the value it resolves to. A Step names what it satisfies, so the value
 it needs is a lookup there — write that number down. What it does **not** license

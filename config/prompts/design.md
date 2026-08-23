@@ -85,6 +85,12 @@ how to build it: no build order, no `Cut` or `Join`, no sketch planes, no first
 and then. An ordered list has somewhere to write an operation the drawing never
 showed; an unordered one does not.
 
+## What needs no reading at all
+
+Units (millimetres), the base plane, the +Z axis and a closed, positive
+volume body are the model's own conventions: they hold unless told
+otherwise, carrying no `flag`, no `because`, or entry in Acceptance.
+
 ## Every value carries its datum and its flag
 
 A value is `{"value": ..., "flag": ...}` and a value missing either is not a

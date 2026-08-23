@@ -21,7 +21,7 @@ def store(tmp_path):
 
 def test_the_seed_layer_is_exactly_the_traps_list(store):
     assert store.seed_traps() == list(TRAPS)
-    assert len(store.seed_traps()) == 15
+    assert len(store.seed_traps()) == 18
 
 
 def test_a_pending_proposal_is_absent_from_the_prompt_until_approved(store, monkeypatch):

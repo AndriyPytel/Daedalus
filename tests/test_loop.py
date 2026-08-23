@@ -40,6 +40,7 @@ import base64
 import json
 import math
 import os
+import re
 import tempfile
 from dataclasses import replace
 
@@ -554,6 +555,31 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
     assert "Let a Step fail" in execute_system
 
 
+def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup():
+    """
+    FCC-205: nowhere named the order a part is planned in, nor why it matters.
+    A boolean — a Pad added to the solid, a Pocket or a Hole cut out of it, a
+    Shell hollowing it — does not add to the Shape the Steps before it built,
+    it replaces it, so a reference Execute worked out against the geometry
+    before the boolean runs is a reference into a Shape already gone. Fillets
+    and chamfers are planned last because that is the only order in which the
+    edges their Step names are still the edges the boolean before them built.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    _, plan_system, execute_system, _ = (" ".join(text.split()) for text in _system_messages(llm))
+
+    assert "base, then addition, then subtraction" in plan_system
+    assert "fillet or a chamfer only once every one of those stands" in plan_system
+    assert "boolean" in plan_system and "replaces it" in plan_system
+
+    assert "computed off `Shape.Faces`" in execute_system
+    assert "before the boolean that invalidates it" in execute_system
+
+
 def test_the_reading_rules_moved_to_the_design_phase_whole():
     """
     FCC-59's rules were live in plan.md and did not hold, so FCC-86 moved who
@@ -626,6 +652,54 @@ def test_a_value_the_model_settled_says_who_settled_it_and_on_what():
     assert "who settled it and on what" in design_system
     assert "`assumed` without `because` is invalid" in design_system
     assert "settle it yourself" in design_system
+
+
+def test_the_nonmetric_defaults_are_named_and_carry_no_number():
+    """
+    FCC-206: `Default assumptions` in the text-to-cad doctrine lists both
+    non-metric conventions — units, base plane, up axis, a body being a
+    closed positive volume — and numeric ones — wall thickness, fillet
+    radius, clearance. Only the first kind describes the coordinate system
+    every reading sits in rather than a value of the part, so only the first
+    kind belongs in design.md; a numeric default there would be exactly the
+    "nobody supplied it" FCC-114 already named, dressed up as a convention.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_DATUM), plan_reply("Add a box"), code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    design_system = " ".join(_system_messages(llm)[0].split())
+
+    for default in ("millimetres", "base plane", "+Z", "closed", "positive volume"):
+        assert default in design_system, "a non-metric default is missing: " + default
+
+    section = design_system[design_system.index("What needs no reading at all"):]
+    section = section[:section.index("## Every value carries its datum and its flag")
+                       if "## Every value carries its datum and its flag" in section
+                       else len(section)]
+    assert not re.search(r"\d", section), \
+        "a numeric default reached design.md: " + section
+
+
+def test_a_nonmetric_default_carries_no_flag_and_reaches_no_acceptance_entry():
+    """
+    FCC-206: units, the base plane, the up axis and a body being a closed
+    positive volume are conventions of the model, not values read off
+    anything, so a description that never names them still carries none of
+    them as `assumed` — `entries()` and `decided_for_you()`, which is what
+    the Acceptance list and the Plan Gate's `Decided for you` section are
+    built from, see nothing about either one on A_PART, which never names
+    them.
+    """
+    for entry in entries(A_PART):
+        for word in ("unit", "millimetre", "base plane", "axis default", "+Z",
+                     "closed volume", "positive volume"):
+            assert word not in entry["about"].lower() and word not in entry["says"].lower()
+
+    for line in decided_for_you(A_PART):
+        for word in ("unit", "millimetre", "base plane", "axis default", "+Z",
+                     "closed volume", "positive volume"):
+            assert word not in line.lower()
 
 
 def test_a_curve_is_not_read_until_its_centre_is_placed():
@@ -5045,6 +5119,28 @@ def test_review_is_told_the_facts_the_checks_confirmed():
     assert events.first(ASSERTION).data["uncovered"] == [ACCEPTANCE[1]]
 
 
+def test_review_is_told_not_to_fail_on_a_suspicion_the_checks_never_confirmed():
+    """
+    A mirrored flank or a displaced hole reads from the render alone, on a
+    face no check happened to cover — `ACCEPTANCE[1]` stays uncovered here,
+    the way FCC-76 leaves a check that could not run. `review.md` is what
+    stops that reading from becoming its own `fail`: the same rule that
+    already keeps a dimension off the picture (`a diameter was never a
+    pixel`), generalised from dimensions to any visual suspicion (FCC-204).
+    """
+    _, _, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"),
+        code_reply("make()"),
+        assertion_reply(CHECKS, uncovered=[ACCEPTANCE[1]]),
+        verdict_reply("pass"),
+        views=[RENDER_PNG] * 4)
+
+    review_system = _system_messages(llm)[-1]
+
+    assert review_system == prompt("review")
+    assert "hypothesis to measure" in review_system
+
+
 def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
     """
     An AttributeError in the checking code says nothing about the nut. Read as
@@ -6089,6 +6185,78 @@ def test_one_failure_says_nothing_about_repeating_yourself():
 
     assert "you_have_failed_this_the_same_way_twice" not in json.loads(
         llm.calls[2][-1]["content"])
+
+
+NO_SUCH_PROPERTY = ("Traceback (most recent call last):\n"
+                    "RuntimeError: this Step did not build the operation the Plan named:\n"
+                    "Name: OuterProfile (Sketcher::SketchObject) has no such property: "
+                    "TangentLength\n")
+
+FILLET_RADIUS = ("Traceback (most recent call last):\n"
+                 "RuntimeError: recompute left these objects in error:\n"
+                 "EndFillets_R12_5 (PartDesign::Fillet): BRep_API: command not done\n")
+
+
+def test_a_known_symptom_gets_a_repair_reference_on_the_first_failure():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_SUCH_PROPERTY)])
+
+    retry = _turns_of(llm, "execute")[1]
+
+    assert retry["your_failed_attempts_at_this_step"][0]["traceback"] == NO_SUCH_PROPERTY
+    reference = retry["repair_reference"]
+    assert "describe_type" in reference["the_smallest_responsible_fix"]
+    assert "guessed" in reference["the_smallest_responsible_fix"]
+    assert "own promised properties" in reference["recount_after_it"]
+
+
+def test_a_different_known_symptom_gets_its_own_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Fillet the rim"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(FILLET_RADIUS)])
+
+    reference = _turns_of(llm, "execute")[1]["repair_reference"]
+
+    assert "wall thickness" in reference["the_smallest_responsible_fix"]
+    assert "face count" in reference["recount_after_it"]
+
+
+def test_an_unknown_symptom_gets_no_repair_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed("ZeroDivisionError: division by zero")])
+
+    assert "repair_reference" not in _turns_of(llm, "execute")[1]
+
+
+def test_a_step_that_has_not_failed_yet_gets_no_repair_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"),
+        verdict_reply("pass"),
+    ])
+
+    assert "repair_reference" not in _turns_of(llm, "execute")[0]
+
+
+def test_a_repair_reference_spends_no_look_and_no_extra_turn():
+    result, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_SUCH_PROPERTY)])
+
+    assert result.ok, result.reason
+    execute_turns = _turns_of(llm, "execute")
+    assert len(execute_turns) == 2
+    assert all("look" not in turn for turn in execute_turns)
 
 
 def test_a_failure_nothing_recognises_is_not_given_invented_advice():
