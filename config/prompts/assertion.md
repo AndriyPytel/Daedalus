@@ -60,7 +60,10 @@ anything is reported, or the report is about whichever entry happened to be
 first.
 
 Name the entry, not the number that came out of it. A failure Plan cannot
-place is a failure it cannot fix.
+place is a failure it cannot fix. Where a measurement has to raise on its own
+rather than reach `failed`, raise the same way: a bare `assert` or a bare
+exception is a failure with no name, and Plan is left with an `AssertionError`
+and nothing about which entry it was.
 
 Measure off `Shape`, on a feature — never off a bounding box, and never by
 exporting a mesh. `Shape` carries everything an STL would and carries it

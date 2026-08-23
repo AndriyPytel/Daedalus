@@ -37,6 +37,16 @@ both ends" — and not in the FreeCAD spelling of its type. `Face3` and `Edge12`
 are not yours to write, and neither is how a reference is found. Which edge or
 face a Step lands on is worked out against the geometry at the moment it runs.
 
+Ask for an object to be **labeled**, never **named**. FreeCAD assigns every
+object's `Name` itself, the instant it is created, and no Step can change it —
+a `Sketcher::SketchObject` has no such property to set. Where a later Step
+needs to find something an earlier one built, give it the identifying word
+there — "sketch it as RingProfile" — and it lands as a `Label`.
+`logs/sessions/a67a88bbcdc042dfac870fd1908f7ff7.jsonl` asked, three attempts
+running, for an object to be "named" something the object model has no way to
+be told; each attempt renamed a comment or a loop variable instead, because
+the fix the traceback asked for did not exist.
+
 A Step that works on some of the edges or some of the faces says how many —
 "round the twelve longitudinal edges of the outer profile at R2". Execute
 checks what it selected against that number and fails the Step where the two
@@ -144,6 +154,19 @@ and a pair of straight lines in every plane parallel to it, so a recess that
 follows a ring's outside is drawn on the elevation and cannot be drawn on the
 face it opens at — there is no centre in that plane for the arc to be struck
 from.
+
+**Two regions of one sketch pad into one solid only where they genuinely
+overlap.** A ring, the lug beside it, an arm out at an angle — drawn to meet
+exactly, tangent or edge to edge, they close a boundary that shares no area,
+and a Pad built from it lands in two solids; Preflight refuses a Body it
+cannot report as one piece. A Step whose stated dimensions place two regions
+of a sketch tangent is a Step whose dimensions cannot be built, not a Step
+with an ambiguous edge — ask for the overlap itself, a rectangle reaching past
+the circle it joins rather than up to it.
+`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl` gave a rectangle's edge
+tangent to a circle at the join and asked for two separate closed regions to
+fuse there; Execute had to widen the Plan's own number by a millimetre before
+the Pad would build as one solid.
 
 **A full round is built, never filleted to.** A round whose radius is half the
 thickness it crosses meets itself: at that radius the face between its two
