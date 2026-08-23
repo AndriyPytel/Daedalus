@@ -11,7 +11,8 @@ apart from the turn that used the answer. `ask` here folds that into a single
 conversation: between the first user turn and the phase's final object, the
 model may spend a turn on an action instead — `{"look": {"tool": ..., "arguments":
 {...}}}` to call a read-only Tool, or `{"run": "..."}` to execute Python in a
-namespace that survives across the whole call — and is asked again with the
+namespace that survives across the whole call, refused outright for the
+phases `core/loop.py :: NOT_ARMED_FOR_RUN` names — and is asked again with the
 result appended, the same `prior=` mechanism `_streamed` already carries so
 `system` and `user` are billed once for the whole conversation, not once per
 turn.
@@ -137,13 +138,15 @@ def ask(llm, events, phase, system, user, tools, budgets, namespace=None, looks_
     `Budgets()` of its own.
 
     `namespace` is optional so that one call still gets a fresh `Namespace`
-    the way it always has. A caller that holds several calls of one phase
-    invocation together — Assertion across its retries (FCC-189) — passes the
-    same `Namespace` into each, so a name a `run` action bound on one call is
-    still bound on the next: the persistence FCC-183 built stays inside one
-    call otherwise, and a phase that measures the same result more than once
-    a run would have no way to keep what the first measurement already
-    worked out.
+    the way it always has. A caller that held several calls of one phase
+    invocation together could pass the same `Namespace` into each instead, so
+    a name a `run` action bound on one call would still be bound on the
+    next — the persistence FCC-183 built otherwise stays inside one call. No
+    caller does that today: `run`, the one action that binds anything into a
+    `Namespace`, is refused for Assertion, the phase this was built to
+    span retries for (`core/loop.py :: NOT_ARMED_FOR_RUN`, BRIEFING Question
+    5), and no other phase spans more than one call of `ask` per invocation.
+    The parameter is left in place for whichever caller needs it next.
 
     `budgets.agent_turns` bounds the whole conversation, this call's own turn
     and every action it takes together — without it a model that keeps
@@ -211,7 +214,7 @@ def ask(llm, events, phase, system, user, tools, budgets, namespace=None, looks_
         run = reply.get("run")
         if isinstance(run, str) and run.strip():
             last_action = "running code"
-            result = _run_code(namespace, run, events)
+            result = _run_code(namespace, run, events, phase)
             prior = prior + _turn_of(body, reasoning, result)
             continue
 
@@ -273,13 +276,32 @@ def _take_a_look(tools, look, events, looks_taken, budgets):
     return result, looks_taken + 1
 
 
-def _run_code(namespace, code, events):
+_RUN_REFUSED = {
+    "design": "Design does not run code against the Document -- it never reaches a "
+             "FreeCAD API (ADR-0019). Delegate a page or a sheet instead.",
+    "assertion": "Assertion does not run code against the Document -- it is read-only "
+                "by construction. Check what you mean through check_assertions instead.",
+}
+
+
+def _run_code(namespace, code, events, phase):
     """One `run` action: whatever the code printed, wrote to stderr, or
-    failed with, as the text a `run` action's result carries."""
+    failed with, as the text a `run` action's result carries -- or the
+    `{"error": ...}` that stands in for it where `phase` is one
+    `core/loop.py :: NOT_ARMED_FOR_RUN` names, the same shape `_take_a_look`'s
+    own refusal already takes rather than an exception that would lose the
+    conversation. `TOOL_CALL`/`TOOL_RESULT` still bracket a refused turn, so
+    the transcript shows the model reached for `run` and what it was told
+    instead, exactly as it would a Tool `look` refuses."""
+    from core.loop import NOT_ARMED_FOR_RUN
+
     events.emit(TOOL_CALL, name="run", arguments={"code": code})
-    output = namespace.run(code)
-    events.emit(TOOL_RESULT, name="run", result={"output": output})
-    return {"output": output}
+    if phase in NOT_ARMED_FOR_RUN:
+        result = {"error": _RUN_REFUSED.get(phase, "%r does not run code." % phase)}
+    else:
+        result = {"output": namespace.run(code)}
+    events.emit(TOOL_RESULT, name="run", result=result)
+    return result
 
 
 def _proposed_trap(traps, trap, phase):

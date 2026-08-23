@@ -598,7 +598,7 @@ class LoopWorker(QtCore.QObject):
         """
         from core import events as ev
         from core.events import EventStream
-        from core.loop import agentic_from_env, run
+        from core.loop import run
         from utils.logger import generate_crash_report, logger
 
         self._stop.clear()
@@ -632,8 +632,7 @@ class LoopWorker(QtCore.QObject):
                          attachments=attachments, gate=self.ask.about_the_plan,
                          ask=self.ask.about_missing_values,
                          decide=self.ask.about_the_revision,
-                         outstanding=list(outstanding or ()),
-                         agentic=agentic_from_env() is True)
+                         outstanding=list(outstanding or ()))
             self.finished.emit(result, transcript)
         except Exception as exc:
             events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))

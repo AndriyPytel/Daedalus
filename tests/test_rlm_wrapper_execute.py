@@ -18,7 +18,8 @@ other phase are out of scope.
 import json
 
 from core import loop
-from core.events import APPLIED, PLAN_REVISED, PREFLIGHT_FAILED, STEP_STARTED, TOOL_CALL
+from core.events import APPLIED, PLAN_REVISED, PREFLIGHT_FAILED, STEP_STARTED, TOOL_CALL, \
+                        TOOL_RESULT
 from core.loop import Budgets
 from tests.test_loop import code_reply, drive, failed, plan_reply, verdict_reply
 
@@ -64,6 +65,12 @@ def test_an_agentic_execute_turn_may_run_code_instead_of_only_looking():
     assert tools.applied_codes() == ["box()"]
     run_calls = [event for event in events.of(TOOL_CALL) if event.data["name"] == "run"]
     assert len(run_calls) == 1
+    run_results = [event.data["result"] for event in events.of(TOOL_RESULT)
+                  if event.data["name"] == "run"]
+    assert "error" not in run_results[0], (
+        "Execute's own run must keep working -- core/loop.py :: NOT_ARMED_FOR_RUN "
+        "must never grow to include it"
+    )
 
 
 def test_a_step_that_fails_preflight_retries_up_to_attempts_per_step_and_the_count_is_asserted():

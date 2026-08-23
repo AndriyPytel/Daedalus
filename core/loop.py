@@ -53,7 +53,7 @@ from core.events import (
 from core import part_file, preflight, sheet_reader, sketch_check
 from core import traps as trap_store
 from core.llm import REASONING, ProviderRefused, StreamCutOff, cache_control_supported
-from core.tools import ToolError
+from core.tools import ToolError, ToolRegistry
 
 DESIGN_PHASE = "design"
 PLAN_PHASE = "plan"
@@ -65,6 +65,37 @@ _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 NOT_A_LOOK = ("apply_step", "review_views", "check_assertions")
 
+NOT_ARMED_FOR_RUN = (DESIGN_PHASE, ASSERTION_PHASE)
+"""
+The phases `core/agent.py :: _run_code` refuses to hand `exec` to, whether or
+not their own `agentic` is on (BRIEFING Question 5). `run` is not a Tool
+call: no Preflight, no Plan Gate, none of `NOT_A_LOOK`'s own narrowing of
+`look` — a phase armed with it can do anything `apply_step` does, unaudited,
+by writing the equivalent Python instead of naming it. Execute already
+applies model-written Python to the Document on every Step through that same
+gate-less path (`core/apply.py`); `run` there mirrors a capability the
+architecture already accepts, so Execute is not in this tuple. Design is:
+it never reaches a FreeCAD API at all, and `delegate` is the whole of what
+its own agency was ever meant to add (ADR-0019). Assertion is: read-only by
+construction, and it already runs its checks through `check_assertions`, a
+Tool with a path of its own. Review needs no entry here — it has no seam to
+be exempted from (`tests/test_review_stays_unarmed.py`).
+"""
+
+_DESIGN_HAS_NOTHING_TO_LOOK_WITH = ToolRegistry()
+"""
+`run`'s production `tools` for the one Design gives `core/agent.py :: ask`
+when its own seam is on (FCC-185): empty on purpose, every run, so a `look`
+action refuses everything (`name not in tools` in `core/agent.py ::
+_take_a_look`, true for any name against an empty registry) and Design keeps
+the reach it has always had — none — rather than inheriting whatever real
+Tools this run's Document happens to register. Design was never meant to
+read the live Document (ADR-0019); `delegate` is the seam's whole point, and
+`delegate` does not need a Tool to work (`core/agent.py :: _delegated` hands
+this same empty registry to the sub-agent it opens, for the same reason one
+level down).
+"""
+
 _VIEW_NAMES = ("isometric", "the front", "above", "the right")
 
 
@@ -73,14 +104,18 @@ def agentic_from_env():
     `RLM_AGENTIC` read fresh on every call, not cached at import, so a test
     may set it with `monkeypatch` and see the change without a reimport.
 
-    Unset means neither seam is told anything, so each keeps the value it
-    shipped with: Plan's own call inside `run()` stays `True` and `run()`'s
-    `agentic` parameter, which only reaches Execute, stays whatever its
-    caller already passes (`False` for every caller today). Set to `off`,
-    both go `False`; set to anything else non-empty, both go `True`. Design
-    and Assertion have no caller that ever offers them `agentic` at all
-    (FCC-186's own seams for those two are unreached from `run()`), so no
-    value of this variable moves them.
+    Unset means neither group is told anything, so each keeps the value it
+    shipped with: Plan's own call inside `_plan_once_it_knows_enough` stays
+    `True` (`is not False`, unset included), and `run()`'s own `agentic`
+    parameter — Execute, Design and Assertion together — resolves unset to
+    `False` (`is True`, unset excluded) the one place `run()` itself does it.
+    Set to `off`, every phase goes `False`; set to anything else non-empty,
+    every phase goes `True`. `run()` is the only caller that resolves this
+    function for that second group — `ui/copilot_panel.py` no longer reads
+    it at all (FCC-192): an architectural fence
+    (`tests/test_panel_renders_the_stream.py`) says the panel may not import
+    the loop's own decisions, only invoke `run` and name its data types, and
+    what RLM_AGENTIC does is exactly that: the loop's own decision.
     """
     value = os.environ.get("RLM_AGENTIC")
     if value is None:
@@ -982,15 +1017,20 @@ def _the_groups(attachments):
     return groups
 
 
-def _asked_about_a_group(label, views, intent, llm, events, attachments):
+def _asked_about_a_group(label, views, intent, llm, events, attachments, agentic=False,
+                         tools=None, budgets=None, traps=None):
     """One page-sized group's Design turn — the printed-callout list rides
     along even though `views` narrows the pictures, because a callout printed
-    once can explain a feature in a view this group never sees."""
+    once can explain a feature in a view this group never sees. `agentic`,
+    `tools`, `budgets` and `traps` are `design()`'s own, carried through the
+    fan-out unchanged."""
     return design({"intent": intent}, llm, events, attachments, views=views,
-                  phase="%s: %s" % (DESIGN_PHASE, label), keep_printed=True)
+                  phase="%s: %s" % (DESIGN_PHASE, label), keep_printed=True,
+                  agentic=agentic, tools=tools, budgets=budgets, traps=traps)
 
 
-def _first_pass(intent, llm, events, attachments, cancelled):
+def _first_pass(intent, llm, events, attachments, cancelled, agentic=False, tools=None,
+                budgets=None, traps=None):
     """
     The Design phase's opening move: one call per page-sized group of views,
     run in parallel, each merged into the same part as it lands
@@ -1023,10 +1063,16 @@ def _first_pass(intent, llm, events, attachments, cancelled):
     order: the phase still asks once here (ADR-0022), and a page-sized call
     asking on its own for its own reasons is not license for the run to wait
     on several at once.
+
+    `agentic`, `tools`, `budgets` and `traps` are `design()`'s own seam
+    (FCC-185), carried through to every group's own call and to the
+    single-call fallback alike.
     """
     groups = _the_groups(attachments)
     if not groups:
-        the_part, question = design({"intent": intent}, llm, events, attachments)
+        the_part, question = design({"intent": intent}, llm, events, attachments,
+                                    agentic=agentic, tools=tools, budgets=budgets,
+                                    traps=traps)
         return the_part, question, False
 
     if cancelled():
@@ -1036,7 +1082,8 @@ def _first_pass(intent, llm, events, attachments, cancelled):
     question = ""
     with ThreadPoolExecutor(max_workers=min(len(groups), _A_GROUP_CONCURRENCY)) as pool:
         futures = [(label, pool.submit(_asked_about_a_group, label, views, intent,
-                                       copy.copy(llm), events, attachments))
+                                       copy.copy(llm), events, attachments, agentic,
+                                       tools, budgets, traps))
                   for label, views in groups]
         for label, future in futures:
             try:
@@ -1055,7 +1102,8 @@ def _first_pass(intent, llm, events, attachments, cancelled):
     return the_part, question, True
 
 
-def _reconciled(the_part, intent, llm, events, attachments):
+def _reconciled(the_part, intent, llm, events, attachments, agentic=False, tools=None,
+                budgets=None, traps=None):
     """
     One turn over what the page-sized calls produced, seeing no pictures —
     every named list `shown()` would draw one beside, as `_words_only` gives
@@ -1065,7 +1113,8 @@ def _reconciled(the_part, intent, llm, events, attachments):
     once and settles what only the whole sheet can.
     """
     return design({"intent": intent, "the_part_as_you_described_it": the_part},
-                  llm, events, attachments, pictures=False)
+                  llm, events, attachments, pictures=False,
+                  agentic=agentic, tools=tools, budgets=budgets, traps=traps)
 
 
 @dataclass
@@ -2093,13 +2142,16 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     `agentic` is the same seam Plan already has onto `core/agent.py :: ask`
     (FCC-183, FCC-189): off by default, so every existing call still goes
     through `_ask` and asks the model exactly once per attempt. Turned on,
-    one `Namespace` is opened before the retry loop and threaded through
-    every attempt's call to `ask` rather than one made fresh per call, so a
-    name a `run` action binds while writing the first attempt's checks is
-    still bound while writing the second's — the retry that used to start
-    over from nothing can now build on what the failed attempt already
-    worked out. `tools` and `budgets` are only read for this when `agentic`
-    is set, the same way Plan's are.
+    an attempt may spend a turn on `look`, `delegate` or `trap` before
+    answering — a Tool it already had, a second conversation of its own, or
+    a quirk worth proposing — instead of only ever answering outright. `run`
+    is refused (`core/loop.py :: NOT_ARMED_FOR_RUN`, BRIEFING Question 5):
+    Assertion is read-only by construction, and its checks already run
+    through `check_assertions`, a Tool with its own audited, Preflight-free
+    but structured path — a second, unaudited way to touch the Document
+    would only duplicate what that one Tool call already does properly.
+    `tools` and `budgets` are only read for this when `agentic` is set, the
+    same way Plan's are.
 
     `traps` is a `TrapStore` (FCC-184) a caller already has open for this
     run, forwarded to `core/agent.py :: ask` unchanged so an attempt may
@@ -2158,9 +2210,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                         uncovered=[], traceback=traceback, unmet=unmet)
             return Checked(failed=True, traceback=traceback, unmet=unmet)
 
-    from core.agent import Namespace, ask as _agent_ask
+    from core.agent import ask as _agent_ask
 
-    namespace = Namespace() if agentic else None
     attempts = []
     for _ in range(budgets.attempts_per_step):
         if cancelled():
@@ -2171,7 +2222,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         if agentic:
             reply = _agent_ask(llm, events, ASSERTION_PHASE, prompt(ASSERTION_PHASE),
                                json.dumps(request, indent=2, default=str), tools, budgets,
-                               namespace=namespace, traps=traps)
+                               traps=traps)
         else:
             reply = _ask(llm, events, ASSERTION_PHASE, prompt(ASSERTION_PHASE),
                          json.dumps(request, indent=2, default=str))
@@ -2387,7 +2438,7 @@ class _Asking:
 
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
         gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
-        outstanding=(), agentic=False, consult=False, traps=None) -> LoopResult:
+        outstanding=(), agentic=None, consult=False, traps=None) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
 
@@ -2409,10 +2460,33 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     first (FCC-98). It comes back out on the result, still outstanding or not,
     for whoever drives the next run.
 
-    `agentic` reaches Execute's own seam (`core/loop.py :: execute`, FCC-187):
-    off by default, so every existing caller of `run` still writes each turn's
-    code through `_ask`, unchanged. It does not touch Plan's separate `agentic`
-    seam (FCC-183), which `run` does not offer a caller yet.
+    `agentic` reaches Execute's own seam (`core/loop.py :: execute`, FCC-187),
+    Design's (FCC-185) and Assertion's (FCC-189) alike — one flag, all three
+    at once. Tri-state, the same shape `agentic_from_env` itself returns:
+    `None`, the default, means "ask the environment" and is resolved here,
+    once, to `agentic_from_env() is True` — off unless `RLM_AGENTIC` says
+    otherwise, so a caller that never heard of the variable sees no change.
+    `True` or `False` from a caller — a test, mostly — is taken as given and
+    never reads the environment at all, the same as `traps` being handed a
+    store already open. `ui/copilot_panel.py` used to resolve this itself,
+    importing `agentic_from_env` to do it — an architectural fence
+    (`tests/test_panel_renders_the_stream.py ::
+    test_the_panel_only_ever_asks_the_loop_to_start`) says the panel may
+    import nothing from `core.loop` but its data types and `run` itself, and
+    that fence was right: whether the loop reads code through `core/agent.py
+    :: ask` is the loop's own business, not the UI's to resolve and hand
+    down. The panel now passes nothing and gets today's shipped mix by
+    doing nothing, same as it always could have.
+
+    It does not touch Plan's separate `agentic` seam (FCC-183), resolved a
+    line above in `_plan_once_it_knows_enough` off `agentic_from_env()`
+    directly with its own tri-state rule (`is not False`, so unset stays
+    `True` — Plan shipped agentic before this variable existed and unset
+    must not take that back) — a different default for the same reason
+    Execute/Design/Assertion's is `is True` (unset stays `False` — none of
+    the three shipped agentic before FCC-183 built the seam). One `agentic`
+    parameter here would have to pick one default and get the other three
+    wrong.
 
     `consult` reaches the one Execute-to-Plan edge FCC-168 draws
     (`core/loop.py :: consult_plan`, FCC-188): off by default, so every
@@ -2420,28 +2494,23 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     existed, and turning it on costs nothing beyond the calls it was already
     going to make — a consult spends no budget of its own.
 
-    `traps` is the `TrapStore` this run proposes into, threaded to Plan and
-    Execute the way `budgets` and `tools` already are (FCC-191): a quirk
-    Plan meets is still on record when Execute meets it too, because both
-    spend the same call to `core/agent.py :: ask`'s `trap` action against
-    the one store. `None`, the default every real caller means, opens one
-    of its own — bare, the way `core/traps.py`'s own default does, which
-    resolves to the real proposals file beside the session logs when this
-    is FreeCAD and reads and writes nothing when it is not. A caller that
-    already has one open — a test that must not touch that real file,
-    Level 2's own multi-run session — hands it in instead, the same as it
-    would its own `EventStream`. Design's and Assertion's own turns never
-    reach `agentic` from here — `run` does not offer a caller either seam
-    yet (see `agentic`'s own paragraph above) — so passing `traps` into
-    Design's re-read turns would thread a parameter through a dozen private
-    helpers for a branch nothing here ever takes; Assertion's direct call
-    still receives the store, since that one costs nothing beyond the
-    argument.
+    `traps` is the `TrapStore` this run proposes into, threaded to Plan,
+    Execute, Design and Assertion alike (FCC-191): a quirk any phase meets is
+    still on record when another meets it too, because all four spend the
+    same call to `core/agent.py :: ask`'s `trap` action against the one
+    store. `None`, the default every real caller means, opens one of its own
+    — bare, the way `core/traps.py`'s own default does, which resolves to
+    the real proposals file beside the session logs when this is FreeCAD and
+    reads and writes nothing when it is not. A caller that already has one
+    open — a test that must not touch that real file, Level 2's own
+    multi-run session — hands it in instead, the same as it would its own
+    `EventStream`.
     """
     events = events if events is not None else EventStream()
     events.emit(INTENT, text=intent)
     budgets = budgets or Budgets()
     traps = traps if traps is not None else trap_store.TrapStore(events=events)
+    agentic = (agentic_from_env() is True) if agentic is None else agentic
     progress = {"applied": 0, "tried": [], "unmet": list(outstanding), "satisfied": []}
 
     def outcome(result):
@@ -2486,7 +2555,8 @@ def _answered(question, ask, events):
     return answer
 
 
-def _written_in(the_part, intent, question, answer, llm, events, attachments):
+def _written_in(the_part, intent, question, answer, llm, events, attachments,
+                agentic=False, tools=None, budgets=None, traps=None):
     """
     A person's answer, back through Design rather than on to Plan.
 
@@ -2508,7 +2578,8 @@ def _written_in(the_part, intent, question, answer, llm, events, attachments):
             "the_question": question if answer else _settle_it(question)}
     if answer:
         body["the_answer_you_were_given"] = answer
-    grew, asks = design(body, llm, events, attachments)
+    grew, asks = design(body, llm, events, attachments, agentic=agentic, tools=tools,
+                        budgets=budgets, traps=traps)
     return merge(the_part, grew), asks
 
 
@@ -2519,7 +2590,8 @@ def _settle_it(question):
             "they can correct.")
 
 
-def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments):
+def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments,
+                       tools=None, agentic=False, traps=None):
     """
     The part as Design has it, before anything is planned.
 
@@ -2543,8 +2615,15 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
     phase after this one is handed the part rather than the reading of it.
     `tests/test_loop.py` measures both against the recorded run of the 2023
     pipe clamp.
+
+    `agentic`, `tools` and `traps` are `design()`'s own seam (FCC-185),
+    carried through every one of Design's turns below — the first pass, the
+    person's answer, the reconciliation and every re-read — the same
+    `budgets` already was.
     """
-    the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled)
+    the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled,
+                                              agentic=agentic, tools=tools, budgets=budgets,
+                                              traps=traps)
     the_part = merge({}, the_part)
 
     if question:
@@ -2553,26 +2632,32 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
         events.emit(QUESTION, text=question)
         the_part, _ = _written_in(the_part, intent, question,
                                   _answered(question, ask, events), llm, events,
-                                  attachments)
+                                  attachments, agentic=agentic, tools=tools,
+                                  budgets=budgets, traps=traps)
 
     if grouped:
         if cancelled():
             raise Stopped()
-        grown, _ = _reconciled(the_part, intent, llm, events, attachments)
+        grown, _ = _reconciled(the_part, intent, llm, events, attachments, agentic=agentic,
+                               tools=tools, budgets=budgets, traps=traps)
         the_part = merge(the_part, grown)
 
     the_part = _every_callout_accounted_for(the_part, intent, attachments, llm, events,
-                                            budgets, cancelled)
+                                            budgets, cancelled, agentic=agentic,
+                                            tools=tools, traps=traps)
     the_part = _the_outside_is_carried(the_part, intent, attachments, llm, events,
-                                       budgets, cancelled)
+                                       budgets, cancelled, agentic=agentic, tools=tools,
+                                       traps=traps)
 
     if the_part:
         events.emit(DESIGN, model=the_part)
     the_part = _the_sweep_is_the_sheets(the_part, attachments)
     the_part = _the_directions_are_the_drawings(the_part, intent, attachments, llm,
-                                                events, budgets, cancelled)
+                                                events, budgets, cancelled, agentic=agentic,
+                                                tools=tools, traps=traps)
     the_part = _every_number_is_the_sheets(the_part, intent, attachments, llm, events,
-                                           budgets, cancelled)
+                                           budgets, cancelled, agentic=agentic, tools=tools,
+                                           traps=traps)
     disagreements = _the_geometry_disagrees(attachments, events)
     the_part = merge(the_part, dict(the_part, conflicts=disagreements)
                      if disagreements else the_part)
@@ -2583,7 +2668,7 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
 
 
 def _every_number_is_the_sheets(the_part, intent, attachments, llm, events, budgets,
-                                cancelled):
+                                cancelled, agentic=False, tools=None, traps=None):
     """
     A number on the description that is on no sheet, put back to the drawing.
 
@@ -2612,7 +2697,8 @@ def _every_number_is_the_sheets(the_part, intent, attachments, llm, events, budg
         grew, _ = design({"intent": intent,
                           "the_part_as_you_described_it": the_part,
                           "the_question": _where_is_this_number(found)},
-                         llm, events, attachments)
+                         llm, events, attachments, agentic=agentic, tools=tools,
+                         budgets=budgets, traps=traps)
         if grew:
             the_part = merge(the_part, grew)
         found = _off_the_sheet(attachments, the_part)
@@ -2816,7 +2902,8 @@ def _round_evidence(attachments):
 
 
 def _the_directions_are_the_drawings(the_part, intent, attachments, llm, events,
-                                     budgets, cancelled):
+                                     budgets, cancelled, agentic=False, tools=None,
+                                     traps=None):
     """
     A direction read off the wrong view put back to the drawing before anybody
     settles it for it.
@@ -2867,7 +2954,8 @@ def _the_directions_are_the_drawings(the_part, intent, attachments, llm, events,
         grew, _ = design({"intent": intent,
                           "the_part_as_you_described_it": the_part,
                           "the_question": _look_at_the_view_again(found)},
-                         llm, events, attachments)
+                         llm, events, attachments, agentic=agentic, tools=tools,
+                         budgets=budgets, traps=traps)
         if not grew:
             break
         the_part = _corrected_by(the_part, grew, found, round_here)
@@ -3096,7 +3184,7 @@ def _how_it_was_read(sheet):
 
 
 def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
-                            cancelled):
+                            cancelled, agentic=False, tools=None, traps=None):
     """
     The one finding a run may not walk past: the shape of the part is nobody's.
 
@@ -3140,7 +3228,8 @@ def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
         grew, _ = design({"intent": intent,
                           "the_part_as_you_described_it": the_part,
                           "the_question": _the_outer_profile(why)},
-                         llm, events, attachments)
+                         llm, events, attachments, agentic=agentic, tools=tools,
+                         budgets=budgets, traps=traps)
         if not grew:
             break
         the_part = merge(the_part, grew)
@@ -3156,7 +3245,8 @@ def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
     grew, _ = design({"intent": intent,
                       "the_part_as_you_described_it": the_part,
                       "the_question": _settle_the_outer_profile(why)},
-                     llm, events, attachments)
+                     llm, events, attachments, agentic=agentic, tools=tools,
+                     budgets=budgets, traps=traps)
     return merge(the_part, grew) if grew else the_part
 
 
@@ -3179,7 +3269,7 @@ def _the_outer_profile(why):
 
 
 def _every_callout_accounted_for(the_part, intent, attachments, llm, events, budgets,
-                                 cancelled):
+                                 cancelled, agentic=False, tools=None, traps=None):
     """
     The sweep of the sheet, checked against the sheet instead of against itself.
 
@@ -3209,7 +3299,8 @@ def _every_callout_accounted_for(the_part, intent, attachments, llm, events, bud
         grew, _ = design({"intent": intent,
                           "the_part_as_you_described_it": the_part,
                           "the_question": _look_again_at(missed)},
-                         llm, events, attachments, views=_views_of(attachments, missed))
+                         llm, events, attachments, views=_views_of(attachments, missed),
+                         agentic=agentic, tools=tools, budgets=budgets, traps=traps)
         if not grew:
             break
         the_part = merge(the_part, grew)
@@ -3325,7 +3416,7 @@ def _one_direction_per_step(mixed):
 
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
-                               revising=(), traps=None):
+                               revising=(), traps=None, agentic=False):
     """
     Plan, letting it ask for what the description did not carry (FCC-25).
 
@@ -3397,6 +3488,10 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
 
     `traps` is `run`'s own `TrapStore` (FCC-191), forwarded to `plan()`
     unchanged so a Plan turn may propose a trap it met deciding the Steps.
+
+    `agentic` is `run`'s own seam (FCC-185), forwarded here to the one
+    Design turn the drawing answers a question with below — the same seam
+    Design's own first pass gets, not a second one.
     """
     grown, for_the_build = the_part, False
     while True:
@@ -3437,7 +3532,9 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             from_the_drawing, _ = design({"intent": intent,
                                           "the_part_as_you_described_it": grown,
                                           "the_question": planned.question},
-                                         llm, events, attachments)
+                                         llm, events, attachments, agentic=agentic,
+                                         tools=_DESIGN_HAS_NOTHING_TO_LOOK_WITH,
+                                         budgets=budgets, traps=traps)
             if from_the_drawing:
                 grown = merge(grown, from_the_drawing)
                 events.emit(ANSWER, text=render(from_the_drawing), by="drawing")
@@ -3515,14 +3612,15 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                      for path in attachments])
 
     part = {"the_part": _describe_the_part(intent, llm, events, budgets, ask, cancelled,
-                                           attachments)}
+                                           attachments, tools=_DESIGN_HAS_NOTHING_TO_LOOK_WITH,
+                                           agentic=agentic, traps=traps)}
 
     asking = _Asking()
 
     def replan(feedback=None, revising=()):
         planned, part["the_part"] = _plan_once_it_knows_enough(
             intent, tools.call("snapshot"), llm, events, budgets, part["the_part"],
-            cancelled, asking, tools, feedback, attachments, revising, traps)
+            cancelled, asking, tools, feedback, attachments, revising, traps, agentic)
         return planned
 
     def decided(why, applied):
@@ -3683,7 +3781,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         not_reached = _not_reached(outcome.get("unbuilt") or [], checking)
         acceptance = [entry for entry in checking if entry not in not_reached]
         checked = (assertion(acceptance, described, tools, llm, events, budgets,
-                             cancelled, after_a_retry=outcome.get("retried"), traps=traps)
+                             cancelled, after_a_retry=outcome.get("retried"),
+                             agentic=agentic, traps=traps)
                    if acceptance else None)
         progress["unmet"] = (list(checked.unmet) if checked is not None else []) \
             + list(not_reached)

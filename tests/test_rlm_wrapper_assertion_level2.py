@@ -1,15 +1,16 @@
 """
 Level 2 — the wrapped Assertion phase (FCC-189) against a real Document.
 
-`tests/test_rlm_wrapper_assertion.py` proves the retry-carries-a-namespace
-claim against a fake `ToolRegistry`, which is the right level for that claim
-but agrees with any measurement a check happens to make. This proves the one
-thing a fake cannot: that `check_assertions`, called the way `assertion()`
-calls it with `agentic=True`, judges a real Shape rather than the number the
-mock was told to hand back — a 30 mm cube passes a 30 mm check and a 20 mm
-cube does not, both through the same wrapped phase and the same real
-`PreflightWorker` subprocess `tests/test_assertion_level2.py` already opens
-one Document copy at a time in.
+`tests/test_rlm_wrapper_assertion.py` proves the shape of the seam against a
+fake `ToolRegistry` — `look`, `delegate` and `trap` reachable, `run` refused
+(`core/loop.py :: NOT_ARMED_FOR_RUN`) — which is the right level for that
+claim but agrees with any measurement a check happens to make. This proves
+the one thing a fake cannot: that `check_assertions`, called the way
+`assertion()` calls it with `agentic=True`, judges a real Shape rather than
+the number the mock was told to hand back — a 30 mm cube passes a 30 mm
+check and a 20 mm cube does not, both through the same wrapped phase and the
+same real `PreflightWorker` subprocess `tests/test_assertion_level2.py`
+already opens one Document copy at a time in.
 """
 import json
 

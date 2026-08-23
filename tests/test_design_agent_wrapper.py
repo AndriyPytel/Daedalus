@@ -14,7 +14,7 @@ import json
 from unittest.mock import Mock
 
 from core import agent
-from core.events import DESIGN, THOUGHT, EventStream
+from core.events import DESIGN, THOUGHT, TOOL_RESULT, EventStream
 from core.llm import ScriptedLLMClient
 from core.loop import Budgets, PhaseError, design
 from core.tools import ToolRegistry
@@ -94,3 +94,65 @@ def test_a_design_turn_with_no_delegation_produces_the_same_document_shape():
                      budgets=_budgets())
 
     assert plain == agentic == (model, "")
+
+
+
+def test_a_design_turn_with_agentic_on_cannot_look_at_a_real_tool():
+    """
+    `run` never hands Design a Tool that reads the live Document — it opens
+    with `core/loop.py :: _DESIGN_HAS_NOTHING_TO_LOOK_WITH`, empty on
+    purpose, every run (ADR-0019). `look` is a real action of `core/agent.py
+    :: ask`, and a model could reply with one even though
+    `config/prompts/design.md` never offers it; against the empty registry
+    Design is actually given, that reply is refused the same way an unknown
+    Tool name always is (`core/agent.py :: _take_a_look`) — proof that
+    turning Design agentic buys it delegation and nothing else, whatever
+    Tools this run's own Document happens to register.
+    """
+    events = EventStream()
+    llm = ScriptedLLMClient([
+        '{"look": {"tool": "snapshot", "arguments": {}}}',
+        '{"design": {"envelope": {"length": {"value": "80 mm", "flag": "read"}}},'
+        ' "question": ""}',
+    ])
+
+    the_part, question = design({"intent": "Build the bracket"}, llm, events,
+                                agentic=True, tools=ToolRegistry(),
+                                budgets=Budgets(agent_turns=5, looks_per_turn=6))
+
+    assert the_part == {"envelope": {"length": {"value": "80 mm", "flag": "read"}}}
+    assert question == ""
+
+    tool_results = [event.data["result"] for event in events.of(TOOL_RESULT)]
+    assert tool_results and "error" in tool_results[0]
+
+
+
+def test_a_design_turn_with_agentic_on_cannot_run_code_against_the_document():
+    """
+    `run` is refused before it ever reaches `Namespace.run`
+    (`core/loop.py :: NOT_ARMED_FOR_RUN`, BRIEFING Question 5): Design never
+    reaches a FreeCAD API at all, and `delegate` is the whole of what its own
+    agency was ever meant to add (ADR-0019). The turn still reaches its own
+    final object -- a refused action is a result to read on the next turn,
+    not an exception that loses the conversation.
+    """
+    events = EventStream()
+    llm = ScriptedLLMClient([
+        '{"run": "import FreeCAD; FreeCAD.ActiveDocument.recompute()"}',
+        '{"design": {"envelope": {"length": {"value": "80 mm", "flag": "read"}}},'
+        ' "question": ""}',
+    ])
+
+    the_part, question = design({"intent": "Build the bracket"}, llm, events,
+                                agentic=True, tools=ToolRegistry(),
+                                budgets=Budgets(agent_turns=5, looks_per_turn=6))
+
+    assert the_part == {"envelope": {"length": {"value": "80 mm", "flag": "read"}}}
+    assert question == ""
+
+    refusals = [event.data["result"] for event in events.of(TOOL_RESULT)
+               if event.data["name"] == "run"]
+    assert len(refusals) == 1
+    assert "error" in refusals[0]
+    assert "Delegate" in refusals[0]["error"]

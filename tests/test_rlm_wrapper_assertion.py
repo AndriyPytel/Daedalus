@@ -1,14 +1,15 @@
 """
-Assertion as an RLM-agent (FCC-189): the persistent namespace `core/agent.py`
-gave Plan (FCC-183), threaded through Assertion's own retries.
+Assertion as an RLM-agent (FCC-189): `check_assertions` reached through
+`core/agent.py :: ask` instead of `_ask`, so a retry may `delegate` or
+`trap` the way Plan and Execute already could.
 
 `assertion()` already writes and runs executable checks through
-`check_assertions` (FCC-168/FCC-170); this file is not a test of that
-capability but of the one thing FCC-189 actually adds — a name a `run`
-action binds while writing one attempt's checks is still bound while writing
-the next attempt's, within one call to `assertion()`. `agentic=False` is
-still the default, so every test in `tests/test_loop.py` keeps exercising the
-unwrapped phase unchanged.
+`check_assertions` (FCC-168/FCC-170); wrapping it as an agent does not add a
+second way to touch the Document — `run` is refused outright
+(`core/loop.py :: NOT_ARMED_FOR_RUN`, BRIEFING Question 5): Assertion is
+read-only by construction, and `check_assertions` is already the one path
+its checks run through. `agentic=False` is still the default, so every test
+in `tests/test_loop.py` keeps exercising the unwrapped phase unchanged.
 
 No FreeCAD and no network: a fake `ToolRegistry` stands in for the Document,
 exactly as `tests/test_agent.py` and `tests/test_loop.py :: FakeTools` already
@@ -70,24 +71,16 @@ ACCEPTANCE = ["Shape.Mass is 27000 * 0.0079 grams"]
 DESCRIBED = {"features": []}
 
 
-def test_a_name_bound_by_the_first_assert_run_is_visible_to_the_second_within_one_assertion_phase():
+def test_an_assertion_turn_with_agentic_on_cannot_run_code_against_the_document():
     """
-    Attempt 1 binds `expected` with a `run` action, then writes a check whose
-    own code is broken (a `NameError`, not the model failing its list) — the
-    kind of failure `assertion()` retries rather than reports. Attempt 2 opens
-    by printing `expected` back — the only way that succeeds is if the
-    `Namespace` `agentic=True` opens survived the retry, which is FCC-189's
-    whole point: the unwrapped phase has no `Namespace` at all, so there is
-    nothing before it for a second attempt to be given.
+    A `run` action is refused before it ever reaches `Namespace.run` — the
+    turn is told to use `check_assertions` instead, the phase still answers,
+    and the check it wrote still runs through the one path Assertion's
+    checks were always meant to (`core/loop.py :: NOT_ARMED_FOR_RUN`).
     """
-    tools = _tools(checks=[
-        {"ok": False, "traceback": "NameError: name 'held' is not defined"},
-        {"ok": True, "held": ACCEPTANCE},
-    ])
+    tools = _tools(checks=[{"ok": True, "held": ACCEPTANCE}])
     llm = ScriptedLLMClient([
-        json.dumps({"run": "expected = 27000 * 0.0079"}),
-        json.dumps({"code": "assert expected"}),
-        json.dumps({"run": "print(expected)"}),
+        json.dumps({"run": "import FreeCAD; FreeCAD.ActiveDocument.recompute()"}),
         json.dumps({"code": "assert True"}),
     ])
     events = EventStream()
@@ -96,9 +89,11 @@ def test_a_name_bound_by_the_first_assert_run_is_visible_to_the_second_within_on
                          budgets=_budgets(), agentic=True)
 
     assert checked.failed is False
-    run_outputs = [event.data["result"]["output"] for event in events.of(TOOL_RESULT)
-                  if event.data["name"] == "run"]
-    assert run_outputs == ["", "213.3\n"]
+    refusals = [event.data["result"] for event in events.of(TOOL_RESULT)
+               if event.data["name"] == "run"]
+    assert len(refusals) == 1
+    assert "error" in refusals[0]
+    assert "check_assertions" in refusals[0]["error"]
 
 
 def test_the_assertion_event_shape_is_unchanged_by_wrapping_the_phase_as_an_agent():

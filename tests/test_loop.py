@@ -7049,7 +7049,7 @@ def test_a_number_on_no_sheet_is_put_to_the_drawing_and_then_left_as_a_conflict(
     monkeypatch.setattr(loop, "_off_the_sheet", lambda attachments, part: [1234.0])
     asked = []
 
-    def design(payload, llm, events, attachments):
+    def design(payload, llm, events, attachments, **kwargs):
         asked.append(payload["the_question"])
         return {}, None
 
@@ -7070,7 +7070,7 @@ def test_a_number_the_look_accounted_for_is_not_a_conflict(monkeypatch):
     monkeypatch.setattr(loop, "_off_the_sheet",
                         lambda attachments, part: next(answers))
     monkeypatch.setattr(loop, "design",
-                        lambda payload, llm, events, attachments: ({}, None))
+                        lambda payload, llm, events, attachments, **kwargs: ({}, None))
 
     grown = loop._every_number_is_the_sheets(
         {"features": []}, "Make the clamp", ["a.pdf"], None, None, loop.Budgets(),
@@ -7262,7 +7262,7 @@ THE_VIEW_LOOKED_AT_AGAIN = {"features": [
 def _re_read_as(monkeypatch, fragment):
     """The re-read a provider would have replied with, without a provider."""
     monkeypatch.setattr(loop, "design",
-                        lambda body, llm, events, attachments=(): (fragment, []))
+                        lambda body, llm, events, attachments=(), **kwargs: (fragment, []))
 
 
 def _looked_at_the_view_again(monkeypatch, part, fragment):
