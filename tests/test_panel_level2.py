@@ -2892,6 +2892,54 @@ def test_the_thinking_row_says_how_long_it_has_been_thinking(panel):
     assert "Thinking (design)" in row.toggle_button.text()
 
 
+def test_the_thinking_row_of_a_finished_phase_stops_counting_when_the_next_row_opens(panel):
+    """
+    A row whose phase is over is a record, not a clock. Design reads a drawing
+    a page at a time, so its phase label changes under the panel ("design:
+    page 1" then "design"), and the row the old label opened was replaced
+    without its `QTimer` ever being stopped: in a 34-minute run the abandoned
+    row read 35:05, past the header's own total, and went on counting for as
+    long as the panel lived.
+    """
+    from core.events import Event, THOUGHT
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("two-phase-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "design: page 1", "text": ""}))
+    QT_APP.processEvents()
+    first = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+
+    panel.on_event(Event(THOUGHT, {"phase": "design", "text": ""}))
+    QT_APP.processEvents()
+
+    assert first._clock is None
+    assert "Thinking (design: page 1)" in first.toggle_button.text()
+
+
+def test_the_thinking_row_stops_counting_when_the_call_is_paid_for(panel):
+    """
+    `COST` is the event that says the model answered. Until it stopped the
+    row, the count ran on into the loop's own work and stopped only when the
+    next artefact happened to be rendered.
+    """
+    from core.events import Event, COST, THOUGHT
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("paid-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "design", "text": ""}))
+    QT_APP.processEvents()
+    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+
+    panel.on_event(Event(COST, {"phase": "design", "model": "opus", "seconds": 12.0}))
+    QT_APP.processEvents()
+
+    assert row._clock is None
+
+
 def test_the_thinking_row_wears_the_brain_figma_puts_on_it(panel):
     """
     Figma's Reasoning header is a brain and its words; the chevron beside it
