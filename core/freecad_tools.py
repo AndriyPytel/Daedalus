@@ -94,6 +94,21 @@ TRAPS = [
     "through points computed from its own equation — an involute flank, a cam profile, "
     "a cycloid. A chain of Part.LineSegment approximates it, and the approximation is "
     "what gets built and measured.",
+    "A PropertyEnumeration setter — Pocket.Type, Pad.Type, and others — raises "
+    "ValueError on any string outside its own accepted list, and that list is per "
+    "property, not a spelling shared across the module. Read the real set first with "
+    "obj.getEnumerationsOfProperty('Type') and set one of those; a spelling that works "
+    "on one enum property is not evidence it works on another.",
+    "PartDesign::Fillet fails on a radius the material cannot carry with 'BRep_API: "
+    "command not done', a message that names the failed OCC call and nothing about the "
+    "radius that caused it. A full round needs less than half the thickness of what it "
+    "rounds; check the radius against the Body's wall thickness before setting it, not "
+    "after the recompute fails with no way back to why.",
+    "A Pad or Pocket sketch with more than one closed wire builds every wire — if the "
+    "wires do not touch, the feature leaves the Body in more than one solid, and "
+    "FreeCAD only reports it as a plain RuntimeError once the recompute runs, with no "
+    "earlier signal. A second piece of geometry that does not touch the first belongs "
+    "in its own Body, not a second wire in the same sketch.",
 ]
 
 _SNAPSHOT_LIMIT = 200
