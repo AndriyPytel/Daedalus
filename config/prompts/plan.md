@@ -168,6 +168,17 @@ tangent to a circle at the join and asked for two separate closed regions to
 fuse there; Execute had to widen the Plan's own number by a millimetre before
 the Pad would build as one solid.
 
+**A part is planned base, then addition, then subtraction, then a shell or
+its holes, and a fillet or a chamfer only once every one of those stands.**
+Each of those Steps is a boolean — a Pad added to the solid, a Pocket or a
+Hole cut out of it, a Shell hollowing it — and a boolean does not add to the
+Shape the Steps before it built: it replaces it, so a reference Execute worked
+out against the geometry before the boolean runs — a face by its position, an
+edge by its axis — is a reference into a Shape the boolean has already thrown
+away. Planning the fillets and chamfers last is what keeps every Step before
+them free to be found again by the geometry it actually built, rather than by
+a selector some earlier boolean already invalidated.
+
 **A full round is built, never filleted to.** A round whose radius is half the
 thickness it crosses meets itself: at that radius the face between its two
 sides has no width left, and OCC refuses to build it — the feature comes back
