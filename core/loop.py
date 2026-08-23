@@ -1593,6 +1593,9 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         again = _the_same_way_twice(attempts)
         if again:
             request["you_have_failed_this_the_same_way_twice"] = again
+        reference = _repair_reference(attempts)
+        if reference:
+            request["repair_reference"] = reference
     if advice:
         request["plan_advises"] = advice
 
@@ -1736,6 +1739,59 @@ _FAILED_THIS_WAY = (
      "it. A smaller angle, a shorter cut, or a larger profile is the change; the "
      "same three numbers arranged differently is not."),
 )
+
+
+_REPAIR_REFERENCE = (
+    ("has no such property",
+     "The Step set a property the object type doesn't carry — a guessed name, not a "
+     "real one. Ask `describe_type` for what the object actually has and set one of "
+     "those; a second guessed spelling fails the identical way.",
+     "any check on this Step's own promised properties: the value never landed, so a "
+     "check that already passed against the object as it stood before this Step ran "
+     "has not yet measured what this Step was meant to change."),
+    ("BRep_API: command not done",
+     "PartDesign::Fillet fails this way on a radius the material can't carry — check "
+     "the radius against the Body's wall thickness at the edge being rounded (a full "
+     "round needs less than half of it) and set one the wall can carry, rather than "
+     "rewriting the same call.",
+     "any check that measured a face count or a bounding dimension off the "
+     "un-filleted Body: a radius that now fits changes both."),
+)
+
+
+def _repair_reference(attempts):
+    """
+    The repair layer's own addition to a retry request (FCC-203): a
+    reference entry for a *known* symptom, keyed on a phrase read off the
+    latest attempt's own traceback the way `_FAILED_THIS_WAY` and
+    `_the_same_way_twice` already are — but consulted on the *first*
+    failure rather than the second, since a repair record names a fix for
+    the symptom just seen, not a warning that a Step keeps failing the same
+    way twice. Where the traceback names no symptom this table recognises,
+    nothing is added and the request is exactly what it is without this
+    function: the traceback, and nothing else.
+
+    Two layers, on purpose, not one: `core/freecad_tools.py :: TRAPS` is
+    prevention, read into every prompt before a Step is written, full and
+    unconditional; this is repair, read only after a Step has already
+    failed, and stays narrow — one entry for the symptom in hand, not the
+    whole table. Merging them would force a choice between the two, since
+    prevention has to stay complete and repair has to stay narrow.
+
+    Riding beside `your_failed_attempts_at_this_step` rather than replacing
+    it, the same way `plan_advises` does, so a retry always still sees the
+    traceback it names. Nothing here spends a `look` or asks for anything:
+    the table is read before the request is built, not through a Tool call
+    — a repair layer that cost Execute one of its own bounded turns would
+    spend the very budget it exists to protect (ADR-0009).
+    """
+    if not attempts:
+        return None
+    traceback = attempts[-1].traceback or ""
+    for phrase, fix, recheck in _REPAIR_REFERENCE:
+        if phrase in traceback:
+            return {"the_smallest_responsible_fix": fix, "recount_after_it": recheck}
+    return None
 
 
 def _the_same_way_twice(attempts):
