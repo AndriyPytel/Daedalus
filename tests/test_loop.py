@@ -6249,6 +6249,78 @@ def test_one_failure_says_nothing_about_repeating_yourself():
         llm.calls[2][-1]["content"])
 
 
+NO_SUCH_PROPERTY = ("Traceback (most recent call last):\n"
+                    "RuntimeError: this Step did not build the operation the Plan named:\n"
+                    "Name: OuterProfile (Sketcher::SketchObject) has no such property: "
+                    "TangentLength\n")
+
+FILLET_RADIUS = ("Traceback (most recent call last):\n"
+                 "RuntimeError: recompute left these objects in error:\n"
+                 "EndFillets_R12_5 (PartDesign::Fillet): BRep_API: command not done\n")
+
+
+def test_a_known_symptom_gets_a_repair_reference_on_the_first_failure():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_SUCH_PROPERTY)])
+
+    retry = _turns_of(llm, "execute")[1]
+
+    assert retry["your_failed_attempts_at_this_step"][0]["traceback"] == NO_SUCH_PROPERTY
+    reference = retry["repair_reference"]
+    assert "describe_type" in reference["the_smallest_responsible_fix"]
+    assert "guessed" in reference["the_smallest_responsible_fix"]
+    assert "own promised properties" in reference["recount_after_it"]
+
+
+def test_a_different_known_symptom_gets_its_own_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Fillet the rim"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(FILLET_RADIUS)])
+
+    reference = _turns_of(llm, "execute")[1]["repair_reference"]
+
+    assert "wall thickness" in reference["the_smallest_responsible_fix"]
+    assert "face count" in reference["recount_after_it"]
+
+
+def test_an_unknown_symptom_gets_no_repair_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed("ZeroDivisionError: division by zero")])
+
+    assert "repair_reference" not in _turns_of(llm, "execute")[1]
+
+
+def test_a_step_that_has_not_failed_yet_gets_no_repair_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"),
+        verdict_reply("pass"),
+    ])
+
+    assert "repair_reference" not in _turns_of(llm, "execute")[0]
+
+
+def test_a_repair_reference_spends_no_look_and_no_extra_turn():
+    result, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_SUCH_PROPERTY)])
+
+    assert result.ok, result.reason
+    execute_turns = _turns_of(llm, "execute")
+    assert len(execute_turns) == 2
+    assert all("look" not in turn for turn in execute_turns)
+
+
 def test_a_failure_nothing_recognises_is_not_given_invented_advice():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
