@@ -19,13 +19,28 @@ cycle and a `verdict` on a later one.
 `cost_usd` only sums the `cost` events that carried a price: `core/events.py`
 documents that a subscription route emits `cost` with no `usd` at all, so a
 run entirely on a subscription costs 0.0 here, not "unknown".
+
+FCC-191 also answers the two questions a baseline-against-experiment
+comparison is actually asked for: how often the Assertion failed and how
+often Review failed. Both read events `core/loop.py` already emits -
+`assertion` (whose `ok` is `True`, `False`, or `None` when the phase gave up
+without writing a check that ran) and `review_verdict` (whose `verdict` is
+always `"pass"` or `"fail"`) - and both are a fraction of that one run's own
+attempts, not of the run set: a run whose first Assertion failed and whose
+second, after a revision, passed carries `assertion_fail_rate` `0.5`, the same
+run `plan_revisions` already counts as one hand-back. A run with none of
+either kind - blocked before Assertion ran, or before Review did - reads
+both rates as `0.0`, the same way `hand-back rate` reads a run with no
+`plan_revised` as not having handed back: nothing having happened is not a
+failure, and counting it as one would make a short, clean run look worse than
+a long one that failed once and then passed.
 """
 from dataclasses import dataclass
 from typing import List, Optional
 
 from core.events import (
-    APPLIED, BLOCKED, COST, PLAN_REVISED, PREFLIGHT_FAILED, REVIEW_VERDICT,
-    STEP_STARTED, replay,
+    APPLIED, ASSERTION, BLOCKED, COST, PLAN_REVISED, PREFLIGHT_FAILED,
+    REVIEW_VERDICT, STEP_STARTED, replay,
 )
 
 
@@ -40,12 +55,21 @@ class Measurement:
     cost_usd: float
     wall_clock_seconds: float
     truncated: bool
+    assertion_fail_rate: float
+    review_fail_rate: float
+
+
+def _fail_rate(events, is_failure) -> float:
+    if not events:
+        return 0.0
+    return sum(1 for event in events if is_failure(event)) / len(events)
 
 
 def measure(path: str) -> Measurement:
     events, truncated = replay(path)
     verdicts = [event for event in events if event.kind == REVIEW_VERDICT]
     blocks = [event for event in events if event.kind == BLOCKED]
+    assertions = [event for event in events if event.kind == ASSERTION]
     return Measurement(
         verdict=verdicts[-1].data.get("verdict") if verdicts else None,
         blocked_reason=blocks[-1].data.get("reason") if blocks else None,
@@ -56,6 +80,8 @@ def measure(path: str) -> Measurement:
         cost_usd=sum(event.data.get("usd") or 0 for event in events if event.kind == COST),
         wall_clock_seconds=(events[-1].at - events[0].at) if len(events) >= 2 else 0.0,
         truncated=truncated,
+        assertion_fail_rate=_fail_rate(assertions, lambda event: event.data.get("ok") is False),
+        review_fail_rate=_fail_rate(verdicts, lambda event: event.data.get("verdict") == "fail"),
     )
 
 
@@ -80,6 +106,8 @@ _ROWS = (
     ("avg Preflight failures", lambda ms: _average(ms, lambda m: m.preflight_failures), "{:.1f}"),
     ("avg cost (USD)", lambda ms: _average(ms, lambda m: m.cost_usd), "{:.4f}"),
     ("avg run time (s)", lambda ms: _average(ms, lambda m: m.wall_clock_seconds), "{:.1f}"),
+    ("assertion fail rate", lambda ms: _average(ms, lambda m: m.assertion_fail_rate), "{:.1%}"),
+    ("review fail rate", lambda ms: _average(ms, lambda m: m.review_fail_rate), "{:.1%}"),
 )
 
 

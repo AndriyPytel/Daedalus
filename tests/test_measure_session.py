@@ -8,6 +8,10 @@ rather than invented.
 import os
 
 from core.measure import Measurement, compare, measure
+from tests.test_loop import (
+    ASSERT_FAILED, CHECKS, a_run_over_the_nut, assertion_failed,
+    assertion_reply, code_reply, planning_the_nut, verdict_reply,
+)
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "recorded", "sessions")
 
@@ -108,3 +112,62 @@ def test_compare_with_no_runs_on_one_side_is_zero_not_a_crash():
 
     assert "n=0" in table
     assert "n=1" in table
+
+
+def test_a_run_with_no_assertions_or_review_verdicts_has_zero_fail_rates():
+    """Blocked before either phase ran: both are 0.0, not an undefined rate."""
+    result = measure(_fixture("blocked.jsonl"))
+
+    assert result.assertion_fail_rate == 0.0
+    assert result.review_fail_rate == 0.0
+
+
+def test_a_run_with_no_assertions_but_a_verdict_reads_only_the_verdict():
+    result = measure(_fixture("reached_verdict.jsonl"))
+
+    assert result.assertion_fail_rate == 0.0
+    assert result.review_fail_rate == 0.0
+
+
+def test_a_run_with_a_failed_assertion_that_passed_on_retry(tmp_path):
+    """
+    One failed check, replanned, one that passed: half of this run's own
+    Assertion attempts failed. Built through `core.loop.run` itself rather
+    than hand-written JSON, because nothing in `tests/recorded/sessions`
+    carries a failed `assertion` event.
+    """
+    _, events, _, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"),
+        code_reply("make()"),
+        assertion_reply(CHECKS),
+        planning_the_nut("Make it 13 mm across the flats"),
+        code_reply("fix()"),
+        assertion_reply(CHECKS),
+        verdict_reply("pass"),
+        checks=[assertion_failed(ASSERT_FAILED), None])
+
+    log_path = str(tmp_path / "run.jsonl")
+    with open(log_path, "w", encoding="utf-8") as handle:
+        handle.write(events.as_log())
+
+    result = measure(log_path)
+
+    assert result.assertion_fail_rate == 0.5
+    assert result.review_fail_rate == 0.0
+
+
+def test_a_run_with_a_failed_review_that_passed_on_revision_reads_the_mix():
+    """Review failed once and passed once in this same run: half its verdicts failed."""
+    result = measure(_fixture("plan_revision.jsonl"))
+
+    assert result.review_fail_rate == 0.5
+
+
+def test_compare_reports_the_assertion_and_review_fail_rates():
+    table = compare(
+        [_fixture("reached_verdict.jsonl")], [_fixture("plan_revision.jsonl")],
+        baseline_label="main", experiment_label="rlm-version",
+    )
+
+    assert _cells(table, "assertion fail rate") == ["0.0%", "0.0%"]
+    assert _cells(table, "review fail rate") == ["0.0%", "50.0%"]
