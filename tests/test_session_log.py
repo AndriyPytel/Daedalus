@@ -20,7 +20,8 @@ def test_every_specced_event_kind_exists():
         "plan", "plan_revised", "gate", "step_started", "tool_call", "tool_result",
         "preflight_failed", "applied", "assertion", "outstanding", "unbuilt",
         "review_verdict", "blocked", "call_started", "cost", "error",
-        "trap_proposed", "trap_approved", "trap_declined",
+        "trap_proposed", "trap_approved", "trap_declined", "consult",
+        "consult_response",
     }
 
 

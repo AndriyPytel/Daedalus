@@ -380,7 +380,7 @@ def scripted(turns, attachments=()):
 
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
           views=None, checks=(), attachments=(), decide=None, outstanding=(),
-          agentic=False):
+          agentic=False, consult=False):
     """Run the loop over scripted turns and hand back everything to assert on."""
     llm = scripted(turns, attachments)
     tools = FakeTools(applies, views=views, checks=checks)
@@ -390,7 +390,7 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
         kwargs["decide"] = decide
     result = run(intent, llm=llm, tools=tools.registry, events=events,
                  budgets=budgets or Budgets(), attachments=list(attachments),
-                 outstanding=list(outstanding), agentic=agentic, **kwargs)
+                 outstanding=list(outstanding), agentic=agentic, consult=consult, **kwargs)
     return result, events, llm, tools
 
 

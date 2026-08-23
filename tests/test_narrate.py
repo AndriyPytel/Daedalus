@@ -16,11 +16,11 @@ the field the wording turns on.
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
-    GATE, INTENT, KINDS, OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, TRAP_APPROVED, TRAP_DECLINED, TRAP_PROPOSED,
-    UNBUILT, Event,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, CONSULT,
+    CONSULT_RESPONSE, COST, ERROR, GATE, INTENT, KINDS, OUTSTANDING, PART, PLAN,
+    DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
+    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, TRAP_APPROVED, TRAP_DECLINED,
+    TRAP_PROPOSED, UNBUILT, Event,
 )
 from core.narrate import Narration, narrate
 
@@ -59,6 +59,10 @@ SAMPLES = {
                     "loses its Twist setting on recompute", "phase": "execute"},
     TRAP_DECLINED: {"id": "60eea80f", "description": "A Draft Mirror across a "
                     "non-planar face silently produces no shape", "phase": "review"},
+    CONSULT: {"step_number": 3, "promise": "Cut the ring split",
+             "failure_reason": "neither removed nor added any material"},
+    CONSULT_RESPONSE: {"step_number": 3, "advice": "Set Reversed instead of the "
+                       "profile."},
 }
 
 

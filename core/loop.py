@@ -45,10 +45,10 @@ from core.design import (
     what_the_trace_says, where_the_direction_is,
 )
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, DESIGN,
-    ERROR, GATE, INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, CONSULT,
+    CONSULT_RESPONSE, COST, DESIGN, ERROR, GATE, INTENT, OUTSTANDING, PART,
+    PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
+    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream,
 )
 from core import part_file, preflight, sheet_reader, sketch_check
 from core import traps as trap_store
@@ -1395,7 +1395,7 @@ class Written:
 
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
-            looks=None, entries=(), agentic=False):
+            looks=None, entries=(), agentic=False, advice=""):
     """
     Write the code for every Step from `start` to the end of the Plan, in one turn.
 
@@ -1417,6 +1417,15 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
 
     `attempts` are the failures at the Step `start` names, and only that Step's.
     A Step that landed carries none of its history forward.
+
+    `advice` is Plan's answer to a consult Execute made about the failure the
+    last of `attempts` names (`core/loop.py :: consult_plan`, FCC-188): a
+    different way to keep the same Step Promise, not a new Plan. It rides in
+    the request beside `your_failed_attempts_at_this_step` rather than
+    replacing it, so a retry that ignores the advice still sees what failed
+    and why. Preflight measures the same Promise either way, so advice that
+    quietly changes it is caught exactly where an unadvised bad rewrite
+    already is, and needs no mechanism of its own.
 
     It may still spend a bounded number of *looks* on the read-only Tools first
     (ADR-0009, kept). What is gone is the repetition: identical looks used to
@@ -1482,6 +1491,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         again = _the_same_way_twice(attempts)
         if again:
             request["you_have_failed_this_the_same_way_twice"] = again
+    if advice:
+        request["plan_advises"] = advice
 
     looked = list(looks.still_true()) if looks is not None else []
 
@@ -1521,6 +1532,54 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         looked.append(_look(tools, reply["look"], events, looks))
 
     return Written(said=_said(reply, start))
+
+
+_CONSULT_ASK = (
+    "Execute could not build this Step and is about to try again. Advise a "
+    "different way to keep the same Promise stated below — not a new Step and "
+    "not a new Plan; the Step's wording is fixed, only the approach to it is "
+    "open. Reply with {\"advice\": \"...\"}."
+)
+
+
+def consult_plan(step_number, promise, failure_reason, llm, events):
+    """
+    Execute asking Plan for a different way to build the Step `step_number`
+    still promises, the one edge FCC-168 draws and the only direction it runs:
+    Plan never initiates, because Plan cannot ask about a failure that has not
+    happened yet.
+
+    Not a second gate. The Plan Gate (ADR-0013) never saw code, only the Step's
+    prose — the `promise` handed to Plan here, unchanged — so a different
+    approach to the same promise is inside the self-correction space ADR-0008
+    already grants a retry. If the advice quietly changes the promise instead,
+    Preflight fails against the original, unchanged Promise on the next
+    attempt and the existing hand-back edge fires; nothing here needs to catch
+    that itself.
+
+    Spends nothing of its own. The caller (`_work_through`) reaches this once
+    per Preflight failure at a Step, and a Step can fail at most
+    `budgets.attempts_per_step` times — the exhausting failure included, so
+    the handback that follows still carries Plan's word on it — which is what
+    keeps every consult inside that same, already-bounded loop rather than a
+    second, unbounded channel (FCC-168 Q&A).
+
+    `consult` and `consult_response` carry `step_number`, `promise` and
+    `failure_reason` — a shape neither `tool_call` nor `thought` fits — so both
+    ends of every consultation are on the event stream in the order they
+    happened (ADR-0003), and `_the_same_way_twice` still reads the plain
+    `attempts` list this leaves untouched: advice that repeats a failed
+    approach fails the same way and is still caught there.
+    """
+    events.emit(CONSULT, step_number=step_number, promise=promise,
+                failure_reason=failure_reason)
+    request = {"step_number": step_number, "promise": promise,
+              "failure_reason": failure_reason, "what_to_do": _CONSULT_ASK}
+    reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
+                json.dumps(request, indent=2, default=str))
+    advice = str(reply.get("advice") or "").strip()
+    events.emit(CONSULT_RESPONSE, step_number=step_number, advice=advice)
+    return advice
 
 
 def _resolved(reply, start):
@@ -2286,7 +2345,7 @@ class _Asking:
 
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
         gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
-        outstanding=(), agentic=False) -> LoopResult:
+        outstanding=(), agentic=False, consult=False) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
 
@@ -2312,6 +2371,12 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     off by default, so every existing caller of `run` still writes each turn's
     code through `_ask`, unchanged. It does not touch Plan's separate `agentic`
     seam (FCC-183), which `run` does not offer a caller yet.
+
+    `consult` reaches the one Execute-to-Plan edge FCC-168 draws
+    (`core/loop.py :: consult_plan`, FCC-188): off by default, so every
+    existing caller still retries a failed Step exactly as it did before this
+    existed, and turning it on costs nothing beyond the calls it was already
+    going to make — a consult spends no budget of its own.
     """
     events = events if events is not None else EventStream()
     events.emit(INTENT, text=intent)
@@ -2335,7 +2400,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     try:
         return outcome(_run(intent, llm, tools, events, budgets,
                             cancelled or (lambda: False), gate, progress, attachments,
-                            ask, decide, list(outstanding), agentic))
+                            ask, decide, list(outstanding), agentic, consult))
     except Stopped:
         return outcome(_block(events, "Stopped by you. Everything applied so far is still in "
                                       "the Document; undo it Step by Step if you want it "
@@ -3320,7 +3385,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
 
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
-         decide=revise_by_default, outstanding=(), agentic=False):
+         decide=revise_by_default, outstanding=(), agentic=False, consult=False):
     """
     The run itself: describe the part, plan it, gate it, build it, judge it.
 
@@ -3526,7 +3591,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                           progress["applied"])
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part["the_part"]), looks,
-                                planned.acceptance, planned.cites, agentic)
+                                planned.acceptance, planned.cites, agentic, consult)
         applied = progress["applied"]
 
         if outcome["handback"] and stuck["applied"] == applied \
@@ -3661,7 +3726,8 @@ def _also_check(acceptance, outstanding):
 
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
-                  as_described="", looks=None, entries=(), cites=(), agentic=False):
+                  as_described="", looks=None, entries=(), cites=(), agentic=False,
+                  consult=False):
     """
     One pass over the Plan: written in one call, applied one Step at a time.
 
@@ -3709,6 +3775,14 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     are unchanged either way, because a Step still lands or fails the same way
     Preflight already decides it — what changes is only how the code for a
     turn got written.
+
+    `consult` is off by default (FCC-188), the same way `agentic` was until
+    something turned it on: every Preflight failure at this Step is one
+    consult, the failure that exhausts `attempts_per_step` included, so a
+    handback still carries Plan's last word on the Step it is receiving back.
+    `consult_plan` spends nothing of its own — it is bounded by the number of
+    failures a Step can have, which `attempts_per_step` already bounds — and
+    its advice only ever reaches a retry that was going to happen anyway.
     """
     if cancelled():
         raise Stopped()
@@ -3782,6 +3856,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         events.emit(PREFLIGHT_FAILED, step=index + 1, attempt=len(attempts),
                     traceback=traceback)
 
+        advice = (consult_plan(index + 1, step, traceback, llm, events)
+                 if consult else "")
+
         if len(attempts) >= budgets.attempts_per_step:
             return {
                 "handback": "Step %d of %d could not be built after %d attempts: %s\n"
@@ -3795,7 +3872,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         if cancelled():
             raise Stopped()
         written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
-                          looks, entries, agentic)
+                          looks, entries, agentic, advice)
 
     return {"obsolete": None, "handback": None, "description": described,
             "tried": [], "unbuilt": unbuilt, "retried": sorted(
