@@ -40,6 +40,7 @@ import base64
 import json
 import math
 import os
+import re
 import tempfile
 from dataclasses import replace
 
@@ -651,6 +652,54 @@ def test_a_value_the_model_settled_says_who_settled_it_and_on_what():
     assert "who settled it and on what" in design_system
     assert "`assumed` without `because` is invalid" in design_system
     assert "settle it yourself" in design_system
+
+
+def test_the_nonmetric_defaults_are_named_and_carry_no_number():
+    """
+    FCC-206: `Default assumptions` in the text-to-cad doctrine lists both
+    non-metric conventions — units, base plane, up axis, a body being a
+    closed positive volume — and numeric ones — wall thickness, fillet
+    radius, clearance. Only the first kind describes the coordinate system
+    every reading sits in rather than a value of the part, so only the first
+    kind belongs in design.md; a numeric default there would be exactly the
+    "nobody supplied it" FCC-114 already named, dressed up as a convention.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_DATUM), plan_reply("Add a box"), code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    design_system = " ".join(_system_messages(llm)[0].split())
+
+    for default in ("millimetres", "base plane", "+Z", "closed", "positive volume"):
+        assert default in design_system, "a non-metric default is missing: " + default
+
+    section = design_system[design_system.index("What needs no reading at all"):]
+    section = section[:section.index("## Every value carries its datum and its flag")
+                       if "## Every value carries its datum and its flag" in section
+                       else len(section)]
+    assert not re.search(r"\d", section), \
+        "a numeric default reached design.md: " + section
+
+
+def test_a_nonmetric_default_carries_no_flag_and_reaches_no_acceptance_entry():
+    """
+    FCC-206: units, the base plane, the up axis and a body being a closed
+    positive volume are conventions of the model, not values read off
+    anything, so a description that never names them still carries none of
+    them as `assumed` — `entries()` and `decided_for_you()`, which is what
+    the Acceptance list and the Plan Gate's `Decided for you` section are
+    built from, see nothing about either one on A_PART, which never names
+    them.
+    """
+    for entry in entries(A_PART):
+        for word in ("unit", "millimetre", "base plane", "axis default", "+Z",
+                     "closed volume", "positive volume"):
+            assert word not in entry["about"].lower() and word not in entry["says"].lower()
+
+    for line in decided_for_you(A_PART):
+        for word in ("unit", "millimetre", "base plane", "axis default", "+Z",
+                     "closed volume", "positive volume"):
+            assert word not in line.lower()
 
 
 def test_a_curve_is_not_read_until_its_centre_is_placed():
