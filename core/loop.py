@@ -49,7 +49,7 @@ from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, DESIGN,
     ERROR, GATE, INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream,
+    TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, EventStream,
 )
 from core import part_file, preflight, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
@@ -516,7 +516,23 @@ def _streamed(llm, events, phase, system, user, prior=()):
 
 
 def _one_call(llm, events, phase, system, user, prior=()):
-    """The turn itself, priced whether it answered or the connection went."""
+    """
+    The turn itself, priced whether it answered or the connection went.
+
+    Every phase's call passes through here, which is what makes this the seam
+    a per-phase client is chosen at: `for_phase` is asked for the client this
+    phase is answered by, and a client that has none answers all five itself.
+    Design reading a drawing and Execute writing the code for a Step it has
+    already been given are not the same demand, and one dial over both is
+    paid at the rate of the more expensive on every call of the cheaper.
+
+    The reply reaches the stream as it forms, the way the reasoning before it
+    does. Until it did, a phase went silent from its last `thought` to its
+    `cost` — 22.4 minutes of a recorded run's 23.6 minutes of provider time,
+    and 25.6 of 53.7 in another — and a panel with nothing to show reads as a
+    run that has hung.
+    """
+    llm = llm.for_phase(phase) if hasattr(llm, "for_phase") else llm
     ceiling = getattr(llm, "timeout", None)
     model = getattr(llm, "model", None)
     started = {"phase": phase, "model": model}
@@ -536,6 +552,7 @@ def _one_call(llm, events, phase, system, user, prior=()):
                 events.emit(THOUGHT, phase=phase, text=chunk.text)
             else:
                 text.append(chunk.text)
+                events.emit(WRITING, phase=phase, text=chunk.text)
     finally:
         spent = getattr(llm, "last_cost", None)
         paid = {"phase": phase, "seconds": time.time() - start,

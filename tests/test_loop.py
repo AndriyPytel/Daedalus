@@ -50,7 +50,7 @@ from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT,
-    EventStream, replay,
+    WRITING, EventStream, replay,
 )
 from core import design, loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
@@ -4106,10 +4106,10 @@ def test_the_event_stream_of_a_clean_run():
 
     assert [e.kind for e in events] == [
         INTENT,
-        CALL_STARTED, COST,
-        CALL_STARTED, THOUGHT, COST, PLAN, GATE, GATE,
-        CALL_STARTED, THOUGHT, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
-        CALL_STARTED, THOUGHT, COST, REVIEW_VERDICT,
+        CALL_STARTED, WRITING, COST,
+        CALL_STARTED, THOUGHT, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, THOUGHT, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, THOUGHT, WRITING, COST, REVIEW_VERDICT,
     ]
 
 
@@ -4129,11 +4129,11 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
 
     assert [e.kind for e in events] == [
         INTENT, ATTACHED,
-        CALL_STARTED, COST, DESIGN, PART,
-        CALL_STARTED, COST, PLAN, GATE, GATE,
-        CALL_STARTED, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
-        CALL_STARTED, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
-        CALL_STARTED, COST, REVIEW_VERDICT,
+        CALL_STARTED, WRITING, COST, DESIGN, PART,
+        CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
+        CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
     ]
 
 
@@ -4145,12 +4145,12 @@ def test_the_event_stream_of_a_retried_run():
 
     assert [e.kind for e in events] == [
         INTENT,
-        CALL_STARTED, COST,
-        CALL_STARTED, COST, PLAN, GATE, GATE,
-        CALL_STARTED, COST, STEP_STARTED,
+        CALL_STARTED, WRITING, COST,
+        CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, WRITING, COST, STEP_STARTED,
         TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
-        CALL_STARTED, COST, TOOL_CALL, TOOL_RESULT, APPLIED,
-        CALL_STARTED, COST, REVIEW_VERDICT,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
     ]
 
 
@@ -4163,9 +4163,9 @@ def test_the_event_stream_of_a_blocked_run():
 
     assert [e.kind for e in events] == [
         INTENT,
-        CALL_STARTED, COST,
-        CALL_STARTED, COST, PLAN, GATE, GATE,
-        CALL_STARTED, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
+        CALL_STARTED, WRITING, COST,
+        CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
         PREFLIGHT_FAILED, BLOCKED,
     ]
 
@@ -4208,6 +4208,63 @@ def test_reasoning_is_streamed_tagged_with_the_phase_it_came_from():
         ("execute", "coding out loud"),
         ("review", "judging out loud"),
     ]
+
+
+def test_the_words_a_phase_writes_reach_the_stream_as_it_writes_them():
+    """
+    A reply forms over as long as the reasoning before it did — a recorded run
+    measured 22.4 minutes of its 23.6 minutes of provider time after the last
+    reasoning chunk, and 25.6 of 53.7 in another — and until the words are on
+    the stream the panel has nothing to show for any of it.
+
+    The phase is on the event because a stream carries several of them and
+    what is being written is only legible beside the name of what is writing.
+    """
+    _, events, _, _ = drive([
+        plan_reply("Only"),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ])
+
+    written = "".join(e.data["text"] for e in events.of(WRITING)
+                      if e.data["phase"] == "plan")
+
+    assert json.loads(written)["steps"] == ["Only"]
+    assert {e.data["phase"] for e in events.of(WRITING)} == {
+        "design", "plan", "execute", "review"}
+
+
+def test_a_phase_is_answered_by_the_client_its_own_profile_names():
+    """
+    One dial over five phases is one compromise: Design reading a drawing and
+    Execute writing the code for a Step it has already been given are not the
+    same demand, and a run that raises the dial for the first pays it on every
+    call of the second.
+
+    The seam is `for_phase`, asked for at the one place every phase's call
+    goes through, and a client that has none answers everything itself — which
+    is what `ScriptedLLMClient` and every client written before profiles do.
+    """
+    class TwoProfiles:
+        def __init__(self, thinking, doing):
+            self.model = "profiles"
+            self.asked = []
+            self._thinking, self._doing = thinking, doing
+
+        def for_phase(self, phase):
+            self.asked.append(phase)
+            return self._thinking if phase in ("design", "plan") else self._doing
+
+    thinking = ScriptedLLMClient([design_reply(), plan_reply("Only")])
+    doing = ScriptedLLMClient([code_reply("box()"), verdict_reply("pass")])
+    llm = TwoProfiles(thinking, doing)
+    events = EventStream()
+
+    result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events)
+
+    assert result.ok
+    assert llm.asked == ["design", "plan", "execute", "review"]
+    assert not doing.turns and not thinking.turns
 
 
 class _OnASubscription(ScriptedLLMClient):
