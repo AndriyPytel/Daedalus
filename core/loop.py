@@ -1060,7 +1060,8 @@ class Plan:
 
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered=(),
-         revising=(), looking=(), looked=(), tools=None, budgets=None, agentic=False):
+         revising=(), looking=(), looked=(), tools=None, budgets=None, agentic=False,
+         looks_taken=0):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
 
@@ -1073,6 +1074,14 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
     and `budgets` are only read when `agentic` is set; a caller that turns it
     on without them is a caller that forgot, so `core/agent.py :: ask` is the
     one that says so, not a silent no-op here.
+
+    `looks_taken` is forwarded to `core/agent.py :: ask` unchanged: Plan
+    already had a caller-level way to look (a `question` the drawing cannot
+    answer, settled by `_plan_once_it_knows_enough` against
+    `budgets.looks_per_turn`) before it could look from inside a turn of its
+    own, and both draw on the one allowance — a caller that already spent
+    part of it hands in what remains rather than this call being handed a
+    fresh ceiling underneath the one already in play (FCC-186).
 
     Plan never sees the picture. It is handed the part Design describes instead,
     under one key and in the words the user approved at the Plan Gate, and told
@@ -1128,7 +1137,8 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
     if agentic:
         from core.agent import ask as _agent_ask
         reply = _agent_ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
-                           json.dumps(request, indent=2, default=str), tools, budgets)
+                           json.dumps(request, indent=2, default=str), tools, budgets,
+                           looks_taken=looks_taken)
     else:
         reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
                      json.dumps(request, indent=2, default=str))
@@ -1616,6 +1626,24 @@ def _lookable(tools):
     """
     return [described for described in tools.describe()
             if described["name"] not in NOT_A_LOOK]
+
+
+def _looks_spent(events, since):
+    """
+    How many looks `core/agent.py :: ask` actually took, from event index
+    *since* to now — the other half of `budgets.looks_per_turn`'s one
+    allowance (FCC-186), read back off the stream rather than threaded
+    through `ask`'s return value, which is the phase's own object and
+    nothing else.
+
+    A `run` action is not a look. A look refused for want of budget — the
+    `{"error": "budget spent"}` `agent._take_a_look` answers with before it
+    ever calls the Tool — spent nothing either, so counting it here would
+    charge the caller-level allowance twice for what was in fact refused once.
+    """
+    return sum(1 for event in events[since:]
+              if event.kind == TOOL_RESULT and event.data["name"] != "run"
+              and event.data["result"] != {"error": "budget spent"})
 
 
 def _emit_plan(events, kind, planned, reason=None, unanswered=(), decided=(),
@@ -3132,6 +3160,15 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     has been asked is `asking`, and it belongs to the run rather than to this
     call, so a re-plan does not start the questioning over.
 
+    Every call to `plan()` here goes through `core/agent.py :: ask` (FCC-186):
+    Plan may spend a bounded turn looking something up or running code before
+    it commits to Steps, rather than planning from the request alone. That
+    does not open a second look allowance beside the one this call already
+    spends on Plan's behalf — `asking.looks` is handed in as `looks_taken` and
+    grown by `_looks_spent` afterwards, so a look taken from inside Plan's own
+    turn and a look taken through the `question`/`for_the_build` route above
+    draw on the one `budgets.looks_per_turn`, not two.
+
     Hands back the description as it now stands, because it grew on the way.
 
     A Plan that disagrees with itself about which way a Step builds is neither
@@ -3155,10 +3192,13 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     while True:
         if cancelled():
             raise Stopped()
+        since = len(events)
         planned = plan(intent, snapshot, llm, events, feedback=feedback,
                        the_part=grown, unanswered=asking.unanswered, revising=revising,
                        looking=_lookable(tools) if for_the_build else (),
-                       looked=asking.looked_up)
+                       looked=asking.looked_up, tools=tools, budgets=budgets,
+                       agentic=True, looks_taken=asking.looks)
+        asking.looks += _looks_spent(events, since)
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))
             for_the_build = False
