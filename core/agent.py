@@ -218,7 +218,7 @@ def ask(llm, events, phase, system, user, tools, budgets, namespace=None, looks_
         delegate = reply.get("delegate")
         if isinstance(delegate, dict) and delegate:
             last_action = "delegating %s to a sub-agent" % _named_by(delegate)
-            result = _delegated(llm, events, phase, system, delegate, tools, budgets)
+            result = _delegated(llm, events, phase, system, delegate, tools, budgets, traps=traps)
             prior = prior + _turn_of(body, reasoning, result)
             continue
 
@@ -307,7 +307,7 @@ def _named_by(delegate):
               or delegate.get("sheet") or "a sub-agent")
 
 
-def _delegated(llm, events, phase, system, delegate, tools, budgets):
+def _delegated(llm, events, phase, system, delegate, tools, budgets, traps=None):
     """One `delegate` action: `rlm` asked the request as its whole `user`
     turn, under the same `system` and `phase` as the call that delegated it —
     a sub-agent reads under the same instructions its parent does, not a
@@ -323,19 +323,23 @@ def _delegated(llm, events, phase, system, delegate, tools, budgets):
     carry on from, not an exception that loses whatever the parent's own
     conversation had already found out. A page nobody could delegate is not
     a reading lost, the way a page `_first_pass` could not read is not
-    either (`core/loop.py`)."""
+    either (`core/loop.py`).
+
+    `traps` is passed straight through to `rlm`, the same `TrapStore` this
+    call's own conversation was given: a sub-agent can propose a trap the
+    same way the phase that delegated to it can."""
     from core.loop import PhaseError
 
     events.emit(THOUGHT, phase=phase,
                text="delegating %s to a sub-agent" % _named_by(delegate))
     try:
         return rlm(llm, events, phase, system,
-                  json.dumps(delegate, indent=2, default=str), tools, budgets)
+                  json.dumps(delegate, indent=2, default=str), tools, budgets, traps=traps)
     except (PhaseError, ProviderRefused, StreamCutOff) as failed:
         return {"error": "the sub-agent could not answer: %s" % failed}
 
 
-def rlm(llm, events, phase, system, user, tools, budgets):
+def rlm(llm, events, phase, system, user, tools, budgets, traps=None):
     """
     A sub-agent: `ask` called again, for one `delegate` request.
 
@@ -346,8 +350,14 @@ def rlm(llm, events, phase, system, user, tools, budgets):
     the page or material it was asked about is not this function's concern
     (FCC-185): it is what the parent does with the answer, the same way a
     `look`'s answer is the Tool's to be right or wrong about, not `ask`'s.
+
+    `traps` is the same `TrapStore` the parent's own call opened, passed
+    straight through: a trap a sub-agent notices is a trap either
+    conversation could have noticed, and the store that already holds this
+    run's other proposals is where it belongs, not a second one nobody
+    approves.
     """
-    return ask(llm, events, phase, system, user, tools, budgets)
+    return ask(llm, events, phase, system, user, tools, budgets, traps=traps)
 
 
 def _turn_of(body, reasoning, result):

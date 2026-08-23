@@ -77,10 +77,16 @@ class TrapStorage:
     importing this module never requires FreeCAD.
 
     Given no path, the real default sits under FreeCAD's user directory,
-    beside the session logs. Outside FreeCAD (the test suite, a plain
-    interpreter) that resolution fails; reads then come back empty and
-    writes are dropped, since the addon only ever runs inside FreeCAD in
-    production and a test that cares about persistence passes its own path.
+    beside the session logs, chosen by whether `import FreeCAD` succeeds —
+    not by whether this process is FreeCAD's own interpreter. It is not: any
+    machine with FreeCAD installed resolves that import, this suite's own
+    `tests/conftest.py` included, which puts FreeCAD's lib directory on
+    `sys.path` for every test in it. A bare `TrapStorage()` there finds a
+    real `FreeCAD` and writes a real file under FreeCAD's user directory,
+    not an empty fallback. Only where `FreeCAD` truly cannot be imported —
+    no FreeCAD installed at all — does a read come back empty and a write
+    get dropped. A test that must not touch disk passes its own `path`; a
+    bare `TrapStorage()` is not itself an isolation guarantee.
     """
 
     def __init__(self, path=None):

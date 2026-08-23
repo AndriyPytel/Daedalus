@@ -84,6 +84,45 @@ def test_a_duplicate_trap_proposal_comes_back_as_an_error_not_a_crash(tmp_path):
     assert store.pending_proposals() == []
 
 
+def test_a_trap_proposed_by_a_delegated_sub_agent_lands_in_the_same_store(tmp_path):
+    events = EventStream()
+    store = TrapStore(storage=TrapStorage(path=str(tmp_path / "trap_proposals.json")),
+                      events=events)
+    llm = ScriptedLLMClient([
+        json.dumps({"delegate": {"page": "a note on the second box"}}),
+        json.dumps({"trap": {
+            "description": "Draft cube() twice loses the second body silently",
+            "evidence": "Step 2 log: two Part::Box named Box, only one visible",
+        }}),
+        json.dumps({"done": True}),
+        json.dumps({"done": True}),
+    ])
+
+    reply = ask(llm, events, "execute", "system", "user", ToolRegistry(), _budgets(), traps=store)
+
+    assert reply == {"done": True}
+    pending = store.pending_proposals()
+    assert len(pending) == 1
+    assert pending[0]["phase"] == "execute"
+    assert pending[0]["description"].startswith("Draft cube() twice")
+
+
+def test_a_delegated_duplicate_of_a_seed_trap_comes_back_as_an_error_not_a_crash(tmp_path):
+    store = TrapStore(storage=TrapStorage(path=str(tmp_path / "trap_proposals.json")))
+    events = EventStream()
+    llm = ScriptedLLMClient([
+        json.dumps({"delegate": {"page": "a note"}}),
+        json.dumps({"trap": {"description": TRAPS[0], "evidence": "seen again"}}),
+        json.dumps({"done": True}),
+        json.dumps({"done": True}),
+    ])
+
+    reply = ask(llm, events, "design", "system", "user", ToolRegistry(), _budgets(), traps=store)
+
+    assert reply == {"done": True}
+    assert store.pending_proposals() == []
+
+
 def _watched_ask(captured):
     def fake_ask(llm, events, phase, system, user, tools, budgets, **kwargs):
         captured.update(kwargs)
