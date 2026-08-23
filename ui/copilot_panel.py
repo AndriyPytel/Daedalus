@@ -1362,8 +1362,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         screen.
         """
         self._plan_widget = None
-        self._thought = None
-        self._thought_phase = None
+        self._live_rows = {}
         self._current_step = 0
         self._question_card = None
         self._answers_to_enter = None
@@ -1753,7 +1752,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._total_usd += data.get("usd", 0.0)
             self._last_event_time = event.at
             self._update_usage_total()
-            self._the_thinking_stops()
+            self._the_thinking_stops(data.get("phase"))
             return
 
         if event.kind == ev.THOUGHT:
@@ -1922,25 +1921,31 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if narration.status:
             self._queue_widget.now(narration.status)
 
-    def _the_thinking_stops(self):
-        """
-        The row a phase was thinking in, left as a record rather than a clock.
+    def _stopped(self, turn):
+        """The row of one turn, left as a record rather than a clock."""
+        row = self._live_rows.pop(turn, None)
+        if row:
+            row.stop_pulsing()
 
-        Every route out of a thinking row goes through here, because a row let
-        go of without `stop_pulsing` keeps a `QTimer` for the life of the
-        panel, and two routes let go of one: Design labels its phase per page
-        of the drawing, so the row is replaced mid-run, and `STEP_STARTED`
-        drops the reference. Such a row read 35:05 in a 34-minute run — past
-        the header's own total, which counts `event.at` where the row counts
-        the wall.
+    def _the_thinking_stops(self, phase=None):
+        """
+        Every live row of a phase, or of the whole run where none is named.
+
+        Every route out of a live row goes through here, because a row let go
+        of without `stop_pulsing` keeps a `QTimer` for the life of the panel.
+        Such a row read 35:05 in a 34-minute run — past the header's own total,
+        which counts `event.at` where the row counts the wall.
 
         `COST` is the end of a call, and it is the event that stops the count:
         the artefacts rendered after it — a Plan, a call, the document — are
-        the loop's own work, not the model's.
+        the loop's own work, not the model's. It names its phase, and it has
+        to, because Design now reads a drawing one call per page and the pages
+        run at once: a run asked for the 2023 clamp paid for page 2 at 189.9 s
+        and for page 1 at 208.9 s.
         """
-        if self._thought:
-            self._thought.stop_pulsing()
-        self._thought = None
+        for turn in list(self._live_rows):
+            if phase is None or turn[1] == phase:
+                self._stopped(turn)
 
     def _render_thought(self, phase, text):
         """
@@ -1969,22 +1974,36 @@ class CopilotPanel(QtWidgets.QDockWidget):
         recorded run's 23.6 minutes of provider time fell after the last
         reasoning chunk of every call, with nothing on the panel for any of
         it. It wears no brain: it is not the model deciding, it is the answer.
+
+        The first word written is the end of the reasoning of that phase, and
+        of that phase only.
         """
+        self._stopped(("thought", phase))
         self._one_row_per_turn("Writing (%s)…" % phase, ("writing", phase), text)
 
     def _one_row_per_turn(self, title, turn, text, reasoning=False):
-        """One accordion per turn of a phase, opened on its first chunk."""
-        if self._thought is None or self._thought_phase != turn:
-            self._the_thinking_stops()
-            self._thought = AccordionWidget(title)
-            self._thought_phase = turn
+        """
+        One accordion per turn of a phase, opened on its first chunk.
+
+        A row to a turn and not a row to the panel: Design fans out one call
+        per page of the drawing and they stream interleaved, so a single live
+        row is claimed by whichever page spoke last and the other page's clock
+        dies where it stood. The recorded run showed `Thinking (design: page
+        1)… 0:01` for a page that thought for 3:03, and four `Writing … 0:00`
+        rows for two calls. A turn ends at its own `COST`, which is what lets
+        the same phase open a fresh row the next time it is called.
+        """
+        row = self._live_rows.get(turn)
+        if row is None:
+            row = self._live_rows[turn] = AccordionWidget(title)
             if reasoning:
-                self._thought.mark_as_reasoning()
-            self._thought.opens_onto_nothing()
-            self.add_chat_widget(self._thought)
-            self._thought.start_pulsing()
+                row.mark_as_reasoning()
+            row.opens_onto_nothing()
+            self.add_chat_widget(row)
+            row.start_pulsing()
         if text:
-            self._thought.append_text(text)
+            row.append_text(text)
+
 
     def _render_attachments(self, files):
         """
@@ -2027,9 +2046,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         at the left margin the run answers from rather than under the user's
         bubble, because the run is what wrote it.
         """
-        if self._thought:
-            self._thought.stop_pulsing()
-            self._thought = None
+        self._the_thinking_stops()
         self.add_chat_widget(AssistantMessageWidget(
             line.replace(path, "").strip().rstrip(":").strip()))
         self.add_chat_widget(_at_the_left_margin(FileChip(path, removable=False)))
@@ -2063,9 +2080,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         is both short in entries and short in words, `FOLDS_OVER` being the
         second budget.
         """
-        if self._thought:
-            self._thought.stop_pulsing()
-            self._thought = None
+        self._the_thinking_stops()
         def beside_the_steps(heading, entries):
             if not entries:
                 return
@@ -2099,9 +2114,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         Duration is added when TOOL_RESULT arrives, from event.at deltas.
         """
-        if self._thought:
-            self._thought.stop_pulsing()
-            self._thought = None
+        self._the_thinking_stops()
         title = ("Step %d — %s" % (self._current_step, name) if self._current_step
                  else name)
         row = AccordionWidget(title, code=True, boxed=True)
@@ -2435,9 +2448,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             return
 
         self._set_running(False)
-        if self._thought:
-            self._thought.stop_pulsing()
-            self._thought = None
+        self._the_thinking_stops()
         if result is not None and result.ok:
             self._queue_widget.now("")
         else:
