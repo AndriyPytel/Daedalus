@@ -799,7 +799,7 @@ def _narrowed(told, paths):
 
 
 def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
-          keep_printed=False, pictures=True):
+          keep_printed=False, pictures=True, agentic=False, tools=None, budgets=None):
     """
     One Design turn: what it adds to the part, and what it needs a person for.
 
@@ -844,12 +844,26 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
     model grows the part by nothing, which is the same case as a sheet that does
     not answer: the run carries on with what it already had rather than losing
     it, the way an acceptance list nobody wrote is not fatal either.
+
+    `agentic` is the seam onto `core/agent.py :: ask` (FCC-185), off by
+    default like Plan's own (FCC-183): every existing call still goes
+    through `_ask` unchanged. Turned on, this turn may spend a bounded turn
+    delegating a page or a sheet to a sub-agent of its own — `{"delegate":
+    {...}}`, `core/agent.py`'s own action — instead of reading a long
+    drawing in one call. Design never reaches a FreeCAD API, so `run`'s
+    namespace buys it nothing (ADR-0019 leaves nothing for it to build with);
+    delegation is the whole of what being an agent adds here. `tools` and
+    `budgets` are only read when `agentic` is set, the same as Plan's.
     """
     evidence = _the_evidence(attachments, views, keep_printed, pictures)
     if evidence and cache_control_supported(getattr(llm, "model", None)):
         evidence = evidence[:-1] + [dict(evidence[-1], cache_control={"type": "ephemeral"})]
-    reply = _ask(llm, events, phase, prompt(DESIGN_PHASE),
-                 evidence + [{"type": "text", "text": json.dumps(body, indent=2, default=str)}])
+    user = evidence + [{"type": "text", "text": json.dumps(body, indent=2, default=str)}]
+    if agentic:
+        from core.agent import ask as _agent_ask
+        reply = _agent_ask(llm, events, phase, prompt(DESIGN_PHASE), user, tools, budgets)
+    else:
+        reply = _ask(llm, events, phase, prompt(DESIGN_PHASE), user)
     the_part = reply.get("design")
     return (the_part if isinstance(the_part, dict) else {},
             str(reply.get("question") or "").strip())

@@ -27,13 +27,27 @@ calling process, the way Execute's own code already runs against the Document
 `Namespace.run` does not turn into traceback text — it is the model's own
 code saying the phase cannot continue, and it reaches `ask`'s caller exactly
 as `_ask` would have raised it, never rewrapped.
+
+A third action, `{"delegate": {...}}`, is `run`'s opposite rather than its
+neighbour (FCC-185): where `run` buys persistence in this same process for a
+phase with a Document to reach through a Tool, `delegate` buys a second,
+independent conversation for a phase with none — Design reads a sheet, never
+a FreeCAD API, so a namespace that survives across its own turns adds nothing
+to it, and a whole sub-agent reading one page or one sheet on its own budget
+does. `rlm` is that sub-agent: `ask` called again, its own `prior` and its
+own turn ceiling, answering `delegate`'s request the way this call answers
+its own. Nothing bounds how many times one `ask` call may itself delegate —
+each delegation still spends one of *this* call's `budgets.agent_turns`, but
+the child it spawns spends a fresh ceiling of its own, so a chain of phases
+that only ever delegate costs turns at every level before any of them raises.
 """
 import json
 import traceback
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 
-from core.events import TOOL_CALL, TOOL_RESULT
+from core.events import THOUGHT, TOOL_CALL, TOOL_RESULT
+from core.llm import ProviderRefused, StreamCutOff
 from core.tools import ToolError
 
 _NOTHING_SAID = "(nothing was said)"
@@ -179,6 +193,13 @@ def ask(llm, events, phase, system, user, tools, budgets, namespace=None, looks_
             prior = prior + _turn_of(body, reasoning, result)
             continue
 
+        delegate = reply.get("delegate")
+        if isinstance(delegate, dict) and delegate:
+            last_action = "delegating %s to a sub-agent" % _named_by(delegate)
+            result = _delegated(llm, events, phase, system, delegate, tools, budgets)
+            prior = prior + _turn_of(body, reasoning, result)
+            continue
+
         return reply
 
     raise PhaseError(
@@ -230,6 +251,57 @@ def _run_code(namespace, code, events):
     output = namespace.run(code)
     events.emit(TOOL_RESULT, name="run", result={"output": output})
     return {"output": output}
+
+
+def _named_by(delegate):
+    """What to call a delegation in `last_action` and the `THOUGHT` it emits:
+    the page or material it names itself, or "a sub-agent" where it names
+    neither — the request is the model's own JSON and owes no particular key."""
+    return str(delegate.get("page") or delegate.get("material")
+              or delegate.get("sheet") or "a sub-agent")
+
+
+def _delegated(llm, events, phase, system, delegate, tools, budgets):
+    """One `delegate` action: `rlm` asked the request as its whole `user`
+    turn, under the same `system` and `phase` as the call that delegated it —
+    a sub-agent reads under the same instructions its parent does, not a
+    second prompt nobody wrote.
+
+    The `THOUGHT` is emitted here rather than left to `rlm`'s own call,
+    because it names what was delegated and why, which is this call's own
+    reply to explain, not the child's.
+
+    A child that never answers — its own turns spent, a refused stream, one
+    that would not stay up — is `_take_a_look`'s own case for a Tool that
+    failed, answered the same way: an `{"error": ...}` this turn can read and
+    carry on from, not an exception that loses whatever the parent's own
+    conversation had already found out. A page nobody could delegate is not
+    a reading lost, the way a page `_first_pass` could not read is not
+    either (`core/loop.py`)."""
+    from core.loop import PhaseError
+
+    events.emit(THOUGHT, phase=phase,
+               text="delegating %s to a sub-agent" % _named_by(delegate))
+    try:
+        return rlm(llm, events, phase, system,
+                  json.dumps(delegate, indent=2, default=str), tools, budgets)
+    except (PhaseError, ProviderRefused, StreamCutOff) as failed:
+        return {"error": "the sub-agent could not answer: %s" % failed}
+
+
+def rlm(llm, events, phase, system, user, tools, budgets):
+    """
+    A sub-agent: `ask` called again, for one `delegate` request.
+
+    Its own `prior` and its own `budgets.agent_turns`, entirely apart from
+    the conversation that spawned it — the parent hands over a request and
+    gets back this call's final object, nothing else of the child's
+    conversation crossing the seam. Whether that object is a good reading of
+    the page or material it was asked about is not this function's concern
+    (FCC-185): it is what the parent does with the answer, the same way a
+    `look`'s answer is the Tool's to be right or wrong about, not `ask`'s.
+    """
+    return ask(llm, events, phase, system, user, tools, budgets)
 
 
 def _turn_of(body, reasoning, result):
