@@ -160,7 +160,16 @@ def _selection():
     ]
 
 
-REVIEW_VIEWS = ("viewIsometric", "viewFront", "viewTop", "viewRight")
+_OPPOSITE_ISOMETRIC = "viewIsometricOpposite"
+"""
+Not a `FreeCADGui` button — `libFreeCADGui` names `viewFront`, `viewTop`,
+`viewRight`, `viewRear`, `viewBottom`, `viewLeft`, `viewIsometric`,
+`viewDimetric` and `viewTrimetric`, and none of them is the corner
+diagonally across from isometric's. `capture_review_views` builds it instead,
+from whatever orientation `viewIsometric` is already holding.
+"""
+
+REVIEW_VIEWS = ("viewIsometric", _OPPOSITE_ISOMETRIC, "viewTop", "viewFront")
 
 
 _A_3D_VIEW = "Gui::View3DInventor"
@@ -245,11 +254,13 @@ def capture_review_views(paths, document=None, size=(800, 600)):
     """
     The four views Review judges, captured once, camera put back afterwards.
 
-    Isometric, front, top and right. One view is not enough, and the user's own
-    camera is undetermined as well as single: a mirrored tooth flank reads only
-    from above, and in isometry it is foreshortened, which is how Review came
-    to pass one. The spellings were checked against libFreeCADGui rather than
-    recalled.
+    Two isometrics from opposite corners of the part's box, plus top and
+    front. Front-right-top and the corner diagonally across from it between
+    them show every one of a cube's six faces by construction, which the old
+    isometric/front/top/right never did — three of the six were outside all
+    four of those, the same blind spot `FCC-63` closed for a single mirrored
+    isometry, one level deeper. The spellings were checked against
+    libFreeCADGui rather than recalled.
 
     `document` is the Session's own bound Document (FCC-181), read through
     `FreeCADGui.getDocument(name)` rather than whichever tab is in front.
@@ -261,6 +272,8 @@ def capture_review_views(paths, document=None, size=(800, 600)):
     view to be moved, and a run that ends with the part face-on because Review
     looked at it last has damaged something that belongs to them.
     """
+    import FreeCAD
+
     view = _active_view(document)
     if view is None:
         return []
@@ -269,7 +282,11 @@ def capture_review_views(paths, document=None, size=(800, 600)):
     written = []
     try:
         for name, path in zip(REVIEW_VIEWS, paths):
-            getattr(view, name)()
+            if name == _OPPOSITE_ISOMETRIC:
+                view.setCameraOrientation(view.getCameraOrientation().multiply(
+                    FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), 180)))
+            else:
+                getattr(view, name)()
             view.fitAll()
             view.saveImage(path, size[0], size[1], "Current")
             written.append(path)

@@ -5181,6 +5181,28 @@ def test_review_is_told_the_facts_the_checks_confirmed():
     assert events.first(ASSERTION).data["uncovered"] == [ACCEPTANCE[1]]
 
 
+def test_review_is_told_not_to_fail_on_a_suspicion_the_checks_never_confirmed():
+    """
+    A mirrored flank or a displaced hole reads from the render alone, on a
+    face no check happened to cover — `ACCEPTANCE[1]` stays uncovered here,
+    the way FCC-76 leaves a check that could not run. `review.md` is what
+    stops that reading from becoming its own `fail`: the same rule that
+    already keeps a dimension off the picture (`a diameter was never a
+    pixel`), generalised from dimensions to any visual suspicion (FCC-204).
+    """
+    _, _, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"),
+        code_reply("make()"),
+        assertion_reply(CHECKS, uncovered=[ACCEPTANCE[1]]),
+        verdict_reply("pass"),
+        views=[RENDER_PNG] * 4)
+
+    review_system = _system_messages(llm)[-1]
+
+    assert review_system == prompt("review")
+    assert "hypothesis to measure" in review_system
+
+
 def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
     """
     An AttributeError in the checking code says nothing about the nut. Read as

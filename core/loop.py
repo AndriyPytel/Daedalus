@@ -66,7 +66,7 @@ _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 NOT_A_LOOK = ("apply_step", "review_views", "check_assertions")
 
-_VIEW_NAMES = ("isometric", "the front", "above", "the right")
+_VIEW_NAMES = ("isometric", "the opposite isometric", "above", "the front")
 
 
 class PhaseError(Exception):
