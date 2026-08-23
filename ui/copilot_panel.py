@@ -557,9 +557,13 @@ class LoopWorker(QtCore.QObject):
         self.ask.abandon()
 
     def _get_client(self):
+        """
+        One client per run, built for both profiles: `for_phase` is what picks
+        between them, on `core.llm.ProfiledClient` the seam already reads.
+        """
         if self.client is None:
-            from core.llm import client_from_settings
-            self.client = client_from_settings(settings_manager.instance().get_last_model())
+            from core.llm import client_from_profiles
+            self.client = client_from_profiles()
         return self.client
 
     def _get_tools(self, events=None):
@@ -995,6 +999,21 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         from .model_selector import EffortPopup, ModelSelectorPopup
 
+        self._active_profile = "doing"
+
+        picker = QtWidgets.QHBoxLayout()
+        picker.setContentsMargins(0, 0, 0, 0)
+        picker.setSpacing(0)
+
+        self.profile_button = QtWidgets.QPushButton()
+        self.profile_button.setObjectName("PickerButton")
+        self.profile_button.setFixedHeight(CONTROL_DENSE)
+        self.profile_button.setSizePolicy(QtWidgets.QSizePolicy.Maximum,
+                                          QtWidgets.QSizePolicy.Fixed)
+        self.profile_button.clicked.connect(self._toggle_profile)
+        picker.addWidget(self.profile_button)
+        self._show_profile()
+
         self.model_button = QtWidgets.QPushButton()
         self.model_button.setObjectName("PickerButton")
         self.model_button.setFixedHeight(CONTROL_DENSE)
@@ -1004,7 +1023,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.model_button.setLayoutDirection(QtCore.Qt.RightToLeft)
         self._model_display = ""
         self.model_button.clicked.connect(self._open_model_selector)
-        strip.addWidget(self.model_button)
+        picker.addWidget(self.model_button)
 
         self.model_selector = ModelSelectorPopup(self)
         self.model_selector.model_chosen.connect(self._on_model_selected)
@@ -1017,7 +1036,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.effort_button.setToolTip("How hard the model is asked to think")
         self.effort_button.setLayoutDirection(QtCore.Qt.RightToLeft)
         self.effort_button.clicked.connect(self._open_effort_selector)
-        strip.addWidget(self.effort_button)
+        picker.addWidget(self.effort_button)
+
+        strip.addLayout(picker)
 
         self.effort_selector = EffortPopup(self)
         self.effort_selector.effort_chosen.connect(self._on_effort_selected)
@@ -1123,11 +1144,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
         never picked (FCC-41); the fallback `_retire_model` names once every
         provider has answered and none offers it any more; or, with nothing
         stored at all, the first model on offer.
+
+        Read for whichever profile the toggle is on, so a switch between
+        `thinking` and `doing` shows that profile's own model rather than
+        the one last edited.
         """
         if models is None:
             models = provider_manager.instance().get_available_models()
         self._models = models
-        last_id = settings_manager.instance().get_last_model()
+        last_id = settings_manager.instance().get_profile_model(self._active_profile)
 
         if not models:
             self._set_current_model(None, "No models — add API key")
@@ -1195,18 +1220,43 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         settings = settings_manager.instance()
         fallback = settings.get_default_model() or self._models[0]["id"]
-        settings.set_last_model(fallback)
+        settings.set_profile_model(self._active_profile, fallback)
         self._queue_widget.now(
             "%s is no longer offered by its provider — switched to %s."
             % (model_id, fallback))
         return fallback
+
+    def _toggle_profile(self):
+        """
+        Switches which of the two profiles the model and effort pills beside
+        it edit -- Design and Plan think, Execute, Assertion and Review do,
+        and one Intent asks both, whichever one this is set to when it is
+        sent.
+        """
+        from core.llm import PROFILES
+
+        self._active_profile = PROFILES[(PROFILES.index(self._active_profile) + 1)
+                                        % len(PROFILES)]
+        self._show_profile()
+        self._refresh_models()
+
+    def _show_profile(self):
+        """
+        The label the model and effort pills read off of, not a control of
+        its own: "Thinking › opus - medium" is one phrase, and a user who
+        clicks it is asking which profile the two pills beside it belong to.
+        """
+        self.profile_button.setText("%s ›" % self._active_profile.capitalize())
+        self.profile_button.setToolTip(
+            "Thinking — Design and Plan" if self._active_profile == "thinking"
+            else "Doing — Execute, Assertion and Review")
 
     def _open_model_selector(self):
         self.model_selector.open_at(self._models, self.model_button)
 
     def _on_model_selected(self, model_id: str):
         """Drops the client so the next send rebuilds it from settings."""
-        settings_manager.instance().set_last_model(model_id)
+        settings_manager.instance().set_profile_model(self._active_profile, model_id)
         if getattr(self, "worker", None):
             self.worker.client = None
         entry = next((m for m in self._models if m["id"] == model_id), None)
@@ -1220,21 +1270,22 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         from core.llm import EFFORTS, effort_is_honoured
 
-        if not effort_is_honoured(settings_manager.instance().get_last_model()):
+        model_id = settings_manager.instance().get_profile_model(self._active_profile)
+        if not effort_is_honoured(model_id):
             return
         self.effort_selector.open_at(list(EFFORTS), self.effort_button)
 
     def _on_effort_selected(self, level: str):
         """Drops the client so the next send is asked to think the new way."""
-        settings_manager.instance().set_effort(level)
+        settings_manager.instance().set_profile_effort(self._active_profile, level)
         if getattr(self, "worker", None):
             self.worker.client = None
         self._show_effort()
 
     def _show_effort(self):
         """
-        The pill carries the level in force, and says when the model will
-        ignore it.
+        The pill carries the level in force for the active profile, and says
+        when the model will ignore it.
 
         The level is read from `core.llm` and not from settings: what is
         stored may be empty, or a level from an older build, and the panel
@@ -1244,10 +1295,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
         honest thing is to say so where the choice is made rather than to
         take it and drop it (`core.llm.effort_is_honoured`).
         """
-        from core.llm import effort, effort_is_honoured
+        from core.llm import effort_for_profile, effort_is_honoured
 
-        honoured = effort_is_honoured(settings_manager.instance().get_last_model())
-        self.effort_button.setText(effort())
+        model_id = settings_manager.instance().get_profile_model(self._active_profile)
+        honoured = effort_is_honoured(model_id)
+        self.effort_button.setText(effort_for_profile(self._active_profile))
         self.effort_button.setEnabled(honoured)
         self.effort_button.setToolTip(
             "How hard the model is asked to think" if honoured

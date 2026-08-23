@@ -253,6 +253,7 @@ def _mock_no_stored_model(monkeypatch):
     from utils import settings_manager
 
     monkeypatch.setattr(settings_manager.instance(), "get_last_model", lambda: "")
+    monkeypatch.setattr(settings_manager.instance(), "get_profile_model", lambda profile: "")
 
 
 def test_the_composer_carries_the_effort_in_force(panel):
@@ -260,9 +261,9 @@ def test_the_composer_carries_the_effort_in_force(panel):
     FCC-169: how hard the model thinks is a choice made where the model is
     chosen, so it can be changed between two runs and compared.
     """
-    from core.llm import effort
+    from core.llm import effort_for_profile
 
-    assert panel.effort_button.text() == effort()
+    assert panel.effort_button.text() == effort_for_profile(panel._active_profile)
 
 
 def test_picking_an_effort_stores_it_and_shows_it(panel, monkeypatch):
@@ -271,14 +272,68 @@ def test_picking_an_effort_stores_it_and_shows_it(panel, monkeypatch):
     from utils import settings_manager
 
     stored = []
-    monkeypatch.setattr(settings_manager.instance(), "set_effort", stored.append)
-    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: stored[-1] if stored else "")
+    monkeypatch.setattr(settings_manager.instance(), "set_profile_effort",
+                        lambda profile, level: stored.append((profile, level)))
+    monkeypatch.setattr(settings_manager.instance(), "get_profile_effort",
+                        lambda profile: stored[-1][1] if stored else "")
 
     panel._on_effort_selected("high")
 
-    assert stored == ["high"]
+    assert stored == [(panel._active_profile, "high")]
     assert panel.effort_button.text() == "high"
-    assert llm.effort() == "high"
+    assert llm.effort_for_profile(panel._active_profile) == "high"
+
+
+def test_the_toggle_flips_between_the_two_profiles_and_back(panel):
+    """The one new widget the composer gets: a two-way switch, nothing else."""
+    from core.llm import PROFILES
+
+    start = panel._active_profile
+    panel._toggle_profile()
+
+    assert panel._active_profile in PROFILES
+    assert panel._active_profile != start
+    assert panel.profile_button.text().startswith(panel._active_profile.capitalize())
+
+    panel._toggle_profile()
+    assert panel._active_profile == start
+
+
+def test_the_effort_pill_follows_whichever_profile_the_toggle_is_on(panel, monkeypatch):
+    from utils import settings_manager
+
+    settings = settings_manager.instance()
+    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-4o")
+    monkeypatch.setattr(settings, "get_profile_effort",
+                        lambda profile: "high" if profile == "thinking" else "low")
+
+    try:
+        panel._active_profile = "thinking"
+        panel._show_effort()
+        assert panel.effort_button.text() == "high"
+
+        panel._active_profile = "doing"
+        panel._show_effort()
+        assert panel.effort_button.text() == "low"
+    finally:
+        panel._active_profile = "doing"
+        panel._show_effort()
+
+
+def test_picking_a_model_on_one_profile_leaves_the_other_alone(panel, monkeypatch):
+    from utils import settings_manager
+
+    _mock_no_stored_model(monkeypatch)
+    written = []
+    monkeypatch.setattr(settings_manager.instance(), "set_profile_model",
+                        lambda profile, model_id: written.append((profile, model_id)))
+
+    panel._active_profile = "thinking"
+    try:
+        panel._on_model_selected("claude-opus-4")
+        assert written == [("thinking", "claude-opus-4")]
+    finally:
+        panel._active_profile = "doing"
 
 
 def test_a_model_that_cannot_reason_is_not_offered_the_choice(panel, monkeypatch):
@@ -371,7 +426,8 @@ def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypa
 
     _mock_no_stored_model(monkeypatch)
     written = []
-    monkeypatch.setattr(settings_manager.instance(), "set_last_model", written.append)
+    monkeypatch.setattr(settings_manager.instance(), "set_profile_model",
+                        lambda profile, model_id: written.append((profile, model_id)))
 
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
@@ -384,7 +440,7 @@ def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypa
     assert not panel.model_selector.isVisible()
     assert panel._current_model_id == "claude-opus-4"
     assert panel.model_button.text() == "Claude Opus 4"
-    assert written == ["claude-opus-4"]
+    assert written == [(panel._active_profile, "claude-opus-4")]
 
 
 def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkeypatch):
@@ -396,7 +452,8 @@ def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkey
     from ui.model_selector import PROVIDER_STEP
 
     _mock_no_stored_model(monkeypatch)
-    monkeypatch.setattr(settings_manager.instance(), "set_last_model", lambda model_id: None)
+    monkeypatch.setattr(settings_manager.instance(), "set_profile_model",
+                        lambda profile, model_id: None)
 
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
@@ -575,7 +632,8 @@ def test_the_button_shows_a_stored_model_no_static_list_knows(panel, monkeypatch
     from utils import provider_manager, settings_manager
 
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: True)
-    monkeypatch.setattr(settings_manager.instance(), "get_last_model", lambda: "gpt-5.6-sol")
+    monkeypatch.setattr(settings_manager.instance(), "get_profile_model",
+                        lambda profile: "gpt-5.6-sol")
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
@@ -609,9 +667,10 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
     settings = settings_manager.instance()
     written = []
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
-    monkeypatch.setattr(settings, "get_last_model", lambda: "gpt-5.6-sol")
+    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-5.6-sol")
     monkeypatch.setattr(settings, "get_default_model", lambda: "gpt-4o")
-    monkeypatch.setattr(settings, "set_last_model", written.append)
+    monkeypatch.setattr(settings, "set_profile_model",
+                        lambda profile, model_id: written.append(model_id))
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
@@ -627,9 +686,9 @@ def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, mon
 
     settings = settings_manager.instance()
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
-    monkeypatch.setattr(settings, "get_last_model", lambda: "gpt-5.6-sol")
+    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-5.6-sol")
     monkeypatch.setattr(settings, "get_default_model", lambda: "")
-    monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
+    monkeypatch.setattr(settings, "set_profile_model", lambda profile, model_id: None)
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
