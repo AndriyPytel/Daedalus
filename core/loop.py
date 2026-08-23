@@ -3684,6 +3684,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     described = {}
     standing = {"approval": False, "read": set()}
     looks = _what_this_build_has(tools)
+    last_pass = {"steps": None, "applied": 0}
 
     def rewrite(cause, refused, feedback, tried, reason=None):
         """
@@ -3769,9 +3770,12 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             return _block(events, "The Plan came back with no Steps, so there is nothing to "
                                   "apply and nothing to review.", progress["tried"],
                           progress["applied"])
+        carried = _carried_over(last_pass["steps"], steps, last_pass["applied"])
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part["the_part"]), looks,
-                                planned.acceptance, planned.cites, agentic, consult, traps)
+                                planned.acceptance, planned.cites, agentic, consult, traps,
+                                start=carried)
+        last_pass["steps"], last_pass["applied"] = steps, outcome["applied_here"]
         applied = progress["applied"]
 
         if outcome["handback"] and stuck["applied"] == applied \
@@ -3891,6 +3895,37 @@ def _still_wrong(outstanding):
     )
 
 
+def _carried_over(previous, steps, applied):
+    """
+    How many Steps at the head of a revised Plan are already standing in the
+    Document, and so must not be written or applied again.
+
+    `_run` keeps the Steps of the pass it just worked through and how many of
+    them landed. A revision is a new Plan (`_run`'s own docstring), but where
+    it opens with the same prose as Steps that already applied, those Steps
+    describe nothing Execute has not already built — asking for their code
+    again is asking for the same Document twice. Matched to a recorded run
+    (`logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl`): an 11-Step Plan
+    revised three times produced 28 `step_started` events over what should
+    have been 11, because every revision restarted Execute at Step 1 no
+    matter how much of the Plan it left untouched.
+
+    The count is the longest run of identical prose from the head of both
+    Plans, capped at how many Steps of `previous` actually landed: a Step
+    that was never reached is not carried just because a revision kept its
+    words, and a Step a revision changed is never carried past where it
+    changed.
+    """
+    if previous is None:
+        return 0
+    carried = 0
+    for was, now in zip(previous[:applied], steps):
+        if was != now:
+            break
+        carried += 1
+    return carried
+
+
 def _also_check(acceptance, outstanding):
     """
     The acceptance list, with anything an earlier run left wrong added to it.
@@ -3908,7 +3943,7 @@ def _also_check(acceptance, outstanding):
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), agentic=False,
-                  consult=False, traps=None):
+                  consult=False, traps=None, start=0):
     """
     One pass over the Plan: written in one call, applied one Step at a time.
 
@@ -3969,6 +4004,14 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     passed straight to every `execute()` call this makes so a Step Execute
     writes may propose a trap under the same store Plan already spent
     against.
+
+    `start` is where a revised Plan's own head is already standing in the
+    Document (`_carried_over`, called by `_run` before this): the Steps below
+    it are neither written nor applied again, only accounted for — `APPLIED`
+    on the stream and their citations onto `progress["satisfied"]`, exactly as
+    a Step that had just landed. The count this pass actually reached, carried
+    Steps included, comes back on `applied_here` so the next revision, if
+    there is one, has it to carry from in turn.
     """
     if cancelled():
         raise Stopped()
@@ -3978,8 +4021,14 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     retried = set()
     unbuilt = []
     looks = looks if looks is not None else Looks()
-    written = execute(steps, tools, llm, events, budgets=budgets, as_described=as_described,
-                      looks=looks, entries=entries, agentic=agentic, traps=traps)
+    written = execute(steps, tools, llm, events, start, budgets=budgets,
+                      as_described=as_described, looks=looks, entries=entries,
+                      agentic=agentic, traps=traps)
+
+    while index < start:
+        progress["satisfied"].extend(cites[index] if index < len(cites) else ())
+        events.emit(APPLIED, step=index + 1, label="", created=[])
+        index += 1
 
     while index < len(steps):
         if cancelled():
@@ -3988,7 +4037,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         if written.obsolete:
             return {"obsolete": written.obsolete, "handback": None,
-                    "description": described,
+                    "description": described, "applied_here": index,
                     "tried": [_tried(step, a) for a in attempts]}
 
         if not attempts:
@@ -4009,6 +4058,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                 "handback": "Step %d of %d could not be built as written: %s\n%s"
                             % (index + 1, len(steps), step, written.unbuildable),
                 "tried": [], "obsolete": None, "description": described,
+                "applied_here": index,
             }
 
         if outcome.code:
@@ -4053,6 +4103,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                                attempts[-1].traceback, _always_the_same_way(attempts)),
                 "tried": [_tried(step, a) for a in attempts],
                 "obsolete": None, "description": described,
+                "applied_here": index,
             }
 
         if cancelled():
@@ -4061,6 +4112,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                           looks, entries, agentic, advice, traps)
 
     return {"obsolete": None, "handback": None, "description": described,
+            "applied_here": index,
             "tried": [], "unbuilt": unbuilt, "retried": sorted(
                 {cited for at in retried for cited in (cites[at] if at < len(cites)
                                                        else ())})}

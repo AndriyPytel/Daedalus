@@ -1540,6 +1540,68 @@ def test_execute_can_declare_a_step_obsolete_and_plan_revises():
     assert tools.applied_codes() == ["add_new()"]
 
 
+def test_a_revised_plan_does_not_reapply_steps_that_already_landed():
+    """
+    Matched to `logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl`: an
+    11-Step Plan revised over Steps 3 and 7 produced 28 `step_started` events
+    where 11 would say the same thing, because a revision always restarted
+    Execute at Step 1 no matter how much of the Plan it left alone.
+
+    Here the revision leaves Steps 1 and 2 exactly as they read the first
+    time, so the second pass must not start them, must not apply them again,
+    and must still show them applied on the stream — they already are.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Pad the outline", "Fillet the marked edges",
+                   "Drill the hole", "Chamfer the edge"),
+        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"},
+                              {"step": 2, "code": "fillet()", "label": "Fillet"}],
+                    "unbuildable": "Step 3 needs a hole diameter nobody supplied."}),
+        plan_reply("Pad the outline", "Fillet the marked edges",
+                   "Drill a 6mm hole", "Chamfer the edge"),
+        code_reply("drill()", "chamfer()", first=3),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["pad()", "fillet()", "drill()", "chamfer()"], \
+        "Steps 1 and 2 were applied again on the second pass"
+
+    revised_at = [e.kind for e in events].index(PLAN_REVISED)
+    after = events[revised_at + 1:]
+    assert [e.data["index"] for e in after if e.kind == STEP_STARTED] == [3, 4], \
+        "a carried Step was started again"
+    carried = [e.data["step"] for e in after if e.kind == APPLIED and e.data["step"] in (1, 2)]
+    assert carried == [1, 2], "a carried Step was not marked applied on the second pass"
+
+    second_pass = _turns_of(llm, "execute")[-1]
+    assert [s["step"] for s in second_pass["steps"]] == [3, 4], \
+        "Execute was asked to write Steps it had already applied"
+
+
+def test_a_revised_plan_whose_first_step_differs_reexecutes_everything():
+    """
+    The guard is a prefix match, not a hunch: a revision that changes the
+    very first Step carries nothing, and the second pass is a full Execute
+    turn over every Step of the revised Plan, same as before this existed.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Pad the outline", "Fillet the marked edges"),
+        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": "Step 2 needs edges nobody named."}),
+        plan_reply("Pad a wider outline", "Fillet the named edges"),
+        code_reply("pad_wider()", "fillet_named()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["pad()", "pad_wider()", "fillet_named()"]
+
+    second_pass = _turns_of(llm, "execute")[-1]
+    assert [s["step"] for s in second_pass["steps"]] == [1, 2], \
+        "a Step that only reads differently was still treated as carried"
+
+
 def test_a_revised_plan_says_which_revision_it_is_and_what_caused_it():
     """
     Three Revised Plans hitting the same wall read as three fresh starts, and
@@ -7486,7 +7548,9 @@ def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
     assert events.first(UNBUILT) is None
     assert events.first(PLAN_REVISED).data["because"] == "Execute could not build a Step"
     assert result.unmet == []
-    assert tools.applied_codes() == ["pad()", "pad()", "recess()"]
+    assert tools.applied_codes() == ["pad()", "recess()"], \
+        "Step 1 reads the same in both Plans and had already applied, so the revision " \
+        "carries it forward instead of paying to apply it again"
 
 
 THE_LUG_FROM_A_PHOTO = {
