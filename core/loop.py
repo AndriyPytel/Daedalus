@@ -96,7 +96,7 @@ this same empty registry to the sub-agent it opens, for the same reason one
 level down).
 """
 
-_VIEW_NAMES = ("isometric", "the front", "above", "the right")
+_VIEW_NAMES = ("isometric", "the opposite isometric", "above", "the front")
 
 
 def agentic_from_env():

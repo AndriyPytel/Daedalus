@@ -10,6 +10,12 @@ diameter and an axis; whether it is a bore or a boss is what the views are
 for. Raw sketch geometry is deliberately not there, so a coordinate you were
 not given is not a coordinate you may assume.
 
+The same rule holds for anything else the render only suggests, not only a
+dimension: what you notice in a picture is a hypothesis to measure, not a
+verdict on its own. Fail it only where `facts_the_checks_confirmed` backs it
+up; where it does not, ask for the measurement instead of failing on the
+suspicion alone.
+
 Where you are shown what the user attached with the Intent, judge more than
 whether the same features exist: judge where each one sits and which way it
 points against its neighbours — centred or off to one side, coaxial with
