@@ -2979,30 +2979,78 @@ def test_the_words_a_phase_writes_open_a_row_of_their_own(panel):
     assert '{"steps": ["Pad the profile"]}' in _said_in(panel)
 
 
-def test_the_thinking_row_of_a_finished_phase_stops_counting_when_the_next_row_opens(panel):
+def test_two_pages_of_one_drawing_each_keep_their_own_clock(panel):
     """
-    A row whose phase is over is a record, not a clock. Design reads a drawing
-    a page at a time, so its phase label changes under the panel ("design:
-    page 1" then "design"), and the row the old label opened was replaced
-    without its `QTimer` ever being stopped: in a 34-minute run the abandoned
-    row read 35:05, past the header's own total, and went on counting for as
-    long as the panel lived.
+    Design fans out one call per page and the pages stream interleaved, so a
+    row belongs to a phase and not to the panel. Held in one slot, the row was
+    claimed by whichever page spoke last: a recorded run of the 2023 clamp
+    read `Thinking (design: page 1)… 0:01` for a page whose own `COST` says it
+    thought for 3:03, because page 2's first chunk landed 1.1 s after page 1's
+    and took the slot.
+
+    Each row is still a record and not a clock once its phase is over, which
+    is what `COST` decides — per page, since page 2 was paid for 19 s before
+    page 1 was.
     """
-    from core.events import Event, THOUGHT
+    from core.events import Event, COST, THOUGHT
     from ui.accordion_widget import AccordionWidget
 
-    index, _ = panel.chat_sessions.add_new_chat("two-phase-run")
+    index, _ = panel.chat_sessions.add_new_chat("two-page-run")
     panel.switch_session(index)
 
     panel.on_event(Event(THOUGHT, {"phase": "design: page 1", "text": ""}))
+    panel.on_event(Event(THOUGHT, {"phase": "design: page 2", "text": ""}))
     QT_APP.processEvents()
-    first = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+    rows = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-2:]
+    page_1, page_2 = rows
 
-    panel.on_event(Event(THOUGHT, {"phase": "design", "text": ""}))
+    assert "Thinking (design: page 1)" in page_1.toggle_button.text()
+    assert "Thinking (design: page 2)" in page_2.toggle_button.text()
+    assert page_1._clock is not None, "page 1 stopped counting when page 2 spoke"
+
+    panel.on_event(Event(COST, {"phase": "design: page 2", "model": "sonnet",
+                                "usd": 0.42, "seconds": 187.7}))
     QT_APP.processEvents()
 
-    assert first._clock is None
-    assert "Thinking (design: page 1)" in first.toggle_button.text()
+    assert page_2._clock is None
+    assert page_1._clock is not None, "page 2 being paid for stopped page 1"
+
+    panel.on_event(Event(COST, {"phase": "design: page 1", "model": "sonnet",
+                                "usd": 0.44, "seconds": 206.6}))
+    QT_APP.processEvents()
+
+    assert page_1._clock is None
+
+
+def test_a_page_that_starts_writing_ends_only_its_own_reasoning(panel):
+    """
+    The reply of one page is not the end of another page's thinking: the
+    recorded run put up four `Writing … 0:00` rows for two calls, each one the
+    other page's row being taken away and given back.
+    """
+    from core.events import Event, THOUGHT, WRITING
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("interleaved-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "design: page 1", "text": ""}))
+    panel.on_event(Event(THOUGHT, {"phase": "design: page 2", "text": ""}))
+    QT_APP.processEvents()
+    thinking_1, thinking_2 = [w for w in _widgets_in(panel)
+                              if isinstance(w, AccordionWidget)][-2:]
+
+    panel.on_event(Event(WRITING, {"phase": "design: page 2", "text": '{"design"'}))
+    panel.on_event(Event(WRITING, {"phase": "design: page 1", "text": '{"design"'}))
+    panel.on_event(Event(WRITING, {"phase": "design: page 2", "text": ': {}}'}))
+    QT_APP.processEvents()
+    written = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)
+               if "Writing" in w.toggle_button.text()]
+
+    assert thinking_2._clock is None
+    assert thinking_1._clock is None
+    assert [w.toggle_button.text().split("…")[0] for w in written] == [
+        "Writing (design: page 2)", "Writing (design: page 1)"]
 
 
 def test_the_thinking_row_stops_counting_when_the_call_is_paid_for(panel):
