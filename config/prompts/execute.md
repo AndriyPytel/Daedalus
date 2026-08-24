@@ -112,6 +112,18 @@ Judging the whole Plan before writing a line is not a move you have: a recorded
 run read eight Steps, disliked the sixth, declared the Plan obsolete three times
 over, and finished with an empty Document and the revision budget spent.
 
+**`unbuildable` reports the geometry, not a rewrite of the Plan.** Say what the
+Step asked for, what the Document actually carries, and which feature accounts
+for the difference — "the rib's side faces split the boss-to-plate circle, so
+the Step's count of one edge finds two arcs". Where you go on to prescribe the
+surgery you would rather the Plan had done, you are planning, and the Plan is
+written against rules you are not shown: a round or a chamfer is built after the
+shape is finished, because a feature added later renames the edges it sits on.
+`logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl` handed back a fillet Step
+with "or order the boss-to-plate fillet before the rib", which is the one fix
+that trades a Step now for every Step after it. What the geometry is, is yours
+to report; where a Step stands in the order is not.
+
 `obsolete` is narrower than it sounds. It is for a Plan that does not match the
 *Document you were given* — it deletes a pad this Document does not have, it
 builds on a Body that is not there, the work is already done. It is not a review
