@@ -2450,6 +2450,9 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     except PhaseError as exc:
         events.emit(ERROR, message=str(exc))
         return outcome(LoopResult(ok=False, reason=str(exc)))
+    except part_file.MissingPyYAML as exc:
+        events.emit(ERROR, message=str(exc))
+        return outcome(LoopResult(ok=False, reason=str(exc)))
     except Exception as exc:
         events.emit(ERROR, message="%s: %s" % (type(exc).__name__, exc))
         return outcome(LoopResult(ok=False, reason=str(exc)))
