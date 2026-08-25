@@ -719,9 +719,20 @@ def _never_call_the_real_model(panel):
     has been observed losing that race. A `disconnect()` made here takes
     effect immediately and is never undone, but nothing in this module sends
     through this Session again once its test is done with it.
+
+    `_name_session` reaches for `_ask_for_a_title` on the same call, which is
+    its own real `_TitleThread` against the same developer settings — a
+    second leak `do_work` alone does not stop. Left running, that thread
+    outlives this test, and a later test's own `processEvents()` is what
+    delivers its queued `titled` signal, landing the hang in whatever test
+    happened to be pumping the loop when the real call finally returned. A
+    caller that already replaced `_ask_for_a_title` of its own — to watch
+    what it was asked — is left alone.
     """
     bundle = panel._worker_for(panel._current_log())
     bundle.request_work.disconnect(bundle.worker.do_work)
+    if "_ask_for_a_title" not in vars(panel):
+        panel._ask_for_a_title = lambda log, intent: None
 
 
 def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
