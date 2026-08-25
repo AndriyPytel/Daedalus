@@ -477,9 +477,28 @@ class AskTheUser(QtCore.QObject):
         return answer if answer in DECISIONS else REVISE
 
     def _ask(self, signal, payload):
+        """
+        Emit the question, then block until someone answers it.
+
+        A receiver in this object's own thread answers inside `emit`, so the
+        Event is already set and the wait returns at once. A receiver anywhere
+        else answers later, over a queued connection, and the wait is what
+        holds the worker until it does.
+
+        The third case is the dangerous one: asked from this object's own
+        thread with nobody to answer inline. The queued answer can only be
+        delivered by an event loop this very thread is now blocked out of, so
+        `wait()` never returns and the process deadlocks with no traceback and
+        no CPU to show for it. Refusing to wait names the fault instead.
+        """
         self._answered.clear()
         self._answer = None
         signal.emit(payload)
+        if not self._answered.is_set() and QtCore.QThread.currentThread() == self.thread():
+            raise RuntimeError(
+                "%s was asked on the thread that has to answer it; "
+                "no event loop can deliver the answer." % signal
+            )
         self._answered.wait()
         return self._answer
 
@@ -538,9 +557,13 @@ class LoopWorker(QtCore.QObject):
         self.ask.abandon()
 
     def _get_client(self):
+        """
+        One client per run, built for both profiles: `for_phase` is what picks
+        between them, on `core.llm.ProfiledClient` the seam already reads.
+        """
         if self.client is None:
-            from core.llm import client_from_settings
-            self.client = client_from_settings(settings_manager.instance().get_last_model())
+            from core.llm import client_from_profiles
+            self.client = client_from_profiles()
         return self.client
 
     def _get_tools(self, events=None):
@@ -976,6 +999,21 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         from .model_selector import EffortPopup, ModelSelectorPopup
 
+        self._active_profile = "doing"
+
+        picker = QtWidgets.QHBoxLayout()
+        picker.setContentsMargins(0, 0, 0, 0)
+        picker.setSpacing(0)
+
+        self.profile_button = QtWidgets.QPushButton()
+        self.profile_button.setObjectName("PickerButton")
+        self.profile_button.setFixedHeight(CONTROL_DENSE)
+        self.profile_button.setSizePolicy(QtWidgets.QSizePolicy.Maximum,
+                                          QtWidgets.QSizePolicy.Fixed)
+        self.profile_button.clicked.connect(self._toggle_profile)
+        picker.addWidget(self.profile_button)
+        self._show_profile()
+
         self.model_button = QtWidgets.QPushButton()
         self.model_button.setObjectName("PickerButton")
         self.model_button.setFixedHeight(CONTROL_DENSE)
@@ -985,7 +1023,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.model_button.setLayoutDirection(QtCore.Qt.RightToLeft)
         self._model_display = ""
         self.model_button.clicked.connect(self._open_model_selector)
-        strip.addWidget(self.model_button)
+        picker.addWidget(self.model_button)
 
         self.model_selector = ModelSelectorPopup(self)
         self.model_selector.model_chosen.connect(self._on_model_selected)
@@ -998,7 +1036,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.effort_button.setToolTip("How hard the model is asked to think")
         self.effort_button.setLayoutDirection(QtCore.Qt.RightToLeft)
         self.effort_button.clicked.connect(self._open_effort_selector)
-        strip.addWidget(self.effort_button)
+        picker.addWidget(self.effort_button)
+
+        strip.addLayout(picker)
 
         self.effort_selector = EffortPopup(self)
         self.effort_selector.effort_chosen.connect(self._on_effort_selected)
@@ -1104,11 +1144,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
         never picked (FCC-41); the fallback `_retire_model` names once every
         provider has answered and none offers it any more; or, with nothing
         stored at all, the first model on offer.
+
+        Read for whichever profile the toggle is on, so a switch between
+        `thinking` and `doing` shows that profile's own model rather than
+        the one last edited.
         """
         if models is None:
             models = provider_manager.instance().get_available_models()
         self._models = models
-        last_id = settings_manager.instance().get_last_model()
+        last_id = settings_manager.instance().get_profile_model(self._active_profile)
 
         if not models:
             self._set_current_model(None, "No models — add API key")
@@ -1176,18 +1220,43 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         settings = settings_manager.instance()
         fallback = settings.get_default_model() or self._models[0]["id"]
-        settings.set_last_model(fallback)
+        settings.set_profile_model(self._active_profile, fallback)
         self._queue_widget.now(
             "%s is no longer offered by its provider — switched to %s."
             % (model_id, fallback))
         return fallback
+
+    def _toggle_profile(self):
+        """
+        Switches which of the two profiles the model and effort pills beside
+        it edit -- Design and Plan think, Execute, Assertion and Review do,
+        and one Intent asks both, whichever one this is set to when it is
+        sent.
+        """
+        from core.llm import PROFILES
+
+        self._active_profile = PROFILES[(PROFILES.index(self._active_profile) + 1)
+                                        % len(PROFILES)]
+        self._show_profile()
+        self._refresh_models()
+
+    def _show_profile(self):
+        """
+        The label the model and effort pills read off of, not a control of
+        its own: "Thinking › opus - medium" is one phrase, and a user who
+        clicks it is asking which profile the two pills beside it belong to.
+        """
+        self.profile_button.setText("%s ›" % self._active_profile.capitalize())
+        self.profile_button.setToolTip(
+            "Thinking — Design and Plan" if self._active_profile == "thinking"
+            else "Doing — Execute, Assertion and Review")
 
     def _open_model_selector(self):
         self.model_selector.open_at(self._models, self.model_button)
 
     def _on_model_selected(self, model_id: str):
         """Drops the client so the next send rebuilds it from settings."""
-        settings_manager.instance().set_last_model(model_id)
+        settings_manager.instance().set_profile_model(self._active_profile, model_id)
         if getattr(self, "worker", None):
             self.worker.client = None
         entry = next((m for m in self._models if m["id"] == model_id), None)
@@ -1201,21 +1270,22 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         from core.llm import EFFORTS, effort_is_honoured
 
-        if not effort_is_honoured(settings_manager.instance().get_last_model()):
+        model_id = settings_manager.instance().get_profile_model(self._active_profile)
+        if not effort_is_honoured(model_id):
             return
         self.effort_selector.open_at(list(EFFORTS), self.effort_button)
 
     def _on_effort_selected(self, level: str):
         """Drops the client so the next send is asked to think the new way."""
-        settings_manager.instance().set_effort(level)
+        settings_manager.instance().set_profile_effort(self._active_profile, level)
         if getattr(self, "worker", None):
             self.worker.client = None
         self._show_effort()
 
     def _show_effort(self):
         """
-        The pill carries the level in force, and says when the model will
-        ignore it.
+        The pill carries the level in force for the active profile, and says
+        when the model will ignore it.
 
         The level is read from `core.llm` and not from settings: what is
         stored may be empty, or a level from an older build, and the panel
@@ -1225,10 +1295,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
         honest thing is to say so where the choice is made rather than to
         take it and drop it (`core.llm.effort_is_honoured`).
         """
-        from core.llm import effort, effort_is_honoured
+        from core.llm import effort_for_profile, effort_is_honoured
 
-        honoured = effort_is_honoured(settings_manager.instance().get_last_model())
-        self.effort_button.setText(effort())
+        model_id = settings_manager.instance().get_profile_model(self._active_profile)
+        honoured = effort_is_honoured(model_id)
+        self.effort_button.setText(effort_for_profile(self._active_profile))
         self.effort_button.setEnabled(honoured)
         self.effort_button.setToolTip(
             "How hard the model is asked to think" if honoured
@@ -1291,8 +1362,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         screen.
         """
         self._plan_widget = None
-        self._thought = None
-        self._thought_phase = None
+        self._live_rows = {}
         self._current_step = 0
         self._question_card = None
         self._answers_to_enter = None
@@ -1682,10 +1752,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._total_usd += data.get("usd", 0.0)
             self._last_event_time = event.at
             self._update_usage_total()
+            self._the_thinking_stops(data.get("phase"))
             return
 
         if event.kind == ev.THOUGHT:
             self._render_thought(data["phase"], data["text"])
+            return
+
+        if event.kind == ev.WRITING:
+            self._render_writing(data["phase"], data["text"])
             return
 
         if event.kind == ev.ATTACHED:
@@ -1713,7 +1788,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             return
 
         if event.kind == ev.STEP_STARTED:
-            self._thought = None
+            self._the_thinking_stops()
             self._current_step = data["index"]
             if self._plan_widget:
                 self._plan_widget.highlight(data["index"])
@@ -1846,6 +1921,32 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if narration.status:
             self._queue_widget.now(narration.status)
 
+    def _stopped(self, turn):
+        """The row of one turn, left as a record rather than a clock."""
+        row = self._live_rows.pop(turn, None)
+        if row:
+            row.stop_pulsing()
+
+    def _the_thinking_stops(self, phase=None):
+        """
+        Every live row of a phase, or of the whole run where none is named.
+
+        Every route out of a live row goes through here, because a row let go
+        of without `stop_pulsing` keeps a `QTimer` for the life of the panel.
+        Such a row read 35:05 in a 34-minute run — past the header's own total,
+        which counts `event.at` where the row counts the wall.
+
+        `COST` is the end of a call, and it is the event that stops the count:
+        the artefacts rendered after it — a Plan, a call, the document — are
+        the loop's own work, not the model's. It names its phase, and it has
+        to, because Design now reads a drawing one call per page and the pages
+        run at once: a run asked for the 2023 clamp paid for page 2 at 189.9 s
+        and for page 1 at 208.9 s.
+        """
+        for turn in list(self._live_rows):
+            if phase is None or turn[1] == phase:
+                self._stopped(turn)
+
     def _render_thought(self, phase, text):
         """
         Reasoning appends to one accordion per phase turn, as it forms.
@@ -1860,15 +1961,49 @@ class CopilotPanel(QtWidgets.QDockWidget):
         has to show it is alive -- and it does not open, since a row that
         opens onto nothing is worse than one that says it has nothing.
         """
-        if self._thought is None or self._thought_phase != phase:
-            self._thought = AccordionWidget("Thinking (%s)…" % phase)
-            self._thought_phase = phase
-            self._thought.mark_as_reasoning()
-            self._thought.opens_onto_nothing()
-            self.add_chat_widget(self._thought)
-            self._thought.start_pulsing()
+        self._one_row_per_turn("Thinking (%s)…" % phase, ("thought", phase), text,
+                               reasoning=True)
+
+    def _render_writing(self, phase, text):
+        """
+        The reply as it forms, in a row of its own beside the reasoning.
+
+        A row of its own because the two are not the same thing and their two
+        counts are worth reading apart: the reply is what the phase will be
+        held to, and it accounts for the larger wait — 22.4 minutes of a
+        recorded run's 23.6 minutes of provider time fell after the last
+        reasoning chunk of every call, with nothing on the panel for any of
+        it. It wears no brain: it is not the model deciding, it is the answer.
+
+        The first word written is the end of the reasoning of that phase, and
+        of that phase only.
+        """
+        self._stopped(("thought", phase))
+        self._one_row_per_turn("Writing (%s)…" % phase, ("writing", phase), text)
+
+    def _one_row_per_turn(self, title, turn, text, reasoning=False):
+        """
+        One accordion per turn of a phase, opened on its first chunk.
+
+        A row to a turn and not a row to the panel: Design fans out one call
+        per page of the drawing and they stream interleaved, so a single live
+        row is claimed by whichever page spoke last and the other page's clock
+        dies where it stood. The recorded run showed `Thinking (design: page
+        1)… 0:01` for a page that thought for 3:03, and four `Writing … 0:00`
+        rows for two calls. A turn ends at its own `COST`, which is what lets
+        the same phase open a fresh row the next time it is called.
+        """
+        row = self._live_rows.get(turn)
+        if row is None:
+            row = self._live_rows[turn] = AccordionWidget(title)
+            if reasoning:
+                row.mark_as_reasoning()
+            row.opens_onto_nothing()
+            self.add_chat_widget(row)
+            row.start_pulsing()
         if text:
-            self._thought.append_text(text)
+            row.append_text(text)
+
 
     def _render_attachments(self, files):
         """
@@ -1911,9 +2046,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         at the left margin the run answers from rather than under the user's
         bubble, because the run is what wrote it.
         """
-        if self._thought:
-            self._thought.stop_pulsing()
-            self._thought = None
+        self._the_thinking_stops()
         self.add_chat_widget(AssistantMessageWidget(
             line.replace(path, "").strip().rstrip(":").strip()))
         self.add_chat_widget(_at_the_left_margin(FileChip(path, removable=False)))
@@ -1947,9 +2080,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         is both short in entries and short in words, `FOLDS_OVER` being the
         second budget.
         """
-        if self._thought:
-            self._thought.stop_pulsing()
-            self._thought = None
+        self._the_thinking_stops()
         def beside_the_steps(heading, entries):
             if not entries:
                 return
@@ -1983,9 +2114,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         Duration is added when TOOL_RESULT arrives, from event.at deltas.
         """
-        if self._thought:
-            self._thought.stop_pulsing()
-            self._thought = None
+        self._the_thinking_stops()
         title = ("Step %d — %s" % (self._current_step, name) if self._current_step
                  else name)
         row = AccordionWidget(title, code=True, boxed=True)
@@ -2319,9 +2448,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             return
 
         self._set_running(False)
-        if self._thought:
-            self._thought.stop_pulsing()
-            self._thought = None
+        self._the_thinking_stops()
         if result is not None and result.ok:
             self._queue_widget.now("")
         else:
@@ -2367,6 +2494,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
         `SHUTDOWN_GRACE_MS` is what a run in flight is given to notice it was
         stopped before the thread is ended from outside, long enough for a
         request already sent to unwind.
+
+        A `_TitleThread` in `self._title_threads` has no stop flag to set —
+        `core.session_title.generate` is one blocking call, not a loop — so
+        the grace period here is the only chance it gets to finish on its
+        own before this panel stops tracking it.
         """
         FreeCAD.removeDocumentObserver(self)
         for bundle in self._workers.values():
@@ -2379,6 +2511,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
                 if not bundle.thread.wait(self.SHUTDOWN_GRACE_MS):
                     bundle.thread.terminate()
                     bundle.thread.wait(1000)
+        for thread in list(self._title_threads):
+            if thread.isRunning():
+                if not thread.wait(self.SHUTDOWN_GRACE_MS):
+                    thread.terminate()
+                    thread.wait(1000)
 
     def slotDeletedDocument(self, document):
         """

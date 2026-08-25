@@ -40,6 +40,7 @@ import base64
 import json
 import math
 import os
+import re
 import tempfile
 from dataclasses import replace
 
@@ -49,7 +50,7 @@ from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT,
-    EventStream, replay,
+    WRITING, EventStream, replay,
 )
 from core import design, loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
@@ -549,18 +550,18 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
 
 def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup():
     """
-    Nowhere named the order a part is planned in, nor why it matters. A
-    boolean — a Pad added to the solid, a Pocket or a Hole cut out of it, a
+    FCC-205: nowhere named the order a part is planned in, nor why it matters.
+    A boolean — a Pad added to the solid, a Pocket or a Hole cut out of it, a
     Shell hollowing it — does not add to the Shape the Steps before it built,
     it replaces it, so a reference Execute worked out against the geometry
-    before the boolean runs is a reference into a Shape already gone. Rounds
+    before the boolean runs is a reference into a Shape already gone. Fillets
     and chamfers are planned last because that is the only order in which the
     edges their Step names are still the edges the boolean before them built,
     and a material card is last of all because nothing depends on it.
 
     Where a Step stands in the order is Plan's and not Execute's: a recorded
     run handed a fillet Step back asking for the round to be ordered before
-    the rib, which trades one Step now for every Step after it. FCC-205.
+    the rib, which trades one Step now for every Step after it.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -569,16 +570,15 @@ def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup
     ])
     _, plan_system, execute_system, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
-    assert "The Steps are ordered as the solid is built" in plan_system
-    assert ("the base solid, then every Step that adds material to it, then every "
-            "Step that cuts material out of it, then the rounds and the chamfers") \
-        in plan_system
+    assert "base, then addition, then subtraction" in plan_system
+    assert "fillet or a chamfer only once every one of those stands" in plan_system
+    assert "boolean" in plan_system and "replaces it" in plan_system
     assert "it is the last Step of any Plan" in plan_system
     assert "A dress-up Step is planned against the solid the Steps before it leave" \
         in plan_system
     assert "A round is planned early only where a later Step must inherit it" in plan_system
 
-    assert "A selection computed off `Shape.Faces`" in execute_system
+    assert "computed off `Shape.Faces`" in execute_system
     assert "before the boolean that invalidates it, never after" in execute_system
     assert "`unbuildable` reports the geometry, not a rewrite of the Plan" in execute_system
     assert "where a Step stands in the order is not" in execute_system
@@ -656,6 +656,54 @@ def test_a_value_the_model_settled_says_who_settled_it_and_on_what():
     assert "who settled it and on what" in design_system
     assert "`assumed` without `because` is invalid" in design_system
     assert "settle it yourself" in design_system
+
+
+def test_the_nonmetric_defaults_are_named_and_carry_no_number():
+    """
+    FCC-206: `Default assumptions` in the text-to-cad doctrine lists both
+    non-metric conventions — units, base plane, up axis, a body being a
+    closed positive volume — and numeric ones — wall thickness, fillet
+    radius, clearance. Only the first kind describes the coordinate system
+    every reading sits in rather than a value of the part, so only the first
+    kind belongs in design.md; a numeric default there would be exactly the
+    "nobody supplied it" FCC-114 already named, dressed up as a convention.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_DATUM), plan_reply("Add a box"), code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    design_system = " ".join(_system_messages(llm)[0].split())
+
+    for default in ("millimetres", "base plane", "+Z", "closed", "positive volume"):
+        assert default in design_system, "a non-metric default is missing: " + default
+
+    section = design_system[design_system.index("What needs no reading at all"):]
+    section = section[:section.index("## Every value carries its datum and its flag")
+                       if "## Every value carries its datum and its flag" in section
+                       else len(section)]
+    assert not re.search(r"\d", section), \
+        "a numeric default reached design.md: " + section
+
+
+def test_a_nonmetric_default_carries_no_flag_and_reaches_no_acceptance_entry():
+    """
+    FCC-206: units, the base plane, the up axis and a body being a closed
+    positive volume are conventions of the model, not values read off
+    anything, so a description that never names them still carries none of
+    them as `assumed` — `entries()` and `decided_for_you()`, which is what
+    the Acceptance list and the Plan Gate's `Decided for you` section are
+    built from, see nothing about either one on A_PART, which never names
+    them.
+    """
+    for entry in entries(A_PART):
+        for word in ("unit", "millimetre", "base plane", "axis default", "+Z",
+                     "closed volume", "positive volume"):
+            assert word not in entry["about"].lower() and word not in entry["says"].lower()
+
+    for line in decided_for_you(A_PART):
+        for word in ("unit", "millimetre", "base plane", "axis default", "+Z",
+                     "closed volume", "positive volume"):
+            assert word not in line.lower()
 
 
 def test_a_curve_is_not_read_until_its_centre_is_placed():
@@ -1699,6 +1747,68 @@ def test_execute_can_declare_a_step_obsolete_and_plan_revises():
     assert revised.data["steps"] == ["Add the new one"]
     assert "no pad in this Document" in revised.data["reason"]
     assert tools.applied_codes() == ["add_new()"]
+
+
+def test_a_revised_plan_does_not_reapply_steps_that_already_landed():
+    """
+    Matched to `logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl`: an
+    11-Step Plan revised over Steps 3 and 7 produced 28 `step_started` events
+    where 11 would say the same thing, because a revision always restarted
+    Execute at Step 1 no matter how much of the Plan it left alone.
+
+    Here the revision leaves Steps 1 and 2 exactly as they read the first
+    time, so the second pass must not start them, must not apply them again,
+    and must still show them applied on the stream — they already are.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Pad the outline", "Fillet the marked edges",
+                   "Drill the hole", "Chamfer the edge"),
+        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"},
+                              {"step": 2, "code": "fillet()", "label": "Fillet"}],
+                    "unbuildable": "Step 3 needs a hole diameter nobody supplied."}),
+        plan_reply("Pad the outline", "Fillet the marked edges",
+                   "Drill a 6mm hole", "Chamfer the edge"),
+        code_reply("drill()", "chamfer()", first=3),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["pad()", "fillet()", "drill()", "chamfer()"], \
+        "Steps 1 and 2 were applied again on the second pass"
+
+    revised_at = [e.kind for e in events].index(PLAN_REVISED)
+    after = events[revised_at + 1:]
+    assert [e.data["index"] for e in after if e.kind == STEP_STARTED] == [3, 4], \
+        "a carried Step was started again"
+    carried = [e.data["step"] for e in after if e.kind == APPLIED and e.data["step"] in (1, 2)]
+    assert carried == [1, 2], "a carried Step was not marked applied on the second pass"
+
+    second_pass = _turns_of(llm, "execute")[-1]
+    assert [s["step"] for s in second_pass["steps"]] == [3, 4], \
+        "Execute was asked to write Steps it had already applied"
+
+
+def test_a_revised_plan_whose_first_step_differs_reexecutes_everything():
+    """
+    The guard is a prefix match, not a hunch: a revision that changes the
+    very first Step carries nothing, and the second pass is a full Execute
+    turn over every Step of the revised Plan, same as before this existed.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Pad the outline", "Fillet the marked edges"),
+        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": "Step 2 needs edges nobody named."}),
+        plan_reply("Pad a wider outline", "Fillet the named edges"),
+        code_reply("pad_wider()", "fillet_named()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["pad()", "pad_wider()", "fillet_named()"]
+
+    second_pass = _turns_of(llm, "execute")[-1]
+    assert [s["step"] for s in second_pass["steps"]] == [1, 2], \
+        "a Step that only reads differently was still treated as carried"
 
 
 def test_a_revised_plan_says_which_revision_it_is_and_what_caused_it():
@@ -4069,10 +4179,10 @@ def test_the_event_stream_of_a_clean_run():
 
     assert [e.kind for e in events] == [
         INTENT,
-        CALL_STARTED, COST,
-        CALL_STARTED, THOUGHT, COST, PLAN, GATE, GATE,
-        CALL_STARTED, THOUGHT, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
-        CALL_STARTED, THOUGHT, COST, REVIEW_VERDICT,
+        CALL_STARTED, WRITING, COST,
+        CALL_STARTED, THOUGHT, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, THOUGHT, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, THOUGHT, WRITING, COST, REVIEW_VERDICT,
     ]
 
 
@@ -4092,11 +4202,11 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
 
     assert [e.kind for e in events] == [
         INTENT, ATTACHED,
-        CALL_STARTED, COST, DESIGN, PART,
-        CALL_STARTED, COST, PLAN, GATE, GATE,
-        CALL_STARTED, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
-        CALL_STARTED, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
-        CALL_STARTED, COST, REVIEW_VERDICT,
+        CALL_STARTED, WRITING, COST, DESIGN, PART,
+        CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
+        CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
     ]
 
 
@@ -4108,12 +4218,12 @@ def test_the_event_stream_of_a_retried_run():
 
     assert [e.kind for e in events] == [
         INTENT,
-        CALL_STARTED, COST,
-        CALL_STARTED, COST, PLAN, GATE, GATE,
-        CALL_STARTED, COST, STEP_STARTED,
+        CALL_STARTED, WRITING, COST,
+        CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, WRITING, COST, STEP_STARTED,
         TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
-        CALL_STARTED, COST, TOOL_CALL, TOOL_RESULT, APPLIED,
-        CALL_STARTED, COST, REVIEW_VERDICT,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
     ]
 
 
@@ -4126,9 +4236,9 @@ def test_the_event_stream_of_a_blocked_run():
 
     assert [e.kind for e in events] == [
         INTENT,
-        CALL_STARTED, COST,
-        CALL_STARTED, COST, PLAN, GATE, GATE,
-        CALL_STARTED, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
+        CALL_STARTED, WRITING, COST,
+        CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
         PREFLIGHT_FAILED, BLOCKED,
     ]
 
@@ -4171,6 +4281,63 @@ def test_reasoning_is_streamed_tagged_with_the_phase_it_came_from():
         ("execute", "coding out loud"),
         ("review", "judging out loud"),
     ]
+
+
+def test_the_words_a_phase_writes_reach_the_stream_as_it_writes_them():
+    """
+    A reply forms over as long as the reasoning before it did — a recorded run
+    measured 22.4 minutes of its 23.6 minutes of provider time after the last
+    reasoning chunk, and 25.6 of 53.7 in another — and until the words are on
+    the stream the panel has nothing to show for any of it.
+
+    The phase is on the event because a stream carries several of them and
+    what is being written is only legible beside the name of what is writing.
+    """
+    _, events, _, _ = drive([
+        plan_reply("Only"),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ])
+
+    written = "".join(e.data["text"] for e in events.of(WRITING)
+                      if e.data["phase"] == "plan")
+
+    assert json.loads(written)["steps"] == ["Only"]
+    assert {e.data["phase"] for e in events.of(WRITING)} == {
+        "design", "plan", "execute", "review"}
+
+
+def test_a_phase_is_answered_by_the_client_its_own_profile_names():
+    """
+    One dial over five phases is one compromise: Design reading a drawing and
+    Execute writing the code for a Step it has already been given are not the
+    same demand, and a run that raises the dial for the first pays it on every
+    call of the second.
+
+    The seam is `for_phase`, asked for at the one place every phase's call
+    goes through, and a client that has none answers everything itself — which
+    is what `ScriptedLLMClient` and every client written before profiles do.
+    """
+    class TwoProfiles:
+        def __init__(self, thinking, doing):
+            self.model = "profiles"
+            self.asked = []
+            self._thinking, self._doing = thinking, doing
+
+        def for_phase(self, phase):
+            self.asked.append(phase)
+            return self._thinking if phase in ("design", "plan") else self._doing
+
+    thinking = ScriptedLLMClient([design_reply(), plan_reply("Only")])
+    doing = ScriptedLLMClient([code_reply("box()"), verdict_reply("pass")])
+    llm = TwoProfiles(thinking, doing)
+    events = EventStream()
+
+    result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events)
+
+    assert result.ok
+    assert llm.asked == ["design", "plan", "execute", "review"]
+    assert not doing.turns and not thinking.turns
 
 
 class _OnASubscription(ScriptedLLMClient):
@@ -5085,6 +5252,28 @@ def test_review_is_told_the_facts_the_checks_confirmed():
     assert review_request["facts_the_checks_confirmed"] == [ACCEPTANCE[0]]
     assert review_request["what_the_checks_could_not_cover"] == [ACCEPTANCE[1]]
     assert events.first(ASSERTION).data["uncovered"] == [ACCEPTANCE[1]]
+
+
+def test_review_is_told_not_to_fail_on_a_suspicion_the_checks_never_confirmed():
+    """
+    A mirrored flank or a displaced hole reads from the render alone, on a
+    face no check happened to cover — `ACCEPTANCE[1]` stays uncovered here,
+    the way FCC-76 leaves a check that could not run. `review.md` is what
+    stops that reading from becoming its own `fail`: the same rule that
+    already keeps a dimension off the picture (`a diameter was never a
+    pixel`), generalised from dimensions to any visual suspicion (FCC-204).
+    """
+    _, _, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"),
+        code_reply("make()"),
+        assertion_reply(CHECKS, uncovered=[ACCEPTANCE[1]]),
+        verdict_reply("pass"),
+        views=[RENDER_PNG] * 4)
+
+    review_system = _system_messages(llm)[-1]
+
+    assert review_system == prompt("review")
+    assert "hypothesis to measure" in review_system
 
 
 def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
@@ -6131,6 +6320,78 @@ def test_one_failure_says_nothing_about_repeating_yourself():
 
     assert "you_have_failed_this_the_same_way_twice" not in json.loads(
         llm.calls[2][-1]["content"])
+
+
+NO_SUCH_PROPERTY = ("Traceback (most recent call last):\n"
+                    "RuntimeError: this Step did not build the operation the Plan named:\n"
+                    "Name: OuterProfile (Sketcher::SketchObject) has no such property: "
+                    "TangentLength\n")
+
+FILLET_RADIUS = ("Traceback (most recent call last):\n"
+                 "RuntimeError: recompute left these objects in error:\n"
+                 "EndFillets_R12_5 (PartDesign::Fillet): BRep_API: command not done\n")
+
+
+def test_a_known_symptom_gets_a_repair_reference_on_the_first_failure():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_SUCH_PROPERTY)])
+
+    retry = _turns_of(llm, "execute")[1]
+
+    assert retry["your_failed_attempts_at_this_step"][0]["traceback"] == NO_SUCH_PROPERTY
+    reference = retry["repair_reference"]
+    assert "describe_type" in reference["the_smallest_responsible_fix"]
+    assert "guessed" in reference["the_smallest_responsible_fix"]
+    assert "own promised properties" in reference["recount_after_it"]
+
+
+def test_a_different_known_symptom_gets_its_own_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Fillet the rim"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(FILLET_RADIUS)])
+
+    reference = _turns_of(llm, "execute")[1]["repair_reference"]
+
+    assert "wall thickness" in reference["the_smallest_responsible_fix"]
+    assert "face count" in reference["recount_after_it"]
+
+
+def test_an_unknown_symptom_gets_no_repair_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed("ZeroDivisionError: division by zero")])
+
+    assert "repair_reference" not in _turns_of(llm, "execute")[1]
+
+
+def test_a_step_that_has_not_failed_yet_gets_no_repair_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"),
+        verdict_reply("pass"),
+    ])
+
+    assert "repair_reference" not in _turns_of(llm, "execute")[0]
+
+
+def test_a_repair_reference_spends_no_look_and_no_extra_turn():
+    result, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_SUCH_PROPERTY)])
+
+    assert result.ok, result.reason
+    execute_turns = _turns_of(llm, "execute")
+    assert len(execute_turns) == 2
+    assert all("look" not in turn for turn in execute_turns)
 
 
 def test_a_failure_nothing_recognises_is_not_given_invented_advice():
@@ -7785,7 +8046,9 @@ def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
     assert events.first(UNBUILT) is None
     assert events.first(PLAN_REVISED).data["because"] == "Execute could not build a Step"
     assert result.unmet == []
-    assert tools.applied_codes() == ["pad()", "pad()", "recess()"]
+    assert tools.applied_codes() == ["pad()", "recess()"], \
+        "Step 1 reads the same in both Plans and had already applied, so the revision " \
+        "carries it forward instead of paying to apply it again"
 
 
 THE_LUG_FROM_A_PHOTO = {

@@ -49,7 +49,7 @@ from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, DESIGN,
     ERROR, GATE, INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream,
+    TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, EventStream,
 )
 from core import part_file, preflight, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
@@ -66,7 +66,7 @@ _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 NOT_A_LOOK = ("apply_step", "review_views", "check_assertions")
 
-_VIEW_NAMES = ("isometric", "the front", "above", "the right")
+_VIEW_NAMES = ("isometric", "the opposite isometric", "above", "the front")
 
 
 class PhaseError(Exception):
@@ -516,7 +516,23 @@ def _streamed(llm, events, phase, system, user, prior=()):
 
 
 def _one_call(llm, events, phase, system, user, prior=()):
-    """The turn itself, priced whether it answered or the connection went."""
+    """
+    The turn itself, priced whether it answered or the connection went.
+
+    Every phase's call passes through here, which is what makes this the seam
+    a per-phase client is chosen at: `for_phase` is asked for the client this
+    phase is answered by, and a client that has none answers all five itself.
+    Design reading a drawing and Execute writing the code for a Step it has
+    already been given are not the same demand, and one dial over both is
+    paid at the rate of the more expensive on every call of the cheaper.
+
+    The reply reaches the stream as it forms, the way the reasoning before it
+    does. Until it did, a phase went silent from its last `thought` to its
+    `cost` — 22.4 minutes of a recorded run's 23.6 minutes of provider time,
+    and 25.6 of 53.7 in another — and a panel with nothing to show reads as a
+    run that has hung.
+    """
+    llm = llm.for_phase(phase) if hasattr(llm, "for_phase") else llm
     ceiling = getattr(llm, "timeout", None)
     model = getattr(llm, "model", None)
     started = {"phase": phase, "model": model}
@@ -536,6 +552,7 @@ def _one_call(llm, events, phase, system, user, prior=()):
                 events.emit(THOUGHT, phase=phase, text=chunk.text)
             else:
                 text.append(chunk.text)
+                events.emit(WRITING, phase=phase, text=chunk.text)
     finally:
         spent = getattr(llm, "last_cost", None)
         paid = {"phase": phase, "seconds": time.time() - start,
@@ -1462,6 +1479,9 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         again = _the_same_way_twice(attempts)
         if again:
             request["you_have_failed_this_the_same_way_twice"] = again
+        reference = _repair_reference(attempts)
+        if reference:
+            request["repair_reference"] = reference
 
     looked = list(looks.still_true()) if looks is not None else []
     for remaining in range(budgets.looks_per_turn, -1, -1):
@@ -1646,6 +1666,58 @@ def _classified_failures():
 
 
 _FAILED_THIS_WAY = _classified_failures()
+
+
+_REPAIR_REFERENCE = (
+    ("has no such property",
+     "The Step set a property the object type doesn't carry — a guessed name, not a "
+     "real one. Ask `describe_type` for what the object actually has and set one of "
+     "those; a second guessed spelling fails the identical way.",
+     "any check on this Step's own promised properties: the value never landed, so a "
+     "check that already passed against the object as it stood before this Step ran "
+     "has not yet measured what this Step was meant to change."),
+    ("BRep_API: command not done",
+     "PartDesign::Fillet fails this way on a radius the material can't carry — check "
+     "the radius against the Body's wall thickness at the edge being rounded (a full "
+     "round needs less than half of it) and set one the wall can carry, rather than "
+     "rewriting the same call.",
+     "any check that measured a face count or a bounding dimension off the "
+     "un-filleted Body: a radius that now fits changes both."),
+)
+
+
+def _repair_reference(attempts):
+    """
+    The repair layer's own addition to a retry request (FCC-203): a
+    reference entry for a *known* symptom, keyed on a phrase read off the
+    latest attempt's own traceback the way `_FAILED_THIS_WAY` and
+    `_the_same_way_twice` already are — but consulted on the *first*
+    failure rather than the second, since a repair record names a fix for
+    the symptom just seen, not a warning that a Step keeps failing the same
+    way twice. Where the traceback names no symptom this table recognises,
+    nothing is added and the request is exactly what it is without this
+    function: the traceback, and nothing else.
+
+    Two layers, on purpose, not one: `core/freecad_tools.py :: TRAPS` is
+    prevention, read into every prompt before a Step is written, full and
+    unconditional; this is repair, read only after a Step has already
+    failed, and stays narrow — one entry for the symptom in hand, not the
+    whole table. Merging them would force a choice between the two, since
+    prevention has to stay complete and repair has to stay narrow.
+
+    Riding beside `your_failed_attempts_at_this_step` rather than replacing
+    it, so a retry always still sees the traceback it names. Nothing here spends a `look` or asks for anything:
+    the table is read before the request is built, not through a Tool call
+    — a repair layer that cost Execute one of its own bounded turns would
+    spend the very budget it exists to protect (ADR-0009).
+    """
+    if not attempts:
+        return None
+    traceback = attempts[-1].traceback or ""
+    for phrase, fix, recheck in _REPAIR_REFERENCE:
+        if phrase in traceback:
+            return {"the_smallest_responsible_fix": fix, "recount_after_it": recheck}
+    return None
 
 
 def _the_same_way_twice(attempts):
@@ -3459,6 +3531,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     described = {}
     standing = {"approval": False, "read": set()}
     looks = _what_this_build_has(tools)
+    last_pass = {"steps": None, "applied": 0}
 
     def rewrite(cause, refused, feedback, tried, reason=None):
         """
@@ -3544,9 +3617,12 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             return _block(events, "The Plan came back with no Steps, so there is nothing to "
                                   "apply and nothing to review.", progress["tried"],
                           progress["applied"])
+        carried = _carried_over(last_pass["steps"], steps, last_pass["applied"])
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part["the_part"]), looks,
-                                planned.acceptance, planned.cites, ledger)
+                                planned.acceptance, planned.cites, ledger,
+                                start=carried)
+        last_pass["steps"], last_pass["applied"] = steps, outcome["applied_here"]
         applied = progress["applied"]
 
         if outcome["handback"] and stuck["applied"] == applied \
@@ -3665,6 +3741,37 @@ def _still_wrong(outstanding):
     )
 
 
+def _carried_over(previous, steps, applied):
+    """
+    How many Steps at the head of a revised Plan are already standing in the
+    Document, and so must not be written or applied again.
+
+    `_run` keeps the Steps of the pass it just worked through and how many of
+    them landed. A revision is a new Plan (`_run`'s own docstring), but where
+    it opens with the same prose as Steps that already applied, those Steps
+    describe nothing Execute has not already built — asking for their code
+    again is asking for the same Document twice. Matched to a recorded run
+    (`logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl`): an 11-Step Plan
+    revised three times produced 28 `step_started` events over what should
+    have been 11, because every revision restarted Execute at Step 1 no
+    matter how much of the Plan it left untouched.
+
+    The count is the longest run of identical prose from the head of both
+    Plans, capped at how many Steps of `previous` actually landed: a Step
+    that was never reached is not carried just because a revision kept its
+    words, and a Step a revision changed is never carried past where it
+    changed.
+    """
+    if previous is None:
+        return 0
+    carried = 0
+    for was, now in zip(previous[:applied], steps):
+        if was != now:
+            break
+        carried += 1
+    return carried
+
+
 def _also_check(acceptance, outstanding):
     """
     The acceptance list, with anything an earlier run left wrong added to it.
@@ -3694,7 +3801,8 @@ def _trailing_gap(written, number, total):
 
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
-                  as_described="", looks=None, entries=(), cites=(), ledger=None):
+                  as_described="", looks=None, entries=(), cites=(), ledger=None,
+                  start=0):
     """
     One pass over the Plan: written in one call, applied one Step at a time.
 
@@ -3750,7 +3858,15 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     before the retry that follows sees it, so a rake this pass already hit at
     Step 4 is in the prompt for Step 5, and for whatever Plan writes if this
     Plan is handed back.
-    """
+
+    `start` is where a revised Plan's own head is already standing in the
+    Document (`_carried_over`, called by `_run` before this): the Steps below
+    it are neither written nor applied again, only accounted for — `APPLIED`
+    on the stream and their citations onto `progress["satisfied"]`, exactly as
+    a Step that had just landed. The count this pass actually reached, carried
+    Steps included, comes back on `applied_here` so the next revision, if
+    there is one, has it to carry from in turn.
+"""
     if cancelled():
         raise Stopped()
     described = {}
@@ -3761,8 +3877,14 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     retried = set()
     unbuilt = []
     looks = looks if looks is not None else Looks()
-    written = execute(steps, tools, llm, events, budgets=budgets, as_described=as_described,
-                      looks=looks, entries=entries, ledger=ledger)
+    written = execute(steps, tools, llm, events, start, budgets=budgets,
+                      as_described=as_described, looks=looks, entries=entries,
+                      ledger=ledger)
+
+    while index < start:
+        progress["satisfied"].extend(cites[index] if index < len(cites) else ())
+        events.emit(APPLIED, step=index + 1, label="", created=[])
+        index += 1
 
     while index < len(steps):
         if cancelled():
@@ -3771,7 +3893,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         if written.obsolete:
             return {"obsolete": written.obsolete, "handback": None,
-                    "description": described,
+                    "description": described, "applied_here": index,
                     "tried": [_tried(step, a) for a in attempts]}
 
         if not attempts:
@@ -3794,6 +3916,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                 "handback": "Step %d of %d could not be built as written: %s\n%s"
                             % (index + 1, len(steps), step, written.unbuildable),
                 "tried": [], "obsolete": None, "description": described,
+                "applied_here": index,
             }
 
         ran_dry = False
@@ -3853,6 +3976,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                                attempts[-1].traceback, _always_the_same_way(attempts)),
                 "tried": [_tried(step, a) for a in attempts],
                 "obsolete": None, "description": described,
+                "applied_here": index,
             }
 
         if cancelled():
@@ -3861,6 +3985,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                           looks, entries, ledger)
 
     return {"obsolete": None, "handback": None, "description": described,
+            "applied_here": index,
             "tried": [], "unbuilt": unbuilt, "retried": sorted(
                 {cited for at in retried for cited in (cites[at] if at < len(cites)
                                                        else ())})}

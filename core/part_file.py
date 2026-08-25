@@ -36,6 +36,7 @@ what the provider said or warns them off it.
 import datetime
 import hashlib
 import os
+import sys
 
 try:
     import yaml
@@ -43,6 +44,21 @@ except ImportError:  # pragma: no cover - the addon installs PyYAML
     yaml = None
 
 from core.design import SECTIONS
+
+
+class MissingPyYAML(RuntimeError):
+    """
+    PyYAML is not importable in this FreeCAD's Python, so there is no reading
+    or writing a Design document at all — an error to surface, not the empty
+    result an absent model or an absent file would legitimately return.
+    """
+
+    def __init__(self):
+        super().__init__(
+            "PyYAML is not installed in this FreeCAD's Python (%s). Restart "
+            "FreeCAD so FreeCadCopilot's dependency check can install it, or "
+            "run `pip install PyYAML` into that Python yourself." % sys.executable)
+
 
 SCHEMA = "fcc.part/1"
 
@@ -77,8 +93,10 @@ def saved(model, source, into=None, read_from=None, asked_for=None) -> str:
     first: a reading says what it was read off, and what it was read for is the
     other half of holding the run to it.
     """
-    if not model or yaml is None:
+    if not model:
         return ""
+    if yaml is None:
+        raise MissingPyYAML()
 
     into = into or WHERE
     os.makedirs(into, exist_ok=True)
@@ -101,8 +119,10 @@ def logged(model, reading) -> None:
     where they are already looking, under the name of the reading it belongs to,
     and nothing downstream opens it.
     """
-    if not model or not reading or yaml is None:
+    if not model or not reading:
         return
+    if yaml is None:
+        raise MissingPyYAML()
     with open(evidence(reading), "w", encoding="utf-8") as handle:
         yaml.safe_dump(_ordered(model), handle, sort_keys=False, allow_unicode=True,
                        default_flow_style=False)
@@ -132,8 +152,10 @@ def asked_for(path) -> str:
 
 
 def _whole(path):
-    if not path or not os.path.isfile(path) or yaml is None:
+    if not path or not os.path.isfile(path):
         return {}
+    if yaml is None:
+        raise MissingPyYAML()
     try:
         with open(path, encoding="utf-8") as handle:
             loaded = yaml.safe_load(handle)

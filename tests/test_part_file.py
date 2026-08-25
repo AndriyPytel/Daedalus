@@ -179,3 +179,44 @@ def test_an_empty_part_is_not_written_at_all(sheet, tmp_path):
 
     assert part_file.saved({}, sheet, into=into) == ""
     assert not os.path.isdir(into)
+
+
+def test_a_missing_pyyaml_is_a_loud_error_not_a_silent_empty_write(monkeypatch, sheet, tmp_path):
+    """
+    An empty model is a legitimate no-write; a missing PyYAML is not. Losing
+    the distinction is how Design's reading silently vanishes on a FreeCAD
+    whose Python lacks the package (FCC-108).
+    """
+    monkeypatch.setattr(part_file, "yaml", None)
+
+    with pytest.raises(part_file.MissingPyYAML, match="PyYAML"):
+        part_file.saved(THE_CLAMP, sheet, into=str(tmp_path / "parts"))
+
+
+def test_a_missing_pyyaml_is_loud_when_logging_the_evidence(monkeypatch, sheet, tmp_path):
+    monkeypatch.setattr(part_file, "yaml", None)
+
+    with pytest.raises(part_file.MissingPyYAML, match="PyYAML"):
+        part_file.logged(THE_CLAMP, str(tmp_path / "parts" / "a-reading.yaml"))
+
+
+def test_a_missing_pyyaml_is_loud_when_reading_a_file_back(monkeypatch, sheet, tmp_path):
+    path = part_file.saved(THE_CLAMP, sheet, into=str(tmp_path / "parts"))
+    monkeypatch.setattr(part_file, "yaml", None)
+
+    with pytest.raises(part_file.MissingPyYAML, match="PyYAML"):
+        part_file.read(path)
+
+
+def test_an_empty_model_is_still_not_written_even_without_pyyaml(monkeypatch, sheet, tmp_path):
+    monkeypatch.setattr(part_file, "yaml", None)
+    into = str(tmp_path / "parts")
+
+    assert part_file.saved({}, sheet, into=into) == ""
+    assert not os.path.isdir(into)
+
+
+def test_nothing_is_read_from_a_file_that_is_not_one_even_without_pyyaml(monkeypatch, tmp_path):
+    monkeypatch.setattr(part_file, "yaml", None)
+
+    assert part_file.read(str(tmp_path / "nowhere.yaml")) == {}

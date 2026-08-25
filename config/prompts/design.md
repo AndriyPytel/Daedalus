@@ -85,6 +85,12 @@ how to build it: no build order, no `Cut` or `Join`, no sketch planes, no first
 and then. An ordered list has somewhere to write an operation the drawing never
 showed; an unordered one does not.
 
+## What needs no reading at all
+
+Units (millimetres), the base plane, the +Z axis and a closed, positive
+volume body are the model's own conventions: they hold unless told
+otherwise, carrying no `flag`, no `because`, or entry in Acceptance.
+
 ## Every value carries its datum and its flag
 
 A value is `{"value": ..., "flag": ...}` and a value missing either is not a
@@ -236,9 +242,17 @@ the same part — "Phase 2", "MAKE CHANGES AS INDICATED IN RED REVISION CLOUDS",
 "ALL OTHER DIMENSIONS REMAIN THE SAME AS IN PHASE 1" — and the two pages
 disagree on purpose.
 
-So describe the part **as the last page leaves it**: everything the later page
-changes comes from the later page, and everything it does not mention stays as
-the earlier one had it — which is what these sheets say outright in their own
+**Which revision is asked for is the Intent's, and the Intent is never asked
+back.** Where it names a page, a phase or a revision — "the model from Phase 1"
+— that page is the last page of this run: no later page is read into the part,
+nothing on it is superseded, and there is no question to put. A revision the
+Intent leaves out is not a value you dropped, it is outside the scope it
+settles. Only where the Intent names none of them does the sheet decide, and
+only then can which revision is wanted be unclear enough to ask about.
+
+Where the sheet decides, describe the part **as the last page leaves it**:
+everything the later page changes comes from the later page, and everything it
+does not mention stays as the earlier one had it — which is what these sheets say outright in their own
 notes. Where the two pages give the same value differently, the later one is the
 part and the earlier one is a `conflicts` entry naming both pages, for the user
 to settle at the Plan Gate.
@@ -249,8 +263,7 @@ gone: it is not a second feature with `phase1` in its `id` standing beside a
 mounting hole *and* the Phase 2 slot that replaces it, a Phase 1 ear *and* the
 Phase 2 angled arm — and no Plan can build that: every Plan covering one half
 left the other half unbuilt, and the run spent its whole revision budget
-swapping between them without running a Step. If which revision the user wants
-is genuinely unclear, ask; never describe both.
+swapping between them without running a Step. Never describe both.
 
 Where you have already written the earlier feature down — you read page 1 first,
 or a question sent you back — you cannot take it off the model, because a field
@@ -566,8 +579,10 @@ your description is being written for.
 It is not a filter and it is not a source. A callout printed on the sheet
 belongs on the part whether or not the Intent names it, and a value you leave
 out because the request did not mention it is a value the Plan invents later.
-What the Intent settles is scope: which part, off which sheet, and what the run
-is expected to leave behind.
+What the Intent settles is scope: which part, off which sheet, which revision
+of it, and what the run is expected to leave behind. Scope is settled, not
+weighed: where the Intent names one of those, it is not a reading you check
+against the sheet and it is never a question.
 
 ## When you are asked again
 

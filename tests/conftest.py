@@ -94,6 +94,57 @@ def _one_qt_application():
 
 QT_APP = _one_qt_application()
 
+_STARTED_QTHREADS = None
+if HAVE_QT:
+    import weakref
+
+    _STARTED_QTHREADS = weakref.WeakSet()
+    _qthread_start = QtCore.QThread.start
+
+    def _tracked_start(self, *args, **kwargs):
+        _STARTED_QTHREADS.add(self)
+        return _qthread_start(self, *args, **kwargs)
+
+    QtCore.QThread.start = _tracked_start
+
+
+@pytest.fixture(autouse=True, scope="module")
+def no_module_leaves_a_qthread_running():
+    """
+    A QThread still alive when a module's tests are done is the next module's
+    deadlock, not this one's failure. Scoped to the module, not the test: a
+    Session's own worker thread is meant to outlive any one test in a file
+    like `test_panel_level2.py`, where the `panel` fixture is module-scoped
+    and Sessions carry their thread across the whole file by design (FCC-181)
+    — checking per test would fail every one of them. What must not survive
+    past the module's own teardown (`panel`'s `built._cleanup_thread()`, or
+    whatever the module's fixtures do) is a thread nothing is tracking
+    anymore, `_TitleThread` among them: the failure `the_suite_does_not_talk_to_the_network`
+    already names in its docstring — a queued signal landing in a lock the
+    leaked thread still holds, with no traceback, just a frozen run.
+
+    Tracking every `QThread.start()` call and checking once the module's own
+    fixtures have torn down is what turns that hang into a named, attributed
+    failure instead: the two seconds given here is a grace period for a
+    thread already on its way out, not a wait for one still doing work.
+    """
+    if not HAVE_QT:
+        yield
+        return
+    before = {id(t) for t in _STARTED_QTHREADS}
+    yield
+    started_here = [t for t in _STARTED_QTHREADS if id(t) not in before]
+    for thread in started_here:
+        if thread.isRunning():
+            thread.wait(2000)
+    leaked = [t for t in started_here if t.isRunning()]
+    assert not leaked, (
+        "this module left %d QThread(s) running past its own teardown: %s "
+        "— the next test's processEvents() can dispatch a queued signal "
+        "into a lock one of these still holds, deadlocking the whole run"
+        % (len(leaked), [type(t).__name__ for t in leaked])
+    )
+
 
 def pytest_collection_modifyitems(config, items):
     if HAVE_FREECAD:
@@ -140,10 +191,10 @@ def modelmania_sheets(sheet_cache):
     return modelmania_harness.read_sheets(sheet_cache)
 
 
-@pytest.fixture(autouse=True)
-def the_suite_does_not_talk_to_the_network(monkeypatch):
+@pytest.fixture(scope="session", autouse=True)
+def the_suite_does_not_talk_to_the_network():
     """
-    Loopback is the only address a test may connect to.
+    Loopback is the only address a test may connect to, for the life of the run.
 
     A panel built here runs the real send path, and that path names the Session
     with one short call to whichever provider the developer has configured: a
@@ -152,6 +203,15 @@ def the_suite_does_not_talk_to_the_network(monkeypatch):
     dispatched its signal into a lock the thread still held — the whole run
     stopped there. The local-endpoint and model-catalog tests speak to HTTP
     servers they stand up themselves on 127.0.0.1, so loopback stays open.
+
+    A per-test `monkeypatch` guard leaves a gap between tests, while pytest is
+    tearing one test's fixtures down and setting the next one's up, where the
+    real `socket.connect` is back in place. That gap is a few instructions
+    wide and never seen in isolation, but a `_TitleThread` scheduled late
+    under CPU contention from other work on the machine can land its connect
+    inside exactly that gap and complete a real request. Patching once for
+    the whole session, undone only when the session ends, closes it — the
+    guard is never off while any test could still be running.
     """
     import socket
 
@@ -161,6 +221,7 @@ def the_suite_does_not_talk_to_the_network(monkeypatch):
             return
         raise RuntimeError("the suite does not talk to the network: %r" % (address,))
 
+    mp = pytest.MonkeyPatch()
     for name in ("connect", "connect_ex"):
         reaching_out = getattr(socket.socket, name)
 
@@ -168,7 +229,9 @@ def the_suite_does_not_talk_to_the_network(monkeypatch):
             refuse(address)
             return _reaching_out(self, address)
 
-        monkeypatch.setattr(socket.socket, name, guarded)
+        mp.setattr(socket.socket, name, guarded)
+    yield
+    mp.undo()
 
 
 @pytest.fixture(autouse=True)

@@ -168,26 +168,21 @@ tangent to a circle at the join and asked for two separate closed regions to
 fuse there; Execute had to widen the Plan's own number by a millimetre before
 the Pad would build as one solid.
 
-**A full round is built, never filleted to.** A round whose radius is half the
-thickness it crosses meets itself: at that radius the face between its two
-sides has no width left, and OCC refuses to build it — the feature comes back
-invalid. Taking one edge at a time does not rescue it, because the first round
-consumes the whole face and the Step that asked for the one edge still standing
-finds two. A rib whose free top is a semicylinder across its thickness is
-planned as that shape and not as a fillet of the sharp one: the profile is
-drawn short of the round by its radius, and a circle of the full thickness is
-swept along the edge it was drawn short of.
-`tests/test_preflight_dressup_level2.py` holds the radius that is refused and
-the one that builds.
+**A part is planned base, then addition, then subtraction, then a shell or
+its holes, and a fillet or a chamfer only once every one of those stands.**
+Each of those Steps is a boolean — a Pad added to the solid, a Pocket or a
+Hole cut out of it, a Shell hollowing it — and a boolean does not add to the
+Shape the Steps before it built: it replaces it, so a reference Execute worked
+out against the geometry before the boolean runs — a face by its position, an
+edge by its axis — is a reference into a Shape the boolean has already thrown
+away. Planning the fillets and chamfers last is what keeps every Step before
+them free to be found again by the geometry it actually built, rather than by
+a selector some earlier boolean already invalidated.
 
-## The Steps are ordered as the solid is built
-
-The order is not the order the description lists the features in. A solid is
-built shape first and finish last: the base solid, then every Step that adds
-material to it, then every Step that cuts material out of it, then the rounds
-and the chamfers, and last the properties that are not geometry at all — a
-material card depends on nothing and nothing depends on it, so it is the last
-Step of any Plan. FreeCAD gives the reason under `PartDesign_Fillet`: finish the
+The order is not the order the description lists the features in, and the
+properties that are not geometry at all come last of all — a material card
+depends on nothing and nothing depends on it, so it is the last Step of any
+Plan. FreeCAD gives the second reason under `PartDesign_Fillet`: finish the
 main design work of the solid before applying fillets and chamfers, or edges
 change names and the filleted edges become invalid; its advice for a stable
 model is to use dress-ups as late in the feature tree as possible. A round
@@ -212,15 +207,26 @@ constant thickness taken off a rounded solid is rounded before it is thinned, a
 draft goes on before the rounds that sit on the drafted face, a pattern that has
 to repeat a rounded feature carries the round with it, and a full round that is
 the shape itself is not a dress-up at all — it is built where the shape is, as
-the paragraph above says. Where two rounds meet, the larger radius is planned
+the paragraph on full rounds says. Where two rounds meet, the larger radius is planned
 first. Outside those, a dress-up Step standing anywhere but after every Step
 that touches the metal it sits on is a Step in the wrong place.
 
+**A full round is built, never filleted to.** A round whose radius is half the
+thickness it crosses meets itself: at that radius the face between its two
+sides has no width left, and OCC refuses to build it — the feature comes back
+invalid. Taking one edge at a time does not rescue it, because the first round
+consumes the whole face and the Step that asked for the one edge still standing
+finds two. A rib whose free top is a semicylinder across its thickness is
+planned as that shape and not as a fillet of the sharp one: the profile is
+drawn short of the round by its radius, and a circle of the full thickness is
+swept along the edge it was drawn short of.
+`tests/test_preflight_dressup_level2.py` holds the radius that is refused and
+the one that builds.
+
 **A Step handed back changes how it is built, never what it builds.** The
 plane it is drawn in, the direction it is cut, the feature it is cut from, the
-place it takes in the order: those are yours to rewrite. The shape is the
-description's, and a Step that comes back unbuildable is not permission to
-build something simpler. In the recorded run
+place it takes in the order: those are yours to rewrite. The shape is the description's, and a Step that comes back
+unbuildable is not permission to build something simpler. In the recorded run
 (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`) the arm's cutout was
 closed on the ring's R25 outside and drawn on the arm's top face, where that
 outside is two straight lines; Execute refused it and said why, and the revision

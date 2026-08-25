@@ -17,7 +17,7 @@ from core.events import ANSWER, QUESTION
 from core.freecad_tools import description, fit_view
 from core.lint import lint
 from core.preflight import PreflightWorker, copy_of
-from core.preflight_worker import step_namespace
+from core.preflight_worker import register_step_source, step_namespace, trimmed_traceback
 
 DISPATCH_TIMEOUT = 60.0
 
@@ -135,6 +135,7 @@ def run_in_transaction(doc, code, label="Copilot Step"):
     """
     doc.openTransaction(label)
     try:
+        register_step_source(code)
         exec(compile(code, "<step>", "exec"), step_namespace(doc))  # noqa: S102
         doc.recompute()
     except BaseException:
@@ -292,12 +293,10 @@ class ApplyPipeline:
         try:
             self._dispatch(lambda: self._transaction(doc, code, label))
         except BaseException as exc:
-            import traceback as tb
             return ApplyResult(
                 ok=False,
                 traceback="The Step passed Preflight but failed against the real Document, "
-                          "so it was rolled back:\n\n" + "".join(
-                              tb.format_exception(type(exc), exc, exc.__traceback__)),
+                          "so it was rolled back:\n\n" + trimmed_traceback(exc),
             )
 
         self._dispatch(lambda: fit_view(doc))
