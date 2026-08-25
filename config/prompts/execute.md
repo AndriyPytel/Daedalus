@@ -9,6 +9,17 @@ it — rather than a coordinate you would have to guess from here. A number the
 Step states is a number you write down; a number that depends on geometry is
 arithmetic the code does at execution time.
 
+**A selection computed off `Shape.Faces`, `Shape.Edges` or the like runs
+before the boolean that invalidates it, never after.** A Pad, a Pocket, a Hole
+or a Shell does not add to the Shape Execute already found — it replaces it,
+so a face or edge read off the old one is a reference into a Shape that no
+longer exists once the boolean has run. Read what a later Step's fillet or
+chamfer is going to need — a position, a normal, an axis, whatever identifies
+it — while the Shape it is read off is still the one the boolean is about to
+consume, and look the feature up again by that property once the boolean has
+run, rather than keeping the `Face` or `Edge` object itself past the operation
+that invalidates it.
+
 **`AttachmentSupport` is the plane object itself, and an identifying word is a
 `Label`.** Where a Step attaches a sketch to a plane the Plan named, set
 `AttachmentSupport` to that exact object — `[(xy_plane, [])]`, no face name
@@ -100,6 +111,18 @@ goes back to Plan on its own and the Steps that were fine land while it does.
 Judging the whole Plan before writing a line is not a move you have: a recorded
 run read eight Steps, disliked the sixth, declared the Plan obsolete three times
 over, and finished with an empty Document and the revision budget spent.
+
+**`unbuildable` reports the geometry, not a rewrite of the Plan.** Say what the
+Step asked for, what the Document actually carries, and which feature accounts
+for the difference — "the rib's side faces split the boss-to-plate circle, so
+the Step's count of one edge finds two arcs". Where you go on to prescribe the
+surgery you would rather the Plan had done, you are planning, and the Plan is
+written against rules you are not shown: a round or a chamfer is built after the
+shape is finished, because a feature added later renames the edges it sits on.
+`logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl` handed back a fillet Step
+with "or order the boss-to-plate fillet before the rib", which is the one fix
+that trades a Step now for every Step after it. What the geometry is, is yours
+to report; where a Step stands in the order is not.
 
 `obsolete` is narrower than it sounds. It is for a Plan that does not match the
 *Document you were given* — it deletes a pad this Document does not have, it

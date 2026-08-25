@@ -547,6 +547,43 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
     assert "Let a Step fail" in execute_system
 
 
+def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup():
+    """
+    Nowhere named the order a part is planned in, nor why it matters. A
+    boolean — a Pad added to the solid, a Pocket or a Hole cut out of it, a
+    Shell hollowing it — does not add to the Shape the Steps before it built,
+    it replaces it, so a reference Execute worked out against the geometry
+    before the boolean runs is a reference into a Shape already gone. Rounds
+    and chamfers are planned last because that is the only order in which the
+    edges their Step names are still the edges the boolean before them built,
+    and a material card is last of all because nothing depends on it.
+
+    Where a Step stands in the order is Plan's and not Execute's: a recorded
+    run handed a fillet Step back asking for the round to be ordered before
+    the rib, which trades one Step now for every Step after it. FCC-205.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    _, plan_system, execute_system, _ = (" ".join(text.split()) for text in _system_messages(llm))
+
+    assert "The Steps are ordered as the solid is built" in plan_system
+    assert ("the base solid, then every Step that adds material to it, then every "
+            "Step that cuts material out of it, then the rounds and the chamfers") \
+        in plan_system
+    assert "it is the last Step of any Plan" in plan_system
+    assert "A dress-up Step is planned against the solid the Steps before it leave" \
+        in plan_system
+    assert "A round is planned early only where a later Step must inherit it" in plan_system
+
+    assert "A selection computed off `Shape.Faces`" in execute_system
+    assert "before the boolean that invalidates it, never after" in execute_system
+    assert "`unbuildable` reports the geometry, not a rewrite of the Plan" in execute_system
+    assert "where a Step stands in the order is not" in execute_system
+
+
 def test_the_reading_rules_moved_to_the_design_phase_whole():
     """
     FCC-59's rules were live in plan.md and did not hold, so FCC-86 moved who

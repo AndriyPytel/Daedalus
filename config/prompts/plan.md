@@ -180,10 +180,47 @@ swept along the edge it was drawn short of.
 `tests/test_preflight_dressup_level2.py` holds the radius that is refused and
 the one that builds.
 
+## The Steps are ordered as the solid is built
+
+The order is not the order the description lists the features in. A solid is
+built shape first and finish last: the base solid, then every Step that adds
+material to it, then every Step that cuts material out of it, then the rounds
+and the chamfers, and last the properties that are not geometry at all — a
+material card depends on nothing and nothing depends on it, so it is the last
+Step of any Plan. FreeCAD gives the reason under `PartDesign_Fillet`: finish the
+main design work of the solid before applying fillets and chamfers, or edges
+change names and the filleted edges become invalid; its advice for a stable
+model is to use dress-ups as late in the feature tree as possible. A round
+planned in the middle of the shape is a round the Steps after it move out from
+under.
+
+**A dress-up Step is planned against the solid the Steps before it leave, not
+against the feature it was read off.** Every shape Step earlier in the Plan has
+already run by the time a round is cut, and a feature that crosses an edge
+divides it: where a rib stands against a boss, the one circular edge the boss
+makes in the plate is two arcs once the rib is there. The count the Step states
+is the count of what will be there. `logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl`
+planned the rib as Step 6 and then asked Step 7 for "exactly 1 edge" where the
+boss meets the plate; Execute refused it against the two arcs the rib had left,
+and a revision went on a number that was right about the drawing and wrong about
+the model. Where the ordering costs a split edge, state the pieces — moving the
+round earlier to keep the number whole buys one Step at the price of every Step
+after it.
+
+**A round is planned early only where a later Step must inherit it.** A wall of
+constant thickness taken off a rounded solid is rounded before it is thinned, a
+draft goes on before the rounds that sit on the drafted face, a pattern that has
+to repeat a rounded feature carries the round with it, and a full round that is
+the shape itself is not a dress-up at all — it is built where the shape is, as
+the paragraph above says. Where two rounds meet, the larger radius is planned
+first. Outside those, a dress-up Step standing anywhere but after every Step
+that touches the metal it sits on is a Step in the wrong place.
+
 **A Step handed back changes how it is built, never what it builds.** The
-plane it is drawn in, the direction it is cut, the feature it is cut from: those
-are yours to rewrite. The shape is the description's, and a Step that comes back
-unbuildable is not permission to build something simpler. In the recorded run
+plane it is drawn in, the direction it is cut, the feature it is cut from, the
+place it takes in the order: those are yours to rewrite. The shape is the
+description's, and a Step that comes back unbuildable is not permission to
+build something simpler. In the recorded run
 (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`) the arm's cutout was
 closed on the ring's R25 outside and drawn on the arm's top face, where that
 outside is two straight lines; Execute refused it and said why, and the revision
