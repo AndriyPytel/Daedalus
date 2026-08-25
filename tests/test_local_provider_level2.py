@@ -155,6 +155,27 @@ def _drain(manager, timeout_turns=400):
         QT_APP.thread().msleep(5)
 
 
+@pytest.fixture(autouse=True)
+def _provider_manager_threads_join_before_the_next_test():
+    """
+    Wait out this test's own fetch threads before the next test installs its
+    monkeypatch on the same process-wide `provider_manager.instance()`.
+
+    `_threads.clear()` above drops the dict entry without joining the thread;
+    a thread still in flight then lands its `fetched`/`failed` signal after a
+    later test's warnings list is being recorded, and that later test fails on
+    an address that is not its own.
+    """
+    yield
+    if QT_APP is None:
+        return
+    from utils import provider_manager
+
+    manager = provider_manager.instance()
+    _drain(manager)
+    manager._threads.clear()
+
+
 def test_no_address_means_no_fetch_and_nothing_said(settings_are_the_tests_own, monkeypatch):
     """
     The acceptance criterion the old code could not meet: with the field empty

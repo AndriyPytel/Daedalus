@@ -637,11 +637,40 @@ def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, mon
     assert "switched to gpt-4o" in _now_on(panel)
 
 
+def _never_call_the_real_model(panel):
+    """
+    Keep `on_send()` from starting a real run, in a test.
+
+    `on_send()` emits the panel's own `request_work` for tests to intercept,
+    but also the Session's real `request_work`, which is wired to
+    `LoopWorker.do_work` and starts an actual run on the worker thread: a real
+    document snapshot, and a real call to whichever provider the developer
+    machine's own settings name, on their own key or their own subscription's
+    CLI, out of a unit test — the very thing
+    `the_suite_does_not_talk_to_the_network` exists to stop, except a local
+    subscription client shells out rather than opening a socket, so the
+    guard never sees it and the call is free to hang. Disconnecting the
+    real signal from `do_work` for the
+    Session under test, rather than making what `do_work` does harmless,
+    keeps the worker thread from ever being asked to do anything at all.
+
+    Not through `monkeypatch`: `do_work` would run off a queued connection
+    that `on_send()` only schedules rather than waits for, racing
+    `monkeypatch`'s function-scoped undo for whichever lands first — and it
+    has been observed losing that race. A `disconnect()` made here takes
+    effect immediately and is never undone, but nothing in this module sends
+    through this Session again once its test is done with it.
+    """
+    bundle = panel._worker_for(panel._current_log())
+    bundle.request_work.disconnect(bundle.worker.do_work)
+
+
 def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     """
     The panel used to collect the attached paths and drop them on the floor.
     What it emits is what the run is given. FCC-4.
     """
+    _never_call_the_real_model(panel)
     picture = tmp_path / "bracket.png"
     picture.write_bytes(b"a file; whether it decodes is the loop's problem")
 
@@ -653,7 +682,6 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
         panel.on_send()
     finally:
         panel.request_work.disconnect()
-        panel.worker.stop()
         panel._set_running(False)
 
     assert sent == [("Build this bracket", [str(picture)])]
@@ -918,25 +946,25 @@ def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_t
     In its own daemon thread: the defect under test is a wait that never
     returns, and a test that hangs says nothing to whoever runs the suite.
     """
-    import time
+    import threading
 
     from conftest import QtCore
     from ui.copilot_panel import CopilotPanel
 
     built = CopilotPanel()
+    parked = threading.Event()
+
+    def _ask_and_block():
+        parked.set()
+        built.ask.about_the_plan(["a step"])
+
     blocked = QtCore.QTimer()
     blocked.moveToThread(built.thread)
     blocked.setSingleShot(True)
-    blocked.timeout.connect(lambda: built.ask.about_the_plan(["a step"]),
-                            QtCore.Qt.DirectConnection)
+    blocked.timeout.connect(_ask_and_block, QtCore.Qt.DirectConnection)
     QtCore.QMetaObject.invokeMethod(blocked, "start", QtCore.Qt.QueuedConnection,
                                     QtCore.Q_ARG(int, 0))
-    deadline = time.time() + 5
-    while not built.ask._answered.is_set() and built.ask._answer is None and time.time() < deadline:
-        QT_APP.processEvents()
-        time.sleep(0.02)
-
-    import threading
+    assert parked.wait(5), "the timer on built.thread never fired the Plan Gate"
 
     done = threading.Event()
     threading.Thread(target=lambda: (built._cleanup_thread(), done.set()),
@@ -1324,6 +1352,7 @@ def test_a_first_intent_names_the_session_from_what_was_typed(panel, monkeypatch
     panel.chip_bar.get_and_clear()
     panel.new_chat()
     index = panel.chat_sessions.stack.currentIndex()
+    _never_call_the_real_model(panel)
 
     panel.user_input.setPlainText(
         "Model a spur gear with 24 teeth, module 2, 10mm thick, and a 12mm bore")
@@ -1332,7 +1361,6 @@ def test_a_first_intent_names_the_session_from_what_was_typed(panel, monkeypatch
         panel.on_send()
     finally:
         panel.request_work.disconnect()
-        panel.worker.stop()
         panel._set_running(False)
 
     name = panel.chat_sessions.get_session_info(index)["name"]

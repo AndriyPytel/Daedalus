@@ -104,15 +104,40 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
+@pytest.fixture(scope="session")
+def sheet_cache(tmp_path_factory):
+    """
+    Every distinct PDF sheet, parsed once for the whole test session.
+
+    `core.sheet_reader.read()` already caches a parsed sheet, but keys the
+    cache on the temp directory it is asked to write crops into as well as the
+    path, and each module-scoped fixture that wanted a sheet asked for its own
+    `tmp_path_factory.mktemp`. Three modules reading the same `mm25-p1-1.pdf`
+    got three renders. This fixture is the one place a sheet is asked for by
+    path, so a second module gets back what the first one already parsed.
+    """
+    from core import sheet_reader
+
+    cache = {}
+
+    def read(path):
+        key = os.path.abspath(path)
+        if key not in cache:
+            cache[key] = sheet_reader.read(path, into=str(tmp_path_factory.mktemp("sheet")))
+        return cache[key]
+
+    return read
+
+
 @pytest.fixture(scope="module")
-def modelmania_sheets(tmp_path_factory):
-    """The four distinct drawings, parsed once for one test module."""
+def modelmania_sheets(sheet_cache):
+    """The four distinct drawings, read through the session's shared cache."""
     from core import sheet_reader
     from tests import modelmania_harness
 
     if not sheet_reader.available():
         pytest.skip("PyMuPDF is not installed")
-    return modelmania_harness.read_sheets(tmp_path_factory)
+    return modelmania_harness.read_sheets(sheet_cache)
 
 
 @pytest.fixture(autouse=True)

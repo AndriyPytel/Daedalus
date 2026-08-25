@@ -33,18 +33,17 @@ needs_pymupdf = pytest.mark.skipif(not sheet_reader.available(),
 
 
 @pytest.fixture(scope="module")
-def sheet(tmp_path_factory):
+def sheet(sheet_cache):
     if not sheet_reader.available():
         pytest.skip("PyMuPDF is not installed")
-    return sheet_reader.read(SHEET, into=str(tmp_path_factory.mktemp("sheet")))
+    return sheet_cache(SHEET)
 
 
 @pytest.fixture(scope="module")
-def sheet_2023(tmp_path_factory):
+def sheet_2023(sheet_cache):
     if not sheet_reader.available():
         pytest.skip("PyMuPDF is not installed")
-    return sheet_reader.read(SHEET_2023,
-                             into=str(tmp_path_factory.mktemp("sheet-2023")))
+    return sheet_cache(SHEET_2023)
 
 
 def _shown_in(sheet, at):
