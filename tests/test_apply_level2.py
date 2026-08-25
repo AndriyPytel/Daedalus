@@ -195,7 +195,11 @@ def test_code_that_crashes_the_core_never_reaches_the_document(doc, tmp_path):
 
 
 def test_an_unbounded_loop_never_reaches_the_document(doc, tmp_path):
-    with PreflightWorker(timeout=3) as own:
+    """
+    A real hang, killed by a real timeout — only the timeout itself is
+    scaffolding, short enough that the wait is not the point of the test.
+    """
+    with PreflightWorker(timeout=0.5) as own:
         pipeline = ApplyPipeline(document=doc, worker=own,
                                  dispatch=lambda func, timeout=None: func(),
                                  render_dir=str(tmp_path))

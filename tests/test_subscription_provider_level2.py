@@ -47,6 +47,26 @@ def _drain(manager, turns=400):
         QT_APP.thread().msleep(5)
 
 
+@pytest.fixture(autouse=True)
+def _provider_manager_threads_join_before_the_next_test():
+    """
+    Wait out this test's own fetch threads before the next test installs its
+    monkeypatch on the same process-wide `provider_manager.instance()`.
+
+    A thread still in flight when a test ends lands its `fetched`/`failed`
+    signal after a later test's own recording has started, and that later
+    test then fails on a provider that is not its own.
+    """
+    yield
+    if QT_APP is None:
+        return
+    from utils import provider_manager
+
+    manager = provider_manager.instance()
+    _drain(manager)
+    manager._threads.clear()
+
+
 @pytest.fixture
 def manager(settings_are_the_tests_own):
     from utils import provider_manager

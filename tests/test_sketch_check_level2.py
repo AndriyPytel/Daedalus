@@ -18,10 +18,10 @@ SHEET = os.path.join(os.path.dirname(__file__), "modelmania", "mm25-p1-1.pdf")
 
 
 @pytest.fixture(scope="module")
-def sheet(tmp_path_factory):
+def sheet(sheet_cache):
     if not sheet_reader.available():
         pytest.skip("PyMuPDF is not installed")
-    return sheet_reader.read(SHEET, into=str(tmp_path_factory.mktemp("sheet")))
+    return sheet_cache(SHEET)
 
 
 def _outlines(sheet):

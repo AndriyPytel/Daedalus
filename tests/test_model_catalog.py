@@ -42,12 +42,21 @@ class _Handler(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def provider_endpoint():
+    """
+    A real HTTP server on loopback, for one test.
+
+    `serve_forever`'s default poll interval is 0.5s, and `shutdown()` only
+    sets a flag that loop checks on its next wake — so tearing this down at
+    the default rate cost every test here half a second it never used. A
+    10ms poll interval keeps that overhead off tests whose subject is a
+    request against the model catalog, not the shutdown of a local server.
+    """
     server = HTTPServer(("127.0.0.1", 0), _Handler)
     server.payload = {}
     server.status = 200
     server.last_path = None
     server.last_headers = {}
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, args=(0.01,), daemon=True)
     thread.start()
     try:
         yield server, "http://127.0.0.1:%d" % server.server_address[1]
