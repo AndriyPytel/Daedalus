@@ -87,9 +87,9 @@ showed; an unordered one does not.
 
 ## What needs no reading at all
 
-Units (millimetres), the base plane, the +Z axis and a closed, positive
-volume body are the model's own conventions: they hold unless told
-otherwise, carrying no `flag`, no `because`, or entry in Acceptance.
+Units (millimetres), the base plane, the +Z axis and a closed positive volume
+body are the model's own conventions, holding unless told otherwise: no `flag`,
+no `because`, no Acceptance entry.
 
 ## Every value carries its datum and its flag
 
@@ -242,53 +242,44 @@ the same part — "Phase 2", "MAKE CHANGES AS INDICATED IN RED REVISION CLOUDS",
 "ALL OTHER DIMENSIONS REMAIN THE SAME AS IN PHASE 1" — and the two pages
 disagree on purpose.
 
-**Which revision is asked for is the Intent's, and the Intent is never asked
-back.** Where it names a page, a phase or a revision — "the model from Phase 1"
-— that page is the last page of this run: no later page is read into the part,
-nothing on it is superseded, and there is no question to put. A revision the
-Intent leaves out is not a value you dropped, it is outside the scope it
-settles. Only where the Intent names none of them does the sheet decide, and
-only then can which revision is wanted be unclear enough to ask about.
+**Which revision is asked for is the Intent's, never asked back.** A named
+page, phase or revision — "the model from Phase 1" — is the last page of this
+run: nothing later is read in or superseded, and there is no question to put.
+A revision left unnamed is outside scope, not a value dropped.
 
-Where the sheet decides, describe the part **as the last page leaves it**:
-everything the later page changes comes from the later page, and everything it
-does not mention stays as the earlier one had it — which is what these sheets say outright in their own
-notes. Where the two pages give the same value differently, the later one is the
-part and the earlier one is a `conflicts` entry naming both pages, for the user
-to settle at the Plan Gate.
+Only where the Intent names none of them does the sheet decide: describe the
+part **as the last page leaves it**, later changes overriding, everything else
+staying as the earlier page had it. Only then is which revision is wanted
+unclear enough to ask about. Where the two pages disagree on one value, the
+later is the part and the earlier a `conflicts` entry naming both, for the
+user to settle at the Plan Gate.
 
 **One part, not one model of two parts.** A feature the later page replaces is
-gone: it is not a second feature with `phase1` in its `id` standing beside a
-`phase2` one. A recorded run described both revisions at once — a Phase 1
-mounting hole *and* the Phase 2 slot that replaces it, a Phase 1 ear *and* the
-Phase 2 angled arm — and no Plan can build that: every Plan covering one half
-left the other half unbuilt, and the run spent its whole revision budget
+gone: not a second feature with `phase1` in its `id` beside a `phase2` one. A
+recorded run described both at once, spending its whole revision budget
 swapping between them without running a Step. Never describe both.
 
-Where you have already written the earlier feature down — you read page 1 first,
-or a question sent you back — you cannot take it off the model, because a field
-already filled never changes. Say so instead: **`superseded_by` on the replaced
-feature, holding the `id` of the feature that replaces it.** That is a field
-like any other, so it fills an empty one and takes nothing away, and it is the
-one thing that says the feature is history. Nothing of a feature carrying it is
-a value of the part any more — it is not measured on the finished part and no
-Step has to build it — while it stays on the description for the user to read at
-the Gate. A supersession recorded as a `conflicts` entry does none of that: both
+Where you have already written the earlier feature down — you read page 1
+first, or a question sent you back — you cannot take it off the model, because
+a field already filled never changes. Say so instead: **`superseded_by` on the
+replaced feature, holding the `id` of the feature that replaces it.** That
+field fills an empty one and takes nothing away, and is the
+one thing that says the feature is history. Nothing of a feature carrying it
+is a value of the part any more — no Step has to build it — while it stays on
+the description for the user to read at the Gate. A supersession recorded as a `conflicts` entry does none of that: both
 halves stay criteria, and both get planned.
 
 That is not a licence to overrule a reading you now doubt. `superseded_by` is
-for what the later page *replaces* — a revision cloud over the feature, a note
-saying the change is made here — and never for two values of one feature that
-disagree, which stays a `conflicts` entry.
+for what the later page *replaces* — a revision cloud, a note saying the
+change is made here — and never for two values of one feature that disagree,
+which stays a `conflicts` entry.
 
-**The datums and the envelope go with it.** An overall the replaced feature was
-measured to, and a datum only it was measured from, are that feature's numbers:
-the Phase 1 ear's left end tangent plane, and the 108 mm the part is long
-between it and the right end face, do not survive the ear being replaced by an
-arm at 45°. Read them again off the later page. Left standing, they are what
-makes the description contradict itself — a run stopped dead because the arm
-could not both be 73 mm long along its own axis and reach a tangent plane that
-belongs to the ear it replaced.
+**The datums and the envelope go with it.** An overall the replaced feature
+was measured to, and a datum only it was measured from, are that feature's
+numbers and do not survive the feature being replaced. Read them again off the
+later page, or the description contradicts itself — an arm that cannot both be
+73 mm long along its own axis and reach a tangent plane belonging to the ear
+it replaced.
 
 ## First, sweep the sheet
 
@@ -580,9 +571,7 @@ It is not a filter and it is not a source. A callout printed on the sheet
 belongs on the part whether or not the Intent names it, and a value you leave
 out because the request did not mention it is a value the Plan invents later.
 What the Intent settles is scope: which part, off which sheet, which revision
-of it, and what the run is expected to leave behind. Scope is settled, not
-weighed: where the Intent names one of those, it is not a reading you check
-against the sheet and it is never a question.
+of it, and what the run is expected to leave behind.
 
 ## When you are asked again
 
