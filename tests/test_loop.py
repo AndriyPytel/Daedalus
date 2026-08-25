@@ -563,7 +563,12 @@ def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup
     it replaces it, so a reference Execute worked out against the geometry
     before the boolean runs is a reference into a Shape already gone. Fillets
     and chamfers are planned last because that is the only order in which the
-    edges their Step names are still the edges the boolean before them built.
+    edges their Step names are still the edges the boolean before them built,
+    and a material card is last of all because nothing depends on it.
+
+    Where a Step stands in the order is Plan's and not Execute's: a recorded
+    run handed a fillet Step back asking for the round to be ordered before
+    the rib, which trades one Step now for every Step after it.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -575,9 +580,15 @@ def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup
     assert "base, then addition, then subtraction" in plan_system
     assert "fillet or a chamfer only once every one of those stands" in plan_system
     assert "boolean" in plan_system and "replaces it" in plan_system
+    assert "it is the last Step of any Plan" in plan_system
+    assert "A dress-up Step is planned against the solid the Steps before it leave" \
+        in plan_system
+    assert "A round is planned early only where a later Step must inherit it" in plan_system
 
     assert "computed off `Shape.Faces`" in execute_system
-    assert "before the boolean that invalidates it" in execute_system
+    assert "before the boolean that invalidates it, never after" in execute_system
+    assert "`unbuildable` reports the geometry, not a rewrite of the Plan" in execute_system
+    assert "where a Step stands in the order is not" in execute_system
 
 
 def test_the_reading_rules_moved_to_the_design_phase_whole():

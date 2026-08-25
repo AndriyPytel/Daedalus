@@ -37,6 +37,16 @@ both ends" — and not in the FreeCAD spelling of its type. `Face3` and `Edge12`
 are not yours to write, and neither is how a reference is found. Which edge or
 face a Step lands on is worked out against the geometry at the moment it runs.
 
+Ask for an object to be **labeled**, never **named**. FreeCAD assigns every
+object's `Name` itself, the instant it is created, and no Step can change it —
+a `Sketcher::SketchObject` has no such property to set. Where a later Step
+needs to find something an earlier one built, give it the identifying word
+there — "sketch it as RingProfile" — and it lands as a `Label`.
+`logs/sessions/a67a88bbcdc042dfac870fd1908f7ff7.jsonl` asked, three attempts
+running, for an object to be "named" something the object model has no way to
+be told; each attempt renamed a comment or a loop variable instead, because
+the fix the traceback asked for did not exist.
+
 A Step that works on some of the edges or some of the faces says how many —
 "round the twelve longitudinal edges of the outer profile at R2". Execute
 checks what it selected against that number and fails the Step where the two
@@ -145,6 +155,19 @@ follows a ring's outside is drawn on the elevation and cannot be drawn on the
 face it opens at — there is no centre in that plane for the arc to be struck
 from.
 
+**Two regions of one sketch pad into one solid only where they genuinely
+overlap.** A ring, the lug beside it, an arm out at an angle — drawn to meet
+exactly, tangent or edge to edge, they close a boundary that shares no area,
+and a Pad built from it lands in two solids; Preflight refuses a Body it
+cannot report as one piece. A Step whose stated dimensions place two regions
+of a sketch tangent is a Step whose dimensions cannot be built, not a Step
+with an ambiguous edge — ask for the overlap itself, a rectangle reaching past
+the circle it joins rather than up to it.
+`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl` gave a rectangle's edge
+tangent to a circle at the join and asked for two separate closed regions to
+fuse there; Execute had to widen the Plan's own number by a millimetre before
+the Pad would build as one solid.
+
 **A part is planned base, then addition, then subtraction, then a shell or
 its holes, and a fillet or a chamfer only once every one of those stands.**
 Each of those Steps is a boolean — a Pad added to the solid, a Pocket or a
@@ -155,6 +178,38 @@ edge by its axis — is a reference into a Shape the boolean has already thrown
 away. Planning the fillets and chamfers last is what keeps every Step before
 them free to be found again by the geometry it actually built, rather than by
 a selector some earlier boolean already invalidated.
+
+The order is not the order the description lists the features in, and the
+properties that are not geometry at all come last of all — a material card
+depends on nothing and nothing depends on it, so it is the last Step of any
+Plan. FreeCAD gives the second reason under `PartDesign_Fillet`: finish the
+main design work of the solid before applying fillets and chamfers, or edges
+change names and the filleted edges become invalid; its advice for a stable
+model is to use dress-ups as late in the feature tree as possible. A round
+planned in the middle of the shape is a round the Steps after it move out from
+under.
+
+**A dress-up Step is planned against the solid the Steps before it leave, not
+against the feature it was read off.** Every shape Step earlier in the Plan has
+already run by the time a round is cut, and a feature that crosses an edge
+divides it: where a rib stands against a boss, the one circular edge the boss
+makes in the plate is two arcs once the rib is there. The count the Step states
+is the count of what will be there. `logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl`
+planned the rib as Step 6 and then asked Step 7 for "exactly 1 edge" where the
+boss meets the plate; Execute refused it against the two arcs the rib had left,
+and a revision went on a number that was right about the drawing and wrong about
+the model. Where the ordering costs a split edge, state the pieces — moving the
+round earlier to keep the number whole buys one Step at the price of every Step
+after it.
+
+**A round is planned early only where a later Step must inherit it.** A wall of
+constant thickness taken off a rounded solid is rounded before it is thinned, a
+draft goes on before the rounds that sit on the drafted face, a pattern that has
+to repeat a rounded feature carries the round with it, and a full round that is
+the shape itself is not a dress-up at all — it is built where the shape is, as
+the paragraph on full rounds says. Where two rounds meet, the larger radius is planned
+first. Outside those, a dress-up Step standing anywhere but after every Step
+that touches the metal it sits on is a Step in the wrong place.
 
 **A full round is built, never filleted to.** A round whose radius is half the
 thickness it crosses meets itself: at that radius the face between its two
@@ -169,8 +224,8 @@ swept along the edge it was drawn short of.
 the one that builds.
 
 **A Step handed back changes how it is built, never what it builds.** The
-plane it is drawn in, the direction it is cut, the feature it is cut from: those
-are yours to rewrite. The shape is the description's, and a Step that comes back
+plane it is drawn in, the direction it is cut, the feature it is cut from, the
+place it takes in the order: those are yours to rewrite. The shape is the description's, and a Step that comes back
 unbuildable is not permission to build something simpler. In the recorded run
 (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`) the arm's cutout was
 closed on the ring's R25 outside and drawn on the arm's top face, where that

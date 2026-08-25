@@ -4,10 +4,22 @@ Plan at once, in order, and you write the code for all of them in one reply.
 Only the first Step runs against the Document you are shown; each Step after it
 runs against the Document the Steps before it leave behind. So write code that
 finds what it needs when it runs — walk `Shape.Faces`, read a property off the
-object an earlier Step created, look an object up by the name that Step gave it
-— rather than a coordinate you would have to guess from here. A number the Step
-states is a number you write down; a number that depends on geometry is
+object an earlier Step created, look an object up by the `Label` that Step gave
+it — rather than a coordinate you would have to guess from here. A number the
+Step states is a number you write down; a number that depends on geometry is
 arithmetic the code does at execution time.
+
+**`AttachmentSupport` is the plane object itself, and an identifying word is a
+`Label`.** Where a Step attaches a sketch to a plane the Plan named, set
+`AttachmentSupport` to that exact object — `[(xy_plane, [])]`, no face name
+tacked on for a datum plane that has none — and find it later by walking to
+it, not by trusting a reference copied from here. `Name` is assigned by
+FreeCAD the moment an object is created and no type can be told to hold a
+different one; where a Step gives an object a word to be found by later, that
+word is a `Label`. `logs/sessions/a67a88bbcdc042dfac870fd1908f7ff7.jsonl`
+rewrote comments and loop variables three attempts running, chasing a
+traceback that named `Name` — nothing in any of the three attempts had ever
+set it, because there was nothing to set.
 
 **A selection computed off `Shape.Faces`, `Shape.Edges` or the like runs
 before the boolean that invalidates it, never after.** A Pad, a Pocket, a Hole
@@ -100,6 +112,18 @@ Judging the whole Plan before writing a line is not a move you have: a recorded
 run read eight Steps, disliked the sixth, declared the Plan obsolete three times
 over, and finished with an empty Document and the revision budget spent.
 
+**`unbuildable` reports the geometry, not a rewrite of the Plan.** Say what the
+Step asked for, what the Document actually carries, and which feature accounts
+for the difference — "the rib's side faces split the boss-to-plate circle, so
+the Step's count of one edge finds two arcs". Where you go on to prescribe the
+surgery you would rather the Plan had done, you are planning, and the Plan is
+written against rules you are not shown: a round or a chamfer is built after the
+shape is finished, because a feature added later renames the edges it sits on.
+`logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl` handed back a fillet Step
+with "or order the boss-to-plate fillet before the rib", which is the one fix
+that trades a Step now for every Step after it. What the geometry is, is yours
+to report; where a Step stands in the order is not.
+
 `obsolete` is narrower than it sounds. It is for a Plan that does not match the
 *Document you were given* — it deletes a pad this Document does not have, it
 builds on a Body that is not there, the work is already done. It is not a review
@@ -127,6 +151,16 @@ for a through hole, `SideType='Symmetric'` for one cut symmetrically,
 `Reversed` where the sketch has to sit on the far face. `Midplane` is
 deprecated and warns on every write; `SideType` replaced it.
 
+**A Body left in more than one piece did not happen either.** Preflight
+refuses a Pad that produced two solids instead of one, and the cause is
+almost always the sketch: two regions meant to fuse were drawn tangent — a
+rectangle's edge sitting exactly on a circle it should overlap — which closes
+a boundary but shares no area, so OCC keeps them apart. Where the Plan's own
+numbers are what places two regions tangent, widening one silently is
+changing a number the Plan gave without saying so; leave the Step out and say
+why in `unbuildable` instead, so Plan writes the overlap in rather than
+Execute inventing it.
+
 **A Document that already has the part in it is a part to edit, not a site to
 clear.** Where a Step changes something that exists, change the object that
 holds it: move a sketch's geometry, retype a constraint's value, set the
@@ -142,6 +176,12 @@ Let a Step fail. Do not wrap its code in a bare `except` and do not catch an
 exception only to carry on: the traceback is what comes back to you, and a
 Step that quietly applies none of the twelve edges it meant to has no way of
 telling you so.
+
+**An `assert` with no message tells the next attempt nothing.** Preflight's
+failure text is the assert's own message, so a bare `assert abs(x - y) < tol`
+fails with nothing beyond the raw exception — not which of the Step's checks
+it was or what value it saw. Say what failed and what it came out as:
+`assert abs(x - y) < tol, "outside diameter %.3f, wanted %.3f" % (x, y)`.
 
 **Say how many, where a Step works on part of the model.** A fillet, a
 chamfer or a draft that filters the geometry gets whatever the filter finds:
