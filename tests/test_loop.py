@@ -1922,6 +1922,30 @@ def test_the_part_design_read_is_written_to_a_file_the_run_names():
     assert part_file.read(written) == events.first(DESIGN).data["model"]
 
 
+def test_a_missing_pyyaml_ends_the_run_as_a_sentence_and_not_a_crash_report(monkeypatch):
+    """
+    A missing PyYAML is a known, actionable outcome — absent from FreeCAD's
+    own Python — and its own message already names the package and the fix,
+    so it belongs on the stream as that sentence, the same way a PhaseError
+    does, not as a traceback swallowed into a crash report by whichever
+    caller happens to be watching.
+    """
+    monkeypatch.setattr(part_file, "yaml", None)
+
+    result, events, _, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert not result.ok
+    error = events.last(ERROR)
+    assert "PyYAML" in error.data["message"]
+    assert "🚨" not in error.data["message"]
+    assert error.data["message"] == str(part_file.MissingPyYAML())
+
+
 def test_the_file_says_which_sheet_the_part_was_read_from():
     from core import part_file
 
