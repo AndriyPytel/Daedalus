@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import List
 
 from core.arithmetic import wrong_sums
+from core.ledger import Ledger
 from core.design import (
     A_CHECK_HAZARD, ROUND_IN, UNDER, corrected, decided_for_you, distilled,
     each_disagreement_once, entries, entry_at, merge, nobody_carries_the_outside,
@@ -154,12 +155,26 @@ class Budgets:
     with and was left declaring the eighth of eight Steps unbuildable for want
     of a material uuid one free call would have given it (FCC-146).
 
-    `agent_turns` bounds `core/agent.py :: ask`, the conversation a phase may
+`agent_turns` bounds `core/agent.py :: ask`, the conversation a phase may
     hold with itself before it has to answer — every look and every run of
     code together, not `looks_per_turn` again. Ten is `looks_per_turn` plus
     room for the code a look's answer gets spent on and the turn that finally
     answers, so a conversation that spends its whole look budget still has
     turns left to act on what it found (FCC-183).
+
+    `trailing_gap_retries` is the bounded, free continuation a Step gets when
+    Execute's reply simply stops — code for every Step up to some point, then
+    nothing, with nothing coded after it either — rather than being told
+    anything is wrong with the code it did write (`logs/analysis-preflight-rakes.md`
+    section 5): 23 such replies across 13 sessions, 57% within the last two
+    Steps of the Plan, call durations up to 266 seconds, none of them a model
+    choosing to skip a Step it could write. It is one, not `attempts_per_step`'s
+    three: 12 of those 23 recurred once after a plain re-ask under the old
+    accounting, so a single free continuation already catches about half the
+    corpus without granting a model that runs dry on every call of a Step the
+    same headroom a real Preflight failure gets. Once it is spent, the next
+    trailing gap at that Step counts against `attempts_per_step` exactly as
+    before, so a Step that never writes its tail still terminates.
     """
 
     attempts_per_step: int = 3
@@ -168,6 +183,7 @@ class Budgets:
     looks_per_turn: int = 6
     rereads: int = 3
     agent_turns: int = 10
+    trailing_gap_retries: int = 1
 
 
 def revisions_ceiling(budgets, steps) -> int:
@@ -434,7 +450,10 @@ _TRAPS_PLACEHOLDER = "{{traps}}"
 _CUT_OFF_ATTEMPTS = 3
 
 
-def prompt(phase):
+_LEDGER_HEADING = "This run has already failed these ways:"
+
+
+def prompt(phase, ledger=""):
     """
     A phase's system prompt, read from `config/prompts/<phase>.md`.
 
@@ -447,11 +466,22 @@ def prompt(phase):
     the placeholder the file chooses — the seed TRAPS plus whatever proposals
     `core/traps.py` has on record as approved (FCC-184). A pending proposal is
     not in this list; that is what "pending" means.
+
+    `ledger` is this *run's* traps rather than this build's: `Ledger.render()`
+    (`core/ledger.py`), appended after the file rather than placed at a
+    placeholder inside it, under its own heading — a reader has to be able to
+    tell "known about this FreeCAD build, always here" from "happened in this
+    run, gone the moment the next one starts" without reading either list
+    first. Empty for every phase but Execute today, and for Execute itself
+    until this run has a failure to carry.
     """
     with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
         body = handle.read().strip()
-    return body.replace(_TRAPS_PLACEHOLDER,
+    body = body.replace(_TRAPS_PLACEHOLDER,
                          "\n".join("- " + trap for trap in trap_store.active_traps()))
+    if ledger:
+        body = "%s\n\n%s\n%s" % (body, _LEDGER_HEADING, ledger)
+    return body
 
 
 def _ask(llm, events, phase, system, user):
@@ -1171,7 +1201,7 @@ class Plan:
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered=(),
          revising=(), looking=(), looked=(), tools=None, budgets=None, agentic=False,
-         looks_taken=0, traps=None):
+         looks_taken=0, traps=None, tried=""):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
 
@@ -1230,6 +1260,13 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
     `looked` is what they said. Both are empty until Plan asks something the
     drawing was never going to answer: a uuid, a type's name, a property's
     spelling.
+
+    `tried` is `Ledger.render()` (`core/ledger.py`) — this run's own failures
+    so far, distilled — placed beside `what_went_wrong_last_time` rather than
+    folded into it: that key is one Step's prose and one traceback, gone the
+    moment this replan is written; `tried` is every classified failure since
+    the run began, Step or Plan, so a revision does not ask for a shape that
+    has already failed the same way more than once.
     """
     request = {"intent": intent, "document": snapshot}
     if revising:
@@ -1239,6 +1276,8 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
         request["what_the_plan_must_satisfy"] = _acceptance_of(the_part)
     if feedback:
         request["what_went_wrong_last_time"] = feedback
+    if tried:
+        request["already_failed_this_way"] = tried
     if unanswered:
         request["nobody_answered"] = {"the_questions": list(unanswered),
                                       "what_to_do": _DECIDE}
@@ -1492,7 +1531,7 @@ class Written:
 
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
-            looks=None, entries=(), agentic=False, advice="", traps=None):
+looks=None, entries=(), agentic=False, advice="", traps=None, ledger=None):
     """
     Write the code for every Step from `start` to the end of the Plan, in one turn.
 
@@ -1513,7 +1552,11 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     it actually stands: the Steps before the failure applied, that one did not.
 
     `attempts` are the failures at the Step `start` names, and only that Step's.
-    A Step that landed carries none of its history forward.
+    A Step that landed carries none of its history forward. `ledger` is the
+    opposite of that on purpose: it is this whole run's, survives every land
+    and every replan (`core/ledger.py`), and lands in the system prompt rather
+    than the request — the same placement `TRAPS` already has, under its own
+    heading so the two stay distinguishable.
 
     `advice` is Plan's answer to a consult Execute made about the failure the
     last of `attempts` names (`core/loop.py :: consult_plan`, FCC-188): a
@@ -1627,7 +1670,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         if looked:
             request["what_you_looked_at"] = looked
 
-        reply = _ask(llm, events, EXECUTE_PHASE, prompt(EXECUTE_PHASE),
+        reply = _ask(llm, events, EXECUTE_PHASE,
+                     prompt(EXECUTE_PHASE, ledger.render() if ledger else ""),
                      json.dumps(request, indent=2, default=str))
 
         resolved = _resolved(reply, start)
@@ -1711,34 +1755,153 @@ def _resolved(reply, start):
     return None
 
 
-_FAILED_THIS_WAY = (
-    ("neither removed nor added any material",
-     "the cut ran the wrong way or missed the solid. It is not the size of the cut "
-     "and it is not how the profile is built: the same shape, extruded the other "
-     "way, is the whole of the fix. Change the *direction* this time — set "
-     "`Reversed`, set `Type='ThroughAll'` or `SideType='Symmetric'`, or put the "
-     "sketch on the opposite face — and check the sign against the Body's "
-     "BoundBox before you commit to it. Rewriting the same extrusion more "
-     "legibly will fail "
-     "identically."),
-    ("left a Body in more than one piece",
-     "the profiles in one sketch do not meet, so they padded into separate lumps. "
-     "Renaming the features does not join them. Either make the profiles share "
-     "their endpoints so the outline closes as one loop, or build each piece as "
-     "its own feature on the solid that is already there."),
-    ("recompute left these objects in error",
-     "the Document does not rebuild. The object named in the traceback is the one "
-     "to fix, and it is fixed by changing what it references or what it is given "
-     "— not by building the same thing again under another name."),
-    ("is not part of the enumeration",
-     "the spelling is not one this build accepts. Ask `describe_type` for the "
-     "property's enumeration and use a value from it verbatim; guessing a second "
-     "spelling is the same move that failed."),
-    ("end face of tapered extrusion is empty",
-     "the draft angle closes the profile before the extrusion gets to the end of "
-     "it. A smaller angle, a shorter cut, or a larger profile is the change; the "
-     "same three numbers arranged differently is not."),
-)
+_RAN_OUT_OF_ROOM = "ran out of room before finishing this reply"
+_SKIPPED_A_STEP = "skipped a Step it could have written"
+
+
+def _classified_failures():
+    """
+    (phrase, directive, label) for every rejection a different attempt could
+    actually fix, keyed on a substring Preflight, lint or apply itself writes
+    — or, for `_RAN_OUT_OF_ROOM` and `_SKIPPED_A_STEP`, that `_work_through`'s
+    own missing-code message writes, so a trailing gap and an interior gap
+    stay two Ledger lines rather than deduping into the one this table had no
+    entry for before them.
+
+    `directive` is the paragraph `_the_same_way_twice` hands Execute the
+    second time this exact phrase recurs; `label` is the one line `Ledger`
+    (`core/ledger.py`) keeps of the same classification once the code and the
+    traceback themselves are gone.
+
+    Two rejections a real run can hit are deliberately absent. "There is no
+    open Document to apply this Step to" is not a Step to write differently —
+    there is no Document open, which no code change fixes. And the wrapper
+    "The Step passed Preflight but failed against the real Document, so it
+    was rolled back" carries whatever underlying exception the transaction
+    raised appended after it — if that exception is one of the phrases below,
+    it already matches on its own text; the wrapper's fixed words say nothing
+    about *what* to change, so giving it its own entry would be advice with
+    nothing behind it.
+    """
+    return (
+        ("neither removed nor added any material",
+         "the cut ran the wrong way or missed the solid. It is not the size of the cut "
+         "and it is not how the profile is built: the same shape, extruded the other "
+         "way, is the whole of the fix. Change the *direction* this time — set "
+         "`Reversed`, set `Type='ThroughAll'` or `SideType='Symmetric'`, or put the "
+         "sketch on the opposite face — and check the sign against the Body's "
+         "BoundBox before you commit to it. Rewriting the same extrusion more "
+         "legibly will fail "
+         "identically.",
+         "cut moved no material because the extrusion ran the wrong direction"),
+        ("left a Body in more than one piece",
+         "the profiles in one sketch do not meet, so they padded into separate lumps. "
+         "Renaming the features does not join them. Either make the profiles share "
+         "their endpoints so the outline closes as one loop, or build each piece as "
+         "its own feature on the solid that is already there.",
+         "sketch profiles left the Body split into separate solids"),
+        ("recompute left these objects in error",
+         "the Document does not rebuild. The object named in the traceback is the one "
+         "to fix, and it is fixed by changing what it references or what it is given "
+         "— not by building the same thing again under another name.",
+         "the Document failed to recompute"),
+        ("is not part of the enumeration",
+         "the spelling is not one this build accepts. Ask `describe_type` for the "
+         "property's enumeration and use a value from it verbatim; guessing a second "
+         "spelling is the same move that failed.",
+         "used a property value spelling this build does not accept"),
+        ("end face of tapered extrusion is empty",
+         "the draft angle closes the profile before the extrusion gets to the end of "
+         "it. A smaller angle, a shorter cut, or a larger profile is the change; the "
+         "same three numbers arranged differently is not.",
+         "the draft angle closed the profile before the extrusion's end"),
+        ("The code does not parse:",
+         "the code is not valid Python. Fix the syntax the traceback names before "
+         "changing anything else — rewriting the logic around a syntax error the "
+         "parser never reached is not a different attempt.",
+         "the code did not parse as Python"),
+        ("is not a Sketcher constraint type",
+         "the constraint name is not one Sketcher has. Ask `describe_type` for the "
+         "exact spellings this build accepts rather than guessing another one; "
+         "concentricity in particular is `Constraint('Coincident', a, 3, b, 3)` "
+         "between the two centres, not a `Concentric` constraint, because there is "
+         "no such constraint.",
+         "named a Sketcher constraint type that does not exist"),
+        ("which is not a signature this constructor has",
+         "the constraint was given the wrong number of arguments for its name. Ask "
+         "`describe_type` for how many arguments it actually takes rather than "
+         "guessing another count.",
+         "gave a Sketcher constraint the wrong number of arguments"),
+        ("is a literal element name",
+         "an edge or face was named directly, and it points somewhere else the "
+         "moment a parameter upstream in the history changes. Compute the reference "
+         "at execution time off the geometry instead of writing the element name "
+         "again, or pick an operation that needs no element name at all.",
+         "referenced a geometry element by a literal name"),
+        ("produces a feature tree that is fiction",
+         "a PartDesign feature had `.Shape` assigned, or a property bolted on with "
+         "`addProperty`, instead of computing its Shape from its Profile. Use the "
+         "feature that performs the operation — Pad, Pocket, Revolution, Groove, "
+         "Hole, Fillet, Chamfer — on a real sketch; the same assignment under "
+         "another name fails identically.",
+         "assigned Shape directly on a PartDesign feature instead of building it"),
+        ("is deprecated and FreeCAD prints two lines of warning",
+         "the property named is deprecated. Write the replacement property the "
+         "message names instead of writing the same deprecated one again.",
+         "wrote a deprecated property instead of its replacement"),
+        ("breaks the correction path",
+         "the Step's own error handling caught and hid the exception that should "
+         "have failed it. Let it raise instead of catching it, so the traceback "
+         "that says what to fix actually reaches you.",
+         "swallowed its own exception instead of letting the Step fail"),
+        ("nothing says how many elements it expected to find",
+         "a filtered selection was used without asserting its count against the "
+         "number the Step's prose gives. State that count and let the Step fail "
+         "where the selection does not match it — `if len(edges) != 12: raise "
+         "RuntimeError(...)` — before the reference is used.",
+         "used a filtered selection without asserting its expected count"),
+        ("is not available during Preflight",
+         "the code read the GUI or the live selection, and the Preflight worker has "
+         "neither. Make the Step a pure function of the Document instead.",
+         "read the GUI or the live selection instead of the Document"),
+        ("makes an object active, which only the GUI can do",
+         "the code tried to make an object active, which only the GUI can do and "
+         "Preflight has no GUI for. Use `Body.addObject(feature)` instead of "
+         "activating anything.",
+         "tried to activate an object instead of adding it to the Body"),
+        ("changed nothing: no object was created, deleted or modified",
+         "the code ran without error but the Document is unchanged. Check that it "
+         "actually calls what it defines and assigns the result onto the Document's "
+         "objects — or, if this Step genuinely has nothing left to do, say so with "
+         "`obsolete` instead of writing the same inert code again.",
+         "ran without error but changed nothing in the Document"),
+        ("which is a rebuild of a model that is already there rather than a change "
+         "to it, and that was not approved",
+         "the Step deleted several of the model's own features instead of editing "
+         "them. Edit what exists — a sketch's geometry, a feature's Length, Type or "
+         "Profile — and add a feature to the end of the tree only where the "
+         "existing one genuinely cannot express what is needed.",
+         "deleted several existing features instead of editing them"),
+        ("which you created rather than I did, and that was not approved",
+         "the Step deleted objects the user built, not this run. Achieve it without "
+         "deleting them, or leave the Step out and say why it cannot be done — "
+         "deleting the same objects again asks the same refused question again.",
+         "deleted objects the user created instead of the run's own"),
+        (_RAN_OUT_OF_ROOM,
+         "the same reply is running out of room at roughly the same point twice. Write "
+         "shorter code per Step this time — no restated Step prose, no comments, "
+         "straight to the calls — rather than the same length worded more tersely.",
+         "ran out of room and left the Plan's tail with no code"),
+        (_SKIPPED_A_STEP,
+         "a Step was skipped even though a Step after it got code in the same reply, "
+         "twice over. Write every Step you are asked about, in the order given, rather "
+         "than leaving one for a regeneration to fill in.",
+         "skipped a Step it could have written while writing later ones"),
+    )
+
+
+_FAILED_THIS_WAY = _classified_failures()
+
 
 
 _REPAIR_REFERENCE = (
@@ -1818,7 +1981,7 @@ def _the_same_way_twice(attempts):
     if len(attempts) < 2:
         return None
     latest, before = attempts[-1].traceback or "", attempts[-2].traceback or ""
-    for phrase, directive in _FAILED_THIS_WAY:
+    for phrase, directive, _label in _FAILED_THIS_WAY:
         if phrase in latest and phrase in before:
             return (
                 "This Step has now failed %d times with the same failure, and the attempts "
@@ -3492,7 +3655,7 @@ def _one_direction_per_step(mixed):
 
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
-                               revising=(), traps=None, agentic=False):
+                               revising=(), traps=None, agentic=False, ledger=None):
     """
     Plan, letting it ask for what the description did not carry (FCC-25).
 
@@ -3579,7 +3742,8 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                        looking=_lookable(tools) if for_the_build else (),
                        looked=asking.looked_up, tools=tools, budgets=budgets,
                        agentic=agentic_from_env() is not False,
-                       looks_taken=asking.looks, traps=traps)
+                       looks_taken=asking.looks, traps=traps,
+                       tried=ledger.render() if ledger else "")
         asking.looks += _looks_spent(events, since)
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))
@@ -3692,11 +3856,12 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                            agentic=agentic, traps=traps)}
 
     asking = _Asking()
+    ledger = Ledger(_FAILED_THIS_WAY)
 
     def replan(feedback=None, revising=()):
         planned, part["the_part"] = _plan_once_it_knows_enough(
             intent, tools.call("snapshot"), llm, events, budgets, part["the_part"],
-            cancelled, asking, tools, feedback, attachments, revising, traps, agentic)
+            cancelled, asking, tools, feedback, attachments, revising, traps, agentic, ledger)
         return planned
 
     def decided(why, applied):
@@ -3833,7 +3998,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part["the_part"]), looks,
                                 planned.acceptance, planned.cites, agentic, consult, traps,
-                                start=carried)
+                                start=carried, ledger=ledger)
         last_pass["steps"], last_pass["applied"] = steps, outcome["applied_here"]
         applied = progress["applied"]
 
@@ -4000,9 +4165,22 @@ def _also_check(acceptance, outstanding):
     return listed + [entry for entry in outstanding if entry not in known]
 
 
+def _trailing_gap(written, number, total):
+    """
+    Whether Step `number`'s missing code leaves nothing coded after it either,
+    up to `total` — a trailing gap, the reply running out of room before it
+    got there — as opposed to a Step after `number` landing code in the same
+    reply, an interior gap where the model wrote past a Step it skipped.
+
+    Only meaningful where Step `number` itself has no code; the last Step of
+    the range has nothing after it to check and is always a trailing gap.
+    """
+    return not any(written.for_step(later).code for later in range(number + 1, total + 1))
+
+
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), agentic=False,
-                  consult=False, traps=None, start=0):
+                  consult=False, traps=None, start=0, ledger=None):
     """
     One pass over the Plan: written in one call, applied one Step at a time.
 
@@ -4018,6 +4196,14 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     when a Step lands, and a Step that runs out still hands back to Plan
     (ADR-0013). The worst case — every Step failing every time — costs one call
     more than the per-Step loop did, which is the shape this replaced.
+
+    One kind of failure is exempted from that count, up to
+    `budgets.trailing_gap_retries`: a reply that wrote code up to some Step and
+    nothing after it, with nothing coded past the gap either, is a reply that
+    ran out of room rather than one that judged the Step and refused it. That
+    continuation is free until the allowance is spent; the next one after that
+    counts against `attempts_per_step` exactly as any other failure does, so a
+    Step whose every reply runs dry still hands back rather than asking forever.
 
     What the Steps that landed cite goes onto `progress["satisfied"]` as they
     land, because that is what the coverage check subtracts from the description
@@ -4071,18 +4257,26 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     a Step that had just landed. The count this pass actually reached, carried
     Steps included, comes back on `applied_here` so the next revision, if
     there is one, has it to carry from in turn.
+
+    `ledger` is the one thing here that is not reset when `attempts` is: every
+    failed attempt, at any Step, is classified into it (`core/ledger.py`)
+    before the retry that follows sees it, so a rake this pass already hit at
+    Step 4 is in the prompt for Step 5, and for whatever Plan writes if this
+    Plan is handed back.
     """
     if cancelled():
         raise Stopped()
     described = {}
     attempts = []
+    charged = 0
+    free_trailing_gaps = 0
     index = 0
     retried = set()
     unbuilt = []
     looks = looks if looks is not None else Looks()
     written = execute(steps, tools, llm, events, start, budgets=budgets,
                       as_described=as_described, looks=looks, entries=entries,
-                      agentic=agentic, traps=traps)
+                      agentic=agentic, traps=traps, ledger=ledger)
 
     while index < start:
         progress["satisfied"].extend(cites[index] if index < len(cites) else ())
@@ -4112,6 +4306,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                             why=written.unbuildable, entries=cited)
                 index += 1
                 attempts = []
+                charged = 0
+                free_trailing_gaps = 0
                 continue
             return {
                 "handback": "Step %d of %d could not be built as written: %s\n%s"
@@ -4120,14 +4316,23 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                 "applied_here": index,
             }
 
+        ran_dry = False
         if outcome.code:
             arguments = {"code": outcome.code, "label": outcome.label}
             events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
             result = tools.call("apply_step", arguments)
             events.emit(TOOL_RESULT, name="apply_step", result=result)
         else:
-            no_code = ("You replied with no code for Step %d. Write it, and every Step "
-                      "after it." % (index + 1))
+            ran_dry = _trailing_gap(written, index + 1, len(steps))
+            if ran_dry:
+                no_code = ("You replied with no code for Step %d, and nothing after it "
+                          "either — you %s. Write Step %d and every Step after it, "
+                          "shorter this time: no restated Step prose, no comments, "
+                          "straight to the calls." % (index + 1, _RAN_OUT_OF_ROOM, index + 1))
+            else:
+                no_code = ("You replied with no code for Step %d, but wrote code for a "
+                          "Step after it — you %s. Write Step %d and every Step after it."
+                          % (index + 1, _SKIPPED_A_STEP, index + 1))
             if written.said:
                 no_code = "%s\n%s" % (no_code, written.said)
             result = {"status": "failed", "traceback": no_code}
@@ -4143,6 +4348,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             looks.a_step_landed()
             index += 1
             attempts = []
+            charged = 0
+            free_trailing_gaps = 0
             continue
 
         traceback = result.get("traceback", "The Step failed without saying why.")
@@ -4150,11 +4357,18 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         progress["tried"] = [_tried(step, a) for a in attempts]
         events.emit(PREFLIGHT_FAILED, step=index + 1, attempt=len(attempts),
                     traceback=traceback)
+        if ledger is not None:
+            ledger.record(step, traceback)
 
         advice = (consult_plan(index + 1, step, traceback, llm, events)
                  if consult else "")
 
-        if len(attempts) >= budgets.attempts_per_step:
+        if ran_dry and free_trailing_gaps < budgets.trailing_gap_retries:
+            free_trailing_gaps += 1
+        else:
+            charged += 1
+
+        if charged >= budgets.attempts_per_step:
             return {
                 "handback": "Step %d of %d could not be built after %d attempts: %s\n"
                             "The last traceback was:\n%s%s"
@@ -4168,7 +4382,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         if cancelled():
             raise Stopped()
         written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
-                          looks, entries, agentic, advice, traps)
+                          looks, entries, agentic, advice, traps, ledger)
 
     return {"obsolete": None, "handback": None, "description": described,
             "applied_here": index,
@@ -4240,7 +4454,7 @@ def _always_the_same_way(attempts):
     """
     if len(attempts) < 2:
         return ""
-    for phrase, _ in _FAILED_THIS_WAY:
+    for phrase, _directive, _label in _FAILED_THIS_WAY:
         if all(phrase in (attempt.traceback or "") for attempt in attempts):
             return (
                 "\n\nEvery one of those %d attempts failed the same way, so this is not a "
