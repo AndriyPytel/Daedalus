@@ -204,10 +204,132 @@ def _the_entry(node, step):
 def _with_the_findings(model):
     found = (silhouette(model) + direction(model) + pointing(model)
              + crosswise(model) + placement(model) + twice_over(model)
-             + settled_by_nothing(model))
+             + settled_by_nothing(model) + unsafe_supersession(model))
     if found:
         model["conflicts"] = _appended(model.get("conflicts"), found)
     return model
+
+
+def unsafe_supersession(model) -> list:
+    """
+    Features marked superseded_by that carry values differing from the canonical.
+
+    When reconciliation marks a feature superseded_by another, _features()
+    filters it out and its values are lost. If those values differ from the
+    canonical feature's values, that is a silent reading loss — worse than
+    the loud conflict it should be. This check catches such cases and raises
+    them as conflicts so the user settles them at the Plan Gate.
+
+    Only features are covered. Envelope entries and datums are not filtered by
+    superseded_by — envelope values stay in entries() because _a_value() returns
+    True before _superseded() is checked, and datums have no values to lose.
+
+    Order-independence: the detection runs on the final merged model, comparing
+    the values on two features that both already exist. The conflict entry names
+    them in sorted (alphabetical) order, so the same pair produces the same
+    conflict regardless of which page landed first or which feature carries the
+    superseded_by marker. ADR-0019 requires this: merge() is order-independent,
+    and this finding must be too.
+    """
+    features = (model or {}).get("features") or []
+    by_id = {f.get("id"): f for f in features
+             if isinstance(f, dict) and f.get("id")}
+
+    found = []
+    for feature in features:
+        if not isinstance(feature, dict):
+            continue
+        canonical_id = feature.get("superseded_by")
+        if not canonical_id:
+            continue
+        canonical = by_id.get(canonical_id)
+        if not canonical:
+            continue
+
+        differing = _differing_feature_values(feature, canonical)
+        if not differing:
+            continue
+
+        this_id = feature.get("id") or "unknown"
+        pair = sorted([this_id, canonical_id])
+        found.append({
+            "about": "features → %s and %s (synonym pair, values differ)" % (pair[0], pair[1]),
+            "stands": "%s says %s" % (pair[0], differing[pair[0]]),
+            "was_also_said": "%s says %s" % (pair[1], differing[pair[1]]),
+            "kind": A_CONFLICT,
+        })
+    return found
+
+
+def _differing_feature_values(superseded, canonical):
+    """
+    The first position value where superseded and canonical disagree, or None.
+
+    Compares ONLY the value content of position entries, never provenance keys
+    (flag, round_in, seen_in, from, because, was). Two entries with the same
+    value but read from different views are NOT a conflict.
+
+    Does NOT compare axis (design.md:497-500 and crosswise() own axis rules),
+    and skips position comparisons where values have different units (mm vs °)
+    since those are different physical quantities, not conflicting readings.
+
+    Returns a dict mapping each feature id to its value at the differing field,
+    suitable for the conflict message, or None if values agree.
+    """
+    sup_id = superseded.get("id") or "unknown"
+    can_id = canonical.get("id") or "unknown"
+
+    superseded_pos = superseded.get("position") or {}
+    canonical_pos = canonical.get("position") or {}
+    if isinstance(superseded_pos, dict) and isinstance(canonical_pos, dict):
+        for datum in set(superseded_pos) & set(canonical_pos):
+            sv = superseded_pos.get(datum)
+            cv = canonical_pos.get(datum)
+            if not sv or not cv:
+                continue
+            sv_value = _extract_value(sv)
+            cv_value = _extract_value(cv)
+            if sv_value and cv_value and sv_value != cv_value:
+                if _different_units(sv_value, cv_value):
+                    continue
+                return {
+                    sup_id: "position → %s: %s" % (datum, sv_value),
+                    can_id: "position → %s: %s" % (datum, cv_value),
+                }
+    return None
+
+
+def _different_units(value_a, value_b):
+    """
+    Whether two values have different units and thus cannot be compared.
+
+    A length (mm) and an angle (°) are different physical quantities, not two
+    readings of one dimension that might conflict.
+    """
+    a = str(value_a).lower()
+    b = str(value_b).lower()
+    a_is_length = "mm" in a or "cm" in a or "m " in a
+    b_is_length = "mm" in b or "cm" in b or "m " in b
+    a_is_angle = "°" in a or "deg" in a
+    b_is_angle = "°" in b or "deg" in b
+    if (a_is_length and b_is_angle) or (a_is_angle and b_is_length):
+        return True
+    return False
+
+
+def _extract_value(payload):
+    """
+    The value a payload states, stripped of provenance.
+
+    A payload is either a dict with a value key (the measurement) and provenance
+    keys (flag, round_in, seen_in, from, because, was), or a bare value. This
+    returns only the measurement, never the provenance.
+    """
+    if isinstance(payload, dict) and "value" in payload:
+        return payload["value"]
+    if isinstance(payload, dict):
+        return None
+    return payload
 
 
 _ROUNDED_OUTSIDE = ("capsule", "obround", "racetrack", "oval",
