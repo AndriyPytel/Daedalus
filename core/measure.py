@@ -31,16 +31,29 @@ FCC-191 also answers the two questions a baseline-against-experiment
 comparison is actually asked for: how often the Assertion failed and how
 often Review failed. Both read events `core/loop.py` already emits -
 `assertion` (whose `ok` is `True`, `False`, or `None` when the phase gave up
-without writing a check that ran) and `review_verdict` (whose `verdict` is
-always `"pass"` or `"fail"`) - and both are a fraction of that one run's own
-attempts, not of the run set: a run whose first Assertion failed and whose
-second, after a revision, passed carries `assertion_fail_rate` `0.5`, the same
-run `plan_revisions` already counts as one hand-back. A run with none of
-either kind - blocked before Assertion ran, or before Review did - reads
-both rates as `0.0`, the same way `hand-back rate` reads a run with no
-`plan_revised` as not having handed back: nothing having happened is not a
-failure, and counting it as one would make a short, clean run look worse than
-a long one that failed once and then passed.
+without writing a check that ran, and whose `confirmed`/`unmet` name the
+individual checks that phase wrote) and `review_verdict` (whose `verdict` is
+always `"pass"` or `"fail"`).
+
+`review_fail_rate` stays a fraction of that one run's own Review attempts,
+not of the run set: a run whose first Review failed and whose second, after
+a revision, passed carries `review_fail_rate` `0.5`, the same run
+`plan_revisions` already counts as one hand-back.
+
+`assertion_fail_rate` is a fraction of named checks, not of Assertion
+attempts (FCC-191 review, `logs/review/ab-lane-outcomes.md` §5c): an
+attempt's own `ok` is one boolean for the whole batch of checks it ran, and
+a run with 12 of 110 named checks unmet came back with the identical
+`ok: false` as one with 110 of 110 unmet, reading as the same `100%` either
+way. Counting `confirmed` against `unmet` instead reads the first as ~11%
+and the second as 100% - the difference the whole-batch boolean cannot
+show, and the one number this metric now exists to tell apart.
+
+A run with neither kind - blocked before Assertion ran, or before Review
+did - reads both rates as `0.0`, the same way `hand-back rate` reads a run
+with no `plan_revised` as not having handed back: nothing having happened is
+not a failure, and counting it as one would make a short, clean run look
+worse than a long one that failed once and then passed.
 """
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
@@ -75,6 +88,32 @@ def _fail_rate(events, is_failure) -> float:
     return sum(1 for event in events if is_failure(event)) / len(events)
 
 
+def _checks_fail_rate(assertions) -> float:
+    """
+    The fraction of individually named checks that did not hold, across
+    every `assertion` event in the run — not the fraction of Assertion
+    *attempts* that came back with one unmet entry among many.
+
+    `opus/mm23-off` (FCC-191 review) is the run this replaced the old
+    reading for: one `assertion` event, `ok: false`, 98 `confirmed` entries
+    and 12 `unmet` ones. Read as one attempt out of one failed, that is
+    100% — the same number a run with 0 of 110 checks passing reports. Read
+    as checks, it is 12/110, about 11%: 89% of what the drawing asked for
+    held, which the whole-batch `ok` boolean cannot say.
+
+    `confirmed` and `unmet` are absent on the `ok: None` event a phase emits
+    when it gave up without writing a check that ran (nothing measured,
+    nothing to count either way) and on the envelope's own early failure
+    (`unmet` only, `confirmed` always `[]` there because nothing but the
+    envelope was checked) — `.get(..., ()) or ()` reads both as no checks
+    rather than a crash.
+    """
+    unmet = sum(len(event.data.get("unmet") or ()) for event in assertions)
+    confirmed = sum(len(event.data.get("confirmed") or ()) for event in assertions)
+    total = unmet + confirmed
+    return unmet / total if total else 0.0
+
+
 def measure(path: str) -> Measurement:
     events, truncated = replay(path)
     verdicts = [event for event in events if event.kind == REVIEW_VERDICT]
@@ -96,7 +135,7 @@ def measure(path: str) -> Measurement:
                              if event.kind == TRAP_APPROVED),
         traps_declined=tuple(event.data.get("description") for event in events
                              if event.kind == TRAP_DECLINED),
-        assertion_fail_rate=_fail_rate(assertions, lambda event: event.data.get("ok") is False),
+        assertion_fail_rate=_checks_fail_rate(assertions),
         review_fail_rate=_fail_rate(verdicts, lambda event: event.data.get("verdict") == "fail"),
     )
 

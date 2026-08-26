@@ -8,6 +8,8 @@ rather than invented.
 import json
 import os
 
+import pytest
+
 from core.events import EventStream
 from core.loop import Budgets, run
 from core.measure import Measurement, compare, measure
@@ -238,3 +240,49 @@ def test_compare_reports_the_assertion_and_review_fail_rates():
 
     assert _cells(table, "assertion fail rate") == ["0.0%", "0.0%"]
     assert _cells(table, "review fail rate") == ["0.0%", "50.0%"]
+def test_assertion_fail_rate_counts_named_checks_not_whole_batches(tmp_path):
+    """
+    `opus/mm23-off` (FCC-191 review): one `assertion` event, `ok: false`,
+    98 `confirmed` entries and 12 `unmet` ones — 110 named checks, 89% of
+    them held. The event-level reading was `1/1 = 100%`; counting checks
+    instead reads the same run as ~10.9% failed, not a total loss.
+    """
+    from core.events import ASSERTION, EventStream
+
+    events = EventStream()
+    events.emit(ASSERTION, ok=False, code="checks()",
+                confirmed=["check %d" % i for i in range(98)],
+                uncovered=[], traceback="AssertionError",
+                unmet=["check %d" % i for i in range(98, 110)])
+
+    log_path = str(tmp_path / "run.jsonl")
+    with open(log_path, "w", encoding="utf-8") as handle:
+        handle.write(events.as_log())
+
+    result = measure(log_path)
+
+    assert result.assertion_fail_rate == pytest.approx(12 / 110)
+
+
+def test_assertion_fail_rate_counts_named_checks_not_whole_batches(tmp_path):
+    """
+    `opus/mm23-off` (FCC-191 review): one `assertion` event, `ok: false`,
+    98 `confirmed` entries and 12 `unmet` ones — 110 named checks, 89% of
+    them held. The event-level reading was `1/1 = 100%`; counting checks
+    instead reads the same run as ~10.9% failed, not a total loss.
+    """
+    from core.events import ASSERTION, EventStream
+
+    events = EventStream()
+    events.emit(ASSERTION, ok=False, code="checks()",
+                confirmed=["check %d" % i for i in range(98)],
+                uncovered=[], traceback="AssertionError",
+                unmet=["check %d" % i for i in range(98, 110)])
+
+    log_path = str(tmp_path / "run.jsonl")
+    with open(log_path, "w", encoding="utf-8") as handle:
+        handle.write(events.as_log())
+
+    result = measure(log_path)
+
+    assert result.assertion_fail_rate == pytest.approx(12 / 110)
