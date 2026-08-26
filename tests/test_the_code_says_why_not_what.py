@@ -7,7 +7,7 @@ this test was written, `core` alone carried 921 comment lines, 237 of them in
 multi-line blocks, and 71 mentions of a ticket id — commit messages copied into
 source, where the next reader cannot tell which of them the code still obeys.
 
-The rule is in `CLAUDE.md`. This test is here because the rule was already
+The rule is in `AGENTS.md`. This test is here because the rule was already
 written down once, in the global agent config, and every review since `906002a`
 found it broken again: an agent reads the instruction once and reads the
 surrounding code every time it writes a line. The surrounding code has to agree
