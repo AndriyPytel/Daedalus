@@ -561,6 +561,35 @@ the disagreement is the thing that has to survive, not your latest opinion.
 Reply with a fragment, keyed the same way: a feature you are adding to carries
 its `id` and only the fields you are filling in.
 
+## Naming from a closed vocabulary
+
+Feature `id`: `<kind>-<place>` where kind is one of (hole, bore, slot, pocket,
+cutout, pad, fillet, chamfer, boss, rib, thread, counterbore, countersink,
+groove, notch, tab, lug, ear, flange, step, shoulder) and place is one or two
+of (left, right, front, rear, top, bottom, upper, lower, centre, inner, outer).
+Use the drawing's region name (arm, ear, web) when it names one. Append `-4x`
+for a repeated feature.
+
+Datum `name`: one of (the left end face, the right end face, the front face,
+the rear face, the top face, the bottom face, the ring axis, the bore axis,
+the centre plane, the longitudinal centre plane, the transverse centre plane).
+
+Envelope key: one of (length, width, height, depth front to rear, depth left
+to right, thickness).
+
+## Unifying feature names across pages
+
+**Reconciliation turn** (`the_part_as_you_described_it` present, no pictures):
+unify feature synonym pairs via `superseded_by`. Datums and envelope use the
+closed vocabularies and need no action here.
+
+Two features are synonyms when they have the same kind, overlapping position
+datums, same axis if any, and overlapping `seen_in`. Pick the canonical id
+(prefer one on both pages, then one matching a callout, then alphabetically
+first). If all values match, add `"superseded_by": "<canonical id>"` to the
+duplicate. If any value differs, raise a `conflicts` entry instead — never
+supersede when values differ.
+
 ## What the run was asked for
 
 `intent` is on every turn — the first pass at the sheet and every re-read after
