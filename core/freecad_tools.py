@@ -223,6 +223,35 @@ def _active_view(document=None):
         return None
 
 
+def _scaffolding(obj):
+    """
+    Whether *obj* is a Shape past `_SCAFFOLDING` — an Origin plane or axis,
+    almost always — the same test `_measurable` makes for the reporting path,
+    kept separate here because `fit_view` only cares about the oversized
+    case: an object with no `Shape` at all, or one with no `Faces`, is not
+    scaffolding, just not a solid, and hiding it would change what the
+    camera fits to for no reason.
+    """
+    shape = getattr(obj, "Shape", None)
+    if shape is None or shape.isNull():
+        return False
+    bound = shape.BoundBox
+    return bound.isValid() and bound.DiagonalLength > _SCAFFOLDING
+
+
+def _hide_scaffolding(document):
+    hidden = []
+    for obj in document.Objects:
+        if not _scaffolding(obj):
+            continue
+        view_object = getattr(obj, "ViewObject", None)
+        if view_object is None or not view_object.Visibility:
+            continue
+        view_object.Visibility = False
+        hidden.append(view_object)
+    return hidden
+
+
 def fit_view(document=None):
     """
     Put everything the Document shows back inside the viewport.
@@ -239,6 +268,29 @@ def fit_view(document=None):
     reads whichever MDI tab is in front, which is wrong the moment two
     Documents are open and the user is looking at the other one.
 
+    A Body's Origin carries three planes and three axes, each 1e100 mm
+    across, and `view.fitAll()` is a raw Coin3D call: it fits the camera to
+    the bounding box of everything currently visible, with no filter of its
+    own. One visible Origin feature is enough to turn "fit the part in the
+    viewport" into "fit a plane 1e100 mm across", at which point a
+    millimetre- or centimetre-scale part is a speck nothing can see. An
+    Origin plane ends up visible in the first place when a sketch is
+    attached or edited programmatically — the path a generated Step takes —
+    rather than through the GUI's own attachment editor, which is what
+    normally re-hides it. Anything past `_SCAFFOLDING` — the same threshold
+    `_measurable` already applies to the reporting path — is hidden before
+    `fitAll()` runs and shown again
+    straight after, each object's own prior `Visibility` restored rather than
+    blanket-set, so scaffolding the user had already hidden themselves stays
+    hidden; a `document` with no `Objects` to check (the `None` default, read
+    here only) leaves this skipped and `fitAll()` as bare as it always was.
+    This runs after `_transaction` has already committed or raised (never
+    inside the open transaction, so a rolled-back Step never touches
+    visibility at all), and the hide/restore happens inside one call, so
+    nothing outlives a raised exception or a rollback to leave a stale
+    `Visibility` behind — undo not tracking `ViewObject` properties is moot
+    here because none of this survives past the `finally`.
+
     Orientation is left alone. Which way the part is turned is the user's
     choice, and nothing here is a better one.
 
@@ -247,7 +299,12 @@ def fit_view(document=None):
     view = _active_view(document)
     if view is None:
         return
-    view.fitAll()
+    hidden = _hide_scaffolding(document) if document is not None and hasattr(document, "Objects") else []
+    try:
+        view.fitAll()
+    finally:
+        for view_object in hidden:
+            view_object.Visibility = True
 
 
 def capture_review_views(paths, document=None, size=(800, 600)):
