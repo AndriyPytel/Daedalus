@@ -2506,6 +2506,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
         from. The headless FreeCAD behind each Session's own Preflight Worker
         is this panel's child process and goes with it.
 
+        A question is not the only thing a run parks on. A Step in flight is
+        inside `core.apply.on_main_thread`, waiting on a job only this thread's
+        event loop can take — and this thread is here, not pumping it. Nothing
+        would take that job, so `core.apply.closing()` comes first: it releases
+        every dispatch already waiting and refuses the ones the unwinding run
+        makes on its way out. Without it the wait below expires and a thread in
+        the middle of the Document is ended from outside.
+
         Every worker is told to stop before any thread is waited on
         (FCC-181): a Session parked on a question blocks its own thread until
         released, and waiting on one before releasing the next would serialise
@@ -2520,6 +2528,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         the grace period here is the only chance it gets to finish on its
         own before this panel stops tracking it.
         """
+        from core.apply import closing
+
+        closing()
         FreeCAD.removeDocumentObserver(self)
         for bundle in self._workers.values():
             bundle.worker.stop()

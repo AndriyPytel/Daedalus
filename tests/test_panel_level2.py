@@ -1045,6 +1045,57 @@ def test_the_transcript_follows_the_run_when_it_is_at_the_bottom(panel):
     assert bar.value() == bar.maximum(), "the transcript stopped following a live run"
 
 
+def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessions_are_the_tests_own):
+    """
+    The second way a worker blocks, and the one that hung FreeCAD again after
+    the Plan Gate below was released.
+
+    A Step in flight parks its thread inside `core.apply.on_main_thread`,
+    waiting on a job only the GUI event loop can take. `_cleanup_thread` runs
+    on that thread and waits on the worker instead of pumping it, so the job
+    is never taken: the worker sits out `DISPATCH_TIMEOUT`, and what
+    `_cleanup_thread` reaches for is `terminate()` on a thread in the middle
+    of the Document.
+
+    Same shape as the Plan Gate test: the shutdown runs in its own daemon
+    thread and this one never pumps events, because a wait that does not
+    return is what is being measured.
+    """
+    import threading
+
+    import core.apply
+    from conftest import QtCore
+    from ui.copilot_panel import CopilotPanel
+
+    built = CopilotPanel()
+    parked = threading.Event()
+
+    def _dispatch_and_block():
+        parked.set()
+        try:
+            core.apply.on_main_thread(lambda: "the Document")
+        except Exception:
+            pass
+
+    blocked = QtCore.QTimer()
+    blocked.moveToThread(built.thread)
+    blocked.setSingleShot(True)
+    blocked.timeout.connect(_dispatch_and_block, QtCore.Qt.DirectConnection)
+    QtCore.QMetaObject.invokeMethod(blocked, "start", QtCore.Qt.QueuedConnection,
+                                    QtCore.Q_ARG(int, 0))
+    assert parked.wait(5), "the timer on built.thread never asked for the main thread"
+
+    done = threading.Event()
+    try:
+        threading.Thread(target=lambda: (built._cleanup_thread(), done.set()),
+                         daemon=True).start()
+
+        assert done.wait(5), "shutdown is still waiting on a Document operation in flight"
+        assert not built.thread.isRunning(), "the worker thread outlived the panel"
+    finally:
+        core.apply._closing.clear()
+
+
 def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_the_tests_own):
     """
     A run parked on the Plan Gate blocks its thread on an Event. `quit()` does
