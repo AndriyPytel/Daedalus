@@ -248,12 +248,20 @@ def _mock_no_stored_model(monkeypatch):
     The developer's own machine has a real stored model, in real FreeCAD
     settings, that has nothing to do with `_TWO_PROVIDERS` below — read it
     back and `_refresh_models` reaches for `_retire_model`, which would
-    overwrite that real setting with one of this test's fake ids.
+    overwrite that real setting with one of this test's fake ids. Both
+    setters are stubbed for the same reason, and the list of what the panel
+    stored is handed back to whoever wants to assert on it.
     """
     from utils import settings_manager
 
-    monkeypatch.setattr(settings_manager.instance(), "get_last_model", lambda: "")
-    monkeypatch.setattr(settings_manager.instance(), "get_profile_model", lambda profile: "")
+    settings = settings_manager.instance()
+    written = []
+    monkeypatch.setattr(settings, "get_last_model", lambda: "")
+    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "")
+    monkeypatch.setattr(settings, "set_profile_model",
+                        lambda profile, model_id: written.append((profile, model_id)))
+    monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
+    return written
 
 
 def test_the_composer_carries_the_effort_in_force(panel):
@@ -334,6 +342,40 @@ def test_picking_a_model_on_one_profile_leaves_the_other_alone(panel, monkeypatc
         assert written == [("thinking", "claude-opus-4")]
     finally:
         panel._active_profile = "doing"
+
+
+def test_the_model_the_pill_falls_back_to_is_the_model_the_run_gets(panel, monkeypatch):
+    """
+    Nothing stored: the pill shows the first model on offer, and a run built
+    from settings must find that same one. Drawn and not stored, the panel
+    names a model while `llm.client_from_profiles` raises "No model
+    selected. Configure API keys in Preferences." over an addon whose only
+    provider needs no key at all.
+    """
+    written = _mock_no_stored_model(monkeypatch)
+
+    panel._refresh_models(_TWO_PROVIDERS)
+
+    assert panel._current_model_id == "gpt-4o"
+    assert written == [(panel._active_profile, "gpt-4o")]
+
+
+def test_the_profile_never_edited_still_has_the_model_the_other_was_given(panel, monkeypatch):
+    """
+    A run builds a client per profile, so a model stored on the profile the
+    composer happened to be on leaves the other with none. The shared
+    fallback `get_profile_model` reads is written too, which is what makes
+    one pick answer both profiles.
+    """
+    from utils import settings_manager
+
+    _mock_no_stored_model(monkeypatch)
+    shared = []
+    monkeypatch.setattr(settings_manager.instance(), "set_last_model", shared.append)
+
+    panel._on_model_selected("claude-opus-4")
+
+    assert shared == ["claude-opus-4"]
 
 
 def test_a_model_that_cannot_reason_is_not_offered_the_choice(panel, monkeypatch):
@@ -422,12 +464,7 @@ def test_a_picker_with_more_models_than_room_scrolls_inside_itself(panel, monkey
 
 
 def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypatch):
-    from utils import settings_manager
-
-    _mock_no_stored_model(monkeypatch)
-    written = []
-    monkeypatch.setattr(settings_manager.instance(), "set_profile_model",
-                        lambda profile, model_id: written.append((profile, model_id)))
+    written = _mock_no_stored_model(monkeypatch)
 
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
@@ -440,7 +477,7 @@ def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypa
     assert not panel.model_selector.isVisible()
     assert panel._current_model_id == "claude-opus-4"
     assert panel.model_button.text() == "Claude Opus 4"
-    assert written == [(panel._active_profile, "claude-opus-4")]
+    assert written[-1] == (panel._active_profile, "claude-opus-4")
 
 
 def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkeypatch):
@@ -671,6 +708,7 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
     monkeypatch.setattr(settings, "get_default_model", lambda: "gpt-4o")
     monkeypatch.setattr(settings, "set_profile_model",
                         lambda profile, model_id: written.append(model_id))
+    monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
@@ -689,6 +727,7 @@ def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, mon
     monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-5.6-sol")
     monkeypatch.setattr(settings, "get_default_model", lambda: "")
     monkeypatch.setattr(settings, "set_profile_model", lambda profile, model_id: None)
+    monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 

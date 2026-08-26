@@ -1148,6 +1148,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         Read for whichever profile the toggle is on, so a switch between
         `thinking` and `doing` shows that profile's own model rather than
         the one last edited.
+
+        A fallback is stored as well as shown: the run reads the setting and
+        not the pill, so a first model only drawn there is a model the run
+        cannot find.
         """
         if models is None:
             models = provider_manager.instance().get_available_models()
@@ -1167,6 +1171,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
                 entry = next((m for m in models if m["id"] == fallback_id), None)
         if entry is None:
             entry = models[0]
+            self._store_model(entry["id"])
 
         self._set_current_model(entry["id"], entry["display"])
 
@@ -1220,7 +1225,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         settings = settings_manager.instance()
         fallback = settings.get_default_model() or self._models[0]["id"]
-        settings.set_profile_model(self._active_profile, fallback)
+        self._store_model(fallback)
         self._queue_widget.now(
             "%s is no longer offered by its provider — switched to %s."
             % (model_id, fallback))
@@ -1254,9 +1259,24 @@ class CopilotPanel(QtWidgets.QDockWidget):
     def _open_model_selector(self):
         self.model_selector.open_at(self._models, self.model_button)
 
+    def _store_model(self, model_id: str):
+        """
+        Where a chosen model is kept: on the profile the composer is editing,
+        and on the shared fallback both profiles read when they have none of
+        their own (`settings_manager.get_profile_model`).
+
+        Both, because a run builds a client per profile: stored only on the
+        one being edited, the profile the user never toggled to has no model
+        at all, and `get_llm_credentials` answers a panel that plainly names
+        one with "No model selected".
+        """
+        settings = settings_manager.instance()
+        settings.set_profile_model(self._active_profile, model_id)
+        settings.set_last_model(model_id)
+
     def _on_model_selected(self, model_id: str):
         """Drops the client so the next send rebuilds it from settings."""
-        settings_manager.instance().set_profile_model(self._active_profile, model_id)
+        self._store_model(model_id)
         if getattr(self, "worker", None):
             self.worker.client = None
         entry = next((m for m in self._models if m["id"] == model_id), None)
