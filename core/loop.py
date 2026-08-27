@@ -2003,8 +2003,8 @@ class Looks:
         """
         Write one describe_type answer to disk, atomically.
 
-        Two runs at once (tools/ab_run.py) both write; unique temporary file
-        name plus os.replace makes last-write-wins safe.
+        Concurrent runs both write; a unique temporary name plus os.replace
+        makes last-write-wins safe.
         """
         if not self._cache_path or name != "describe_type":
             return
