@@ -61,7 +61,8 @@ from core.design import (
     read_off_the_wrong_view, render, said_at,
 )
 from core.loop import (
-    PROMPTS, Budgets, prompt, revisions_ceiling, run,
+    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
+    revisions_ceiling, run,
 )
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
@@ -437,8 +438,11 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
     ], attachments=[RENDER_PNG])
 
     with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
-        expected = handle.read().strip().replace(
-            "{{traps}}", "\n".join("- " + trap for trap in TRAPS))
+        phase_body = handle.read().strip()
+    sections = _language_sections()
+    vocabulary = "\n\n".join(sections[heading] for heading in _PHASE_VOCABULARY[phase])
+    expected = ("%s\n\n%s" % (phase_body, vocabulary)).replace(
+        "{{traps}}", "\n".join("- " + trap for trap in TRAPS))
 
     assert _system_messages(llm)[turn] == expected
 
@@ -799,7 +803,7 @@ def test_a_fraction_of_a_named_overall_is_a_value_on_equal_terms_with_millimetre
     assert "a fraction of a named overall" in design_system
     assert "a fraction is a full record, not a fallback" in design_system
     assert "Never stop to ask for dimensions" in design_system
-    assert "Exactly one assumption in the whole model" in design_system
+    assert "Exactly one assumption in the whole description" in design_system
 
 
 def test_the_datum_and_the_flag_reach_the_checks_without_anyone_rewriting_them():
@@ -8387,6 +8391,83 @@ def test_a_bare_string_step_is_unaffected_by_the_op_check():
     assert steps == ["Pad the base profile 6 mm"]
     assert ops == [None]
     assert unbuildable == []
+
+def test_a_closed_step_written_in_ukrainian_is_refused():
+    """
+    ADR-0026/FCC-234: the vocabulary `config/prompts/language.md` holds is
+    closed to one language as much as to one set of verbs, under the same
+    `"op_vocabulary": "closed"` marker `_steps_of` already gates the 36-op
+    check with.
+    """
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Виконати паз шириною 6 мм", "op": "pocket",
+          "satisfies": ["envelope \u2192 depth: 10 mm (read)"]}],
+        CLOSED_OPS)
+
+    assert steps == []
+    assert satisfies == []
+    assert ops == []
+    assert len(unbuildable) == 1
+    assert "English" in unbuildable[0]["why"]
+
+
+def test_a_closed_step_written_in_english_is_unaffected_by_the_language_check():
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Pocket a 6 mm slot", "op": "pocket"}], CLOSED_OPS)
+
+    assert steps == ["Pocket a 6 mm slot"]
+    assert unbuildable == []
+
+
+def test_a_closed_step_with_domain_symbols_is_not_mistaken_for_ukrainian():
+    """
+    None of Ø, an em dash or a degree sign is Cyrillic — `Ø40 bore` is
+    ordinary English in this domain and must never be refused for language.
+    """
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Drill a Ø40 bore — 30° chamfer both ends", "op": "hole"}],
+        CLOSED_OPS)
+
+    assert steps == ["Drill a Ø40 bore — 30° chamfer both ends"]
+    assert unbuildable == []
+
+
+def test_a_closed_step_with_one_cyrillic_label_is_not_refused():
+    """
+    A false positive here costs a Plan that was fine: a Step is Ukrainian
+    when Cyrillic outnumbers Latin in its prose, not when it carries a
+    single Cyrillic character — a label or a part name copied from the
+    Intent in the user's own words.
+    """
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Pad the profile 6.5 mm, label it Профіль",
+          "op": "pad"}],
+        CLOSED_OPS)
+
+    assert steps == ["Pad the profile 6.5 mm, label it Профіль"]
+    assert unbuildable == []
+
+
+def test_an_unmarked_reply_takes_the_legacy_path_for_language_too():
+    """The same legacy escape the op check gets (FCC-233) applies here: a
+    Plan predating the closed vocabulary marker is never refused for
+    language, whatever it is written in."""
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Виконати паз шириною 6 мм", "op": "pocket"}], None)
+
+    assert steps == ["Виконати паз шириною 6 мм"]
+    assert unbuildable == []
+
 
 
 def test_the_op_vocabulary_is_36_verbs_the_32_reachable_plus_four():

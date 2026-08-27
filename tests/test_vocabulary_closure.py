@@ -17,18 +17,24 @@ import re
 DESIGN_MD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                           "config", "prompts", "design.md")
 PROMPTS_DIR = os.path.dirname(DESIGN_MD)
+LANGUAGE_MD = os.path.join(PROMPTS_DIR, "language.md")
 VOCABULARY_KINDS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                  "recorded", "vocabulary_kinds.json")
 
 
-def _design_md():
-    with open(DESIGN_MD, encoding="utf-8") as f:
+def _vocabulary_md():
+    with open(LANGUAGE_MD, encoding="utf-8") as f:
         return f.read()
 
 
 def _naming_section(text):
+    """
+    The closed `kind`/`id`/datum/envelope vocabulary. It lives in
+    `language.md` now (ADR-0026, FCC-234), composed into `design.md` by
+    `core.loop.prompt` rather than written there a second time.
+    """
     start = text.index("## Naming from a closed vocabulary")
-    end = text.index("## Unifying feature names across pages")
+    end = text.index("## The operation is one of 36")
     return text[start:end]
 
 
@@ -105,7 +111,7 @@ def test_the_kind_vocabulary_covers_all_but_six_of_410_features():
     each one named. `docs/research/ste-vocabulary-closure.md` §2c names the
     same six — two `material specification` entries, one reference region,
     and three snap-latch features no kind names cleanly."""
-    kinds, synonyms = _kind_vocabulary(_naming_section(_design_md()))
+    kinds, synonyms = _kind_vocabulary(_naming_section(_vocabulary_md()))
 
     with open(VOCABULARY_KINDS, encoding="utf-8") as f:
         corpus = json.load(f)
@@ -124,7 +130,7 @@ def test_no_word_appears_in_two_of_designs_bare_vocabularies():
     """`ear` is the fixture: before FCC-231 it named a closed `kind` and,
     two lines later, a region-name example — the same word a term and not a
     term at once."""
-    lists = _bare_word_lists(_naming_section(_design_md()))
+    lists = _bare_word_lists(_naming_section(_vocabulary_md()))
 
     seen = {}
     duplicates = {}
@@ -162,6 +168,6 @@ def test_core_design_feature_kind_matches_the_prompts_own_list():
     """
     from core.design import FEATURE_KIND
 
-    kinds, _ = _kind_vocabulary(_naming_section(_design_md()))
+    kinds, _ = _kind_vocabulary(_naming_section(_vocabulary_md()))
 
     assert tuple(kinds) == FEATURE_KIND

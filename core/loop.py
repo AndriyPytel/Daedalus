@@ -104,6 +104,23 @@ OP_VERBS = (
 
 OP_VOCABULARY = "closed"
 
+_CYRILLIC = re.compile(r"[\u0400-\u04FF]")
+_LATIN_LETTER = re.compile(r"[A-Za-z]")
+
+
+def _not_english(prose):
+    """
+    True where Cyrillic outnumbers Latin in a Step's prose — a whole Step
+    written in Ukrainian, not a Latin sentence carrying one Cyrillic proper
+    noun a user typed into the Intent (a label, a part name). Counting
+    rather than merely detecting one Cyrillic character is what tells
+    `\"Pad the profile 6.5 mm, label it \u041f\u0440\u043e\u0444\u0456\u043b\u044c\"`
+    apart from a Step actually written in Ukrainian: refusing the first
+    would cost a Plan that was fine over a name it did not invent.
+    """
+    cyrillic = len(_CYRILLIC.findall(prose))
+    return cyrillic > 0 and cyrillic > len(_LATIN_LETTER.findall(prose))
+
 
 class PhaseError(Exception):
     """A phase gave back something the loop cannot act on."""
@@ -472,6 +489,24 @@ class LoopResult:
 PROMPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        "config", "prompts")
 
+_LANGUAGE_PATH = os.path.join(PROMPTS, "language.md")
+
+_LANGUAGE_HEADINGS = (
+    "Naming from a closed vocabulary",
+    "The operation is one of 36",
+    "A Step is one sentence",
+    "The artefacts are English",
+)
+
+_PHASE_VOCABULARY = {
+    DESIGN_PHASE: ("Naming from a closed vocabulary", "The artefacts are English"),
+    PLAN_PHASE: ("The operation is one of 36", "A Step is one sentence",
+                 "The artefacts are English"),
+    EXECUTE_PHASE: ("The operation is one of 36", "The artefacts are English"),
+    ASSERTION_PHASE: ("The artefacts are English",),
+    REVIEW_PHASE: ("The artefacts are English",),
+}
+
 _TRAPS_PLACEHOLDER = "{{traps}}"
 
 _CUT_OFF_ATTEMPTS = 3
@@ -480,17 +515,48 @@ _CUT_OFF_ATTEMPTS = 3
 _LEDGER_HEADING = "This run has already failed these ways:"
 
 
+def _language_sections():
+    """
+    `config/prompts/language.md` split at its own `## ` headings, each
+    section keyed by heading text — the unit `_PHASE_VOCABULARY` composes
+    from, so a phase gets the sections it uses and nothing it does not.
+    """
+    with open(_LANGUAGE_PATH, encoding="utf-8") as handle:
+        text = handle.read()
+    marks = sorted((text.index("## " + heading), heading)
+                   for heading in _LANGUAGE_HEADINGS)
+    sections = {}
+    for i, (start, heading) in enumerate(marks):
+        end = marks[i + 1][0] if i + 1 < len(marks) else len(text)
+        sections[heading] = text[start:end].strip()
+    return sections
+
+
 def prompt(phase, ledger=""):
     """
-    A phase's system prompt, read from `config/prompts/<phase>.md`.
+    A phase's system prompt, read from `config/prompts/<phase>.md` and
+    composed with the sections of the shared vocabulary, `config/prompts/
+    language.md` (ADR-0026, FCC-234), that phase actually uses —
+    `_PHASE_VOCABULARY` names which: Design invents `kind`/datum/envelope
+    names and writes English prose, so it gets naming and the English rule;
+    Plan and Execute write and check an `op`, so they get the 36-verb
+    section, and Plan also gets the sentence rules since it is the phase
+    that writes the Steps those rules and the English-only check bind;
+    Assertion and Review write English verdicts and nothing else language.md
+    defines, so English is all either needs. The vocabulary lives once, in
+    one file, one heading per closed list — a phase composing only some of
+    those headings is still reading its one source of truth, not a copy of
+    it. Appended after the phase's own body rather than before it, so a
+    phrase such as design.md's "the closed vocabulary below" still points at
+    something below it in the composed prompt.
 
     Read per turn rather than at import: the addon installs as a plain source
     tree, so editing a prompt file takes effect on the next run. A missing file
     raises — a silently empty system prompt is the worse failure.
 
-    The traps are the one thing not in the file. They are knowledge about a
+    The traps are the one thing not in either file. They are knowledge about a
     specific FreeCAD build, not copy to tune, so they stay in code and land at
-    the placeholder the file chooses.
+    the placeholder the phase file chooses.
 
     `ledger` is this *run's* traps rather than this build's: `Ledger.render()`
     (`core/ledger.py`), appended after the file rather than placed at a
@@ -502,6 +568,9 @@ def prompt(phase, ledger=""):
     """
     with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
         body = handle.read().strip()
+    sections = _language_sections()
+    vocabulary = "\n\n".join(sections[heading] for heading in _PHASE_VOCABULARY[phase])
+    body = "%s\n\n%s" % (body, vocabulary)
     body = body.replace(_TRAPS_PLACEHOLDER, "\n".join("- " + trap for trap in TRAPS))
     if ledger:
         body = "%s\n\n%s\n%s" % (body, _LEDGER_HEADING, ledger)
@@ -1329,6 +1398,15 @@ def _steps_of(planned, op_vocabulary=None):
     `satisfies` too, so the ordinary coverage check is what sends it back
     through Plan again — no second `unbuildable` code path was written for a
     case the first one already covers.
+
+    A Step written in Ukrainian is refused the same way, under the same
+    marker: the vocabulary is closed to one language as much as to one set
+    of verbs, and Ukrainian stays the language of the Intent and of the
+    conversation that produced it, never of a Step (ADR-0026, `config/
+    prompts/language.md`). "Written in Ukrainian" is `_not_english`'s own
+    call, not one Cyrillic character in an otherwise English sentence — a
+    label or a part name a user typed in the Intent is not what this
+    refuses.
     """
     steps, satisfies, cites, ops, unbuildable = [], [], [], [], []
     closed = op_vocabulary == OP_VOCABULARY
@@ -1345,6 +1423,11 @@ def _steps_of(planned, op_vocabulary=None):
         if closed and op and op not in OP_VERBS:
             unbuildable.append({"step": prose,
                                 "why": "%r is not one of the 36 approved operations" % op,
+                                "entries": cited})
+            continue
+        if closed and _not_english(prose):
+            unbuildable.append({"step": prose,
+                                "why": "is not written in English",
                                 "entries": cited})
             continue
         steps.append(prose + (" (satisfies: %s)" % ", ".join(_in_the_prose(entry)

@@ -13,6 +13,7 @@ import re
 
 PLAN_MD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        "config", "prompts", "plan.md")
+LANGUAGE_MD = os.path.join(os.path.dirname(PLAN_MD), "language.md")
 
 
 def _plan_md():
@@ -20,9 +21,19 @@ def _plan_md():
         return f.read()
 
 
+def _language_md():
+    with open(LANGUAGE_MD, encoding="utf-8") as f:
+        return f.read()
+
+
 def _op_section(text):
+    """
+    The closed `op` vocabulary. It lives in `language.md` now (ADR-0026,
+    FCC-234), composed into `plan.md` by `core.loop.prompt` rather than
+    written there a second time.
+    """
     start = text.index("## The operation is one of 36")
-    end = text.index("## One entry of the description is one Step")
+    end = text.index("## A Step is one sentence")
     return text[start:end]
 
 
@@ -32,7 +43,7 @@ def _op_vocabulary(section):
 
 
 def test_the_op_vocabulary_is_36_entries_with_no_other_escape_hatch():
-    ops = _op_vocabulary(_op_section(_plan_md()))
+    ops = _op_vocabulary(_op_section(_language_md()))
 
     assert len(ops) == 36
     assert "other" not in ops
@@ -54,7 +65,7 @@ def test_core_loop_op_verbs_matches_the_prompts_own_list():
     """
     from core.loop import OP_VERBS
 
-    ops = _op_vocabulary(_op_section(_plan_md()))
+    ops = _op_vocabulary(_op_section(_language_md()))
 
     assert tuple(ops) == OP_VERBS
 

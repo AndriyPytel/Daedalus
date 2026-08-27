@@ -53,28 +53,6 @@ checks what it selected against that number and fails the Step where the two
 differ, and a count nobody stated is a count nothing can check: a filter that
 reaches eight of the twelve rounds eight and reports the Step applied.
 
-## The operation is one of 36
-
-Every reply carries `"op_vocabulary": "closed"` at the top level, and every
-Step carries an `op` naming what it does, one of (pad, revolve,
-additive-loft, additive-sweep, additive-helix, additive-primitive, pocket,
-hole, groove, subtractive-loft, subtractive-sweep, subtractive-helix,
-subtractive-primitive, fillet, chamfer, draft, thickness, mirror,
-linear-pattern, polar-pattern, multi-transform, scale, sketch, datum-plane,
-datum-line, datum-point, local-coordinate-system, sub-shape-binder, body,
-fuse, cut, common, thread, extend, trim, offset). No `other`: a Step needing
-an operation off this list is refused rather than built out of whichever one
-is nearest, and comes back to you naming the verb it could not place.
-
-A thread is a `hole` whose prose gives the thread's own parameters — its
-pitch, its depth, its designation such as M8 x 1.25 — the way any other
-`hole`'s prose gives a diameter and a depth; a helix cut into an existing
-hole's wall is never a Step of its own. A step or a shoulder in the part is
-a `pad` where the material stands proud of the neighbouring face and a
-`pocket` where it is cut back from it — which one depends on which side of
-the step the material is on, never on the word "step" itself, which this
-Plan already uses for something else.
-
 ## One entry of the description is one Step, and every Step says which
 
 `what_the_plan_must_satisfy` is the same description entry by entry, each one

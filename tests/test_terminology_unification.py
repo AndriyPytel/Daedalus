@@ -16,15 +16,20 @@ than silently supersede one.
 import json
 import os
 
+from core import loop
 from core.design import merge
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DESIGN_PROMPT = os.path.join(ROOT, "config", "prompts", "design.md")
 
 
 def _prompt():
-    with open(DESIGN_PROMPT, encoding="utf-8") as f:
-        return f.read()
+    """
+    What Design is actually shown: `design.md` composed with the shared
+    vocabulary, `config/prompts/language.md` (ADR-0026, FCC-234) — the
+    closed lists below moved there and are no longer written a second time
+    in `design.md` itself.
+    """
+    return loop.prompt(loop.DESIGN_PHASE)
 
 
 FEATURE_KINDS = [

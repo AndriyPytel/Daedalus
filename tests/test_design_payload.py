@@ -17,14 +17,15 @@ multi-view sheet no longer takes that call at all.
 
 `FIRST_PASS_CEILING_RATIO` is measured, not chosen: it is the smallest ratio
 that passes the current baselines. Raising it requires re-measurement and a
-stated reason. The current value (1.64) reflects the closed vocabularies in
-`design.md` — feature-id kind-place, datum names, envelope keys, and the
-banned-prose-synonym sentences that keep a region word like `profile` or
-`ring` mapped onto a real `kind` instead of licensed as one — plus, since
-FCC-232 (ADR-0026), the `region` field, the eleven dimension fields, and the
-`kind_vocabulary` marker every reply now carries. That cost buys name
-convergence across pages and a `kind` two readings can actually compare, so
-merge() sees a real disagreement instead of two synonyms passing each other.
+stated reason. The current value (1.65) is what Design's own call is
+charged for the shared vocabulary it actually uses (ADR-0026, FCC-234):
+`core.loop.prompt` composes each phase from the sections of `config/prompts/
+language.md` that phase reads, not the whole file, so Design carries the
+closed-naming section and the English-only rule — it neither writes nor
+checks an `op`, so the 36-verb section and the Step-sentence-rules section
+stay out of its own call. That cost buys name convergence across pages and
+a `kind` two readings can actually compare, so merge() sees a real
+disagreement instead of two synonyms passing each other.
 """
 import json
 import os
@@ -35,7 +36,6 @@ from core import loop, sheet_reader
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELMANIA = os.path.join(ROOT, "tests", "modelmania")
-DESIGN_PROMPT = os.path.join(ROOT, "config", "prompts", "design.md")
 REPORT_PATH = "/tmp/FreeCadCopilot/design_payload_report.json"
 
 ATTACHMENTS = {
@@ -52,24 +52,24 @@ SINGLE_CALL_BASELINE = {
     "model-mania-2024.pdf": 39970,
 }
 
-FIRST_PASS_CEILING_RATIO = 1.64
+FIRST_PASS_CEILING_RATIO = 1.65
 
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 6242, "input_tokens": 23048},
-            {"label": "page 2", "pictures": 14, "total_chars": 6046, "input_tokens": 23786},
+            {"label": "page 1", "pictures": 15, "total_chars": 6242, "input_tokens": 23166},
+            {"label": "page 2", "pictures": 14, "total_chars": 6046, "input_tokens": 23904},
         ],
-        "reconcile": {"total_chars": 39592, "input_tokens": 19515},
-        "total": 66349,
+        "reconcile": {"total_chars": 39592, "input_tokens": 19633},
+        "total": 66703,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7572, "input_tokens": 21355},
-            {"label": "page 2", "pictures": 15, "total_chars": 7475, "input_tokens": 24239},
+            {"label": "page 1", "pictures": 15, "total_chars": 7572, "input_tokens": 21473},
+            {"label": "page 2", "pictures": 15, "total_chars": 7475, "input_tokens": 24357},
         ],
-        "reconcile": {"total_chars": 40311, "input_tokens": 19694},
-        "total": 65288,
+        "reconcile": {"total_chars": 40311, "input_tokens": 19812},
+        "total": 65642,
     },
 }
 
@@ -78,8 +78,14 @@ needs_pymupdf_and_pillow = pytest.mark.skipif(
 
 
 def _design_prompt_tokens():
-    with open(DESIGN_PROMPT, encoding="utf-8") as handle:
-        return len(handle.read()) // CHARS_PER_TOKEN
+    """
+    What Design's own system prompt actually costs per call: `core.loop.
+    prompt`'s composed text (`design.md` plus the shared vocabulary,
+    `language.md`, since FCC-234), not `design.md` read on its own — a first
+    pass that leaves `language.md` out of its own cost is undercounted
+    against the calls it is really measuring.
+    """
+    return len(loop.prompt(loop.DESIGN_PHASE)) // CHARS_PER_TOKEN
 
 
 def _tokens_of(evidence, prompt_tokens):

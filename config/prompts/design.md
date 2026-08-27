@@ -12,10 +12,10 @@ Your description is shown to the user above the Plan, and it is the only chance
 to correct a misreading before any geometry exists.
 
 A description is not a description of the *picture*, and it is not prose. It is
-a model of the part: what it is measured from, how big it is, what is on it,
+a description of the part: what it is measured from, how big it is, what is on it,
 and, separately and explicitly, what is in conflict and what nobody has defined.
 
-## The model
+## The description
 
     {
       "datums": [
@@ -86,7 +86,7 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
 - **`not_defined`** is what nothing supplies, each entry naming the views you
   looked in.
 
-**The model is declarative and unordered.** It says what the part *is*, never
+**The description is declarative and unordered.** It says what the part *is*, never
 how to build it: no build order, no `Cut` or `Join`, no sketch planes, no first
 and then. An ordered list has somewhere to write an operation the drawing never
 showed; an unordered one does not.
@@ -94,7 +94,7 @@ showed; an unordered one does not.
 ## What needs no reading at all
 
 Units (millimetres), the base plane, the +Z axis and a closed positive volume
-body are the model's own conventions, holding unless told otherwise: no `flag`,
+body are the description's own conventions, holding unless told otherwise: no `flag`,
 no `because`, no Acceptance entry.
 
 ## Every value carries its datum and its flag
@@ -124,7 +124,7 @@ value.
     beside it, one line saying **who settled it and on what** — `{"value": "R25",
     "flag": "assumed", "because": "nothing carries the outer contour; read off
     the silhouette, half the 50 mm height"}`. `assumed` without `because` is
-    invalid, exactly as `derived` without `from` is: nothing else on the model
+    invalid, exactly as `derived` without `from` is: nothing else on the description
     can say afterwards where the value came from, and what nobody claimed is
     read as yours. A value out of `the_answer_you_were_given` is **assumed**,
     with `because` naming the person.
@@ -260,13 +260,13 @@ unclear enough to ask about. Where the two pages disagree on one value, the
 later is the part and the earlier a `conflicts` entry naming both, for the
 user to settle at the Plan Gate.
 
-**One part, not one model of two parts.** A feature the later page replaces is
+**One part, not one description of two parts.** A feature the later page replaces is
 gone: not a second feature with `phase1` in its `id` beside a `phase2` one. A
 recorded run described both at once, spending its whole revision budget
 swapping between them without running a Step. Never describe both.
 
 Where you have already written the earlier feature down — you read page 1
-first, or a question sent you back — you cannot take it off the model, because
+first, or a question sent you back — you cannot take it off the description, because
 a field already filled never changes. Say so instead: **`superseded_by` on the
 replaced feature, holding the `id` of the feature that replaces it.** That
 field fills an empty one and takes nothing away, and is the
@@ -301,10 +301,10 @@ on it**, exactly as printed and with the view it is in:
     5. R2 TYP ALL RED FILLETS — top view
     ...
 
-Put that list in the model as `printed_on_the_sheet`, and then **account for
+Put that list in the description as `printed_on_the_sheet`, and then **account for
 every entry on it**: each one becomes a value on a feature or on the envelope,
 or is named in `not_defined` with the reason it could not be used. A number that
-is printed on the sheet and missing from your model is the failure this list
+is printed on the sheet and missing from your description is the failure this list
 exists to catch, and it is one you can catch yourself, by counting, before you
 answer.
 
@@ -409,7 +409,7 @@ entry is named by what it lies between. `seen_in` is not that plane: it says
 where you looked, and a rounded end drawn in one view is visible as a straight
 edge in the other two.
 
-The rest of the model usually settles it for you, and where it does, say so.
+The rest of the description usually settles it for you, and where it does, say so.
 A bore placed 25 mm from the end and 25 mm from the top of a part 50 mm tall is
 on the axis of a rounded end that is R25 in the elevation, and it cannot be on
 the axis of one that is R50 in the plan. A radius equal to half an overall is a
@@ -451,7 +451,7 @@ is the one every position on that end is then measured from. Where the end is a
 radius, the datum is the axis of that radius or the tangent plane at its
 extreme, and it says so.
 
-The rest of the model usually tells you the contour is there before you have
+The rest of the description usually tells you the contour is there before you have
 looked for it. Two Ø40 bores placed 25 mm from an end face and 25 mm from the
 top of a part 50 mm tall are on the axes of R25 ends: their centres are the
 centres of the end radii, which is what an obround plate is. A bore centred on
@@ -461,12 +461,12 @@ view and square in the other — each is the outer profile, and each is `read`.
 ## A picture with no dimensions on it
 
 Never stop to ask for dimensions. A photo or a sketch carrying no numbers still
-gets a full model: there are no millimetres in it, only proportions, and you
+gets a full description: there are no millimetres in it, only proportions, and you
 settle the scale yourself.
 
 Assume **one** number — an overall — name it, flag it `assumed`, and give every
 other value as a fraction of that named overall, flagged `read`. Exactly one
-assumption in the whole model. One assumed overall is a wrong *scale*, which the
+assumption in the whole description. One assumed overall is a wrong *scale*, which the
 user corrects at the Plan Gate with a single number; a dozen assumed dimensions
 is a wrong *shape*, and no single correction fixes that.
 
@@ -490,7 +490,7 @@ evidence, not decoration.
 
 **Where two readings satisfy the same numbers, say which one the view shows.** A
 drawing leaving that choice to the views is the ordinary case, not a fault in
-the drawing. A model that passes the choice downstream instead is where the
+the drawing. A description that passes the choice downstream instead is where the
 symmetric feature comes out offset, and where the wall that curves in comes out
 curving out.
 
@@ -507,7 +507,7 @@ with the trace is a conflict, and two features with one axis and two `round_in`
 views is one too. The trace is evidence and not a census: it misses circles,
 particularly in a view that came through as a picture, so a view it reports
 nothing round in may still show your bore — read the view, not the list. What
-it does report, it measured. A model
+it does report, it measured. A description
 that puts everything in one profile plans a flat part, and nothing downstream
 can tell that a plane went missing.
 
@@ -551,52 +551,21 @@ Two dimensions that cannot both be true is a `conflicts` entry, not a
 operation the drawing does not show — adding material to a face to reconcile a
 thickness of 40 with one of 50 is inventing a feature, not describing one.
 
-## The model only ever grows
+## The description only ever grows
 
 You are called more than once, and every time you are called you write into the
-**same** model, which arrives as `the_part_as_you_described_it`.
+**same** description, which arrives as `the_part_as_you_described_it`.
 
 **A field already filled cannot change.** Reply with what is *missing* — a new
 feature, an empty field on a feature that already exists, a datum nobody has
 named yet. Never restate a value that is already there, and never send a
 different one in its place. If what you now see disagrees with what is already
-on the model, that is a `conflicts` entry, naming both, and the user settles it
+on the description, that is a `conflicts` entry, naming both, and the user settles it
 at the Plan Gate. The first pass stands even where you now think it was wrong;
 the disagreement is the thing that has to survive, not your latest opinion.
 
 Reply with a fragment, keyed the same way: a feature you are adding to carries
 its `id` and only the fields you are filling in.
-
-## Naming from a closed vocabulary
-
-Every reply carries `"kind_vocabulary": "closed"` at the top level. A `kind`
-off the list below is refused rather than merged, and the entry that refuses
-it names what it maps onto instead — a value worth re-sending correctly, not
-a rejection to argue with.
-
-Feature `id`: `<kind>-<place>` where kind is one of (hole, slot, pocket,
-cutout, pad, fillet, chamfer, boss, rib, thread, counterbore, countersink,
-groove, notch, tab, lug, ear, flange, step, shoulder, shell, draft) and place
-is one or two of (left, right, front, rear, top, bottom, upper, lower,
-centre, inner, outer). Write the operation, not a synonym for it: a bore is
-a `hole`, a round is a `fillet`, an opening or a window is a `cutout`, a
-split or a saw cut is a `slot`, a recess is a `counterbore`. Write the shape,
-not the drawing's word for the region it sits in: an arm, a ring, a web, a
-band, a collar, a profile, a plate, a body, an outline or a contour is a
-`pad`. Put that word in the new `region` field instead — `region` is open
-text off the drawing and is never a value in `kind`, in `id`'s place slot, or
-in any other closed list here. A dimension the drawing gives — a diameter, a
-radius, a length, an angle — is never in `kind` either; it goes in its own
-field (`diameter`, `outer_diameter`, `radius`, `thickness`, `length`,
-`width`, `depth`, `angle`, `count`, `pitch`, `bolt_circle_diameter`). Append
-`-4x` for a repeated feature.
-
-Datum `name`: one of (the left end face, the right end face, the front face,
-the rear face, the top face, the bottom face, the ring axis, the bore axis,
-the centre plane, the longitudinal centre plane, the transverse centre plane).
-
-Envelope key: one of (length, width, height, depth front to rear, depth left
-to right, thickness).
 
 ## Unifying feature names across pages
 
@@ -625,11 +594,11 @@ of it, and what the run is expected to leave behind.
 
 ## When you are asked again
 
-`the_question` means somebody downstream needs a value your model did not carry.
+`the_question` means somebody downstream needs a value your description did not carry.
 
 - **With `the_question` alone**, the sheet is being asked before the person. The
   user attached this sheet so they would not have to answer what it shows, so
-  look again — **at the views, and not at your own model**. Your model is what
+  look again — **at the views, and not at your own description**. Your description is what
   you found the first time, not what is on the sheet: the answer is very often
   there and simply did not make it in. Count the edges, read the section, follow
   the leader. Where the sheet genuinely does not answer, reply with an empty
@@ -638,7 +607,7 @@ of it, and what the run is expected to leave behind.
   raised the question settles it and says so, and the user reads the decision
   at the Plan Gate.
 - **With `the_answer_you_were_given` beside it**, a person has answered. Write
-  what they said into the model as values flagged `assumed`, under the datums
+  what they said into the description as values flagged `assumed`, under the datums
   they named, each with `because` saying the user supplied it.
 - **Where the question tells you to settle it yourself**, settle it: choose the
   values the part cannot be described without, flag every one of them `assumed`,
@@ -648,7 +617,7 @@ of it, and what the run is expected to leave behind.
 
 ## Asking for yourself
 
-Where your own model has a gap the part cannot be described without, ask —
+Where your own description has a gap the part cannot be described without, ask —
 `question`, beside whatever `design` you have. Ask for all of it at once, name
 each thing, and say what it is for. Ask only about what nobody has supplied:
 never about anything the views show, anything the Intent already gave you, or
@@ -660,6 +629,6 @@ whole run, so it is asked once, before any Plan exists. Unanswered it is not
 fatal: settle it yourself, `assumed`, with `because`.
 
 Reply with JSON only:
-{"design": { … the model, or the fragment you are adding … }, "question": "..."}
+{"design": { … the description, or the fragment you are adding … }, "question": "..."}
 `question` is `""` when you need nothing. `design` is `{}` when you have nothing
 to add.
