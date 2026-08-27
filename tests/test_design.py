@@ -1509,3 +1509,135 @@ def test_a_gap_naming_the_datum_it_would_be_measured_from_is_answered_by_nothing
     """
     assert distilled(THE_SLOT_AND_WHERE_IT_IS_NOT)["not_defined"] == \
         THE_SLOT_AND_WHERE_IT_IS_NOT["not_defined"]
+
+
+def test_two_features_same_axis_same_datum_different_datum_is_a_conflict():
+    """
+    Two rings running along the depth, agreeing at "the left end face: 65.5 mm"
+    and differing at "the bottom face" (25 mm vs 15 mm). One physical ring,
+    described twice with different heights.
+    """
+    model = {
+        "features": [
+            {
+                "id": "bore-ring",
+                "kind": "Ø42 through bore",
+                "axis": _read("perpendicular to the front view, running front-to-rear (along the depth)"),
+                "position": {
+                    "the left end face": _read("65.5 mm"),
+                    "the bottom face": _read("25 mm"),
+                },
+            },
+            {
+                "id": "boss-ring",
+                "kind": "Ø50 OD ring",
+                "axis": _read("perpendicular to the front face (along the depth)"),
+                "position": {
+                    "the left end face": _read("65.5 mm"),
+                    "the bottom face": _read("15 mm"),
+                },
+            },
+        ],
+    }
+    grown = merge({}, model)
+    about = [conflict["about"] for conflict in grown.get("conflicts", [])]
+
+    assert len(about) == 1, f"Expected 1 conflict, got {len(about)}: {about}"
+    assert "bore-ring" in about[0] and "boss-ring" in about[0]
+
+    conflict = grown["conflicts"][0]
+    assert conflict["kind"] == "conflict"
+    assert "the bottom face" in conflict["stands"] or "the bottom face" in conflict["was_also_said"]
+
+
+def test_two_features_different_axes_not_a_conflict():
+    """
+    hole-right has axis perpendicular to top and bottom (height), bore-ring has
+    axis along depth. Even though they share "the bottom face: 25 mm" and differ
+    at "the right end face", different axes mean not the same placement.
+    """
+    model = {
+        "features": [
+            {
+                "id": "bore-ring",
+                "kind": "Ø42 through bore",
+                "axis": _read("along the depth"),
+                "position": {
+                    "the bottom face": _read("25 mm"),
+                    "the right end face": _read("65.5 mm"),
+                },
+            },
+            {
+                "id": "hole-right",
+                "kind": "Ø6.6 through hole",
+                "axis": _read("perpendicular to the top and bottom faces"),
+                "position": {
+                    "the bottom face": _read("25 mm"),
+                    "the right end face": _read("95.5 mm"),
+                },
+            },
+        ],
+    }
+    grown = merge({}, model)
+    conflicts = grown.get("conflicts", [])
+
+    twice_placed_conflicts = [c for c in conflicts if "bore-ring" in c.get("about", "") 
+                              and "hole-right" in c.get("about", "")]
+    assert len(twice_placed_conflicts) == 0, f"Expected no conflict, got {twice_placed_conflicts}"
+
+
+def test_reading_2023_clamp_has_no_twice_placed():
+    """
+    The 2023 clamp reading has 13 features, all distinct. None should trigger
+    the twice_placed check.
+    """
+    with open("tests/recorded/reading_2023_clamp.json") as f:
+        model = json.load(f)
+
+    grown = merge({}, model)
+    conflicts = grown.get("conflicts", [])
+
+    twice_placed_conflicts = [c for c in conflicts 
+                              if "bore-ring" in c.get("about", "") or "boss-ring" in c.get("about", "")]
+    assert len(twice_placed_conflicts) == 0, f"Expected no twice_placed conflicts, got {twice_placed_conflicts}"
+
+
+
+def test_two_features_same_placeholder_not_a_conflict():
+    """
+    Two features agreeing on a non-numeric placeholder like "to be read again"
+    is not evidence they describe the same placement. Agreement counts only
+    for actual measurements, so this does not trigger the check.
+    """
+    model = {
+        "features": [
+            {
+                "id": "feature-one",
+                "kind": "first feature",
+                "axis": _read("along the depth"),
+                "position": {
+                    "the right end face": _read("to be read again off the later page"),
+                    "the bottom face": _read("25 mm"),
+                },
+            },
+            {
+                "id": "feature-two",
+                "kind": "second feature",
+                "axis": _read("along the depth"),
+                "position": {
+                    "the right end face": _read("to be read again off the later page"),
+                    "the bottom face": _read("30 mm"),
+                },
+            },
+        ],
+    }
+    grown = merge({}, model)
+    conflicts = grown.get("conflicts", [])
+
+    twice_placed_conflicts = [c for c in conflicts 
+                              if "feature-one" in c.get("about", "") 
+                              and "feature-two" in c.get("about", "")]
+    assert len(twice_placed_conflicts) == 0, (
+        f"Expected no conflict (placeholder agreement does not count), "
+        f"got {twice_placed_conflicts}"
+    )

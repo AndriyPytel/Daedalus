@@ -204,7 +204,8 @@ def _the_entry(node, step):
 def _with_the_findings(model):
     found = (silhouette(model) + direction(model) + pointing(model)
              + crosswise(model) + placement(model) + twice_over(model)
-             + settled_by_nothing(model) + unsafe_supersession(model))
+             + settled_by_nothing(model) + unsafe_supersession(model)
+             + twice_placed(model))
     if found:
         model["conflicts"] = _appended(model.get("conflicts"), found)
     return model
@@ -297,6 +298,172 @@ def _differing_feature_values(superseded, canonical):
                     can_id: "position → %s: %s" % (datum, cv_value),
                 }
     return None
+
+
+def _numeric_value(text):
+    """
+    The numeric part of a measurement, or None if the text is not a number.
+
+    Extracts the first number from strings like "25 mm", "0 mm (origin)",
+    "42.5 mm (reference: ...)", but returns None for non-numeric placeholders
+    like "to be read again off the later page".
+
+    Two features agreeing on a non-numeric placeholder is not evidence they
+    describe the same placement — only agreement on actual measurements counts.
+    """
+    if not text:
+        return None
+
+    text_str = str(text)
+    match = re.search(r'[-+]?(?:\d+\.?\d*|\.\d+)', text_str)
+    if match:
+        try:
+            return float(match.group(0))
+        except ValueError:
+            return None
+    return None
+
+
+def _axis_direction(feature):
+    """
+    The direction (length/width/height/depth/thickness) an axis runs along, or None.
+
+    Classifies the axis value by the words it uses: "along the depth",
+    "perpendicular to the front face", "parallel to the height", etc.
+    Returns one of _A_DIRECTION or None if the axis is missing or does not
+    name a direction from that vocabulary.
+
+    Features whose axis is described through faces ("perpendicular to the top
+    and bottom faces") rather than a direction word are invisible to this
+    check — they have no direction the check can classify, so they are excluded
+    from comparison. This is a known limitation: the check sees only features
+    whose axis is named by a direction word.
+    """
+    axis_val = feature.get("axis")
+    if not axis_val:
+        return None
+
+    if isinstance(axis_val, dict):
+        axis_val = axis_val.get("value")
+    if not axis_val:
+        return None
+
+    axis_text = str(axis_val).lower()
+
+    directions_found = [direction for direction in _A_DIRECTION
+                       if direction in axis_text]
+
+    if len(directions_found) == 1:
+        return directions_found[0]
+
+    return None
+
+
+def twice_placed(model) -> list:
+    """
+    Two features with the same axis direction, agreeing at one datum and
+    differing at another — one placement described twice.
+
+    The recorded run (logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl,
+    2023 pipe clamp) produced bore-ring and boss-ring. Both run along the
+    depth ("perpendicular to the front view, running front-to-rear" and
+    "perpendicular to the front face"). Both agree at "the left end face:
+    65.5 mm" and differ at "the bottom face": bore-ring says 25 mm, boss-ring
+    says 15 mm. One physical ring, two descriptions with conflicting heights,
+    and both passed into Acceptance where satisfying them simultaneously is
+    impossible.
+
+    Agreement and disagreement count only for actual measurements, never for
+    placeholders. Two features both saying "to be read again" at a datum is
+    not evidence they describe the same placement — the check compares numbers,
+    and a datum carrying no number is skipped.
+
+    The rule requires all three:
+    1. Axes point the same way (both along depth, both along height, etc.)
+    2. At least one shared datum where numeric values agree
+    3. At least one shared datum where numeric values differ
+
+    Without (1), two features may share datums by coincidence but describe
+    different geometry: bore-ring and hole-right both say "the bottom face:
+    25 mm" but bore-ring runs along depth while hole-right is described
+    through faces, so its axis is not classified and it is excluded from
+    the check entirely.
+
+    Without (2), two features along the same axis but placed differently are
+    legitimately separate: two holes both vertical but at different positions.
+
+    Without (3), two features agreeing everywhere are synonym candidates for
+    reconciliation (superseded_by), not conflicts.
+
+    Only features NOT already marked superseded_by are checked — synonyms
+    resolved by reconciliation do not trigger this.
+
+    Returns conflicts naming both features in sorted order (ADR-0019
+    order-independence: same pair produces same conflict entry regardless
+    of which page arrived first).
+    """
+    features = [feature for feature in _features(model)
+                if not feature.get("superseded_by")]
+
+    by_direction = {}
+    for feature in features:
+        direction = _axis_direction(feature)
+        if direction:
+            by_direction.setdefault(direction, []).append(feature)
+
+    found = []
+    for direction, group in by_direction.items():
+        for index_a, feature_a in enumerate(group):
+            for feature_b in group[index_a + 1:]:
+                position_a = feature_a.get("position") or {}
+                position_b = feature_b.get("position") or {}
+
+                if not isinstance(position_a, dict) or not isinstance(position_b, dict):
+                    continue
+
+                shared_datums = set(position_a.keys()) & set(position_b.keys())
+                if not shared_datums:
+                    continue
+
+                agreeing = []
+                differing = []
+
+                for datum in shared_datums:
+                    value_a = _extract_value(position_a[datum])
+                    value_b = _extract_value(position_b[datum])
+
+                    if not value_a or not value_b:
+                        continue
+
+                    if _different_units(value_a, value_b):
+                        continue
+
+                    numeric_a = _numeric_value(value_a)
+                    numeric_b = _numeric_value(value_b)
+
+                    if numeric_a is None or numeric_b is None:
+                        continue
+
+                    if numeric_a == numeric_b:
+                        agreeing.append((datum, value_a))
+                    else:
+                        differing.append((datum, value_a, value_b))
+
+                if agreeing and differing:
+                    id_a = feature_a.get("id") or "unknown"
+                    id_b = feature_b.get("id") or "unknown"
+                    pair = sorted([id_a, id_b])
+
+                    datum_diff, value_a_diff, value_b_diff = differing[0]
+
+                    found.append({
+                        "about": "features → %s and %s (same axis, one placement described twice)" % (pair[0], pair[1]),
+                        "stands": "%s says %s: %s" % (pair[0], datum_diff, value_a_diff if pair[0] == id_a else value_b_diff),
+                        "was_also_said": "%s says %s: %s" % (pair[1], datum_diff, value_b_diff if pair[1] == id_b else value_a_diff),
+                        "kind": A_CONFLICT,
+                    })
+
+    return found
 
 
 def _different_units(value_a, value_b):
