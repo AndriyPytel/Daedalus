@@ -354,6 +354,25 @@ def test_a_feature_with_neither_an_axis_nor_a_curve_is_left_alone():
     assert "conflicts" not in grown
 
 
+def test_a_fillets_own_topology_prose_never_asks_it_for_an_axis():
+    """
+    FCC-243, session `480b9995421e443d97b439a4f55bc3fe`: `fillet-outer` has
+    `kind: "fillet"` and a `topology` reading "...the outer edges of the arms
+    and band, the ring's two end rims, the cutout and the slot" — the word
+    "slot" put it through the axis check, though `direction`'s own docstring
+    says a fillet is deliberately never asked for one. A feature's `kind` is
+    the closed vocabulary's own word for what it is; `topology` says what it
+    runs into, not what it is, and must never be read for that.
+    """
+    grown = merge({}, {
+        "features": [{"id": "fillet-outer", "kind": "fillet",
+                      "topology": "the outer edges of the arms and band, the ring's two "
+                                  "end rims, the cutout and the slot"}],
+    })
+
+    assert "conflicts" not in grown
+
+
 THE_FOOT_NOBODY_PLACED = {
     "datums": [
         {"name": "the leftmost tangent plane of the part",

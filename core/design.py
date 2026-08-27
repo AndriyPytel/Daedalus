@@ -740,7 +740,9 @@ def silhouette(model) -> list:
     return found
 
 
-_HAS_AN_AXIS = ("hole", "bore", "slot", "pocket")
+_HAS_AN_AXIS = ("hole", "slot", "pocket")
+
+_HAS_AN_AXIS_PROSE = ("hole", "bore", "slot", "pocket")
 
 _GOES_THROUGH = "through"
 
@@ -748,9 +750,46 @@ _LIES_IN_A_PLANE = ("profile", "arc", "rounded", "radiused")
 
 
 def _what_it_is(feature):
-    """The fields that say what a feature is, rather than what is said about it."""
-    return " ".join(str(feature.get(key) or "")
-                    for key in ("id", "kind", "topology")).lower()
+    """
+    `kind`, and `kind` alone — the one field the closed vocabulary lives in.
+
+    `id` is a label the model chooses and is never checked against anything,
+    and `topology` says what a feature runs into, not what it is: a fillet
+    whose edge-selection prose runs "...the outer edges of the arms and band,
+    the ring's two end rims, the cutout and the slot" is still a fillet
+    (FCC-243, session `480b9995421e443d97b439a4f55bc3fe` —
+    `fillet-outer`, `kind: "fillet"`, was asked which way its axis points, and
+    flagged as an unplaced cavity, because "slot" and "cutout" sat in its
+    `topology`, off the same sentence, through this one field).
+    """
+    return str(feature.get("kind") or "").strip().lower()
+
+
+def _is_one_of(feature, closed_members, prose_words):
+    """
+    Whether *feature*'s `kind` names one of *closed_members* of ADR-0026's
+    22, read whole where `kind` is one of them, or a substring of
+    *prose_words* where it is not.
+
+    `config/prompts/design.md`'s `kind_vocabulary: closed` marker is sent on
+    roughly a third of Design replies (`_refused_kinds`, session
+    `afa0142baef847b0a9cd9139390af993`: 3 of 9), so most `kind` fields are
+    still the prose grammar this reads as a fallback rather than stops
+    reading — only `id` and `topology` are dropped (FCC-243).
+
+    *prose_words* may say a word *closed_members* does not: `bore` reads a
+    prose `kind` (a legacy "Ø42 bore" is still a hole) but is never checked
+    as one of the 22, because it is not one — FCC-232 folded it into `hole`
+    and a compliant reply is refused before `kind` can be `"bore"`
+    (`_refused_kinds`). `_BANNED_KIND_SYNONYM` and this are therefore not two
+    places disagreeing about whether `bore` is a word; one is the gate on
+    what a closed `kind` may say, the other is a fallback read of what a kind
+    that never passed the gate said anyway.
+    """
+    kind = _what_it_is(feature)
+    if kind in FEATURE_KIND:
+        return kind in closed_members
+    return any(word in kind for word in prose_words)
 
 
 def direction(model) -> list:
@@ -787,15 +826,24 @@ def direction(model) -> list:
     plane the way a hole carries an axis. Fillets and chamfers are deliberately
     not among them, because they follow the edges they are put on and asking them
     for a plane would raise a finding on every part that has any.
+
+    What a feature *is* is read off `kind` alone, through `_is_one_of`, never
+    off `id` or `topology`: a fillet whose edge-selection prose runs "...the
+    cutout and the slot" is still a fillet, and `id` is a label the model
+    chooses and never checked against anything (FCC-243). Neither list is
+    exact-only, because `config/prompts/design.md`'s closed marker is sent on
+    about a third of Design replies and `kind` is prose the rest of the
+    time — a fillet is excluded from the plane check the same way whichever
+    world it is read in: its closed `kind` is not one of `_LIES_IN_A_PLANE`'s
+    four, and its prose carries none of their words either.
     """
     found = []
     for feature in _features(model):
         where = _under("features", _named(feature, _IDENTITY) or "a feature")
-        text = _what_it_is(feature)
-        for words, field, missing in (
-                (_HAS_AN_AXIS, "axis", "which way its axis points"),
-                (_LIES_IN_A_PLANE, "plane", "which plane it lies in")):
-            if any(word in text for word in words) and not _filled(feature.get(field)):
+        for closed, prose, field, missing in (
+                (_HAS_AN_AXIS, _HAS_AN_AXIS_PROSE, "axis", "which way its axis points"),
+                (_LIES_IN_A_PLANE, _LIES_IN_A_PLANE, "plane", "which plane it lies in")):
+            if _is_one_of(feature, closed, prose) and not _filled(feature.get(field)):
                 found.append({
                     "about": _under(where, field),
                     "stands": "nothing records %s, so it is built along the base "
@@ -813,7 +861,7 @@ _ALONG_ITS_OWN_AXIS = ("depth", "thickness")
 
 
 def _has_an_axis(feature):
-    return any(word in _what_it_is(feature) for word in _HAS_AN_AXIS)
+    return _is_one_of(feature, _HAS_AN_AXIS, _HAS_AN_AXIS_PROSE)
 
 
 def _which_way_each_datum_fixes(model):
@@ -855,6 +903,10 @@ def pointing(model) -> list:
     that has a face it starts from; what a feature says when it has none is that
     it goes through.
 
+    "Through" is read off `topology` alone, never off `id` or `kind`: it is
+    not one of ADR-0026's 22 and never will be, because it says how a feature
+    sits rather than what it is (FCC-243).
+
     The recorded run (`logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl`,
     the 2023 pipe clamp) is both halves of it. Both M6 holes were written
     `axis: perpendicular to the front face` — along the depth — while carrying
@@ -887,7 +939,7 @@ def pointing(model) -> list:
                   if fixed.get(str(datum)) == way]
         if not placed:
             continue
-        if _GOES_THROUGH in _what_it_is(feature):
+        if _GOES_THROUGH in str(feature.get("topology") or "").lower():
             why = ("the feature goes through, so it starts at no face and is placed in "
                    "the %s by nothing — and its axis points along the %s" % (way, way))
         elif len(placed) > 1:
