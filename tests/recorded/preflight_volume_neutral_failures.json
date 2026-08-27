@@ -1,0 +1,141 @@
+{
+  "measured_from": {
+    "preflight_failed_events_total_in_logs": 245,
+    "same_check_occurrences": 12,
+    "note": "245 matches FCC-245's own count of every preflight_failed event under logs/. Of those, only the 12 below raise preflight_worker.py's own 'this Step added a feature that neither removed nor added any material' RuntimeError -- the check FCC-245 describes. The other ~14 near-text matches the ticket's own count of 26 implied are AssertionErrors the model wrote into its own Step code asserting 'removed no material', a different check with the same words, not this one."
+  },
+  "cases": [
+    {
+      "source": "logs/sessions/b31fc95ae4de442fb6ca454b7be68f57.jsonl",
+      "session": "b31fc95ae4de442fb6ca454b7be68f57",
+      "step": 2,
+      "attempt": 1,
+      "object": "PocketBoreLeft",
+      "before_volume_mm3": 696349.5408493622,
+      "after_volume_with_reversed_flipped_mm3": 570685.8347057702,
+      "reversed_flip_changed_volume": true,
+      "typeid": "PartDesign::Pocket"
+    },
+    {
+      "source": "logs/sessions/b31fc95ae4de442fb6ca454b7be68f57.jsonl",
+      "session": "b31fc95ae4de442fb6ca454b7be68f57",
+      "step": 4,
+      "attempt": 2,
+      "object": "PocketHookLeftFront",
+      "before_volume_mm3": 421045.7703770617,
+      "after_volume_with_reversed_flipped_mm3": 421045.7704693178,
+      "reversed_flip_changed_volume": false,
+      "typeid": "PartDesign::Pocket"
+    },
+    {
+      "source": "logs/sessions/b31fc95ae4de442fb6ca454b7be68f57.jsonl",
+      "session": "b31fc95ae4de442fb6ca454b7be68f57",
+      "step": 4,
+      "attempt": 3,
+      "object": "PocketHookOpenings",
+      "before_volume_mm3": 421045.7703770617,
+      "after_volume_with_reversed_flipped_mm3": 421045.7703770617,
+      "reversed_flip_changed_volume": false,
+      "typeid": "PartDesign::Pocket"
+    },
+    {
+      "source": "logs/sessions/b31fc95ae4de442fb6ca454b7be68f57.jsonl",
+      "session": "b31fc95ae4de442fb6ca454b7be68f57",
+      "step": 1,
+      "attempt": 1,
+      "object": "PocketHookBoreLeftFront",
+      "before_volume_mm3": 421045.7703770617,
+      "after_volume_with_reversed_flipped_mm3": 421045.7703770617,
+      "reversed_flip_changed_volume": false,
+      "typeid": "PartDesign::Pocket"
+    },
+    {
+      "source": "logs/sessions/c7d892a556624c57b31b508362be4b4b.jsonl",
+      "session": "c7d892a556624c57b31b508362be4b4b",
+      "step": 2,
+      "attempt": 1,
+      "object": "RingBorePocket",
+      "before_volume_mm3": 102426.45589146127,
+      "after_volume_with_reversed_flipped_mm3": 60863.18508446831,
+      "reversed_flip_changed_volume": true,
+      "typeid": "PartDesign::Pocket"
+    },
+    {
+      "source": "logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl",
+      "session": "549e6232c9e04b659e5a2d536354bd7a",
+      "step": 2,
+      "attempt": 1,
+      "object": "ClampBorePocket",
+      "before_volume_mm3": 94764.1261936554,
+      "after_volume_with_reversed_flipped_mm3": 53200.85538666245,
+      "reversed_flip_changed_volume": true,
+      "typeid": "PartDesign::Pocket"
+    },
+    {
+      "source": "logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl",
+      "session": "549e6232c9e04b659e5a2d536354bd7a",
+      "step": 3,
+      "attempt": 2,
+      "object": "RingSplitPocket",
+      "before_volume_mm3": 53200.855386662464,
+      "after_volume_with_reversed_flipped_mm3": 53200.85538666245,
+      "reversed_flip_changed_volume": false,
+      "typeid": "PartDesign::Pocket"
+    },
+    {
+      "source": "logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl",
+      "session": "141a41df15544013a9740a45138fa7ad",
+      "step": 4,
+      "attempt": 1,
+      "object": "RightMountDrill",
+      "before_volume_mm3": 37269.71116611068,
+      "after_volume_with_reversed_flipped_mm3": 37269.71116611068,
+      "reversed_flip_changed_volume": false,
+      "typeid": "PartDesign::Pocket"
+    },
+    {
+      "source": "logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl",
+      "session": "141a41df15544013a9740a45138fa7ad",
+      "step": 4,
+      "attempt": 2,
+      "object": "RightMountDrill",
+      "before_volume_mm3": 37269.71116611068,
+      "after_volume_with_reversed_flipped_mm3": 37269.71116611068,
+      "reversed_flip_changed_volume": false,
+      "typeid": "PartDesign::Pocket"
+    },
+    {
+      "source": "logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl",
+      "session": "141a41df15544013a9740a45138fa7ad",
+      "step": 4,
+      "attempt": 3,
+      "object": "RightMountDrill",
+      "before_volume_mm3": 37269.71116611068,
+      "after_volume_with_reversed_flipped_mm3": 37269.71116611068,
+      "reversed_flip_changed_volume": false,
+      "typeid": "PartDesign::Pocket"
+    },
+    {
+      "source": "logs/sessions/57af6c09950047bf9f0582cd398d2a66.jsonl",
+      "session": "57af6c09950047bf9f0582cd398d2a66",
+      "step": 5,
+      "attempt": 1,
+      "object": "RearCentralPocket",
+      "before_volume_mm3": 425004.9633943815,
+      "after_volume_with_reversed_flipped_mm3": 425004.9633943815,
+      "reversed_flip_changed_volume": false,
+      "typeid": "PartDesign::Pocket"
+    },
+    {
+      "source": "logs/ab-rlm-agentic/sonnet/mm24-off.jsonl",
+      "session": "mm24-off",
+      "step": 4,
+      "attempt": 1,
+      "object": "BoreRightPocket",
+      "before_volume_mm3": 26592.211951887257,
+      "after_volume_with_reversed_flipped_mm3": 26592.211951887257,
+      "reversed_flip_changed_volume": false,
+      "typeid": "PartDesign::Pocket"
+    }
+  ]
+}
