@@ -32,6 +32,7 @@ import json
 import mimetypes
 import os
 import re
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -65,6 +66,26 @@ REVIEW_PHASE = "review"
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 NOT_A_LOOK = ("apply_step", "review_views", "check_assertions")
+
+
+TYPE_CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "logs", "type_cache.json")
+
+
+def _freecad_version():
+    """
+    FreeCAD version as a string, or "unknown" if FreeCAD is not available.
+
+    The cache key includes the version because a different build may have
+    different properties on the same type.
+    """
+    try:
+        import FreeCAD
+        version = FreeCAD.Version()
+        return "%s.%s.%s" % (version[0], version[1], version[2])
+    except ImportError:
+        return "unknown"
+
 
 _VIEW_NAMES = ("isometric", "the opposite isometric", "above", "the front")
 
@@ -1900,15 +1921,73 @@ class Looks:
     unasked: beyond it the oldest go, because what was looked at most recently
     is what the Steps being written now are about, and an unbounded list would
     grow a request the whole run long.
+
+    `describe_type` is cached to disk between runs, keyed by FreeCAD version.
+    A recorded run spent 26 minutes and $4.24 of $19.46 on six describe_type
+    calls — facts about the build that never change
+    (logs/sessions/247c2aae...).
     """
 
     ABOUT_THE_BUILD = ("describe_type", "supported_types", "materials")
 
     CARRIED = 8
 
-    def __init__(self):
+    def __init__(self, cache_path=None, freecad_version=None):
         self._taken = []
         self._step = 0
+        self._cache_path = cache_path
+        self._freecad_version = freecad_version
+        self._disk_cache = self._load_disk_cache() if cache_path else {}
+
+    def _load_disk_cache(self):
+        """
+        Read describe_type answers from disk, or {} if absent or unreadable.
+
+        A corrupted file is treated as absent: the run continues and the Tool
+        is called.
+        """
+        if not self._cache_path or not os.path.isfile(self._cache_path):
+            return {}
+        try:
+            with open(self._cache_path, encoding="utf-8") as handle:
+                return json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    def _save_disk_cache(self, name, arguments, result):
+        """
+        Write one describe_type answer to disk, atomically.
+
+        Two runs at once (tools/ab_run.py) both write; unique temporary file
+        name plus os.replace makes last-write-wins safe.
+        """
+        if not self._cache_path or name != "describe_type":
+            return
+
+        key = self._disk_cache_key(arguments)
+        self._disk_cache[key] = result
+
+        try:
+            directory = os.path.dirname(self._cache_path)
+            os.makedirs(directory, exist_ok=True)
+            fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".json")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(self._disk_cache, handle, indent=2, sort_keys=True)
+                os.replace(tmp_path, self._cache_path)
+            except OSError:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except OSError:
+            pass
+
+    def _disk_cache_key(self, arguments):
+        """Cache key for describe_type: (version, type_id)."""
+        args_str = json.dumps(arguments, sort_keys=True, default=str)
+        return "%s:%s" % (self._freecad_version, args_str)
 
     def a_step_landed(self):
         """A Step applied, so what was read off the Document may have moved."""
@@ -1925,6 +2004,7 @@ class Looks:
         self._taken = [taken for taken in self._taken if taken["key"] != key]
         self._taken.append({"key": key, "step": self._current(name), "tool": name,
                             "arguments": arguments, "result": result})
+        self._save_disk_cache(name, arguments, result)
 
     def answer(self, name, arguments):
         """
@@ -1932,7 +2012,14 @@ class Looks:
 
         Only where it is still true: an answer read off a Document two Steps
         ago is not an answer about this one.
+
+        describe_type reads from disk first, then from this run's memory.
         """
+        if name == "describe_type" and self._cache_path:
+            disk_key = self._disk_cache_key(arguments)
+            if disk_key in self._disk_cache:
+                return self._disk_cache[disk_key]
+
         key = self._key(name, arguments)
         current = self._current(name)
         for taken in reversed(self._taken):
@@ -2013,7 +2100,7 @@ def _what_this_build_has(tools):
     A build whose Tools do not hold the cards is handed nothing, which is the
     case every registry without a `materials` Tool is already in.
     """
-    looks = Looks()
+    looks = Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
     if "materials" in tools:
         try:
             looks.remember("materials", {}, tools.call("materials", {}))
@@ -3879,7 +3966,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     index = 0
     retried = set()
     unbuilt = []
-    looks = looks if looks is not None else Looks()
+    looks = looks if looks is not None else Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
     written = execute(steps, tools, llm, events, start, budgets=budgets,
                       as_described=as_described, looks=looks, entries=entries,
                       ledger=ledger)

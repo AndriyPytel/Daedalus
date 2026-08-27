@@ -8129,3 +8129,139 @@ def test_a_conflict_the_tracing_settles_is_left_read_by_the_new_step(monkeypatch
 
     axis = entry_at(looked, "features → clamp-bore → axis")
     assert axis["flag"] == "traced"
+
+
+def test_describe_type_is_cached_to_disk_between_runs(tmp_path, monkeypatch):
+    """
+    A describe_type call in the second run reads from disk and does not call
+    the Tool again. The answer cost 23 seconds in a recorded run, for a fact
+    about the build that never changes (logs/sessions/247c2aae...).
+    """
+    from core.loop import Looks
+
+    cache_path = str(tmp_path / "type_cache.json")
+
+    first_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    first_looks.remember("describe_type", {"type_id": "PartDesign::Pocket"}, 
+                        {"properties": ["Length", "Type"]})
+
+    second_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    cached = second_looks.answer("describe_type", {"type_id": "PartDesign::Pocket"})
+
+    assert cached == {"properties": ["Length", "Type"]}, \
+        "second run reads type description from disk"
+
+
+def test_describe_object_is_not_cached_to_disk_between_runs(tmp_path):
+    """
+    The boundary holds: describe_object describes an object in the user's
+    Document, which changes with every Step. It stays a per-run cache only.
+    """
+    from core.loop import Looks
+
+    cache_path = str(tmp_path / "type_cache.json")
+
+    first_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    first_looks.remember("describe_object", {"name": "Pad001"}, 
+                        {"type": "PartDesign::Pad", "length": 10})
+
+    second_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    cached = second_looks.answer("describe_object", {"name": "Pad001"})
+
+    assert cached is None, \
+        "describe_object is not cached to disk; the Document changes"
+
+
+def test_different_freecad_version_does_not_reuse_type_cache(tmp_path):
+    """
+    A different FreeCAD build may have different properties on the same type,
+    so the cache key includes the version.
+    """
+    from core.loop import Looks
+
+    cache_path = str(tmp_path / "type_cache.json")
+
+    old_looks = Looks(cache_path=cache_path, freecad_version="0.20.0")
+    old_looks.remember("describe_type", {"type_id": "PartDesign::Fillet"}, 
+                      {"properties": ["Radius"]})
+
+    new_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    cached = new_looks.answer("describe_type", {"type_id": "PartDesign::Fillet"})
+
+    assert cached is None, \
+        "different FreeCAD version means a fresh cache"
+
+
+def test_corrupted_cache_file_does_not_crash_the_run(tmp_path):
+    """
+    A cache file that cannot be read is treated as absent. The run continues
+    and the Tool is called.
+    """
+    from core.loop import Looks
+
+    cache_path = tmp_path / "type_cache.json"
+    cache_path.write_text("{ this is not valid json")
+
+    looks = Looks(cache_path=str(cache_path), freecad_version="0.21.0")
+    cached = looks.answer("describe_type", {"type_id": "PartDesign::Hole"})
+
+    assert cached is None, "corrupted cache is treated as empty"
+
+    looks.remember("describe_type", {"type_id": "PartDesign::Hole"}, 
+                  {"properties": ["Depth"]})
+
+
+def test_disk_cached_type_is_reported_as_already_known(tmp_path):
+    """
+    TOOL_RESULT events for describe_type from disk carry already_known=True,
+    so the transcript does not lie.
+    """
+    from core.loop import Looks, _look
+    from core.events import TOOL_RESULT, EventStream
+
+    cache_path = str(tmp_path / "type_cache.json")
+
+    first_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    first_looks.remember("describe_type", {"type_id": "PartDesign::Pad"}, 
+                        {"properties": ["Length"]})
+
+    second_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    events = EventStream()
+    tools = FakeTools()
+
+    _look(tools.registry, {"tool": "describe_type", "arguments": {"type_id": "PartDesign::Pad"}}, 
+          events, second_looks)
+
+    results = [e for e in events.of(TOOL_RESULT) if e.data["name"] == "describe_type"]
+    assert len(results) == 1
+    assert results[0].data["already_known"] is True, \
+        "disk cache hit is reported as already_known in TOOL_RESULT"
+
+
+def test_type_cache_path_is_repo_relative(tmp_path, monkeypatch):
+    """
+    TYPE_CACHE_PATH is computed at import as repo/logs/type_cache.json.
+    Under FreeCAD it resolves through the Mod/ symlink to user data; under
+    pytest the fixture redirects it to tmp_path.
+    """
+    from core import loop
+
+    monkeypatch.setattr(loop, "TYPE_CACHE_PATH", str(tmp_path / "cache.json"))
+
+    looks = loop.Looks(cache_path=loop.TYPE_CACHE_PATH, freecad_version="0.21.0")
+    looks.remember("describe_type", {"type_id": "Test"}, {"ok": True})
+
+    assert (tmp_path / "cache.json").exists(), \
+        "cache wrote to the monkeypatched path"
+
+
+@pytest.mark.freecad
+def test_type_cache_fixture_redirects_to_tmp_path(tmp_path):
+    """
+    The autouse fixture redirects TYPE_CACHE_PATH to tmp_path, so type cache
+    writes go there instead of repo/logs.
+    """
+    from core import loop
+
+    assert str(tmp_path) in loop.TYPE_CACHE_PATH, \
+        "TYPE_CACHE_PATH %s not under tmp_path %s" % (loop.TYPE_CACHE_PATH, tmp_path)
