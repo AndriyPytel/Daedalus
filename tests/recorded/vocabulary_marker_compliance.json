@@ -1,0 +1,34 @@
+{
+  "markers_by_phase": {
+    "design": "kind_vocabulary",
+    "plan": "op_vocabulary"
+  },
+  "sessions": {
+    "afa0142baef847b0a9cd9139390af993": {
+      "when": "before FCC-236",
+      "phases": {
+        "design": {
+          "replies": 9,
+          "carried_marker": 3
+        },
+        "plan": {
+          "replies": 7,
+          "carried_marker": 3
+        }
+      }
+    },
+    "480b9995421e443d97b439a4f55bc3fe": {
+      "when": "after the epic, before FCC-236 reached the branch it ran on",
+      "phases": {
+        "design": {
+          "replies": 5,
+          "carried_marker": 2
+        },
+        "plan": {
+          "replies": 1,
+          "carried_marker": 1
+        }
+      }
+    }
+  }
+}
