@@ -143,9 +143,10 @@ def merge(held, offered):
     if not isinstance(offered, dict):
         return _with_the_findings(dict(held or {}))
 
-    conflicts = list(_refused_kinds(offered))
+    conflicts = list(_refused_kinds(offered)) + list(_refused_conflicts(offered))
     if conflicts:
         offered = _without_refused_kinds(offered)
+        offered = _without_refused_conflicts(offered)
     merged = _written(dict(held or {}), offered, "", conflicts)
     if conflicts:
         merged["conflicts"] = _appended(merged.get("conflicts"), conflicts)
@@ -210,6 +211,61 @@ def _without_refused_kinds(offered):
             feature = {key: value for key, value in feature.items() if key != "kind"}
         features.append(feature)
     return dict(offered, features=features)
+
+
+CONFLICT_ENTRY_FIELDS = ("about", "stands", "was_also_said")
+
+
+def _refused_conflicts(offered):
+    """
+    Entries of *offered*'s own `conflicts` missing one of `CONFLICT_ENTRY_FIELDS`,
+    checked only under the same `kind_vocabulary: closed` marker `_refused_kinds`
+    gates on.
+
+    A conflict's shape has nothing to do with naming a `kind`, so this reuses,
+    rather than adds to, the one marker that already exists. Read here not as
+    "kinds only" but as "this reply follows the declared artefact contract" —
+    the whole of ADR-0026's closed vocabulary, kind and conflict shape alike.
+    That reading is chosen for a measured reason: markers are sent about a
+    third of the time in production (Design, session
+    `afa0142baef847b0a9cd9139390af993`: 3 of 9 replies carried
+    `kind_vocabulary` at all). A second, precise marker for conflict shape
+    would be forgotten independently of the first and enforced a third of a
+    third of the time at best; one marker meaning "the current contract" is
+    worth more than several that are each mostly absent. A reply that never
+    sent `kind_vocabulary` never promised this shape either, so the fixtures
+    recorded before FCC-237 keep passing untouched.
+
+    FCC-237: a Design reply invented four different conflict shapes across one
+    session, 44 of 46 entries carrying no `what` at all — entries in that many
+    shapes cannot be rendered, compared, or told apart by the Plan Gate. The
+    entry is refused whole rather than patched, and travels on in
+    `was_also_said` so nothing it said is lost — only its shape was wrong.
+    """
+    if not isinstance(offered, dict) or offered.get("kind_vocabulary") != CLOSED_KIND_VOCABULARY:
+        return []
+    found = []
+    for index, entry in enumerate(offered.get("conflicts") or [], start=1):
+        if not isinstance(entry, dict):
+            continue
+        missing = [field for field in CONFLICT_ENTRY_FIELDS if field not in entry]
+        if not missing:
+            continue
+        found.append({
+            "about": entry.get("about") or _under("conflicts", "entry %d" % index),
+            "stands": "refused — a conflict entry carries %s, missing %s"
+                      % (", ".join(CONFLICT_ENTRY_FIELDS), ", ".join(missing)),
+            "was_also_said": entry,
+            "kind": A_CONFLICT,
+        })
+    return found
+
+
+def _without_refused_conflicts(offered):
+    kept = [entry for entry in offered.get("conflicts") or []
+            if not (isinstance(entry, dict)
+                    and any(field not in entry for field in CONFLICT_ENTRY_FIELDS))]
+    return dict(offered, conflicts=kept)
 
 
 def corrected(model, address, value, because):

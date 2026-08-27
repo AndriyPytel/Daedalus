@@ -81,8 +81,9 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   the axis is checked against: two features drawn round in two different views
   cannot have been drilled the same way, and that is arithmetic rather than an
   opinion.
-- **`conflicts`** is where two things that cannot both be true are recorded.
-  Record them and leave them there.
+- **`conflicts`** is where two things that cannot both be true are recorded,
+  one entry per disagreement, always `{"about": "...", "stands": "...",
+  "was_also_said": "..."}` — record them, and leave them there.
 - **`not_defined`** is what nothing supplies, each entry naming the views you
   looked in.
 

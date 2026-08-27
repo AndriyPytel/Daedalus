@@ -7,6 +7,7 @@ numbers are the ones from the run that named the defect
 (`logs/sessions/daefe57b593448e9baf83422fc37af1e.jsonl`, mm25-p1-1.pdf).
 """
 import json
+import os
 
 from core import design
 from core.design import (
@@ -1944,3 +1945,120 @@ def test_superseded_by_fires_once_a_duplicate_pair_is_reconciled():
                         and "left-mounting-hole" in c["about"]
                         and "phase2-left-mounting-slot" in c["about"]]
     assert twice_over_hits == []
+
+
+def test_a_malformed_conflict_entry_is_refused_under_the_kind_vocabulary_marker():
+    """
+    FCC-237: a Design reply invented four conflict shapes across one recorded
+    session, 44 of 46 entries carrying no `what` at all. A reply that opts
+    into the closed vocabulary (`kind_vocabulary: closed`) is held to the
+    pinned shape — `about`, `stands`, `was_also_said` — and an entry missing
+    one of them is refused rather than merged in as-is, exactly as an
+    off-vocabulary `kind` is (FCC-231). Nothing the entry said is lost: it
+    travels on whole under `was_also_said` of the refusal.
+    """
+    grown = merge({}, {
+        "kind_vocabulary": "closed",
+        "conflicts": [{"what": "the split's own width", "note": "ambiguous",
+                        "resolution": "left as printed"}],
+    })
+
+    assert grown["conflicts"] == [{
+        "about": "conflicts → entry 1",
+        "stands": "refused — a conflict entry carries about, stands, was_also_said, "
+                  "missing about, stands, was_also_said",
+        "was_also_said": {"what": "the split's own width", "note": "ambiguous",
+                          "resolution": "left as printed"},
+        "kind": design.A_CONFLICT,
+    }]
+
+
+def test_a_conflict_entry_carrying_the_pinned_shape_is_merged_as_is():
+    grown = merge({}, {
+        "kind_vocabulary": "closed",
+        "conflicts": [{"about": "envelope \u2192 depth front to rear",
+                        "stands": _read("100 mm"), "was_also_said": _read("108 mm")}],
+    })
+
+    assert grown["conflicts"] == [{"about": "envelope \u2192 depth front to rear",
+                                    "stands": _read("100 mm"),
+                                    "was_also_said": _read("108 mm")}]
+
+
+def test_an_unmarked_reply_keeps_its_conflicts_exactly_as_the_recorded_fixtures_do():
+    """The recorded fixtures never sent `kind_vocabulary`, so a malformed
+    conflict entry off an unmarked reply is untouched, same as an
+    off-vocabulary `kind` is untouched off an unmarked reply."""
+    grown = merge({}, {"conflicts": [{"what": "the split's own width"}]})
+
+    assert grown["conflicts"] == [{"what": "the split's own width"}]
+
+
+RECORDED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recorded")
+
+
+def _every_conflict_entry():
+    """
+    Every dict sitting in a `conflicts` list anywhere under `tests/recorded/`
+    — the raw model replies in the `.jsonl` transcripts (nested one level
+    down, under `result.result`, itself a JSON string) and the merged
+    fixtures in the `.json` files alike.
+    """
+    found = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            entries = node.get("conflicts")
+            if isinstance(entries, list):
+                found.extend(entry for entry in entries if isinstance(entry, dict))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    for name in os.listdir(RECORDED):
+        path = os.path.join(RECORDED, name)
+        if name.endswith(".json"):
+            with open(path, encoding="utf-8") as handle:
+                try:
+                    walk(json.load(handle))
+                except json.JSONDecodeError:
+                    continue
+        elif name.endswith(".jsonl"):
+            with open(path, encoding="utf-8") as handle:
+                for line in handle:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    walk(record)
+                    reply = ((record.get("result") or {}).get("result")
+                             if isinstance(record.get("result"), dict) else None)
+                    if isinstance(reply, str):
+                        try:
+                            walk(json.loads(reply))
+                        except json.JSONDecodeError:
+                            pass
+
+    return found
+
+
+def test_how_many_recorded_conflict_entries_satisfy_the_pinned_shape():
+    """
+    FCC-237: of every conflict entry `tests/recorded/` carries — the merged
+    fixtures and the raw model replies alike — 32 of 38 already carry `about`,
+    `stands` and `was_also_said`. The 6 that do not are the raw Design replies
+    in `claude-code-design-effort.jsonl`, sent before this ticket pinned a
+    shape at all. The number is measured here rather than claimed in a
+    docstring.
+    """
+    entries = _every_conflict_entry()
+
+    assert len(entries) == 38
+    matching = [entry for entry in entries
+               if all(field in entry for field in design.CONFLICT_ENTRY_FIELDS)]
+    assert len(matching) == 32
