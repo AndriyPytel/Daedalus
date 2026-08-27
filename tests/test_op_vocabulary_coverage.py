@@ -23,18 +23,27 @@ reason, not a copy of a verdict recorded nowhere. Together they cover all
 file reads out of `config/prompts/language.md`*, the same way
 `test_op_vocabulary.py` does, rather than a copy of the 36 names.
 
-**The one deliberate exception.** `PartDesign::Pocket` sits under two ops in
-`OP_TYPEIDS` — `pocket`, its wiki.freecad.org Tool, and `hole` — not because
-Pocket and Hole are the same Tool (they are not), but because session
-afa0142baef847b0a9cd9139390af993 Step 5 cut a hole with a circular-sketch
-`PartDesign::Pocket`, a normal and often more robust FreeCAD technique, and
-was refused before Preflight for it, then retried onto `PartDesign::Hole`,
-which failed at runtime with "No base set, no sketch support either"
-(FCC-238). `SURVEYED_TYPEID_TO_OP` still places `PartDesign::Pocket` under
-`pocket` alone — the survey's canonical Tool-to-op assignment is unchanged;
-only `OP_TYPEIDS`'s lint-acceptance table widens, in this one named place,
-by ticket-recorded exception rather than by a second table nothing else in
-the codebase reads.
+**The two named exceptions.** Two TypeIds sit under two ops each in
+`OP_TYPEIDS`, both named and cited in `SHARED_TYPEID_EXCEPTIONS` below, not
+hidden behind a second table nothing else in the codebase reads:
+
+- `PartDesign::Pocket` — `pocket`, its wiki.freecad.org Tool, and `hole`.
+  Not because Pocket and Hole are the same Tool (they are not), but because
+  session afa0142baef847b0a9cd9139390af993 Step 5 cut a hole with a
+  circular-sketch `PartDesign::Pocket`, a normal and often more robust
+  FreeCAD technique, and was refused before Preflight for it, then retried
+  onto `PartDesign::Hole`, which failed at runtime with "No base set, no
+  sketch support either" (FCC-238, this ticket's fix).
+- `PartDesign::Hole` — `hole` and `thread`. Pre-existing, unchanged by this
+  ticket: a thread is a Hole feature's own `Threaded` property
+  (`language.md`: "A thread is a hole whose prose gives the thread's own
+  parameters"), not a distinct TypeId.
+
+`SURVEYED_TYPEID_TO_OP` still places each of these two TypeIds under one
+op alone (`PartDesign::Pocket` under `pocket`, `PartDesign::Hole` under
+`hole`) — the survey's canonical Tool-to-op assignment is unaffected;
+only `OP_TYPEIDS`'s lint-acceptance table widens, in these two named
+places.
 """
 import os
 import re
@@ -306,7 +315,7 @@ def test_every_surveyed_owned_typeid_is_accepted_under_its_op_in_op_typeids():
     assert not missing, missing
 
 
-def test_op_typeids_gives_no_typeid_to_two_ops_outside_the_one_named_exception():
+def test_op_typeids_gives_no_typeid_to_two_ops_outside_the_two_named_exceptions():
     owner = {}
     collisions = []
     for op, typeids in OP_TYPEIDS.items():
