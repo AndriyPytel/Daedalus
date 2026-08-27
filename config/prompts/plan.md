@@ -125,6 +125,16 @@ is at 65.5 - 92.63 * cos(45°) = 0 mm`. Angles are in degrees. A distance along
 one direction is the distance along the geometry times the cosine of the angle
 between them — that cosine is the whole of what goes missing.
 
+**An interval is written with its span as a sum.** A Step that names a region
+between two stations writes what the region measures and how its two ends give
+it: `Y = 8 mm to Y = 22 mm (22 - 8 = 14 mm)`. The span is the number the
+material is cut to, and written as a sum it is worked out with the rest before
+the Gate. A recorded run wrote `Y = 7 mm to Y = 22 mm` for an arm the same Step
+called 14 mm wide and cut by 8 mm from the front and 8 mm from the rear of 30;
+the interval is 15, nothing worked it out, Execute built 8 to 22 without saying
+so, and six Steps later a hole drilled at Y = 7 found no material there and
+ended the run (`logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl`).
+
 Every sum you write is worked out before your Plan reaches the Gate, and one
 that does not come out is handed straight back to you. That is the point of
 writing it: a recorded run stated an 80.5 mm station "to place the left extreme
