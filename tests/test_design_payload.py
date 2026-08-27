@@ -17,9 +17,11 @@ multi-view sheet no longer takes that call at all.
 
 `FIRST_PASS_CEILING_RATIO` is measured, not chosen: it is the smallest ratio
 that passes the current baselines. Raising it requires re-measurement and a
-stated reason. The current value (1.61) reflects the closed vocabularies in
-`design.md` — feature-id kind-place, datum names, envelope keys — which add
-~350 tokens per call. That cost buys name convergence across pages, so merge()
+stated reason. The current value (1.62) reflects the closed vocabularies in
+`design.md` — feature-id kind-place, datum names, envelope keys, and the
+banned-prose-synonym sentences that keep a region word like `profile` or
+`ring` mapped onto a real `kind` instead of licensed as one — which add
+~440 tokens per call. That cost buys name convergence across pages, so merge()
 sees a real disagreement instead of two synonyms passing each other.
 """
 import json
@@ -48,24 +50,24 @@ SINGLE_CALL_BASELINE = {
     "model-mania-2024.pdf": 39970,
 }
 
-FIRST_PASS_CEILING_RATIO = 1.61
+FIRST_PASS_CEILING_RATIO = 1.62
 
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 6242, "input_tokens": 22704},
-            {"label": "page 2", "pictures": 14, "total_chars": 6046, "input_tokens": 23442},
+            {"label": "page 1", "pictures": 15, "total_chars": 6242, "input_tokens": 22798},
+            {"label": "page 2", "pictures": 14, "total_chars": 6046, "input_tokens": 23536},
         ],
-        "reconcile": {"total_chars": 39592, "input_tokens": 19171},
-        "total": 65317,
+        "reconcile": {"total_chars": 39592, "input_tokens": 19265},
+        "total": 65599,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7572, "input_tokens": 21011},
-            {"label": "page 2", "pictures": 15, "total_chars": 7475, "input_tokens": 23895},
+            {"label": "page 1", "pictures": 15, "total_chars": 7572, "input_tokens": 21105},
+            {"label": "page 2", "pictures": 15, "total_chars": 7475, "input_tokens": 23989},
         ],
-        "reconcile": {"total_chars": 40311, "input_tokens": 19350},
-        "total": 64256,
+        "reconcile": {"total_chars": 40311, "input_tokens": 19444},
+        "total": 64538,
     },
 }
 

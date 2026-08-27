@@ -565,10 +565,15 @@ its `id` and only the fields you are filling in.
 
 Feature `id`: `<kind>-<place>` where kind is one of (hole, bore, slot, pocket,
 cutout, pad, fillet, chamfer, boss, rib, thread, counterbore, countersink,
-groove, notch, tab, lug, ear, flange, step, shoulder) and place is one or two
-of (left, right, front, rear, top, bottom, upper, lower, centre, inner, outer).
-Use the drawing's region name (arm, ear, web) when it names one. Append `-4x`
-for a repeated feature.
+groove, notch, tab, lug, ear, flange, step, shoulder, shell, draft) and place
+is one or two of (left, right, front, rear, top, bottom, upper, lower,
+centre, inner, outer). Write the operation, not a synonym for it: a round is
+a `fillet`, an opening or a window is a `cutout`, a split or a saw cut is a
+`slot`, a recess is a `counterbore`. Write the shape, not the drawing's word
+for the region it sits in: an arm, a ring, a web, a band, a collar, a
+profile, a plate, a body, an outline or a contour is a `pad` — the drawing's
+own name for that region gets its own field, `region`, coming in FCC-232.
+Append `-4x` for a repeated feature.
 
 Datum `name`: one of (the left end face, the right end face, the front face,
 the rear face, the top face, the bottom face, the ring axis, the bore axis,
