@@ -588,9 +588,9 @@ class LoopWorker(QtCore.QObject):
         self.pipeline.events = events
         return build_registry(document=self.document, pipeline=self.pipeline)
 
-    @QtCore.Slot(str, object, str, object)
+    @QtCore.Slot(str, object, str, object, str)
     def do_work(self, intent: str, attachments: list, transcript: str,
-                outstanding: list = None):
+                outstanding: list = None, the_part_path: str = ""):
         """
         Runs one Intent and emits the result.
 
@@ -599,6 +599,10 @@ class LoopWorker(QtCore.QObject):
         allowed to fail quietly. A model that cannot be resolved is a known
         outcome and belongs in the transcript as a sentence, not as a traceback
         the user cannot act on.
+
+        `the_part_path` is what the Session's last run read or wrote, forwarded
+        here unless a new attachment arrived to replace it (FCC-210); empty
+        means run as today, describing the part from `attachments` alone.
         """
         from core import events as ev
         from core.events import EventStream
@@ -636,7 +640,8 @@ class LoopWorker(QtCore.QObject):
                          attachments=attachments, gate=self.ask.about_the_plan,
                          ask=self.ask.about_missing_values,
                          decide=self.ask.about_the_revision,
-                         outstanding=list(outstanding or ()))
+                         outstanding=list(outstanding or ()),
+                         the_part_path=the_part_path or None)
             self.finished.emit(result, transcript)
         except Exception as exc:
             events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
@@ -688,15 +693,19 @@ class _SessionWorker(QtCore.QObject):
     `running`, `outstanding` and `sent_attachments` are what used to be the
     panel's own single set of instance attributes — carried here instead, so a
     Session backgrounded mid-run keeps its own state rather than sharing the
-    one the panel happens to be looking at. `dirty` is set when an event lands
-    for this Session while it is not the one on screen, so the panel knows to
-    resync from the transcript rather than trust stale widgets the next time it
-    is shown. `pending_question` is the one live Ask this Session is blocked
-    on, if any, so switching back to a Session parked at its Plan Gate puts the
-    same card up again instead of losing it.
+    one the panel happens to be looking at. `the_part_path` is the same idea
+    for the Part a run last read or wrote: forwarded into the next Intent so a
+    follow-up plans from it instead of asking Design to describe the drawing
+    again, unless a new attachment arrives to replace it (FCC-210). `dirty` is
+    set when an event lands for this Session while it is not the one on
+    screen, so the panel knows to resync from the transcript rather than trust
+    stale widgets the next time it is shown. `pending_question` is the one
+    live Ask this Session is blocked on, if any, so switching back to a
+    Session parked at its Plan Gate puts the same card up again instead of
+    losing it.
     """
 
-    request_work = QtCore.Signal(str, object, str, object)
+    request_work = QtCore.Signal(str, object, str, object, str)
 
     def __init__(self, bridge: EventBridge, ask: AskTheUser):
         super().__init__()
@@ -708,6 +717,7 @@ class _SessionWorker(QtCore.QObject):
         self.request_work.connect(self.worker.do_work)
         self.running = False
         self.outstanding: list = []
+        self.the_part_path: str = ""
         self.sent_attachments: list = []
         self.dirty = False
         self.pending_question = None
@@ -751,12 +761,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
     reads that way; what changed is that switching sessions now switches which
     `_SessionWorker` those names resolve to, instead of resetting the one
     worker everyone shared. `outstanding`, the acceptance checks a run left
-    wrong to carry into that Session's next Intent, lives on the
-    `_SessionWorker` for the same reason a Document does — it belongs to the
-    Session, not to whatever happens to be in front.
+    wrong to carry into that Session's next Intent, and the Part path a run
+    last read or wrote, both live on the `_SessionWorker` for the same reason
+    a Document does — they belong to the Session, not to whatever happens to
+    be in front.
     """
 
-    request_work = QtCore.Signal(str, object, str, object)
+    request_work = QtCore.Signal(str, object, str, object, str)
 
     def __init__(self):
         super().__init__("FreeCAD Copilot")
@@ -1598,6 +1609,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         answers it rather than starting a second run on the answer. The Session
         is named after the attachment check and never before it: an Intent that
         is turned away there never ran, and must not name the Session.
+
+        The Session's last Part path travels with it automatically, unless this
+        Intent brings its own attachment — a new drawing replaces what was
+        carried rather than adding to it (FCC-210).
         """
         if self._answers_to_enter is not None:
             self._answer_with(self._answers_to_enter)
@@ -1639,8 +1654,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._set_running(True)
         self._queue_widget.now("Planning…")
         outstanding = list(bundle.outstanding)
-        self.request_work.emit(intent, attachments, log, outstanding)
-        bundle.request_work.emit(intent, attachments, log, outstanding)
+        the_part_path = "" if attachments else bundle.the_part_path
+        self.request_work.emit(intent, attachments, log, outstanding, the_part_path)
+        bundle.request_work.emit(intent, attachments, log, outstanding, the_part_path)
 
     def _name_session(self, index: int, log: str, intent: str):
         """
@@ -2446,10 +2462,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def on_run_finished(self, result, log: str):
         """
-        Ends the run and carries its unmet acceptance checks forward, whatever
-        the run ended as, including a result the user took as it is: the entries
-        are wrong in the Document either way, and the next Intent inherits them.
-        A run that passed clears the list.
+        Ends the run and carries its unmet acceptance checks and its Part path
+        forward, whatever the run ended as, including a result the user took as
+        it is: the entries are wrong in the Document either way, and the next
+        Intent inherits them. A run that passed clears the acceptance list; the
+        Part path is what the run read or wrote, empty where neither happened
+        (FCC-210).
 
         *log* names which Session finished — this Session's own worker keeps
         running whether or not it is the one on screen (FCC-181), so the
@@ -2463,6 +2481,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.upload_widget.discard(*bundle.sent_attachments)
         bundle.sent_attachments = []
         bundle.outstanding = list(getattr(result, "unmet", None) or ())
+        bundle.the_part_path = str(getattr(result, "the_part_path", None) or "")
         if log != self._current_log():
             bundle.dirty = True
             return

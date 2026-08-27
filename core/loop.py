@@ -470,6 +470,11 @@ class LoopResult:
     `unmet` is what the acceptance checks said did not hold when the run ended,
     whatever the run ended as. A run the user took as it is still leaves these
     wrong in the Document, and the next run is entitled to know.
+
+    `the_part_path` is the Part reading this run planned from: the one it
+    wrote, or the one it was handed and skipped Design to read instead
+    (FCC-210). Empty where neither happened. A run that inherits it and gets
+    no new attachment reads the same Part rather than describing it again.
     """
 
     ok: bool = False
@@ -479,6 +484,7 @@ class LoopResult:
     steps_applied: int = 0
     tried: List[dict] = field(default_factory=list)
     unmet: List[str] = field(default_factory=list)
+    the_part_path: str = ""
 
     @property
     def awaiting_user(self) -> bool:
@@ -2685,7 +2691,7 @@ class _Asking:
 
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
         gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
-        outstanding=()) -> LoopResult:
+        outstanding=(), the_part_path=None) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
 
@@ -2706,30 +2712,43 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     a second drawing is not built on top of a part that already failed its
     first (FCC-98). It comes back out on the result, still outstanding or not,
     for whoever drives the next run.
+
+    `the_part_path` is a prior run's Part reading, written by `part_file.saved`.
+    Given one and no `attachments`, `_run` reads it back instead of asking
+    Design to describe the part again — the second half of one conversation
+    plans from what the first half already read off the sheet, rather than
+    asking for the sheet a second time. An attachment arriving alongside it
+    means a new drawing, which replaces rather than resumes: Design runs on
+    it as it would on a first prompt. The path a run reads or writes comes
+    back out on the result the same way `unmet` does, for whoever drives the
+    next run.
     """
     events = events if events is not None else EventStream()
     events.emit(INTENT, text=intent)
     budgets = budgets or Budgets()
-    progress = {"applied": 0, "tried": [], "unmet": list(outstanding), "satisfied": []}
+    progress = {"applied": 0, "tried": [], "unmet": list(outstanding), "satisfied": [],
+               "the_part_path": the_part_path or ""}
 
     def outcome(result):
         """
-        Stamp what is still wrong with the Document onto whatever the run
-        returned.
+        Stamp what is still wrong with the Document, and which Part it was
+        built from, onto whatever the run returned.
 
-        Every exit carries it, including the ones that raised: a run stopped
+        Every exit carries both, including the ones that raised: a run stopped
         halfway leaves the Document exactly as wrong as the last check found
-        it, and that is the state the next run inherits. Done in one place
-        because there are nine ways out of `_run` and the eight that are not
-        the happy one are the ones that matter here.
+        it, and reading from the same Part it started from, and that is the
+        state the next run inherits. Done in one place because there are nine
+        ways out of `_run` and the eight that are not the happy one are the
+        ones that matter here.
         """
         result.unmet = list(progress["unmet"])
+        result.the_part_path = progress["the_part_path"]
         return result
 
     try:
         return outcome(_run(intent, llm, tools, events, budgets,
                             cancelled or (lambda: False), gate, progress, attachments,
-                            ask, decide, list(outstanding)))
+                            ask, decide, list(outstanding), the_part_path))
     except Stopped:
         return outcome(_block(events, "Stopped by you. Everything applied so far is still in "
                                       "the Document; undo it Step by Step if you want it "
@@ -3706,7 +3725,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
 
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
-         decide=revise_by_default, outstanding=()):
+         decide=revise_by_default, outstanding=(), the_part_path=None):
     """
     The run itself: describe the part, plan it, gate it, build it, judge it.
 
@@ -3721,6 +3740,9 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     Design runs once per run, ahead of every Plan: a revision plans from the
     description that already exists rather than paying a second call to look at
     the same picture (ADR-0018), and it only ever grows from there (ADR-0019).
+    `the_part_path` is the one exception: a prior run's own reading, handed
+    back with no new attachment, is read off disk instead — Design is skipped
+    entirely rather than asked to look at nothing (FCC-210).
 
     One loop, so every Plan reaches the Gate before any of its Steps runs — a
     revised Plan is a new Plan. Two checks come before the Gate. A Plan that
@@ -3770,8 +3792,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         events.emit(ATTACHED, files=[{"name": os.path.basename(path), "path": path}
                                      for path in attachments])
 
-    part = {"the_part": _describe_the_part(intent, llm, events, budgets, ask, cancelled,
-                                           attachments)}
+    if the_part_path and not attachments:
+        part = {"the_part": part_file.read(the_part_path)}
+    else:
+        part = {"the_part": _describe_the_part(intent, llm, events, budgets, ask, cancelled,
+                                               attachments)}
+        written = events.last(PART)
+        progress["the_part_path"] = written.data["path"] if written else ""
 
     asking = _Asking()
     ledger = Ledger(_FAILED_THIS_WAY)
