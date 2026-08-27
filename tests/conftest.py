@@ -247,6 +247,21 @@ def readings_go_to_a_temporary_directory(tmp_path, monkeypatch):
     monkeypatch.setattr(part_file, "WHERE", str(tmp_path / "parts"))
 
 
+@pytest.fixture(autouse=True)
+def the_type_cache_goes_to_a_temporary_directory(tmp_path, monkeypatch):
+    """
+    Where describe_type cache is written, for the length of one test.
+
+    The default is repo/logs/type_cache.json, which under pytest gives the
+    checkout; under FreeCAD it resolves through the symlink in Mod/ and writes
+    to the user's data directory. Redirecting it to tmp_path means tests run
+    isolated.
+    """
+    from core import loop
+
+    monkeypatch.setattr(loop, "TYPE_CACHE_PATH", str(tmp_path / "type_cache.json"))
+
+
 @dataclass
 class Reply:
     """A whole streamed reply, accumulated. Only the tests ever need one."""
