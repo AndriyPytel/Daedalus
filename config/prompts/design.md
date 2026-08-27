@@ -29,7 +29,8 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
       "features": [
         {
           "id": "bore-left",
-          "kind": "Ø40 bore",
+          "kind": "hole",
+          "diameter": {"value": "40 mm", "flag": "read"},
           "topology": "through",
           "axis": {"value": "perpendicular to the top face", "flag": "read",
                    "round_in": "the top view"},
@@ -59,13 +60,18 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   checked at all.
 - **`features`** is everything on the part — every hole, fillet, chamfer,
   pocket, boss, thread. Each one carries an `id` you choose and never reuse, a
-  `kind` in the words an engineer would use, a `topology` (`through`, `blind`,
-  `to a depth of …`), a `position` keyed by the datum each value is measured
-  from, and `seen_in`, the views you read it in. One that has an axis — a hole,
-  a bore, a slot, a pocket — carries that axis in `axis`, and one that is a
-  profile, an arc or a rounded end carries `plane`; both are values like any
-  other, so a direction is checked on the finished part the way a distance is.
-  A round one — a hole, a bore, a counterbore, a circular boss — also carries
+  `kind` from the closed vocabulary below, a `region` when the drawing names
+  the zone it sits in (`arm`, `ring`, `web` — open, never one of the closed
+  lists), a `topology` (`through`, `blind`, `to a depth of …`), a `position`
+  keyed by the datum each value is measured from, and `seen_in`, the views you
+  read it in. Whatever dimension the drawing gives goes in its own field —
+  `diameter`, `outer_diameter`, `radius`, `thickness`, `length`, `width`,
+  `depth`, `angle`, `count`, `pitch`, `bolt_circle_diameter` — never in `kind`.
+  One that has an axis — a hole, a slot, a pocket — carries that axis in
+  `axis`, and one that is a profile, an arc or a rounded end carries `plane`;
+  both are values like any other, so a direction is checked on the finished
+  part the way a distance is.
+  A round one — a hole, a counterbore, a circular boss — also carries
   `round_in`, the one view it is drawn round in, the view whose circle gave you
   the direction. Name that view exactly as the reader names it in the list of
   views it hands you, because it is looked up in that list: a name of your own
@@ -563,17 +569,27 @@ its `id` and only the fields you are filling in.
 
 ## Naming from a closed vocabulary
 
-Feature `id`: `<kind>-<place>` where kind is one of (hole, bore, slot, pocket,
+Every reply carries `"kind_vocabulary": "closed"` at the top level. A `kind`
+off the list below is refused rather than merged, and the entry that refuses
+it names what it maps onto instead — a value worth re-sending correctly, not
+a rejection to argue with.
+
+Feature `id`: `<kind>-<place>` where kind is one of (hole, slot, pocket,
 cutout, pad, fillet, chamfer, boss, rib, thread, counterbore, countersink,
 groove, notch, tab, lug, ear, flange, step, shoulder, shell, draft) and place
 is one or two of (left, right, front, rear, top, bottom, upper, lower,
-centre, inner, outer). Write the operation, not a synonym for it: a round is
-a `fillet`, an opening or a window is a `cutout`, a split or a saw cut is a
-`slot`, a recess is a `counterbore`. Write the shape, not the drawing's word
-for the region it sits in: an arm, a ring, a web, a band, a collar, a
-profile, a plate, a body, an outline or a contour is a `pad` — the drawing's
-own name for that region gets its own field, `region`, coming in FCC-232.
-Append `-4x` for a repeated feature.
+centre, inner, outer). Write the operation, not a synonym for it: a bore is
+a `hole`, a round is a `fillet`, an opening or a window is a `cutout`, a
+split or a saw cut is a `slot`, a recess is a `counterbore`. Write the shape,
+not the drawing's word for the region it sits in: an arm, a ring, a web, a
+band, a collar, a profile, a plate, a body, an outline or a contour is a
+`pad`. Put that word in the new `region` field instead — `region` is open
+text off the drawing and is never a value in `kind`, in `id`'s place slot, or
+in any other closed list here. A dimension the drawing gives — a diameter, a
+radius, a length, an angle — is never in `kind` either; it goes in its own
+field (`diameter`, `outer_diameter`, `radius`, `thickness`, `length`,
+`width`, `depth`, `angle`, `count`, `pitch`, `bolt_circle_diameter`). Append
+`-4x` for a repeated feature.
 
 Datum `name`: one of (the left end face, the right end face, the front face,
 the rear face, the top face, the bottom face, the ring axis, the bore axis,

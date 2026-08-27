@@ -97,6 +97,22 @@ HEADED = {A_CONFLICT: "Two readings that cannot both be true",
           A_GAP: "A value nothing on the part supplies",
           A_CHECK_HAZARD: "A check that could not be run"}
 
+FEATURE_KIND = ("hole", "slot", "pocket", "cutout", "pad", "fillet", "chamfer",
+                "boss", "rib", "thread", "counterbore", "countersink", "groove",
+                "notch", "tab", "lug", "ear", "flange", "step", "shoulder",
+                "shell", "draft")
+
+CLOSED_KIND_VOCABULARY = "closed"
+
+_BANNED_KIND_SYNONYM = {"bore": "hole", "round": "fillet", "rounded": "fillet",
+                         "rounds": "fillet", "opening": "cutout", "window": "cutout",
+                         "split": "slot", "slit": "slot", "saw cut": "slot",
+                         "keyway": "slot", "recess": "counterbore",
+                         "recesses": "counterbore"}
+
+_REGION_WORD = ("arm", "ring", "web", "band", "collar", "profile", "plate",
+                "body", "outline", "contour")
+
 
 def merge(held, offered):
     """
@@ -117,19 +133,83 @@ def merge(held, offered):
     an outside described in words and carried by nothing, `direction` for a
     feature that points somewhere and says nowhere, `pointing` for one placed
     along the very direction its axis points, `placement` for one sized in
-    a direction it is placed in nowhere, `twice_over` for a cavity nothing
-    places, which is how one cavity comes to be two features, and
-    `settled_by_nothing` for a value whose flag promises a reason it does not
-    carry. Their findings join the same `conflicts` the disagreements go to.
+    a direction it is placed in nowhere, `placed_by_nothing` for a cavity
+    nothing places, `twice_over` for two features of the same kind placed
+    against a shared datum, which is how one physical feature comes to be
+    two, and `settled_by_nothing` for a value whose flag promises a reason it
+    does not carry. Their findings join the same `conflicts` the
+    disagreements go to.
     """
     if not isinstance(offered, dict):
         return _with_the_findings(dict(held or {}))
 
-    conflicts = []
+    conflicts = list(_refused_kinds(offered))
+    if conflicts:
+        offered = _without_refused_kinds(offered)
     merged = _written(dict(held or {}), offered, "", conflicts)
     if conflicts:
         merged["conflicts"] = _appended(merged.get("conflicts"), conflicts)
     return _with_the_findings(merged)
+
+
+def _refused_kinds(offered):
+    """
+    Features in *offered* naming a `kind` off `FEATURE_KIND`, checked only
+    when *offered* itself carries `"kind_vocabulary": "closed"` — the marker
+    `config/prompts/design.md` asks a Design turn to send on every reply once
+    it is written under ADR-0026's closed kind list.
+
+    A recorded model with no marker took the prose grammar this ticket
+    replaces, and is not checked here at all: enforcing the closed list
+    against every recorded reading is the alternative ADR-0026 rejects by
+    name — "a closed list added to the prompts and nothing else", already
+    measured at 14.9% compliance — so the gate is the marker the model
+    itself sends, not a guess made from the shape of what it sent.
+
+    The reason named is actionable rather than a bare refusal, so a re-ask
+    costs one turn and not a loop that spends the revision budget: a value
+    one of FCC-231's banned prose synonyms maps onto (`round` onto `fillet`,
+    `recess` onto `counterbore`) names that kind, a region word (`arm`,
+    `ring`, `web`, ...) names `pad` and the new `region` field it belongs in
+    instead, and anything else names only the count of the closed list.
+    """
+    if not isinstance(offered, dict) or offered.get("kind_vocabulary") != CLOSED_KIND_VOCABULARY:
+        return []
+    found = []
+    for feature in offered.get("features") or []:
+        if not isinstance(feature, dict):
+            continue
+        kind = feature.get("kind")
+        if not kind or kind in FEATURE_KIND:
+            continue
+        where = _under(_under("features", feature.get("id") or "a feature"), "kind")
+        found.append({
+            "about": where,
+            "stands": _refusal_reason(kind),
+            "was_also_said": "refused — the field is left as not yet filled",
+            "kind": A_CONFLICT,
+        })
+    return found
+
+
+def _refusal_reason(kind):
+    lowered = str(kind).strip().lower()
+    mapped = _BANNED_KIND_SYNONYM.get(lowered)
+    if mapped:
+        return "%r is not a kind; the kind is %r" % (kind, mapped)
+    if lowered in _REGION_WORD:
+        return "%r is not a kind; the kind is %r, and %r is the region" % (kind, "pad", kind)
+    return "%r is not one of the closed kind vocabulary's %d values" % (kind, len(FEATURE_KIND))
+
+
+def _without_refused_kinds(offered):
+    features = []
+    for feature in offered.get("features") or []:
+        if isinstance(feature, dict) and feature.get("kind") \
+                and feature["kind"] not in FEATURE_KIND:
+            feature = {key: value for key, value in feature.items() if key != "kind"}
+        features.append(feature)
+    return dict(offered, features=features)
 
 
 def corrected(model, address, value, because):
@@ -203,9 +283,9 @@ def _the_entry(node, step):
 
 def _with_the_findings(model):
     found = (silhouette(model) + direction(model) + pointing(model)
-             + crosswise(model) + placement(model) + twice_over(model)
-             + settled_by_nothing(model) + unsafe_supersession(model)
-             + twice_placed(model))
+             + crosswise(model) + placement(model) + placed_by_nothing(model)
+             + twice_over(model) + settled_by_nothing(model)
+             + unsafe_supersession(model) + twice_placed(model))
     if found:
         model["conflicts"] = _appended(model.get("conflicts"), found)
     return model
@@ -1181,26 +1261,27 @@ _A_CAVITY = ("cutout", "cut-out", "cut out", "slot", "pocket", "recess",
              "relief", "notch", "opening", "scallop")
 
 
-def twice_over(model) -> list:
+def placed_by_nothing(model) -> list:
     """
-    A cavity nothing places, which is how one cavity becomes two features.
+    A cavity nothing places, built wherever the profile happens to allow.
 
     The recorded run (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`,
     the 2023 pipe clamp) described the one cavity in the web twice: `slot-arm`,
     30 mm long, off the plan, and `cutout-web`, "profile as drawn in VIEW B",
     off the detail the sheet points at with `SEE VIEW B FOR CLARITY OF CUTOUT`.
-    One physical cavity, two features, and the second carried `position: {}` —
-    nothing at all. Plan then built both: a slot 8 mm wide it invented, and an
-    R10 circle it invented, and the circle cut the Body into two solids and
-    ended the run.
+    `cutout-web` carried `position: {}` — nothing at all. Plan then built both:
+    a slot 8 mm wide it invented, and an R10 circle it invented, and the
+    circle cut the Body into two solids and ended the run. This finding is the
+    empty `position` alone, checkable and wrong on its own whether or not a
+    second feature is the same physical cavity — `twice_over` is the arithmetic
+    check for that; this one predates it and stays a separate defect
+    (ADR-0026, FCC-232).
 
-    The finding is the empty `position`, because that is what is checkable and
-    what is wrong on its own: a cavity nobody placed is built wherever the
-    builder likes. `placement` cannot reach it — that one asks whether a size in
-    a direction has a position in that direction, and this feature had no sizes
-    either. Where another cavity is drawn in a view this one is also drawn in,
-    the finding says so as well: two cavities sharing a view, one of them
-    placed by nothing, is the shape this defect arrives in.
+    `placement` cannot reach it — that one asks whether a size in a direction
+    has a position in that direction, and this feature had no sizes either.
+    Where another cavity is drawn in a view this one is also drawn in, the
+    finding says so as well: two cavities sharing a view, one of them placed by
+    nothing, is the shape this defect arrives in.
 
     A cavity is a hole in the material that is not a drilled one, in the words a
     description uses for it. It is what a detail view is usually drawn for, and a
@@ -1228,6 +1309,61 @@ def twice_over(model) -> list:
             "was_also_said": str(feature.get("kind") or feature.get("topology") or ""),
             "kind": A_GAP,
         })
+    return found
+
+
+def twice_over(model) -> list:
+    """
+    Two features of the same `kind`, placed against a shared datum, and not
+    already reconciled by `superseded_by` — one physical feature read twice.
+
+    `config/prompts/design.md`'s reconciliation turn already asks the model
+    for exactly this arithmetic: "same kind, overlapping position datums ...
+    if all values match, add superseded_by ... if any value differs, raise a
+    conflicts entry" — a rule the prompt could ask for and this module could
+    not check, because `kind` was prose and no two readings of it were ever
+    equal. `docs/research/ste-design-duplicates.md` names four such pairs
+    across 47 recorded models — `slot-arm`/`cutout-web`, `slot`/`cutout-blend`,
+    `bore-upper`/`hole-boss`, `left-mounting-hole`/`phase2-left-mounting-slot`
+    — none caught before this ticket because the only check written was an
+    empty `position` (`placed_by_nothing`), which is a proxy the sheet does
+    not always leave: `bore-upper` and `hole-boss` both carry a filled
+    `position`, framed off two different datums that pin the same point.
+
+    `kind` equality is exact — the enum this ticket closes it into — never a
+    substring search of `id`/`kind`/`topology` the way the rest of this module
+    reads what a feature is elsewhere (ADR-0026: "no substring search, and no
+    proxy standing in for a check that could not be written"). Values at a
+    shared datum are not required to agree: agreement is a plain duplicate,
+    disagreement is `unsafe_supersession`'s territory once `superseded_by`
+    names the pair — this finding is what points the model at declaring it.
+    """
+    features = [feature for feature in _features(model) if not feature.get("superseded_by")]
+
+    found = []
+    for index, feature_a in enumerate(features):
+        for feature_b in features[index + 1:]:
+            kind_a, kind_b = feature_a.get("kind"), feature_b.get("kind")
+            if not kind_a or kind_a != kind_b:
+                continue
+            position_a = feature_a.get("position") or {}
+            position_b = feature_b.get("position") or {}
+            if not isinstance(position_a, dict) or not isinstance(position_b, dict):
+                continue
+            shared = sorted(set(position_a) & set(position_b))
+            if not shared:
+                continue
+            id_a = feature_a.get("id") or "unknown"
+            id_b = feature_b.get("id") or "unknown"
+            pair = sorted([id_a, id_b])
+            found.append({
+                "about": "features → %s and %s (same kind, placed against %s)"
+                         % (pair[0], pair[1], ", ".join(shared)),
+                "stands": "both are a %s, placed against %s — one physical feature described twice"
+                          % (kind_a, ", ".join(shared)),
+                "was_also_said": kind_a,
+                "kind": A_GAP,
+            })
     return found
 
 

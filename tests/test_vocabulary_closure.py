@@ -151,3 +151,17 @@ def test_no_prompt_licenses_a_value_outside_a_closed_list():
             offenders.append(name)
 
     assert not offenders, offenders
+
+
+def test_core_design_feature_kind_matches_the_prompts_own_list():
+    """
+    `core.design.FEATURE_KIND` is the closed list `merge()` refuses a `kind`
+    against (ADR-0026, FCC-232); this prompt is what asks the model for it.
+    Two independent copies of a closed list is exactly the shape that drifts
+    silently, so a test keeps them equal rather than a comment promising it.
+    """
+    from core.design import FEATURE_KIND
+
+    kinds, _ = _kind_vocabulary(_naming_section(_design_md()))
+
+    assert tuple(kinds) == FEATURE_KIND
