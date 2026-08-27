@@ -2043,6 +2043,11 @@ def _written(held, offered, path, conflicts):
 
     A value and its flag are one thing: there is no half-filling a value, and
     20 mm read disagreeing with 20 mm assumed is a disagreement worth showing.
+
+    `not_defined` -> a value is the one exception to the field growing only
+    once: `not_defined` records that nothing supplied a value, not a value
+    itself, so a later pass supplying one closes the gap instead of disagreeing
+    with it (FCC-235). A field already carrying a value is unmoved either way.
     """
     if isinstance(held, dict) and isinstance(offered, dict) \
             and not (_a_value(held) or _a_value(offered)):
@@ -2058,8 +2063,15 @@ def _written(held, offered, path, conflicts):
     if held == offered:
         return held
 
+    if _stood_not_defined(held) and _a_value(offered) and not _stood_not_defined(offered):
+        return offered
+
     conflicts.append({"about": path, "stands": held, "was_also_said": offered})
     return held
+
+
+def _stood_not_defined(value):
+    return isinstance(value, dict) and value.get("flag") == "not_defined"
 
 
 def _alongside(held, offered, path, conflicts):

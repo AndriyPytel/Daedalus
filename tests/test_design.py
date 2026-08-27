@@ -109,6 +109,45 @@ def test_what_is_not_defined_accumulates_without_repeating_itself():
     assert grown["not_defined"] == [entry]
 
 
+NOT_DEFINED_DEPTH = {
+    "envelope": {"depth front to rear": {"value": "not defined", "flag": "not_defined"}},
+}
+
+
+def test_a_not_defined_field_is_filled_by_a_later_pass():
+    """
+    FCC-235: session afa0142baef847b0a9cd9139390af993 derived a depth its own
+    first pass had recorded `not_defined` and could not write it — the field
+    was already "filled", by the general rule, with a gap rather than a value.
+    `not_defined` -> a value is the one exception to that rule: it fills, and
+    is not a `conflicts` entry.
+    """
+    grown = merge(NOT_DEFINED_DEPTH,
+                  {"envelope": {"depth front to rear":
+                                {"value": "50.2 mm", "flag": "derived",
+                                 "from": "SECTION A-A's body was placed as a picture, "
+                                         "so its outline was traced"}}})
+
+    assert grown["envelope"]["depth front to rear"] == \
+        {"value": "50.2 mm", "flag": "derived",
+         "from": "SECTION A-A's body was placed as a picture, so its outline was traced"}
+    assert not grown.get("conflicts")
+
+
+def test_a_filled_field_still_cannot_be_replaced_even_by_not_defined():
+    """
+    `not_defined` -> value is the *only* exception. A field already carrying a
+    real value is unmoved by a later pass, whether that pass offers another
+    value or claims the field is now not defined.
+    """
+    grown = merge(DEPTH_OFF_THE_SECTION,
+                  {"envelope": {"depth front to rear":
+                                {"value": "not defined", "flag": "not_defined"}}})
+
+    assert grown["envelope"]["depth front to rear"] == _read("100 mm")
+    assert grown["conflicts"][0]["stands"] == _read("100 mm")
+
+
 def test_a_fragment_that_is_not_a_model_leaves_the_part_as_it_was():
     """
     Design answering with prose is a phase that did not do its job, and losing

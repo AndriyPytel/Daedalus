@@ -564,6 +564,10 @@ on the description, that is a `conflicts` entry, naming both, and the user settl
 at the Plan Gate. The first pass stands even where you now think it was wrong;
 the disagreement is the thing that has to survive, not your latest opinion.
 
+**`not_defined` is the one exception.** It is a gap, not a value, so a later
+pass that fills it is not a `conflicts` entry. A field already carrying a
+value is still unmoved, `not_defined` or otherwise.
+
 Reply with a fragment, keyed the same way: a feature you are adding to carries
 its `id` and only the fields you are filling in.
 
