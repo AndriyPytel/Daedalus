@@ -94,6 +94,21 @@ TRAPS = [
     "through points computed from its own equation — an involute flank, a cam profile, "
     "a cycloid. A chain of Part.LineSegment approximates it, and the approximation is "
     "what gets built and measured.",
+    "A PropertyEnumeration setter — Pocket.Type, Pad.Type, and others — raises "
+    "ValueError on any string outside its own accepted list, and that list is per "
+    "property, not a spelling shared across the module. Read the real set first with "
+    "obj.getEnumerationsOfProperty('Type') and set one of those; a spelling that works "
+    "on one enum property is not evidence it works on another.",
+    "PartDesign::Fillet fails on a radius the material cannot carry with 'BRep_API: "
+    "command not done', a message that names the failed OCC call and nothing about the "
+    "radius that caused it. A full round needs less than half the thickness of what it "
+    "rounds; check the radius against the Body's wall thickness before setting it, not "
+    "after the recompute fails with no way back to why.",
+    "A Pad or Pocket sketch with more than one closed wire builds every wire — if the "
+    "wires do not touch, the feature leaves the Body in more than one solid, and "
+    "FreeCAD only reports it as a plain RuntimeError once the recompute runs, with no "
+    "earlier signal. A second piece of geometry that does not touch the first belongs "
+    "in its own Body, not a second wire in the same sketch.",
 ]
 
 _SNAPSHOT_LIMIT = 200
@@ -145,7 +160,16 @@ def _selection():
     ]
 
 
-REVIEW_VIEWS = ("viewIsometric", "viewFront", "viewTop", "viewRight")
+_OPPOSITE_ISOMETRIC = "viewIsometricOpposite"
+"""
+Not a `FreeCADGui` button — `libFreeCADGui` names `viewFront`, `viewTop`,
+`viewRight`, `viewRear`, `viewBottom`, `viewLeft`, `viewIsometric`,
+`viewDimetric` and `viewTrimetric`, and none of them is the corner
+diagonally across from isometric's. `capture_review_views` builds it instead,
+from whatever orientation `viewIsometric` is already holding.
+"""
+
+REVIEW_VIEWS = ("viewIsometric", _OPPOSITE_ISOMETRIC, "viewTop", "viewFront")
 
 
 _A_3D_VIEW = "Gui::View3DInventor"
@@ -199,6 +223,35 @@ def _active_view(document=None):
         return None
 
 
+def _scaffolding(obj):
+    """
+    Whether *obj* is a Shape past `_SCAFFOLDING` — an Origin plane or axis,
+    almost always — the same test `_measurable` makes for the reporting path,
+    kept separate here because `fit_view` only cares about the oversized
+    case: an object with no `Shape` at all, or one with no `Faces`, is not
+    scaffolding, just not a solid, and hiding it would change what the
+    camera fits to for no reason.
+    """
+    shape = getattr(obj, "Shape", None)
+    if shape is None or shape.isNull():
+        return False
+    bound = shape.BoundBox
+    return bound.isValid() and bound.DiagonalLength > _SCAFFOLDING
+
+
+def _hide_scaffolding(document):
+    hidden = []
+    for obj in document.Objects:
+        if not _scaffolding(obj):
+            continue
+        view_object = getattr(obj, "ViewObject", None)
+        if view_object is None or not view_object.Visibility:
+            continue
+        view_object.Visibility = False
+        hidden.append(view_object)
+    return hidden
+
+
 def fit_view(document=None):
     """
     Put everything the Document shows back inside the viewport.
@@ -215,6 +268,29 @@ def fit_view(document=None):
     reads whichever MDI tab is in front, which is wrong the moment two
     Documents are open and the user is looking at the other one.
 
+    A Body's Origin carries three planes and three axes, each 1e100 mm
+    across, and `view.fitAll()` is a raw Coin3D call: it fits the camera to
+    the bounding box of everything currently visible, with no filter of its
+    own. One visible Origin feature is enough to turn "fit the part in the
+    viewport" into "fit a plane 1e100 mm across", at which point a
+    millimetre- or centimetre-scale part is a speck nothing can see. An
+    Origin plane ends up visible in the first place when a sketch is
+    attached or edited programmatically — the path a generated Step takes —
+    rather than through the GUI's own attachment editor, which is what
+    normally re-hides it. Anything past `_SCAFFOLDING` — the same threshold
+    `_measurable` already applies to the reporting path — is hidden before
+    `fitAll()` runs and shown again
+    straight after, each object's own prior `Visibility` restored rather than
+    blanket-set, so scaffolding the user had already hidden themselves stays
+    hidden; a `document` with no `Objects` to check (the `None` default, read
+    here only) leaves this skipped and `fitAll()` as bare as it always was.
+    This runs after `_transaction` has already committed or raised (never
+    inside the open transaction, so a rolled-back Step never touches
+    visibility at all), and the hide/restore happens inside one call, so
+    nothing outlives a raised exception or a rollback to leave a stale
+    `Visibility` behind — undo not tracking `ViewObject` properties is moot
+    here because none of this survives past the `finally`.
+
     Orientation is left alone. Which way the part is turned is the user's
     choice, and nothing here is a better one.
 
@@ -223,18 +299,25 @@ def fit_view(document=None):
     view = _active_view(document)
     if view is None:
         return
-    view.fitAll()
+    hidden = _hide_scaffolding(document) if document is not None and hasattr(document, "Objects") else []
+    try:
+        view.fitAll()
+    finally:
+        for view_object in hidden:
+            view_object.Visibility = True
 
 
 def capture_review_views(paths, document=None, size=(800, 600)):
     """
     The four views Review judges, captured once, camera put back afterwards.
 
-    Isometric, front, top and right. One view is not enough, and the user's own
-    camera is undetermined as well as single: a mirrored tooth flank reads only
-    from above, and in isometry it is foreshortened, which is how Review came
-    to pass one. The spellings were checked against libFreeCADGui rather than
-    recalled.
+    Two isometrics from opposite corners of the part's box, plus top and
+    front. Front-right-top and the corner diagonally across from it between
+    them show every one of a cube's six faces by construction, which the old
+    isometric/front/top/right never did — three of the six were outside all
+    four of those, the same blind spot `FCC-63` closed for a single mirrored
+    isometry, one level deeper. The spellings were checked against
+    libFreeCADGui rather than recalled.
 
     `document` is the Session's own bound Document (FCC-181), read through
     `FreeCADGui.getDocument(name)` rather than whichever tab is in front.
@@ -246,6 +329,8 @@ def capture_review_views(paths, document=None, size=(800, 600)):
     view to be moved, and a run that ends with the part face-on because Review
     looked at it last has damaged something that belongs to them.
     """
+    import FreeCAD
+
     view = _active_view(document)
     if view is None:
         return []
@@ -254,7 +339,11 @@ def capture_review_views(paths, document=None, size=(800, 600)):
     written = []
     try:
         for name, path in zip(REVIEW_VIEWS, paths):
-            getattr(view, name)()
+            if name == _OPPOSITE_ISOMETRIC:
+                view.setCameraOrientation(view.getCameraOrientation().multiply(
+                    FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), 180)))
+            else:
+                getattr(view, name)()
             view.fitAll()
             view.saveImage(path, size[0], size[1], "Current")
             written.append(path)
@@ -834,16 +923,22 @@ def _register_apply(registry, pipeline, selection):
                     "type": "string",
                     "description": "Short name for the undo entry, e.g. 'Pad the base sketch'.",
                 },
+                "op": {
+                    "type": "string",
+                    "description": "This Step's operation, one of the 36 in plan.md's closed "
+                                   "list — carried straight from the Plan, not asked for here.",
+                },
             },
             "required": ["code"],
         },
     )
-    def apply_step(code, label="Copilot Step"):
+    def apply_step(code, label="Copilot Step", op=None):
         """
         Preflight lives behind this Tool: from here up, a Step was applied or
         it was not, and there is no third thing to know about.
         """
-        return pipeline.apply(code, selection=selection(), label=label).as_tool_result()
+        return pipeline.apply(code, selection=selection(), label=label,
+                              op=op).as_tool_result()
 
     @registry.tool(
         "check_assertions",

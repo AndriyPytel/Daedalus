@@ -40,6 +40,7 @@ import base64
 import json
 import math
 import os
+import re
 import tempfile
 from dataclasses import replace
 
@@ -49,7 +50,7 @@ from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT,
-    EventStream, replay,
+    WRITING, EventStream, replay,
 )
 from core import design, loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
@@ -60,7 +61,8 @@ from core.design import (
     read_off_the_wrong_view, render, said_at,
 )
 from core.loop import (
-    PROMPTS, Budgets, prompt, revisions_ceiling, run,
+    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
+    revisions_ceiling, run,
 )
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
@@ -313,12 +315,16 @@ class FakeTools:
 
         @registry.tool("apply_step", "Apply one Step.", {
             "type": "object",
-            "properties": {"code": {"type": "string"}, "label": {"type": "string"}},
+            "properties": {"code": {"type": "string"}, "label": {"type": "string"},
+                          "op": {"type": "string"}},
             "required": ["code"],
         })
-        def apply_step(code, label="Step"):
+        def apply_step(code, label="Step", op=None):
             """A None entry, or running off the end, means "this one worked"."""
-            self.calls.append(("apply_step", {"code": code, "label": label}))
+            arguments = {"code": code, "label": label}
+            if op is not None:
+                arguments["op"] = op
+            self.calls.append(("apply_step", arguments))
             queued = self.applies.pop(0) if self.applies else None
             result = queued if queued is not None else dict(self.APPLIED)
             if result.get("status") == "applied":
@@ -438,8 +444,11 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
     ], attachments=[RENDER_PNG])
 
     with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
-        expected = handle.read().strip().replace(
-            "{{traps}}", "\n".join("- " + trap for trap in TRAPS))
+        phase_body = handle.read().strip()
+    sections = _language_sections()
+    vocabulary = "\n\n".join(sections[heading] for heading in _PHASE_VOCABULARY[phase])
+    expected = ("%s\n\n%s" % (phase_body, vocabulary)).replace(
+        "{{traps}}", "\n".join("- " + trap for trap in TRAPS))
 
     assert _system_messages(llm)[turn] == expected
 
@@ -553,6 +562,42 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
     assert "Let a Step fail" in execute_system
 
 
+def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup():
+    """
+    FCC-205: nowhere named the order a part is planned in, nor why it matters.
+    A boolean — a Pad added to the solid, a Pocket or a Hole cut out of it, a
+    Shell hollowing it — does not add to the Shape the Steps before it built,
+    it replaces it, so a reference Execute worked out against the geometry
+    before the boolean runs is a reference into a Shape already gone. Fillets
+    and chamfers are planned last because that is the only order in which the
+    edges their Step names are still the edges the boolean before them built,
+    and a material card is last of all because nothing depends on it.
+
+    Where a Step stands in the order is Plan's and not Execute's: a recorded
+    run handed a fillet Step back asking for the round to be ordered before
+    the rib, which trades one Step now for every Step after it.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        verdict_reply("pass"),
+    ])
+    _, plan_system, execute_system, _ = (" ".join(text.split()) for text in _system_messages(llm))
+
+    assert "base, then addition, then subtraction" in plan_system
+    assert "fillet or a chamfer only once every one of those stands" in plan_system
+    assert "boolean" in plan_system and "replaces it" in plan_system
+    assert "it is the last Step of any Plan" in plan_system
+    assert "A dress-up Step is planned against the solid the Steps before it leave" \
+        in plan_system
+    assert "A round is planned early only where a later Step must inherit it" in plan_system
+
+    assert "computed off `Shape.Faces`" in execute_system
+    assert "before the boolean that invalidates it, never after" in execute_system
+    assert "`unbuildable` reports the geometry, not a rewrite of the Plan" in execute_system
+    assert "where a Step stands in the order is not" in execute_system
+
+
 def test_the_reading_rules_moved_to_the_design_phase_whole():
     """
     FCC-59's rules were live in plan.md and did not hold, so FCC-86 moved who
@@ -625,6 +670,54 @@ def test_a_value_the_model_settled_says_who_settled_it_and_on_what():
     assert "who settled it and on what" in design_system
     assert "`assumed` without `because` is invalid" in design_system
     assert "settle it yourself" in design_system
+
+
+def test_the_nonmetric_defaults_are_named_and_carry_no_number():
+    """
+    FCC-206: `Default assumptions` in the text-to-cad doctrine lists both
+    non-metric conventions — units, base plane, up axis, a body being a
+    closed positive volume — and numeric ones — wall thickness, fillet
+    radius, clearance. Only the first kind describes the coordinate system
+    every reading sits in rather than a value of the part, so only the first
+    kind belongs in design.md; a numeric default there would be exactly the
+    "nobody supplied it" FCC-114 already named, dressed up as a convention.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_DATUM), plan_reply("Add a box"), code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    design_system = " ".join(_system_messages(llm)[0].split())
+
+    for default in ("millimetres", "base plane", "+Z", "closed", "positive volume"):
+        assert default in design_system, "a non-metric default is missing: " + default
+
+    section = design_system[design_system.index("What needs no reading at all"):]
+    section = section[:section.index("## Every value carries its datum and its flag")
+                       if "## Every value carries its datum and its flag" in section
+                       else len(section)]
+    assert not re.search(r"\d", section), \
+        "a numeric default reached design.md: " + section
+
+
+def test_a_nonmetric_default_carries_no_flag_and_reaches_no_acceptance_entry():
+    """
+    FCC-206: units, the base plane, the up axis and a body being a closed
+    positive volume are conventions of the model, not values read off
+    anything, so a description that never names them still carries none of
+    them as `assumed` — `entries()` and `decided_for_you()`, which is what
+    the Acceptance list and the Plan Gate's `Decided for you` section are
+    built from, see nothing about either one on A_PART, which never names
+    them.
+    """
+    for entry in entries(A_PART):
+        for word in ("unit", "millimetre", "base plane", "axis default", "+Z",
+                     "closed volume", "positive volume"):
+            assert word not in entry["about"].lower() and word not in entry["says"].lower()
+
+    for line in decided_for_you(A_PART):
+        for word in ("unit", "millimetre", "base plane", "axis default", "+Z",
+                     "closed volume", "positive volume"):
+            assert word not in line.lower()
 
 
 def test_a_curve_is_not_read_until_its_centre_is_placed():
@@ -716,7 +809,7 @@ def test_a_fraction_of_a_named_overall_is_a_value_on_equal_terms_with_millimetre
     assert "a fraction of a named overall" in design_system
     assert "a fraction is a full record, not a fallback" in design_system
     assert "Never stop to ask for dimensions" in design_system
-    assert "Exactly one assumption in the whole model" in design_system
+    assert "Exactly one assumption in the whole description" in design_system
 
 
 def test_the_datum_and_the_flag_reach_the_checks_without_anyone_rewriting_them():
@@ -1670,6 +1763,68 @@ def test_execute_can_declare_a_step_obsolete_and_plan_revises():
     assert tools.applied_codes() == ["add_new()"]
 
 
+def test_a_revised_plan_does_not_reapply_steps_that_already_landed():
+    """
+    Matched to `logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl`: an
+    11-Step Plan revised over Steps 3 and 7 produced 28 `step_started` events
+    where 11 would say the same thing, because a revision always restarted
+    Execute at Step 1 no matter how much of the Plan it left alone.
+
+    Here the revision leaves Steps 1 and 2 exactly as they read the first
+    time, so the second pass must not start them, must not apply them again,
+    and must still show them applied on the stream — they already are.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Pad the outline", "Fillet the marked edges",
+                   "Drill the hole", "Chamfer the edge"),
+        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"},
+                              {"step": 2, "code": "fillet()", "label": "Fillet"}],
+                    "unbuildable": "Step 3 needs a hole diameter nobody supplied."}),
+        plan_reply("Pad the outline", "Fillet the marked edges",
+                   "Drill a 6mm hole", "Chamfer the edge"),
+        code_reply("drill()", "chamfer()", first=3),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["pad()", "fillet()", "drill()", "chamfer()"], \
+        "Steps 1 and 2 were applied again on the second pass"
+
+    revised_at = [e.kind for e in events].index(PLAN_REVISED)
+    after = events[revised_at + 1:]
+    assert [e.data["index"] for e in after if e.kind == STEP_STARTED] == [3, 4], \
+        "a carried Step was started again"
+    carried = [e.data["step"] for e in after if e.kind == APPLIED and e.data["step"] in (1, 2)]
+    assert carried == [1, 2], "a carried Step was not marked applied on the second pass"
+
+    second_pass = _turns_of(llm, "execute")[-1]
+    assert [s["step"] for s in second_pass["steps"]] == [3, 4], \
+        "Execute was asked to write Steps it had already applied"
+
+
+def test_a_revised_plan_whose_first_step_differs_reexecutes_everything():
+    """
+    The guard is a prefix match, not a hunch: a revision that changes the
+    very first Step carries nothing, and the second pass is a full Execute
+    turn over every Step of the revised Plan, same as before this existed.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Pad the outline", "Fillet the marked edges"),
+        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": "Step 2 needs edges nobody named."}),
+        plan_reply("Pad a wider outline", "Fillet the named edges"),
+        code_reply("pad_wider()", "fillet_named()"),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["pad()", "pad_wider()", "fillet_named()"]
+
+    second_pass = _turns_of(llm, "execute")[-1]
+    assert [s["step"] for s in second_pass["steps"]] == [1, 2], \
+        "a Step that only reads differently was still treated as carried"
+
+
 def test_a_revised_plan_says_which_revision_it_is_and_what_caused_it():
     """
     Three Revised Plans hitting the same wall read as three fresh starts, and
@@ -1914,6 +2069,30 @@ def test_the_part_design_read_is_written_to_a_file_the_run_names():
     written = events.last(PART).data["path"]
     assert os.path.isfile(written)
     assert part_file.read(written) == events.first(DESIGN).data["model"]
+
+
+def test_a_missing_pyyaml_ends_the_run_as_a_sentence_and_not_a_crash_report(monkeypatch):
+    """
+    A missing PyYAML is a known, actionable outcome — absent from FreeCAD's
+    own Python — and its own message already names the package and the fix,
+    so it belongs on the stream as that sentence, the same way a PhaseError
+    does, not as a traceback swallowed into a crash report by whichever
+    caller happens to be watching.
+    """
+    monkeypatch.setattr(part_file, "yaml", None)
+
+    result, events, _, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert not result.ok
+    error = events.last(ERROR)
+    assert "PyYAML" in error.data["message"]
+    assert "🚨" not in error.data["message"]
+    assert error.data["message"] == str(part_file.MissingPyYAML())
 
 
 def test_the_file_says_which_sheet_the_part_was_read_from():
@@ -4107,10 +4286,10 @@ def test_the_event_stream_of_a_clean_run():
 
     assert [e.kind for e in events] == [
         INTENT,
-        CALL_STARTED, COST,
-        CALL_STARTED, THOUGHT, COST, PLAN, GATE, GATE,
-        CALL_STARTED, THOUGHT, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
-        CALL_STARTED, THOUGHT, COST, REVIEW_VERDICT,
+        CALL_STARTED, WRITING, COST,
+        CALL_STARTED, THOUGHT, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, THOUGHT, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, THOUGHT, WRITING, COST, REVIEW_VERDICT,
     ]
 
 
@@ -4130,11 +4309,11 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
 
     assert [e.kind for e in events] == [
         INTENT, ATTACHED,
-        CALL_STARTED, COST, DESIGN, PART,
-        CALL_STARTED, COST, PLAN, GATE, GATE,
-        CALL_STARTED, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
-        CALL_STARTED, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
-        CALL_STARTED, COST, REVIEW_VERDICT,
+        CALL_STARTED, WRITING, COST, DESIGN, PART,
+        CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
+        CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
     ]
 
 
@@ -4146,12 +4325,12 @@ def test_the_event_stream_of_a_retried_run():
 
     assert [e.kind for e in events] == [
         INTENT,
-        CALL_STARTED, COST,
-        CALL_STARTED, COST, PLAN, GATE, GATE,
-        CALL_STARTED, COST, STEP_STARTED,
+        CALL_STARTED, WRITING, COST,
+        CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, WRITING, COST, STEP_STARTED,
         TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
-        CALL_STARTED, COST, TOOL_CALL, TOOL_RESULT, APPLIED,
-        CALL_STARTED, COST, REVIEW_VERDICT,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
     ]
 
 
@@ -4164,9 +4343,9 @@ def test_the_event_stream_of_a_blocked_run():
 
     assert [e.kind for e in events] == [
         INTENT,
-        CALL_STARTED, COST,
-        CALL_STARTED, COST, PLAN, GATE, GATE,
-        CALL_STARTED, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
+        CALL_STARTED, WRITING, COST,
+        CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
+        CALL_STARTED, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
         PREFLIGHT_FAILED, BLOCKED,
     ]
 
@@ -4209,6 +4388,63 @@ def test_reasoning_is_streamed_tagged_with_the_phase_it_came_from():
         ("execute", "coding out loud"),
         ("review", "judging out loud"),
     ]
+
+
+def test_the_words_a_phase_writes_reach_the_stream_as_it_writes_them():
+    """
+    A reply forms over as long as the reasoning before it did — a recorded run
+    measured 22.4 minutes of its 23.6 minutes of provider time after the last
+    reasoning chunk, and 25.6 of 53.7 in another — and until the words are on
+    the stream the panel has nothing to show for any of it.
+
+    The phase is on the event because a stream carries several of them and
+    what is being written is only legible beside the name of what is writing.
+    """
+    _, events, _, _ = drive([
+        plan_reply("Only"),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ])
+
+    written = "".join(e.data["text"] for e in events.of(WRITING)
+                      if e.data["phase"] == "plan")
+
+    assert json.loads(written)["steps"] == ["Only"]
+    assert {e.data["phase"] for e in events.of(WRITING)} == {
+        "design", "plan", "execute", "review"}
+
+
+def test_a_phase_is_answered_by_the_client_its_own_profile_names():
+    """
+    One dial over five phases is one compromise: Design reading a drawing and
+    Execute writing the code for a Step it has already been given are not the
+    same demand, and a run that raises the dial for the first pays it on every
+    call of the second.
+
+    The seam is `for_phase`, asked for at the one place every phase's call
+    goes through, and a client that has none answers everything itself — which
+    is what `ScriptedLLMClient` and every client written before profiles do.
+    """
+    class TwoProfiles:
+        def __init__(self, thinking, doing):
+            self.model = "profiles"
+            self.asked = []
+            self._thinking, self._doing = thinking, doing
+
+        def for_phase(self, phase):
+            self.asked.append(phase)
+            return self._thinking if phase in ("design", "plan") else self._doing
+
+    thinking = ScriptedLLMClient([design_reply(), plan_reply("Only")])
+    doing = ScriptedLLMClient([code_reply("box()"), verdict_reply("pass")])
+    llm = TwoProfiles(thinking, doing)
+    events = EventStream()
+
+    result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events)
+
+    assert result.ok
+    assert llm.asked == ["design", "plan", "execute", "review"]
+    assert not doing.turns and not thinking.turns
 
 
 class _OnASubscription(ScriptedLLMClient):
@@ -5123,6 +5359,28 @@ def test_review_is_told_the_facts_the_checks_confirmed():
     assert review_request["facts_the_checks_confirmed"] == [ACCEPTANCE[0]]
     assert review_request["what_the_checks_could_not_cover"] == [ACCEPTANCE[1]]
     assert events.first(ASSERTION).data["uncovered"] == [ACCEPTANCE[1]]
+
+
+def test_review_is_told_not_to_fail_on_a_suspicion_the_checks_never_confirmed():
+    """
+    A mirrored flank or a displaced hole reads from the render alone, on a
+    face no check happened to cover — `ACCEPTANCE[1]` stays uncovered here,
+    the way FCC-76 leaves a check that could not run. `review.md` is what
+    stops that reading from becoming its own `fail`: the same rule that
+    already keeps a dimension off the picture (`a diameter was never a
+    pixel`), generalised from dimensions to any visual suspicion (FCC-204).
+    """
+    _, _, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"),
+        code_reply("make()"),
+        assertion_reply(CHECKS, uncovered=[ACCEPTANCE[1]]),
+        verdict_reply("pass"),
+        views=[RENDER_PNG] * 4)
+
+    review_system = _system_messages(llm)[-1]
+
+    assert review_system == prompt("review")
+    assert "hypothesis to measure" in review_system
 
 
 def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
@@ -6169,6 +6427,78 @@ def test_one_failure_says_nothing_about_repeating_yourself():
 
     assert "you_have_failed_this_the_same_way_twice" not in json.loads(
         llm.calls[2][-1]["content"])
+
+
+NO_SUCH_PROPERTY = ("Traceback (most recent call last):\n"
+                    "RuntimeError: this Step did not build the operation the Plan named:\n"
+                    "Name: OuterProfile (Sketcher::SketchObject) has no such property: "
+                    "TangentLength\n")
+
+FILLET_RADIUS = ("Traceback (most recent call last):\n"
+                 "RuntimeError: recompute left these objects in error:\n"
+                 "EndFillets_R12_5 (PartDesign::Fillet): BRep_API: command not done\n")
+
+
+def test_a_known_symptom_gets_a_repair_reference_on_the_first_failure():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_SUCH_PROPERTY)])
+
+    retry = _turns_of(llm, "execute")[1]
+
+    assert retry["your_failed_attempts_at_this_step"][0]["traceback"] == NO_SUCH_PROPERTY
+    reference = retry["repair_reference"]
+    assert "describe_type" in reference["the_smallest_responsible_fix"]
+    assert "guessed" in reference["the_smallest_responsible_fix"]
+    assert "own promised properties" in reference["recount_after_it"]
+
+
+def test_a_different_known_symptom_gets_its_own_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Fillet the rim"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(FILLET_RADIUS)])
+
+    reference = _turns_of(llm, "execute")[1]["repair_reference"]
+
+    assert "wall thickness" in reference["the_smallest_responsible_fix"]
+    assert "face count" in reference["recount_after_it"]
+
+
+def test_an_unknown_symptom_gets_no_repair_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed("ZeroDivisionError: division by zero")])
+
+    assert "repair_reference" not in _turns_of(llm, "execute")[1]
+
+
+def test_a_step_that_has_not_failed_yet_gets_no_repair_reference():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"),
+        verdict_reply("pass"),
+    ])
+
+    assert "repair_reference" not in _turns_of(llm, "execute")[0]
+
+
+def test_a_repair_reference_spends_no_look_and_no_extra_turn():
+    result, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        code_reply("first()"), code_reply("second()"),
+        verdict_reply("pass"),
+    ], applies=[failed(NO_SUCH_PROPERTY)])
+
+    assert result.ok, result.reason
+    execute_turns = _turns_of(llm, "execute")
+    assert len(execute_turns) == 2
+    assert all("look" not in turn for turn in execute_turns)
 
 
 def test_a_failure_nothing_recognises_is_not_given_invented_advice():
@@ -7823,7 +8153,9 @@ def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
     assert events.first(UNBUILT) is None
     assert events.first(PLAN_REVISED).data["because"] == "Execute could not build a Step"
     assert result.unmet == []
-    assert tools.applied_codes() == ["pad()", "pad()", "recess()"]
+    assert tools.applied_codes() == ["pad()", "recess()"], \
+        "Step 1 reads the same in both Plans and had already applied, so the revision " \
+        "carries it forward instead of paying to apply it again"
 
 
 THE_LUG_FROM_A_PHOTO = {
@@ -7880,3 +8212,418 @@ def test_a_conflict_the_tracing_settles_is_left_read_by_the_new_step(monkeypatch
 
     axis = entry_at(looked, "features → clamp-bore → axis")
     assert axis["flag"] == "traced"
+
+
+
+
+
+
+
+def test_mechanical_revisions_do_not_consume_execution_budget():
+    """
+    UNCOVERED and MISCOUNTED spend their own ceiling without reducing what
+    UNBUILDABLE, OBSOLETE, ASSERTED, REJECTED, and AMENDED have left.
+
+    The recorded run (logs/sessions/247c2aa...) spent 2 of 3 revisions on
+    coverage checks before Execute ever tried Step 6, leaving exactly one
+    attempt at the geometry. Mechanical checks are visible without a provider
+    call, so they must not eat the budget for failures only a real attempt
+    can surface.
+    """
+    result, events, _, tools = drive([
+        design_reply(A_PART),
+        plan_reply("Step 1"),
+        plan_reply("Step 1 revised", satisfies=everything(A_PART)),
+        code_reply("step1()"),
+        json.dumps({"unbuildable": "the sketch is overconstrained"}),
+        plan_reply("Step 1 without overconstraint", satisfies=everything(A_PART)),
+        code_reply("step1_fixed()"),
+        assertion_reply("assert True"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(revisions=3, mechanical_revisions=2),
+       applies=[failed("the sketch is overconstrained")])
+
+    assert result.ok, "mechanical revisions left room for one execution handback"
+    revised = events.of(PLAN_REVISED)
+    assert len(revised) == 2, f"Expected 2 revisions, got {len(revised)}"
+    assert revised[0].data["because"] == "the Plan left part of the description unplanned"
+    assert revised[1].data["because"] == "Execute could not build a Step"
+    assert tools.applied_codes() == ["step1()", "step1_fixed()"]
+
+
+def test_block_reason_names_mechanical_ceiling_when_hit():
+    """
+    When mechanical budget runs out, block_reason says so clearly.
+    """
+    result, events, _, _ = drive([
+        design_reply(A_PART),
+        plan_reply("v1"),
+        plan_reply("v2"),
+        plan_reply("v3"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(revisions=5, mechanical_revisions=2))
+
+    assert result.blocked
+    blocked = events.first(BLOCKED)
+    reason = blocked.data["reason"]
+    assert "mechanical ceiling" in reason,         "block_reason distinguishes mechanical ceiling from execution ceiling"
+
+
+def test_describe_type_is_cached_to_disk_between_runs(tmp_path, monkeypatch):
+    """
+    A describe_type call in the second run reads from disk and does not call
+    the Tool again. The answer cost 23 seconds in a recorded run, for a fact
+    about the build that never changes (logs/sessions/247c2aae...).
+    """
+    from core.loop import Looks
+
+    cache_path = str(tmp_path / "type_cache.json")
+
+    first_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    first_looks.remember("describe_type", {"type_id": "PartDesign::Pocket"}, 
+                        {"properties": ["Length", "Type"]})
+
+    second_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    cached = second_looks.answer("describe_type", {"type_id": "PartDesign::Pocket"})
+
+    assert cached == {"properties": ["Length", "Type"]}, \
+        "second run reads type description from disk"
+
+
+def test_describe_object_is_not_cached_to_disk_between_runs(tmp_path):
+    """
+    The boundary holds: describe_object describes an object in the user's
+    Document, which changes with every Step. It stays a per-run cache only.
+    """
+    from core.loop import Looks
+
+    cache_path = str(tmp_path / "type_cache.json")
+
+    first_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    first_looks.remember("describe_object", {"name": "Pad001"}, 
+                        {"type": "PartDesign::Pad", "length": 10})
+
+    second_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    cached = second_looks.answer("describe_object", {"name": "Pad001"})
+
+    assert cached is None, \
+        "describe_object is not cached to disk; the Document changes"
+
+
+def test_different_freecad_version_does_not_reuse_type_cache(tmp_path):
+    """
+    A different FreeCAD build may have different properties on the same type,
+    so the cache key includes the version.
+    """
+    from core.loop import Looks
+
+    cache_path = str(tmp_path / "type_cache.json")
+
+    old_looks = Looks(cache_path=cache_path, freecad_version="0.20.0")
+    old_looks.remember("describe_type", {"type_id": "PartDesign::Fillet"}, 
+                      {"properties": ["Radius"]})
+
+    new_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    cached = new_looks.answer("describe_type", {"type_id": "PartDesign::Fillet"})
+
+    assert cached is None, \
+        "different FreeCAD version means a fresh cache"
+
+
+def test_corrupted_cache_file_does_not_crash_the_run(tmp_path):
+    """
+    A cache file that cannot be read is treated as absent. The run continues
+    and the Tool is called.
+    """
+    from core.loop import Looks
+
+    cache_path = tmp_path / "type_cache.json"
+    cache_path.write_text("{ this is not valid json")
+
+    looks = Looks(cache_path=str(cache_path), freecad_version="0.21.0")
+    cached = looks.answer("describe_type", {"type_id": "PartDesign::Hole"})
+
+    assert cached is None, "corrupted cache is treated as empty"
+
+    looks.remember("describe_type", {"type_id": "PartDesign::Hole"}, 
+                  {"properties": ["Depth"]})
+
+
+def test_disk_cached_type_is_reported_as_already_known(tmp_path):
+    """
+    TOOL_RESULT events for describe_type from disk carry already_known=True,
+    so the transcript does not lie.
+    """
+    from core.loop import Looks, _look
+    from core.events import TOOL_RESULT, EventStream
+
+    cache_path = str(tmp_path / "type_cache.json")
+
+    first_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    first_looks.remember("describe_type", {"type_id": "PartDesign::Pad"}, 
+                        {"properties": ["Length"]})
+
+    second_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    events = EventStream()
+    tools = FakeTools()
+
+    _look(tools.registry, {"tool": "describe_type", "arguments": {"type_id": "PartDesign::Pad"}}, 
+          events, second_looks)
+
+    results = [e for e in events.of(TOOL_RESULT) if e.data["name"] == "describe_type"]
+    assert len(results) == 1
+    assert results[0].data["already_known"] is True, \
+        "disk cache hit is reported as already_known in TOOL_RESULT"
+
+
+def test_type_cache_path_is_repo_relative(tmp_path, monkeypatch):
+    """
+    TYPE_CACHE_PATH is computed at import as repo/logs/type_cache.json.
+    Under FreeCAD it resolves through the Mod/ symlink to user data; under
+    pytest the fixture redirects it to tmp_path.
+    """
+    from core import loop
+
+    monkeypatch.setattr(loop, "TYPE_CACHE_PATH", str(tmp_path / "cache.json"))
+
+    looks = loop.Looks(cache_path=loop.TYPE_CACHE_PATH, freecad_version="0.21.0")
+    looks.remember("describe_type", {"type_id": "Test"}, {"ok": True})
+
+    assert (tmp_path / "cache.json").exists(), \
+        "cache wrote to the monkeypatched path"
+
+
+@pytest.mark.freecad
+def test_type_cache_fixture_redirects_to_tmp_path(tmp_path):
+    """
+    The autouse fixture redirects TYPE_CACHE_PATH to tmp_path, so type cache
+    writes go there instead of repo/logs.
+    """
+    from core import loop
+
+    assert str(tmp_path) in loop.TYPE_CACHE_PATH, \
+        "TYPE_CACHE_PATH %s not under tmp_path %s" % (loop.TYPE_CACHE_PATH, tmp_path)
+
+
+CLOSED_OPS = "closed"
+
+
+def test_a_closed_step_op_off_the_36_list_is_refused_and_names_the_verb():
+    """
+    ADR-0026/FCC-233: `_steps_of` checks a Step's `op` against `OP_VERBS` (36
+    values) only when the Plan reply itself carries `"op_vocabulary":
+    "closed"` — the same gate FCC-232 put on `kind`. Refused rather than
+    silently kept, so it never reaches Execute at all: no code is produced
+    for it and its citation is left unaccounted for, which is what sends the
+    entry it was meant to satisfy back through the ordinary coverage check
+    instead of a code path invented for the purpose.
+    """
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Squish the tab flat", "op": "squish",
+          "satisfies": ["envelope → depth: 10 mm (read)"]}],
+        CLOSED_OPS)
+
+    assert steps == []
+    assert satisfies == []
+    assert ops == []
+    assert len(unbuildable) == 1
+    assert "squish" in unbuildable[0]["why"]
+
+
+def test_a_closed_step_op_on_the_36_list_is_kept_with_its_op():
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Pad the base profile 6 mm", "op": "pad"}], CLOSED_OPS)
+
+    assert steps == ["Pad the base profile 6 mm"]
+    assert ops == ["pad"]
+    assert unbuildable == []
+
+
+def test_an_unmarked_reply_takes_the_legacy_path_op_or_not():
+    """
+    No `op_vocabulary` marker — the shape every recorded fixture (pre-FCC-233)
+    and every bare-string Step already has — is never checked, whatever `op`
+    (if any) rides along with it.
+    """
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Squish the tab flat", "op": "squish"}], None)
+
+    assert steps == ["Squish the tab flat"]
+    assert unbuildable == []
+
+
+def test_a_bare_string_step_is_unaffected_by_the_op_check():
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(["Pad the base profile 6 mm"],
+                                                          CLOSED_OPS)
+
+    assert steps == ["Pad the base profile 6 mm"]
+    assert ops == [None]
+    assert unbuildable == []
+
+def test_a_closed_step_written_in_ukrainian_is_refused():
+    """
+    ADR-0026/FCC-234: the vocabulary `config/prompts/language.md` holds is
+    closed to one language as much as to one set of verbs, under the same
+    `"op_vocabulary": "closed"` marker `_steps_of` already gates the 36-op
+    check with.
+    """
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Виконати паз шириною 6 мм", "op": "pocket",
+          "satisfies": ["envelope \u2192 depth: 10 mm (read)"]}],
+        CLOSED_OPS)
+
+    assert steps == []
+    assert satisfies == []
+    assert ops == []
+    assert len(unbuildable) == 1
+    assert "English" in unbuildable[0]["why"]
+
+
+def test_a_closed_step_written_in_english_is_unaffected_by_the_language_check():
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Pocket a 6 mm slot", "op": "pocket"}], CLOSED_OPS)
+
+    assert steps == ["Pocket a 6 mm slot"]
+    assert unbuildable == []
+
+
+def test_a_closed_step_with_domain_symbols_is_not_mistaken_for_ukrainian():
+    """
+    None of Ø, an em dash or a degree sign is Cyrillic — `Ø40 bore` is
+    ordinary English in this domain and must never be refused for language.
+    """
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Drill a Ø40 bore — 30° chamfer both ends", "op": "hole"}],
+        CLOSED_OPS)
+
+    assert steps == ["Drill a Ø40 bore — 30° chamfer both ends"]
+    assert unbuildable == []
+
+
+def test_a_closed_step_with_one_cyrillic_label_is_not_refused():
+    """
+    A false positive here costs a Plan that was fine: a Step is Ukrainian
+    when Cyrillic outnumbers Latin in its prose, not when it carries a
+    single Cyrillic character — a label or a part name copied from the
+    Intent in the user's own words.
+    """
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Pad the profile 6.5 mm, label it Профіль",
+          "op": "pad"}],
+        CLOSED_OPS)
+
+    assert steps == ["Pad the profile 6.5 mm, label it Профіль"]
+    assert unbuildable == []
+
+
+def test_an_unmarked_reply_takes_the_legacy_path_for_language_too():
+    """The same legacy escape the op check gets (FCC-233) applies here: a
+    Plan predating the closed vocabulary marker is never refused for
+    language, whatever it is written in."""
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Виконати паз шириною 6 мм", "op": "pocket"}], None)
+
+    assert steps == ["Виконати паз шириною 6 мм"]
+    assert unbuildable == []
+
+
+
+def test_the_op_vocabulary_is_36_verbs_the_32_reachable_plus_four():
+    from core.loop import OP_VERBS
+
+    assert len(OP_VERBS) == 36
+    for verb in ("thread", "extend", "trim", "offset"):
+        assert verb in OP_VERBS
+
+
+def test_an_off_list_op_sends_plan_back_naming_the_verb_and_the_36_allowed():
+    """
+    Excluding the Step is not by itself enough: a Plan told only "an entry is
+    uncovered" has no reason to pick a different verb next turn, which is the
+    same actionability rule FCC-232 had to apply to a refused `kind`
+    (ADR-0026, FCC-233). The revision names the refused verb and hands back
+    the 36 it may choose from instead.
+    """
+    _, events, llm, _ = drive([
+        json.dumps({"steps": [
+            {"do": "Add a box", "op": "pad"},
+            {"do": "Machine a lattice into it", "op": "lattice-mill"},
+        ], "op_vocabulary": CLOSED_OPS}),
+        json.dumps({"steps": [
+            {"do": "Add a box", "op": "pad"},
+            {"do": "Emboss a lattice texture", "op": "additive-primitive"},
+        ], "op_vocabulary": CLOSED_OPS}),
+        code_reply("doc.addObject('Part::Box', 'Box')",
+                   "doc.addObject('Part::Feature', 'Lattice')"),
+        verdict_reply("pass"),
+    ])
+
+    revised = events.first(PLAN_REVISED)
+    assert revised.data["because"] == "a Step named an operation off the closed list"
+    assert "lattice-mill" in revised.data["reason"]
+    retry = json.dumps(llm.calls[2])
+    assert "Every build op has to be one of these 36" in retry
+    assert "additive-primitive" in retry
+
+
+def test_a_run_never_asks_execute_about_a_step_whose_op_was_refused():
+    """
+    A Plan reply names one buildable Step and one off-list `op`. The revised
+    Plan Execute is actually shown carries the fixed Step alone — the refused
+    op never reaches Execute, so no code is ever asked for it.
+    """
+    _, _, llm, _ = drive([
+        json.dumps({"steps": [
+            {"do": "Add a box", "op": "pad"},
+            {"do": "Machine a lattice into it", "op": "lattice-mill"},
+        ], "op_vocabulary": CLOSED_OPS}),
+        json.dumps({"steps": [
+            {"do": "Add a box", "op": "pad"},
+            {"do": "Emboss a lattice texture", "op": "additive-primitive"},
+        ], "op_vocabulary": CLOSED_OPS}),
+        code_reply("doc.addObject('Part::Box', 'Box')",
+                   "doc.addObject('Part::Feature', 'Lattice')"),
+        verdict_reply("pass"),
+    ])
+
+    asked = json.dumps(llm.calls[3])
+    assert "lattice-mill" not in asked
+    assert "Add a box" in asked
+
+
+def test_a_closed_marked_steps_op_reaches_the_apply_step_tool_call():
+    """
+    ADR-0026/FCC-233: `core/lint.py` can only check the TypeId a Step's code
+    builds against its declared `op` if that `op` actually reaches
+    `apply_step`. A legacy, unmarked Plan (every other test in this file)
+    still calls `apply_step` with exactly `{"code", "label"}` — no `op` key
+    at all — so the lint check it feeds stays off for every recorded fixture.
+    """
+    _, events, _, tools = drive([
+        json.dumps({"steps": [{"do": "Add a box", "op": "pad"}],
+                    "op_vocabulary": CLOSED_OPS}),
+        code_reply("doc.addObject('Part::Box', 'Box')", label="Add the box"),
+        verdict_reply("pass"),
+    ])
+
+    assert ("apply_step", {"code": "doc.addObject('Part::Box', 'Box')",
+                           "label": "Add the box", "op": "pad"}) in tools.calls
+    call = events.first(TOOL_CALL)
+    assert call.data["arguments"]["op"] == "pad"

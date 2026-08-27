@@ -19,13 +19,14 @@ from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, KINDS, OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, UNBUILT, Event,
+    TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, Event,
 )
 from core.narrate import Narration, narrate
 
 SAMPLES = {
     INTENT: {"text": "Build the pipe clamp on this sheet."},
     THOUGHT: {"phase": "plan", "text": "thinking"},
+    WRITING: {"phase": "plan", "text": '{"steps": ['},
     QUESTION: {"text": "How many teeth?"},
     ANSWER: {"text": "the pockets go through", "by": "drawing"},
     ATTACHED: {"files": [{"name": "sheet.pdf", "path": "/tmp/sheet.pdf"}]},

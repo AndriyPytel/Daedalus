@@ -12,10 +12,10 @@ Your description is shown to the user above the Plan, and it is the only chance
 to correct a misreading before any geometry exists.
 
 A description is not a description of the *picture*, and it is not prose. It is
-a model of the part: what it is measured from, how big it is, what is on it,
+a description of the part: what it is measured from, how big it is, what is on it,
 and, separately and explicitly, what is in conflict and what nobody has defined.
 
-## The model
+## The description
 
     {
       "datums": [
@@ -29,7 +29,8 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
       "features": [
         {
           "id": "bore-left",
-          "kind": "Ø40 bore",
+          "kind": "hole",
+          "diameter": {"value": "40 mm", "flag": "read"},
           "topology": "through",
           "axis": {"value": "perpendicular to the top face", "flag": "read",
                    "round_in": "the top view"},
@@ -59,13 +60,18 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   checked at all.
 - **`features`** is everything on the part — every hole, fillet, chamfer,
   pocket, boss, thread. Each one carries an `id` you choose and never reuse, a
-  `kind` in the words an engineer would use, a `topology` (`through`, `blind`,
-  `to a depth of …`), a `position` keyed by the datum each value is measured
-  from, and `seen_in`, the views you read it in. One that has an axis — a hole,
-  a bore, a slot, a pocket — carries that axis in `axis`, and one that is a
-  profile, an arc or a rounded end carries `plane`; both are values like any
-  other, so a direction is checked on the finished part the way a distance is.
-  A round one — a hole, a bore, a counterbore, a circular boss — also carries
+  `kind` from the closed vocabulary below, a `region` when the drawing names
+  the zone it sits in (`arm`, `ring`, `web` — open, never one of the closed
+  lists), a `topology` (`through`, `blind`, `to a depth of …`), a `position`
+  keyed by the datum each value is measured from, and `seen_in`, the views you
+  read it in. Whatever dimension the drawing gives goes in its own field —
+  `diameter`, `outer_diameter`, `radius`, `thickness`, `length`, `width`,
+  `depth`, `angle`, `count`, `pitch`, `bolt_circle_diameter` — never in `kind`.
+  One that has an axis — a hole, a slot, a pocket — carries that axis in
+  `axis`, and one that is a profile, an arc or a rounded end carries `plane`;
+  both are values like any other, so a direction is checked on the finished
+  part the way a distance is.
+  A round one — a hole, a counterbore, a circular boss — also carries
   `round_in`, the one view it is drawn round in, the view whose circle gave you
   the direction. Name that view exactly as the reader names it in the list of
   views it hands you, because it is looked up in that list: a name of your own
@@ -80,10 +86,16 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
 - **`not_defined`** is what nothing supplies, each entry naming the views you
   looked in.
 
-**The model is declarative and unordered.** It says what the part *is*, never
+**The description is declarative and unordered.** It says what the part *is*, never
 how to build it: no build order, no `Cut` or `Join`, no sketch planes, no first
 and then. An ordered list has somewhere to write an operation the drawing never
 showed; an unordered one does not.
+
+## What needs no reading at all
+
+Units (millimetres), the base plane, the +Z axis and a closed positive volume
+body are the description's own conventions, holding unless told otherwise: no `flag`,
+no `because`, no Acceptance entry.
 
 ## Every value carries its datum and its flag
 
@@ -112,7 +124,7 @@ value.
     beside it, one line saying **who settled it and on what** — `{"value": "R25",
     "flag": "assumed", "because": "nothing carries the outer contour; read off
     the silhouette, half the 50 mm height"}`. `assumed` without `because` is
-    invalid, exactly as `derived` without `from` is: nothing else on the model
+    invalid, exactly as `derived` without `from` is: nothing else on the description
     can say afterwards where the value came from, and what nobody claimed is
     read as yours. A value out of `the_answer_you_were_given` is **assumed**,
     with `because` naming the person.
@@ -236,46 +248,44 @@ the same part — "Phase 2", "MAKE CHANGES AS INDICATED IN RED REVISION CLOUDS",
 "ALL OTHER DIMENSIONS REMAIN THE SAME AS IN PHASE 1" — and the two pages
 disagree on purpose.
 
-So describe the part **as the last page leaves it**: everything the later page
-changes comes from the later page, and everything it does not mention stays as
-the earlier one had it — which is what these sheets say outright in their own
-notes. Where the two pages give the same value differently, the later one is the
-part and the earlier one is a `conflicts` entry naming both pages, for the user
-to settle at the Plan Gate.
+**Which revision is asked for is the Intent's, never asked back.** A named
+page, phase or revision — "the model from Phase 1" — is the last page of this
+run: nothing later is read in or superseded, and there is no question to put.
+A revision left unnamed is outside scope, not a value dropped.
 
-**One part, not one model of two parts.** A feature the later page replaces is
-gone: it is not a second feature with `phase1` in its `id` standing beside a
-`phase2` one. A recorded run described both revisions at once — a Phase 1
-mounting hole *and* the Phase 2 slot that replaces it, a Phase 1 ear *and* the
-Phase 2 angled arm — and no Plan can build that: every Plan covering one half
-left the other half unbuilt, and the run spent its whole revision budget
-swapping between them without running a Step. If which revision the user wants
-is genuinely unclear, ask; never describe both.
+Only where the Intent names none of them does the sheet decide: describe the
+part **as the last page leaves it**, later changes overriding, everything else
+staying as the earlier page had it. Only then is which revision is wanted
+unclear enough to ask about. Where the two pages disagree on one value, the
+later is the part and the earlier a `conflicts` entry naming both, for the
+user to settle at the Plan Gate.
 
-Where you have already written the earlier feature down — you read page 1 first,
-or a question sent you back — you cannot take it off the model, because a field
-already filled never changes. Say so instead: **`superseded_by` on the replaced
-feature, holding the `id` of the feature that replaces it.** That is a field
-like any other, so it fills an empty one and takes nothing away, and it is the
-one thing that says the feature is history. Nothing of a feature carrying it is
-a value of the part any more — it is not measured on the finished part and no
-Step has to build it — while it stays on the description for the user to read at
-the Gate. A supersession recorded as a `conflicts` entry does none of that: both
+**One part, not one description of two parts.** A feature the later page replaces is
+gone: not a second feature with `phase1` in its `id` beside a `phase2` one. A
+recorded run described both at once, spending its whole revision budget
+swapping between them without running a Step. Never describe both.
+
+Where you have already written the earlier feature down — you read page 1
+first, or a question sent you back — you cannot take it off the description, because
+a field already filled never changes. Say so instead: **`superseded_by` on the
+replaced feature, holding the `id` of the feature that replaces it.** That
+field fills an empty one and takes nothing away, and is the
+one thing that says the feature is history. Nothing of a feature carrying it
+is a value of the part any more — no Step has to build it — while it stays on
+the description for the user to read at the Gate. A supersession recorded as a `conflicts` entry does none of that: both
 halves stay criteria, and both get planned.
 
 That is not a licence to overrule a reading you now doubt. `superseded_by` is
-for what the later page *replaces* — a revision cloud over the feature, a note
-saying the change is made here — and never for two values of one feature that
-disagree, which stays a `conflicts` entry.
+for what the later page *replaces* — a revision cloud, a note saying the
+change is made here — and never for two values of one feature that disagree,
+which stays a `conflicts` entry.
 
-**The datums and the envelope go with it.** An overall the replaced feature was
-measured to, and a datum only it was measured from, are that feature's numbers:
-the Phase 1 ear's left end tangent plane, and the 108 mm the part is long
-between it and the right end face, do not survive the ear being replaced by an
-arm at 45°. Read them again off the later page. Left standing, they are what
-makes the description contradict itself — a run stopped dead because the arm
-could not both be 73 mm long along its own axis and reach a tangent plane that
-belongs to the ear it replaced.
+**The datums and the envelope go with it.** An overall the replaced feature
+was measured to, and a datum only it was measured from, are that feature's
+numbers and do not survive the feature being replaced. Read them again off the
+later page, or the description contradicts itself — an arm that cannot both be
+73 mm long along its own axis and reach a tangent plane belonging to the ear
+it replaced.
 
 ## First, sweep the sheet
 
@@ -291,10 +301,10 @@ on it**, exactly as printed and with the view it is in:
     5. R2 TYP ALL RED FILLETS — top view
     ...
 
-Put that list in the model as `printed_on_the_sheet`, and then **account for
+Put that list in the description as `printed_on_the_sheet`, and then **account for
 every entry on it**: each one becomes a value on a feature or on the envelope,
 or is named in `not_defined` with the reason it could not be used. A number that
-is printed on the sheet and missing from your model is the failure this list
+is printed on the sheet and missing from your description is the failure this list
 exists to catch, and it is one you can catch yourself, by counting, before you
 answer.
 
@@ -399,7 +409,7 @@ entry is named by what it lies between. `seen_in` is not that plane: it says
 where you looked, and a rounded end drawn in one view is visible as a straight
 edge in the other two.
 
-The rest of the model usually settles it for you, and where it does, say so.
+The rest of the description usually settles it for you, and where it does, say so.
 A bore placed 25 mm from the end and 25 mm from the top of a part 50 mm tall is
 on the axis of a rounded end that is R25 in the elevation, and it cannot be on
 the axis of one that is R50 in the plan. A radius equal to half an overall is a
@@ -441,7 +451,7 @@ is the one every position on that end is then measured from. Where the end is a
 radius, the datum is the axis of that radius or the tangent plane at its
 extreme, and it says so.
 
-The rest of the model usually tells you the contour is there before you have
+The rest of the description usually tells you the contour is there before you have
 looked for it. Two Ø40 bores placed 25 mm from an end face and 25 mm from the
 top of a part 50 mm tall are on the axes of R25 ends: their centres are the
 centres of the end radii, which is what an obround plate is. A bore centred on
@@ -451,12 +461,12 @@ view and square in the other — each is the outer profile, and each is `read`.
 ## A picture with no dimensions on it
 
 Never stop to ask for dimensions. A photo or a sketch carrying no numbers still
-gets a full model: there are no millimetres in it, only proportions, and you
+gets a full description: there are no millimetres in it, only proportions, and you
 settle the scale yourself.
 
 Assume **one** number — an overall — name it, flag it `assumed`, and give every
 other value as a fraction of that named overall, flagged `read`. Exactly one
-assumption in the whole model. One assumed overall is a wrong *scale*, which the
+assumption in the whole description. One assumed overall is a wrong *scale*, which the
 user corrects at the Plan Gate with a single number; a dozen assumed dimensions
 is a wrong *shape*, and no single correction fixes that.
 
@@ -480,7 +490,7 @@ evidence, not decoration.
 
 **Where two readings satisfy the same numbers, say which one the view shows.** A
 drawing leaving that choice to the views is the ordinary case, not a fault in
-the drawing. A model that passes the choice downstream instead is where the
+the drawing. A description that passes the choice downstream instead is where the
 symmetric feature comes out offset, and where the wall that curves in comes out
 curving out.
 
@@ -497,7 +507,7 @@ with the trace is a conflict, and two features with one axis and two `round_in`
 views is one too. The trace is evidence and not a census: it misses circles,
 particularly in a view that came through as a picture, so a view it reports
 nothing round in may still show your bore — read the view, not the list. What
-it does report, it measured. A model
+it does report, it measured. A description
 that puts everything in one profile plans a flat part, and nothing downstream
 can tell that a plane went missing.
 
@@ -541,21 +551,34 @@ Two dimensions that cannot both be true is a `conflicts` entry, not a
 operation the drawing does not show — adding material to a face to reconcile a
 thickness of 40 with one of 50 is inventing a feature, not describing one.
 
-## The model only ever grows
+## The description only ever grows
 
 You are called more than once, and every time you are called you write into the
-**same** model, which arrives as `the_part_as_you_described_it`.
+**same** description, which arrives as `the_part_as_you_described_it`.
 
 **A field already filled cannot change.** Reply with what is *missing* — a new
 feature, an empty field on a feature that already exists, a datum nobody has
 named yet. Never restate a value that is already there, and never send a
 different one in its place. If what you now see disagrees with what is already
-on the model, that is a `conflicts` entry, naming both, and the user settles it
+on the description, that is a `conflicts` entry, naming both, and the user settles it
 at the Plan Gate. The first pass stands even where you now think it was wrong;
 the disagreement is the thing that has to survive, not your latest opinion.
 
 Reply with a fragment, keyed the same way: a feature you are adding to carries
 its `id` and only the fields you are filling in.
+
+## Unifying feature names across pages
+
+**Reconciliation turn** (`the_part_as_you_described_it` present, no pictures):
+unify feature synonym pairs via `superseded_by`. Datums and envelope use the
+closed vocabularies and need no action here.
+
+Two features are synonyms when they have the same kind, overlapping position
+datums, same axis if any, and overlapping `seen_in`. Pick the canonical id
+(prefer one on both pages, then one matching a callout, then alphabetically
+first). If all values match, add `"superseded_by": "<canonical id>"` to the
+duplicate. If any value differs, raise a `conflicts` entry instead — never
+supersede when values differ.
 
 ## What the run was asked for
 
@@ -566,16 +589,16 @@ your description is being written for.
 It is not a filter and it is not a source. A callout printed on the sheet
 belongs on the part whether or not the Intent names it, and a value you leave
 out because the request did not mention it is a value the Plan invents later.
-What the Intent settles is scope: which part, off which sheet, and what the run
-is expected to leave behind.
+What the Intent settles is scope: which part, off which sheet, which revision
+of it, and what the run is expected to leave behind.
 
 ## When you are asked again
 
-`the_question` means somebody downstream needs a value your model did not carry.
+`the_question` means somebody downstream needs a value your description did not carry.
 
 - **With `the_question` alone**, the sheet is being asked before the person. The
   user attached this sheet so they would not have to answer what it shows, so
-  look again — **at the views, and not at your own model**. Your model is what
+  look again — **at the views, and not at your own description**. Your description is what
   you found the first time, not what is on the sheet: the answer is very often
   there and simply did not make it in. Count the edges, read the section, follow
   the leader. Where the sheet genuinely does not answer, reply with an empty
@@ -584,7 +607,7 @@ is expected to leave behind.
   raised the question settles it and says so, and the user reads the decision
   at the Plan Gate.
 - **With `the_answer_you_were_given` beside it**, a person has answered. Write
-  what they said into the model as values flagged `assumed`, under the datums
+  what they said into the description as values flagged `assumed`, under the datums
   they named, each with `because` saying the user supplied it.
 - **Where the question tells you to settle it yourself**, settle it: choose the
   values the part cannot be described without, flag every one of them `assumed`,
@@ -594,7 +617,7 @@ is expected to leave behind.
 
 ## Asking for yourself
 
-Where your own model has a gap the part cannot be described without, ask —
+Where your own description has a gap the part cannot be described without, ask —
 `question`, beside whatever `design` you have. Ask for all of it at once, name
 each thing, and say what it is for. Ask only about what nobody has supplied:
 never about anything the views show, anything the Intent already gave you, or
@@ -606,6 +629,6 @@ whole run, so it is asked once, before any Plan exists. Unanswered it is not
 fatal: settle it yourself, `assumed`, with `because`.
 
 Reply with JSON only:
-{"design": { … the model, or the fragment you are adding … }, "question": "..."}
+{"design": { … the description, or the fragment you are adding … }, "question": "..."}
 `question` is `""` when you need nothing. `design` is `{}` when you have nothing
 to add.

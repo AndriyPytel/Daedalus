@@ -40,6 +40,18 @@ it cuts the answer off — is derived from measurements of the three that are.
 An unmeasured level would be a ceiling made up, which is the failure that
 ceiling exists to prevent.
 
+One dial over five phases is one compromise: Design reading a drawing and
+Execute writing the code for a Step it has already been given are not the
+same demand, and raising the dial for the first pays for it on every call of
+the second. `profile_of` is the two-way split — `thinking` for Design and
+Plan, `doing` for Execute, Assertion and Review — and `ProfiledClient` is what
+`for_phase` answers with: two clients, each already built on its own model
+and its own effort, so `_CEILING` follows each profile's own dial rather than
+the one dial shared by both. `client_from_profiles` builds it from settings;
+`client_from_settings` still answers a single model on request, which is what
+a session's own name and a Level 2 test that names one model both still ask
+for.
+
 `IMAGE_SUFFIXES` and `PDF_SUFFIXES` are what the providers take, and what the
 attach dialog offers. A PDF is a full attachment rather than a second-class
 one: drawings arrive as PDFs.
@@ -73,6 +85,49 @@ _PREFIX = {
     "OpenCode Go": "openai",
     "Custom/Local": "openai",
 }
+
+
+PROFILES = ("thinking", "doing")
+
+_PHASES_OF_PROFILE = {
+    "thinking": ("design", "plan"),
+    "doing": ("execute", "assertion", "review"),
+}
+
+
+def profile_of(phase: str) -> str:
+    """
+    Which of the two profiles answers *phase*.
+
+    `thinking` is Design and Plan: reading a drawing and turning it into a
+    Step list is the demand the higher end of the dial buys headroom for.
+    `doing` is Execute, Assertion and Review, which already have the Step in
+    hand -- paying Design's rate on every one of them is one dial's worth of
+    the wrong bill. A phase this map has never heard of is `doing`, the
+    cheaper of the two guesses.
+    """
+    for profile, phases in _PHASES_OF_PROFILE.items():
+        if phase in phases:
+            return profile
+    return "doing"
+
+
+class ProfiledClient:
+    """
+    The client `core/loop.py :: _one_call` finds `for_phase` on.
+
+    It carries no phase of its own -- `thinking` and `doing` do, each already
+    built for the model and the effort its profile is set to -- and it is
+    never asked to stream anything itself; `for_phase` hands back the client
+    that will.
+    """
+
+    def __init__(self, thinking, doing):
+        self.thinking = thinking
+        self.doing = doing
+
+    def for_phase(self, phase: str):
+        return self.thinking if profile_of(phase) == "thinking" else self.doing
 
 
 class ProviderRefused(Exception):
@@ -125,11 +180,13 @@ class LiteLLMClient:
     """
 
     def __init__(self, model: str, api_key: str, api_base: str = None,
-                 thinking_budget: int = None, completion: Callable = None):
+                 thinking_budget: int = None, completion: Callable = None,
+                 effort: str = None):
         self.model = model
         self.api_key = api_key
         self.api_base = api_base
         self.thinking_budget = thinking_budget
+        self.effort = effort
         self.last_cost = None
         self._completion = completion
 
@@ -168,7 +225,7 @@ class LiteLLMClient:
         if self.thinking_budget:
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
         elif _may_reason(self.model):
-            kwargs.setdefault("reasoning_effort", effort())
+            kwargs.setdefault("reasoning_effort", _resolved_effort(self.effort))
             kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
         kwargs.setdefault("max_tokens",
                           _output_cap(self.model, (self.thinking_budget or _OUTPUT_BUDGET) * 4))
@@ -414,6 +471,26 @@ def effort() -> str:
     return chosen if chosen in EFFORTS else _SUBSCRIPTION_EFFORT
 
 
+def _resolved_effort(explicit: str = None) -> str:
+    """*explicit* when it is one `EFFORTS` offers; the dial in force otherwise."""
+    return explicit if explicit in EFFORTS else effort()
+
+
+def effort_for_profile(profile: str) -> str:
+    """
+    The dial *profile* -- `thinking` or `doing` -- is set to.
+
+    Reads the profile's own setting where one exists, and the old single dial
+    a user who has never split the two still has: `settings_manager ::
+    get_profile_effort` is what carries that fallback, so a level from an
+    older build or an empty store both land on `_resolved_effort`'s own
+    default the same way `effort()` already does for the single dial.
+    """
+    from utils import settings_manager
+
+    return _resolved_effort(settings_manager.instance().get_profile_effort(profile))
+
+
 def effort_is_honoured(model_id: str = None) -> bool:
     """
     Whether asking *model_id* to think harder changes anything at all.
@@ -576,9 +653,10 @@ class ClaudeCodeClient:
     """
 
     def __init__(self, model: str, spawn: Callable = None,
-                 timeout: float = None):
+                 timeout: float = None, effort: str = None):
         self.model = model
-        self.timeout = _CEILING[effort()] if timeout is None else timeout
+        self.effort = _resolved_effort(effort)
+        self.timeout = _CEILING[self.effort] if timeout is None else timeout
         self.last_cost = None
         self._spawn = spawn
 
@@ -605,7 +683,8 @@ class ClaudeCodeClient:
             with open(system, "w", encoding="utf-8") as handle:
                 handle.write(_system_of(messages))
             for chunk in self._answered(
-                    spawn(_invocation(self.model, system), workspace), messages):
+                    spawn(_invocation(self.model, system, self.effort), workspace),
+                    messages):
                 yield chunk
         finally:
             shutil.rmtree(workspace, ignore_errors=True)
@@ -709,14 +788,16 @@ def _environment() -> dict:
             if name != "ANTHROPIC_API_KEY"}
 
 
-def _invocation(model: str, system_prompt: str) -> list:
+def _invocation(model: str, system_prompt: str, effort: str) -> list:
     """
     The command line one call is made with, in the order it was measured.
 
-    The effort is whatever the user set (`effort`), because on this route it
-    is the one dial that changes the answer and the one the panel offers: the
+    *effort* is the client's own resolved dial, because on this route it is
+    the one thing that changes the answer and the one the panel offers: the
     low end exists against a model circling invisibly in its own reasoning,
-    and here the circling streams and the call is bounded.
+    and here the circling streams and the call is bounded. A run split into
+    profiles sends each phase's own client's effort here, not one dial shared
+    by both.
 
     `--include-partial-messages` is what makes it a stream at all: without it
     the CLI answers with the finished `assistant` message and the `result`, no
@@ -731,7 +812,7 @@ def _invocation(model: str, system_prompt: str) -> list:
         "--verbose",
         "--model", model,
         "--system-prompt-file", system_prompt,
-        "--effort", effort(),
+        "--effort", effort,
         "--no-session-persistence",
         "--safe-mode",
         "--strict-mcp-config",
@@ -1064,7 +1145,7 @@ def selected_model_name(model_id: str = None) -> str:
     return litellm_model_name(provider, mid)
 
 
-def client_from_settings(model_id: str = None):
+def client_from_settings(model_id: str = None, effort: str = None):
     """
     Build a client from the provider settings page and stored keys.
 
@@ -1073,6 +1154,10 @@ def client_from_settings(model_id: str = None):
     where the local server ignores it — and has no route at all to a
     subscription, which is why one provider is answered by a client of its own
     before any of that is read.
+
+    *effort* is the resolved dial one client of `client_from_profiles` is
+    built at; left `None` the client falls back to the single dial in force
+    the way it always has, which is what every caller outside a profile does.
     """
     from utils import settings_manager
 
@@ -1082,7 +1167,7 @@ def client_from_settings(model_id: str = None):
     provider, mid, secret = sm.get_llm_credentials(model_id)
 
     if model_catalog.needs_no_key(provider):
-        return ClaudeCodeClient(model=mid)
+        return ClaudeCodeClient(model=mid, effort=effort)
 
     api_base = model_catalog.api_base_for(provider, sm.get_base_url_for_provider(provider))
     api_key = secret or ("not-needed" if api_base else "")
@@ -1092,4 +1177,22 @@ def client_from_settings(model_id: str = None):
         api_key=api_key,
         api_base=api_base,
         thinking_budget=2048 if provider == "Anthropic" else None,
+        effort=effort,
+    )
+
+
+def client_from_profiles() -> ProfiledClient:
+    """
+    The client a run is actually made with: one built per profile, each on
+    the model and the effort that profile is set to, wired so `for_phase`
+    answers every phase from the one that owns it.
+    """
+    from utils import settings_manager
+
+    sm = settings_manager.instance()
+    return ProfiledClient(
+        thinking=client_from_settings(sm.get_profile_model("thinking"),
+                                      effort_for_profile("thinking")),
+        doing=client_from_settings(sm.get_profile_model("doing"),
+                                   effort_for_profile("doing")),
     )

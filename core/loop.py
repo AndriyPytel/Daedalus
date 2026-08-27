@@ -32,6 +32,7 @@ import json
 import mimetypes
 import os
 import re
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -49,7 +50,7 @@ from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, DESIGN,
     ERROR, GATE, INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, UNBUILT, EventStream,
+    TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, EventStream,
 )
 from core import part_file, preflight, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
@@ -66,7 +67,59 @@ _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 NOT_A_LOOK = ("apply_step", "review_views", "check_assertions")
 
-_VIEW_NAMES = ("isometric", "the front", "above", "the right")
+
+TYPE_CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                               "logs", "type_cache.json")
+
+
+def _freecad_version():
+    """
+    FreeCAD version as a string, or "unknown" if FreeCAD is not available.
+
+    The cache key includes the version because a different build may have
+    different properties on the same type.
+    """
+    try:
+        import FreeCAD
+        version = FreeCAD.Version()
+        return "%s.%s.%s" % (version[0], version[1], version[2])
+    except ImportError:
+        return "unknown"
+
+
+_VIEW_NAMES = ("isometric", "the opposite isometric", "above", "the front")
+
+OP_VERBS = (
+    "pad", "revolve", "additive-loft", "additive-sweep", "additive-helix",
+    "additive-primitive",
+    "pocket", "hole", "groove", "subtractive-loft", "subtractive-sweep",
+    "subtractive-helix", "subtractive-primitive",
+    "fillet", "chamfer", "draft", "thickness",
+    "mirror", "linear-pattern", "polar-pattern", "multi-transform", "scale",
+    "sketch", "datum-plane", "datum-line", "datum-point",
+    "local-coordinate-system", "sub-shape-binder", "body",
+    "fuse", "cut", "common",
+    "thread", "extend", "trim", "offset",
+)
+
+OP_VOCABULARY = "closed"
+
+_CYRILLIC = re.compile(r"[\u0400-\u04FF]")
+_LATIN_LETTER = re.compile(r"[A-Za-z]")
+
+
+def _not_english(prose):
+    """
+    True where Cyrillic outnumbers Latin in a Step's prose — a whole Step
+    written in Ukrainian, not a Latin sentence carrying one Cyrillic proper
+    noun a user typed into the Intent (a label, a part name). Counting
+    rather than merely detecting one Cyrillic character is what tells
+    `\"Pad the profile 6.5 mm, label it \u041f\u0440\u043e\u0444\u0456\u043b\u044c\"`
+    apart from a Step actually written in Ukrainian: refusing the first
+    would cost a Plan that was fine over a name it did not invent.
+    """
+    cyrillic = len(_CYRILLIC.findall(prose))
+    return cyrillic > 0 and cyrillic > len(_LATIN_LETTER.findall(prose))
 
 
 class PhaseError(Exception):
@@ -80,9 +133,27 @@ class Budgets:
 
     `revisions` is the floor under `revisions_ceiling`, which scales the
     allowance with the Plan's length. Without it, Execute declaring Step after
-    Step obsolete never terminates. It is one ceiling over all seven causes of
-    a replan (see `_Revisions`): separate budgets would let them cycle into
-    each other and would raise the worst-case number of Plan calls in a run.
+    Step obsolete never terminates.
+
+    There are two separate ceilings over the seven causes of a replan. Mechanical
+    causes (UNCOVERED, MISCOUNTED) are visible without running Execute and spend
+    their own budget; execution causes (OBSOLETE, UNBUILDABLE, ASSERTED, REJECTED,
+    AMENDED) spend `revisions_ceiling`. This keeps mechanical failures from consuming
+    the budget for failures only a real attempt can surface. The worst-case number
+    of Plan calls is additive — mechanical_revisions + revisions_ceiling — because
+    the mechanical ceiling never resets: a Plan that fails coverage twice has spent
+    those attempts for the whole run, and a third UNCOVERED blocks immediately even
+    if UNBUILDABLE triggered a replan between them (logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl).
+
+    `mechanical_revisions` is that ceiling, and it is a constant rather than scaling
+    with Plan length: a coverage failure is a failure of the whole Plan at once, not
+    of one Step among many. It is two because that is where the corpus sits. Of 456 sessions in `logs/sessions/`,
+    43 blocked on revisions, and UNCOVERED appeared in the breakdown 1 time in 2 runs,
+    2 times in 1 run, and 3 times in 1 run — typical is one, observed maximum is three.
+    A ceiling of two cuts that one tail run on the mechanical budget instead of letting
+    it consume execution revisions, which is the whole point of the split, and it does
+    not touch the runs that spent one (logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl
+    is the 2-time case that named the defect).
 
     `rereads` is how many times a question may be put back to the drawing, and
     nothing else. A re-read is still a provider call, and without a ceiling a
@@ -118,6 +189,7 @@ class Budgets:
     attempts_per_step: int = 3
     review_cycles: int = 2
     revisions: int = 3
+    mechanical_revisions: int = 2
     looks_per_turn: int = 6
     rereads: int = 3
     trailing_gap_retries: int = 1
@@ -139,26 +211,39 @@ class _Revisions:
     """
     How many times the Plan has been rewritten, and why (FCC-22).
 
-    Seven unrelated things replan: the Plan leaves part of the description
-    unplanned, a sum it states does not come out, the user amends at the Plan
-    Gate, Execute finds a Step out of date, Execute cannot build one, the
-    acceptance checks fail, and Review rejects the result. They share one ceiling, which is deliberate — but they
-    used to share one *counter* too, so whichever branch spent the last unit was
+    Eight unrelated things replan: the Plan leaves part of the description
+    unplanned, a sum it states does not come out, a Step names an operation
+    off the closed list, the user amends at the Plan Gate, Execute finds a
+    Step out of date, Execute cannot build one, the acceptance checks fail,
+    and Review rejects the result. Mechanical causes (UNCOVERED, MISCOUNTED,
+    OP_REFUSED) spend their own ceiling; execution causes (OBSOLETE,
+    UNBUILDABLE, ASSERTED, REJECTED, AMENDED) spend revisions_ceiling. They used
+    to share one *counter* too, so whichever branch spent the last unit was
     reported as the cause of all of them, and a run stopped by two amendments
     told the user Execute kept finding the Plan out of date.
+
+    OP_REFUSED sits with UNCOVERED and MISCOUNTED rather than with
+    UNBUILDABLE: the closed-vocabulary check that raises it runs over the
+    Plan reply itself, before Execute is ever asked for code, the same way
+    UNCOVERED and MISCOUNTED are read straight off the Plan and never touch a
+    Document (ADR-0026, FCC-233).
     """
 
     UNCOVERED = "uncovered"
     MISCOUNTED = "miscounted"
+    OP_REFUSED = "op_refused"
     AMENDED = "amended"
     OBSOLETE = "obsolete"
     UNBUILDABLE = "unbuildable"
     ASSERTED = "asserted"
     REJECTED = "rejected"
 
+    MECHANICAL_CAUSES = {UNCOVERED, MISCOUNTED, OP_REFUSED}
+
     _SAID = (
         (UNCOVERED, "the Plan left part of the description unplanned %s"),
         (MISCOUNTED, "the Plan's own arithmetic did not come out %s"),
+        (OP_REFUSED, "a Step named an operation off the closed list %s"),
         (AMENDED, "you amended the Plan %s"),
         (OBSOLETE, "Execute found the Plan out of date %s"),
         (UNBUILDABLE, "Execute could not build a Step %s"),
@@ -175,12 +260,23 @@ class _Revisions:
     def spent_total(self) -> int:
         return sum(self._spent.values())
 
+    def mechanical_spent(self) -> int:
+        return sum(self._spent[cause] for cause in self.MECHANICAL_CAUSES)
+
+    def execution_spent(self) -> int:
+        return sum(self._spent[cause] for cause in self._spent if cause not in self.MECHANICAL_CAUSES)
+
     def named(self, cause) -> str:
         """The cause in words, without the count `breakdown` puts on it."""
         return (dict(self._SAID)[cause] % "").strip()
 
-    def exhausted(self, budgets, steps) -> bool:
-        return self.spent_total() >= revisions_ceiling(budgets, steps)
+    def exhausted(self, budgets, steps, cause=None) -> bool:
+        if cause in self.MECHANICAL_CAUSES:
+            return self.mechanical_spent() >= budgets.mechanical_revisions
+        if cause is not None and cause not in self.MECHANICAL_CAUSES:
+            return self.execution_spent() >= revisions_ceiling(budgets, steps)
+        return (self.mechanical_spent() >= budgets.mechanical_revisions or
+                self.execution_spent() >= revisions_ceiling(budgets, steps))
 
     def _causes_spent(self) -> list:
         return [cause for cause, _ in self._SAID if self._spent[cause]]
@@ -202,11 +298,22 @@ class _Revisions:
         A ceiling of nought is a run that may not replan at all, and it has no
         breakdown to give. Where one cause spent the lot the breakdown has
         already named it, so the refusal is not repeated after it.
+
+        Names the ceiling that was hit: mechanical_revisions when a mechanical
+        cause blocked, revisions_ceiling when an execution cause blocked.
         """
         if not self._causes_spent():
             return "The Plan may not be rewritten in this run. " + refused
-        reason = ("The Plan has been rewritten %d times, which is the whole budget — %s."
-                  % (revisions_ceiling(budgets, steps), self.breakdown()))
+
+        if cause in self.MECHANICAL_CAUSES:
+            ceiling_hit = budgets.mechanical_revisions
+            ceiling_name = "the mechanical ceiling"
+        else:
+            ceiling_hit = revisions_ceiling(budgets, steps)
+            ceiling_name = "the whole budget"
+
+        reason = ("The Plan has been rewritten %d times, which is %s — %s."
+                  % (ceiling_hit, ceiling_name, self.breakdown()))
         if self._causes_spent() != [cause]:
             reason += " " + refused
         if self._spent[self.OBSOLETE] or cause == self.OBSOLETE:
@@ -388,6 +495,24 @@ class LoopResult:
 PROMPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        "config", "prompts")
 
+_LANGUAGE_PATH = os.path.join(PROMPTS, "language.md")
+
+_LANGUAGE_HEADINGS = (
+    "Naming from a closed vocabulary",
+    "The operation is one of 36",
+    "A Step is one sentence",
+    "The artefacts are English",
+)
+
+_PHASE_VOCABULARY = {
+    DESIGN_PHASE: ("Naming from a closed vocabulary", "The artefacts are English"),
+    PLAN_PHASE: ("The operation is one of 36", "A Step is one sentence",
+                 "The artefacts are English"),
+    EXECUTE_PHASE: ("The operation is one of 36", "The artefacts are English"),
+    ASSERTION_PHASE: ("The artefacts are English",),
+    REVIEW_PHASE: ("The artefacts are English",),
+}
+
 _TRAPS_PLACEHOLDER = "{{traps}}"
 
 _CUT_OFF_ATTEMPTS = 3
@@ -396,17 +521,48 @@ _CUT_OFF_ATTEMPTS = 3
 _LEDGER_HEADING = "This run has already failed these ways:"
 
 
+def _language_sections():
+    """
+    `config/prompts/language.md` split at its own `## ` headings, each
+    section keyed by heading text — the unit `_PHASE_VOCABULARY` composes
+    from, so a phase gets the sections it uses and nothing it does not.
+    """
+    with open(_LANGUAGE_PATH, encoding="utf-8") as handle:
+        text = handle.read()
+    marks = sorted((text.index("## " + heading), heading)
+                   for heading in _LANGUAGE_HEADINGS)
+    sections = {}
+    for i, (start, heading) in enumerate(marks):
+        end = marks[i + 1][0] if i + 1 < len(marks) else len(text)
+        sections[heading] = text[start:end].strip()
+    return sections
+
+
 def prompt(phase, ledger=""):
     """
-    A phase's system prompt, read from `config/prompts/<phase>.md`.
+    A phase's system prompt, read from `config/prompts/<phase>.md` and
+    composed with the sections of the shared vocabulary, `config/prompts/
+    language.md` (ADR-0026, FCC-234), that phase actually uses —
+    `_PHASE_VOCABULARY` names which: Design invents `kind`/datum/envelope
+    names and writes English prose, so it gets naming and the English rule;
+    Plan and Execute write and check an `op`, so they get the 36-verb
+    section, and Plan also gets the sentence rules since it is the phase
+    that writes the Steps those rules and the English-only check bind;
+    Assertion and Review write English verdicts and nothing else language.md
+    defines, so English is all either needs. The vocabulary lives once, in
+    one file, one heading per closed list — a phase composing only some of
+    those headings is still reading its one source of truth, not a copy of
+    it. Appended after the phase's own body rather than before it, so a
+    phrase such as design.md's "the closed vocabulary below" still points at
+    something below it in the composed prompt.
 
     Read per turn rather than at import: the addon installs as a plain source
     tree, so editing a prompt file takes effect on the next run. A missing file
     raises — a silently empty system prompt is the worse failure.
 
-    The traps are the one thing not in the file. They are knowledge about a
+    The traps are the one thing not in either file. They are knowledge about a
     specific FreeCAD build, not copy to tune, so they stay in code and land at
-    the placeholder the file chooses.
+    the placeholder the phase file chooses.
 
     `ledger` is this *run's* traps rather than this build's: `Ledger.render()`
     (`core/ledger.py`), appended after the file rather than placed at a
@@ -418,6 +574,9 @@ def prompt(phase, ledger=""):
     """
     with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
         body = handle.read().strip()
+    sections = _language_sections()
+    vocabulary = "\n\n".join(sections[heading] for heading in _PHASE_VOCABULARY[phase])
+    body = "%s\n\n%s" % (body, vocabulary)
     body = body.replace(_TRAPS_PLACEHOLDER, "\n".join("- " + trap for trap in TRAPS))
     if ledger:
         body = "%s\n\n%s\n%s" % (body, _LEDGER_HEADING, ledger)
@@ -522,7 +681,23 @@ def _streamed(llm, events, phase, system, user, prior=()):
 
 
 def _one_call(llm, events, phase, system, user, prior=()):
-    """The turn itself, priced whether it answered or the connection went."""
+    """
+    The turn itself, priced whether it answered or the connection went.
+
+    Every phase's call passes through here, which is what makes this the seam
+    a per-phase client is chosen at: `for_phase` is asked for the client this
+    phase is answered by, and a client that has none answers all five itself.
+    Design reading a drawing and Execute writing the code for a Step it has
+    already been given are not the same demand, and one dial over both is
+    paid at the rate of the more expensive on every call of the cheaper.
+
+    The reply reaches the stream as it forms, the way the reasoning before it
+    does. Until it did, a phase went silent from its last `thought` to its
+    `cost` — 22.4 minutes of a recorded run's 23.6 minutes of provider time,
+    and 25.6 of 53.7 in another — and a panel with nothing to show reads as a
+    run that has hung.
+    """
+    llm = llm.for_phase(phase) if hasattr(llm, "for_phase") else llm
     ceiling = getattr(llm, "timeout", None)
     model = getattr(llm, "model", None)
     started = {"phase": phase, "model": model}
@@ -542,6 +717,7 @@ def _one_call(llm, events, phase, system, user, prior=()):
                 events.emit(THOUGHT, phase=phase, text=chunk.text)
             else:
                 text.append(chunk.text)
+                events.emit(WRITING, phase=phase, text=chunk.text)
     finally:
         spent = getattr(llm, "last_cost", None)
         paid = {"phase": phase, "seconds": time.time() - start,
@@ -1077,6 +1253,15 @@ class Plan:
     instead of Steps. It is offered only once Plan has asked something the
     drawing cannot answer, so it is how a question about the build is settled
     rather than a second route to the Document.
+
+    `ops` is the operation each Step of `steps` declared, position for
+    position, `None` where none was declared or the closed vocabulary was
+    not in force (ADR-0026, FCC-233) — Execute is told it, and `core/lint.py`
+    checks the TypeId a Step's code builds against it. `unbuildable` is every
+    Step `_steps_of` refused outright because its `op` was not one of the 36:
+    it never reaches Execute, so no code is ever asked for it, and the entry
+    it would have satisfied is left to the ordinary coverage check to send
+    back through Plan again.
     """
 
     steps: list
@@ -1084,6 +1269,8 @@ class Plan:
     acceptance: list = field(default_factory=list)
     satisfies: list = field(default_factory=list)
     cites: list = field(default_factory=list)
+    ops: list = field(default_factory=list)
+    unbuildable: list = field(default_factory=list)
     look: dict = None
 
 
@@ -1154,7 +1341,8 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
 
     reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
                  json.dumps(request, indent=2, default=str))
-    steps, satisfies, cites = _steps_of(reply.get("steps", []))
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        reply.get("steps", []), reply.get("op_vocabulary"))
 
     look = reply.get("look")
     if not steps and looking and isinstance(look, dict) and look:
@@ -1165,8 +1353,8 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
         return Plan(steps=[], question=question)
     if not steps:
         raise PhaseError("Plan produced no Steps for this Intent.")
-    return Plan(steps=steps, satisfies=satisfies, cites=cites,
-                acceptance=_acceptance_of(the_part))
+    return Plan(steps=steps, satisfies=satisfies, cites=cites, ops=ops,
+                unbuildable=unbuildable, acceptance=_acceptance_of(the_part))
 
 
 def _addressed(acceptance):
@@ -1185,38 +1373,76 @@ def _addressed(acceptance):
     return addressed
 
 
-def _steps_of(planned):
+def _steps_of(planned, op_vocabulary=None):
     """
-    The prose of each Step, and every entry of the description the Plan cites.
+    The prose of each Step, the entries the Plan cites, the operation each
+    kept Step declared, and the Steps refused outright.
 
-    A Step is `{"do": …, "satisfies": [...]}`, or the bare string it has always
-    been. What a Step satisfies goes into its own prose rather than beside it,
-    because the Plan Gate shows prose: a reader who cannot tell from the Gate
-    which part of the part a Step is for cannot tell that one physical cavity
-    has been planned three times, which is what Steps 4, 5 and 6 of the recorded
-    run were (FCC-94).
+    A Step is `{"do": …, "op": …, "satisfies": [...]}`, or the bare string it
+    has always been. What a Step satisfies goes into its own prose rather than
+    beside it, because the Plan Gate shows prose: a reader who cannot tell
+    from the Gate which part of the part a Step is for cannot tell that one
+    physical cavity has been planned three times, which is what Steps 4, 5
+    and 6 of the recorded run were (FCC-94).
 
     A Step citing nothing is not refused here. The rule is coverage over the
     whole Plan — no entry may be left to no Step — and a Plan is the only thing
     that can be judged against it; a Step may legitimately carry work no entry
     of the description names.
+
+    `op` is checked against `OP_VERBS` (ADR-0026, FCC-233) only where *planned*
+    itself carries `"op_vocabulary": "closed"` — the marker FCC-232 already
+    put on `kind`, kept the same shape here rather than invented a second one.
+    A recorded Plan predates the closed vocabulary and carries no marker at
+    all, and takes this same legacy path whether or not a Step happens to
+    have an `op` field: checking one against the list is exactly the
+    prompt-only alternative ADR-0026 measured at 14.9% and rejected by name.
+
+    A Step whose `op` is off the list under the marker is refused rather than
+    kept: it is left out of `steps` entirely, so it is never sent to Execute
+    and no code is ever asked for it, and what it cited is left out of
+    `satisfies` too, so the ordinary coverage check is what sends it back
+    through Plan again — no second `unbuildable` code path was written for a
+    case the first one already covers.
+
+    A Step written in Ukrainian is refused the same way, under the same
+    marker: the vocabulary is closed to one language as much as to one set
+    of verbs, and Ukrainian stays the language of the Intent and of the
+    conversation that produced it, never of a Step (ADR-0026, `config/
+    prompts/language.md`). "Written in Ukrainian" is `_not_english`'s own
+    call, not one Cyrillic character in an otherwise English sentence — a
+    label or a part name a user typed in the Intent is not what this
+    refuses.
     """
-    steps, satisfies, cites = [], [], []
+    steps, satisfies, cites, ops, unbuildable = [], [], [], [], []
+    closed = op_vocabulary == OP_VOCABULARY
     for step in planned:
         if isinstance(step, dict):
             prose = str(step.get("do") or step.get("step") or "").strip()
             cited = [_as_written(entry) for entry in (step.get("satisfies") or ())
                      if _as_written(entry)]
+            op = str(step.get("op") or "").strip() or None
         else:
-            prose, cited = str(step).strip(), []
+            prose, cited, op = str(step).strip(), [], None
         if not prose:
+            continue
+        if closed and op and op not in OP_VERBS:
+            unbuildable.append({"step": prose,
+                                "why": "%r is not one of the 36 approved operations" % op,
+                                "entries": cited})
+            continue
+        if closed and _not_english(prose):
+            unbuildable.append({"step": prose,
+                                "why": "is not written in English",
+                                "entries": cited})
             continue
         steps.append(prose + (" (satisfies: %s)" % ", ".join(_in_the_prose(entry)
                                                              for entry in cited)
                               if cited else ""))
         satisfies.extend(cited)
         cites.append(cited)
-    return steps, satisfies, cites
+        ops.append(op if closed else None)
+    return steps, satisfies, cites, ops, unbuildable
 
 
 def _as_written(entry):
@@ -1310,6 +1536,23 @@ def _unconsumed(the_part, satisfies, standing=()):
             if entry["flag"] in ("read", "derived")
             and not any(said == entry["about"] or said.startswith(entry["about"] + ":")
                         for said in cited)]
+
+
+def _op_off_the_list(unbuildable) -> str:
+    """
+    What Plan is told when one of its own Steps named an operation off the
+    closed 36-verb list (ADR-0026, FCC-233) — the same actionability rule
+    FCC-232's refused `kind` applied: name the Step, name why, and hand back
+    the list it has to pick from, so the next Plan has a reason to choose a
+    different verb instead of restating the one just refused.
+    """
+    named = "\n".join("- %r %s" % (item["step"], item["why"]) for item in unbuildable)
+    return (named
+            + "\nEvery build op has to be one of these 36: "
+            + ", ".join(OP_VERBS)
+            + ".\nRewrite the Step(s) named above with one of them, or with a `question` "
+              "if the part genuinely needs none of them. Send back every Step you already "
+              "wrote that was kept, unchanged, beside the rewritten one(s).")
 
 
 def _plan_the_rest(unconsumed) -> str:
@@ -1468,6 +1711,9 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         again = _the_same_way_twice(attempts)
         if again:
             request["you_have_failed_this_the_same_way_twice"] = again
+        reference = _repair_reference(attempts)
+        if reference:
+            request["repair_reference"] = reference
 
     looked = list(looks.still_true()) if looks is not None else []
     for remaining in range(budgets.looks_per_turn, -1, -1):
@@ -1654,6 +1900,58 @@ def _classified_failures():
 _FAILED_THIS_WAY = _classified_failures()
 
 
+_REPAIR_REFERENCE = (
+    ("has no such property",
+     "The Step set a property the object type doesn't carry — a guessed name, not a "
+     "real one. Ask `describe_type` for what the object actually has and set one of "
+     "those; a second guessed spelling fails the identical way.",
+     "any check on this Step's own promised properties: the value never landed, so a "
+     "check that already passed against the object as it stood before this Step ran "
+     "has not yet measured what this Step was meant to change."),
+    ("BRep_API: command not done",
+     "PartDesign::Fillet fails this way on a radius the material can't carry — check "
+     "the radius against the Body's wall thickness at the edge being rounded (a full "
+     "round needs less than half of it) and set one the wall can carry, rather than "
+     "rewriting the same call.",
+     "any check that measured a face count or a bounding dimension off the "
+     "un-filleted Body: a radius that now fits changes both."),
+)
+
+
+def _repair_reference(attempts):
+    """
+    The repair layer's own addition to a retry request (FCC-203): a
+    reference entry for a *known* symptom, keyed on a phrase read off the
+    latest attempt's own traceback the way `_FAILED_THIS_WAY` and
+    `_the_same_way_twice` already are — but consulted on the *first*
+    failure rather than the second, since a repair record names a fix for
+    the symptom just seen, not a warning that a Step keeps failing the same
+    way twice. Where the traceback names no symptom this table recognises,
+    nothing is added and the request is exactly what it is without this
+    function: the traceback, and nothing else.
+
+    Two layers, on purpose, not one: `core/freecad_tools.py :: TRAPS` is
+    prevention, read into every prompt before a Step is written, full and
+    unconditional; this is repair, read only after a Step has already
+    failed, and stays narrow — one entry for the symptom in hand, not the
+    whole table. Merging them would force a choice between the two, since
+    prevention has to stay complete and repair has to stay narrow.
+
+    Riding beside `your_failed_attempts_at_this_step` rather than replacing
+    it, so a retry always still sees the traceback it names. Nothing here spends a `look` or asks for anything:
+    the table is read before the request is built, not through a Tool call
+    — a repair layer that cost Execute one of its own bounded turns would
+    spend the very budget it exists to protect (ADR-0009).
+    """
+    if not attempts:
+        return None
+    traceback = attempts[-1].traceback or ""
+    for phrase, fix, recheck in _REPAIR_REFERENCE:
+        if phrase in traceback:
+            return {"the_smallest_responsible_fix": fix, "recount_after_it": recheck}
+    return None
+
+
 def _the_same_way_twice(attempts):
     """
     The directive for a Step that has now failed twice for the same reason, or
@@ -1834,15 +2132,73 @@ class Looks:
     unasked: beyond it the oldest go, because what was looked at most recently
     is what the Steps being written now are about, and an unbounded list would
     grow a request the whole run long.
+
+    `describe_type` is cached to disk between runs, keyed by FreeCAD version.
+    A recorded run spent 26 minutes and $4.24 of $19.46 on six describe_type
+    calls — facts about the build that never change
+    (logs/sessions/247c2aae...).
     """
 
     ABOUT_THE_BUILD = ("describe_type", "supported_types", "materials")
 
     CARRIED = 8
 
-    def __init__(self):
+    def __init__(self, cache_path=None, freecad_version=None):
         self._taken = []
         self._step = 0
+        self._cache_path = cache_path
+        self._freecad_version = freecad_version
+        self._disk_cache = self._load_disk_cache() if cache_path else {}
+
+    def _load_disk_cache(self):
+        """
+        Read describe_type answers from disk, or {} if absent or unreadable.
+
+        A corrupted file is treated as absent: the run continues and the Tool
+        is called.
+        """
+        if not self._cache_path or not os.path.isfile(self._cache_path):
+            return {}
+        try:
+            with open(self._cache_path, encoding="utf-8") as handle:
+                return json.load(handle)
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    def _save_disk_cache(self, name, arguments, result):
+        """
+        Write one describe_type answer to disk, atomically.
+
+        Concurrent runs both write; a unique temporary name plus os.replace
+        makes last-write-wins safe.
+        """
+        if not self._cache_path or name != "describe_type":
+            return
+
+        key = self._disk_cache_key(arguments)
+        self._disk_cache[key] = result
+
+        try:
+            directory = os.path.dirname(self._cache_path)
+            os.makedirs(directory, exist_ok=True)
+            fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".json")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(self._disk_cache, handle, indent=2, sort_keys=True)
+                os.replace(tmp_path, self._cache_path)
+            except OSError:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+                raise
+        except OSError:
+            pass
+
+    def _disk_cache_key(self, arguments):
+        """Cache key for describe_type: (version, type_id)."""
+        args_str = json.dumps(arguments, sort_keys=True, default=str)
+        return "%s:%s" % (self._freecad_version, args_str)
 
     def a_step_landed(self):
         """A Step applied, so what was read off the Document may have moved."""
@@ -1859,6 +2215,7 @@ class Looks:
         self._taken = [taken for taken in self._taken if taken["key"] != key]
         self._taken.append({"key": key, "step": self._current(name), "tool": name,
                             "arguments": arguments, "result": result})
+        self._save_disk_cache(name, arguments, result)
 
     def answer(self, name, arguments):
         """
@@ -1866,7 +2223,14 @@ class Looks:
 
         Only where it is still true: an answer read off a Document two Steps
         ago is not an answer about this one.
+
+        describe_type reads from disk first, then from this run's memory.
         """
+        if name == "describe_type" and self._cache_path:
+            disk_key = self._disk_cache_key(arguments)
+            if disk_key in self._disk_cache:
+                return self._disk_cache[disk_key]
+
         key = self._key(name, arguments)
         current = self._current(name)
         for taken in reversed(self._taken):
@@ -1947,7 +2311,7 @@ def _what_this_build_has(tools):
     A build whose Tools do not hold the cards is handed nothing, which is the
     case every registry without a `materials` Tool is already in.
     """
-    looks = Looks()
+    looks = Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
     if "materials" in tools:
         try:
             looks.remember("materials", {}, tools.call("materials", {}))
@@ -2395,6 +2759,9 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
         return outcome(_block(events, str(exc), progress["tried"], progress["applied"],
                               said=exc.said))
     except PhaseError as exc:
+        events.emit(ERROR, message=str(exc))
+        return outcome(LoopResult(ok=False, reason=str(exc)))
+    except part_file.MissingPyYAML as exc:
         events.emit(ERROR, message=str(exc))
         return outcome(LoopResult(ok=False, reason=str(exc)))
     except Exception as exc:
@@ -3486,6 +3853,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     described = {}
     standing = {"approval": False, "read": set()}
     looks = _what_this_build_has(tools)
+    last_pass = {"steps": None, "applied": 0}
 
     def rewrite(cause, refused, feedback, tried, reason=None):
         """
@@ -3501,7 +3869,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         without being shown it — so it wrote from the complaint alone, which
         names only what was wrong.
         """
-        if revisions.exhausted(budgets, steps):
+        if revisions.exhausted(budgets, steps, cause):
             raise _OutOfRevisions(
                 revisions.block_reason(budgets, steps, cause, refused), tried)
         revisions.spend(cause)
@@ -3515,6 +3883,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
     while True:
         steps = planned.steps
+
+        if planned.unbuildable:
+            planned = rewrite(_Revisions.OP_REFUSED,
+                              "A Step named an operation off the closed list.",
+                              _op_off_the_list(planned.unbuildable), progress["tried"],
+                              reason="; ".join(item["why"] for item in planned.unbuildable))
+            continue
 
         unconsumed = _unconsumed(part["the_part"], planned.satisfies,
                                  progress["satisfied"])
@@ -3571,9 +3946,12 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             return _block(events, "The Plan came back with no Steps, so there is nothing to "
                                   "apply and nothing to review.", progress["tried"],
                           progress["applied"])
+        carried = _carried_over(last_pass["steps"], steps, last_pass["applied"])
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part["the_part"]), looks,
-                                planned.acceptance, planned.cites, ledger)
+                                planned.acceptance, planned.cites, ledger,
+                                start=carried, ops=planned.ops)
+        last_pass["steps"], last_pass["applied"] = steps, outcome["applied_here"]
         applied = progress["applied"]
 
         if outcome["handback"] and stuck["applied"] == applied \
@@ -3692,6 +4070,37 @@ def _still_wrong(outstanding):
     )
 
 
+def _carried_over(previous, steps, applied):
+    """
+    How many Steps at the head of a revised Plan are already standing in the
+    Document, and so must not be written or applied again.
+
+    `_run` keeps the Steps of the pass it just worked through and how many of
+    them landed. A revision is a new Plan (`_run`'s own docstring), but where
+    it opens with the same prose as Steps that already applied, those Steps
+    describe nothing Execute has not already built — asking for their code
+    again is asking for the same Document twice. Matched to a recorded run
+    (`logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl`): an 11-Step Plan
+    revised three times produced 28 `step_started` events over what should
+    have been 11, because every revision restarted Execute at Step 1 no
+    matter how much of the Plan it left untouched.
+
+    The count is the longest run of identical prose from the head of both
+    Plans, capped at how many Steps of `previous` actually landed: a Step
+    that was never reached is not carried just because a revision kept its
+    words, and a Step a revision changed is never carried past where it
+    changed.
+    """
+    if previous is None:
+        return 0
+    carried = 0
+    for was, now in zip(previous[:applied], steps):
+        if was != now:
+            break
+        carried += 1
+    return carried
+
+
 def _also_check(acceptance, outstanding):
     """
     The acceptance list, with anything an earlier run left wrong added to it.
@@ -3721,7 +4130,8 @@ def _trailing_gap(written, number, total):
 
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
-                  as_described="", looks=None, entries=(), cites=(), ledger=None):
+                  as_described="", looks=None, entries=(), cites=(), ledger=None,
+                  start=0, ops=()):
     """
     One pass over the Plan: written in one call, applied one Step at a time.
 
@@ -3777,7 +4187,21 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     before the retry that follows sees it, so a rake this pass already hit at
     Step 4 is in the prompt for Step 5, and for whatever Plan writes if this
     Plan is handed back.
-    """
+
+    `start` is where a revised Plan's own head is already standing in the
+    Document (`_carried_over`, called by `_run` before this): the Steps below
+    it are neither written nor applied again, only accounted for — `APPLIED`
+    on the stream and their citations onto `progress["satisfied"]`, exactly as
+    a Step that had just landed. The count this pass actually reached, carried
+    Steps included, comes back on `applied_here` so the next revision, if
+    there is one, has it to carry from in turn.
+
+    `ops` is `planned.ops`, index for index with `steps`: where an entry is
+    truthy it rides onto the `apply_step` call as `op`, which is what lets
+    `core/lint.py` check the TypeId that Step's code actually builds
+    (ADR-0026, FCC-233). A legacy, unmarked Plan's `ops` is all `None`, so
+    `apply_step` is called exactly as it always was — no `op` key at all.
+"""
     if cancelled():
         raise Stopped()
     described = {}
@@ -3787,9 +4211,15 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     index = 0
     retried = set()
     unbuilt = []
-    looks = looks if looks is not None else Looks()
-    written = execute(steps, tools, llm, events, budgets=budgets, as_described=as_described,
-                      looks=looks, entries=entries, ledger=ledger)
+    looks = looks if looks is not None else Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
+    written = execute(steps, tools, llm, events, start, budgets=budgets,
+                      as_described=as_described, looks=looks, entries=entries,
+                      ledger=ledger)
+
+    while index < start:
+        progress["satisfied"].extend(cites[index] if index < len(cites) else ())
+        events.emit(APPLIED, step=index + 1, label="", created=[])
+        index += 1
 
     while index < len(steps):
         if cancelled():
@@ -3798,7 +4228,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         if written.obsolete:
             return {"obsolete": written.obsolete, "handback": None,
-                    "description": described,
+                    "description": described, "applied_here": index,
                     "tried": [_tried(step, a) for a in attempts]}
 
         if not attempts:
@@ -3821,11 +4251,14 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                 "handback": "Step %d of %d could not be built as written: %s\n%s"
                             % (index + 1, len(steps), step, written.unbuildable),
                 "tried": [], "obsolete": None, "description": described,
+                "applied_here": index,
             }
 
         ran_dry = False
         if outcome.code:
             arguments = {"code": outcome.code, "label": outcome.label}
+            if index < len(ops) and ops[index]:
+                arguments["op"] = ops[index]
             events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
             result = tools.call("apply_step", arguments)
             events.emit(TOOL_RESULT, name="apply_step", result=result)
@@ -3880,6 +4313,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                                attempts[-1].traceback, _always_the_same_way(attempts)),
                 "tried": [_tried(step, a) for a in attempts],
                 "obsolete": None, "description": described,
+                "applied_here": index,
             }
 
         if cancelled():
@@ -3888,6 +4322,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                           looks, entries, ledger)
 
     return {"obsolete": None, "handback": None, "description": described,
+            "applied_here": index,
             "tried": [], "unbuilt": unbuilt, "retried": sorted(
                 {cited for at in retried for cited in (cites[at] if at < len(cites)
                                                        else ())})}

@@ -261,3 +261,22 @@ def test_every_document_touch_goes_through_the_dispatcher():
     pipeline.apply("doc.recompute()")
 
     assert len(dispatched) == 6
+
+
+def test_an_op_mismatch_reaches_apply_the_same_way_a_lint_rejection_does(pipeline):
+    """
+    ADR-0026/FCC-233: `op` passed to `apply()` is the same route lint already
+    took `selection` by — a keyword `apply()` forwards straight to `lint()`,
+    checked before Preflight ever sees the code.
+    """
+    result = pipeline.apply("doc.addObject('Part::Extrusion', 'Pad')", op="pad")
+
+    assert not result.ok
+    assert "pad" in result.traceback
+    assert pipeline.fake_worker.checked == []
+
+
+def test_an_op_none_never_blocks_a_step_the_old_pipeline_would_have_applied(pipeline):
+    result = pipeline.apply("doc.addObject('PartDesign::Pad', 'Pad')")
+
+    assert result.ok

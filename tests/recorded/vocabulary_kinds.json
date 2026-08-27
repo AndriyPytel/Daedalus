@@ -1,0 +1,5907 @@
+{
+ "models": [
+  {
+   "session": "069d21dbac10416392533fe7c06b62d4",
+   "datums": [
+    "the ring axis",
+    "the left end tangent plane",
+    "the right end tangent plane",
+    "the front face",
+    "the depth centre plane",
+    "the bottom face",
+    "the top face of the ear"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the ring's top tangent plane and the bottom face",
+    "length between the left and right end tangent planes"
+   ],
+   "features": [
+    {
+     "id": "ring",
+     "kind": "circular clamp ring, Ø50 outside, 30 mm wide front to rear, split on one side",
+     "seen_in": [
+      "the middle centre of the sheet, on page 1",
+      "SECTION A-A, on page 1",
+      "the isometric on page 1"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the depth centre plane",
+      "the left end tangent plane",
+      "the right end tangent plane"
+     ]
+    },
+    {
+     "id": "bore-ring",
+     "kind": "Ø42 bore (the pipe bore)",
+     "seen_in": [
+      "the middle centre of the sheet, on page 1",
+      "the isometric on page 1"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "arm",
+     "kind": "flat arm running left from the ring, 15 mm tall, 30 mm deep, semicircular left end R15 in the plan",
+     "seen_in": [
+      "the middle centre of the sheet, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "the upper centre of the sheet, on page 1"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the depth centre plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ear-right",
+     "kind": "clamping ear (two lugs) running right from the ring, 30 mm tall, 25 mm deep, semicircular right end R12.5 in the plan",
+     "seen_in": [
+      "the middle centre of the sheet, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "SECTION A-A, on page 1"
+     ],
+     "position_datums": [
+      "the depth centre plane",
+      "the ring axis",
+      "the top face of the ear"
+     ]
+    },
+    {
+     "id": "slot-split",
+     "kind": "2 mm clamping split through the ear",
+     "seen_in": [
+      "the middle centre of the sheet, on page 1",
+      "SECTION A-A, on page 1",
+      "the isometric on page 1"
+     ],
+     "position_datums": [
+      "the right end tangent plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hole-arm-left",
+     "kind": "Ø6.6 through hole with a Ø11 counterbore 6 deep (c'bore for M6 SHCS)",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "the upper centre of the sheet, on page 1"
+     ],
+     "position_datums": [
+      "the depth centre plane",
+      "the left end tangent plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hole-ear",
+     "kind": "Ø6.6 through hole through both lugs, with a Ø11 counterbore 6 deep from the bottom face and a hexagonal Ø11 recess 6 deep from the top face",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "the upper centre of the sheet, on page 1",
+      "SECTION A-A, on page 1"
+     ],
+     "position_datums": [
+      "the depth centre plane",
+      "the right end tangent plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "cutout-arm",
+     "kind": "the cutout in the arm where it meets the ring — a recess open at the arm's top face, with a slot through the arm at its left end and a curved rib following the ring's outside, the profile drawn in VIEW B",
+     "seen_in": [
+      "VIEW B, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "the upper centre of the sheet, on page 1",
+      "the middle centre of the sheet, on page 1",
+      "the isometric on page 1"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the depth centre plane",
+      "the front face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "fillets-r2",
+     "kind": "R2 fillets and rounds, typical, on every edge drawn red",
+     "seen_in": [
+      "the middle centre of the sheet, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "VIEW B, on page 1"
+     ],
+     "position_datums": [
+      "the whole part"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "0aed73b0953642fd8e53f2476bc71677",
+   "datums": [
+    "the left end tangent plane",
+    "the central transverse plane",
+    "the front face",
+    "the rear face",
+    "the top face",
+    "the bottom face",
+    "the left bore axis",
+    "the right bore axis"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height",
+    "length"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "obround (capsule) outer profile, 150 long by 50 tall, ends radiused",
+     "position_datums": [
+      "the central transverse plane",
+      "the left bore axis",
+      "the right bore axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-left",
+     "kind": "Ø40 bore",
+     "position_datums": [
+      "the central transverse plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-right",
+     "kind": "Ø40 bore",
+     "position_datums": [
+      "the central transverse plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "hole-35",
+     "kind": "Ø35 hole, called Ø35 THRU",
+     "position_datums": [
+      "the central transverse plane",
+      "the front face"
+     ]
+    },
+    {
+     "id": "pocket-front",
+     "kind": "blind pocket in the central web, opening on the front face, 30 mm tall, its two end walls concave R30 arcs",
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the left bore axis",
+      "the right bore axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "pocket-rear",
+     "kind": "blind pocket in the central web, opening on the rear face, 30 mm tall, its two end walls concave R30 arcs — the mirror of pocket-front",
+     "position_datums": [
+      "the bottom face",
+      "the left bore axis",
+      "the rear face",
+      "the right bore axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "fillets-r2",
+     "kind": "R2 fillets, note R2 TYP ALL RED FILLETS",
+     "position_datums": [
+      "the front face",
+      "the rear face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "0de34f88d1274dcebb02ac67e0e52fb0",
+   "datums": [
+    "the left end face",
+    "the front face",
+    "the plate underside",
+    "the plate top face",
+    "the boss axis",
+    "the mid-depth centre plane"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height from the lug's lowest point to the top of the boss",
+    "length between the end faces"
+   ],
+   "features": [
+    {
+     "id": "plate",
+     "kind": "rectangular base plate 80 long by 30 deep, 5 thick, all four corners R8",
+     "seen_in": [
+      "the top view",
+      "the front view",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face",
+      "the plate underside"
+     ]
+    },
+    {
+     "id": "boss-upper",
+     "kind": "Ø20 cylindrical boss standing on the plate top face",
+     "seen_in": [
+      "the top view",
+      "the front view",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face",
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "bore-upper",
+     "kind": "Ø15 bore through the boss and the plate",
+     "seen_in": [
+      "the top view",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "lug-boss",
+     "kind": "Ø20 cylindrical lug hanging below the plate, blended into the plate underside",
+     "seen_in": [
+      "the front view",
+      "the isometric views"
+     ],
+     "position_datums": [
+      "the left end face",
+      "the plate underside"
+     ]
+    },
+    {
+     "id": "bore-lug",
+     "kind": "Ø10 bore through the lug",
+     "seen_in": [
+      "the front view",
+      "the isometric views"
+     ],
+     "position_datums": [
+      "the left end face",
+      "the plate underside"
+     ]
+    },
+    {
+     "id": "rib",
+     "kind": "4 mm thick vertical triangular rib running from the plate top face up to the boss",
+     "seen_in": [
+      "the front view",
+      "the top view",
+      "DETAIL A"
+     ],
+     "position_datums": [
+      "the left end face",
+      "the mid-depth centre plane",
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "fillets",
+     "kind": "R2 fillets, typical, on all the red-shaded blend edges — rib to plate, rib to boss, boss to plate, lug to plate, and the plate's own top and bottom edges",
+     "seen_in": [
+      "the front view",
+      "the top view",
+      "DETAIL A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the plate top face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "141a41df15544013a9740a45138fa7ad",
+   "datums": [
+    "the lower tangent plane of the Ø50 outer ring",
+    "the leftmost tangent plane of the left rounded end",
+    "the ring axis",
+    "the front face",
+    "the rear face",
+    "the longitudinal centre plane"
+   ],
+   "envelope_keys": [
+    "depth front to rear between the front and rear faces",
+    "height between the lower and upper tangents of the outer ring",
+    "length between the leftmost and rightmost tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-ring",
+     "kind": "circular outer ring, Ø50",
+     "seen_in": [
+      "middle centre of the sheet, parts 1 and 2 of 2",
+      "VIEW B"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left rounded end",
+      "the lower tangent plane of the Ø50 outer ring"
+     ]
+    },
+    {
+     "id": "ring-bore",
+     "kind": "Ø42 through bore concentric with the outer ring",
+     "seen_in": [
+      "middle centre of the sheet, part 1 of 2",
+      "upper centre of the sheet",
+      "VIEW B"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-arm-and-rounded-end",
+     "kind": "left mounting arm with a semicircular rounded left end",
+     "seen_in": [
+      "middle centre of the sheet, part 1 of 2",
+      "lower centre of the sheet, the first one, part 1 of 2",
+      "upper centre of the sheet, part 1 of 2"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left rounded end",
+      "the lower tangent plane of the Ø50 outer ring",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "right-mounting-lug",
+     "kind": "right mounting lug with rounded outer end, R12.5",
+     "seen_in": [
+      "lower centre of the sheet, the first one, part 2 of 2",
+      "middle centre of the sheet, part 2 of 2",
+      "upper centre of the sheet, part 2 of 2"
+     ],
+     "position_datums": [
+      "the lower tangent plane of the Ø50 outer ring",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-mounting-hole",
+     "kind": "Ø6.6 mounting hole with Ø11 counterbore for M6 SHCS",
+     "seen_in": [
+      "lower centre of the sheet, the first one, part 1 of 2",
+      "upper centre of the sheet, part 1 of 2"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left rounded end",
+      "the longitudinal centre plane",
+      "the lower tangent plane of the Ø50 outer ring"
+     ]
+    },
+    {
+     "id": "right-mounting-hole",
+     "kind": "Ø6.6 mounting hole with Ø11 counterbore for M6 SHCS and hexagonal Ø11 recess",
+     "seen_in": [
+      "lower centre of the sheet, the first one, part 2 of 2",
+      "upper centre of the sheet, part 2 of 2",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the longitudinal centre plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "central-cutout",
+     "kind": "open central cutout beneath the ring, between the front and rear side portions",
+     "seen_in": [
+      "lower centre of the sheet, the first one, part 1 of 2",
+      "VIEW B",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the front face",
+      "the rear face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-split",
+     "kind": "split through the ring and right-hand lug region",
+     "seen_in": [
+      "middle centre of the sheet, part 2 of 2",
+      "upper centre of the sheet, parts 1 and 2 of 2"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "red-edge-fillets",
+     "kind": "R2 typical edge fillets",
+     "seen_in": [
+      "all rendered orthographic views",
+      "VIEW B",
+      "SECTION A-A"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "material",
+     "kind": "material specification",
+     "seen_in": [
+      "notes",
+      "title block"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "172369d7389a4a4f9c3c2ae8b5aded91",
+   "datums": [
+    "the left end face",
+    "the right end face",
+    "the ring axis",
+    "the bottom face of the arm",
+    "the centre plane of the depth"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height from the bottom face of the arm to the top of the ring",
+    "length between the left end face and the right end face"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "composite outer contour in the plane of the length and the height: a Ø50 ring at the right of centre, a 15 mm thick flat arm running left from it and tangent to its underside, and a 30 mm tall lug block between the ring and the right end face; the left tab end is rounded R7.5 in this plane (half of the 15 mm arm thickness)",
+     "seen_in": [
+      "front view",
+      "top view",
+      "plan view",
+      "isometric"
+     ],
+     "position_datums": [
+      "the bottom face of the arm",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "ring",
+     "kind": "annular ring, Ø50 outside, Ø42 bore",
+     "seen_in": [
+      "front view",
+      "top view",
+      "isometric"
+     ],
+     "position_datums": [
+      "the bottom face of the arm",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "arm",
+     "kind": "flat arm, 15 mm thick (height) by 14 mm wide (depth), joining the underside of the ring; left end rounded R7.5 in the elevation and R7 in plan (half of each overall)",
+     "seen_in": [
+      "front view",
+      "plan view",
+      "top view"
+     ],
+     "position_datums": [
+      "the bottom face of the arm",
+      "the centre plane of the depth"
+     ]
+    },
+    {
+     "id": "lug-block",
+     "kind": "boss block at the right of the ring, 30 mm tall in elevation, symmetric about the ring axis (15 mm each side), running from the ring to the right end face",
+     "seen_in": [
+      "front view",
+      "plan view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "split",
+     "kind": "horizontal split through the lug block, separating it into upper and lower ears",
+     "seen_in": [
+      "front view"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hole-tab",
+     "kind": "Ø6.6 through hole with Ø11 counterbore 6 deep (c'bore for M6 SHCS)",
+     "seen_in": [
+      "plan view",
+      "top view"
+     ],
+     "position_datums": [
+      "the centre plane of the depth",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "hole-boss",
+     "kind": "Ø6.6 through hole with Ø11 counterbore 6 deep from the bottom face (c'bore for M6 SHCS) and a hexagonal socket HEX Ø11, 6 deep, from the top face",
+     "seen_in": [
+      "top view",
+      "plan view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the centre plane of the depth",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "cutout-arm",
+     "kind": "through cutout (slot) in the arm next to the ring, tapered in profile: a narrow round-ended slot at its left end flaring wider toward the ring, 30 mm long",
+     "seen_in": [
+      "plan view",
+      "front view",
+      "VIEW B",
+      "isometric"
+     ],
+     "position_datums": [
+      "the centre plane of the depth",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "fillets",
+     "kind": "R2 fillets on all edges drawn red (the exterior perimeter edges and the cutout edges shown red in every view)",
+     "seen_in": [
+      "front view",
+      "all views"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "1b6cd765da1e4304a6215035d1ec5a56",
+   "datums": [
+    "the left end face",
+    "the front face",
+    "the bottom face"
+   ],
+   "envelope_keys": [
+    "depth front to rear between the front face and the rear face",
+    "height between the bottom face and the top face",
+    "length between the end faces"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "rectangular outer profile, 100 long by 60 deep, corners square",
+     "seen_in": [],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the left end face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "1c1f2d2eadb545f493724fe2bb33500c",
+   "datums": [
+    "the ring axis",
+    "the ring mid-plane",
+    "the front face",
+    "the left free end of the angled arm",
+    "the right lug axis",
+    "the angled-arm lower tangent line",
+    "the angled-arm centre plane"
+   ],
+   "envelope_keys": [
+    "depth front to rear between the outer front and rear faces",
+    "outer ring diameter in the plane of the length and height",
+    "right fork height about the ring mid-plane",
+    "ring bore diameter in the plane of the length and height"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "Phase 2 clamp outer profile: circular ring joined to a 45° angled left arm and a right-hand rounded mounting lug",
+     "seen_in": [
+      "page 2 VIEW C-C",
+      "page 2 upper-left view",
+      "page 2 isometric view"
+     ],
+     "position_datums": [
+      "the left free end of the angled arm",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-bore",
+     "kind": "Ø42 circular clamp bore",
+     "seen_in": [
+      "page 1 middle-centre view",
+      "page 2 VIEW C-C",
+      "page 1 VIEW B"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "angled-left-arm",
+     "kind": "Phase 2 angled exterior arm",
+     "seen_in": [
+      "page 2 VIEW C-C",
+      "page 2 isometric view"
+     ],
+     "position_datums": [
+      "the angled-arm centre plane",
+      "the ring axis",
+      "the ring mid-plane"
+     ]
+    },
+    {
+     "id": "right-fork",
+     "kind": "right-hand forked mounting lug with rounded outer end",
+     "seen_in": [
+      "page 1 middle-centre view",
+      "page 1 upper-centre view",
+      "page 2 VIEW C-C",
+      "page 1 SECTION A-A"
+     ],
+     "position_datums": [
+      "the ring axis",
+      "the ring mid-plane"
+     ]
+    },
+    {
+     "id": "right-mounting-hole",
+     "kind": "Ø6.6 mounting bore with Ø11 counterbore",
+     "seen_in": [
+      "page 1 lower-centre view",
+      "page 1 upper-centre view",
+      "page 1 SECTION A-A",
+      "page 2 VIEW C-C"
+     ],
+     "position_datums": [
+      "the right lug axis",
+      "the ring mid-plane"
+     ]
+    },
+    {
+     "id": "left-mounting-slot",
+     "kind": "Phase 2 obround mounting slot with counterbore slot",
+     "seen_in": [
+      "page 2 VIEW C-C",
+      "page 2 upper-left view",
+      "page 2 isometric view"
+     ],
+     "position_datums": [
+      "the angled-arm centre plane",
+      "the left free end of the angled arm",
+      "the ring mid-plane"
+     ]
+    },
+    {
+     "id": "central-cutout",
+     "kind": "open curved cutout below and to the left of the ring",
+     "seen_in": [
+      "page 1 middle-centre view",
+      "page 1 VIEW B",
+      "page 2 VIEW C-C"
+     ],
+     "position_datums": [
+      "the ring axis",
+      "the ring mid-plane"
+     ]
+    },
+    {
+     "id": "red-edge-fillets",
+     "kind": "edge fillets",
+     "seen_in": [
+      "page 1 middle-centre view",
+      "page 1 lower-centre view",
+      "page 2 VIEW C-C"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "right-lug-hex-recess",
+     "kind": "hexagonal recess around the right mounting-hole counterbore",
+     "seen_in": [
+      "page 1 upper-centre view",
+      "page 2 upper-left view"
+     ],
+     "position_datums": [
+      "the right lug axis"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "247c2aaed0734866a8aa9d169f7303bd",
+   "datums": [
+    "the right end face",
+    "the bottom face",
+    "the top face",
+    "the front face",
+    "the ring axis"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height",
+    "length"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "flat bar with rounded ends merging mid-length with a Ø50 OD split-ring: 15 mm tall over the left arm, Ø50 (50 mm) over the ring, 30 mm tall over the right lug; 14 mm wide front-to-rear at the left pad, 30 mm wide front-to-rear at the ring/lug",
+     "position_datums": [
+      "the right end face"
+     ]
+    },
+    {
+     "id": "bore-ring",
+     "kind": "Ø42 through bore within a Ø50 OD ring (split pipe-clamp ring)",
+     "position_datums": [
+      "the bottom face",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "notch-arm",
+     "kind": "relief cutout at the arm-to-ring junction, functioning as the ring's clamping slit; profile shown enlarged in VIEW B",
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hole-left",
+     "kind": "Ø6.6 through hole with Ø11 x 6 deep counterbore (for M6 SHCS), mounting hole in the left pad",
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "hole-right",
+     "kind": "Ø6.6 through hole; hex Ø11 x 6 deep pocket (captive nut) from the top face; Ø11 x 6 deep counterbore (for M6 SHCS) from the bottom face — clamp tightening screw",
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "fillet-general",
+     "kind": "R2 fillets, typical, on all red-highlighted edges",
+     "position_datums": []
+    },
+    {
+     "id": "outer-profile-arm",
+     "kind": "flat arm/plate, straight sides, rounded left and right end tabs (R12.5, giving 25 mm depth front-to-rear at each end), stepped out to the full 30 mm depth through the central/ring region; overall length 108 mm",
+     "position_datums": [
+      "the bottom face",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "fillet-end-left",
+     "kind": "rounded end, radius equal to the right end's",
+     "superseded_by": "outer-profile",
+     "position_datums": [
+      "the right end face"
+     ]
+    },
+    {
+     "id": "boss-ring",
+     "kind": "cylindrical ring/collar, OD Ø50, through bore Ø42 (for a pipe to pass through)",
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "slot-arm",
+     "kind": "slot cut through the arm, between hole-left and boss-ring",
+     "position_datums": [
+      "the front face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "2e935bffb8f24af48c6c3e6d2587f42a",
+   "datums": [
+    "the left end tangent plane",
+    "the right end tangent plane",
+    "the front face",
+    "the rear face",
+    "the top face",
+    "the bottom face",
+    "the depth midplane",
+    "the left end-round axis",
+    "the right end-round axis",
+    "the left bore axis",
+    "the right bore axis",
+    "the central vertical bore axis",
+    "the inner tangent plane of the left Ø40 bore",
+    "the inner tangent plane of the right Ø40 bore",
+    "each red-highlighted edge",
+    "the adjoining faces of each red-highlighted edge"
+   ],
+   "envelope_keys": [
+    "depth between the front and rear faces",
+    "height between the top and bottom faces",
+    "length between the left and right end tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-left-round",
+     "kind": "semicylindrical outer end round",
+     "seen_in": [
+      "top view",
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the depth midplane",
+      "the left end tangent plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "outer-right-round",
+     "kind": "semicylindrical outer end round",
+     "seen_in": [
+      "top view",
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the depth midplane",
+      "the right end tangent plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-left",
+     "kind": "Ø40 cylindrical bore",
+     "seen_in": [
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the depth midplane",
+      "the left end tangent plane",
+      "the left end-round axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-right",
+     "kind": "Ø40 cylindrical bore",
+     "seen_in": [
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the depth midplane",
+      "the right end tangent plane",
+      "the right end-round axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-central-vertical",
+     "kind": "Ø35 cylindrical bore",
+     "seen_in": [
+      "top view",
+      "SECTION A-A",
+      "SECTION B-B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the depth midplane",
+      "the front face",
+      "the right bore axis"
+     ]
+    },
+    {
+     "id": "pocket-front-central",
+     "kind": "central blind pocket with straight upper and lower walls and two concave cylindrical end walls",
+     "seen_in": [
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the inner tangent plane of the left Ø40 bore",
+      "the inner tangent plane of the right Ø40 bore",
+      "the top face"
+     ]
+    },
+    {
+     "id": "pocket-rear-central",
+     "kind": "central blind pocket matching the front pocket, with straight upper and lower walls and two concave cylindrical end walls",
+     "seen_in": [
+      "SECTION A-A",
+      "SECTION B-B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the inner tangent plane of the left Ø40 bore",
+      "the inner tangent plane of the right Ø40 bore",
+      "the top face"
+     ]
+    },
+    {
+     "id": "fillets-red-highlighted",
+     "kind": "R2 edge fillets on all red-highlighted edges",
+     "seen_in": [
+      "top view",
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the adjoining faces of each red-highlighted edge"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "353b27331141499b96ae9bf6179310f1",
+   "datums": [
+    "the leftmost tangent plane of the left mounting lug",
+    "the right end face",
+    "the ring axis",
+    "the lower tangent plane of the ring",
+    "the mounting-lug centre plane",
+    "the front face",
+    "the rear face",
+    "the angled left end face",
+    "the horizontal centreline through the ring axis"
+   ],
+   "envelope_keys": [
+    "height between the lower tangent plane and the top of the ring",
+    "length between the leftmost tangent plane and the right end face",
+    "maximum depth front to rear",
+    "ring-body depth front to rear"
+   ],
+   "features": [
+    {
+     "id": "outer-clamp-form",
+     "kind": "integral clamp and two mounting-lug outer form",
+     "seen_in": [
+      "middle centre view, page 1",
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "SECTION A-A, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left mounting lug",
+      "the lower tangent plane of the ring",
+      "the right end face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-bore",
+     "kind": "Ø42 cylindrical ring bore within a Ø50 outer ring",
+     "seen_in": [
+      "middle centre view, page 1",
+      "SECTION A-A, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left mounting lug",
+      "the lower tangent plane of the ring"
+     ]
+    },
+    {
+     "id": "ring-outer-diameter",
+     "kind": "Ø50 circular outer ring profile",
+     "seen_in": [
+      "middle centre view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left mounting lug",
+      "the lower tangent plane of the ring"
+     ]
+    },
+    {
+     "id": "ring-split",
+     "kind": "radial split through the ring and right-hand body",
+     "seen_in": [
+      "middle centre view, page 1"
+     ],
+     "position_datums": [
+      "the right end face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-mounting-hole",
+     "kind": "Ø6.6 mounting hole with Ø11 counterbore",
+     "seen_in": [
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left mounting lug",
+      "the mounting-lug centre plane"
+     ]
+    },
+    {
+     "id": "right-mounting-hole",
+     "kind": "Ø6.6 mounting hole with Ø11 counterbore and hexagonal Ø11 recess",
+     "seen_in": [
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the mounting-lug centre plane",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "left-lug-end-round",
+     "kind": "left mounting-lug rounded end",
+     "seen_in": [
+      "lower centre view, page 1",
+      "upper centre view, page 1"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left mounting lug",
+      "the mounting-lug centre plane"
+     ]
+    },
+    {
+     "id": "right-lug-end-round",
+     "kind": "right mounting-lug rounded end",
+     "seen_in": [
+      "lower centre view, page 1",
+      "upper centre view, page 1"
+     ],
+     "position_datums": [
+      "the mounting-lug centre plane",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "web-cutout",
+     "kind": "curved web cutout between the left mounting lug and the ring",
+     "seen_in": [
+      "middle centre view, page 1",
+      "lower centre view, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the lower tangent plane of the ring",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "edge-fillets",
+     "kind": "R2 typical edge fillets",
+     "seen_in": [
+      "middle centre view, page 1",
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "SECTION A-A, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "angled-arm",
+     "kind": "45.0° angled left arm replacing the Phase-1 horizontal left mounting lug",
+     "seen_in": [
+      "VIEW C-C, page 2"
+     ],
+     "position_datums": [
+      "the angled left end face",
+      "the horizontal centreline through the ring axis"
+     ]
+    },
+    {
+     "id": "left-mounting-slot",
+     "kind": "Ø6.6 by 8.0 obround mounting slot with Ø11 counterbore slot",
+     "seen_in": [
+      "VIEW C-C, page 2",
+      "the upper left of the sheet, page 2"
+     ],
+     "position_datums": [
+      "the mounting-lug centre plane"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "3fdc7475dbda4d50b57b157cd67dea59",
+   "datums": [
+    "the left end radius axis",
+    "the right end radius axis",
+    "the mid-length plane",
+    "the top face",
+    "the bottom face",
+    "the mid-height plane",
+    "the front face",
+    "the rear face",
+    "the mid-depth plane"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the top and bottom faces",
+    "length between the end radii tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "obround (capsule) outer profile in the plan, 150 long by 50 deep, ends R25",
+     "seen_in": [
+      "the middle left of the sheet"
+     ],
+     "position_datums": [
+      "the left end radius axis",
+      "the mid-depth plane"
+     ]
+    },
+    {
+     "id": "bore-left",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION B-B",
+      "the isometric"
+     ],
+     "position_datums": [
+      "the left end radius axis",
+      "the mid-depth plane"
+     ]
+    },
+    {
+     "id": "bore-right",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION B-B",
+      "the isometric"
+     ],
+     "position_datums": [
+      "the mid-depth plane",
+      "the mid-length plane",
+      "the right end radius axis"
+     ]
+    },
+    {
+     "id": "hole-central",
+     "kind": "Ø35 through hole",
+     "seen_in": [
+      "the upper left of the sheet, the second one",
+      "SECTION B-B",
+      "the isometric"
+     ],
+     "position_datums": [
+      "the mid-height plane",
+      "the mid-length plane"
+     ]
+    },
+    {
+     "id": "pocket-top",
+     "kind": "pocket in the central web, opening on the top face, 30 wide in the depth, its two long walls R30 arcs concave toward the mid-length plane",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B",
+      "the isometric"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end radius axis",
+      "the rear face",
+      "the right end radius axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "pocket-bottom",
+     "kind": "pocket in the central web, opening on the bottom face, mirror of pocket-top",
+     "seen_in": [
+      "SECTION A-A",
+      "SECTION B-B",
+      "the middle left of the sheet",
+      "the isometric"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the left end radius axis",
+      "the rear face",
+      "the right end radius axis"
+     ]
+    },
+    {
+     "id": "web-walls",
+     "kind": "the 10 mm walls left between each Ø40 bore and the pockets in the central web",
+     "seen_in": [
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the left end radius axis",
+      "the right end radius axis"
+     ]
+    },
+    {
+     "id": "fillets-r2",
+     "kind": "R2 fillets",
+     "seen_in": [
+      "the upper left of the sheet, the first one",
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B",
+      "the isometric"
+     ],
+     "position_datums": [
+      "the top face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "45ee20f1f9a34c60a79bfd62d2dace8c",
+   "datums": [
+    "the left end face",
+    "the top face of the base plate",
+    "the front-to-rear centre plane",
+    "the upper boss axis",
+    "the lug axis",
+    "the bottom face of the base plate",
+    "the right end face"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height from the lug's lowest tangent to the top of the upper boss",
+    "length between the end tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "base plate: rounded-rectangle (80 long by 30 deep) outer profile, all four corners R8",
+     "seen_in": [
+      "the upper centre of the sheet, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "SECTION B-B, on page 1"
+     ],
+     "position_datums": [
+      "the bottom face of the base plate",
+      "the front-to-rear centre plane",
+      "the left end face",
+      "the top face of the base plate"
+     ]
+    },
+    {
+     "id": "boss-upper",
+     "kind": "Ø20 cylindrical boss standing on the plate",
+     "seen_in": [
+      "the upper centre of the sheet, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "SECTION B-B, on page 1"
+     ],
+     "position_datums": [
+      "the front-to-rear centre plane",
+      "the left end face",
+      "the top face of the base plate"
+     ]
+    },
+    {
+     "id": "hole-15",
+     "kind": "Ø15 bore",
+     "seen_in": [
+      "the upper centre of the sheet, on page 1",
+      "SECTION B-B, on page 1"
+     ],
+     "position_datums": [
+      "the front-to-rear centre plane",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "lug-lower",
+     "kind": "Ø20 cylindrical lug hanging below the plate",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "the lower left of the sheet, the first one, on page 1"
+     ],
+     "position_datums": [
+      "the front-to-rear centre plane",
+      "the left end face",
+      "the top face of the base plate"
+     ]
+    },
+    {
+     "id": "hole-10",
+     "kind": "Ø10 bore",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1"
+     ],
+     "position_datums": [
+      "the left end face",
+      "the top face of the base plate"
+     ]
+    },
+    {
+     "id": "rib-sloped",
+     "kind": "4 mm thick sloped rib (web) standing on the plate, running from the plate top face up to the upper boss, its top end rounded",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "the upper centre of the sheet, on page 1",
+      "DETAIL A, on page 1",
+      "the lower left of the sheet, the first one, on page 1"
+     ],
+     "position_datums": [
+      "the front-to-rear centre plane",
+      "the left end face",
+      "the top face of the base plate",
+      "the top face of the base plate, in thickness",
+      "the upper boss axis"
+     ]
+    },
+    {
+     "id": "fillets-r2",
+     "kind": "R2 fillets, typical",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "the upper centre of the sheet, on page 1",
+      "DETAIL A, on page 1",
+      "SECTION B-B, on page 1"
+     ],
+     "position_datums": [
+      "the top face of the base plate"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "4eebde83eaa74822a268716cb5b1a729",
+   "datums": [
+    "the left end",
+    "the bottom face",
+    "the front face"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height",
+    "length"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "obround (capsule) outer profile, 150 mm long by 50 mm tall, ends R25, flat top and bottom faces",
+     "seen_in": [
+      "the upper left of the sheet, the first one",
+      "the upper left of the sheet, the second one",
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the left end"
+     ]
+    },
+    {
+     "id": "bore-left",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end"
+     ]
+    },
+    {
+     "id": "bore-right",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end"
+     ]
+    },
+    {
+     "id": "bore-center",
+     "kind": "Ø35 bore",
+     "seen_in": [
+      "the upper left of the sheet, the second one",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end"
+     ]
+    },
+    {
+     "id": "cutout-web",
+     "kind": "slot with flat top and bottom edges and concave R30 sides (a waisted/dog-bone profile), cut into the central web between the two Ø40 bores",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the left end",
+      "the rear face"
+     ]
+    },
+    {
+     "id": "fillets-r2-typ",
+     "kind": "R2 fillet, typical — applied to all edges drawn red on the sheet: the top and bottom edges of the outer obround profile where they meet the rounded end surfaces, the intersections of both Ø40 bores with the outer surface, and the edges of the cutout-web slot",
+     "seen_in": [
+      "the upper left of the sheet, the first one"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "4fca495a8076439a9967a584abd05227",
+   "datums": [
+    "the left end tangent plane",
+    "the bottom face",
+    "the ring axis",
+    "the front face",
+    "the top face",
+    "the angled left-arm end face",
+    "the angled left-arm longitudinal centreline"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the bottom face and the top of the outer ring",
+    "length between the left end tangent plane and the right end face"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "side outer profile incorporating a left 15 mm-high mounting arm, a central circular ring, and a right 30 mm-high mounting lug",
+     "seen_in": [
+      "middle centre view, page 1",
+      "VIEW B, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end tangent plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-opening",
+     "kind": "Ø42 circular opening through the ring",
+     "seen_in": [
+      "middle centre view, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "outer-ring",
+     "kind": "Ø50 circular outer ring",
+     "seen_in": [
+      "middle centre view, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-mounting-ear",
+     "kind": "left rounded mounting ear",
+     "seen_in": [
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "middle centre view, page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "right-mounting-ear",
+     "kind": "right rounded mounting ear",
+     "seen_in": [
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "middle centre view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the right end face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-mounting-hole",
+     "kind": "Ø6.6 mounting bore with Ø11 counterbore",
+     "seen_in": [
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "right-mounting-hole",
+     "kind": "Ø6.6 mounting bore with Ø11 counterbore and opposite hexagonal Ø11 recess",
+     "seen_in": [
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the right end tangent plane"
+     ]
+    },
+    {
+     "id": "arm-cutout",
+     "kind": "through cutout in the left arm with a curved, ring-tangent inner boundary",
+     "seen_in": [
+      "lower centre view, page 1",
+      "middle centre view, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "split",
+     "kind": "central split through the right-hand ring lug",
+     "seen_in": [
+      "middle centre view, page 1"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the ring axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "edge-fillets",
+     "kind": "R2 typical fillets on all red-highlighted edges",
+     "seen_in": [
+      "middle centre view, page 1",
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "VIEW B, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "phase2-angled-left-arm",
+     "kind": "Phase 2 angled left mounting arm replacing the Phase 1 horizontal left mounting ear",
+     "seen_in": [
+      "VIEW C-C, page 2",
+      "the upper left of the sheet, page 2"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "phase2-left-mounting-slot",
+     "kind": "Ø6.6 by 8.0 obround mounting slot with Ø11 obround counterbore",
+     "seen_in": [
+      "VIEW C-C, page 2",
+      "the upper left of the sheet, page 2"
+     ],
+     "position_datums": [
+      "the angled left-arm longitudinal centreline"
+     ]
+    },
+    {
+     "id": "phase2-right-lug-reference-extent",
+     "kind": "reference longitudinal extent from the ring axis to the right end face",
+     "seen_in": [
+      "middle centre view, page 1",
+      "VIEW C-C, page 2"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "51d7a2f16e224230b5b74f126c7cf8f5",
+   "datums": [
+    "the left end tangent plane",
+    "the plate bottom face",
+    "the front-to-rear mid-plane",
+    "the left end face",
+    "the front face",
+    "the plate top face",
+    "the boss axis",
+    "the lug axis"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height",
+    "height from the lowest point of the lug to the top of the upper boss",
+    "length",
+    "length between the end tangent planes"
+   ],
+   "features": [
+    {
+     "id": "base-plate",
+     "kind": "rectangular base plate 80 long by 30 deep by 5 thick, four corners R8 in plan",
+     "seen_in": [
+      "top view",
+      "front view",
+      "SECTION B-B",
+      "left side view"
+     ],
+     "position_datums": [
+      "the front-to-rear mid-plane",
+      "the left end tangent plane",
+      "the plate bottom face",
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "boss-upper",
+     "kind": "Ø20 cylindrical boss standing above the plate",
+     "seen_in": [
+      "top view",
+      "front view",
+      "SECTION B-B",
+      "left side view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the front-to-rear mid-plane",
+      "the left end face",
+      "the left end tangent plane",
+      "the plate bottom face",
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "bore-upper",
+     "kind": "Ø15 through hole in the upper boss",
+     "seen_in": [
+      "top view",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front-to-rear mid-plane",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "lug-lower",
+     "kind": "Ø20 semicircular lug hanging below the plate",
+     "seen_in": [
+      "front view",
+      "top view",
+      "isometric views",
+      "left view",
+      "top view (as the hidden circle at the left end)"
+     ],
+     "position_datums": [
+      "the front-to-rear mid-plane",
+      "the left end face",
+      "the left end tangent plane",
+      "the plate bottom face",
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "hole-lug",
+     "kind": "Ø10 through hole in the lower lug",
+     "seen_in": [
+      "front view",
+      "isometric views"
+     ],
+     "position_datums": [
+      "the left end tangent plane",
+      "the lug axis",
+      "the plate bottom face"
+     ]
+    },
+    {
+     "id": "rib",
+     "kind": "4 mm wide tapering rib running from the plate top up to the upper boss",
+     "seen_in": [
+      "front view",
+      "top view",
+      "DETAIL A",
+      "left side view",
+      "left view"
+     ],
+     "position_datums": [
+      "the boss axis",
+      "the front face",
+      "the front-to-rear mid-plane",
+      "the left end tangent plane",
+      "the plate bottom face",
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "fillets",
+     "kind": "R2 fillets on all edges shown red",
+     "seen_in": [
+      "front view",
+      "top view",
+      "DETAIL A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the part as drawn",
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "corner-radii",
+     "kind": "R8 corner rounds, 4 places, on the plate outline",
+     "seen_in": [
+      "top view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "hole-boss",
+     "kind": "Ø15 through hole in the upper boss",
+     "seen_in": [
+      "top view",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the boss axis"
+     ]
+    },
+    {
+     "id": "outer-profile",
+     "kind": "rectangular outer profile of the base plate, 80 long by 30 deep, all four plan corners R8 (a rounded-corner rectangle, not a capsule)",
+     "seen_in": [
+      "the upper centre of the sheet, on page 1, part 1 of 2",
+      "the upper centre of the sheet, on page 1, part 2 of 2",
+      "the lower centre of the sheet, the first one, on page 1",
+      "SECTION B-B, on page 1"
+     ],
+     "position_datums": [
+      "the boss axis",
+      "the front-to-rear mid-plane",
+      "the left end tangent plane",
+      "the plate bottom face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "549e6232c9e04b659e5a2d536354bd7a",
+   "datums": [
+    "the leftmost tangent plane of the mounting arm",
+    "the ring axis",
+    "the bottom tangent plane of the ring",
+    "the front face",
+    "the rear face",
+    "the longitudinal centre plane",
+    "the rightmost end face"
+   ],
+   "envelope_keys": [
+    "depth front to rear between the front and rear faces",
+    "height between the bottom and top faces of the right lug",
+    "length between the leftmost tangent plane of the mounting arm and the rightmost end face"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "compound clamp and mounting-arm outer profile: circular clamp body joined to a left mounting arm and right mounting lug",
+     "seen_in": [
+      "front elevation, page 1",
+      "lower plan view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the leftmost tangent plane of the mounting arm",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "clamp-ring-outer",
+     "kind": "Ø50 outer cylindrical clamp ring",
+     "seen_in": [
+      "front elevation, page 1",
+      "lower plan view, page 1"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the leftmost tangent plane of the mounting arm"
+     ]
+    },
+    {
+     "id": "clamp-bore",
+     "kind": "Ø42 cylindrical bore through the clamp ring",
+     "seen_in": [
+      "front elevation, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-split",
+     "kind": "horizontal split slot through the clamp ring and right arm",
+     "seen_in": [
+      "front elevation, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-mounting-arm",
+     "kind": "left mounting arm, 15 mm tall, joined tangentially to the lower outside of the clamp ring",
+     "seen_in": [
+      "front elevation, page 1",
+      "lower plan view, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the leftmost tangent plane of the mounting arm"
+     ]
+    },
+    {
+     "id": "right-mounting-lug",
+     "kind": "right mounting lug with R12.5 rounded outer end",
+     "seen_in": [
+      "lower plan view, page 1",
+      "upper plan view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the longitudinal centre plane",
+      "the rightmost end face"
+     ]
+    },
+    {
+     "id": "left-mounting-hole",
+     "kind": "Ø6.6 through mounting hole with Ø11 counterbore",
+     "seen_in": [
+      "lower plan view, page 1",
+      "upper plan view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the leftmost tangent plane of the mounting arm",
+      "the longitudinal centre plane"
+     ]
+    },
+    {
+     "id": "right-mounting-hole",
+     "kind": "Ø6.6 through mounting hole with Ø11 counterbore and hexagonal Ø11 recess",
+     "seen_in": [
+      "lower plan view, page 1",
+      "upper plan view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the longitudinal centre plane",
+      "the rear face",
+      "the rightmost end face"
+     ]
+    },
+    {
+     "id": "arm-cutout",
+     "kind": "through cutout in the left mounting arm with a curved wall rising tangentially into the outer clamp ring",
+     "seen_in": [
+      "front elevation, page 1",
+      "lower plan view, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the mounting arm",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "edge-fillets",
+     "kind": "R2 typical edge fillets",
+     "seen_in": [
+      "front elevation, page 1",
+      "lower plan view, page 1",
+      "upper plan view, page 1",
+      "SECTION A-A, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "material",
+     "kind": "material specification",
+     "seen_in": [
+      "page 1 notes"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "phase2-angled-left-mounting-arm",
+     "kind": "left mounting arm with a 45.0° inclined outer profile",
+     "seen_in": [
+      "VIEW C-C, page 2"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "phase2-left-mounting-slot",
+     "kind": "Ø6.6 by 8.0 obround through slot with Ø11 counterbore slot",
+     "seen_in": [
+      "VIEW C-C, page 2"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "57af6c09950047bf9f0582cd398d2a66",
+   "datums": [
+    "the left end face",
+    "the right end face",
+    "the front face",
+    "the rear face",
+    "the top face",
+    "the bottom face",
+    "the longitudinal centre plane",
+    "the front-to-rear centre plane",
+    "the top-to-bottom centre plane"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the top and bottom faces",
+    "length between the end faces"
+   ],
+   "features": [
+    {
+     "id": "central-bore",
+     "kind": "Ø35 bore",
+     "seen_in": [
+      "the upper centre of the sheet",
+      "SECTION B-B",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "left-end-bore",
+     "kind": "one of two Ø40 bores",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the left end face",
+      "the top face"
+     ]
+    },
+    {
+     "id": "right-end-bore",
+     "kind": "one of two Ø40 bores",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the right end face",
+      "the top face"
+     ]
+    },
+    {
+     "id": "front-central-pocket",
+     "kind": "central rounded rectangular pocket at the front face",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the top face"
+     ]
+    },
+    {
+     "id": "rear-central-pocket",
+     "kind": "central rounded rectangular pocket at the rear face",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the rear face",
+      "the top face"
+     ]
+    },
+    {
+     "id": "central-pocket-left-round",
+     "kind": "R30 concave side round of the central pockets",
+     "seen_in": [
+      "the middle left of the sheet"
+     ],
+     "position_datums": [
+      "the axis of left-end-bore"
+     ]
+    },
+    {
+     "id": "central-pocket-right-round",
+     "kind": "R30 concave side round of the central pockets",
+     "seen_in": [
+      "the middle left of the sheet"
+     ],
+     "position_datums": [
+      "the axis of right-end-bore"
+     ]
+    },
+    {
+     "id": "red-edge-fillets",
+     "kind": "R2 fillets on all edges shown red",
+     "seen_in": [
+      "the upper left of the sheet",
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the highlighted red edges"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "5d9249424bce45d2b25485002ba1c630",
+   "datums": [
+    "the left end face",
+    "the right end face",
+    "the top face of the plate",
+    "the bottom face of the plate",
+    "the front face",
+    "the depth mid-plane"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the lowest point of the lower lug and the top of the upper boss",
+    "length between the end faces"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "rectangular base plate profile, 80 long by 30 deep, all four plan corners R8, 5 mm thick",
+     "seen_in": [
+      "the upper centre of the sheet, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "SECTION B-B, on page 1"
+     ],
+     "position_datums": [
+      "the bottom face of the plate",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "boss-upper",
+     "kind": "Ø20 cylindrical boss standing on the top face of the plate",
+     "seen_in": [
+      "the upper centre of the sheet, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "SECTION B-B, on page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "bore-15",
+     "kind": "Ø15 bore",
+     "seen_in": [
+      "the upper centre of the sheet, on page 1",
+      "SECTION B-B, on page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "lug-lower",
+     "kind": "Ø20 semicircular lug hanging below the plate, its full width front to rear",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1"
+     ],
+     "position_datums": [
+      "the left end face",
+      "the top face of the plate"
+     ]
+    },
+    {
+     "id": "bore-10",
+     "kind": "Ø10 bore through the lower lug",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1"
+     ],
+     "position_datums": [
+      "the left end face",
+      "the top face of the plate"
+     ]
+    },
+    {
+     "id": "rib",
+     "kind": "4 mm thick triangular gusset rib standing on the top face of the plate, running from near the left end to the boss, its top edge sloping up to the boss and its crest rounded",
+     "seen_in": [
+      "the upper centre of the sheet, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "DETAIL A, on page 1",
+      "the lower left of the sheet, the first one, on page 1"
+     ],
+     "position_datums": [
+      "the boss axis",
+      "the depth mid-plane",
+      "the left end face",
+      "the top face of the plate"
+     ]
+    },
+    {
+     "id": "fillets-r2",
+     "kind": "R2 fillets, typical, at every blend the sheet draws in red",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "DETAIL A, on page 1",
+      "SECTION B-B, on page 1"
+     ],
+     "position_datums": [
+      "the bottom face of the plate",
+      "the top face of the plate"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "66a15a679b574ef49848d47632258c78",
+   "datums": [
+    "the left end tangent plane",
+    "the boss axis",
+    "the plate top face",
+    "the plate bottom face",
+    "the front face",
+    "the mid-plane of the depth"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the lug's lowest tangent plane and the boss top face",
+    "length between the left end tangent plane and the boss's right tangent plane"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "obround / keyhole outer profile of the plate: 30 mm wide, the left end a rectangle with R8 corners (2X), the right end the R15 semicircle of the upper boss's base, the two long sides running straight and tangent into that semicircle; 75 mm overall",
+     "seen_in": [
+      "the upper centre of the sheet, on page 1",
+      "DETAIL C, on page 2",
+      "the lower centre of the sheet, the first one, on page 2",
+      "SECTION D-D, on page 2",
+      "SECTION E-E, on page 2"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "boss-upper",
+     "kind": "circular boss standing on the plate top face, Ø30 at its base, tapered by the 5.0° draft so it narrows toward its top face",
+     "seen_in": [
+      "DETAIL C, on page 2",
+      "the lower centre of the sheet, the first one, on page 2",
+      "SECTION D-D, on page 2"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end tangent plane",
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "bore-15",
+     "kind": "Ø15 bore",
+     "seen_in": [
+      "the upper centre of the sheet, on page 1",
+      "SECTION B-B, on page 1",
+      "DETAIL C, on page 2",
+      "SECTION D-D, on page 2"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "lug-lower",
+     "kind": "Ø20 cylindrical lug hanging below the plate, blended into the plate underside",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "the lower centre of the sheet, the first one, on page 2",
+      "SECTION E-E, on page 2"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end tangent plane",
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "hole-10",
+     "kind": "Ø10 hole",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "the lower centre of the sheet, the first one, on page 2"
+     ],
+     "position_datums": [
+      "the left end tangent plane",
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "rib",
+     "kind": "vertical rib standing on the plate top face, 4 mm thick, with a rounded top edge, its upper edge sloping up from the plate to the boss",
+     "seen_in": [
+      "the upper centre of the sheet, on page 1",
+      "DETAIL A, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "DETAIL C, on page 2",
+      "SECTION E-E, on page 2",
+      "the lower centre of the sheet, the first one, on page 2"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end tangent plane",
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "draft-5deg",
+     "kind": "5.0° draft, typical",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 2",
+      "SECTION D-D, on page 2",
+      "SECTION E-E, on page 2",
+      "the middle left of the sheet, on page 2"
+     ],
+     "position_datums": [
+      "the plate top face"
+     ]
+    },
+    {
+     "id": "fillets-r2",
+     "kind": "R2 fillets, typical — every fillet shown red on the sheet",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "DETAIL A, on page 1",
+      "the lower centre of the sheet, the first one, on page 2",
+      "DETAIL C, on page 2"
+     ],
+     "position_datums": [
+      "the plate top face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "6d67ee7f5fa4482ebb49495c2f6aef5c",
+   "datums": [
+    "the left end tangent plane",
+    "the ring axis",
+    "the bottom face",
+    "the centre plane of the width"
+   ],
+   "envelope_keys": [
+    "height at the ring (Ø50 outer)",
+    "height of the right-end boss",
+    "length between the left end tangent and the right end face",
+    "width front to rear"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "side profile (in the plane of the length and the height): a 15 mm thick left arm with a rounded left end, rising with a tangent curve (the cutout of VIEW B) into a Ø50 ring, with a 30 mm tall boss extending right from the ring; extruded 14 mm front to rear",
+     "seen_in": [
+      "middle centre view",
+      "VIEW B"
+     ],
+     "position_datums": [
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "ring",
+     "kind": "ring, Ø50 outer, Ø42 bore through the width",
+     "seen_in": [
+      "middle centre view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "left-end-round",
+     "kind": "rounded left end, R12.5, seen in plan",
+     "seen_in": [
+      "lower centre view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the centre plane of the width"
+     ]
+    },
+    {
+     "id": "right-end-round",
+     "kind": "rounded right end, R12.5, seen in plan",
+     "seen_in": [
+      "lower centre view",
+      "middle centre view"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hole-left",
+     "kind": "Ø6.6 hole with Ø11 counterbore 6 deep (for M6 SHCS)",
+     "seen_in": [
+      "lower centre view, part 1 of 2"
+     ],
+     "position_datums": [
+      "the centre plane of the width",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "hole-right",
+     "kind": "Ø6.6 hole with HEX Ø11 counterbore 6 deep (hex for M6 nut, per top view; round c'bore note in plan)",
+     "seen_in": [
+      "lower centre view, part 2 of 2",
+      "upper centre view, part 2 of 2"
+     ],
+     "position_datums": [
+      "the centre plane of the width",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "slot",
+     "kind": "rectangular slot through the arm, 30 mm long, with rounded/filleted ends per VIEW B and the plan",
+     "seen_in": [
+      "lower centre view",
+      "upper centre view, part 1 of 2"
+     ],
+     "position_datums": [
+      "the centre plane of the width",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "split-gap",
+     "kind": "split in the ring at the right side: a 2 mm gap opening to 1 mm at the boss (the pinch gap the M6 screws close)",
+     "seen_in": [
+      "middle centre view, part 2 of 2",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "fillets-red",
+     "kind": "R2 fillets on all edges shown red",
+     "seen_in": [
+      "middle centre view, part 2 of 2"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "cutout-blend",
+     "kind": "curved cutout blending the top of the 15 mm arm up into the ring",
+     "seen_in": [
+      "middle centre view, part 1 of 2",
+      "VIEW B"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "6dd48208e7d347d783385463ac5f0305",
+   "datums": [
+    "the leftmost tangent plane of the left rounded end",
+    "the rightmost tangent plane of the right rounded end",
+    "the ring axis",
+    "the bottom tangent plane of the ring",
+    "the front face",
+    "the rear face",
+    "the centre plane between the front and rear faces"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the top and bottom tangents of the outer ring",
+    "length between the leftmost and rightmost tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-form",
+     "kind": "compound outside form comprising a circular ring body, a lower tangential arm, and rounded-end mounting lugs",
+     "seen_in": [
+      "upper-left view",
+      "middle-left view",
+      "lower-left view",
+      "upper-right isometric view"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the leftmost tangent plane of the left rounded end"
+     ]
+    },
+    {
+     "id": "ring-bore",
+     "kind": "Ø42 circular ring bore",
+     "seen_in": [
+      "middle-left view",
+      "upper-right isometric view",
+      "VIEW B"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-outer-cylinder",
+     "kind": "Ø50 outside circular ring",
+     "seen_in": [
+      "middle-left view",
+      "upper-right isometric view",
+      "VIEW B"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-end-round",
+     "kind": "rounded left mounting-lug end",
+     "seen_in": [
+      "upper-left view",
+      "lower-left view",
+      "upper-right isometric view"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left rounded end"
+     ]
+    },
+    {
+     "id": "right-end-round",
+     "kind": "rounded right mounting-lug end",
+     "seen_in": [
+      "upper-left view",
+      "lower-left view",
+      "upper-right isometric view"
+     ],
+     "position_datums": [
+      "the rightmost tangent plane of the right rounded end"
+     ]
+    },
+    {
+     "id": "left-mounting-hole",
+     "kind": "Ø6.6 mounting clearance hole with Ø11 counterbore",
+     "seen_in": [
+      "upper-left view",
+      "lower-left view",
+      "upper-right isometric view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the centre plane between the front and rear faces",
+      "the leftmost tangent plane of the left rounded end"
+     ]
+    },
+    {
+     "id": "right-mounting-hole",
+     "kind": "Ø6.6 mounting clearance hole with Ø11 counterbore",
+     "seen_in": [
+      "upper-left view",
+      "lower-left view",
+      "upper-right isometric view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the centre plane between the front and rear faces",
+      "the rightmost tangent plane of the right rounded end"
+     ]
+    },
+    {
+     "id": "arm-cutout",
+     "kind": "open-sided curved cutout in the lower tangential arm",
+     "seen_in": [
+      "middle-left view",
+      "lower-left view",
+      "VIEW B",
+      "upper-right isometric view"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "red-edge-fillets",
+     "kind": "edge fillets",
+     "seen_in": [
+      "upper-left view",
+      "middle-left view",
+      "lower-left view",
+      "upper-right isometric view",
+      "VIEW B",
+      "SECTION A-A"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "7330dead9b7b47a7a32005ad4ebf2760",
+   "datums": [
+    "the left end",
+    "the right end",
+    "the bottom face",
+    "the front face",
+    "the ring axis",
+    "the mid-depth centre plane"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height",
+    "length"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "bracket-shaped outer profile: a ring boss (Ø50 OD) toward the right-hand portion, joined by two flat arm sections (15 mm tall each, one per side) to two rounded mounting ears (25 mm tall, rounded ends) at the extreme left and right; the whole silhouette lies in the plane of the length and the height, extruded 30 mm front to rear",
+     "seen_in": [
+      "top view",
+      "front view",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the left end"
+     ]
+    },
+    {
+     "id": "bore-ring",
+     "kind": "Ø42 through bore in the Ø50 boss",
+     "seen_in": [
+      "front view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end",
+      "the right end"
+     ]
+    },
+    {
+     "id": "slot-cutout",
+     "kind": "slot cut through the arm where it meets the ring, opening the bore to the outside (lets the ring flex/open); its shape is clarified by VIEW B, an isometric detail carrying no dimensions of its own",
+     "seen_in": [
+      "front view",
+      "top view",
+      "VIEW B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the mid-depth centre plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hole-left",
+     "kind": "Ø6.6 through hole with a round Ø11 x 6 mm deep counterbore, for an M6 SHCS",
+     "seen_in": [
+      "top view",
+      "front view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the left end"
+     ]
+    },
+    {
+     "id": "hole-right",
+     "kind": "Ø6.6 through hole (same THRU-ALL callout as hole-left) with a round Ø11 x 6 mm deep counterbore on one face (for the SHCS head) and a hexagonal Ø11 (circumscribed) x 6 mm deep counterbore on the other face (for an M6 hex nut)",
+     "seen_in": [
+      "top view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the right end"
+     ]
+    },
+    {
+     "id": "fillets-general",
+     "kind": "R2 fillets, typical, applied to the edges shown in red in the isometric view",
+     "seen_in": [
+      "front view",
+      "isometric view"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "78471005550b4105b7446fa2f5605ba2",
+   "datums": [
+    "the ring axis",
+    "the split plane",
+    "the bottom face",
+    "the front face",
+    "the rear face"
+   ],
+   "envelope_keys": [
+    "depth front to rear between the front face and the rear face",
+    "height from the bottom face to the top face of the clamping ears",
+    "length between the outer end faces of the mounting foot"
+   ],
+   "features": [
+    {
+     "id": "bore-pipe",
+     "kind": "Ø50 pipe bore through the ring",
+     "seen_in": [],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the split plane"
+     ]
+    },
+    {
+     "id": "ring-outer",
+     "kind": "circular ring outer profile, Ø80, concentric with the pipe bore — a 15 mm wall",
+     "seen_in": [],
+     "position_datums": [
+      "the bottom face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "split-gap",
+     "kind": "6 mm wide split cutting the ring open at the top, between the two clamping ears",
+     "seen_in": [],
+     "position_datums": [
+      "the ring axis",
+      "the split plane"
+     ]
+    },
+    {
+     "id": "ears-clamping",
+     "kind": "pair of clamping ears (lugs) standing up from the ring, one each side of the split, 12 mm thick each, 18 mm tall above the ring's top tangent, full 25 mm depth",
+     "seen_in": [],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the split plane"
+     ]
+    },
+    {
+     "id": "hole-pinch-bolt",
+     "kind": "Ø7 clearance hole for the pinch bolt, through both clamping ears",
+     "seen_in": [],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the split plane"
+     ]
+    },
+    {
+     "id": "foot-mounting",
+     "kind": "rectangular mounting foot, 90 long by 12 thick, full 25 mm depth, on the underside of the ring",
+     "seen_in": [],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the split plane"
+     ]
+    },
+    {
+     "id": "holes-mounting",
+     "kind": "two Ø9 mounting holes through the foot",
+     "seen_in": [],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the split plane"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "7cbde8a3e04d4b40b88933e6dc5bbe02",
+   "datums": [
+    "the bottom face",
+    "the top face",
+    "the plate centre axis",
+    "the centre plane of the length",
+    "the centre plane of the depth",
+    "the pocket floor",
+    "the bore wall"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the bottom face and the top face",
+    "height between the bottom face and the top of the boss",
+    "length between the end faces"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "rectangular outer profile, 100 long by 80 deep, with 6 mm radius rounds at the four corners",
+     "seen_in": [
+      "the written request (no view supplied)"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the centre plane of the depth",
+      "the centre plane of the length"
+     ]
+    },
+    {
+     "id": "pocket-central",
+     "kind": "rectangular pocket 60 long by 40 deep, 3 mm deep, cut into the top face",
+     "seen_in": [
+      "the written request (no view supplied)"
+     ],
+     "position_datums": [
+      "the centre plane of the depth",
+      "the centre plane of the length",
+      "the plate centre axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bolt-holes",
+     "kind": "6 equally spaced Ø4.5 clearance holes on a Ø70 bolt circle",
+     "seen_in": [
+      "the written request (no view supplied)"
+     ],
+     "position_datums": [
+      "the plate centre axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "boss-central",
+     "kind": "Ø20 raised circular boss standing 5 mm above the pocket floor",
+     "seen_in": [
+      "the written request (no view supplied)"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the plate centre axis",
+      "the pocket floor"
+     ]
+    },
+    {
+     "id": "bore-shaft",
+     "kind": "Ø8 through-bore for the motor shaft",
+     "seen_in": [
+      "the written request (no view supplied)"
+     ],
+     "position_datums": [
+      "the boss top face",
+      "the bottom face",
+      "the plate centre axis"
+     ]
+    },
+    {
+     "id": "chamfer-boss-top",
+     "kind": "2 mm x 45° chamfer on the top edge of the boss",
+     "seen_in": [
+      "the written request (no view supplied)"
+     ],
+     "position_datums": [
+      "the pocket floor"
+     ]
+    },
+    {
+     "id": "keyway-bore",
+     "kind": "keyway slot in the bore wall, 3 mm wide by 2 mm deep, running the full height of the boss",
+     "seen_in": [
+      "the written request (no view supplied)"
+     ],
+     "position_datums": [
+      "the bore wall",
+      "the boss top face",
+      "the plate centre axis",
+      "the pocket floor"
+     ]
+    },
+    {
+     "id": "fillet-bottom-long-edges",
+     "kind": "4 mm fillet along the two long bottom edges of the plate",
+     "seen_in": [
+      "the written request (no view supplied)"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the centre plane of the depth"
+     ]
+    },
+    {
+     "id": "chamfer-top-outer-edges",
+     "kind": "0.5 mm x 45° chamfer on the four outer top edges",
+     "seen_in": [
+      "the written request (no view supplied)"
+     ],
+     "position_datums": [
+      "the top face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "84b22511078e4d1381bca2a22db6032a",
+   "datums": [
+    "the left outer end surface",
+    "the right outer end surface",
+    "the front face",
+    "the rear face",
+    "the top face",
+    "the bottom face",
+    "the longitudinal centre plane",
+    "the height centre plane",
+    "the left Ø40 bore axis",
+    "the right Ø40 bore axis",
+    "the left boundary plane of the central 50 mm region",
+    "the right boundary plane of the central 50 mm region"
+   ],
+   "envelope_keys": [
+    "depth between the front and rear faces",
+    "height between the top and bottom faces",
+    "length between the left and right outer end surfaces"
+   ],
+   "features": [
+    {
+     "id": "bore-left",
+     "kind": "Ø40 circular bore at the left end",
+     "seen_in": [
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the height centre plane",
+      "the left outer end surface"
+     ]
+    },
+    {
+     "id": "bore-right",
+     "kind": "Ø40 circular bore at the right end",
+     "seen_in": [
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the height centre plane",
+      "the right outer end surface"
+     ]
+    },
+    {
+     "id": "central-through-hole",
+     "kind": "Ø35 circular hole",
+     "seen_in": [
+      "top view",
+      "SECTION B-B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the longitudinal centre plane"
+     ]
+    },
+    {
+     "id": "central-window",
+     "kind": "central rounded rectangular opening between the end bores",
+     "seen_in": [
+      "front view",
+      "SECTION B-B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the height centre plane",
+      "the longitudinal centre plane"
+     ]
+    },
+    {
+     "id": "central-window-left-round",
+     "kind": "R30 concave round at the left side of the central window",
+     "seen_in": [
+      "front view"
+     ],
+     "position_datums": [
+      "the left Ø40 bore axis"
+     ]
+    },
+    {
+     "id": "central-window-right-round",
+     "kind": "R30 concave round at the right side of the central window",
+     "seen_in": [
+      "front view"
+     ],
+     "position_datums": [
+      "the right Ø40 bore axis"
+     ]
+    },
+    {
+     "id": "red-edge-fillets",
+     "kind": "R2 fillets on all exterior edges shown red",
+     "seen_in": [
+      "top view",
+      "front view",
+      "isometric view"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "central-window-left-straight-wall",
+     "kind": "left straight wall of the central through opening",
+     "seen_in": [
+      "SECTION B-B",
+      "front view"
+     ],
+     "position_datums": [
+      "the left boundary plane of the central 50 mm region"
+     ]
+    },
+    {
+     "id": "central-window-right-straight-wall",
+     "kind": "right straight wall of the central through opening",
+     "seen_in": [
+      "SECTION B-B",
+      "front view"
+     ],
+     "position_datums": [
+      "the right boundary plane of the central 50 mm region"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "8d07a842d06b487d8e7729ecba27ce4b",
+   "datums": [
+    "the leftmost tangent plane of the part",
+    "the rightmost tangent plane of the part",
+    "the ring axis",
+    "the lower tangent plane of the ring",
+    "the front outer face",
+    "the right-hand split upper edge",
+    "the right-hand split lower edge",
+    "the upper long outer face in the plan view"
+   ],
+   "envelope_keys": [
+    "front-to-rear depth at the sectioned right lug",
+    "height between the uppermost and lowermost extents of the Ø50 ring",
+    "length between the leftmost and rightmost tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-ring",
+     "kind": "external cylindrical ring, Ø50 outside diameter",
+     "seen_in": [
+      "VIEW B",
+      "sectioned view at the upper centre of the sheet",
+      "VIEW B detail"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the part",
+      "the lower tangent plane of the ring"
+     ]
+    },
+    {
+     "id": "ring-bore",
+     "kind": "Ø42 circular bore through the external ring",
+     "seen_in": [
+      "VIEW B",
+      "VIEW B detail",
+      "VIEW B sectional clarification"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the part",
+      "the lower tangent plane of the ring"
+     ]
+    },
+    {
+     "id": "left-arm-and-fork-profile",
+     "kind": "left-hand arm with a front-to-rear U-shaped cutout, joining tangentially to the outer ring",
+     "seen_in": [
+      "VIEW B",
+      "VIEW B sectional clarification",
+      "plan view on the sheet"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the part",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-fastener-hole",
+     "kind": "Ø6.6 clearance bore with circular Ø11 counterbore for an M6 socket-head cap screw",
+     "seen_in": [
+      "plan view on the sheet",
+      "VIEW B",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the front outer face",
+      "the front outer face, to the near cutout edge",
+      "the upper long outer face in the plan view"
+     ]
+    },
+    {
+     "id": "right-fastener-hole",
+     "kind": "Ø6.6 clearance bore with hexagonal Ø11 recess for an M6 fastener",
+     "seen_in": [
+      "plan view on the sheet",
+      "upper centre view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the part",
+      "the rightmost tangent plane of the part"
+     ]
+    },
+    {
+     "id": "right-rounded-lug-end",
+     "kind": "rounded outer end of the right-hand lug",
+     "seen_in": [
+      "VIEW B",
+      "plan view on the sheet"
+     ],
+     "position_datums": [
+      "the rightmost tangent plane of the part"
+     ]
+    },
+    {
+     "id": "right-hand-open-split",
+     "kind": "open horizontal split/cut at the right of the ring",
+     "seen_in": [
+      "VIEW B",
+      "isometric view on the sheet"
+     ],
+     "position_datums": [
+      "the ring axis",
+      "the ring axis, to the lower split edge"
+     ]
+    },
+    {
+     "id": "section-a-a-recessed-central-region",
+     "kind": "central region at SECTION A-A between two 6 mm end regions",
+     "seen_in": [
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the front outer face",
+      "the opposite front-to-rear outer face"
+     ]
+    },
+    {
+     "id": "all-red-edge-fillets",
+     "kind": "edge fillets identified in red on the drawing",
+     "seen_in": [
+      "VIEW B",
+      "isometric view on the sheet",
+      "SECTION A-A",
+      "VIEW B sectional clarification"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "8f70ae7d93154154ada691ee2fc52a1c",
+   "datums": [
+    "the left end",
+    "the top face",
+    "the front face"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height",
+    "length"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "obround (capsule) outer profile, 150 mm long by 50 mm tall, ends R25",
+     "seen_in": [
+      "the middle left of the sheet",
+      "the upper left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the left end"
+     ]
+    },
+    {
+     "id": "bore-left",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet"
+     ],
+     "position_datums": [
+      "the left end",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-right",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet"
+     ],
+     "position_datums": [
+      "the left end",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-centre",
+     "kind": "Ø35 bore",
+     "seen_in": [
+      "the upper left of the sheet"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end"
+     ]
+    },
+    {
+     "id": "pocket-slot",
+     "kind": "pocket with two concave R30 end walls, concentric with the two Ø40 bore axes, joined by flat top and bottom walls 30 mm apart, and a flat central portion 20 mm wide (10 mm either side of the part's mid-length) where the two end arcs are not yet reached",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end",
+      "the top face"
+     ]
+    },
+    {
+     "id": "fillets-red",
+     "kind": "R2 fillet, typical, applied to every edge drawn in red — the tangent edges of the two R25 rounded ends, the rims of the two Ø40 bores, the rim of the Ø35 bore, and the edges of pocket-slot",
+     "seen_in": [
+      "the upper left of the sheet",
+      "the middle left of the sheet"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "98a5ead873c94103ba8a2baf653dd436",
+   "datums": [
+    "the left end tangent plane",
+    "the right end tangent plane",
+    "the left bore axis",
+    "the right bore axis",
+    "the front face",
+    "the rear face",
+    "the top face",
+    "the bottom face"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the top and bottom faces",
+    "length between the end tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "obround (capsule) outer profile, 150 long by 50 tall, both ends R25",
+     "seen_in": [
+      "the middle left of the sheet",
+      "the upper left of the sheet, the second one",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the left end tangent plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-left",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION B-B",
+      "the upper right of the sheet"
+     ],
+     "position_datums": [
+      "the left end tangent plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-right",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION B-B",
+      "the upper right of the sheet"
+     ],
+     "position_datums": [
+      "the right end tangent plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "hole-central",
+     "kind": "Ø35 through hole",
+     "seen_in": [
+      "the upper left of the sheet, the second one",
+      "SECTION A-A",
+      "SECTION B-B",
+      "the upper right of the sheet"
+     ],
+     "position_datums": [
+      "the rear face",
+      "the right bore axis"
+     ]
+    },
+    {
+     "id": "pocket-front",
+     "kind": "rounded rectangular pocket in the front face, 30 tall, its two end walls concave arcs of R30 struck from the bore axes",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B",
+      "the upper right of the sheet"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the left bore axis",
+      "the right bore axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "pocket-rear",
+     "kind": "rounded rectangular pocket in the rear face, mirror of pocket-front: 30 tall, its two end walls concave arcs of R30 struck from the bore axes",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B",
+      "the upper right of the sheet"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left bore axis",
+      "the rear face",
+      "the right bore axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "fillets-r2",
+     "kind": "R2 fillet, typical on every edge the sheet draws in red",
+     "seen_in": [
+      "the upper left of the sheet, the first one",
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B",
+      "the upper right of the sheet"
+     ],
+     "position_datums": [
+      "the edges drawn red on the sheet"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "9958ccdc8e324a74ade9b08405be465b",
+   "datums": [
+    "the ring axis",
+    "the left end tangent plane of the Phase 1 mounting ear",
+    "the bottom tangent plane of the ring",
+    "the front face",
+    "the rear face",
+    "the longitudinal centre plane",
+    "the right end tangent plane of the Phase 1 mounting ear",
+    "the left mounting-ear centre plane",
+    "the right mounting-ear centre plane"
+   ],
+   "envelope_keys": [
+    "depth front to rear between the front and rear faces",
+    "length between the Phase 1 left end tangent plane and the right end face",
+    "ring outside height between its tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-profile-phase1",
+     "kind": "outer clamp-and-two-mounting-ear profile",
+     "seen_in": [
+      "page 1 middle centre view",
+      "page 1 lower centre view",
+      "page 1 upper centre view",
+      "SECTION A-A",
+      "page 2 views"
+     ],
+     "position_datums": [
+      "the left end tangent plane of the Phase 1 mounting ear",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-bore",
+     "kind": "Ø42 cylindrical through bore",
+     "seen_in": [
+      "page 1 middle centre view",
+      "SECTION A-A",
+      "page 2 VIEW C-C"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-outer-cylinder",
+     "kind": "Ø50 outside cylindrical clamp ring",
+     "seen_in": [
+      "page 1 middle centre view",
+      "page 2 VIEW C-C"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-split",
+     "kind": "central longitudinal split through the ring and right mounting ear",
+     "seen_in": [
+      "page 1 middle centre view",
+      "page 1 upper centre view",
+      "page 2 VIEW C-C"
+     ],
+     "position_datums": [
+      "the longitudinal centre plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-mounting-hole-phase1",
+     "kind": "Ø6.6 through mounting hole with Ø11 circular counterbore",
+     "seen_in": [
+      "page 1 lower centre view",
+      "SECTION A-A",
+      "page 2 VIEW C-C"
+     ],
+     "position_datums": [
+      "the left end tangent plane of the Phase 1 mounting ear",
+      "the left mounting-ear centre plane",
+      "the longitudinal centre plane"
+     ]
+    },
+    {
+     "id": "right-mounting-hole",
+     "kind": "Ø6.6 through mounting hole with Ø11 hexagonal counterbore",
+     "seen_in": [
+      "page 1 lower centre view",
+      "page 1 upper centre view",
+      "SECTION A-A",
+      "page 2 views"
+     ],
+     "position_datums": [
+      "the longitudinal centre plane",
+      "the right mounting-ear centre plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "right-ear-end-round",
+     "kind": "rounded right mounting-ear end",
+     "seen_in": [
+      "page 1 lower centre view",
+      "page 2 VIEW C-C"
+     ],
+     "position_datums": [
+      "the longitudinal centre plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "interior-cutout",
+     "kind": "tapered interior cutout below and to the left of the ring",
+     "seen_in": [
+      "page 1 middle centre view",
+      "VIEW B",
+      "page 1 lower centre view",
+      "page 2 VIEW C-C"
+     ],
+     "position_datums": [
+      "the left mounting-ear centre plane",
+      "the longitudinal centre plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "all-red-fillets",
+     "kind": "edge fillets",
+     "seen_in": [
+      "page 1 middle centre view",
+      "page 1 lower centre view",
+      "VIEW B",
+      "page 2 views"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "phase2-angled-arm",
+     "kind": "45° angled extension arm from the ring",
+     "seen_in": [
+      "page 2 VIEW C-C",
+      "page 2 isometric view"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "phase2-left-slot",
+     "kind": "obround Ø6.6 by 8.0 through slot with Ø11 counterbore slot",
+     "seen_in": [
+      "page 2 VIEW C-C",
+      "page 2 upper-left view",
+      "page 2 isometric view"
+     ],
+     "position_datums": [
+      "the left end tangent plane of the Phase 1 mounting ear",
+      "the longitudinal centre plane"
+     ]
+    },
+    {
+     "id": "left-ear-plan-end-round",
+     "kind": "rounded left mounting-ear end in plan",
+     "seen_in": [
+      "page 1 lower centre view",
+      "page 1 upper centre view"
+     ],
+     "position_datums": [
+      "the left end tangent plane of the Phase 1 mounting ear",
+      "the left mounting-ear centre plane"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "a7b95d14ea20491c8dd6c654b3285bf3",
+   "datums": [
+    "the nut axis",
+    "the bearing face",
+    "the top face",
+    "the mid-plane of the height"
+   ],
+   "envelope_keys": [
+    "height between the bearing face and the top face",
+    "width across corners, between opposite corners",
+    "width across flats, between opposite flats"
+   ],
+   "features": [
+    {
+     "id": "hex-body",
+     "kind": "regular hexagonal prism, 16 mm across flats, 9.3 mm tall — the outer body of the nut",
+     "seen_in": [
+      "no view supplied; taken from ISO 4033 as the user named it"
+     ],
+     "position_datums": [
+      "the bearing face",
+      "the nut axis"
+     ]
+    },
+    {
+     "id": "thread-m10",
+     "kind": "M10 × 1.5 internal coarse thread, tolerance class 6H (ISO 965), nominal minor diameter 8.376 mm, tapping-drill size Ø8.5",
+     "seen_in": [
+      "no view supplied; taken from ISO 4033 / ISO 965 as the user named it"
+     ],
+     "position_datums": [
+      "the nut axis"
+     ]
+    },
+    {
+     "id": "chamfer-top",
+     "kind": "conical chamfer on the top face, cutting the six corners of the hexagon back to the washer-face circle Ø14.6",
+     "seen_in": [
+      "no view supplied; taken from ISO 4033 as the user named it"
+     ],
+     "position_datums": [
+      "the nut axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "chamfer-bearing",
+     "kind": "conical chamfer on the bearing face, identical to chamfer-top — the nut is chamfered both ends per ISO 4033",
+     "seen_in": [
+      "no view supplied; taken from ISO 4033 as the user named it"
+     ],
+     "position_datums": [
+      "the bearing face",
+      "the nut axis"
+     ]
+    },
+    {
+     "id": "thread-entry-chamfers",
+     "kind": "countersinks at both ends of the tapped hole, 120° included angle, breaking the thread out to about Ø10.6",
+     "seen_in": [
+      "no view supplied; taken from ISO 4033 as the user named it"
+     ],
+     "position_datums": [
+      "the bearing face",
+      "the top face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "b31fc95ae4de442fb6ca454b7be68f57",
+   "datums": [
+    "the left extreme tangent plane",
+    "the right extreme tangent plane",
+    "the front face",
+    "the rear face",
+    "the top face",
+    "the bottom face",
+    "the longitudinal centre plane",
+    "the front-to-rear centre plane",
+    "the left hook axis",
+    "the right hook axis"
+   ],
+   "envelope_keys": [
+    "depth between the front and rear faces",
+    "height between the top and bottom faces",
+    "length between the left and right extreme tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "rectangular main outer profile, modified at the two ends by opposed cutouts that separate four hook arms",
+     "seen_in": [
+      "the upper-left plan view",
+      "SECTION D-D",
+      "SECTION C-C",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left extreme tangent plane"
+     ]
+    },
+    {
+     "id": "central-bore",
+     "kind": "Ø35 bore",
+     "seen_in": [
+      "the upper-left plan view",
+      "SECTION D-D",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left extreme tangent plane"
+     ]
+    },
+    {
+     "id": "left-hook-set",
+     "kind": "two open hooks at the left end, one adjacent to the front face and one adjacent to the rear face, derived from a circular Ø40 opening",
+     "seen_in": [
+      "front elevation",
+      "SECTION D-D",
+      "DETAIL E",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left extreme tangent plane",
+      "the rear face"
+     ]
+    },
+    {
+     "id": "right-hook-set",
+     "kind": "two open hooks at the right end, one adjacent to the front face and one adjacent to the rear face, derived from a circular Ø40 opening",
+     "seen_in": [
+      "front elevation",
+      "SECTION D-D",
+      "DETAIL E",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the rear face",
+      "the right extreme tangent plane"
+     ]
+    },
+    {
+     "id": "hook-opening-angles",
+     "kind": "four hook openings",
+     "seen_in": [
+      "DETAIL E",
+      "SECTION D-D",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the rear face"
+     ]
+    },
+    {
+     "id": "end-cutouts",
+     "kind": "two opposed end cutouts separating the front and rear hook arms",
+     "seen_in": [
+      "the upper-left plan view",
+      "SECTION D-D",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the front-to-rear centre plane"
+     ]
+    },
+    {
+     "id": "end-cutout-transition-rounds",
+     "kind": "four concave R20 transition rounds at the roots of the end cutouts",
+     "seen_in": [
+      "SECTION D-D",
+      "the upper-left plan view",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the rear face"
+     ]
+    },
+    {
+     "id": "front-rear-central-cutouts",
+     "kind": "two opposed central rectangular cutouts, one entering from the front face and one from the rear face, with bowed end walls",
+     "seen_in": [
+      "front elevation",
+      "SECTION C-C",
+      "SECTION D-D",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the longitudinal centre plane",
+      "the rear face",
+      "the top face"
+     ]
+    },
+    {
+     "id": "red-edge-fillets",
+     "kind": "R2 fillets on all edges coloured red",
+     "seen_in": [
+      "all coloured part views",
+      "the upper-left callout"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "b70b6931ea9e4434bb2ba37e23c6222f",
+   "datums": [
+    "the ring axis",
+    "the right end face",
+    "the bottom face",
+    "the centre plane front to rear"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height",
+    "length"
+   ],
+   "features": [
+    {
+     "id": "ring-od",
+     "kind": "Ø50 outer diameter of the pipe-clamp ring",
+     "seen_in": [
+      "front view (page 1)",
+      "VIEW C-C (page 2)"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "ring-bore",
+     "kind": "Ø42 through bore of the pipe-clamp ring",
+     "seen_in": [
+      "front view (page 1)",
+      "VIEW C-C (page 2)"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "cutout-junction",
+     "kind": "cutout / notch where the left arm meets the ring, profile as drawn in VIEW B",
+     "seen_in": [
+      "front view (page 1)",
+      "VIEW B (page 1)"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "bar-slot",
+     "kind": "obround through-slot in the main bar, counterbored for an M6 SHCS to slide in",
+     "seen_in": [
+      "top view (page 1, undimensioned there)",
+      "VIEW C-C (page 2, fully dimensioned)"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "arm-45",
+     "kind": "straight arm, 73 mm long, leaving the ring at 45° to the ring's vertical (length-perpendicular) centreline",
+     "seen_in": [
+      "VIEW C-C (page 2)",
+      "isometric (page 2)"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hole-left-ear",
+     "kind": "Ø6.6 through hole, round counterbore Ø11 x 6 mm deep (C'BORE FOR M6 SHCS), in a rounded left ear",
+     "seen_in": [
+      "top view (page 1)",
+      "lower centre view (page 1)"
+     ],
+     "superseded_by": "arm-45",
+     "position_datums": [
+      "the centre plane front to rear",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "hole-right-flange",
+     "kind": "Ø6.6 through hole; round counterbore Ø11 x 6 mm deep on the underside (C'BORE FOR M6 SHCS), hex-shaped counterbore Ø11 x 6 mm deep on the top face (HEX Ø11 ⌵6)",
+     "seen_in": [
+      "top view (page 1)",
+      "lower centre view (page 1)",
+      "VIEW C-C (page 2, unchanged)"
+     ],
+     "position_datums": [
+      "the centre plane front to rear",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "outer-profile",
+     "kind": "flat bracket with two rounded ends (left ear R≈7, right end R12.5) joined by a bar of constant height 30 mm, carrying the ring midway; Phase 2 replaces the left rounded ear with a straight 45° arm 73 mm long",
+     "seen_in": [
+      "front view (page 1)",
+      "top/bottom views (page 1)",
+      "VIEW C-C (page 2)"
+     ],
+     "position_datums": [
+      "the right end face"
+     ]
+    },
+    {
+     "id": "flange-split",
+     "kind": "split line through the right-end flange (top half / bottom half, labelled \"1\" and \"2\"), permitting the ring to close around the pipe when the M6 SHCS is tightened",
+     "seen_in": [
+      "front view (page 1)"
+     ],
+     "position_datums": [
+      "not_defined",
+      "the bottom face"
+     ]
+    },
+    {
+     "id": "arm-body-phase1",
+     "kind": "straight web/arm, 15 mm tall in cross-section, connecting the Phase 1 left ear to the ring",
+     "seen_in": [
+      "front view (page 1)"
+     ],
+     "superseded_by": "arm-45",
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "split-register",
+     "kind": "machined register at the split joint of the right flange, each half's mating pocket recessed leaving a wall top and bottom, shown hatched in SECTION A-A",
+     "seen_in": [
+      "SECTION A-A (page 1)"
+     ],
+     "position_datums": [
+      "the bottom face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "b83650955ecd41c89a54907fe84ea8ba",
+   "datums": [
+    "the ring axis",
+    "the left end tangent plane",
+    "the right end tangent plane",
+    "the bottom face",
+    "the mid-plane of the depth"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the bottom face and the top of the ring",
+    "length between the end tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-profile-plan",
+     "kind": "obround (capsule) plan outline of the two pads and the web between them, 108 long, 25 across, ends R12.5",
+     "seen_in": [
+      "top view",
+      "bottom view",
+      "SECTION A-A",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the left end tangent plane",
+      "the mid-plane of the depth",
+      "the right end tangent plane"
+     ]
+    },
+    {
+     "id": "ring",
+     "kind": "Ø50 outside / Ø42 bore clamp ring (split ring)",
+     "seen_in": [
+      "front view",
+      "top view",
+      "bottom view",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end tangent plane",
+      "the mid-plane of the depth",
+      "the right end tangent plane"
+     ]
+    },
+    {
+     "id": "arm",
+     "kind": "arm (web) 15 mm thick running left from the lower part of the ring to the left pad",
+     "seen_in": [
+      "front view",
+      "bottom view",
+      "top view",
+      "VIEW B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end tangent plane",
+      "the mid-plane of the depth"
+     ]
+    },
+    {
+     "id": "lug-right",
+     "kind": "right lug (boss) carrying the clamping screw, 30 mm tall, split across its middle",
+     "seen_in": [
+      "front view",
+      "top view",
+      "bottom view",
+      "SECTION A-A",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the mid-plane of the depth",
+      "the right end tangent plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "split-gap",
+     "kind": "2 mm split (saw cut) through the ring wall and the right lug",
+     "seen_in": [
+      "front view",
+      "SECTION A-A",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the right end tangent plane",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "cutout-web",
+     "kind": "through cutout (window) in the web between the arm and the ring, with the profile drawn in VIEW B",
+     "seen_in": [
+      "VIEW B",
+      "front view",
+      "bottom view",
+      "top view",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the mid-plane of the depth",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hole-left",
+     "kind": "Ø6.6 clearance hole with Ø11 counterbore 6 deep, for an M6 SHCS",
+     "seen_in": [
+      "bottom view",
+      "top view",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end tangent plane",
+      "the mid-plane of the depth"
+     ]
+    },
+    {
+     "id": "hole-right",
+     "kind": "Ø6.6 clearance hole with Ø11 counterbore 6 deep from below and a Ø11 hexagonal recess 6 deep from above",
+     "seen_in": [
+      "top view",
+      "bottom view",
+      "SECTION A-A",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the bottom face of the lug",
+      "the mid-plane of the depth",
+      "the right end tangent plane",
+      "the ring axis",
+      "the top face of the lug"
+     ]
+    },
+    {
+     "id": "fillets-r2",
+     "kind": "R2 fillets, typical on all edges shown red on the sheet",
+     "seen_in": [
+      "front view",
+      "top view",
+      "bottom view",
+      "SECTION A-A",
+      "VIEW B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the edges drawn red on the sheet"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "c751f9b97cee4bbbb07635721ead0b08",
+   "datums": [
+    "the left end face",
+    "the right end face",
+    "the front face",
+    "the rear face",
+    "the top face",
+    "the bottom face",
+    "the horizontal centre plane",
+    "the longitudinal centre plane",
+    "the left bore axis",
+    "the right bore axis"
+   ],
+   "envelope_keys": [
+    "depth between the front and rear faces",
+    "height between the top and bottom faces",
+    "length between the left and right end faces"
+   ],
+   "features": [
+    {
+     "id": "bore-left",
+     "kind": "Ø40 blind bore",
+     "seen_in": [
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the left end face",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-right",
+     "kind": "Ø40 blind bore",
+     "seen_in": [
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the right end face",
+      "the top face"
+     ]
+    },
+    {
+     "id": "top-bore",
+     "kind": "Ø35 bore",
+     "seen_in": [
+      "top view",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "central-shaped-opening",
+     "kind": "central shaped through opening with two concave R30 side walls",
+     "seen_in": [
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end face",
+      "the top face"
+     ]
+    },
+    {
+     "id": "central-opening-left-round",
+     "kind": "R30 concave wall of the central shaped opening",
+     "seen_in": [
+      "front view"
+     ],
+     "position_datums": [
+      "the left bore axis"
+     ]
+    },
+    {
+     "id": "central-opening-right-round",
+     "kind": "R30 concave wall of the central shaped opening",
+     "seen_in": [
+      "front view"
+     ],
+     "position_datums": [
+      "the right bore axis"
+     ]
+    },
+    {
+     "id": "red-edge-fillets",
+     "kind": "R2 typical fillets on all edges highlighted red",
+     "seen_in": [
+      "top view",
+      "front view",
+      "isometric view",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "c7d892a556624c57b31b508362be4b4b",
+   "datums": [
+    "the leftmost tangent plane of the left mounting ear",
+    "the rightmost tangent plane of the right mounting ear",
+    "the bottom tangent plane of the ring and mounting foot",
+    "the top face",
+    "the front face",
+    "the ring axis",
+    "the depth centre plane"
+   ],
+   "envelope_keys": [
+    "depth front to rear between the front and top faces",
+    "height between the bottom tangent plane and the top tangent plane of the ring",
+    "length between the leftmost and rightmost tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "compound outer profile comprising a circular clamp ring, a left mounting foot, and a right mounting ear",
+     "seen_in": [
+      "page 1 elevation",
+      "page 1 lower plan view",
+      "page 1 upper plan view",
+      "SECTION A-A",
+      "VIEW B"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring and mounting foot",
+      "the leftmost tangent plane of the left mounting ear",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring",
+     "kind": "cylindrical clamp ring, Ø50 outside diameter and Ø42 through bore",
+     "seen_in": [
+      "page 1 elevation",
+      "page 1 lower plan view",
+      "page 1 upper plan view",
+      "VIEW B"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring and mounting foot",
+      "the leftmost tangent plane of the left mounting ear"
+     ]
+    },
+    {
+     "id": "ring-split",
+     "kind": "through split at the ring-axis height on the right side of the ring",
+     "seen_in": [
+      "page 1 elevation",
+      "page 1 upper plan view"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-mounting-ear",
+     "kind": "left obround mounting ear",
+     "seen_in": [
+      "page 1 lower plan view",
+      "page 1 upper plan view",
+      "page 1 elevation"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left mounting ear"
+     ]
+    },
+    {
+     "id": "right-mounting-ear",
+     "kind": "right mounting ear with rounded exterior end",
+     "seen_in": [
+      "page 1 lower plan view",
+      "page 1 upper plan view",
+      "page 1 elevation"
+     ],
+     "position_datums": [
+      "the rightmost tangent plane of the right mounting ear",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "web-cutout",
+     "kind": "through web cutout between the left mounting ear and ring body",
+     "seen_in": [
+      "page 1 lower plan view",
+      "page 1 elevation",
+      "VIEW B"
+     ],
+     "position_datums": [
+      "the depth centre plane",
+      "the ring axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "left-mounting-hole",
+     "kind": "Ø6.6 through mounting hole with circular Ø11 counterbore",
+     "seen_in": [
+      "page 1 lower plan view",
+      "page 1 upper plan view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the depth centre plane",
+      "the leftmost tangent plane of the left mounting ear"
+     ]
+    },
+    {
+     "id": "right-mounting-hole",
+     "kind": "Ø6.6 through mounting hole with Ø11 recess to 6 mm depth",
+     "seen_in": [
+      "page 1 lower plan view",
+      "page 1 upper plan view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the depth centre plane",
+      "the rightmost tangent plane of the right mounting ear"
+     ]
+    },
+    {
+     "id": "edge-fillets",
+     "kind": "R2 typical exterior fillets",
+     "seen_in": [
+      "page 1 elevation",
+      "page 1 lower plan view",
+      "page 1 upper plan view",
+      "SECTION A-A",
+      "VIEW B"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "cd594cb0281244f7b366d94dd8740714",
+   "datums": [
+    "the left end tangent plane",
+    "the right end tangent plane",
+    "the left bore axis",
+    "the right bore axis",
+    "the front face",
+    "the rear face",
+    "the top face",
+    "the bottom face"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the bottom and top faces",
+    "length between the end tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "obround (capsule) outer profile, 150 long by 50 tall, ends R25",
+     "seen_in": [
+      "the middle left of the sheet",
+      "the upper left of the sheet, the second one",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "bore-left",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "bore-right",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left bore axis",
+      "the right end tangent plane"
+     ]
+    },
+    {
+     "id": "hole-centre",
+     "kind": "Ø35 through hole",
+     "seen_in": [
+      "the upper left of the sheet, the second one",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the left end tangent plane",
+      "the rear face",
+      "the right bore axis"
+     ]
+    },
+    {
+     "id": "cutout-front",
+     "kind": "pocket in the front face, the shape drawn between the two bores in the front elevation: bounded above and below by horizontal faces and left and right by concave R30 walls",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the left bore axis",
+      "the right bore axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "cutout-rear",
+     "kind": "pocket in the rear face, the same profile as cutout-front",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left bore axis",
+      "the rear face",
+      "the right bore axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "fillets-r2",
+     "kind": "R2 fillets, typical, on all the edges drawn red — the top and bottom edges of the outer profile all round, and the edges of both cutouts where they meet the front and rear faces and their internal floor edges",
+     "seen_in": [
+      "the upper left of the sheet, the first one",
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the edges themselves"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "cffbc01e488b45499b996ece0765b47f",
+   "datums": [
+    "the ring axis",
+    "the left end face",
+    "the right end face",
+    "the front face",
+    "the rear face",
+    "the top face",
+    "the bottom face",
+    "the centreline of the arm"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the top and bottom faces",
+    "length between the end faces"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "ring-and-arm outer profile: a ring Ø50 OD with a straight arm extending to the left and a right jaw extending to the right",
+     "position_datums": [
+      "the bottom face",
+      "the left end face",
+      "the right end face",
+      "the ring axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-main",
+     "kind": "Ø42 bore",
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "split-gap",
+     "kind": "split gap through the right side of the ring",
+     "position_datums": [
+      "the ring axis",
+      "the top face"
+     ]
+    },
+    {
+     "id": "arm-left",
+     "kind": "straight arm extending to the left from the ring",
+     "position_datums": [
+      "the left end face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hole-left",
+     "kind": "Ø6.6 through hole with Ø11 counterbore 6 mm deep",
+     "position_datums": [
+      "the bottom face",
+      "the centreline of the arm",
+      "the left end face",
+      "the top face of the arm"
+     ]
+    },
+    {
+     "id": "hole-right",
+     "kind": "Ø6.6 through hole with Ø11 counterbore 6 mm deep",
+     "position_datums": [
+      "the centreline of the arm",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hex-pocket-right",
+     "kind": "HEX Ø11 pocket, 6 mm deep",
+     "position_datums": [
+      "the centreline of the arm",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "slot-web",
+     "kind": "rectangular slot through the web between the arm and the ring",
+     "position_datums": [
+      "the centreline of the arm",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "fillets-red",
+     "kind": "R2 fillets on all red-highlighted edges",
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "cutout-web",
+     "kind": "curved cutout in the web between the arm and the ring, profile as shown in VIEW B",
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "end-round-left",
+     "kind": "R15 rounded left end of the arm",
+     "position_datums": [
+      "the centreline of the arm",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "end-round-right",
+     "kind": "R12.5 rounded right end of the right jaw",
+     "position_datums": [
+      "the ring axis",
+      "the ring axis height"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "d857e2b227d546a29e4bde91952412ef",
+   "datums": [
+    "the left tangent plane",
+    "the right tangent plane",
+    "the front face",
+    "the rear face",
+    "the top face",
+    "the bottom face",
+    "the longitudinal centre plane",
+    "the front-to-rear centre plane",
+    "the top-to-bottom centre plane",
+    "the left Ø40 bore axis",
+    "the right Ø40 bore axis"
+   ],
+   "envelope_keys": [
+    "depth between the front and rear faces",
+    "height between the top and bottom faces",
+    "length between the left and right tangent planes"
+   ],
+   "features": [
+    {
+     "id": "outer-body",
+     "kind": "rounded rectangular outer body",
+     "seen_in": [
+      "upper view",
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left tangent plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-left",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the left tangent plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "bore-right",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the left tangent plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "centre-bore",
+     "kind": "Ø35 bore",
+     "seen_in": [
+      "upper view",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left tangent plane"
+     ]
+    },
+    {
+     "id": "front-pocket",
+     "kind": "central curved-sided pocket",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the longitudinal centre plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "rear-pocket",
+     "kind": "central curved-sided pocket",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the longitudinal centre plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "red-edge-fillets",
+     "kind": "R2 fillets",
+     "seen_in": [
+      "upper view",
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B",
+      "isometric view"
+     ],
+     "position_datums": [
+      "the red-highlighted edges"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "daa17fb149474317840ef98439cfef6f",
+   "datums": [
+    "the leftmost tangent plane of the left mounting ear",
+    "the right end face",
+    "the bottom tangent plane of the ring",
+    "the ring axis",
+    "the front face",
+    "the rear face",
+    "the mounting-ear centre plane"
+   ],
+   "envelope_keys": [
+    "depth front to rear between the front and rear faces",
+    "height between the bottom tangent plane of the ring and the top tangent plane of the outer ring",
+    "length between the leftmost tangent plane of the left mounting ear and the right end face"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "integral clamp body outer profile: left mounting ear, 15 mm-high lower arm, circular clamp ring, and right mounting ear",
+     "seen_in": [
+      "the middle centre of the sheet, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "the upper centre of the sheet, on page 1",
+      "SECTION A-A, page 1",
+      "VIEW C-C, page 2"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the leftmost tangent plane of the left mounting ear",
+      "the right end face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "clamp-ring-bore",
+     "kind": "Ø42 circular clamp bore within a Ø50 outer ring",
+     "seen_in": [
+      "the middle centre of the sheet, on page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-split",
+     "kind": "right-side split through the clamp ring and right extension",
+     "seen_in": [
+      "the middle centre of the sheet, on page 1"
+     ],
+     "position_datums": [
+      "the front face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-mounting-hole",
+     "kind": "Ø6.6 mounting bore with Ø11 counterbore for M6 SHCS",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "the upper centre of the sheet, on page 1"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the leftmost tangent plane of the left mounting ear",
+      "the mounting-ear centre plane"
+     ]
+    },
+    {
+     "id": "right-mounting-hole",
+     "kind": "Ø6.6 mounting bore with Ø11 by 6 deep counterbore / hexagonal recess for M6 SHCS",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "the upper centre of the sheet, on page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the mounting-ear centre plane",
+      "the right end face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "web-cutout",
+     "kind": "through cutout between the lower arm and the clamp ring",
+     "seen_in": [
+      "the lower centre of the sheet, the first one, on page 1",
+      "the middle centre of the sheet, on page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the ring axis",
+      "the ring axis along the length"
+     ]
+    },
+    {
+     "id": "edge-fillets",
+     "kind": "R2 typical fillets on all red-highlighted edges",
+     "seen_in": [
+      "the middle centre of the sheet, on page 1",
+      "the lower centre of the sheet, the first one, on page 1",
+      "the upper centre of the sheet, on page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "left-mounting-slot",
+     "kind": "Ø6.6 by 8.0 obround mounting slot with Ø11 counterbore slot for M6 SHCS",
+     "seen_in": [
+      "VIEW C-C, page 2"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left mounting ear",
+      "the mounting-ear centre plane"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "e76b61d5bc7143699b451549c90433f7",
+   "datums": [
+    "the left end face",
+    "the ring axis",
+    "the right end face",
+    "the top face of the arm",
+    "the front face"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height between the top and bottom tangents of the ring",
+    "length between the left end face and the right end face"
+   ],
+   "features": [
+    {
+     "id": "ring",
+     "kind": "annular ring, Ø50 outside, Ø42 bore through the depth",
+     "seen_in": [
+      "front view",
+      "plan view"
+     ],
+     "position_datums": [
+      "the left end face"
+     ]
+    },
+    {
+     "id": "arm",
+     "kind": "flat arm, 15 mm thick, running from the rounded left end into the ring; left end rounded R12.5 in the plane of the length and the depth",
+     "seen_in": [
+      "front view",
+      "plan view"
+     ],
+     "position_datums": [
+      "the left end face"
+     ]
+    },
+    {
+     "id": "lug-right",
+     "kind": "rectangular lug at the right of the ring, 30 mm tall, 25 mm deep, its right end rounded R12.5 in the plane of the length and the depth, centred on the ring axis in the height (15 mm from the axis to its top)",
+     "seen_in": [
+      "front view",
+      "plan view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "slit",
+     "kind": "slit 2 mm wide through the lug into the ring bore, splitting the clamp",
+     "seen_in": [
+      "front view"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hole-left",
+     "kind": "Ø6.6 hole with Ø11 counterbore 6 deep (for M6 SHCS)",
+     "seen_in": [
+      "plan view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "hole-right",
+     "kind": "Ø6.6 hole with Ø11 counterbore 6 deep from the bottom face and a hexagon socket, inscribed Ø11, 6 deep from the top (for M6 SHCS and nut)",
+     "seen_in": [
+      "plan view",
+      "upper view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the front face",
+      "the right end face"
+     ]
+    },
+    {
+     "id": "slot-arm",
+     "kind": "slot through the 15 mm arm, 30 mm long in the length direction, ending at the vertical plane through the ring axis, with tapered rib edges shown red in plan",
+     "seen_in": [
+      "plan view",
+      "front view"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "cutout-web",
+     "kind": "curved cutout in the web between the top of the arm and the ring",
+     "seen_in": [
+      "front view",
+      "VIEW B"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "fillets",
+     "kind": "R2 fillets on all edges shown red",
+     "seen_in": [
+      "front view",
+      "plan view"
+     ],
+     "position_datums": []
+    }
+   ]
+  },
+  {
+   "session": "ea390959745a453488138fddcc879635",
+   "datums": [
+    "the ring axis",
+    "the left end tangent plane",
+    "the bottom face of the arm",
+    "the mid-plane of the depth"
+   ],
+   "envelope_keys": [
+    "depth front to rear at the head (boss and lugs)",
+    "depth of the arm front to rear",
+    "height from the bottom face of the arm to the top of the ring",
+    "length between the left end tangent and the right end face of the boss"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "outer profile, obround-ended in plan: rounded left end R7 (arm 14 wide), rounded right lug end R12.5; in elevation the arm is 15 thick running into a ring of Ø50 and a boss 30 tall",
+     "seen_in": [
+      "front view",
+      "plan view",
+      "top view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "ring-bore",
+     "kind": "Ø42 bore through the ring",
+     "seen_in": [
+      "front view",
+      "plan view"
+     ],
+     "position_datums": [
+      "the bottom face of the arm",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "ring-outside",
+     "kind": "ring outer diameter Ø50, its lowest tangent flush with the bottom face of the arm",
+     "seen_in": [
+      "front view"
+     ],
+     "position_datums": [
+      "the bottom face of the arm",
+      "the left end tangent plane"
+     ]
+    },
+    {
+     "id": "ring-split",
+     "kind": "split through the ring on the boss side, separating the ring from the boss lugs",
+     "seen_in": [
+      "front view"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "boss",
+     "kind": "boss on the right of the ring, 30 tall (15 above and 15 below the ring axis), carrying the right lug",
+     "seen_in": [
+      "front view",
+      "top view",
+      "plan view"
+     ],
+     "position_datums": [
+      "the bottom face of the arm",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hole-left",
+     "kind": "Ø6.6 hole with counterbore Ø11 × 6 deep (for M6 SHCS)",
+     "seen_in": [
+      "plan view",
+      "top view"
+     ],
+     "position_datums": [
+      "the left end tangent plane",
+      "the mid-plane of the depth"
+     ]
+    },
+    {
+     "id": "hole-right",
+     "kind": "Ø6.6 hole through the right lug, with HEX Ø11 × 6 deep hexagonal socket on the top face (for M6 SHCS)",
+     "seen_in": [
+      "plan view",
+      "top view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the left end tangent plane",
+      "the mid-plane of the depth"
+     ]
+    },
+    {
+     "id": "slot-arm",
+     "kind": "capsule-ended slot through the arm, visible in the plan and top views between the left hole and the ring",
+     "seen_in": [
+      "plan view",
+      "top view"
+     ],
+     "position_datums": [
+      "the mid-plane of the depth",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "cutout-web",
+     "kind": "cutout where the arm rises to meet the ring, profile drawn in VIEW B (a concave curve under the ring blend)",
+     "seen_in": [
+      "front view",
+      "VIEW B"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "fillets-red",
+     "kind": "R2 fillets on all edges shown red (the perimeter and junction edges)",
+     "seen_in": [
+      "front view",
+      "plan view",
+      "top view",
+      "SECTION A-A",
+      "VIEW B"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "f0fe6cd757694c8b958d5984cd5aa86f",
+   "datums": [
+    "the front face",
+    "the rear face",
+    "the top face",
+    "the bottom face",
+    "the left end extremity",
+    "the right end extremity",
+    "the longitudinal centre plane",
+    "the front-to-rear centre plane"
+   ],
+   "envelope_keys": [
+    "depth between the front and rear faces",
+    "height between the top and bottom faces",
+    "length between the left and right end extremities"
+   ],
+   "features": [
+    {
+     "id": "outer-obround-form",
+     "kind": "outer obround form with two end rounds",
+     "seen_in": [
+      "front view",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end extremity",
+      "the right end extremity",
+      "the top face"
+     ]
+    },
+    {
+     "id": "front-left-blind-pocket",
+     "kind": "Ø40 circular blind pocket",
+     "seen_in": [
+      "front view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end extremity",
+      "the top face"
+     ]
+    },
+    {
+     "id": "front-right-blind-pocket",
+     "kind": "Ø40 circular blind pocket",
+     "seen_in": [
+      "front view",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the front face",
+      "the right end extremity",
+      "the top face"
+     ]
+    },
+    {
+     "id": "rear-left-blind-pocket",
+     "kind": "Ø40 circular blind pocket",
+     "seen_in": [
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the left end extremity",
+      "the rear face",
+      "the top face"
+     ]
+    },
+    {
+     "id": "rear-right-blind-pocket",
+     "kind": "Ø40 circular blind pocket",
+     "seen_in": [
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the rear face",
+      "the right end extremity",
+      "the top face"
+     ]
+    },
+    {
+     "id": "top-to-bottom-bore",
+     "kind": "Ø35 bore",
+     "seen_in": [
+      "top view",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front-to-rear centre plane",
+      "the longitudinal centre plane",
+      "the top face"
+     ]
+    },
+    {
+     "id": "front-central-pocket",
+     "kind": "central rectangular pocket with rounded/curved side boundaries as shown",
+     "seen_in": [
+      "front view",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the longitudinal centre plane"
+     ]
+    },
+    {
+     "id": "rear-central-pocket",
+     "kind": "central rectangular pocket with rounded/curved side boundaries as shown",
+     "seen_in": [
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the longitudinal centre plane",
+      "the rear face"
+     ]
+    },
+    {
+     "id": "red-edge-fillets",
+     "kind": "fillets on all red-highlighted edges",
+     "seen_in": [
+      "top view",
+      "front view",
+      "isometric view",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the rear face",
+      "the top face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "f1f13395f7454a53afb790366e03a7ea",
+   "datums": [
+    "the left end face",
+    "the front face",
+    "the bottom face",
+    "the parting plane"
+   ],
+   "envelope_keys": [
+    "depth front to rear",
+    "height from the bottom face to the top of the lid",
+    "width between the end faces"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "rounded-rectangle (radiused-corner) outer plan profile, 1.00 wide by 0.72 deep, corners R0.09 of the overall width",
+     "seen_in": [
+      "the whole-sheet render",
+      "the middle centre view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "base-shell",
+     "kind": "lower half of the case — hollow shell with slightly tapered (draughted) side walls",
+     "seen_in": [
+      "the whole-sheet render",
+      "the middle centre view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the parting plane"
+     ]
+    },
+    {
+     "id": "lid-shell",
+     "kind": "upper half of the case — shallow lid with a flat top and a slight overhanging rim at the parting plane",
+     "seen_in": [
+      "the whole-sheet render",
+      "the upper centre view",
+      "the middle centre view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the parting plane"
+     ]
+    },
+    {
+     "id": "lid-top-round",
+     "kind": "round along the top edges of the lid, blending the flat top into the lid sides all round",
+     "seen_in": [
+      "the upper centre view",
+      "the middle centre view"
+     ],
+     "position_datums": [
+      "the bottom face"
+     ]
+    },
+    {
+     "id": "parting-lip",
+     "kind": "raised sealing lip / rim, standing proud of the side walls, running the whole way round at the joint",
+     "seen_in": [
+      "the whole-sheet render",
+      "the middle centre view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the parting plane"
+     ]
+    },
+    {
+     "id": "latch-front-left",
+     "kind": "green draw latch — flat vertical strap spanning the parting plane, its upper part on the lid and its lower catch on the base",
+     "seen_in": [
+      "the whole-sheet render",
+      "the middle centre view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face",
+      "the parting plane"
+     ]
+    },
+    {
+     "id": "latch-front-right",
+     "kind": "green draw latch, the same as latch-front-left",
+     "seen_in": [
+      "the whole-sheet render",
+      "the middle centre view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face",
+      "the parting plane"
+     ]
+    },
+    {
+     "id": "latch-rear-pair",
+     "kind": "two green draw latches on the rear face, mirroring the front pair",
+     "seen_in": [
+      "the whole-sheet render",
+      "the upper centre view"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left end face",
+      "the parting plane"
+     ]
+    },
+    {
+     "id": "wall-recesses-left",
+     "kind": "shallow rectangular recesses (moulded panels / grip pockets) sunk into the left end wall of the base",
+     "seen_in": [
+      "the whole-sheet render",
+      "the middle centre view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the front face",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "wall-recesses-right",
+     "kind": "shallow rectangular recesses in the right end wall of the base, mirroring wall-recesses-left",
+     "seen_in": [
+      "the whole-sheet render",
+      "the middle centre view"
+     ],
+     "position_datums": [
+      "the bottom face",
+      "the left end face"
+     ]
+    },
+    {
+     "id": "base-bottom-round",
+     "kind": "round along the bottom edges of the base, all round the standing face",
+     "seen_in": [
+      "the whole-sheet render",
+      "the middle centre view"
+     ],
+     "position_datums": [
+      "the bottom face"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "f30e802ef400453e8d9a8c7e476c0d73",
+   "datums": [
+    "the ring axis",
+    "the mid-plane between the front and rear faces",
+    "the split plane",
+    "the right end face of the ears",
+    "the top face of the upper ear",
+    "the bottom face of the lower ear",
+    "the arm axis",
+    "the arm's outer face"
+   ],
+   "envelope_keys": [
+    "depth front to rear across the ring band",
+    "height between the lowest point of the ring and the arm's uppermost corner",
+    "length between the right end face of the ears and the arm's outermost corner"
+   ],
+   "features": [
+    {
+     "id": "ring-band",
+     "kind": "Ø50 cylindrical clamp band, 30 wide front to rear, split on one side",
+     "position_datums": [
+      "the mid-plane between the front and rear faces",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "bore-42",
+     "kind": "Ø42 bore through the clamp band",
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ear-block",
+     "kind": "the pair of bolting ears standing out to the right of the ring, 30 tall overall, 25 deep front to rear, the end fully rounded R12.5 in the plan",
+     "position_datums": [
+      "the bottom face of the lower ear",
+      "the centre of the R12.5 end",
+      "the mid-plane between the front and rear faces",
+      "the ring axis",
+      "the top face of the upper ear"
+     ]
+    },
+    {
+     "id": "split-gap",
+     "kind": "the 2 mm saw cut between the two ears (the '2' printed in the front view)",
+     "position_datums": [
+      "the ring axis",
+      "the split plane"
+     ]
+    },
+    {
+     "id": "ring-slit",
+     "kind": "the 1 mm slit through the ring wall (the '1' printed in the front view) that opens the clamp, joining the Ø42 bore to split-gap",
+     "position_datums": [
+      "the ring axis",
+      "the split plane"
+     ]
+    },
+    {
+     "id": "hole-ear",
+     "kind": "Ø6.6 clamping bolt hole through both ears",
+     "position_datums": [
+      "the mid-plane between the front and rear faces",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "hex-recess-ear-upper",
+     "kind": "hexagonal recess 11 across flats, for the M6 SHCS fastening, sunk in the top face",
+     "position_datums": [
+      "its rotation about its own axis",
+      "the ring axis",
+      "the top face of the upper ear"
+     ]
+    },
+    {
+     "id": "cbore-ear-lower",
+     "kind": "Ø11 counterbore for an M6 SHCS, sunk in the bottom face",
+     "position_datums": [
+      "the bottom face of the lower ear",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "arm",
+     "kind": "mounting arm, 15 thick and 30 wide, standing off the ring at 45° up and to the left, its end fully rounded R15",
+     "position_datums": [
+      "the arm axis",
+      "the centre of the R15 end round",
+      "the mid-plane between the front and rear faces",
+      "the ring axis, across the arm"
+     ]
+    },
+    {
+     "id": "slot-arm",
+     "kind": "Ø6.6 × 8.0 slot through the arm (6.6 wide, its two end centres 8.0 apart, so 14.6 long overall)",
+     "position_datums": [
+      "the arm axis",
+      "the mid-plane between the front and rear faces"
+     ]
+    },
+    {
+     "id": "cbore-slot-arm",
+     "kind": "Ø11 counterbore slot for an M6 SHCS, 11 wide and 19 long overall, coaxial with slot-arm",
+     "position_datums": [
+      "the arm axis",
+      "the arm's outer face"
+     ]
+    },
+    {
+     "id": "web-cutout",
+     "kind": "the lightening cutout in the web between the arm and the ring — a scooped recess in each of the front and rear faces, pierced in the middle by a through slot, profile as drawn in VIEW B",
+     "position_datums": [
+      "its length along the arm",
+      "the front and rear faces",
+      "the front face and the rear face, material left standing outboard of the 14 mm through slot",
+      "the mid-plane between the front and rear faces",
+      "the ring axis, along the arm axis"
+     ]
+    },
+    {
+     "id": "fillets-typ",
+     "kind": "R2 fillet, typical on every edge the drawing colours red — the arm-to-ring blends, the ear blends, the cutout edges and the outer edges of the band and arm",
+     "position_datums": [
+      "the edges they lie on"
+     ]
+    },
+    {
+     "id": "outer-profile",
+     "kind": "the outer contour of the part as drawn in VIEW C-C: a Ø50 circular clamp band with two bolting ears running out to the right to a flat end face, and a 15 mm thick straight arm running up and to the left at 45°, ending in a flat face normal to its own axis — a keyhole/tee silhouette, not a rectangle",
+     "position_datums": [
+      "the arm axis",
+      "the centre of the R25 outer arc of the band",
+      "the centres of the R2 rounds of the silhouette",
+      "the mid-plane between the front and rear faces",
+      "the right end face of the ears",
+      "the ring axis"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "f5d8007284aa4a57845782918305d6f0",
+   "datums": [
+    "the left edge face of the plate",
+    "the bottom edge face of the plate",
+    "the rear face of the plate",
+    "the front face of the plate",
+    "the bore axis"
+   ],
+   "envelope_keys": [
+    "depth between the rear face of the plate and the front end face of the boss",
+    "height between the bottom and top edge faces",
+    "length between the left and right edge faces"
+   ],
+   "features": [
+    {
+     "id": "plate-profile",
+     "kind": "square flange plate with rounded corners, 1.00 by 1.00, corner radii about 0.10 of the overall length",
+     "seen_in": [
+      "the isometric render"
+     ],
+     "position_datums": [
+      "the left edge face of the plate",
+      "the rear face of the plate"
+     ]
+    },
+    {
+     "id": "corner-holes",
+     "kind": "four Ø0.09-of-the-overall-length holes, one near each corner of the flange",
+     "seen_in": [
+      "the isometric render"
+     ],
+     "position_datums": [
+      "the bottom edge face of the plate",
+      "the left edge face of the plate"
+     ]
+    },
+    {
+     "id": "bore-central",
+     "kind": "large central bore, Ø0.45 of the overall length",
+     "seen_in": [
+      "the isometric render"
+     ],
+     "position_datums": [
+      "the bottom edge face of the plate",
+      "the left edge face of the plate"
+     ]
+    },
+    {
+     "id": "hole-upper",
+     "kind": "Ø0.13-of-the-overall-length hole in the upper part of the flange",
+     "seen_in": [
+      "the isometric render"
+     ],
+     "position_datums": [
+      "the bottom edge face of the plate",
+      "the left edge face of the plate"
+     ]
+    },
+    {
+     "id": "boss-front",
+     "kind": "cylindrical boss standing out of the front face, coaxial with the central bore, OD about 0.55 of the overall length, milled flat on top",
+     "seen_in": [
+      "the isometric render"
+     ],
+     "position_datums": [
+      "the bottom edge face of the plate",
+      "the front face of the plate",
+      "the left edge face of the plate"
+     ]
+    },
+    {
+     "id": "boss-top-flat",
+     "kind": "flat milled face on top of the boss (drawn teal), a rounded-ended tab in plan",
+     "seen_in": [
+      "the isometric render"
+     ],
+     "position_datums": [
+      "the bottom edge face of the plate"
+     ]
+    },
+    {
+     "id": "hole-boss-top",
+     "kind": "Ø0.15-of-the-overall-length hole drilled down through the flat on top of the boss",
+     "seen_in": [
+      "the isometric render"
+     ],
+     "position_datums": [
+      "the front face of the plate",
+      "the left edge face of the plate"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "f8aaa6953cf54651bd57a3f65432d474",
+   "datums": [
+    "the left tangent plane of the outer rounded end",
+    "the right tangent plane of the outer rounded end",
+    "the front face",
+    "the rear face",
+    "the bottom tangent plane of the outer rounded ends",
+    "the top tangent plane of the outer rounded ends",
+    "the longitudinal centre plane",
+    "the transverse centre plane",
+    "the left end-bore axis",
+    "the right end-bore axis",
+    "the central Ø35 bore axis"
+   ],
+   "envelope_keys": [
+    "depth front to rear between the outer planar faces",
+    "height between the top and bottom tangent planes of the rounded ends",
+    "length between the extreme tangent planes of the rounded ends"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "obround outer profile, 150 mm long by 50 mm tall, with rounded ends",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the outer rounded ends",
+      "the left tangent plane of the outer rounded end"
+     ]
+    },
+    {
+     "id": "left-end-bore",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the outer rounded ends",
+      "the left tangent plane of the outer rounded end"
+     ]
+    },
+    {
+     "id": "right-end-bore",
+     "kind": "Ø40 bore",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the outer rounded ends",
+      "the left tangent plane of the outer rounded end"
+     ]
+    },
+    {
+     "id": "central-through-bore",
+     "kind": "Ø35 bore",
+     "seen_in": [
+      "the upper left of the sheet, the second one",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the front face",
+      "the left tangent plane of the outer rounded end"
+     ]
+    },
+    {
+     "id": "front-central-pocket",
+     "kind": "central concave-sided pocket",
+     "seen_in": [
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the outer rounded ends",
+      "the front face",
+      "the left tangent plane of the outer rounded end",
+      "the transverse centre plane"
+     ]
+    },
+    {
+     "id": "rear-central-pocket",
+     "kind": "central concave-sided pocket",
+     "seen_in": [
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the outer rounded ends",
+      "the rear face",
+      "the transverse centre plane"
+     ]
+    },
+    {
+     "id": "red-edge-fillets",
+     "kind": "edge fillets",
+     "seen_in": [
+      "the upper left of the sheet, the first one",
+      "the middle left of the sheet",
+      "SECTION A-A",
+      "SECTION B-B"
+     ],
+     "position_datums": [
+      "the outer profile"
+     ]
+    }
+   ]
+  },
+  {
+   "session": "fe663c12890b4d4497ad458136dfa880",
+   "datums": [
+    "the leftmost tangent plane of the left lug",
+    "the rightmost end face",
+    "the ring axis",
+    "the front face",
+    "the bottom tangent plane of the ring",
+    "the centre plane of the part depth front to rear",
+    "the angled free-end face of the left arm"
+   ],
+   "envelope_keys": [
+    "depth front to rear between the exterior faces",
+    "height between the bottom tangent plane of the ring and the top tangent plane of the Ø50 ring",
+    "length between the leftmost tangent plane of the left lug and the rightmost end face"
+   ],
+   "features": [
+    {
+     "id": "outer-profile",
+     "kind": "forked clamp outer profile: a central circular ring, a left straight arm with a rounded left lug, and a right rounded lug",
+     "seen_in": [
+      "middle centre view, page 1",
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the leftmost tangent plane of the left lug",
+      "the rightmost end face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-bore",
+     "kind": "Ø42 circular bore in the clamp ring",
+     "seen_in": [
+      "middle centre view, page 1",
+      "SECTION A-A, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the leftmost tangent plane of the left lug"
+     ]
+    },
+    {
+     "id": "ring-outer-cylinder",
+     "kind": "Ø50 outer cylindrical ring",
+     "seen_in": [
+      "middle centre view, page 1",
+      "SECTION A-A, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the leftmost tangent plane of the left lug"
+     ]
+    },
+    {
+     "id": "left-arm",
+     "kind": "straight left arm joining the left lug to the lower tangent of the ring",
+     "seen_in": [
+      "middle centre view, page 1",
+      "lower centre view, page 1",
+      "VIEW B, page 1"
+     ],
+     "superseded_by": "angled-left-arm",
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the leftmost tangent plane of the left lug",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "right-lug",
+     "kind": "right lug with R12.5 rounded outer end",
+     "seen_in": [
+      "middle centre view, page 1",
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the rightmost end face",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-lug-hole",
+     "kind": "Ø6.6 clearance hole with Ø11 counterbore for M6 SHCS",
+     "seen_in": [
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "superseded_by": "left-arm-slot",
+     "position_datums": [
+      "the centre plane of the part depth front to rear",
+      "the leftmost tangent plane of the left lug"
+     ]
+    },
+    {
+     "id": "right-lug-hole",
+     "kind": "Ø6.6 clearance hole for M6 SHCS with Ø11, 6 mm deep recess",
+     "seen_in": [
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": [
+      "the centre plane of the part depth front to rear",
+      "the rightmost end face"
+     ]
+    },
+    {
+     "id": "right-lug-hex-recess",
+     "kind": "hexagonal Ø11 recess at the right-lug hole",
+     "seen_in": [
+      "upper centre view, page 1"
+     ],
+     "position_datums": [
+      "the centre plane of the part depth front to rear",
+      "the right-lug-hole axis"
+     ]
+    },
+    {
+     "id": "arm-cutout",
+     "kind": "tapered through cutout in the left arm adjacent to the ring",
+     "seen_in": [
+      "lower centre view, page 1",
+      "middle centre view, page 1",
+      "VIEW B, page 1"
+     ],
+     "position_datums": [
+      "the bottom tangent plane of the ring",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "ring-split",
+     "kind": "radial split through the right side of the clamp ring",
+     "seen_in": [
+      "middle centre view, page 1",
+      "SECTION A-A, page 1",
+      "VIEW C-C, page 2"
+     ],
+     "position_datums": [
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "edge-fillets",
+     "kind": "R2 typical fillets on all edges shown red",
+     "seen_in": [
+      "middle centre view, page 1",
+      "lower centre view, page 1",
+      "upper centre view, page 1",
+      "VIEW B, page 1",
+      "SECTION A-A, page 1"
+     ],
+     "position_datums": []
+    },
+    {
+     "id": "angled-left-arm",
+     "kind": "straight left arm at 45.0° to the ring axis, replacing the Phase 1 horizontal left arm and rounded left lug",
+     "seen_in": [
+      "VIEW C-C, page 2"
+     ],
+     "position_datums": [
+      "the angled free-end face of the left arm",
+      "the centre plane of the part depth front to rear",
+      "the ring axis"
+     ]
+    },
+    {
+     "id": "left-arm-slot",
+     "kind": "Ø6.6 obround clearance slot, 8.0 mm between end-centre axes, with Ø11 obround counterbore",
+     "seen_in": [
+      "VIEW C-C, page 2"
+     ],
+     "position_datums": [
+      "the left-lug-hole axis"
+     ]
+    }
+   ]
+  }
+ ]
+}

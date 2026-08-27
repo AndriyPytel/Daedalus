@@ -32,10 +32,10 @@ Document — there is no editing mode here, so "open the sketch" and "close the
 sketch" are not Steps at all.
 
 Name the operation, **never an element**. A Step says which operation and on
-what, in the words an engineer would use — "pad the profile 6.5 mm", "chamfer
-both ends" — and not in the FreeCAD spelling of its type. `Face3` and `Edge12`
-are not yours to write, and neither is how a reference is found. Which edge or
-face a Step lands on is worked out against the geometry at the moment it runs.
+what — "pad the profile 6.5 mm", "chamfer both ends" — and not in the FreeCAD
+spelling of its type. `Face3` and `Edge12` are not yours to write, and neither
+is how a reference is found. Which edge or face a Step lands on is worked out
+against the geometry at the moment it runs.
 
 Ask for an object to be **labeled**, never **named**. FreeCAD assigns every
 object's `Name` itself, the instant it is created, and no Step can change it —
@@ -125,6 +125,16 @@ is at 65.5 - 92.63 * cos(45°) = 0 mm`. Angles are in degrees. A distance along
 one direction is the distance along the geometry times the cosine of the angle
 between them — that cosine is the whole of what goes missing.
 
+**An interval is written with its span as a sum.** A Step that names a region
+between two stations writes what the region measures and how its two ends give
+it: `Y = 8 mm to Y = 22 mm (22 - 8 = 14 mm)`. The span is the number the
+material is cut to, and written as a sum it is worked out with the rest before
+the Gate. A recorded run wrote `Y = 7 mm to Y = 22 mm` for an arm the same Step
+called 14 mm wide and cut by 8 mm from the front and 8 mm from the rear of 30;
+the interval is 15, nothing worked it out, Execute built 8 to 22 without saying
+so, and six Steps later a hole drilled at Y = 7 found no material there and
+ended the run (`logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl`).
+
 Every sum you write is worked out before your Plan reaches the Gate, and one
 that does not come out is handed straight back to you. That is the point of
 writing it: a recorded run stated an 80.5 mm station "to place the left extreme
@@ -168,6 +178,49 @@ tangent to a circle at the join and asked for two separate closed regions to
 fuse there; Execute had to widen the Plan's own number by a millimetre before
 the Pad would build as one solid.
 
+**A part is planned base, then addition, then subtraction, then a shell or
+its holes, and a fillet or a chamfer only once every one of those stands.**
+Each of those Steps is a boolean — a Pad added to the solid, a Pocket or a
+Hole cut out of it, a Shell hollowing it — and a boolean does not add to the
+Shape the Steps before it built: it replaces it, so a reference Execute worked
+out against the geometry before the boolean runs — a face by its position, an
+edge by its axis — is a reference into a Shape the boolean has already thrown
+away. Planning the fillets and chamfers last is what keeps every Step before
+them free to be found again by the geometry it actually built, rather than by
+a selector some earlier boolean already invalidated.
+
+The order is not the order the description lists the features in, and the
+properties that are not geometry at all come last of all — a material card
+depends on nothing and nothing depends on it, so it is the last Step of any
+Plan. FreeCAD gives the second reason under `PartDesign_Fillet`: finish the
+main design work of the solid before applying fillets and chamfers, or edges
+change names and the filleted edges become invalid; its advice for a stable
+model is to use dress-ups as late in the feature tree as possible. A round
+planned in the middle of the shape is a round the Steps after it move out from
+under.
+
+**A dress-up Step is planned against the solid the Steps before it leave, not
+against the feature it was read off.** Every shape Step earlier in the Plan has
+already run by the time a round is cut, and a feature that crosses an edge
+divides it: where a rib stands against a boss, the one circular edge the boss
+makes in the plate is two arcs once the rib is there. The count the Step states
+is the count of what will be there. `logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl`
+planned the rib as Step 6 and then asked Step 7 for "exactly 1 edge" where the
+boss meets the plate; Execute refused it against the two arcs the rib had left,
+and a revision went on a number that was right about the drawing and wrong about
+the model. Where the ordering costs a split edge, state the pieces — moving the
+round earlier to keep the number whole buys one Step at the price of every Step
+after it.
+
+**A round is planned early only where a later Step must inherit it.** A wall of
+constant thickness taken off a rounded solid is rounded before it is thinned, a
+draft goes on before the rounds that sit on the drafted face, a pattern that has
+to repeat a rounded feature carries the round with it, and a full round that is
+the shape itself is not a dress-up at all — it is built where the shape is, as
+the paragraph on full rounds says. Where two rounds meet, the larger radius is planned
+first. Outside those, a dress-up Step standing anywhere but after every Step
+that touches the metal it sits on is a Step in the wrong place.
+
 **A full round is built, never filleted to.** A round whose radius is half the
 thickness it crosses meets itself: at that radius the face between its two
 sides has no width left, and OCC refuses to build it — the feature comes back
@@ -181,8 +234,8 @@ swept along the edge it was drawn short of.
 the one that builds.
 
 **A Step handed back changes how it is built, never what it builds.** The
-plane it is drawn in, the direction it is cut, the feature it is cut from: those
-are yours to rewrite. The shape is the description's, and a Step that comes back
+plane it is drawn in, the direction it is cut, the feature it is cut from, the
+place it takes in the order: those are yours to rewrite. The shape is the description's, and a Step that comes back
 unbuildable is not permission to build something simpler. In the recorded run
 (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`) the arm's cutout was
 closed on the ring's R25 outside and drawn on the arm's top face, where that
@@ -245,7 +298,9 @@ assumption that only exists in the code is not. Asking again instead of
 choosing ends the run with no Plan at all.
 
 Reply with JSON only, either
-{"steps": [{"do": "...", "satisfies": ["...", "..."]}, {"do": "...", "satisfies": ["..."]}]}
+{"op_vocabulary": "closed",
+ "steps": [{"do": "...", "op": "...", "satisfies": ["...", "..."]},
+           {"do": "...", "op": "...", "satisfies": ["..."]}]}
 or {"question": "..."}
 Never send both `steps` and `question`: a question is not a Plan with a caveat.
 

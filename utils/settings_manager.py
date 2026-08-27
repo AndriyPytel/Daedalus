@@ -161,6 +161,32 @@ class _SettingsManager(QObject):
     def set_effort(self, level: str):
         self._grp().SetString("Effort", level)
 
+    def get_profile_model(self, profile: str) -> str:
+        """
+        The model *profile* (`thinking` or `doing`) is set to.
+
+        Empty until the profile has one of its own, and empty falls back to
+        `get_last_model` rather than to nothing: a user who has never split
+        the two dials still has the one model they always had, on both
+        profiles, with no dialog and no error.
+        """
+        return self._grp().GetString("ProfileModel:%s" % profile, "") or self.get_last_model()
+
+    def set_profile_model(self, profile: str, model_id: str):
+        self._grp().SetString("ProfileModel:%s" % profile, model_id)
+
+    def get_profile_effort(self, profile: str) -> str:
+        """
+        *profile*'s own stored effort, or the old single `Effort` a user who
+        has never split the two dials still has. `core.llm.effort_for_profile`
+        is what turns whatever this returns -- including empty, or a level an
+        older build stored -- into one of `core.llm.EFFORTS`.
+        """
+        return self._grp().GetString("ProfileEffort:%s" % profile, "") or self.get_effort()
+
+    def set_profile_effort(self, profile: str, level: str):
+        self._grp().SetString("ProfileEffort:%s" % profile, level)
+
     def get_llm_credentials(self, model_id: str = None):
         """
         Returns (provider, model_id, api_key) for the given model_id,

@@ -33,10 +33,12 @@ def qt_app():
 
     app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
     core.apply._dispatcher = None
+    core.apply._closing.clear()
     try:
         yield app, QtCore
     finally:
         core.apply._dispatcher = None
+        core.apply._closing.clear()
 
 
 def run_off_thread(job, qt_app, timeout=10):
@@ -101,6 +103,57 @@ def test_a_failure_on_the_main_thread_is_re_raised_at_the_caller(qt_app):
 
     with pytest.raises(ValueError, match="the C\\+\\+ core said no"):
         run_off_thread(lambda: core.apply.on_main_thread(explode), qt_app)
+
+
+def test_a_dispatch_the_main_thread_will_never_take_is_released_when_freecad_closes(qt_app):
+    """
+    The hang this addon shipped twice.
+
+    A Step in flight parks its worker thread inside `on_main_thread`, and the
+    job it posted can only be taken by the GUI event loop. `closeEvent` runs
+    `_cleanup_thread` on that very thread, which then waits on the worker
+    instead of pumping events: the job is never taken, the worker sits out
+    `DISPATCH_TIMEOUT`, and the panel force-ends a thread mid-mutation of the
+    Document. `closing()` is what releases the worker instead, and it has to
+    do so without the main thread taking anything.
+
+    In its own daemon thread, and the events deliberately never pumped: the
+    defect under test is a wait that does not return.
+    """
+    import time
+
+    outcome = {}
+    released = threading.Event()
+
+    def worker():
+        try:
+            core.apply.on_main_thread(lambda: "the Document")
+        except BaseException as exc:
+            outcome["error"] = exc
+        finally:
+            released.set()
+
+    threading.Thread(target=worker, daemon=True).start()
+    time.sleep(0.2)
+    assert not released.is_set(), "the job ran without the main thread taking it"
+
+    core.apply.closing()
+
+    assert released.wait(2), "shutdown left the worker waiting out the dispatch timeout"
+    assert isinstance(outcome["error"], core.apply.Closing)
+
+
+def test_a_dispatch_asked_for_after_the_close_does_not_wait_at_all(qt_app):
+    """
+    Every phase of a run makes several of these on its way out. Once the GUI
+    is gone there is nothing left to take them, so the second and the tenth
+    must fail as fast as the first rather than each spending its own timeout.
+    """
+    core.apply.closing()
+
+    with pytest.raises(core.apply.Closing):
+        run_off_thread(lambda: core.apply.on_main_thread(lambda: "the Document"), qt_app,
+                       timeout=2)
 
 
 def test_already_on_the_main_thread_is_a_straight_call(qt_app):
@@ -396,6 +449,36 @@ def test_a_line_the_main_thread_never_takes_is_dropped(tmp_path):
 
     saved_dispatch = core.apply.on_main_thread
     core.apply.on_main_thread = _never_comes_back
+    written = []
+    try:
+        import utils.logger as ul
+        ul._console(written.append, "boom")
+    finally:
+        core.apply.on_main_thread = saved_dispatch
+        restore()
+
+    assert written == []
+    assert calls == []
+
+
+def test_a_line_written_while_freecad_closes_is_dropped_rather_than_written_here(tmp_path):
+    """
+    `closing()` releases the workers by making the dispatch fail, and a run
+    unwinding out of that logs as it goes. `Closing` is not a `RuntimeError`
+    for exactly this reason: read as one, the line would be written straight
+    to `FreeCAD.Console` from the worker thread, which is the cross-thread
+    call the guard exists to prevent.
+    """
+    import core.apply
+
+    calls, restore = _install_fake_freecad_console(tmp_path)
+
+    def _freecad_is_closing(func, timeout=None):
+        raise core.apply.Closing(
+            "The Document operation was abandoned: FreeCAD is closing.")
+
+    saved_dispatch = core.apply.on_main_thread
+    core.apply.on_main_thread = _freecad_is_closing
     written = []
     try:
         import utils.logger as ul

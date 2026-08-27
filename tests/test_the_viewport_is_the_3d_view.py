@@ -16,11 +16,21 @@ import types
 
 import pytest
 
-from core.freecad_tools import REVIEW_VIEWS, capture_review_views, fit_view
+from core.freecad_tools import REVIEW_VIEWS, _OPPOSITE_ISOMETRIC, capture_review_views, fit_view
 
 
 class SpreadsheetView:
     """A tab with no camera: what a Spreadsheet or a TechDraw page offers."""
+
+
+class FakeRotation:
+    """Enough of `Base.Rotation` for the opposite isometric's own multiply."""
+
+    def __init__(self, note):
+        self.note = note
+
+    def multiply(self, other):
+        return FakeRotation((self.note, "*", other))
 
 
 class View3D:
@@ -28,6 +38,7 @@ class View3D:
 
     def __init__(self):
         self.camera = "wherever the user left it"
+        self.orientation = FakeRotation("front-right-top")
         self.fits = 0
         self.turned = []
         self.saved = []
@@ -37,6 +48,13 @@ class View3D:
 
     def setCamera(self, camera):
         self.camera = camera
+
+    def getCameraOrientation(self):
+        return self.orientation
+
+    def setCameraOrientation(self, orientation):
+        self.orientation = orientation
+        self.turned.append(_OPPOSITE_ISOMETRIC)
 
     def fitAll(self):
         self.fits += 1

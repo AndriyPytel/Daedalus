@@ -15,15 +15,9 @@ DESCRIBED = HERE / "recorded/described_numbers.json"
 READING_2023 = HERE / "recorded/reading_2023_clamp.json"
 
 
-def read_sheets(tmp_path_factory):
-    """Read each distinct drawing once, avoiding the duplicate 2023 PDF."""
-    from core import sheet_reader
-
-    return {
-        name: sheet_reader.read(str(path), into=str(tmp_path_factory.mktemp(
-            "modelmania-%d" % at)))
-        for at, (name, path) in enumerate(SHEETS.items())
-    }
+def read_sheets(read_sheet):
+    """Read each distinct drawing once, through the caller's sheet cache."""
+    return {name: read_sheet(str(path)) for name, path in SHEETS.items()}
 
 
 def described_numbers():

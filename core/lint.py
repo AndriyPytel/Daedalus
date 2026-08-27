@@ -75,6 +75,55 @@ ELEMENT = re.compile(r"^(Edge|Face|Vertex)\d+$")
 
 GUI_NAMES = ("Gui", "FreeCADGui")
 
+_PRIMITIVE_SHAPES = ("Box", "Cylinder", "Sphere", "Cone", "Ellipsoid", "Torus", "Prism", "Wedge")
+
+OP_TYPEIDS = {
+    "pad": ("PartDesign::Pad",),
+    "revolve": ("PartDesign::Revolution",),
+    "additive-loft": ("PartDesign::AdditiveLoft",),
+    "additive-sweep": ("PartDesign::AdditivePipe",),
+    "additive-helix": ("PartDesign::AdditiveHelix",),
+    "additive-primitive": tuple("PartDesign::Additive%s" % shape for shape in _PRIMITIVE_SHAPES),
+    "pocket": ("PartDesign::Pocket",),
+    "hole": ("PartDesign::Hole",),
+    "groove": ("PartDesign::Groove",),
+    "subtractive-loft": ("PartDesign::SubtractiveLoft",),
+    "subtractive-sweep": ("PartDesign::SubtractivePipe",),
+    "subtractive-helix": ("PartDesign::SubtractiveHelix",),
+    "subtractive-primitive": tuple("PartDesign::Subtractive%s" % shape for shape in _PRIMITIVE_SHAPES),
+    "fillet": ("PartDesign::Fillet",),
+    "chamfer": ("PartDesign::Chamfer",),
+    "draft": ("PartDesign::Draft",),
+    "thickness": ("PartDesign::Thickness",),
+    "mirror": ("PartDesign::Mirrored",),
+    "linear-pattern": ("PartDesign::LinearPattern",),
+    "polar-pattern": ("PartDesign::PolarPattern",),
+    "multi-transform": ("PartDesign::MultiTransform",),
+    "scale": ("PartDesign::Scaled",),
+    "sketch": ("Sketcher::SketchObject",),
+    "datum-plane": ("PartDesign::Plane",),
+    "datum-line": ("PartDesign::Line",),
+    "datum-point": ("PartDesign::Point",),
+    "local-coordinate-system": ("PartDesign::CoordinateSystem",),
+    "sub-shape-binder": ("PartDesign::SubShapeBinder",),
+    "body": ("PartDesign::Body",),
+    "fuse": ("Part::MultiFuse", "Part::Fuse"),
+    "cut": ("Part::Cut",),
+    "common": ("Part::Common",),
+    "thread": ("PartDesign::Hole",),
+    "extend": (),
+    "trim": (),
+    "offset": ("Part::Offset", "Part::Offset2D"),
+}
+
+_SCAFFOLDING_OPS = ("sketch", "datum-plane", "datum-line", "datum-point",
+                    "local-coordinate-system", "sub-shape-binder", "body")
+
+_SCAFFOLD_TYPEIDS = frozenset(
+    typeid for op in _SCAFFOLDING_OPS for typeid in OP_TYPEIDS[op]
+)
+
+
 ACTIVATION_NAMES = (
     "ActiveObject", "setActiveObject", "getActiveObject", "activeView", "ActiveView",
 )
@@ -181,6 +230,11 @@ _GUI_REASON = (
     "Step a pure function of the Document."
 )
 
+_TYPEID_REASON = (
+    "addObject(%r, ...) does not build %r. ADR-0026's verb-to-TypeId table says "
+    "%r builds %s, and no other TypeId is this Step's operation."
+)
+
 
 _ACTIVATION_REASON = (
     "%s makes an object active, which only the GUI can do. The Preflight "
@@ -220,12 +274,21 @@ def selected_elements(selection) -> set:
     return allowed
 
 
-def lint(code: str, selection=None) -> LintResult:
+def lint(code: str, selection=None, op=None) -> LintResult:
     """
     Check *code* before it costs a Preflight.
 
     `selection` is the Snapshot's selection; element names in it are treated as
     explicit user input and allowed.
+
+    `op` is the Step's own declared operation (ADR-0026, FCC-233), one of the
+    36 in `core.loop.OP_VERBS`. Given one, every `addObject`/`newObject` call
+    building a `PartDesign::` or `Part::` type is checked against `OP_TYPEIDS`:
+    a `pad` Step writing `Part::Extrusion` is caught here the same way a `Gui`
+    import already is. Scaffolding common to every operation — a Body, a
+    Sketcher profile, a datum — is accepted regardless of `op`. `None`, or an
+    `op` off the 36-verb list, skips the check entirely: every recorded run
+    before this ticket applied code with no declared operation at all.
 
     The GUI is caught as an attribute as well as a name, so that
     `App.Gui.Selection`, `FreeCAD.Gui` and `doc.Gui` are caught too: reaching
@@ -239,6 +302,7 @@ def lint(code: str, selection=None) -> LintResult:
     allowed = selected_elements(selection)
     features = _partdesign_features(tree)
     counted = _counted_selections(tree)
+    allowed_typeids = set(OP_TYPEIDS.get(op, ())) | _SCAFFOLD_TYPEIDS if op in OP_TYPEIDS else None
     problems = []
     seen = set()
 
@@ -287,6 +351,10 @@ def lint(code: str, selection=None) -> LintResult:
                 problem = _constraint_problem(node)
                 if problem:
                     complain(problem)
+            else:
+                mismatch = _typeid_mismatch(node, allowed_typeids)
+                if mismatch:
+                    complain(_TYPEID_REASON % (mismatch, mismatch, op, " or ".join(OP_TYPEIDS[op])))
 
         elif isinstance(node, ast.Import):
             for alias in node.names:
@@ -328,6 +396,29 @@ def _partdesign_features(tree) -> set:
             if isinstance(target, ast.Name):
                 features.add(target.id)
     return features
+
+
+def _typeid_mismatch(node, allowed_typeids):
+    """
+    The TypeId an `addObject`/`newObject` call builds, given only where
+    `allowed_typeids` is not `None` (an `op` on the closed 36-verb list was
+    given) and the type is one this ticket's table has an opinion about —
+    `PartDesign::` or `Part::`. Anything else (`App::` groups, spreadsheets)
+    is out of scope for a verb list about modelling operations.
+    """
+    if allowed_typeids is None or not (isinstance(node.func, ast.Attribute)
+                                       and node.func.attr in ("addObject", "newObject")
+                                       and node.args):
+        return None
+    first = node.args[0]
+    if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
+        return None
+    type_id = first.value
+    if not type_id.startswith(("PartDesign::", "Part::")):
+        return None
+    if type_id in allowed_typeids:
+        return None
+    return type_id
 
 
 def _counted_selections(tree) -> set:

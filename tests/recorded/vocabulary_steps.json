@@ -1,0 +1,901 @@
+{
+ "plans": [
+  {
+   "session": "042f023a47254d2093398b7b3100eba4",
+   "steps": [
+    "Pad the side-elevation profile 30 mm symmetrically about its plane, using a collar centred 65.5 mm from the left end with a 48 mm outside diameter and 42 mm bore, a 15 mm-high left arm extending to the left end, and a 30 mm-high right ear extending to an assumed right end 34.5 mm from the collar axis for an assumed controlling overall length of 100 mm.",
+    "Trim the longitudinal ends in the collar-axis view to a 15 mm-radius left semicircle and a 14.5 mm-radius right semicircle across the 30 mm width.",
+    "Pocket an assumed 18 mm-wide central fork cavity through the left arm, leaving two 6 mm side rails and extending longitudinally from the plane through the left-hole axis to the outside wall of the collar.",
+    "Pocket a 2 mm-wide slit through the full 30 mm collar width and from the 42 mm bore through the right end, centred on the collar axis to divide the 30 mm-high right ear into two 14 mm-high tabs.",
+    "Cut a 6.6 mm through hole normal to the left arm's broad faces, centred across the 30 mm width and 15.5 mm from the left end, with an 11 mm-diameter counterbore 6 mm deep from the upper outer face.",
+    "Cut a 6.6 mm through hole normal to the right ear's broad faces, centred across the 30 mm width and 14.5 mm from the assumed right end.",
+    "Pocket an assumed regular hexagonal nut recess 11 mm across opposite flat faces and 6 mm deep into the upper outer face around the right through hole.",
+    "Fillet the external longitudinal edges identified in red on the drawing to a 2 mm radius.",
+    "Assign the part an assumed AISI 1020 plain carbon steel material card."
+   ]
+  },
+  {
+   "session": "069d21dbac10416392533fe7c06b62d4",
+   "steps": [
+    "In Body, sketch on the XY plane (the plane of the length and the height) a circle of radius 25 mm (Ø50) centred at the origin, and pad it 30 mm symmetric about that plane. The origin is the ring axis; the depth runs along Z, front to rear, so the pad's 30 mm is the full depth of the part and the depth centre plane is Z=0. This fixes the left end tangent plane at x = -65.5 mm and the right end tangent plane at x = +42.5 mm, the bottom face at y = -25 mm (25 mm below the ring axis, the ring's lowest tangent plane) and the ring's top tangent plane at y = +25 mm, so the height is 25 + 25 = 50 mm. The ring axis is the sheet's x = 90.73 line work. Build Phase 1 (page 1) only — no page 2 angled arm and no c'bore slot.",
+    "Pad the arm: sketch in the plane of the length and the depth on the bottom face level, y = -25 mm (XZ orientation, offset 25 mm below the ring axis), a closed profile made of a semicircular left end of radius 15 mm centred at x = -50.5 mm, z = 0 — its left extreme is at -50.5 - 15 = -65.5 mm, exactly the left end tangent plane, which with the right end tangent plane at +42.5 gives the envelope length 65.5 + 42.5 = 108 mm — with straight sides at z = +15 mm and z = -15 mm (full 30 mm depth, symmetric about the depth centre plane) running right to a closing line at x = 0, inside the ring. Pad it 15 mm upward, from y = -25 mm to y = -10 mm, fusing it to the ring; the arm's underside is the bottom face.",
+    "Pad the right ear: sketch in the plane of the length and the depth at y = -15 mm (15 mm below the ring axis), a closed profile made of a semicircular right end of radius 12.5 mm centred at x = +30 mm, z = 0 — its right extreme is at 30 + 12.5 = 42.5 mm, the right end tangent plane — with straight sides at z = +12.5 mm and z = -12.5 mm (25 mm deep, symmetric about the depth centre plane, 2.5 mm in from each of the front and rear faces at z = ±15) running left to a closing line at x = 0, inside the ring. Pad it 30 mm upward, from y = -15 mm to y = +15 mm, fusing it to the ring, so the ear's top face stands 15 mm above the ring axis. The full-depth ring becomes the 25 mm deep ear where the Ø50 outside meets the ear top level: sqrt(25² - 15²) = 20 mm, about 21 mm right of the ring axis — the sheet's x = 111.9 line work, with y = 55.89 and y = 61.6 the ear's blend line work at 7.89 mm and 13.6 mm above the ring axis.",
+    "Cut the Ø42 pipe bore: sketch a circle of radius 21 mm centred on the ring axis (x = 0, y = 0) in the plane of the length and the height, and pocket it through all in both directions along the depth, so it runs front face to rear face. Its axis is the ring axis, 65.5 mm from the left end tangent plane and 25 mm above the bottom face.",
+    "Cut the 2 mm clamping split: sketch in the plane of the length and the height a rectangle from x = 0 (inside the Ø42 bore) to x = 50 mm (past the right end tangent plane at 42.5 mm, so it breaks out at the right end face), spanning y = -1 mm to y = +1 mm — 2 mm wide, symmetric about the ring axis, walls perpendicular to the height — and pocket it through all in both directions along the depth, cutting the full 25 mm depth of the ear and splitting the ring on that side.",
+    "Cut the left arm hole: a Ø6.6 hole with a Ø11 counterbore 6 mm deep, positioned at x = -50.5 mm (50.5 mm left of the ring axis, 15 mm right of the left end tangent plane at -65.5) and z = 0 on the depth centre plane, its axis along the height perpendicular to the bottom face. It is sketched on the bottom face at y = -25 mm and runs up through the arm's full 15 mm height, the counterbore taken 6 mm deep from the bottom face.",
+    "Cut the ear hole: a Ø6.6 hole with a Ø11 counterbore 6 mm deep, positioned at x = +30 mm (30 mm right of the ring axis, 12.5 mm left of the right end tangent plane at +42.5, on the centre of the R12.5 end) and z = 0 on the depth centre plane, its axis along the height perpendicular to the ear's top and bottom faces so it crosses the 2 mm split at right angles. It is sketched on the ear's bottom face at y = -15 mm and runs up through the full 30 mm height of the ear, the counterbore taken 6 mm deep from that bottom face. This axis is the sheet's x = 120.69 line work, with x = 120.45 the counterbore line work beside it.",
+    "Cut the hexagonal recess in the upper lug: sketch a regular hexagon centred at x = +30 mm, z = 0 on the ear's top face at y = +15 mm, assumed across flats 11 mm, so its circumradius is 11 / (2 * cos(30°)) = 5.5 / 0.86603 = 6.351 mm, with one pair of flats parallel to the length. Pocket it 6 mm downward from the top face, to y = +9 mm.",
+    "Cut the through slot at the left end of the arm cutout: sketch in the plane of the length and the depth a rectangle spanning z = -7 mm to z = +7 mm (14 mm across the depth, symmetric about the depth centre plane) and running along the length from x = -30 mm (the left wall of the cutout, 30 mm left of the ring axis) to an assumed x = -18 mm, an assumed slot length of 12 mm since VIEW B carries no dimension for it. Pocket it through the whole 15 mm of the arm, from the arm's top face at y = -10 mm down through the bottom face at y = -25 mm, its axis along the height perpendicular to the bottom face — the slot is bounded by both faces and starts at neither, so nothing places it in the height.",
+    "Cut the shallow recess of the arm cutout, open at the arm's top face: sketch on the arm's top face at y = -10 mm a profile 16 mm wide across the depth, from z = -8 mm to z = +8 mm — its near wall 7 mm in from the front face at z = +15 mm (15 - 7 = 8), symmetric about the depth centre plane — running along the length from the left wall at x = -30 mm and closed on the right by an arc of radius 25 mm centred on the ring axis, so the recess follows the ring's outside and leaves the curved rib drawn in VIEW B. Pocket it an assumed 5 mm deep below the arm's top face, to a floor at y = -15 mm, since VIEW B carries no depth dimension.",
+    "Apply an R2 fillet, typical, to the red-marked edges: select the arm's top face and the ear's top face — 2 faces — and round every edge of those two face outlines at radius 2 mm, each fillet lying in the plane normal to the edge it rounds.",
+    "Assign the plain carbon steel material card to the Body, taking its uuid from the materials tool and setting ShapeMaterial to the Materials.Material that uuid returns."
+   ]
+  },
+  {
+   "session": "0aed73b0953642fd8e53f2476bc71677",
+   "steps": [
+    "In the Body, sketch the obround outer profile on the XZ plane (the plane of the length and the height, all dimensions in millimetres) and pad it 100 mm in the depth direction, from the front face to the rear face. Profile: an R25 arc centred at (-50, 0) and an R25 arc centred at (+50, 0), joined by the tangent lines y = +25 and y = -25 running between x = -50 and x = +50; the sketch origin is the intersection of the central transverse plane with the mid-height centre line. This puts the extremes at x = -50 - 25 = -75 mm and x = +50 + 25 = +75 mm, giving the 150 mm overall length, and the profile 25 + 25 = 50 mm tall, giving the 50 mm height. Note on the recorded conflict: the entry 'the left end radius centre 75 mm to the left, the right end radius centre 75 mm to the right' is taken as the half-overall to the end TANGENT planes, not to the arc centres — centres at 75 with R25 would give 200 mm and contradict the printed 150; the arc centres are built on the Ø40 bore axes at 50 mm each side, as the front view and SECTION B-B show, and the tangent planes then land at 75 mm each side.",
+    "Cut the left Ø40 bore through the solid, its axis running front to rear perpendicular to the front face, positioned 50 mm to the left of the central transverse plane and at mid-height, 25 mm below the top face — i.e. a Ø40 circle centred at (-50, 0) in the same length-and-height plane as the outer profile, cut through all in the depth direction so it opens on both the front and the rear face.",
+    "Cut the right Ø40 bore through the solid, its axis running front to rear perpendicular to the front face, positioned 50 mm to the right of the central transverse plane and at mid-height, 25 mm below the top face — a Ø40 circle centred at (+50, 0) in the length-and-height plane, cut through all in the depth direction so it opens on both the front and the rear face.",
+    "Cut the Ø35 through hole from the top face down to the bottom face, its axis vertical (perpendicular to the top face and so perpendicular to both Ø40 bore axes), lying in the central transverse plane at 0 mm along the length, and 50 mm from the front face — mid-depth of the 100 mm. Cut through all so it is open over the full 50 mm height.",
+    "Cut the front pocket into the central web, opening at the front face and running 20 mm into the part. Draw its profile in the plane of the length and the height, positioned at the front face, and cut in the depth direction toward the rear (reverse the cut direction if the sketch normal points out of the material). Profile: top wall at y = +15 (10 mm down from the top face at y = +25), bottom wall at y = -15 (10 mm up from the bottom face at y = -25), so the pocket is 30 mm tall; the left end wall is a concave R30 arc centred on the left bore axis at (-50, 0) — R30 = the Ø40 bore's R20 plus 10 mm of web — running between (-50 + sqrt(30² - 15²), +15) = (-24.02, +15) and (-24.02, -15) through (-20, 0); the right end wall is the mirror R30 arc centred on the right bore axis at (+50, 0), running between (+24.02, -15) and (+24.02, +15) through (+20, 0).",
+    "Cut the rear pocket into the central web, opening at the rear face and running 20 mm into the part — the mirror of the front pocket. Draw the same profile in the plane of the length and the height, positioned at the rear face, and cut in the depth direction toward the front (reverse the cut direction if the sketch normal points out of the material). Profile: top wall at y = +15, bottom wall at y = -15 (30 mm tall, 10 mm from the top face and 10 mm from the bottom face); left end wall a concave R30 arc centred on the left bore axis at (-50, 0) from (-24.02, +15) to (-24.02, -15) through (-20, 0); right end wall the R30 arc centred on the right bore axis at (+50, 0) from (+24.02, -15) to (+24.02, +15) through (+20, 0).",
+    "Fillet R2 the red edges lying on the front face: the whole obround outer perimeter loop there (its two R25 end arcs and its two straight top and bottom edges, 4 edges), the two Ø40 bore mouth circles (2 edges), and the mouth loop of the front pocket (its two R30 end arcs and its two straight edges, 4 edges) — 10 edges in all, selected on the front face.",
+    "Fillet R2 the red edges lying on the rear face: the whole obround outer perimeter loop there (two R25 end arcs and two straight edges, 4 edges), the two Ø40 bore mouth circles (2 edges), and the mouth loop of the rear pocket (two R30 end arcs and two straight edges, 4 edges) — 10 edges in all, selected on the rear face.",
+    "Assign the plain carbon steel material card to the Body, setting ShapeMaterial from the material manager's card for plain carbon steel (look the card's uuid up in this build's material library rather than assuming one)."
+   ]
+  },
+  {
+   "session": "0de33fbd053f4ecb9f417a0082281a2d",
+   "steps": [
+    "Створити Body і в ескізі на площині XY побудувати замкнений боковий профіль основної тяги: нижній центр (0,0), зовнішнє нижнє вушко Ø80, верхній центр (40,100), зовнішнє верхнє вушко R25, з’єднати їх обчисленими дотичними дугами зовнішнього контуру R200 та двома внутрішніми переходами R50; витягнути цей профіль симетрично до загальної товщини 40.",
+    "На площині XY вирізати наскрізь через товщину 40 нижній отвір Ø50 разом із верхнім шпонковим пазом: прийняти показаний розмір 14 як ширину паза та, оскільки глибину не задано, прийняти радіальну глибину паза 7 від верхньої кромки отвору.",
+    "На двох зовнішніх бокових гранях у зоні верхнього вушка додати матеріал за його зовнішнім контуром R25 та прилеглою шийкою, по 5 мм назовні з кожного боку; це збільшує товщину верхньої частини з 40 до заданих 50.",
+    "На центральній площині товщини створити ескіз вилкового прорізу та виконати симетричну кишеню шириною 20, залишаючи два верхні вушка товщиною по 15; оскільки креслення не задає довжину прорізу, прийняти його закінчення на 30 мм нижче центра верхнього отвору, з напівкруглим кінцем R10.",
+    "Вирізати наскрізний отвір Ø30 по осі верхнього вушка з центром у точці (40,100), через всю товщину вилки 50.",
+    "Застосувати скруглення R4 до всіх ребер, позначених червоним на кресленні: зовнішніх крайок основного профілю, крайок нижнього отвору й паза, крайок верхнього отвору та крайок вилкового прорізу."
+   ]
+  },
+  {
+   "session": "0de34f88d1274dcebb02ac67e0e52fb0",
+   "steps": [
+    "On the XY plane (the plate underside, z=0), sketch the plate outline: a rectangle from X=0 to X=80 and Y=0 to Y=30, with all four corners rounded R8 (arc centres at (8,8), (72,8), (72,22), (8,22)), and pad it 5 mm in +Z.",
+    "Sketch a Ø20 circle centred at X=60, Y=15 on the plate top face (z=5) and pad it 15 mm in +Z, so the boss top lies at 5+15=20 mm above the plate underside.",
+    "Sketch a Ø20 circle in the plane of the length and the height (XZ, at the mid-depth centre plane Y=15), centred at X=20, Z=-10 (10 mm below the plate underside), and pad it 20 mm symmetric to that plane — assumed lug thickness front to rear 20 mm, since the drawing does not define it. Its lowest point is at -10-10 = -20 mm, and with the boss top at +20 mm the overall height is 40 mm.",
+    "Sketch a Ø15 circle centred at X=60, Y=15 on the boss top face and pocket it through all, downward through the boss and the plate.",
+    "Sketch a Ø10 circle in the plane of the length and the height at the lug's front face, centred at X=20, Z=-10, and pocket it through all along the depth direction, through the lug.",
+    "Sketch the rib web in the plane of the length and the height at the mid-depth centre plane (Y=15): a closed triangle with vertices (X=5, Z=5) on the plate top face, (X=52, Z=5) and (X=52, Z=20), the X=52 edge buried inside the Ø20 boss which spans X=50 to X=70. Pad it 4 mm symmetric about that plane, i.e. 2 mm each side of Y=15.",
+    "Apply an R2 fillet to the blend edges of the solid: the rib-to-plate edges, the rib-to-boss edges, the rib's sloping top edge, the boss-to-plate circular edge, the lug-to-plate blend edges, and the plate's own top and bottom outline edges — selected by computing which edges lie at those junctions, not with UseAllEdges.",
+    "Assign the plain carbon steel material card to the Body by setting ShapeMaterial from Materials.MaterialManager(), looking up the card's uuid from the manager's library rather than assuming one."
+   ]
+  },
+  {
+   "session": "141a41df15544013a9740a45138fa7ad",
+   "steps": [
+    "Create a single closed length-height base profile on the plane of the length and height, then pad it 30 mm from the front face to the rear face. Form the profile as the union of a Ø50 outer ring centered 65.5 mm from the leftmost tangent plane and 25 mm above the lower tangent plane, a 15 mm-high left arm with its lower face on the lower tangent plane and a semicircular left end tangent at the leftmost plane, and a right lug with a 12.5 mm outer-end radius, lower face 10 mm above the lower tangent plane, and rightmost tangent plane 42.5 mm right of the ring axis. Set the overall profile envelope to 108 mm long and 50 mm high.",
+    "Pocket a concentric Ø42 bore through all 30 mm of the outer ring, normal to the front face.",
+    "Machine the left mounting hole on the longitudinal centre plane: drill Ø6.6 through all 30 mm and counterbore Ø11 to 6 mm deep from the front face, with the hole axis 14 mm from the leftmost tangent plane and 7 mm above the lower tangent plane.",
+    "Machine the right mounting hole on the longitudinal centre plane: drill Ø6.6 through all 30 mm, counterbore Ø11 to 6 mm deep from the front face, and cut a regular hexagonal 11 mm across-flats recess 6 mm deep from the rear face; locate its axis 30 mm right of the ring axis.",
+    "Pocket the central cutout from the front face through the central 18 mm front-to-rear region, leaving 6 mm side portions at both the front and rear faces. Use an assumed open-ended rectangular cutout in the length-height plane with its left end face 30 mm left of the ring axis, extending right to the rightmost tangent plane, from the lower tangent plane to the assumed horizontal boundary 10 mm above it.",
+    "Pocket an assumed 3 mm-high longitudinal ring split through all 30 mm between the front and rear faces, from the assumed right-hand intersection of the Ø42 bore surface to the rightmost tangent plane of the lug; place its lower boundary 2 mm below the ring axis and its assumed upper boundary 1 mm above the ring axis.",
+    "Apply 2 mm radius fillets to the assumed external 30 mm-long profile edges of the base solid and its mounting-lug outline, excluding bore, mounting-hole, counterbore, hexagonal-recess, central-cutout, and ring-split edges.",
+    "Assign the plain carbon steel material card to the completed body."
+   ]
+  },
+  {
+   "session": "14f905afc198411a90c1478202000735",
+   "steps": [
+    "Створити в наявному Body об’єкт ескізу типу Sketcher::SketchObject з назвою RootProfile через Body.addObject.",
+    "Приєднати ескіз RootProfile до XY-площини Origin через AttachmentSupport і MapMode = FlatFace.",
+    "У ескізі RootProfile створити геометрію типу Part.Circle з центром (0, 0) мм і радіусом 17.5 мм; це кореневе коло для прийнятих модуля 2 мм, 20 зубців, діаметра ділильного кола 40 мм і діаметра западин 35 мм.",
+    "Створити feature типу PartDesign::Pad у Body з ескізу RootProfile, довжиною 10 мм у додатному напрямку нормалі XY-площини, без симетричного витягування.",
+    "Створити в наявному Body об’єкт ескізу типу Sketcher::SketchObject з назвою ToothProfile через Body.addObject.",
+    "Приєднати ескіз ToothProfile до XY-площини Origin через AttachmentSupport і MapMode = FlatFace.",
+    "У ескізі ToothProfile створити геометрію типу Part.LineSegment для нижньої радіальної частини зубця від (17.464, -1.115) мм до (18.756, -1.197) мм. Значення відповідають кореневому радіусу 17.5 мм, базовому радіусу 18.794 мм, куту тиску 20° та куту розташування флангу 3.652°.",
+    "У ескізі ToothProfile створити геометрію типу Part.BSplineCurve для нижнього евольвентного флангу через обчислені точки (18.756, -1.197), (18.970, -1.232), (19.594, -1.427), (20.570, -1.895) і (21.826, -2.757) мм. Точки обчислити для базового радіуса 18.794 мм, параметрів евольвенти t = 0, 0.1521, 0.3043, 0.4564, 0.6085 та зовнішнього радіуса 22 мм.",
+    "У ескізі ToothProfile створити геометрію типу Part.ArcOfCircle: дугу з центром (0, 0) мм, радіусом 22 мм, між точками (21.826, -2.757) мм і (21.826, 2.757) мм, з кутовим розмахом 14.400° через напрямок додатної осі X; це вершина одного зубця.",
+    "У ескізі ToothProfile створити геометрію типу Part.BSplineCurve для верхнього евольвентного флангу через обчислені точки (21.826, 2.757), (20.570, 1.895), (19.594, 1.427), (18.970, 1.232) і (18.756, 1.197) мм; це дзеркальне відображення нижнього евольвентного флангу відносно осі X.",
+    "У ескізі ToothProfile створити геометрію типу Part.LineSegment для верхньої радіальної частини зубця від (18.756, 1.197) мм до (17.464, 1.115) мм.",
+    "У ескізі ToothProfile створити геометрію типу Part.ArcOfCircle: коротку дугу з центром (0, 0) мм, радіусом 17.5 мм, між точками (17.464, 1.115) мм і (17.464, -1.115) мм, з кутовим розмахом 7.304° через напрямок додатної осі X, щоб замкнути профіль зубця.",
+    "Створити feature типу PartDesign::Pad у Body з ескізу ToothProfile, довжиною 10 мм у додатному напрямку нормалі XY-площини, без симетричного витягування; витягування має об’єднатися з уже наявним кореневим диском.",
+    "Створити feature типу PartDesign::PolarPattern у Body для щойно створеного зубчастого Pad: вісь обертання Z-axis Body, кількість входжень 20, кут 360°, рівномірний кутовий крок 18°.",
+    "Створити в наявному Body об’єкт ескізу типу Sketcher::SketchObject з назвою BoreProfile через Body.addObject.",
+    "Приєднати ескіз BoreProfile до XY-площини Origin через AttachmentSupport і MapMode = FlatFace.",
+    "У ескізі BoreProfile створити геометрію типу Part.Circle з центром (0, 0) мм і радіусом 4 мм; це прийнятий центральний наскрізний отвір діаметром 8 мм.",
+    "Створити feature типу PartDesign::Pocket у Body з ескізу BoreProfile, довжиною 10 мм у додатному напрямку нормалі XY-площини, без симетричного вирізання."
+   ]
+  },
+  {
+   "session": "172369d7389a4a4f9c3c2ae8b5aded91",
+   "steps": [
+    "Sketch the composite outer profile in the XZ-plane (length × height): a Ø50 circle centred at (65.5, 25.01); a flat arm 15 mm thick from the tangent plane at x=0 (left end rounded R7.5, centred at (7.5, 7.5)) to the ring, its bottom face at z=0 tangent to the ring's underside; and a lug block 30 mm tall (z from 10.01 to 40.01, i.e. 15 mm each side of the ring axis) running from the ring to the right end face at x=108 — one closed contour merging all three. Pad it 30 mm deep, symmetric about the XZ-plane (±15 mm front to rear).",
+    "Cut the ring bore: a Ø42 pocket on the ring axis at (65.5, 25.01), through all along the front-to-rear direction (Type ThroughAll, axis perpendicular to the front face).",
+    "Narrow the arm to its 14 mm depth width: pocket both sides of the arm (left of the ring) in the depth direction, leaving the arm 7 mm each side of the centre plane of the depth, through the full 15 mm arm height.",
+    "Cut the horizontal split through the lug block: a slot through the full 30 mm depth of the lug, 3 mm wide in height, its upper face 1 mm above the ring axis (z = 26.01) and its lower face 2 mm below (z = 23.01), running from the ring bore to the right end face along the length.",
+    "Drill the tab hole: a Ø6.6 vertical hole through the 15 mm arm thickness, centred at (7.5, 0) — coincident with the centre of the R7.5 rounded tab end and centred on the 14 mm tab width — with a Ø11 counterbore 6 mm deep from the bottom face of the arm (c'bore for M6 SHCS).",
+    "Drill the boss hole: a Ø6.6 vertical hole through the 30 mm tall lug, centred on the centre plane of the depth at the centre of the R12.5 rounded right end (x = 95.5, y = 0), with a Ø11 round counterbore 6 mm deep from the bottom face and a hexagonal socket HEX Ø11, 6 mm deep, from the top face (c'bore and hex for M6 SHCS).",
+    "Cut the tapered through cutout in the arm: a slot through the 15 mm arm thickness, 30 mm long from the ring-centre plane region toward the left (x from 35.5 to 65.5), symmetric about the centre plane of the depth, with a narrow round end at its left and flaring wider toward the ring — the width and flare are not dimensioned on the sheet, so assume a Ø6 round left end flaring to 12 mm wide at the ring end.",
+    "Fillet R2 on the exterior perimeter edges and the cutout edges (the edges drawn red in every view)."
+   ]
+  },
+  {
+   "session": "1c1f2d2eadb545f493724fe2bb33500c",
+   "steps": [
+    "Pad a 30 mm-deep base profile symmetrically about the ring mid-plane in the plane of length and height: form the Ø50 outer circular ring and the right-hand fork, with the ring and bore circles concentric on the ring axis; set the right fork 30 mm high, symmetric about the ring mid-plane, with R12.5 rounded outer lug ends whose outer end faces are 42.5 mm from the ring axis; include the centred 2 mm fork split, with each split face 1 mm from the ring axis, creating derived 14 mm upper and lower prongs. Form the lower-left open curved boundary as the Ø50 ring surface tangent to the adjoining arm contour rather than as a separately dimensioned cutout.",
+    "Add the Phase 2 angled left arm as a 14 mm-wide additive profile centred on the ring mid-plane, with its centre plane 7 mm from either angled-arm side face; make its lower straight edge tangent to the R25 outer-ring profile, make the arm 15 mm wide perpendicular to that lower tangent line, set its free planar end face 73 mm from the ring axis along a 45.0° centreline, and use an assumed R2 concave transition between the upper arm edge and the outer ring.",
+    "Pocket the concentric Ø42 ring bore through all 30 mm of the base profile, perpendicular to the plane of length and height, retaining the right-hand open split shown in the fork.",
+    "Pocket the right mounting bore Ø6.6 through all from the front face at the rounded right lug axis, then counterbore it Ø11 to a depth of 6 mm from the front face.",
+    "Pocket a regular hexagonal recess, 11 mm across its specified enclosing diameter and 6 mm deep from the front face, concentric with the right mounting-hole axis around the right counterbore.",
+    "Pocket the Phase 2 left mounting through-slot from the front face through all of the 14 mm-wide angled arm: use Ø6.6 rounded ends on 8 mm end-axis spacing for a derived 14.6 mm overall slot length, centred through the arm width; locate its centre midway between the end axes at an assumed 19 mm from the angled-arm free-end face along the 45.0° arm centreline. Counterbore the same slot from the front face with Ø11 rounded ends on the same 8 mm end-axis spacing, 19 mm overall length, to a depth of 6 mm.",
+    "Apply R2 edge fillets to every edge marked red on the drawing, without rounding unmarked edges.",
+    "Assign the plain carbon steel material card to the finished Body."
+   ]
+  },
+  {
+   "session": "247c2aaed0734866a8aa9d169f7303bd",
+   "steps": [
+    "Sketch, on the plane of the length and the height (the front view), the stepped outer silhouette of the part and pad it 30 mm through the depth. Set the length origin at the right end face (X = 0), since the left end face that earlier positions were measured from was deleted with the later page: the right end face's own position relative to itself is 108 mm (overall length) − 108 mm = 0 mm, confirming it as the datum. From there the left end sits 108 mm away at X = −108 mm. Draw: a flat bottom line the full 108 mm length at Z = 0 (the bottom face); the arm rising to 15 mm tall (Z = 0 to 15) from X = −108 to the ring's left tangent; the ring's OD circle, diameter 50 mm, centered at X = −42.5 mm (computed as 108 − 65.5 mm-from-left-end = 42.5 mm from the right end face) and Z = 25 mm (half of the 50 mm envelope height), so the circle runs from X = −67.5 to X = −17.5 with its upper semicircle forming the profile's crown between those points, joined to the arm and lug tops by vertical risers; the lug rising to 30 mm tall (Z = 0 to 30) from X = −17.5 to X = 0; both end faces flat and vertical (no rounding in this view). Pad the closed profile 30 mm in the depth direction, giving the front face at Y = 0 and the rear face at Y = 30 mm, centered so the ring/lug region sits mid-depth at Y = 15 mm.",
+    "Cut the arm's depth down from the full 30 mm to 14 mm, centered on mid-depth (Y = 7 mm to Y = 22 mm), over the length from the left end (X = −108 mm) to the ring's left tangent (X = −67.5 mm), removing 8 mm of material from the front and 8 mm from the rear. Shape the extreme left tip (X = −108 mm to X = −101 mm) as a semicircular R7 cap centered at X = −101 mm, Y = 15 mm (computed from the 108 mm overall length minus the 7 mm left-end-face offset the pad was originally read at: 108 − 7 = 101 mm from the right end face), tangent to the 14 mm-wide sides at Y = 8 mm and Y = 22 mm.",
+    "Cut the right lug's tip down from the full 30 mm depth to a 25 mm-wide stadium cap, over the length from X = −12.5 mm to the right end face (X = 0 mm), stepping in 2.5 mm on the front and 2.5 mm on the rear at X = −12.5 mm (computed from the 12.5 mm right-end-face offset: 108 − 95.5 mm-from-left-end reading applies to hole-right, and the lug's own R12.5 places its cap center the same 12.5 mm in from the right end face). Round the extreme tip as a semicircular R12.5 cap centered at X = −12.5 mm, Y = 15 mm, tangent to the 25 mm-wide sides at Y = 2.5 mm and Y = 27.5 mm.",
+    "Cut a Ø42 mm through hole along the depth direction (perpendicular to the front face, running front-to-rear) centered on the ring at X = −42.5 mm from the right end face (108 − 65.5 mm = 42.5 mm) and Z = 25 mm from the bottom face (half of the 50 mm envelope height), passing through the full 30 mm depth.",
+    "Cut a relief slit at the arm-to-ring junction, sketched in the plane of the length and the height, positioned at the ring axis where the arm's tangent meets the ring — X = −67.5 mm from the right end face — on the side of the ring nearest the arm (the left side of the ring). The exact numeric profile is not given on the sheet, so cut it with an assumed slit width of 4 mm (centered at X = −67.5 mm, from X = −69.5 to X = −65.5 mm) and an assumed depth of 20 mm cut down into the ring from the top of the profile.",
+    "Drill a Ø6.6 mm through hole with a Ø11 mm x 6 mm deep counterbore from the bottom face, axis vertical (perpendicular to the bottom face), centered at X = −101 mm from the right end face (108 − 7 mm = 101 mm) and Y = 7 mm from the front face. The arm's own height there is 15 mm, so half of it — 15 mm / 2 = 7.5 mm — is the derived reference confirming the hole sits centered within the arm's 15 mm-tall cross-section.",
+    "Drill a Ø6.6 mm through hole at the right lug, axis vertical (perpendicular to the top and bottom faces), centered at X = −12.5 mm from the right end face (108 − 95.5 mm = 12.5 mm) and Y = 15 mm from the front face (mid-depth of the 30 mm-wide lug body). Cut a hexagonal Ø11 mm x 6 mm deep pocket into this hole from the top face (captive-nut recess), and a Ø11 mm x 6 mm deep counterbore from the bottom face (for the M6 SHCS).",
+    "Cut a through slot in the arm, between the hole-left mounting hole and the ring, at Y = 7 mm from the front face (aligned with hole-left's depth offset). The slot's exact length and width are not given on the sheet, so cut it with an assumed length of 20 mm (from X = −95 mm to X = −75 mm) and an assumed width of 6.6 mm, through the full 15 mm arm height.",
+    "Apply R2 fillets to the general transition edges of the outer profile: the 4 vertical edges where the height steps (2 at the arm-to-ring junction, 2 at the ring-to-lug junction) and the 4 edges where the depth narrows (2 at the left arm's step-in to 14 mm, 2 at the right lug's step-in to the 25 mm cap) — 8 edges total, at R2."
+   ]
+  },
+  {
+   "session": "2e935bffb8f24af48c6c3e6d2587f42a",
+   "steps": [
+    "Задати в документі одиниці вимірювання в міліметрах, третій кут проєкції та масштаб креслення 1:2.",
+    "Побудувати на серединній площині глибини замкнений поздовжній профіль завдовжки 150 мм і заввишки 50 мм із лівим та правим напівкруглими торцями радіусом 25 мм; осі торців розташувати на 25 мм від відповідних торцевих дотичних площин і на 25 мм від верхньої грані.",
+    "Симетрично витягнути поздовжній профіль на повну глибину 100 мм, по 50 мм від серединної площини до передньої та задньої граней.",
+    "Вирізати лівий циліндричний отвір діаметром 40 мм наскрізь через повну глибину 100 мм від передньої до задньої грані; його вісь розташувати на 25 мм від лівої торцевої дотичної площини, на 25 мм від верхньої грані та з нульовим зміщенням від серединної площини глибини й осі лівого торцевого заокруглення.",
+    "Вирізати правий циліндричний отвір діаметром 40 мм наскрізь через повну глибину 100 мм від передньої до задньої грані; його вісь розташувати на 25 мм від правої торцевої дотичної площини, на 25 мм від верхньої грані та з нульовим зміщенням від серединної площини глибини й осі правого торцевого заокруглення.",
+    "Вирізати центральний вертикальний отвір діаметром 35 мм наскрізь через повну висоту 50 мм від верхньої до нижньої грані; вісь розташувати на 50 мм у бік лівого отвору від осі правого отвору, на 50 мм від передньої грані та з нульовим зміщенням від серединної площини глибини.",
+    "Побудувати на передній грані замкнений профіль центральної кишені з прямими верхньою та нижньою стінками на відстані 10 мм від відповідних граней і двома увігнутими торцевими дугами радіусом 30 мм; центри дуг сумістити з осями відповідних отворів діаметром 40 мм із нульовим зміщенням, а крайні точки кишені на середній висоті розташувати на 10 мм усередину від внутрішніх дотичних площин цих отворів.",
+    "Вирізати передню центральну кишеню від передньої грані на глибину 20 мм, залишивши матеріал позаду неї.",
+    "Побудувати на задній грані замкнений профіль центральної кишені з прямими верхньою та нижньою стінками на відстані 10 мм від відповідних граней і двома увігнутими торцевими дугами радіусом 30 мм; центри дуг сумістити з осями відповідних отворів діаметром 40 мм із нульовим зміщенням, а крайні точки кишені на середній висоті розташувати на 10 мм усередину від внутрішніх дотичних площин цих отворів.",
+    "Вирізати задню центральну кишеню від задньої грані на глибину 20 мм, залишивши матеріал між передньою та задньою кишенями.",
+    "Виконати дотичні заокруглення радіусом 2 мм на всіх позначених червоним ребрах, розташувавши центр кожного заокруглення на 2 мм від обох суміжних граней у локальному нормальному перерізі.",
+    "Призначити готовому тілу матеріал «plain carbon steel»."
+   ]
+  },
+  {
+   "session": "2ebc6845f53c41f79b383ae99b4a23b7",
+   "steps": [
+    "Create a spur-gear profile sketch on the Body’s XY plane using assumed module 2 mm, 20 teeth, 20° pressure angle, 40 mm pitch diameter, 44 mm outside diameter, 35 mm root diameter, and a 10 mm concentric centre bore; generate the 20 tooth spaces as a circularly repeated involute-style tooth form about the origin.",
+    "Pad the gear profile to an assumed 10 mm face width, producing the solid spur gear.",
+    "Apply small root and outer-edge fillets, assumed 0.5 mm radius, to reduce sharp tooth edges while retaining the 20-tooth gear form."
+   ]
+  },
+  {
+   "session": "3fdc7475dbda4d50b57b157cd67dea59",
+   "steps": [
+    "In the Body, sketch on the XY plane an obround (capsule) profile 150 mm long by 50 mm deep: two R25 arcs centred at (-50, 0) and (+50, 0) — centres 150 - 2*25 = 100 mm apart, i.e. ±50 mm from the mid-length plane at x=0, both on the mid-depth plane y=0 — joined by straight lines at y = +25 and y = -25. Pad it 100 mm symmetric to the XY plane, so the bottom face is at z = -50 and the top face at z = +50 and units are millimetres.",
+    "Cut the left Ø40 bore: a 40 mm diameter circle centred at (-50, 0) on the top face (z = +50), axis parallel to the height and perpendicular to the top face, pocketed through all downward to the bottom face.",
+    "Cut the right Ø40 bore: a 40 mm diameter circle centred at (+50, 0) — 50 mm to the right of the mid-length plane at x = 0, on the mid-depth plane — on the top face (z = +50), axis perpendicular to the top face, pocketed through all down to the bottom face.",
+    "Cut the central Ø35 through hole: a 35 mm diameter circle centred on the mid-length plane (x = 0) and the mid-height plane (z = 0, i.e. 50 mm from the top face and 50 mm from the bottom face), sketched on the front face (y = -25) with its axis parallel to the depth and perpendicular to that face, pocketed through all to the rear face.",
+    "Cut the top pocket 20 mm deep below the top face: sketch on the top face (z = +50) a closed profile 30 mm wide in the depth — straight front and rear walls at y = -15 and y = +15, leaving 25 - 15 = 10 mm of wall to the front face and 10 mm to the rear face — closed at each end by an R30 arc concave toward the mid-length plane, the left arc centred on the left end radius axis (-50, 0) and the right arc centred on the right end radius axis (+50, 0); each arc meets the straight walls at x = -50 + sqrt(30² - 15²) = -24.02 mm and x = +50 - 24.02 = +24.02 mm, and the 10 mm web wall follows as 30 - 20 = 10 mm between each Ø40 bore wall and the pocket end. Pocket 20 mm downward.",
+    "Cut the mirror bottom pocket 20 mm deep above the bottom face: the same profile sketched on the bottom face (z = -50) — front and rear straight walls at y = -15 and y = +15 giving 10 mm of wall to each of the front and rear faces, closed by R30 arcs centred on (-50, 0) and (+50, 0), meeting the straight walls at x = ∓24.02 mm — pocketed 20 mm upward into the solid.",
+    "Apply R2 fillets to the red-drawn edges: the two obround outer perimeter edges (one on the top face at z = +50, one on the bottom face at z = -50), the four Ø40 bore mouth circles (two bores × top and bottom face), and the twenty-four edges of the two pockets (per pocket: four mouth edges, four floor edges and four vertical corner edges) — thirty edges in all, selected by computing them from face normals and edge planes, not by rounding all edges.",
+    "Assign the plain carbon steel material card to the Body by setting its ShapeMaterial from the material manager, looking the card's uuid up from this build's material list rather than guessing it."
+   ]
+  },
+  {
+   "session": "45ee20f1f9a34c60a79bfd62d2dace8c",
+   "steps": [
+    "In the existing Body, sketch the base plate's outer profile on the XY plane, which is the top face of the base plate at z = 0: a closed rounded rectangle of four straight sides and four R8 quarter-circle corner arcs, with the left end face at x = 0 and the right end face at x = 80, and the long sides at y = +15 and y = -15 (symmetric about the front-to-rear centre plane, 30 mm depth). The four R8 arc centres are at (8, +7), (8, -7), (72, +7), (72, -7) — 8 mm in from the nearest end face and 8 mm in from the nearest long face (15 - 8 = 7). Each end side is therefore a straight segment 14 mm long (30 - 2*8) at x = 0 and at x = 80, and each long side runs from x = 8 to x = 72. Pad this profile 5 mm downward, i.e. away from +Z, so the plate hangs entirely below the top face and its bottom face is at z = -5; the plate does not straddle the sketch plane. Work in millimetres throughout.",
+    "Sketch a Ø20 circle centred at x = 60 from the left end face and y = 0 on the front-to-rear centre plane, in the plane of the plate's top face (z = 0), and pad it 20 mm upward along +Z so the boss stands on the top face with its flat top at z = +20. Its axis is vertical, perpendicular to the top face.",
+    "Sketch a Ø20 circle in the XZ plane (the plane of the length and the height) centred at x = 20 from the left end face and z = -10, i.e. 10 mm below the top face of the base plate, and pad it 30 mm symmetric about that plane (15 mm to the front and 15 mm to the rear) so the lug's cylindrical surface is flush with both long faces at y = ±15 and merges with the underside of the plate. The lug's axis runs front to rear, perpendicular to the boss axis; its lowest tangent is at z = -10 - 10 = -20 mm, which with the boss top at +20 gives the 40 mm overall height.",
+    "Cut the Ø15 bore coaxial with the boss: sketch a Ø15 circle centred at x = 60, y = 0 on the flat top face of the boss (z = +20) and pocket it through all, downward through the boss and the base plate so it breaks out of the plate's bottom face at z = -5.",
+    "Cut the Ø10 bore coaxial with the lug: sketch a Ø10 circle in the XZ plane centred at x = 20 from the left end face and z = -10 (10 mm below the top face), and pocket it through all in both directions so it passes front to rear right through the lug.",
+    "Sketch the sloped rib's profile in the XZ plane (the plane of the length and the height) as a closed triangle with vertices at (x = 5, z = 0) — the toe where the sloping top edge meets the plate top face, (x = 50, z = 0) and (x = 50, z = 15); x = 50 is the boss wall, 10 mm short of the boss axis at 60 (60 - 20/2 = 50), and z = 15 is 15 mm above the plate top face. Pad this profile 4 mm symmetric about the XZ plane, 2 mm to each side of the front-to-rear centre plane, so the rib stands on the plate top face and runs into the boss's cylindrical wall.",
+    "Full-round the rib's free sloping top: fillet the two long edges that bound the rib's sloping upper face, one at y = +2 and one at y = -2, at R2 — half the 4 mm thickness, so the two fillets meet and the rib's free top becomes a semicircular round across its thickness.",
+    "Apply R2 fillets to the junction and outline edges the sheet marks red: the circular edge where the boss meets the plate top face (1 edge), the two edges where the lug's cylinder meets the plate's front and rear faces (2 edges), the two edges where the rib's sides meet the plate top face (2 edges), the two edges where the rib's sides meet the boss's cylindrical wall (2 edges), and the closed outer perimeter loops of the plate's top face and bottom face (8 edges each: four straight sides and four R8 corner arcs). Select these edges by computing which they are from the geometry and pass exactly that list; do not use the all-edges option.",
+    "Assign the plain carbon steel material to the Body: query the materials manager for the card whose name is plain carbon steel, take the uuid it reports, and set the Body's ShapeMaterial to the Material object that uuid returns. Do not construct or guess a material."
+   ]
+  },
+  {
+   "session": "49527490276843f1a7029ce42eb5a2ef",
+   "steps": [
+    "Create a Sketcher::SketchObject named HexProfile in the existing Body for the ISO 4032 nut exterior; use assumed ISO 4032 M8 dimensions across flats s=13 mm and nominal height m=6.5 mm.",
+    "Attach HexProfile to the Body XY-plane with zero attachment offset using AttachmentSupport=XY_Plane and MapMode=FlatFace.",
+    "In HexProfile, add a Part.LineSegment from [7.505553,0] mm to [3.752777,6.5] mm; these coordinates form a regular hexagon with 13 mm across flats.",
+    "In HexProfile, add a Part.LineSegment from [3.752777,6.5] mm to [-3.752777,6.5] mm.",
+    "In HexProfile, add a Part.LineSegment from [-3.752777,6.5] mm to [-7.505553,0] mm.",
+    "In HexProfile, add a Part.LineSegment from [-7.505553,0] mm to [-3.752777,-6.5] mm.",
+    "In HexProfile, add a Part.LineSegment from [-3.752777,-6.5] mm to [3.752777,-6.5] mm.",
+    "In HexProfile, add a Part.LineSegment from [3.752777,-6.5] mm to [7.505553,0] mm, closing the 13 mm across-flats hexagon.",
+    "Create a PartDesign::Pad named NutBlank from HexProfile with assumed ISO 4032 M8 nominal nut height 6.5 mm, in the positive normal direction and not symmetric to the sketch plane.",
+    "Create a PartDesign::Chamfer named TopOuterChamfer on the six geometrically identified exterior rim edges at the top of NutBlank; use an assumed ISO-style 0.8 mm equal-distance chamfer, which is 45 degrees.",
+    "Create a PartDesign::Chamfer named BottomOuterChamfer on the six geometrically identified exterior rim edges at the bottom of TopOuterChamfer; use the same assumed 0.8 mm equal-distance, 45 degree chamfer.",
+    "Create a Sketcher::SketchObject named ThreadAxisProfile in the existing Body to locate the coaxial M8 threaded hole at the nut centre.",
+    "Attach ThreadAxisProfile to the Body XY-plane with zero attachment offset using AttachmentSupport=XY_Plane and MapMode=FlatFace.",
+    "In ThreadAxisProfile, add a Part.Circle centred at [0,0] mm with radius 4 mm, locating the M8 thread axis concentrically with the hexagon; the subsequent Hole feature defines the actual ISO thread diameters.",
+    "Create a PartDesign::Hole named M8x1_25_InternalThread from ThreadAxisProfile through the 6.5 mm nut thickness. Use assumed standard coarse ISO metric thread M8×1.25: threaded pilot Diameter=6.647 mm, Depth=6.5 mm, ThreadPitch=1.25 mm, ThreadDepth=6.5 mm, Threaded=true, and ModelThread=true so the internal helical thread is modeled as real geometry rather than cosmetic thread metadata."
+   ]
+  },
+  {
+   "session": "4eebde83eaa74822a268716cb5b1a729",
+   "steps": [
+    "Create a sketch on the XZ plane (the plane of length and height) for the outer obround profile: two straight lines at Z=0 (bottom face) and Z=50 (top face) running from X=25 to X=125, closed at each end by an R25 arc centred at (X=25, Z=25) and (X=125, Z=25) respectively, giving an overall length of 150 mm (X 0 to 150) and height of 50 mm. Pad this sketch 100 mm along the +Y direction (front to rear) to create the Body's base solid.",
+    "On the front face (Y=0 plane), sketch a circle of diameter 40 mm centred at X=25 mm, Z=25 mm. Cut it through all (Type=ThroughAll) along the axis perpendicular to the front face, through the full 100 mm depth of the body.",
+    "On the front face (Y=0 plane), sketch a circle of diameter 40 mm centred at X=125 mm, Z=25 mm. Cut it through all (Type=ThroughAll) along the axis perpendicular to the front face, through the full 100 mm depth of the body.",
+    "On the top face (XY plane at Z=50), sketch a circle of diameter 35 mm centred at X=75 mm, Y=50 mm. Cut it through all (Type=ThroughAll) along the axis perpendicular to the top face, through the full 50 mm height of the body.",
+    "On the front face (Y=0 plane), sketch the waisted cutout-web slot profile: a flat top line from (X=55, Z=40) to (X=95, Z=40) and a flat bottom line from (X=55, Z=10) to (X=95, Z=10) — a 30 mm tall, 40 mm wide flat portion centred at X=75, symmetric about mid-height Z=25 — closed on the left by a concave arc of radius 30 mm from (55,40) to (55,10), whose centre is computed from half-chord 15 mm as X = 55 - sqrt(30² - 15²) = 55 - 25.98 = 29.02 mm, Z=25 (near the bore-left axis at X=25, Z=25), and on the right by a concave arc of radius 30 mm from (95,40) to (95,10) with centre X = 95 + 25.98 = 120.98 mm, Z=25 (near the bore-right axis at X=125, Z=25). Pocket this profile 20 mm deep into the body along +Y.",
+    "Mirror the cutout-web pocket about the mid-depth plane at Y=50 mm (parallel to the front face) to cut the matching 20 mm deep slot into the rear face, from Y=100 mm to Y=80 mm, leaving a solid septum between Y=20 mm and Y=80 mm.",
+    "Fillet 16 edges at R2 mm: the 4 arc edges of the outer profile's top and bottom faces where they meet the R25 rounded ends (2 arcs on the top face, 2 on the bottom), the 4 circular edges where the two Ø40 bores meet the front and rear faces (2 bores × 2 faces), and the 8 edges of the cutout-web slot openings on the front and rear faces (4 edges per opening × 2 openings)."
+   ]
+  },
+  {
+   "session": "4fca495a8076439a9967a584abd05227",
+   "steps": [
+    "Pad a 30 mm front-to-rear Phase 2 outer profile in the length-height plane. Set the bottom face at 0 mm and the left end tangent plane at 0 mm; place the Ø50 outer-ring centre 65.5 mm from the left end tangent plane and 25 mm above the bottom face; form the right rounded lug with R12.5 and set its right end face 42.5 mm to the right of the ring axis, giving 108 mm overall length. Form the 45.0° angled left arm with parallel faces 15 mm apart normal to the arm, a planar free end face 73 mm along the arm from the ring axis, a lower face tangent to the Ø50 ring, and an assumed planar concave R6 tangent transition from the upper arm face to the ring contour.",
+    "Pocket a Ø42 circular ring opening through all in the length-height plane, concentric with the Ø50 outer ring and travelling parallel to the 30 mm front-to-rear depth.",
+    "Pocket the superseded Phase 1 left mounting bore feature in the length-depth plane, perpendicular to the top face: cut a Ø6.6 bore through all and a concentric Ø11 circular counterbore 6 mm deep from the counterbored face, with its centre 15 mm from the left end tangent plane and 15 mm from the front face.",
+    "Pocket the Phase 2 left mounting slot in the length-depth plane, perpendicular to the top face: cut a Ø6.6 obround slot through all with 8.0 mm between the end-radius centres, centred on the angled left-arm longitudinal centreline, then cut a concentric Ø11 obround counterbore slot 6 mm deep from the counterbored face with 19 mm overall end-to-end length.",
+    "Pocket the right-lug mounting feature in the length-depth plane, perpendicular to the top face: cut a Ø6.6 bore through all at the lug centreline 12.5 mm from its rounded-end tangent plane and 15 mm from the front face, add a Ø11 circular counterbore 6 mm deep from one face, and add an opposite Ø11 hexagonal recess 6 mm deep from the other face.",
+    "Pocket the arm cutout through all 30 mm in the length-height plane, travelling parallel to the front-to-rear depth. Make the opening 14 mm wide in depth, centred on the angled left-arm longitudinal centreline with its nearer side face 7 mm from the front face; place its left-hand end face 30 mm from the ring axis and its pointed right-hand termination at the ring-axis station. Use the arm bottom face as the lower boundary and the arm top face as the upper boundary until an assumed concentric R25 curved boundary tangent to the ring-side contour.",
+    "Pocket the central right-lug split through the lug in the length-height plane, centred on the ring axis in height, with its upper split face 1 mm below the top face and its lower split face 2 mm above the bottom face.",
+    "Apply R2 fillets to every final Phase 2 edge rendered red: the front and rear perimeter and transition edges of the angled left arm, ring, right lug, and mounting ends; both rim edges of the Ø42 opening; both edges around the arm cutout, split, mounting slot, slot counterbore, and the highlighted arm-to-ring transitions."
+   ]
+  },
+  {
+   "session": "51d7a2f16e224230b5b74f126c7cf8f5",
+   "steps": [
+    "In the existing Body, sketch the base-plate outer rectangle on the XY plane — the plane of the length and the depth — labelled PlateProfile: a plain rectangle running x = 0 to 80 (the left extreme sits on the left end tangent plane at x = 0, giving the 80 mm length) and y = -15 to +15 (symmetric about the front-to-rear mid-plane, 15 mm each side, 30 mm depth). Pad it 5 mm in +Z, so the plate bottom face is at z = 0 and the plate top face at z = 5.",
+    "Round the four vertical corner edges of the padded plate at R8 — the four corners of the plan outline, which lies in the plane of the length and the depth front to rear. The resulting arc centres are 8 mm in from each end face and 8 mm in from each long face, i.e. at (8, ±7), (72, ±7), since 15 - 8 = 7 mm from the mid-plane; the left extreme of the outline stays at 0 mm on the left end tangent plane and the right extreme at 80 mm, which is 80 - 60 = 20 mm to the right of the boss axis, so the right end face is flat and not tangent to the boss. Exactly 4 edges, and the rounds run the full 5 mm from the plate bottom face to the plate top face. This R8 is planned before the later R2 blends because the larger radius goes first and the R2 plate-perimeter blends must sit on the rounded outline.",
+    "Sketch a ⌀20 circle on the plate top face, centred at x = 60 from the left end tangent plane and y = 0 on the front-to-rear mid-plane (15 mm from the front face, 60 mm from the left end face), labelled BossProfile, and pad it 15 mm upward along the height, its axis vertical and perpendicular to the plate top face, so the boss top lands 20 mm above the plate bottom face (5 + 15 = 20).",
+    "Sketch the lower lug on the XZ plane — the plane of the length and the height — labelled LugProfile, and pad it 30 mm symmetric to that plane (15 mm each side, centred on the front-to-rear mid-plane). One closed region: a ⌀20 semicircular arc about the lug axis at x = 20 from the left end tangent plane, z = -10 (10 mm below the plate bottom face), running from (10, -10) through the lowest point (20, -20) to (30, -10), then straight up to (30, 3), across to (10, 3) and back down to (10, -10); the straight part reaches 3 mm up into the 5 mm plate so the lug fuses into one solid rather than merely touching it. The lowest lug point at z = -20 with the boss top at z = 20 gives the 40 mm overall height. Note: the entry keyed 'the plate top face — axis 10 mm below the plate top face' would put the axis at z = -5 and the overall height at 35 mm; the 40 mm envelope and the 'plate bottom face: axis 10 mm below' entry are taken as governing.",
+    "Sketch the rib web on the XZ plane — the plane of the length and the height — labelled RibProfile, and pad it 4 mm symmetric to that plane (2 mm each side of the front-to-rear mid-plane, 4 mm wide and 4 mm thick). The closed profile is (15, 3) — (52, 3) — (52, 15) — (15, 5) — back to (15, 3): the toe stands at x = 15 from the left end tangent plane where the top edge meets the plate top face at z = 5, the top edge slopes up to z = 15 (15 mm above the plate bottom face, i.e. the shoulder where it runs into the boss) at the boss whose left surface is at 60 - 10 = 50 mm; the profile is carried out to x = 52 and down to z = 3 so it overlaps the boss and the plate rather than lying tangent to them. Note: the entry 'its far (low) end lies 20 mm from the boss axis' would place the toe at 60 - 20 = 40 mm, which contradicts the toe-at-15 mm entry; the printed 15 mm toe dimension is taken as governing.",
+    "Cut the ⌀15 bore through the boss: a hole on the boss top face, coaxial with the boss at x = 60 from the left end tangent plane and y = 0 on the front-to-rear mid-plane, axis vertical and perpendicular to the plate top face, cutting downward through the boss and the plate as a through-all cut.",
+    "Cut the ⌀10 through hole in the lug: a ⌀10 circle centred on the lug axis at x = 20 from the left end tangent plane and z = -10 (10 mm below the plate bottom face), sketched on the lug's rear face, cut through-all front to rear along the depth direction.",
+    "Apply an R2 fillet to the boss and rib junction edges of the finished solid: the 2 arcs where the ⌀20 boss meets the plate top face (the single circle is split into two arcs by the rib), the 2 arcs where the rib flanks meet the boss cylinder, the 2 straight edges where the rib flanks meet the plate top face, the 1 edge where the rib toe end face meets the plate top face, and the 2 edges where the rib flanks meet its sloping top face — 9 edges in all.",
+    "Apply an R2 fillet to the plate outline and lug edges: the 8 edges bounding the plate top face (4 R8 corner arcs and 4 straight runs), the 12 edges bounding the plate underside (4 R8 corner arcs, the 2 short end lines, the 4 long-side segments left where the lug footprint interrupts each long side between x = 10 and x = 30, and the 2 cross lines at x = 10 and x = 30 where the lug meets the plate), and the 2 semicircular ⌀20 lug outline arcs on the front and rear faces — 22 edges in all.",
+    "Assign the plain carbon steel material card to the Body, looking the card's uuid up from the materials manager rather than assuming one."
+   ]
+  },
+  {
+   "session": "549e6232c9e04b659e5a2d536354bd7a",
+   "steps": [
+    "Create the Phase 1 compound outer profile in the length-height plane with the left mounting-arm tangent plane at 0 mm, the clamp-ring axis 65.5 mm from that plane, the ring bottom 25 mm below its axis, a Ø50 mm clamp-ring outer circle, a 15 mm-tall horizontal left mounting arm flush with the ring bottom, and a right mounting lug centred on the longitudinal centre plane with an R12.5 mm rounded end whose radius axis is 12.5 mm from the rightmost end face; make the overall length 108 mm and the right lug height 30 mm. Pad this profile 30 mm from the front face to the rear face.",
+    "Pocket the Ø42 mm clamp bore through all 30 mm depth from the front face along the depth direction, with its centre coincident with the ring axis.",
+    "Pocket the horizontal ring split through all 30 mm depth from the front face, using a 2 mm-wide opening centred on the ring axis with each split face 1 mm from that axis.",
+    "Pocket the Phase 1 left mounting hole through all 30 mm depth along the front-to-rear direction at 14 mm from the leftmost tangent plane and on the longitudinal centre plane, using a Ø6.6 mm through hole and a Ø11 mm counterbore 6 mm deep from the front face.",
+    "Pocket the right mounting hole through all 30 mm depth along the front-to-rear direction on the longitudinal centre plane and 12.5 mm from the rightmost end face, using a Ø6.6 mm through hole, a Ø11 mm counterbore 6 mm deep from the front face, and an 11 mm across-flats hexagonal recess 6 mm deep from the rear face.",
+    "Pocket the left-arm cutout through all 30 mm depth in the length-height plane, ending at the vertical face 30 mm left of the ring axis; use an assumed 15 mm-long lower opening starting at the left arm end and a curved wall tangent to the lower-left Ø50 mm outer clamp-ring region.",
+    "Apply R2 mm fillets to every edge marked red in the Phase 1 front elevation, lower and upper plan views, SECTION A-A, and VIEW B.",
+    "Because the required acceptance entries include the superseding Phase 2 revision despite the Phase 1 intent, replace the Phase 1 horizontal left-arm outer profile with an assumed centred 73 mm-long arm inclined 45.0° to the ring axis, with the left end face 73 mm along that inclined direction from the ring axis.",
+    "Because the Phase 2 slot position was not defined, replace the Phase 1 left circular mounting hole with an assumed slot centred at the former 14 mm mounting-hole location: pocket a Ø6.6 mm-wide by 8.0 mm-long obround through slot along the height direction and an Ø11 mm-wide by 19 mm-long obround counterbore slot 6 mm deep from the counterbored face."
+   ]
+  },
+  {
+   "session": "57af6c09950047bf9f0582cd398d2a66",
+   "steps": [
+    "Створити базову призматичну заготовку прямокутного перерізу довжиною 150 mm між лівою і правою торцевими гранями, глибиною 100 mm від передньої до задньої грані та висотою 50 mm між нижньою і верхньою гранями.",
+    "Вирізати два торцеві отвори Ø40 наскрізь через глибину 100 mm: центр лівого отвору розташувати на 25 mm від лівої торцевої грані та на 25 mm від верхньої грані, а центр правого — на 25 mm від правої торцевої грані та на 25 mm від верхньої грані.",
+    "Вирізати центральний отвір Ø35 наскрізь між нижньою та верхньою гранями висотою 50 mm, розташувавши його вісь на 75 mm від лівої торцевої грані та на 50 mm від передньої грані.",
+    "Вирізати з передньої грані центральну сліпу кишеню глибиною 20 mm; її профіль у площині довжини й висоти обмежити прямими на 10 mm від верхньої та нижньої граней і увігнутими бічними дугами R30 з центрами на осях лівого та правого торцевих отворів.",
+    "Вирізати із задньої грані центральну сліпу кишеню глибиною 20 mm з тим самим профілем: прямі на 10 mm від верхньої та нижньої граней і увігнуті бічні дуги R30 з центрами на осях лівого та правого торцевих отворів.",
+    "Заокруглити радіусом 2 mm усі ребра, виділені червоним на кресленні.",
+    "Призначити деталі матеріал plain carbon steel і встановити для документа одиниці millimeters, позначення third angle projection та масштаб 1:2."
+   ]
+  },
+  {
+   "session": "5d9249424bce45d2b25485002ba1c630",
+   "steps": [
+    "Pad the base plate: on the plane of the length and the depth (XY, with X the length from the left end face at x=0, Y the depth from the front face at y=0, Z the height from the bottom face of the plate at z=0), sketch the closed outer profile of a rectangle 80 mm long by 30 mm deep spanning x=0 to x=80 and y=0 to y=30, with all four plan corners rounded R8 (arc centres at (8,8), (72,8), (72,22), (8,22)), and pad it 5 mm in the positive height direction, from the bottom face at z=0 up to the top face at z=5.",
+    "Round at R2 the perimeter edges of the plate: the eight edges bounding the top face at z=5 (four straight runs and four R8 corner arcs) and the eight edges bounding the bottom face at z=0 — sixteen edges in all.",
+    "Pad the upper boss: on the plane of the top face of the plate (z=5), sketch a Ø20 circle centred at 60 mm from the left end face and 15 mm from the front face (x=60, y=15, the depth mid-plane), and pad it 20 mm in the positive height direction, so the boss top lands at z=25; its axis is perpendicular to the top face, along the height. With the lug's lowest point at z=-15 this gives the 40 mm overall height.",
+    "Round at R2 the two circular edges of the Ø20 boss: the root edge where its cylinder meets the top face of the plate at z=5, and the end edge of its top face at z=25 — two edges.",
+    "Pad the lower lug: on the plane of the length and the height at the front face (y=0), sketch a Ø20 circle centred 20 mm from the left end face and 10 mm below the top face of the plate (x=20, z = 5 - 10 = -5, i.e. 5 mm below the bottom face), and pad it 30 mm from the front face through to the rear face at y=30, flush with both; its axis runs front to rear, perpendicular to the front face. The part of the circle above z=0 merges into the plate, leaving the semicircular lug hanging below, its lowest point at z = -5 - 10 = -15.",
+    "Round at R2 the two straight root edges where the lug cylinder meets the bottom face of the plate at z=0 — one at x=10 and one at x=30, each running the 30 mm depth from the front face to the rear face — two edges.",
+    "Cut the Ø15 bore: on the top face of the boss (z=25), sketch a Ø15 circle centred at x=60, y=15 (60 mm from the left end face, 15 mm from the front face, on the depth mid-plane) and pocket it through all downward along the height, breaking out of the bottom face of the plate; it is coaxial with the boss.",
+    "Cut the Ø10 bore through the lug: on the plane of the length and the height at the front face (y=0), sketch a Ø10 circle centred at x=20, z=-5 (20 mm from the left end face, 10 mm below the top face of the plate) and pocket it through all front to rear, breaking out at the rear face; it is coaxial with the lug.",
+    "Pad the rib body: on the depth mid-plane (the plane of the length and the height at y=15), sketch the closed profile drawn short of the R2 crest by 2 mm — the crest centre line runs from (x=5, z=3) to the boss axis at (x=60, z=21.33), of slope 15/45 = 1/3 (the finished top edge rises 15 mm over the 45 mm from x=5 to the boss surface at x=50) and lies 2 mm below the finished top edge, so at x=50 the centre line is at z = 3 + 45/3 = 18 and the finished crest top is 18 + 2 = 20 mm = 5 + 15 mm above the top face, and at x=60 it is z = 3 + 55/3 = 21.33. The profile is the polygon (5,5) → (60,5) → (60,21.33) → back along the crest centre line to where it crosses the top face, (11,5) → close along z=5 to (5,5). Pad it 4 mm symmetric to the depth mid-plane, 2 mm each side (y=13 to y=17). Beyond x=50 the rib runs on to the boss axis so it merges cleanly into the Ø20 boss and stays buried inside it (21.33 + 2 = 23.33 mm < the 25 mm boss top).",
+    "Build the rib's full-round crest: sweep a Ø4 circle (R2, the full 4 mm rib thickness, lying in the plane of the depth and the height, centred on the depth mid-plane at y=15) along the straight crest centre line from (x=5, z=3) to (x=60, z=21.33) on the depth mid-plane, adding it to the solid. This gives the semicylindrical crest whose top silhouette runs from the top face of the plate at x=5 up to z=20, i.e. 15 mm above the top face, at the boss surface x=50.",
+    "Round at R2 the two long edges where the rib's flanks (at y=13 and y=17) meet the top face of the plate at z=5, one each side of the rib — two edges.",
+    "Round at R2 the two edges where the rib's flanks (at y=13 and y=17) run into the Ø20 boss cylinder at x≈50 — one each side of the rib, two edges.",
+    "Assign plain carbon steel to the finished solid: set its ShapeMaterial from the material manager's card for plain carbon steel, taking the card's uuid from the material manager rather than guessing one."
+   ]
+  },
+  {
+   "session": "602902b80a954425ae9c1c017d9f3e0c",
+   "steps": [
+    "Побудувати кільце з концентричного кільцевого профілю Ø50 мм і Ø42 мм та витягнути його на 30 мм симетрично відносно площини профілю.",
+    "Додати лівий кронштейн радіальною товщиною 15 мм і осьовою шириною 30 мм, прийнявши відстань від осі кільця до крайньої лівої точки 65,5 мм, заокруглений кінець R15 мм та вісь кінця на 50,5 мм ліворуч від осі кільця.",
+    "Вирізати в лівому кронштейні прийняте наскрізне бокове вікно 30×8 мм із центром на 25 мм ліворуч і 17,5 мм нижче осі кільця.",
+    "Додати праве вушко осьовою шириною 25 мм із кінцем R12,5 мм, розташувавши вісь кінця на 22 мм праворуч від осі кільця та крайню праву точку на 34,5 мм праворуч від неї.",
+    "Розділити праве вушко наскрізним прорізом шириною 3 мм, розташувавши його межі на 1 мм вище та 2 мм нижче осі кільця.",
+    "Сформувати дві осьові бічні щоки прийнятою шириною 7 мм кожна з проміжком 16 мм між ними в межах загальної осьової ширини 30 мм.",
+    "Просвердлити в центрах лівого та правого заокруглених кінців по одному отвору Ø6,6 мм наскрізь з осями, перпендикулярними до осі кільця, і виконати на кожному цекування Ø11 мм завглибшки 6 мм з верхньої радіальної сторони.",
+    "Заокруглити всі зовнішні переходи, позначені на кресленні червоним, радіусом 2 мм.",
+    "Призначити готовій деталі матеріал carbon steel."
+   ]
+  },
+  {
+   "session": "6165491ac5cb49748f6a78f3a3e36bb0",
+   "steps": [
+    "Побудувати на площині XY центрований правильний шестикутний профіль із відстанню 13 мм між кожною парою протилежних граней.",
+    "Витягнути шестикутний профіль на 8 мм перпендикулярно до площини XY.",
+    "Виконати на зовнішньому контурі обох торців конічні фаски ISO 4033 до діаметра опорного кола 11,63 мм, прийнявши кут 30° до торцевої площини в межах стандартного діапазону 15–30°.",
+    "Вирізати співвісну наскрізну внутрішню різьбу M8×1,25-6H з фактичною гвинтовою геометрією, кутом профілю 60°, номінальним найбільшим діаметром 8 мм і базовим найменшим діаметром 6,647 мм; виконати на обох входах фаски з кутом при вершині 90° до діаметра 8,75 мм."
+   ]
+  },
+  {
+   "session": "66a15a679b574ef49848d47632258c78",
+   "steps": [
+    "In Body, sketch the plate's outer profile on the XY plane, taken as the plate top face at Z=0, with X measured from the left end tangent plane at X=0 and the depth symmetric about the mid-plane Y=0 (front face at Y=-15, rear at Y=+15, 30 mm overall). The closed profile is: the left end straight line at X=0 from Y=-7 to Y=+7; an R8 arc centred (8, 7) from (0, 7) to (8, 15); the straight side Y=+15 from X=8 to X=60; the R15 semicircle centred on the boss axis (60, 0) from (60, 15) through (75, 0) to (60, -15), giving 75 mm overall length; the straight side Y=-15 from X=60 back to X=8; and the R8 arc centred (8, -7) from (8, -15) to (0, -7). Pad this profile 5 mm downward (reversed, to the plate bottom face at Z=-5) with a 5.0° taper so the plate narrows toward the bottom, the plate top face being the parting level. All dimensions in millimetres.",
+    "Sketch a Ø30 circle centred on the boss axis at X=60 from the left end tangent plane, Y=0 on the mid-plane of the depth, in the plane of the plate top face (Z=0), and pad it 20 mm upward, perpendicular to the plate top face, with a 5.0° taper narrowing upward: top diameter = 30 - 2 × 20 × tan(5.0°) = 30 - 3.50 = 26.50 mm. Its right tangent point sits at 60 + 15 = 75 mm from the left end tangent plane, and its top face at 20 mm above the plate top face, which with the lug's lowest point 20 mm below that face gives the 40 mm height.",
+    "Sketch a Ø15 circle on the boss top face, centred on the boss axis (60 mm from the left end tangent plane, on the mid-plane of the depth), and pocket it through all downward along the boss axis with straight, undrafted walls, so it breaks out of the plate bottom face.",
+    "Sketch a Ø20 circle on the XZ plane (the mid-plane of the depth), centred at X=20 from the left end tangent plane and Z=-10, i.e. 10 mm below the plate top face, and pad it 30 mm symmetric about that mid-plane (15 mm each side) along the depth front to rear, so the lug hangs below the plate with its lowest point at 10 + 10 = 20 mm below the plate top face and its flat end faces at the plate's side faces.",
+    "Sketch a Ø10 circle on the XZ plane coaxial with the lug, centred at X=20 from the left end tangent plane and Z=-10 (10 mm below the plate top face), and pocket it through all in both directions along the depth, front face to rear face of the lug.",
+    "Sketch the rib's sloping profile on the XZ plane (the plane of the length and the height, on the mid-plane of the depth) and pad it 6.625 mm symmetric about that plane. The rib's true top edge runs from the foot at (X=5, Z=0) on the plate top face up to the boss's drafted outer surface at Z=15, where that surface stands at X = 60 - (15 - 15 × tan(5.0°)) = 60 - 13.688 = 46.312 mm, so the slope makes atan(15 / 41.312) = 19.96° with the plate top face. Draw the profile 2 mm short of that top edge, measured perpendicular to it: the offset line drops 2 / cos(19.96°) = 2.128 mm vertically, so it crosses Z=0 at X = 5 + 2.128 × (41.312 / 15) = 10.861 mm and reaches the boss surface at Z = 15 - 2.128 = 12.872 mm, where the boss surface stands at X = 45 + 12.872 × tan(5.0°) = 46.126 mm. The closed profile is therefore: Z=0 from X=10.861 to the boss foot at X=45, up the boss's drafted surface from (45, 0) to (46.126, 12.872), and back down the offset slope line to (10.861, 0). The 6.625 mm pad width is the 4 mm rib thickness at its upper end plus the draft added back over the 15 mm rise: 4 + 2 × 15 × tan(5.0°) = 4 + 2.625 = 6.625 mm, so that after the draft is applied the rib measures 4 mm across at its upper end and is symmetric on the mid-plane, 15 mm from the front face.",
+    "Apply a 5.0° draft with the plate top face as the neutral plane to the four faces the pads left square to it: the rib's two side faces, which thin upward so the rib measures 6.625 mm across at the plate top face and 6.625 - 2 × 15 × tan(5.0°) = 4.00 mm at its upper end 15 mm above it, and the lug's two flat end faces, which lean inward going down so they finish flush with the plate's drafted side faces.",
+    "Build the rib's rounded top as a full round rather than a fillet: sweep a Ø4 circle, lying in the plane square to the rib's slope and centred on it, along the rib's true top edge — the straight path on the mid-plane of the depth from (X=5, Z=0) at the plate top face to (X=46.312, Z=15) at the boss's drafted surface, sloping at 19.96° — and fuse it to the rib, giving the semicylindrical R2 top the profile was drawn 2 mm short of.",
+    "Assign the plain carbon steel material card to the Body, taking the card's uuid from the materials manager by name and setting ShapeMaterial to the Materials.Material it returns.",
+    "Round at R2 the five convex edges bounding the plate top face's outer profile — the left end straight line at X=0, the two R8 corner arcs and the two straight side lines at Y=±15 — excluding the arc where the boss stands on the plate.",
+    "Round at R2 the eight convex edges bounding the plate bottom face's outer profile — the left end straight line, the two R8 corner arcs, the right-end R15 arc, and the four straight side segments left where the lug interrupts the two sides — excluding the Ø15 bore breakout.",
+    "Round at R2 the single concave edge where the boss's drafted outer face meets the plate top face.",
+    "Round at R2 the four concave edges where the rib runs into the surrounding material — two where its side faces meet the plate top face, one each side of the rib, and two where its side faces run into the boss's outer face, one each side.",
+    "Round at R2 the four edges of the lug — the two concave edges where its cylindrical outer face meets the plate bottom face, running front to rear, and the two convex arcs where that cylindrical face meets its front and rear end faces."
+   ]
+  },
+  {
+   "session": "6dd48208e7d347d783385463ac5f0305",
+   "steps": [
+    "Sketch the ring and lower tangential arm outer profile in the plane of the length and the height, with the ring axis at x=0 mm and y=0 mm, outside-ring diameter Ø50 mm, and the arm lower face flush with the ring bottom tangent at y=-25 mm; use an assumed 15 mm arm height from y=-25 mm to y=-10 mm. Pad this continuous base profile 30 mm symmetrically about the front-to-rear centre plane.",
+    "Sketch the two rounded mounting-lug additions in the plane in which the lower-left view draws the end rounds: make both outside end rounds R12.5 mm, centre the left round at x=-33 mm and the right round at x=42 mm, set the leftmost tangent at x=-45.5 mm and the rightmost tangent at x=54.5 mm, and pad the connected lug profiles 30 mm symmetrically about the front-to-rear centre plane.",
+    "Pocket a concentric Ø42 mm ring bore through all from the plane of the length and the height at the ring axis, normal to the middle-left view.",
+    "Cut the left mounting hole in the plane of the lower-left view at the centre of the left R12.5 mm rounded end and on the centre plane between the front and rear faces: make a Ø6.6 mm through-all hole normal to the lower-left view, with an Ø11 mm counterbore 6 mm deep from the counterbored face.",
+    "Cut the right mounting hole in the plane of the lower-left view at the centre of the right R12.5 mm rounded end and on the centre plane between the front and rear faces: make a Ø6.6 mm through-all hole normal to the lower-left view, with an Ø11 mm counterbore 6 mm deep from the counterbored face.",
+    "Pocket the open-sided arm cutout from the VIEW B plane immediately left of the ring, with its open-end plane at x=-30 mm from the ring axis: use an assumed through-all 30 mm depth, an assumed 20 mm opening width across the front-to-rear depth, two opposing assumed R10 mm curved walls in the length-depth plane, and an assumed concave R25 mm ring-side wall concentric with the outside ring in the length-height plane.",
+    "Apply R2 mm fillets to the explicitly red continuous edge chains: both mounting-lug and lower-arm outside-perimeter chains, the upper-arm chain into the ring, both circular outside-ring rim chains, and the curved arm-to-ring transition chains shown red in VIEW B."
+   ]
+  },
+  {
+   "session": "7330dead9b7b47a7a32005ad4ebf2760",
+   "steps": [
+    "In the Body, sketch the left ear profile on the XZ plane (the plane of the length and the height, front face at y=0, rear face at y=30) as LeftEarProfile: a closed region made of the semicircular left cap of radius 12.5 mm centred at x=12.5, z=12.5 (its extreme reaching x=0, the left end datum) joined to the rectangle x=12.5 to x=30, z=0 to z=25, so the ear stands 25 mm tall on the bottom face z=0. Pad it 30 mm in the +y direction, perpendicular to the front face, as the base solid.",
+    "Sketch the left arm profile on the same XZ plane as LeftArmProfile: the rectangle x=25 to x=70, z=0 to z=15, so the arm is 15 mm tall standing on the bottom face z=0 and overlaps the left ear over x=25 to 30. Pad it 30 mm in the +y direction and fuse it to the existing solid.",
+    "Sketch the ring boss on the same XZ plane as RingBossProfile: a circle of diameter 50 mm centred at x=65.5 (the ring axis station, 65.5 mm from the left end), z=25, so it runs from z=0 at the bottom face to z=50 at the top of the part and overlaps the left arm. Pad it 30 mm in the +y direction and fuse it to the existing solid.",
+    "Sketch the right arm profile on the same XZ plane as RightArmProfile: the rectangle x=70 to x=95.5, z=0 to z=15, 15 mm tall on the bottom face z=0, overlapping the ring boss. Pad it 30 mm in the +y direction and fuse it to the existing solid.",
+    "Sketch the right ear profile on the same XZ plane as RightEarProfile: a closed region made of the rectangle x=83 to x=95.5, z=0 to z=25 joined to the semicircular right cap of radius 12.5 mm centred at x=95.5, z=12.5, whose extreme reaches x=95.5+12.5=108 mm, the right end datum, giving the overall length 108 mm (ring axis 65.5 mm from the left end plus 42.5 mm to the right end). The rectangle overlaps the right arm. Pad it 30 mm in the +y direction and fuse it to the existing solid.",
+    "Cut the plan-view silhouette: on the plan plane (the plane of the length and the depth) sketch four waste regions and pocket them through the whole height of the solid. Two at the left end, lying outside the arc of radius 15 mm centred at x=15, y=15 — that arc is tangent to the front face y=0 and the rear face y=30 (15 mm being half the 30 mm depth) and its extreme touches x=0 — each waste region running from the arc outward past x=-5 and past y=-5 (front region) or y=35 (rear region). Two at the right end, the strips of material lying outside the tab: the tab is 25 mm across the depth, its straight sides at y=2.5 and y=27.5, capped by the arc of radius 12.5 mm centred at x=95.5, y=15 reaching x=108, and each strip is blended into the full 30 mm depth by an R3 fillet at x=95.5, the waste running outward past y=-5 (front) and y=35 (rear) and past x=113.",
+    "Cut the ring bore: sketch a circle of diameter 42 mm on the front face of the boss, centred on the ring axis at x=65.5 (65.5 mm from the left end, 42.5 mm from the right end) and z=25 (25 mm above the bottom face), and pocket it through all along the depth, perpendicular to the front face.",
+    "Cut the slot: on the plan plane sketch a closed region 14 mm wide across the depth, symmetric about the mid-depth centre plane y=15 (from y=8 to y=22, 7 mm to each cheek), running along the length from its closed end at x=65.5-30=35.5 (30 mm from the ring axis) to x=65.5 at the ring axis, with R4 rounds at the two corners of the closed end (at x=35.5, y=8 and x=35.5, y=22) and open at the ring-axis end. Pocket it along the height, starting at the bottom face z=0 and cutting upward 25 mm to the ring axis level, so it passes through the full 15 mm height of the arm and opens into the Ø42 bore.",
+    "Cut the left hole: a Ø6.6 mm hole through all, drilled along the height perpendicular to the top face of the left ear, its axis at x=7 (7 mm from the left end) and y=15 (15 mm from the front face, mid-depth); the hole runs the full 25 mm ear height, crossing the 14 mm level above the bottom face. Give it a round counterbore Ø11 mm by 6 mm deep from the ear's top face for the M6 SHCS head.",
+    "Cut the right hole: a Ø6.6 mm hole through all, drilled along the height perpendicular to the top face of the right ear, its axis at x=108-12.5=95.5 (12.5 mm from the right end) and y=15 (15 mm from the front face, mid-depth); the hole runs the full 25 mm ear height, crossing its mid-height at 12.5 mm above the bottom face. Give it a round counterbore Ø11 mm by 6 mm deep from the ear's top face for the SHCS head, and a hexagonal counterbore of 11 mm circumscribed diameter by 6 mm deep from the ear's bottom face for the M6 hex nut."
+   ]
+  },
+  {
+   "session": "78471005550b4105b7446fa2f5605ba2",
+   "steps": [
+    "On the XZ plane (the front view, at the front face Y = 0), sketch a single circle of radius 40 mm (assumed Ø80 ring outer) centred at length 0, height 40 mm above the bottom face, and pad it 25 mm toward the rear so the solid lies between the front face at 0 mm and the rear face at 25 mm (reverse the pad direction if the plane normal points the other way).",
+    "On the same front plane at Y = 0, sketch the rectangular mounting foot spanning the length from -45 mm to +45 mm about the split plane (assumed 90 mm overall) and the height from 0 mm at the bottom face to 12 mm above it, and pad it 25 mm rearward, fused to the existing ring so it runs the full depth 0 to 25 mm.",
+    "On the same front plane at Y = 0, sketch the clamping-ear block spanning the length from -15 mm to +15 mm about the split plane and the height from 40 mm (the ring axis) up to 98 mm above the bottom face — 18 mm above the ring's top tangent at 40 + 40 = 80 mm — and pad it 25 mm rearward, fused to the existing solid so the ears run flush the full depth 0 to 25 mm.",
+    "Cut the Ø50 pipe bore: on the front face of the solid (Y = 0, normal pointing out of the material toward the front) sketch a circle of diameter 50 mm centred at length 0 on the split plane and height 40 mm above the bottom face, and pocket it through all so it runs the full 25 mm depth front face to rear face along the ring axis.",
+    "Cut the split: on the front face of the solid sketch a rectangle spanning the length from -3 mm to +3 mm about the split plane (6 mm wide, symmetric) and the height from 40 mm (the ring axis, so the cut starts inside the bore) up to 99 mm, above the 98 mm ear tops, and pocket it through all so the ring wall and both ears are cut open through the full 25 mm depth.",
+    "Cut the pinch-bolt hole: on the YZ plane (the side view, normal along the length) sketch a circle of diameter 7 mm centred at 12.5 mm from the front face and 90 mm above the bottom face, and pocket it through all in both directions along the length so it passes from the outer face of one ear at -15 mm, across the 6 mm split, to the outer face of the other ear at +15 mm.",
+    "Cut the two Ø9 mounting holes: on the top face of the foot at 12 mm above the bottom face sketch two circles of diameter 9 mm, centred at -32 mm and +32 mm along the length from the split plane and both at 12.5 mm from the front face, and pocket them through all downward through the full 12 mm foot thickness to the bottom face."
+   ]
+  },
+  {
+   "session": "7cbde8a3e04d4b40b88933e6dc5bbe02",
+   "steps": [
+    "Create a PartDesign Body and pad the outer plate profile: sketch on the XY plane a rectangle 100 mm along X by 80 mm along Y centred on the origin (corners at X = ±50, Y = ±40, so 50 mm from the length centre plane to each end face and 40 mm from the depth centre plane to each side face), with 6 mm radius arcs at the four corners whose centres are at (±44, ±34) — 50 − 6 = 44 along the length and 40 − 6 = 34 along the depth — joined by the four straight tangent segments. Pad this closed profile 8 mm in +Z, so the bottom face lies at Z = 0 and the top face at Z = 8. All dimensions are nominal with a general tolerance of ±0.1 mm.",
+    "Cut the central rectangular pocket: sketch on the plate's top face at Z = 8 a sharp-cornered rectangle 60 mm along X by 40 mm along Y centred on the plate centre axis (corners at X = ±30, Y = ±20 — 30 mm from the length centre plane to each short wall, 20 mm from the depth centre plane to each long wall), with 0 mm corner radius (assumed sharp internal corners, since no pocket corner radius was supplied). Pocket it 3 mm downward along −Z, perpendicular to the top face, so the pocket floor lies at Z = 8 − 3 = 5.",
+    "Pad the central boss: sketch a single Ø20 circle (10 mm radius) on the pocket floor plane at Z = 5, centred on the plate centre axis at (0, 0), and pad it 5 mm in +Z so the boss top face lies at Z = 5 + 5 = 10, i.e. 10 mm above the bottom face and 2 mm above the plate's top face.",
+    "Cut the 6-hole bolt circle: sketch on the plate's top face at Z = 8 six Ø4.5 circles (2.25 mm radius) with centres on a 35 mm radius (Ø70 bolt circle) about the plate centre axis at 60° spacing, phased with one hole on the +X length direction (assumed phase): (35, 0), (17.5, 30.31), (−17.5, 30.31), (−35, 0), (−17.5, −30.31) and (17.5, −30.31), where 35·cos60° = 17.5 and 35·sin60° = 30.31. Pocket all six through all downward along −Z so they break both the top face and the bottom face.",
+    "Cut the Ø8 motor-shaft through-bore: sketch a single Ø8 circle (4 mm radius) centred at (0, 0) on the boss top face plane at Z = 10, and pocket it through all downward along −Z so it breaks the boss top face and runs through the boss and the plate to the bottom face at Z = 0.",
+    "Cut the keyway into the bore wall: sketch on the boss top face plane at Z = 10 a rectangle spanning X from 3 mm to 6 mm and Y from −1.5 mm to +1.5 mm — 3 mm wide, symmetric about the +X radial line toward the right end face (assumed +X direction), its outer floor at 6 mm radius, i.e. 2 mm outward from the Ø8 bore wall at 4 mm radius, with the inner edge at X = 3 overlapping into the bore so the cut is clean. Pocket it 5 mm downward along −Z, from the boss top face at Z = 10 to the pocket floor at Z = 5, so the slot is open at the boss top and runs the full height of the boss.",
+    "Chamfer the outer top edge of the boss 2 mm at 45°: select only the one circular edge of Ø20 (10 mm radius) at Z = 10 where the boss top face meets the boss's outer cylindrical wall — one edge, the Ø8 bore mouth left sharp (assumed reading of \"the boss's top edge\").",
+    "Fillet R4 the two long bottom edges of the plate: select exactly the two straight edges lying in the bottom face plane Z = 0 that run parallel to the length at Y = +40 and Y = −40, each 88 mm long (100 − 2 × 6 for the corner rounds); the 4 mm radius rises 4 mm up each side face. Two edges only — the 80 mm end edges and the four corner arcs at the bottom are left sharp.",
+    "Chamfer 0.5 mm at 45° the outer boundary of the top face: select the eight edges lying in the top face plane Z = 8 that form its outer perimeter — the two 88 mm straight edges at Y = ±40, the two 68 mm straight edges at X = ±50 (80 − 2 × 6), and the four 6 mm corner arcs between them — and chamfer all eight with a 0.5 mm leg. The pocket's own top edges are not included."
+   ]
+  },
+  {
+   "session": "84b22511078e4d1381bca2a22db6032a",
+   "steps": [
+    "Pad a rectangular base solid 150 mm between the left and right outer end surfaces, 100 mm between the front and rear faces, and 50 mm between the top and bottom faces.",
+    "Cut the left blind end bore Ø40 mm, 20 mm inward from the left outer end surface, with its axis on the height centre plane and 50 mm from the front face; assumed Ø40 mm governs over the conflicting Ø30 mm implication in SECTION A-A.",
+    "Cut the right blind end bore Ø40 mm, 20 mm inward from the right outer end surface, with its axis on the height centre plane and 50 mm from the front face; assumed Ø40 mm governs over the conflicting Ø30 mm implication in SECTION A-A.",
+    "Cut a Ø35 mm hole through the full 50 mm height from the top face to the bottom face, centred on the longitudinal centre plane and 50 mm from the front face.",
+    "Cut the central through-window through the full 100 mm front-to-rear depth, centred on the longitudinal and height centre planes, using assumed straight walls 30 mm apart at 10 mm inward from each boundary of the 50 mm central region and R30 concave side rounds centred on the respective Ø40 end-bore axes; this assumed composite profile resolves the conflicting central-window definition.",
+    "Fillet all exterior edges indicated red with a 2 mm radius.",
+    "Assign the plain carbon steel material card to the finished body."
+   ]
+  },
+  {
+   "session": "898413afcfcc4ae881048b1bfcfd1a06",
+   "steps": [
+    "No document change is possible: the QA document contains no plate or thickness-defining feature to modify."
+   ]
+  },
+  {
+   "session": "8d07a842d06b487d8e7729ecba27ce4b",
+   "steps": [
+    "Створити в тілі базовий суцільний контур першої фази та витягнути його на 30 mm у напрямку front-to-rear: зовнішнє кільце Ø50 з віссю на 65.5 mm від лівої крайньої дотичної площини і на 25 mm над нижньою дотичною площиною кільця; лівий 15 mm-високий важіль-вилку, що починається на лівій крайній дотичній площині та має заокруглений замкнений кінець вирізу за 30 mm від осі кільця; правий виступ висотою 30 mm із заокругленим кінцем R12.5, центр якого лежить на 12.5 mm від правої крайньої дотичної площини, тобто на 95.5 mm від лівої площини. Витримати загальну довжину 108 mm, загальну висоту 50 mm і довідкову відстань 42.5 mm від осі кільця до правої торцевої площини.",
+    "Вирізати наскрізь через front-to-rear вісь кільця центральний отвір Ø42, співвісний із зовнішнім кільцем Ø50; центр отвору розташувати на 65.5 mm від лівої крайньої дотичної площини та на 25 mm над нижньою дотичною площиною кільця.",
+    "Вирізати відкритий праворуч горизонтальний split у кільці та правому виступі, задавши верхню межу split на 1 mm від осі кільця, а нижню межу на 2 mm від осі кільця.",
+    "Вирізати центральну заглиблену ділянку SECTION A-A між двома крайніми ділянками по 6 mm: перше внутрішнє плече розташувати на 6 mm від front outer face, протилежне плече — на 6 mm від протилежної front-to-rear outer face, а відстань між внутрішніми плечима виконати 25 mm.",
+    "Вирізати лівий fastener hole: зробити наскрізний отвір Ø6.6 і циліндричну цековку Ø11 глибиною 6 mm. Прийняти front outer face як datum і як сторону цековки; розташувати вісь отвору на 14 mm від цієї front outer face, а ближню до вирізу крайку — на 7 mm від неї; у плані розташувати вісь на 14 mm від upper long outer face та верхню крайку відкритого вирізу на 7 mm від цієї ж outer face.",
+    "Вирізати правий fastener hole на осі за 95.5 mm від лівої крайньої дотичної площини: зробити отвір Ø6.6 наскрізь і шестикутне заглиблення розміром 11 mm глибиною 6 mm з боку, позначеного для hex recess.",
+    "Заокруглити всі ребра, позначені червоним на кресленні, радіусом 2 mm.",
+    "Призначити тілу матеріал plain carbon steel."
+   ]
+  },
+  {
+   "session": "8f70ae7d93154154ada691ee2fc52a1c",
+   "steps": [
+    "Create a new Body with a new sketch on the XZ plane at Y=0 (the front face). Draw the outer obround profile: a rectangle 150 mm long (X: 0 to 150) by 50 mm tall (Z: 0 to 50), with the left and right ends replaced by tangent semicircular arcs of radius 25 mm centred at X=25, Z=25 (left) and X=125, Z=25 (right), so the left end tangent plane sits at X=0. Pad the sketch 100 mm in the +Y direction (front to rear) to create the base solid.",
+    "On the front face sketch a circle of diameter 40 mm centred 25 mm from the left end and 25 mm below the top face (X=25, Z=25). Cut it through the solid (ThroughAll) in the depth direction, parallel to the depth and perpendicular to the front face, to form bore-left.",
+    "On the front face sketch a circle of diameter 40 mm centred 125 mm from the left end and 25 mm below the top face (X=125, Z=25). Cut it through the solid (ThroughAll) in the depth direction, parallel to the depth and perpendicular to the front face, to form bore-right.",
+    "On the top face sketch a circle of diameter 35 mm centred 75 mm from the left end and 50 mm from the front face (X=75, Y=50). Cut it through the solid (ThroughAll) perpendicular to the top face, along the height direction, to form bore-centre.",
+    "On the front face sketch the pocket-slot profile in the plane of the length and the height: two concave arcs of radius 30 mm, concentric with the bore-left and bore-right axes (centres X=25, Z=25 and X=125, Z=25), each arc bulging toward the part's mid-length; joined top and bottom by straight walls 30 mm apart, running at Z=40 and Z=10 (from 10 mm to 40 mm below the top face); with a straight central portion 20 mm wide from X=65 to X=85 (10 mm either side of the 75 mm mid-length), where the two end arcs are not yet reached. Pocket this profile 20 mm deep into the front face, blind, not through.",
+    "On the rear face sketch the identical mirror-image pocket-slot profile: two concave R30 arcs concentric with the bore-left and bore-right axes (X=25, Z=25 and X=125, Z=25), flat top and bottom walls 30 mm apart at Z=40 and Z=10 (10 mm to 40 mm below the top face), and a straight central portion 20 mm wide from X=65 to X=85 centred on the 75 mm mid-length. Pocket this profile 20 mm deep into the rear face, blind, not through, leaving 60 mm of solid material between the front and rear pockets at mid-depth.",
+    "Fillet at R2 every edge drawn in red on the sheet: the tangent edges where each R25 rounded end meets the flat top and bottom sides of the outer profile (2 edges), the rims of the Ø40 bore-left and Ø40 bore-right where they meet the front and rear faces (4 edges), the rims of the Ø35 bore-centre where it meets the top and bottom faces (2 edges), and every edge of the front and rear pocket-slot cuts."
+   ]
+  },
+  {
+   "session": "94232b03985549afa7826128c1c6cf32",
+   "steps": [
+    "Create a PartDesign Body in document QA.",
+    "Create a sketch in the Body attached to the XY plane, with two circles centred at (0,0): an outer circle of 25 mm diameter and an inner circle of 8 mm diameter.",
+    "Create a Pad from the annular sketch profile with a length of 10 mm."
+   ]
+  },
+  {
+   "session": "970b565f0a0e400b83a6d5d3abc4922d",
+   "steps": [
+    "Create a Part Design Body and add a sketch on the XY plane containing a 30 mm × 30 mm square positioned with its corners at (-15,-15) and (15,15).",
+    "Create a 30 mm Pad from the square sketch to form the cube.",
+    "Add a sketch attached to one 30 mm square face of the cube containing a circle centred at the face centre with a 10 mm diameter.",
+    "Create a Through All Pocket from the circular sketch to cut the hole completely through the cube."
+   ]
+  },
+  {
+   "session": "98a5ead873c94103ba8a2baf653dd436",
+   "steps": [
+    "In the existing Body, sketch the outer capsule profile on the XZ plane, labelled OuterProfile, working in the model frame where X runs along the length, Z runs up the height and Y runs front to rear: bottom face at Z = 0, top face at Z = 50, left end tangent plane at X = 0, right end tangent plane at X = 150. The profile is an obround 150 mm long by 50 mm tall — a top line from (25, 50) to (125, 50), a bottom line from (25, 0) to (125, 0), a left R25 arc centred at (25, 25) (its centre 25 mm from the left end tangent plane and 25 mm below the top face, on the mid-height plane) running from (25, 0) round through (0, 25) to (25, 50), and a right R25 arc centred at (125, 25) running from (125, 50) round through (150, 25) to (125, 0). Pad this single closed profile 100 mm symmetric to the plane, so the front face lies at Y = -50 and the rear face at Y = +50, giving the 100 mm depth front to rear.",
+    "Sketch a single ø40 circle on the front face of the solid (the flat face at Y = -50), centred on the left bore axis at X = 25, Z = 25 — 25 mm from the left end tangent plane and 25 mm below the top face, on the mid-height plane — and cut it as a pocket of type ThroughAll, running front face to rear face perpendicular to the front face along the 100 mm depth.",
+    "Sketch a single ø40 circle on the front face of the solid (the flat face at Y = -50), centred on the right bore axis at X = 125, Z = 25 — 125 mm from the left end tangent plane along the length, 150 - 125 = 25 mm from the right end tangent plane, and 25 mm below the top face on the mid-height plane — and cut it as a pocket of type ThroughAll, running front face to rear face perpendicular to the front face.",
+    "Sketch a single ø35 circle on the top face of the solid (the flat face at Z = 50), centred at X = 125 - 50 = 75 (50 mm from the right bore axis along the length) and Y = 0 (the mid-depth plane, 50 mm from the rear face at Y = +50), and cut it as a pocket of type ThroughAll, running perpendicular to the top face down the height to the bottom face.",
+    "Sketch the front pocket profile on the front face of the solid (the flat face at Y = -50, a plane of the length and the height), as one closed wire 30 mm tall: a top line at Z = 40 (10 mm below the top face at Z = 50), a bottom line at Z = 10 (10 mm above the bottom face at Z = 0), a left end wall that is an R30 arc centred on the left bore axis at (25, 25) and concave toward the pocket, running from (50.98, 10) through its nearest point to the pocket at (55, 25) to (50.98, 40) — where 25 + sqrt(30² - 15²) = 25 + 25.9808 = 50.98 gives the arc's ends at Z = 10 and Z = 40, and the wall stands 30 mm from the axis, i.e. 30 - 20 = 10 mm of material out from the ø40 bore wall at mid-height — and a right end wall that is the mirror R30 arc centred on the right bore axis at (125, 25), running from (99.02, 40) through (95, 25) to (99.02, 10), where 125 - 25.9808 = 99.02. Cut this profile as a blind pocket 20 mm deep, perpendicular to the front face in the same direction as the bore axes, from Y = -50 to Y = -30.",
+    "Sketch the rear pocket profile on the rear face of the solid (the flat face at Y = +50, a plane of the length and the height), as the mirror of the front pocket: one closed wire 30 mm tall with a top line at Z = 40 (10 mm below the top face) and a bottom line at Z = 10 (10 mm above the bottom face), a left end wall that is an R30 arc centred on the left bore axis at X = 25, Z = 25, concave toward the pocket, reaching X = 55 at mid-height and X = 25 + sqrt(30² - 15²) = 50.98 at Z = 10 and Z = 40, and a right end wall that is an R30 arc centred on the right bore axis at X = 125, Z = 25, reaching X = 95 at mid-height and X = 125 - 25.9808 = 99.02 at Z = 10 and Z = 40. Cut this profile as a blind pocket 20 mm deep, perpendicular to the rear face in the same direction as the bore axes, from Y = +50 to Y = +30.",
+    "Fillet at R2 the eight edges of the capsule silhouette — the outer boundary of the front face at Y = -50 and of the rear face at Y = +50, each of which is four edges (the top line, the bottom line and the two R25 end arcs) — for exactly 8 edges in this fillet.",
+    "Fillet at R2 the four ø40 bore mouth circles — where the left bore and the right bore meet the front face at Y = -50 and the rear face at Y = +50 — for exactly 4 circular edges in this fillet.",
+    "Fillet at R2 the edges of the two pocket cavities: for each pocket, the four mouth edges where its walls meet the face it opens through, the four edges where its walls meet its floor, and the four vertical junction edges where the R30 arc walls meet the top and bottom walls — 12 edges per pocket, for exactly 24 edges in this fillet.",
+    "Assign the plain carbon steel material card to the Body, looking up the card's uuid from the installed material library rather than assuming one."
+   ]
+  },
+  {
+   "session": "9958ccdc8e324a74ade9b08405be465b",
+   "steps": [
+    "Pad the Phase 1 main outer profile 30 mm front to rear: set the left end tangent plane at length 0 mm, the ring axis at length 65.5 mm and height 25 mm above the ring bottom tangent plane, form the Ø50 ring outside, connect a 15 mm-high left ear from the ring bottom to the ring-axis height, and connect a 30 mm-high right ear with faces 15 mm above and below the ring axis; form the right rounded end with an R12.5 centre at length 95.5 mm, 30 mm right of the ring axis, giving the right end face at length 108 mm.",
+    "Pad the left mounting ear 14 mm wide about the longitudinal centre plane, with its semicircular plan end R7 centred 7 mm right of the Phase 1 left end tangent plane, and join it to the Phase 1 main outer profile.",
+    "Pocket the Ø42 ring bore through all from the front face to the rear face, concentric with the Ø50 ring outside.",
+    "Pocket the central longitudinal split through all 30 mm of depth from the ring opening to the right end face, parallel to the length and centred on the longitudinal centre plane, with its gap spanning 1 mm above and 2 mm below the horizontal ring-axis line.",
+    "Pocket the Phase 1 left mounting hole Ø6.6 through all and counterbore it Ø11 to 6 mm depth from the outer face, centred on the 14 mm-wide left-ear centre plane at an assumed 20 mm from the Phase 1 left end tangent plane toward the ring axis.",
+    "Pocket the right mounting hole Ø6.6 through all and its Ø11 hexagonal recess 6 mm deep from the outer face, centred on the longitudinal centre plane at the R12.5 right-end-round centre, 30 mm right of the ring axis and at the ring-axis height.",
+    "Pocket the tapered interior cutout through all 30 mm of depth: make the inner opening 14 mm wide, symmetric about the left mounting-ear centre plane with each side boundary 7 mm from it, use a U-ended inner termination, and use tangent taper boundaries to meet the ring-side opening on the horizontal ring-axis line at an assumed taper termination 30 mm left of the ring axis.",
+    "Apply R2 fillets to every drawing-marked red edge: the outer perimeter edges of both mounting ears and the ring, the front and rear Ø50 ring rim edges, the cutout perimeter edges, the split-opening edges, and the marked right-ear-to-ring transition edges.",
+    "Assign the plain carbon steel material card to the completed Phase 1 body."
+   ]
+  },
+  {
+   "session": "a0e1dede5b36457ba0ea078911346277",
+   "steps": [
+    "Створити Body і базову шестигранну призму гайки ISO 4032 M8: ескіз правильного шестикутника з центром у початку координат, розміром під ключ s = 13 мм (апофема 6,5 мм; радіус до вершин 7,5056 мм), та витягнути його на висоту m = 6,5 мм.",
+    "Виконати наскрізний внутрішній різьбовий отвір ISO метричної різьби M8×1,25: сформувати базовий отвір за основним внутрішнім діаметром D1 = 6,647 мм і вирізати гвинтову канавку з кроком 1,25 мм та профілем 60°, що утворює реальну різьбу з номінальним великим діаметром 8 мм по всій висоті гайки.",
+    "Зняти фаски на верхньому й нижньому зовнішніх ребрах шестигранника та на входах різьбового отвору, щоб отримати стандартний вигляд гайки ISO 4032; розмір фасок прийняти як технологічно малий, без зміни заданих розмірів під ключ 13 мм і висоти 6,5 мм."
+   ]
+  },
+  {
+   "session": "a67a88bbcdc042dfac870fd1908f7ff7",
+   "steps": [
+    "Створити в наявному Body ескіз LowerChamferSmall як Sketcher::SketchObject для нижнього малого шестикутного перерізу; розміри ISO 4033 для M8: розмір під ключ 13 мм, висота гайки 6.5 мм; для прийнятої фаски 30° висотою 0.5 мм апофема малого шестикутника становить 6.211325 мм.",
+    "Приєднати ескіз LowerChamferSmall до XY-plane на висоті Z=0 мм через AttachmentSupport і MapMode FlatFace.",
+    "Додати до ескізу LowerChamferSmall перший відрізок малого шестикутника від [3.586110, 6.211325] до [-3.586110, 6.211325].",
+    "Додати до ескізу LowerChamferSmall другий відрізок малого шестикутника від [-3.586110, 6.211325] до [-7.172220, 0].",
+    "Додати до ескізу LowerChamferSmall третій відрізок малого шестикутника від [-7.172220, 0] до [-3.586110, -6.211325].",
+    "Додати до ескізу LowerChamferSmall четвертий відрізок малого шестикутника від [-3.586110, -6.211325] до [3.586110, -6.211325].",
+    "Додати до ескізу LowerChamferSmall п'ятий відрізок малого шестикутника від [3.586110, -6.211325] до [7.172220, 0].",
+    "Додати до ескізу LowerChamferSmall шостий відрізок малого шестикутника від [7.172220, 0] до [3.586110, 6.211325].",
+    "Створити в Body ескіз FullHexLower на XY-plane зі зміщенням Z=0.5 мм для повного шестикутного перерізу з розміром під ключ 13 мм.",
+    "Приєднати ескіз FullHexLower до XY-plane через AttachmentSupport і MapMode FlatFace, задавши зміщення вздовж Z 0.5 мм.",
+    "Додати до ескізу FullHexLower перший відрізок повного шестикутника від [3.752777, 6.5] до [-3.752777, 6.5].",
+    "Додати до ескізу FullHexLower другий відрізок повного шестикутника від [-3.752777, 6.5] до [-7.505553, 0].",
+    "Додати до ескізу FullHexLower третій відрізок повного шестикутника від [-7.505553, 0] до [-3.752777, -6.5].",
+    "Додати до ескізу FullHexLower четвертий відрізок повного шестикутника від [-3.752777, -6.5] до [3.752777, -6.5].",
+    "Додати до ескізу FullHexLower п'ятий відрізок повного шестикутника від [3.752777, -6.5] до [7.505553, 0].",
+    "Додати до ескізу FullHexLower шостий відрізок повного шестикутника від [7.505553, 0] до [3.752777, 6.5].",
+    "Створити PartDesign::AdditiveLoft LowerChamfer у Body між LowerChamferSmall на Z=0 мм і FullHexLower на Z=0.5 мм; це створює нижню фаску висотою 0.5 мм, прийняту під кутом 30°.",
+    "Створити PartDesign::Pad CentralNutBody з профілю FullHexLower довжиною 5.5 мм у додатному напрямку Z, від Z=0.5 мм до Z=6.0 мм.",
+    "Створити в Body ескіз FullHexUpper на XY-plane зі зміщенням Z=6.0 мм для верхнього повного шестикутного перерізу, розмір під ключ 13 мм.",
+    "Приєднати ескіз FullHexUpper до XY-plane через AttachmentSupport і MapMode FlatFace, задавши зміщення вздовж Z 6.0 мм.",
+    "Додати до ескізу FullHexUpper перший відрізок повного шестикутника від [3.752777, 6.5] до [-3.752777, 6.5].",
+    "Додати до ескізу FullHexUpper другий відрізок повного шестикутника від [-3.752777, 6.5] до [-7.505553, 0].",
+    "Додати до ескізу FullHexUpper третій відрізок повного шестикутника від [-7.505553, 0] до [-3.752777, -6.5].",
+    "Додати до ескізу FullHexUpper четвертий відрізок повного шестикутника від [-3.752777, -6.5] до [3.752777, -6.5].",
+    "Додати до ескізу FullHexUpper п'ятий відрізок повного шестикутника від [3.752777, -6.5] до [7.505553, 0].",
+    "Додати до ескізу FullHexUpper шостий відрізок повного шестикутника від [7.505553, 0] до [3.752777, 6.5].",
+    "Створити в Body ескіз UpperChamferSmall на XY-plane зі зміщенням Z=6.5 мм для малого верхнього шестикутного перерізу; прийнята фаска 30° висотою 0.5 мм дає апофему 6.211325 мм.",
+    "Приєднати ескіз UpperChamferSmall до XY-plane через AttachmentSupport і MapMode FlatFace, задавши зміщення вздовж Z 6.5 мм.",
+    "Додати до ескізу UpperChamferSmall перший відрізок малого шестикутника від [3.586110, 6.211325] до [-3.586110, 6.211325].",
+    "Додати до ескізу UpperChamferSmall другий відрізок малого шестикутника від [-3.586110, 6.211325] до [-7.172220, 0].",
+    "Додати до ескізу UpperChamferSmall третій відрізок малого шестикутника від [-7.172220, 0] до [-3.586110, -6.211325].",
+    "Додати до ескізу UpperChamferSmall четвертий відрізок малого шестикутника від [-3.586110, -6.211325] до [3.586110, -6.211325].",
+    "Додати до ескізу UpperChamferSmall п'ятий відрізок малого шестикутника від [3.586110, -6.211325] до [7.172220, 0].",
+    "Додати до ескізу UpperChamferSmall шостий відрізок малого шестикутника від [7.172220, 0] до [3.586110, 6.211325].",
+    "Створити PartDesign::AdditiveLoft UpperChamfer у Body між FullHexUpper на Z=6.0 мм та UpperChamferSmall на Z=6.5 мм; це створює верхню фаску висотою 0.5 мм і завершує загальну висоту гайки 6.5 мм.",
+    "Створити в Body ескіз M8ThreadProfile на XY-plane зі зміщенням Z=6.5 мм для отвору різьби M8.",
+    "Приєднати ескіз M8ThreadProfile до XY-plane через AttachmentSupport і MapMode FlatFace, задавши зміщення вздовж Z 6.5 мм.",
+    "Додати до ескізу M8ThreadProfile коло з центром [0, 0] і радіусом 4 мм, тобто номінальний діаметр різьби M8 дорівнює 8 мм.",
+    "Створити PartDesign::Hole M8x1_25Thread через всю висоту гайки за профілем M8ThreadProfile: номінальний діаметр 8 мм, метрична внутрішня різьба з прийнятим класом 6H, кутом профілю 60°, стандартним великим кроком 1.25 мм і довжиною різьби 6.5 мм; напрямок отвору вздовж нормалі XY-plane у від'ємному Z."
+   ]
+  },
+  {
+   "session": "a7b95d14ea20491c8dd6c654b3285bf3",
+   "steps": [
+    "In the Body, sketch a regular hexagon on the XY plane centred on the origin (the nut axis is the Z axis, the bearing face is the plane Z=0) and pad it 9.3 mm along +Z, so the prism runs from the bearing face at Z=0 to the top face at Z=9.3. The hexagon has flat-to-flat width 16 mm, i.e. apothem 8 mm from the axis to each flat, so its circumradius is 8 / cos(30°) = 9.2376 mm and the six vertices are computed at 9.2376 mm and angles 0°, 60°, 120°, 180°, 240°, 300° — vertices (9.2376, 0), (4.6188, 8.0), (-4.6188, 8.0), (-9.2376, 0), (-4.6188, -8.0), (4.6188, -8.0) — giving across-corners 2 x 9.2376 = 18.475 mm; the tabulated e min of 17.77 mm is the minimum over the s tolerance band and the modelled hexagon is driven by the nominal s = 16 as the product-grade entry directs.",
+    "Cut the tapped hole's core through the prism: sketch a circle of diameter 8.376 mm (the M10 x 1.5 6H nominal minor diameter, radius 4.188 mm) centred on the nut axis on the XY plane at the bearing face, and pocket it through all so it opens on both the bearing face and the top face, the cut running along the nut axis.",
+    "Cut the true helical thread with a subtractive helix, right-hand, axis the nut axis, pitch 1.5 mm, height 9.3 + 2 x 1.5 = 12.3 mm starting one pitch below the bearing face at Z = -1.5 mm and ending at Z = 10.8 mm so the thread runs complete through the full 9.3 mm height. The swept profile is the ISO 68-1 internal-thread groove drawn as one closed six-sided wire in the XZ plane, radius measured from the nut axis, centred at Z = -1.5 mm: outer flat at the major radius 5.0 mm from Z = -1.59375 to Z = -1.40625 (flat width P/8 = 0.1875 mm), flanks at 30° from the radial direction (60° included) opening inward so that at the minor radius 4.188 mm the axial width is 0.1875 + 2 x (5.0 - 4.188) x tan(30°) = 0.1875 + 0.9375 = 1.125 mm, i.e. from Z = -2.0625 to Z = -0.9375, and the profile closed back with a short rectangle running inward from radius 4.188 mm to radius 4.0 mm at those same two Z values so the cut overlaps the 8.376 mm bore wall and leaves no sliver.",
+    "Cut the top-face chamfer as a subtractive revolution of 360° about the nut axis: in the XZ plane draw the closed triangle with vertices (radius 7.3 mm, Z = 9.3 mm), (radius 10.0 mm, Z = 9.3 mm) and (radius 10.0 mm, Z = 9.3 - (10.0 - 7.3) x tan(30°) = 9.3 - 1.5588 = 7.7412 mm), so the revolved cone leaves the washer face ⌀14.6 mm at the top face and rises at 30° from that face outward; radius 10.0 mm is outside the hexagon circumradius 9.2376 mm, so the six corners are cut back and the corners disappear at depth (9.2376 - 7.3) x tan(30°) = 1.1187 mm below the top face.",
+    "Cut the bearing-face chamfer as a subtractive revolution of 360° about the nut axis, the mirror of the top one: in the XZ plane draw the closed triangle with vertices (radius 7.3 mm, Z = 0), (radius 10.0 mm, Z = 0) and (radius 10.0 mm, Z = 0 + (10.0 - 7.3) x tan(30°) = 1.5588 mm), leaving the washer face ⌀14.6 mm at the bearing face and cutting the six hexagon corners back at 30° from that face.",
+    "Cut both thread-entry countersinks in one subtractive revolution of 360° about the nut axis, from a single XZ-plane sketch holding two closed wires (assumed size: 120° included angle, breaking out to ⌀10.6 mm, i.e. radius 5.3 mm at each face, since ISO 4033 tabulates none). Upper wire: (radius 4.0 mm, Z = 9.3), (5.3, 9.3), (4.188, 9.3 - (5.3 - 4.188) / tan(60°) = 9.3 - 0.642 = 8.658), (4.0, 8.658). Lower wire: (4.0, 0), (5.3, 0), (4.188, 0.642), (4.0, 0.642). Each cone therefore starts at its face and runs in to meet the thread minor radius 4.188 mm 0.642 mm inside.",
+    "Assign the nut a plain uncoated steel material (assumed property class 8 per ISO 898-2, nobody having answered) by setting the Body's ShapeMaterial to the steel card obtained from the materials manager, looking the card's uuid up by name from the cards this build actually carries rather than writing a uuid in."
+   ]
+  },
+  {
+   "session": "a8eb830275b944b9a94ec0eac41b97d9",
+   "steps": [
+    "Створити в існуючому Body ескіз `HexProfile` типу Sketcher::SketchObject для шестигранника гайки ISO 4032; прийняти стандартну гайку M8×1.25 з розміром під ключ 13 мм і висотою 6.5 мм.",
+    "Приєднати ескіз `HexProfile` до базової площини XY_Plane через AttachmentSupport та MapMode FlatFace.",
+    "Додати до ескізу `HexProfile` відрізок Part.LineSegment від [6.5, 3.752776] до [0, 7.505553] мм.",
+    "Додати до ескізу `HexProfile` відрізок Part.LineSegment від [0, 7.505553] до [-6.5, 3.752776] мм.",
+    "Додати до ескізу `HexProfile` відрізок Part.LineSegment від [-6.5, 3.752776] до [-6.5, -3.752776] мм.",
+    "Додати до ескізу `HexProfile` відрізок Part.LineSegment від [-6.5, -3.752776] до [0, -7.505553] мм.",
+    "Додати до ескізу `HexProfile` відрізок Part.LineSegment від [0, -7.505553] до [6.5, -3.752776] мм.",
+    "Додати до ескізу `HexProfile` замикаючий відрізок Part.LineSegment від [6.5, -3.752776] до [6.5, 3.752776] мм.",
+    "Створити в Body твердотільну операцію PartDesign::Pad `NutBlank` за профілем `HexProfile` на 6.5 мм, несиметрично до площини ескізу і без реверсу.",
+    "Створити в Body ескіз `ThreadProfile` типу Sketcher::SketchObject для осьового різьбового отвору M8×1.25.",
+    "Приєднати ескіз `ThreadProfile` до верхньої плоскої грані операції `NutBlank` через AttachmentSupport та MapMode FlatFace.",
+    "Додати до ескізу `ThreadProfile` коло Part.Circle з центром [0, 0] мм і радіусом 3.3235 мм; це базовий внутрішній діаметр 6.647 мм для ISO метричної різьби M8×1.25.",
+    "Створити в Body операцію PartDesign::Hole `ThreadedHole` за профілем `ThreadProfile`: виконати отвір глибиною 6.5 мм, діаметром 6.647 мм, з реально змодельованою правою внутрішньою ISO метричною різьбою M8, кроком 1.25 мм, кутом профілю 60°, довжиною різьби 6.5 мм і класом допуску 6H.",
+    "Створити в Body операцію PartDesign::Chamfer `OuterChamfers` на шести зовнішніх ребрах верхнього периметра та шести зовнішніх ребрах нижнього периметра `ThreadedHole`; застосувати симетричну фаску 0.8 мм під 45°. Значення 0.8 мм прийнято для моделювання стандартних фасок гайки ISO 4032, оскільки стандарт задає їх допустимою геометричною областю, а не одним номіналом."
+   ]
+  },
+  {
+   "session": "ad926df393f747d1b862a0cccb64b316",
+   "steps": [
+    "Створити в Body ескіз на площині XY з колом Ø70 мм у центрі координат і виконати Pad на 3 мм, утворивши суцільне кругле дно підстаканника.",
+    "На верхній грані дна створити ескіз із двома концентричними колами з центром (0,0): зовнішнім Ø70 мм і внутрішнім Ø64 мм, та виконати Pad кільця на 47 мм, щоб отримати підстаканник загальною висотою 50 мм для посадкового місця Logan.",
+    "Зробити Fillet 2 мм на верхньому зовнішньому та внутрішньому ребрах бортика, щоб прибрати гострі краї підстаканника."
+   ]
+  },
+  {
+   "session": "b0f1fd027ba745b891986686820576b4",
+   "steps": [
+    "Create a 100 mm × 60 mm rectangle on the XY-plane with its wall-end outer face at X = 0, pad it 10 mm in +Z to form the base plate.",
+    "Create a 60 mm-wide × 50 mm-high wall profile on the YZ plane at X = 0, spanning Y = 0–60 mm and rising from Z = 10 mm to Z = 60 mm, then pad it 10 mm in +X to form the full-width vertical wall; the 60 mm overall wall height is measured from the base bottom at Z = 0.",
+    "Fillet the concave inside longitudinal edge where the wall meets the base top face with radius 8 mm.",
+    "Create two Ø12 mm circles on the base top face at (X, Y) = (70, 15) mm and (70, 45) mm, then pocket them through the 10 mm base thickness to make the two through holes.",
+    "Create a Ø20 mm circle on the wall outer face at Y = 30 mm and Z = 40 mm, then pocket it through the 10 mm wall thickness to make the wall through hole.",
+    "Assign an aluminium material card with density 2700 kg/m³ to the completed bracket."
+   ]
+  },
+  {
+   "session": "b31fc95ae4de442fb6ca454b7be68f57",
+   "steps": [
+    "Замінити наявну базову форму прямокутним профілем 150 × 100 мм від лівої крайньої дотичної площини та передньої грані й витягнути його на 50 мм між нижньою та верхньою гранями.",
+    "Вирізати наскрізний отвір діаметром 35 мм через висоту 50 мм із віссю на відстані 75 мм від лівої крайньої дотичної площини та 50 мм від передньої грані.",
+    "Вирізати два протилежні торцеві вирізи симетрично відносно поздовжньої площини на відстані 0 мм від площини середини між передньою та задньою гранями, задати уклон стінок 5,0° і виконати чотири кореневі переходи радіусом 20 мм у положеннях 40 мм від передньої та задньої граней.",
+    "Вирізати внутрішні профілі діаметром 40 мм і сектори розкриття 60,0° для чотирьох відкритих гаків: вісь лівої пари розташувати на 25 мм від лівої крайньої дотичної площини, вісь правої пари — на 25 мм від правої крайньої дотичної площини, а передні й задні гаки залишити протяжністю 40 мм від відповідних граней.",
+    "Перебудувати передній і задній центральні вирізи з наявною шириною та наявними положеннями центрів стінок фази 1: розташувати їх симетрично на 0 мм від поздовжньої центральної площини, заглибити кожен на 20 мм від відповідної грані, залишити по 10 мм матеріалу від верхньої та нижньої граней, задати увігнуті бічні стінки радіусом 30 мм і уклон 5,0°.",
+    "Виконати заокруглення радіусом 2 мм лише на всіх крайках, позначених червоним, включно з ободами гаків і вирізів."
+   ]
+  },
+  {
+   "session": "b83650955ecd41c89a54907fe84ea8ba",
+   "steps": [
+    "In Body, sketch on the XY plane (Z = 0, the bottom face; X runs along the length with X = 0 at the left end tangent plane, Y runs front to rear with Y = 0 the mid-plane of the depth, Z is the height) the plan outline of the left pad and arm: a semicircular left end of R12.5 centred at (12.5, 0) running from (12.5, -12.5) round the left to (12.5, +12.5), straight sides at Y = +12.5 and Y = -12.5 from X = 12.5 to X = 65.5 (the ring axis station, 65.5 from the left end tangent plane), closed by a straight line at X = 65.5. Pad it 15 mm in +Z, so the arm is 15 mm thick with its underside on the bottom face and its top face at Z = 15, i.e. 25 - 15 = 10 mm below the ring axis. Third-angle projection: the plan outline read off the bottom view is laid out in this XY plane with X to the right as in the front view.",
+    "Sketch on the XZ plane a circle of ⌀50 (R25) centred at X = 65.5, Z = 25 — the ring axis, 65.5 mm right of the left end tangent plane, 42.5 mm left of the right end tangent plane at X = 108 (65.5 + 42.5 = 108), and 25 mm above the bottom face so the ring's lowest tangent plane is at Z = 0 and its top at Z = 50. Pad it 30 mm symmetric to the plane, 15 mm each side of the mid-plane of the depth, so the ring band stands 2.5 mm proud of the 25 mm pads each side ((30 - 25)/2 = 2.5). Its axis runs front to rear, perpendicular to the front view.",
+    "Cut the ring bore: sketch on the XZ plane a circle of ⌀42 (R21) centred at X = 65.5, Z = 25, and pocket it through all in both directions so the bore runs the full 30 mm front to rear.",
+    "Pad the right lug: sketch on the XY plane offset 10 mm in +Z (Z = 10, which is 15 mm below the ring axis at Z = 25) the lug's plan outline — straight sides at Y = +12.5 and Y = -12.5 from X = 65.5 to X = 83, a semicircular right end of R12.5 centred at (95.5, 0) running from (95.5, +12.5) round the right to (95.5, -12.5) and so reaching X = 95.5 + 12.5 = 108, the right end tangent plane, closed by a straight line at X = 65.5. Pad it 30 mm in +Z, from Z = 10 to Z = 40, i.e. 15 mm below and 15 mm above the ring axis.",
+    "Pad the web (gusset) that fills between the arm's top face and the ring's outer surface: sketch on the XZ plane the closed profile made of a straight line at Z = 15 from (35.5, 15) — 30 mm left of the ring axis, 65.5 - 30 = 35.5 — to the point where the ⌀50 outer circle meets Z = 15 at X = 65.5 - √(25² - 10²) = 65.5 - 22.913 = 42.587; then the arc of the ⌀50 circle (centre 65.5, 25) up and left from (42.587, 15) to (40.79, 21.18); then a blend arc of radius r = 5.357 mm, centre (35.5, 20.357), running back down to (35.5, 15), tangent to the ⌀50 circle at (40.79, 21.18) and tangent to the Z = 15 line at (35.5, 15). The blend radius comes from external tangency: √(30² + (r - 10)²) = 25 + r → 1000 - 20r = 625 + 50r → r = 375/70 = 5.357; the tangency point is (65.5, 25) + (25/30.357)·(-30, -4.643) = (40.79, 21.18). Pad this profile 25 mm symmetric to the plane, 12.5 mm each side of the mid-plane of the depth.",
+    "Cut the web window: on the XZ plane sketch the same closed profile as the web — line at Z = 15 from (35.5, 15) to (42.587, 15), the ⌀50 circle arc to (40.79, 21.18), the R5.357 blend arc back to (35.5, 15) — and pocket it 14 mm symmetric to the plane, 7 mm each side of the mid-plane of the depth, leaving a wall of (25 - 14)/2 = 5.5 mm standing each side.",
+    "Cut the 2 mm split: on the XZ plane sketch a rectangle spanning X = 86.5 to X = 109 and Z = 24 to Z = 26 — the gap faces are perpendicular to the height, 1 mm above and 1 mm below the ring axis at Z = 25, its left end at the ⌀42 bore wall, 65.5 + 21 = 86.5, and its right end running past the right end tangent plane at X = 108 so the gap is open at the right end face — and pocket it through all in both directions, through the full 30 mm depth.",
+    "Cut the left screw hole: a counterbored hole with its axis along the height, centred at X = 12.5 (12.5 mm from the left end tangent plane, concentric with the left end radius) and Y = 0 on the mid-plane of the depth, ⌀6.6 through the whole 15 mm arm, with a ⌀11 counterbore 6 mm deep starting at the bottom face Z = 0 and running up to Z = 6. Check the cut direction against the solid so the hole runs from the bottom face up through the arm.",
+    "Cut the right screw hole: a counterbored hole with its axis along the height, centred at X = 95.5 (12.5 mm from the right end tangent plane at X = 108, and 108 - 12.5 - 65.5 = 30 mm right of the ring axis) and Y = 0 on the mid-plane of the depth, ⌀6.6 through the whole 30 mm lug from Z = 10 to Z = 40, crossing the 2 mm split gap, with a ⌀11 counterbore 6 mm deep starting at the lug's bottom face Z = 10 and running up to Z = 16. Check the cut direction against the solid so the hole runs from the lug's bottom face upwards.",
+    "Cut the hexagonal recess in the lug's top face: sketch a regular hexagon centred at X = 95.5, Y = 0, circumscribed by ⌀11 (11 mm across corners, so 11·cos(30°) = 9.526 mm across flats), lying on the lug's top face at Z = 40, and pocket it 6 mm downwards to Z = 34.",
+    "Apply R2 fillets to eight edges of the solid: the two ⌀50 circular edges where the ring's outer surface meets its front and rear end faces at Y = -15 and Y = +15, and the two mouth loops of the web window at Y = -7 and Y = +7, each loop being the three edges of the window profile (the straight edge on the arm's top face, the ⌀50 arc and the R5.357 blend arc), 6 edges in all. Select these by computed geometry and fail the step if the selection does not come to eight edges.",
+    "Assign the material to the finished solid: set ShapeMaterial from the materials card 'Steel-1C22', uuid c424fe3d-5f49-4c39-9467-8a2a800076aa, density 7.8e-06 kg/mm^3, as the nearest available plain carbon steel card, and leave the document's units as millimetres, in which every dimension above is given."
+   ]
+  },
+  {
+   "session": "c751f9b97cee4bbbb07635721ead0b08",
+   "steps": [
+    "Create the plain carbon-steel base solid in millimeters as a 150 mm long × 50 mm high × 100 mm deep rectangular prism, with the 100 mm depth running from the front face to the rear face.",
+    "Cut the left Ø40 mm blind bore from the front face to a depth of 20 mm, with its axis 25 mm below the top face and 25 mm from the left end face.",
+    "Cut the right Ø40 mm blind bore from the front face to a depth of 20 mm, with its axis 25 mm below the top face and 25 mm from the right end face.",
+    "Cut the Ø35 mm top bore through the full 50 mm height from the top face to the bottom face, with its axis 75 mm from the left end face and 50 mm from the front face.",
+    "Cut the central shaped opening through the full 100 mm depth from the front face to the rear face, using straight upper and lower boundaries 10 mm from the top and bottom faces and concave R30 mm side arcs centred on the respective Ø40 bore axes; terminate each arc at its intersections with those 10 mm-wall boundaries. Use this assumed arc-and-wall definition rather than the conflicting recorded 50 mm position from the left end face, whose extent is thereby determined by the intersections.",
+    "Apply R2 mm fillets to the complete outer perimeter edge chains of the front and rear faces, both Ø40 blind-bore mouth edges on the front face, and the complete perimeter edge chains of the central shaped opening on both the front and rear faces."
+   ]
+  },
+  {
+   "session": "c7d892a556624c57b31b508362be4b4b",
+   "steps": [
+    "Pad the compound outer profile in the length-height plane 30 mm front to rear: set the leftmost tangent plane at 0 mm, the bottom tangent plane at 0 mm, and the ring axis at 65.5 mm from the leftmost plane and 25 mm above the bottom plane; form the Ø50 mm outer ring, the 15 mm-high left mounting foot with its left rounded end at R15 mm and axis 15 mm from the leftmost plane, and the 30 mm-high right mounting ear centered on the ring-axis height with an R12.5 mm exterior end whose axis is 12.5 mm from the 108 mm rightmost tangent plane.",
+    "Pocket the concentric Ø42 mm ring bore through all 30 mm of the body depth, with its axis parallel to the front-to-rear depth direction.",
+    "Pocket the 2 mm-wide ring split through all 30 mm of the body depth from the Ø42 mm bore to the right exterior, centered on the ring axis so each split face is 1 mm from that axis.",
+    "Pocket the curved/tapered web cutout along the front-to-rear depth direction for an assumed 14 mm depth, starting 7 mm from the top face and ending 9 mm from the front face; use the VIEW B profile bounded by the concave R21 mm lower-left quadrant of the Ø42 mm bore, from the bore leftmost point at the ring-axis height to its lower tangent at the bottom plane, with the cutout extending 30 mm toward the left mounting ear from a right end assumed coincident with the ring-axis plane. This assumed offset-depth cut resolves the conflicting full-through-depth and centered-depth statements.",
+    "Cut the left mounting-hole Ø6.6 mm through all 30 mm of the front-to-rear depth at the left rounded-end axis and depth centre plane, then recess the shown mounting-ear face with a concentric circular Ø11 mm counterbore 6 mm deep.",
+    "Cut the right mounting-hole Ø6.6 mm through all 30 mm of the front-to-rear depth at the right rounded-end axis and depth centre plane, then pocket an assumed regular hexagonal 11 mm across-flats recess 6 mm deep from the shown mounting-ear face; the assumed hexagonal form follows the explicit upper-plan HEX Ø11 ↧6 depiction and resolves the conflicting circular-counterbore callout.",
+    "Fillet the specified exterior edges at R2 mm: the exposed perimeter edges of the left mounting ear and foot, outer ring, right mounting ear, ring-split exterior, web-cutout opening, cutout-mouth vertical edges, lower foot edge, and the curved cutout edge following the ring bore.",
+    "Assign the plain carbon steel material card to the completed body."
+   ]
+  },
+  {
+   "session": "cc02485ac0614bc183f00b6f3ec529e8",
+   "steps": [
+    "Побудувати на площині XY кільцевий ескіз кореневої заготовки з припущеним зовнішнім діаметром 35 мм і співвісним наскрізним отвором припущеного діаметра 8 мм; діаметр 35 мм відповідає прямозубій шестірні з припущеними модулем 2 мм, 20 зубцями та висотою ніжки 1,25 модуля, тобто 2,5 мм.",
+    "Симетрично витягнути кільцевий профіль на припущену осьову товщину 10 мм, по 5 мм з кожного боку площини XY.",
+    "Побудувати на площині XY замкнений профіль одного зубця прямозубої шестірні без зміщення профілю та без бічного зазору: припущений модуль 2 мм, 20 зубців, кут профілю 20°, ділильний діаметр 40 мм, основний діаметр 37,5877 мм, діаметр вершин 44 мм, діаметр западин 35 мм, висота головки 2 мм і висота ніжки 2,5 мм. Кожну евольвентну сторону між основним радіусом 18,7939 мм і радіусом вершин 22 мм інтерполювати B-сплайном через 25 точок, обчислених за рівнянням евольвенти; нижче основного кола з’єднати сторони радіальними відрізками з колом западин радіуса 17,5 мм, а вершину замкнути дугою радіуса 22 мм.",
+    "Симетрично витягнути профіль одного зубця на 10 мм, по 5 мм з кожного боку площини XY, з об’єднанням із кореневою заготовкою.",
+    "Виконати круговий масив витягнутого зубця навколо осі шестірні: 20 рівномірних входжень на 360° з кутовим кроком 18°."
+   ]
+  },
+  {
+   "session": "cd594cb0281244f7b366d94dd8740714",
+   "steps": [
+    "In the existing Body, sketch the outer obround profile on the XZ plane (length along X, height along Z), in millimetres: an arc of R25 centred at (25, 25) forming the left end, an arc of R25 centred at (125, 25) forming the right end (centres 100 mm apart, giving 25 + 100 + 25 = 150 mm between the end tangent planes at X = 0 and X = 150), joined by a top line at Z = 50 and a bottom line at Z = 0 from X = 25 to X = 125. Pad this profile 100 mm along -Y so the front face lies at Y = 0 and the rear face at Y = -100.",
+    "Cut the left ø40 bore: sketch a circle of radius 20 mm centred at X = 25, Z = 25 on the front face of the pad (the face at Y = 0, normal pointing out of the material along +Y) and pocket it ThroughAll, front to rear, so its axis is perpendicular to the front face.",
+    "Cut the right ø40 bore: sketch a circle of radius 20 mm centred at X = 125, Z = 25 on the front face (Y = 0) — 100 mm along the length from the left bore axis and 25 mm from the right end tangent plane at X = 150 — and pocket it ThroughAll, front to rear.",
+    "Cut the central ø35 through hole: sketch a circle of radius 17.5 mm centred at X = 125 - 50 = 75 mm (mid-length, 75 mm from the left end tangent plane) and Y = -50 mm (mid-depth, 50 mm from the rear face at Y = -100) on the top face at Z = 50, and pocket it ThroughAll down the height, its axis perpendicular to the top face.",
+    "Cut the front cutout to a blind depth of 20 mm from the front face. Draw its profile in the plane of the length and the height, on the front face (Y = 0): a top line at Z = 50 - 10 = 40 mm, a bottom line at Z = 0 + 10 = 10 mm (pocket 30 mm tall), the left wall an arc of R30 centred on the left bore axis (25, 25) taken on its right-hand side, from (25 + sqrt(900 - 225), 40) = (50.98, 40) to (50.98, 10) through its extreme at X = 55 (30 mm from the axis, 10 mm out from the ø40 bore wall at X = 45), and the right wall an arc of R30 centred on the right bore axis (125, 25) taken on its left-hand side, from (125 - 25.98, 40) = (99.02, 40) to (99.02, 10) through its extreme at X = 95. Pocket 20 mm into the material along -Y.",
+    "Cut the rear cutout with the same profile, opening on the rear face at Y = -100 and going 20 mm into the material along +Y, leaving a 100 - 20 - 20 = 60 mm web: same lines at Z = 40 and Z = 10, same R30 arc centred on the left bore axis (X = 25, Z = 25) from (50.98, 40) to (50.98, 10), same R30 arc centred on the right bore axis (X = 125, Z = 25) from (99.02, 40) to (99.02, 10).",
+    "Apply an R2 fillet to the 24 edges drawn red: the 8 edges of the outer profile's top and bottom rims (each rim a closed loop of 2 straight edges and 2 R25 arc edges, one loop at the front face and one at the rear face), plus, for each of the two cutouts, the 4 edges of its opening on the face it starts from and the 4 edges of its floor (8 per cutout, 16 in total). Select these edges explicitly — never UseAllEdges — and fail the step if the selection does not come to 24.",
+    "Assign plain carbon steel to the Body: query the material manager for the card whose name is plain carbon steel, take its uuid from that query rather than any guessed value, and set ShapeMaterial to the Materials.Material it returns."
+   ]
+  },
+  {
+   "session": "cffbc01e488b45499b996ece0765b47f",
+   "steps": [
+    "Create a sketch on the XZ plane (the plane of length and height) containing the complete outer profile: a ring segment of R25 centred at the ring axis, a straight arm 15 mm high extending 65.5 mm to the left from the ring axis to the left end face with a R15 round at its left end (centre at 15 mm from the left end face, on the arm centreline which is 7 mm below the ring axis), and a right jaw extending 42.5 mm to the right of the ring axis with a R12.5 round at its right end (centre at 42.5 mm to the right of the ring axis, on the ring axis height). The ring's top is at the top face (15 mm above ring axis), the arm's bottom is at the bottom face (15 mm below ring axis), and the arm's top is at the arm centreline + 7.5 mm = 0.5 mm above the ring axis. The overall length is 108 mm (left end face to right end face), the height is 30 mm. Pad this profile 30 mm symmetric to the sketch plane.",
+    "Cut a Ø42 through hole centred on the ring axis, perpendicular to the front face, using a Pocket with Type='ThroughAll' from the front face.",
+    "Cut a 2 mm wide rectangular slot through the right side of the ring, from the bore to the right end face, centred on the horizontal centreline through the ring axis (15 mm below the top face), perpendicular to the front face, using a Pocket with Type='ThroughAll' from the front face.",
+    "Cut a Ø6.6 through hole with a Ø11 counterbore 6 mm deep from the front face, centred on the arm's left end round (15 mm from the left end face, 7 mm above the arm centreline = 14 mm above the bottom face), axis perpendicular to the top face (along the height). The hole axis is along the height direction.",
+    "Cut a Ø6.6 through hole with a Ø11 counterbore 6 mm deep from the front face, centred 42.5 mm to the right of the ring axis, on the arm centreline (7 mm below the ring axis), axis perpendicular to the top face (along the height). The hole axis is along the height direction.",
+    "Cut a hexagonal pocket Ø11 (inscribed circle diameter 11 mm, i.e. hexagon across-flats 11 mm) 6 mm deep from the front face, centred 42.5 mm to the right of the ring axis on the arm centreline (7 mm below the ring axis), axis perpendicular to the front face.",
+    "Cut a rectangular slot 30 mm long and 25 mm wide through the web between the arm and the ring, centred on the arm centreline (7 mm below the ring axis), with its right edge at 30 mm to the left of the ring axis (so the slot spans from 60 mm to 30 mm left of the ring axis), axis perpendicular to the front face, using a Pocket with Type='ThroughAll' from the front face.",
+    "Cut a curved cutout through the web between the arm and the ring, on the lower-left side of the bore, axis perpendicular to the front face, using a Pocket with Type='ThroughAll' from the front face. The profile follows the shape shown in VIEW B of the drawing.",
+    "Apply R2 fillets to all edges highlighted in red on the drawing."
+   ]
+  },
+  {
+   "session": "d602c7880854437f9047594f48bd69d4",
+   "steps": [
+    "Побудувати на поздовжньо-висотній центральній площині замкнений зовнішній профіль заввишки 50 мм і завдовжки 150 мм із верхньою та нижньою прямими ділянками й кінцевими дугами радіусом 25 мм, центри яких розташовані на 50 мм ліворуч і праворуч від поздовжньої центральної площини та на висотній центральній площині.",
+    "Витягнути зовнішній профіль на 100 мм симетрично відносно площини ескізу.",
+    "Побудувати на передній грані два кола діаметром 40 мм із центрами на висотній центральній площині, розташованими на 50 мм ліворуч і праворуч від осі центрального отвору.",
+    "Вирізати обидва отвори діаметром 40 мм наскрізь через глибину 100 мм, нормально до передньої грані.",
+    "Побудувати на верхній грані коло діаметром 35 мм із центром на поздовжній центральній площині та на відстані 50 мм від передньої грані.",
+    "Вирізати центральний отвір діаметром 35 мм наскрізь на 50 мм, нормально до верхньої грані.",
+    "Побудувати на передній грані профіль кишені між рівнями 10 мм від нижньої грані та 10 мм від верхньої грані; виконати бічні дуги радіусом 30 мм з припущеними центрами на висотній центральній площині, причому центр лівої дуги розташувати на 10 мм праворуч від поздовжньої центральної площини, а центр правої дуги — на 10 мм ліворуч від неї, отримавши припущену найбільшу ширину профілю 40 мм.",
+    "Вирізати передню кишеню на 20 мм усередину деталі від передньої грані, як припущений напрямок вирізання.",
+    "Побудувати на задній грані такий самий профіль кишені між рівнями 10 мм від нижньої грані та 10 мм від верхньої грані, з бічними дугами радіусом 30 мм і припущеними центрами на 10 мм по протилежні боки від поздовжньої центральної площини, отримавши припущену найбільшу ширину профілю 40 мм.",
+    "Вирізати задню кишеню на 20 мм усередину деталі від задньої грані, як припущений напрямок вирізання.",
+    "Заокруглити радіусом 2 мм усі 8 припущених ребер контурів входу передньої та задньої кишень.",
+    "Призначити деталі матеріал «звичайна вуглецева сталь»."
+   ]
+  },
+  {
+   "session": "d857e2b227d546a29e4bde91952412ef",
+   "steps": [
+    "Create the rounded rectangular outer-body with a 150 mm length between tangent planes, 100 mm front-to-rear depth, and 50 mm top-to-bottom height, locating its left tangent plane, top face, and front face at 0 mm; use the third-angle drawing orientation.",
+    "Cut the left Ø40 mm bore through the full 100 mm front-to-rear depth, with its axis 25 mm from the left tangent plane and 25 mm from the top face.",
+    "Cut the right Ø40 mm bore through the full 100 mm front-to-rear depth, with its axis 125 mm from the left tangent plane and 25 mm from the top face.",
+    "Pocket the front face 20 mm deep using the central curved-sided profile centred on the longitudinal centre plane, bounded 10 mm from the top face and 10 mm from the bottom face, with left and right concave arcs of radius 30 mm centred respectively on the left and right Ø40 bore axes.",
+    "Pocket the rear face 20 mm deep using the central curved-sided profile centred on the longitudinal centre plane, bounded 10 mm from the top face and 10 mm from the bottom face, with left and right concave arcs of radius 30 mm centred respectively on the left and right Ø40 bore axes.",
+    "Cut the central Ø35 mm bore through the full 50 mm top-to-bottom height, with its axis 75 mm from the left tangent plane and 50 mm from the front face.",
+    "Apply 2 mm radius fillets to all edges highlighted red in the drawing.",
+    "Assign the plain carbon steel material card to the finished body."
+   ]
+  },
+  {
+   "session": "dae6fc7a2fd945e7b9b977329343a944",
+   "steps": [
+    "Create a rectangular base profile 100 mm long by 60 mm wide.",
+    "Pad the base profile 10 mm.",
+    "Create the wall footprint on the top face of the base, spanning the full 60 mm width and extending 10 mm inward from the outer end face.",
+    "Pad the wall footprint 50 mm so the wall top is 60 mm above the bottom face of the base plate.",
+    "Fillet the inside corner between the wall and the top face of the base plate with an 8 mm radius across the full 60 mm width.",
+    "Cut two Ø12 mm holes through the 10 mm base plate, with both centres 70 mm from the outer face of the wall and respectively 15 mm and 45 mm from the same 60 mm-wide side face.",
+    "Cut one Ø20 mm hole normal to the wall through its 10 mm thickness, centred between the two side faces and 40 mm above the bottom face of the base plate.",
+    "Assign aluminium material with density 2700 kg/m³ to the finished bracket."
+   ]
+  },
+  {
+   "session": "daefe57b593448e9baf83422fc37af1e",
+   "steps": [
+    "Створити базове тіло довжиною 150 мм від лівої торцевої грані до правої торцевої грані, глибиною 100 мм від передньої зовнішньої грані до задньої зовнішньої грані та висотою 50 мм від нижньої зовнішньої грані до верхньої зовнішньої грані; виконати поздовжній зовнішній контур так, щоб кожна торцева зовнішня грань була дотичною до межі відповідного отвору Ø40 мм.",
+    "Вирізати два наскрізні отвори Ø40 мм, нормальні до передньої грані та до задньої грані: вісь лівого отвору розташувати на 20 мм від лівої торцевої грані, вісь правого — на 130 мм від лівої торцевої грані, а обидві осі — на 50 мм від передньої зовнішньої грані.",
+    "Вирізати центральну порожнину з передньої та задньої граней двома протилежними глухими кишенями глибиною по 20 мм, залишивши між їхніми днами центральну перемичку товщиною 10 мм; ліву та праву криволінійні межі порожнини виконати дугами R30 мм із центрами на осях відповідних отворів Ø40 мм, увігнутими до центральної порожнини, з відстанню 50 мм між лівою та правою межами порожнини.",
+    "Вирізати верхню та нижню глухі кишені центральної порожнини на 20 мм від відповідних верхньої та нижньої зовнішніх граней, залишивши центральну перемичку між кишенями; у перерізі через середину висоти деталі залишити бічні стінки товщиною по 10 мм від лівої та правої зовнішніх граней до суміжних внутрішніх граней.",
+    "Вирізати центральний наскрізний отвір Ø35 мм уздовж висоти від верхньої зовнішньої грані до нижньої зовнішньої грані, розташувавши його вісь на 75 мм від лівої торцевої грані та на 50 мм від передньої зовнішньої грані.",
+    "Заокруглити радіусом 2 мм усі ребра, позначені червоним на кресленні, включно з червоними ребрами зовнішнього контуру та центральних вирізів.",
+    "Призначити деталі матеріал plain carbon steel."
+   ]
+  },
+  {
+   "session": "e67eac634ab649238373e66d1cb144e9",
+   "steps": [
+    "Cannot add the requested fillet because document QA contains no base plate or other solid feature with outer vertical edges."
+   ]
+  },
+  {
+   "session": "e76b61d5bc7143699b451549c90433f7",
+   "steps": [
+    "Sketch the base profile on the XY plane (length × height): a 15 mm thick arm running from x=0 (left end face) to the ring, its left end rounded R12.5; an annular ring outside Ø50 centred at x=65.5, vertically centred so its top and bottom tangents give the 50 mm height; and a 30 mm tall lug to the right of the ring ending at x=108 (ring axis + 42.5 mm), its right end rounded R12.5. Assumed: the arm's top face sits 7.5 mm above the ring axis (arm centred on the axis in height). Pad the profile 25 mm symmetric about the front face plane (depth front to rear 25 mm).",
+    "Sketch a Ø42 circle on the front face, centred on the ring axis at x=65.5, and pocket it ThroughAll along the axis perpendicular to the front face to cut the ring bore through the full 25 mm depth.",
+    "Sketch a 2 mm wide rectangle on the front face, centred on the horizontal plane of the ring axis (1 mm above and 1 mm below the axis), running from the ring bore through the lug to the right end, and pocket it ThroughAll perpendicular to the front face to split the clamp through the full 25 mm depth.",
+    "Sketch on the top face of the arm a Ø6.6 circle at 7 mm from the left end face and 14 mm from the front face, axis perpendicular to the top face; cut it ThroughAll through the 15 mm arm, then add the Ø11 counterbore 6 mm deep from the top face of the arm at the same centre (M6 SHCS counterbore).",
+    "At the lug right end, 12.5 mm from the right end face and 12.5 mm from the front face, cut a Ø6.6 hole ThroughAll vertically through the lug (axis perpendicular to the top face of the arm), with a Ø11 counterbore 6 mm deep from the bottom face and a hexagon socket inscribed Ø11 cut 6 mm deep from the top face, both concentric with the hole.",
+    "Sketch on the top face of the arm a slot 30 mm long in the length direction ending at the vertical plane through the ring axis (starting 30 mm to the left of it), assumed 8 mm wide in the depth direction and centred front-to-rear, and pocket it ThroughAll through the 15 mm arm, axis perpendicular to the top face.",
+    "Sketch the web cutout on the front face: an assumed R10 arc cutout centred 10 mm above the top face of the arm and 10 mm to the left of the ring axis, tangent-blended into the arm top and the ring outside, and pocket it ThroughAll through the 25 mm depth.",
+    "Fillet with R2 all the edges marked red on the drawing: the blends of the lug into the ring, the web-to-arm and web-to-ring junction edges, and the slot edge ends."
+   ]
+  },
+  {
+   "session": "e7c2df53b4ee489db06c529a328619c3",
+   "steps": [
+    "Create a sketch on the Body XY-plane containing a closed 20-tooth standard involute spur-gear outline: module 2 mm, 20 teeth, 20° pressure angle, 40 mm pitch diameter, 44 mm tip diameter, and 35 mm root diameter, centred at the sketch origin.",
+    "Pad the gear-outline sketch in the Body by 10 mm to form the 10 mm-thick gear blank.",
+    "Create a sketch on the gear’s planar end face with an 8 mm diameter circle centred at the gear origin, then pocket it Through All to form the central bore.",
+    "Assign a steel material card with density 7800 kg/m³ to the finished gear Body."
+   ]
+  },
+  {
+   "session": "ea390959745a453488138fddcc879635",
+   "steps": [
+    "Sketch the elevation outer profile on the XY plane (length X, height Y) and pad it 30 mm deep, symmetric about the mid-plane (Z = -15 to +15). Closed profile as three overlapping wires that fuse on pad: arm rectangle from x=0 to x=65.5, y=0 (bottom face datum) to y=15 (arm 15 thick); ring circle Ø50 centred at x=65.5, y=25.01; boss rectangle from x=65.5 to x=108 (ring axis +42.5 to the right end face, giving the 108 mm overall length from the left end tangent at x=0), y=10.01 to y=40.01 (30 tall, ±15 about the ring axis).",
+    "Sketch on the arm top face (y=15) the two strips of excess depth over the arm — the arm is 14 deep centred on the mid-plane, so the strips run from z=+7 to z=+15 and z=-7 to z=-15, from the R7 rounded left end (arc radius 7 about x=7, z=0, the left end tangent plane at x=0) back to where the arm meets the ring at x≈42.6 — and pocket them 15 mm down through the full arm thickness, leaving the arm 14 mm deep with an R7 obround left end in plan.",
+    "Sketch on the boss top face (y=40.01) the two corner regions at the right end outside the R12.5 plan radius — the lug end is rounded R12.5 in plan about x=95.5, z=0, so the corners beyond that arc between x≈95.5 and x=108 at the front and rear extremes of the 30 mm depth — and pocket them 30 mm down through the boss, giving the right lug its R12.5 rounded end in plan.",
+    "Sketch a Ø42 circle centred at x=65.5, y=25.01 on the front face of the ring and pocket it ThroughAll along the depth, boring the ring front to rear.",
+    "Sketch on the front face a rectangle from x=65.5 (ring axis) to x=108 (right end of the boss), y=23.01 to y=26.01 — 2 mm below and 1 mm above the ring axis — and pocket it ThroughAll through the 30 mm depth, cutting the split between the ring and the boss lugs.",
+    "Drill the left hole with a Hole feature on the arm top face: Ø6.6 through all 15 mm of the arm, with a Ø11 × 6 mm deep counterbore from the top face, centred at x=7, z=0 (the axis of the R7 left end, on the mid-plane of the depth).",
+    "Drill the right lug hole: Ø6.6 through the boss at x=95.5, z=0 (concentric with the R12.5 lug end, on the mid-plane of the depth), and cut a hexagonal socket of inscribed Ø11, 6 mm deep, from the lug top face at the same centre.",
+    "Sketch on the arm top face a capsule-ended slot centred on the mid-plane (z=0), its right end at x=35.5 (30 mm from the ring axis), running 30 mm leftward to x=5.5; the slot width across the depth is not defined on the sheet — assumed 6 mm — and pocket it through the 15 mm arm thickness.",
+    "Sketch on the front face the web cutout where the arm rises to the ring, on the lower-left quadrant of the ring: a concave circular arc clearing the arm-to-ring blend — VIEW B's exact profile is not dimensioned, assumed an R10 concave arc tangent to the arm top edge and the ring OD, centred near x=45, y=18 — and pocket it through the 14 mm arm depth.",
+    "Fillet all outer perimeter and junction edges of the part with R2, per the R2 TYP note."
+   ]
+  },
+  {
+   "session": "f0fe6cd757694c8b958d5984cd5aa86f",
+   "steps": [
+    "Set the document units to millimeters.",
+    "Create the outer obround envelope on the front-face plane and pad it 100 mm to the rear: use a 150 mm length between end extremities, 50 mm height between top and bottom faces, and R30 end arcs with centres 30 mm from each respective end extremity and 25 mm from the top face; trim the R30 arcs to join the top and bottom straight portions.",
+    "Pocket the front face 20 mm deep with a Ø40 circular blind pocket centred 30 mm from the left end extremity and 25 mm from the top face.",
+    "Pocket the front face 20 mm deep with a Ø40 circular blind pocket centred 30 mm from the right end extremity and 25 mm from the top face.",
+    "Pocket the rear face 20 mm deep with a Ø40 circular blind pocket centred 30 mm from the left end extremity and 25 mm from the top face.",
+    "Pocket the rear face 20 mm deep with a Ø40 circular blind pocket centred 30 mm from the right end extremity and 25 mm from the top face.",
+    "Cut a Ø35 bore through the full 50 mm height from the top face to the bottom face at the intersection of the longitudinal centre plane and front-to-rear centre plane.",
+    "Pocket the front face 10 mm deep with a central 50 mm-long capsule profile centred on the longitudinal centre plane; assumed a 30 mm profile height centred 25 mm from the top face, with R15 curved side boundaries and 20 mm-long straight top and bottom portions.",
+    "Pocket the rear face 10 mm deep with a central 50 mm-long capsule profile centred on the longitudinal centre plane; assumed a 30 mm profile height centred 25 mm from the top face, with R15 curved side boundaries and 20 mm-long straight top and bottom portions.",
+    "Apply R2 fillets to the assumed red-highlighted edges: every exposed outer-envelope edge at the front and rear faces and every exposed rim edge of the circular, capsule, and through-bore openings.",
+    "Assign a plain carbon steel material card to the finished body."
+   ]
+  },
+  {
+   "session": "f1f13395f7454a53afb790366e03a7ea",
+   "steps": [
+    "On the XY plane sketch the outer plan profile as a rounded rectangle 300 mm along X (the width, between the end faces) by 216 mm along Y (the depth front to rear, 0.72 * 300 = 216 mm), with the left end face at X = 0, the front face at Y = 0, and corner radii of 27 mm (0.09 * 300); the four corner arc centres sit at (27, 27), (273, 27), (273, 189) and (27, 189), i.e. 27 mm from the left end face for each left-hand corner and 27 mm from the front face for each front corner. Pad this profile 75 mm in +Z (0.25 * 300), starting at the bottom face Z = 0 and reaching the parting plane at Z = 75. Assumed width 300 mm from the user's 30 cm; the inside of the case is not described, so this is built solid.",
+    "Pad the lid: sketch the same 300 x 216 rounded rectangle with R27 corners on a plane parallel to XY at Z = 75 (the parting plane, on the top face of the base), and pad it 39 mm in +Z (0.13 * 300), so the top of the lid lands at 75 + 39 = 114 mm above the bottom face (0.38 * 300 = 114 mm).",
+    "Round the eight edges forming the whole perimeter of the lid top face at Z = 114 (four straight edges and four corner arcs) with a radius of 9 mm (0.03 * 300), blending the flat top into the lid sides all round.",
+    "Add the parting lip: on a plane parallel to XY at Z = 72, sketch a rounded rectangle offset 3 mm outboard of the outer profile all round — 306 mm along X from X = -3 to X = 303, 222 mm along Y from Y = -3 to Y = 219, corner radii 30 mm with the arc centres still at (27, 27), (273, 27), (273, 189), (27, 189) — and pad it 6 mm in +Z, from Z = 72 to Z = 78, so the band is centred on the parting plane at Z = 75 (0.25 * 300 = 75 mm above the bottom face). Assumed lip proudness 3 mm (0.01 of the width) and lip height 6 mm (0.02 of the width); neither is dimensioned on the sheet.",
+    "Add the front-left latch: on the XZ plane at the front face Y = 0, sketch a rectangle centred at X = 108 (0.36 * 300) and spanning Z = 48 to Z = 93 — that is 27 mm below the parting plane (0.09 * 300) and 18 mm above it (0.06 * 300), straddling Z = 75 — with an assumed strap width of 24 mm along X (X = 96 to X = 120). Pad it 6 mm (0.02 * 300) in -Y, outward from the front face, so it stands proud of the front face.",
+    "Add the front-right latch: the same strap, on the XZ plane at Y = 0, centred at X = 213 (0.71 * 300), assumed 24 mm wide along X (X = 201 to X = 225), spanning Z = 48 to Z = 93, padded 6 mm outward in -Y from the front face.",
+    "Add the rear pair of latches: on a plane parallel to XZ at the rear face Y = 216 (0.72 * 300 behind the front face), sketch two rectangles centred at X = 108 and X = 213, each an assumed 24 mm wide along X and spanning Z = 48 to Z = 93, and pad both 6 mm outward in +Y from the rear face.",
+    "Cut the two left end-wall recesses: on the YZ plane at the left end face X = 0, sketch two rectangles each spanning Z = 15 (0.05 * 300 above the bottom face) to Z = 70 (just under the underside of the parting lip at Z = 72), centred at Y = 60 (0.20 * 300) and Y = 135 (0.45 * 300) behind the front face, each an assumed 45 mm wide along Y. Pocket them 3 mm (0.01 * 300) into the wall, in +X.",
+    "Cut the two right end-wall recesses, mirroring the left pair: on a plane parallel to YZ at the right end face X = 300 (1.00 of the overall width from the left end face), sketch two rectangles spanning Z = 15 to Z = 70, centred at Y = 60 and Y = 135, each an assumed 45 mm wide along Y, and pocket them 3 mm into the wall, in -X.",
+    "Round the eight edges forming the whole perimeter of the bottom face at Z = 0 (four straight edges and four corner arcs) with a radius of 6 mm (0.02 * 300)."
+   ]
+  },
+  {
+   "session": "f264f90ec6f74a76bed3d1b9286e82d4",
+   "steps": [
+    "Create a Part Design Body and pad a Ø50 mm circular sketch on the XY plane to a 10 mm thick flange base.",
+    "Create a sketch on the flange’s top face containing six Ø5 mm circles centred at (20,0), (10,17.3205), (-10,17.3205), (-20,0), (-10,-17.3205), and (10,-17.3205) mm, then pocket the circles through all to form six equally spaced holes on a Ø40 mm bolt circle."
+   ]
+  },
+  {
+   "session": "f30e802ef400453e8d9a8c7e476c0d73",
+   "steps": [
+    "Sketch a Ø50 circle (R25) centred on the origin in the XZ plane — take x along the length positive to the right, z along the height positive up, y along the depth front to rear, so the ring axis is the y axis through the origin, the XZ plane is the plane of the length and the height, and the XY plane is the mid-plane between the front and rear faces — and pad it 30 mm symmetric to that plane (15 mm each side), in millimetres, as the ring band of the Body.",
+    "Pocket a Ø42 circle (R21) centred on the origin, sketched in the XZ plane, through all in both directions along the depth, so the bore runs front to rear coaxial with the ring axis.",
+    "Pad the ear block: sketch in the XZ plane the rectangle x = 0 to 30, z = −15 to +15 (the top face 15 above and the bottom face 15 below the ring axis, 30 apart, stopping 12.5 mm short of the 42.5 right end face because the end is a full round built in the next Step), and pad it 25 mm symmetric to the mid-plane, 12.5 mm each side, fusing it to the ring band.",
+    "Build the ears' full R12.5 end round — the round's radius is half the ears' 25 mm depth, so it is swept, not filleted: sketch a circle of radius 12.5 centred at x = 30, y = 0 in the XY plane (the plane of the length and the depth) and pad it 30 mm symmetric about that plane, 15 mm each side, so the cylinder runs from z = −15 to z = +15 and its extreme puts the ears' right end face at 30 + 12.5 = 42.5 mm from the ring axis.",
+    "Pad the arm shank. Work in the arm frame: the arm axis direction u = (−cos45°, +sin45°) = (−0.70711, +0.70711) in (x, z), passing through the ring axis at 45° up and to the left, and the across-arm direction p = (−0.70711, −0.70711) perpendicular to it. p is taken down-left because that choice puts the arm's uppermost point at 44.55 and its outermost at x = −69.30, matching the 69.6 and 111.8 envelope, where the other side gives 69.30 and 94.3. Sketch in the XZ plane the quadrilateral of the band between offsets p = 10 mm (inner broad face) and p = 25 mm (outer broad face, tangent to the Ø50 ring), running from u = 0 to u = 58 — the arm is padded 15 mm short of its 73 mm end because the end is a full round built in the next Step. Corners: (0u+10p) = (−7.07, −7.07); (0u+25p) = (−17.68, −17.68); (58u+25p) = (−58.69, 23.33); (58u+10p) = (−48.08, 33.94). Pad 30 mm symmetric to the mid-plane, 15 mm each side, fusing it to the ring band.",
+    "Build the arm's full R15 end round — R15 is half the arm's 30 mm width, so it is swept, not filleted: sketch a circle of radius 15 on the plane parallel to the arm's broad faces at the mid-thickness offset p = 17.5 mm, centred at the point 58 mm along the arm axis from the ring axis, at y = 0, and pad it 15 mm symmetric about that plane so it fills the arm's thickness from p = 10 to p = 25. The round reaches 58 + 15 = 73 mm from the ring axis along the arm axis, and its extremes then give the envelope: outermost x = −(73 + 25)·cos45° = −69.30, so the length from the ears' right end face is 42.5 + 69.30 = 111.80 mm; uppermost z = (73 − 10)·cos45° = 44.55, so the height above the ring's lowest point at z = −25 is 44.55 + 25 = 69.55 ≈ 69.6 mm.",
+    "Cut the 2 mm saw gap between the two ears: sketch in the XZ plane the rectangle x = 24 to 45, z = −1 to +1 (1 mm each side of the split plane, the cut faces 1 above and 1 below the ring axis) and pocket it through all in both directions along the depth, so it opens at the right end face and at both the front and rear faces.",
+    "Cut the 1 mm slit that opens the clamp: sketch in the XZ plane the rectangle x = 20 to 25.5, z = −0.5 to +0.5 (0.5 mm each side of the split plane, on the ring axis and running outward to the right toward the ears, from inside the Ø42 bore at radius 21 out past the Ø50 outside at radius 25 to join the saw gap) and pocket it through all in both directions along the depth, so its two faces are planes normal to the height and the slit runs the full 30 mm depth.",
+    "Cut the Ø6.6 clamping bolt hole through both ears: sketch a circle of radius 3.3 centred at x = 30, y = 0 in the XY plane (30 mm along the length from the ring axis, on the mid-plane) and pocket it through all in both directions along the height, crossing the saw gap.",
+    "Cut the hexagonal recess in the top face of the upper ear: sketch a regular hexagon 11 mm across flats, circumradius 11/(2·cos30°) = 11/1.73205 = 6.351 mm, centred at x = 30, y = 0 on the top face plane z = +15, rotated so two flats are normal to the depth at y = ±5.5 and the across-corners points lie along the length at x = 30 ± 6.351, y = 0; pocket it 6 mm downward into the ear, coaxial with the Ø6.6 hole.",
+    "Cut the Ø11 counterbore in the bottom face of the lower ear: sketch a circle of radius 5.5 centred at x = 30, y = 0 on the bottom face plane z = −15 and pocket it 6 mm upward into the ear (to z = −9), coaxial with the Ø6.6 hole.",
+    "Cut the Ø6.6 × 8.0 slot through the arm: sketch on the plane parallel to the arm's broad faces at mid-thickness (offset p = 17.5 mm) an obround of two R3.3 semicircular ends joined by two straight sides, the end centres at y = 0 and at 50 mm and 58 mm from the ring axis along the arm axis (8.0 apart, 14.6 long overall, its length running along the arm axis, centred on the arm's 30 mm width); pocket it through all in both directions so it passes through the arm's 15 mm thickness perpendicular to the broad faces.",
+    "Cut the Ø11 counterbore slot in the arm's outer face: sketch on the arm's outer broad face (offset p = 25 mm from the ring axis) an obround of two R5.5 ends with their centres at y = 0 and at 50 mm and 58 mm from the ring axis along the arm axis — 11 wide and 8 + 11 = 19 long overall, coaxial with the through slot — and pocket it 6 mm inward from that face, i.e. to offset p = 19 mm.",
+    "Cut the lightening cutout in the web at the arm root, sketched in the XZ plane (the plane of the length and the height, the VIEW B profile) and swept parallel to the depth over the central 14 mm only — pocket 14 mm symmetric to the mid-plane, 7 mm each side — so 8 mm of wall stands at the front face and 8 mm at the rear face, from (30 − 14)/2 = 8.0; this is the 8 mm reading the description's conflict entry makes governing over the 6 mm one, the two (6) callouts of SECTION A-A being the counterbore depths already carried by the ear recesses. Profile, in the arm frame of Step 5 (u along the arm axis, p across it): a flat end normal to the arm axis at u = 30 mm from the ring axis running from p = 12 to p = 23 — corners (30u+12p) = (−29.70, 12.73) and (30u+23p) = (−37.48, 4.95) — two straight sides along the arm back to a semicircular end of radius 5.5 centred at (24.5u+17.5p) = (−29.70, 4.95), so the opening is 11 mm across the arm centred on p = 17.5 and runs from 30 mm out to 19 mm from the ring axis, its through portion from 30 to about 25 and the profile running on from there back toward the ring. The 11 mm across-arm width and the 19 mm inner limit are assumed, the sheet dimensioning only the 14, the 7 and the 30.",
+    "Fillet at R2 the three concave blend edges of the silhouette that run parallel to the depth where the straight faces of the outer profile meet the Ø50 band: the upper ear's top face (z = +15) against the band cylinder at x = +20, the lower ear's bottom face (z = −15) against it at x = −(−20), i.e. x = +20, and the arm's inner broad face (offset 10) against it at 22.91 mm along the arm axis, from √(25² − 10²) = 22.91. Select exactly those three edges and fail the Step if the count differs; do not fillet with all edges. The remaining silhouette corners the sheet colours red — the arm's two end corners and the four corners of the ears' end face — are already carried by the R15 and R12.5 full rounds built in Steps 4 and 6, each fillet centre lying R2 from the two faces it is tangent to.",
+    "Assign plain carbon steel to the Body: look the card's uuid up from the material manager rather than guessing it, and set ShapeMaterial to the Materials.Material that uuid returns."
+   ]
+  },
+  {
+   "session": "f5d8007284aa4a57845782918305d6f0",
+   "steps": [
+    "Pad the square flange plate: in the plane of the length and the height (length along X, height along Z, depth front to rear along Y), draw the outer profile of a 100 mm by 100 mm square whose left edge face is at length 0, right edge face at 100 mm, bottom edge face at height 0 and top edge face at height 100 mm (height = 1.00 of the assumed overall length 100 mm), with each of the four corners rounded R10 (0.10 of the overall length); pad it 20 mm (0.20 of the overall length) from the rear face of the plate forward, so the rear face lies at depth 0 and the front face of the plate at depth 20 mm.",
+    "Cut the four corner holes, Ø9 mm (0.09 of the overall length), on axes along the depth front to rear (perpendicular to the front and rear faces of the plate, parallel to the bore axis), through the full 20 mm plate thickness, with centres at length 13 mm and 87 mm from the left edge face crossed with height 13 mm and 87 mm from the bottom edge face — that is (13, 13), (13, 87), (87, 13) and (87, 87). Four holes, and only four.",
+    "Cut the upper hole, Ø13 mm (0.13 of the overall length), on an axis along the depth front to rear, through the full 20 mm plate thickness, its centre at 50 mm from the left edge face (on the vertical centre line) and 74 mm from the bottom edge face.",
+    "Pad the front boss as added material: a Ø55 mm circle (radius 27.5 mm, 0.275 of the overall length) centred on the bore axis at 50 mm from the left edge face and 47 mm from the bottom edge face, drawn on the front face of the plate (depth 20 mm from the rear face), padded 28 mm (0.28 of the overall length) forward along the depth, coaxial with the central bore; its front end face therefore lies at 20 + 28 = 48 mm from the rear face, which is the overall depth of 0.48 of the overall length. The boss is a solid addition here; the central bore that runs through it is cut in a later Step.",
+    "Mill the flat on top of the boss: pocket away everything of the boss above height 70 mm from the bottom edge face (0.70 of the overall length), using a profile drawn in the plane of the length and the depth front to rear at that height, spanning the whole boss in both those directions (length 15 mm to 85 mm, depth 15 mm to 55 mm from the rear face), cut upward through the 74.5 - 70 = 4.5 mm of boss standing above it (boss top before milling is at 47 + 27.5 = 74.5 mm), leaving a horizontal upward-facing flat at height 70 mm.",
+    "Cut the large central bore, Ø45 mm (0.45 of the overall length), on the bore axis along the depth front to rear at 50 mm from the left edge face and 47 mm from the bottom edge face, running through everything — the full 20 mm plate and the 28 mm of boss in front of it.",
+    "Cut the hole in the flat on top of the boss: Ø15 mm (0.15 of the overall length), on an axis along the height, drilled downward from the flat at height 70 mm (perpendicular to that flat, and so square to the bore axis), its centre at 50 mm from the left edge face and 17 mm forward of the front face of the plate, i.e. 20 + 17 = 37 mm from the rear face. The sheet does not give this hole's depth or type, so take it as a plain blind hole 23 mm deep from the flat (70 - 47 = 23 mm, reaching the bore axis), which breaks it into the central bore whose top is at 47 + 22.5 = 69.5 mm without piercing the far wall of the boss."
+   ]
+  },
+  {
+   "session": "f791d7b8f4924e619bc6a58228c517c7",
+   "steps": [
+    "No document change is possible: the QA document contains no objects or Body with a plate feature whose thickness can be increased to 6 mm."
+   ]
+  },
+  {
+   "session": "f7cc382d7670460fb175219c44bc196a",
+   "steps": [
+    "Створіть у наявному Body ескіз шестикутного контуру гайки з назвою NutHexProfile.",
+    "Приєднайте ескіз NutHexProfile до площини XY через AttachmentSupport; установіть MapMode у FlatFace.",
+    "У ескізі NutHexProfile додайте відрізок Part.LineSegment від [6.5, 3.752777] до [0, 7.505553]. Це перша сторона правильного шестикутника з розміром між паралельними гранями s = 13 mm за ISO 4033.",
+    "У ескізі NutHexProfile додайте відрізок Part.LineSegment від [0, 7.505553] до [-6.5, 3.752777].",
+    "У ескізі NutHexProfile додайте відрізок Part.LineSegment від [-6.5, 3.752777] до [-6.5, -3.752777].",
+    "У ескізі NutHexProfile додайте відрізок Part.LineSegment від [-6.5, -3.752777] до [0, -7.505553].",
+    "У ескізі NutHexProfile додайте відрізок Part.LineSegment від [0, -7.505553] до [6.5, -3.752777].",
+    "У ескізі NutHexProfile додайте відрізок Part.LineSegment від [6.5, -3.752777] до [6.5, 3.752777], замикаючи контур.",
+    "Створіть PartDesign::Pad з ескізу NutHexProfile у Body, назвіть його NutBlank і витягніть на висоту m = 8 mm за ISO 4033; не робіть витягування симетричним і не змінюйте напрямок.",
+    "Створіть на верхній плоскій грані NutBlank ескіз розташування різьбового отвору з назвою M8ThreadProfile.",
+    "Приєднайте ескіз M8ThreadProfile до верхньої плоскої грані NutBlank через AttachmentSupport; установіть MapMode у FlatFace.",
+    "У ескізі M8ThreadProfile додайте коло Part.Circle з центром [0, 0] і радіусом 4 mm, тобто номінальним діаметром різьби M8 8 mm.",
+    "Створіть у Body PartDesign::Hole з ескізу M8ThreadProfile, назвіть його M8x1_25Thread. Задайте метричну внутрішню різьбу номінального діаметра 8 mm, стандартний великий крок M8 1.25 mm, кут профілю ISO-метричної різьби 60 degrees, глибину отвору 8 mm і довжину різьби 8 mm, щоб різьба проходила крізь усю висоту гайки.",
+    "Створіть PartDesign::Chamfer на дванадцяти зовнішніх периметрових ребрах верхньої та нижньої шестигранних граней гайки. Назвіть його OuterChamfers і задайте рівні фаски 0.5 mm, як стандартне виконання зовнішніх фасок для гайки M8 ISO 4033."
+   ]
+  },
+  {
+   "session": "f8aaa6953cf54651bd57a3f65432d474",
+   "steps": [
+    "Pad an obround outer profile in the plane of the length and height, with overall length 150 mm, overall height 50 mm, two R25 rounded ends, end-round axis stations 25 mm and 125 mm from the left tangent plane, and extrusion depth 100 mm front to rear.",
+    "Cut the left Ø40 end bore through all 100 mm of the depth, with its axis perpendicular to the front face at 25 mm from the left tangent plane and 25 mm above the bottom tangent plane.",
+    "Cut the right Ø40 end bore through all 100 mm of the depth, with its axis perpendicular to the front face at 125 mm from the left tangent plane and 25 mm above the bottom tangent plane.",
+    "Cut the central Ø35 bore through all 50 mm of the height, with its axis perpendicular to the top and bottom tangent planes at 75 mm from the left tangent plane and 50 mm from the front face.",
+    "Pocket the front face 20 mm deep using the stated central concave-sided profile: assumed lower and upper straight edges 10 mm from the bottom and top tangent planes, giving 30 mm height; assumed nominal 40 mm width with the left boundary 50 mm from the left tangent plane; and concave R30 side arcs centred on the left and right end-bore axes. The stated 40 mm width conflicts with the R30 arc intersections from centres at 25 mm and 125 mm and edge levels 10 mm and 40 mm: 25 + sqrt(30² - 15²) = 50.98 mm and 125 - sqrt(30² - 15²) = 99.02 mm, giving 48.04 mm, so use the stated 40 mm nominal width as the governing assumed value.",
+    "Pocket the rear face 20 mm deep using the same assumed central concave-sided profile as the front pocket: nominal 40 mm width, 30 mm height between edges 10 mm from the bottom and top tangent planes, and concave R30 side arcs centred on the left and right end-bore axes.",
+    "Apply R2 fillets to every outer-profile and pocket edge highlighted red on the drawing, selecting only the marked edges rather than all model edges.",
+    "Assign the plain carbon steel material card to the finished body."
+   ]
+  },
+  {
+   "session": "fe663c12890b4d4497ad458136dfa880",
+   "steps": [
+    "Pad the Phase 1 outer-profile in the plane of the length and height, 30 mm symmetric about the centre plane of the part depth front to rear: place the leftmost tangent plane of the rounded left lug at x=0 mm, place the Ø50 ring centre at x=65.5 mm and y=25 mm, and terminate the right lug at the planar rightmost end face x=108 mm. Use the Ø50 ring outer circle, a left rounded lug whose centre is at x=15 mm, and a right lug of R12.5 with centre at x=108-12.5=95.5 mm and y=25-10=15 mm; join the Phase 1 left arm flush to y=0 mm. This uses the retained Phase 1 108 mm envelope despite the Phase 2 replacement conflict.",
+    "Pocket the Ø42 ring-bore through all 30 mm of the part depth front to rear, with its centre at x=65.5 mm and y=25 mm on the ring axis.",
+    "Add the Phase 2 angled left arm as a 25 mm deep, 15 mm wide rectangular arm in the plane of the length and height, symmetric about the part depth centre plane. Set its centreline at 45.0° downwards to the left from the ring axis and its flat free-end face perpendicular to that centreline. Use the acceptance interpretation that the free-end face is 73 mm from the ring axis: 73 mm × cos(45.0°) = 51.62 mm in each in-plane direction, so the arm centreline free-end centre is at x=65.5-51.62=13.88 mm and y=25-51.62=-26.62 mm. Assume this 73 mm endpoint is the ring axis rather than the outer Ø50 contour, because the required acceptance entry states that datum.",
+    "Pocket the right-lug Ø6.6 clearance hole through the lug parallel to the height, using the required acceptance interpretation: place its axis 12.5 mm from the rightmost end face at x=108-12.5=95.5 mm and on the part depth centre plane z=0 mm, then cut through all in the height direction.",
+    "Pocket a concentric regular hexagonal Ø11 recess 6 mm deep at the right-lug hole, from the exterior face normal to the depth direction. Assume the hex recess follows the explicit hexagonal recess requirement and the acceptance-listed depth-direction axis, although that axis conflicts with the required right-lug-hole height-direction axis.",
+    "Pocket the arm cutout through all in the height direction using the acceptance interpretation of a profile in the plane of the length and height: place its rounded left end 30 mm left of the ring-axis station, at x=65.5-30=35.5 mm, make the cutout symmetric about the ring axis, and form the rounded rectangular left end with converging upper and lower walls ending at x=65.5 mm. Assume the cutout remains above the arm bottom face and leaves material below it; assume the unprovided rounded-end radius and wall offsets are 4.3 mm, taken from the drawing interpretation, because the exact complete profile is not defined.",
+    "Pocket the radial ring split through all 30 mm in the depth direction from the Ø42 bore to the right exterior of the Ø50 ring. Make the split 3 mm wide and centre it on the ring axis at y=25 mm, using the required acceptance interpretation rather than the conflicting 1 mm and 2 mm split-face callouts.",
+    "Pocket the left-arm obround clearance slot through all in the height direction, with Ø6.6 rounded ends whose centres are 8.0 mm apart, and add the concentric Ø11 obround counterbore 6 mm deep from the called-out exterior face with 19 mm overall counterbore-slot length. Assume the slot is located concentrically on the superseded left-lug-hole axis at x=15 mm and z=0 mm, because that is the only supplied positional reference.",
+    "Apply R2 fillets to every edge explicitly indicated in red by the drawing; assume the drawing’s red-edge indication is the complete edge selection because no count of those edges is supplied."
+   ]
+  }
+ ]
+}

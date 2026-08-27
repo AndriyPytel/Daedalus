@@ -97,6 +97,22 @@ HEADED = {A_CONFLICT: "Two readings that cannot both be true",
           A_GAP: "A value nothing on the part supplies",
           A_CHECK_HAZARD: "A check that could not be run"}
 
+FEATURE_KIND = ("hole", "slot", "pocket", "cutout", "pad", "fillet", "chamfer",
+                "boss", "rib", "thread", "counterbore", "countersink", "groove",
+                "notch", "tab", "lug", "ear", "flange", "step", "shoulder",
+                "shell", "draft")
+
+CLOSED_KIND_VOCABULARY = "closed"
+
+_BANNED_KIND_SYNONYM = {"bore": "hole", "round": "fillet", "rounded": "fillet",
+                         "rounds": "fillet", "opening": "cutout", "window": "cutout",
+                         "split": "slot", "slit": "slot", "saw cut": "slot",
+                         "keyway": "slot", "recess": "counterbore",
+                         "recesses": "counterbore"}
+
+_REGION_WORD = ("arm", "ring", "web", "band", "collar", "profile", "plate",
+                "body", "outline", "contour")
+
 
 def merge(held, offered):
     """
@@ -117,19 +133,83 @@ def merge(held, offered):
     an outside described in words and carried by nothing, `direction` for a
     feature that points somewhere and says nowhere, `pointing` for one placed
     along the very direction its axis points, `placement` for one sized in
-    a direction it is placed in nowhere, `twice_over` for a cavity nothing
-    places, which is how one cavity comes to be two features, and
-    `settled_by_nothing` for a value whose flag promises a reason it does not
-    carry. Their findings join the same `conflicts` the disagreements go to.
+    a direction it is placed in nowhere, `placed_by_nothing` for a cavity
+    nothing places, `twice_over` for two features of the same kind placed
+    against a shared datum, which is how one physical feature comes to be
+    two, and `settled_by_nothing` for a value whose flag promises a reason it
+    does not carry. Their findings join the same `conflicts` the
+    disagreements go to.
     """
     if not isinstance(offered, dict):
         return _with_the_findings(dict(held or {}))
 
-    conflicts = []
+    conflicts = list(_refused_kinds(offered))
+    if conflicts:
+        offered = _without_refused_kinds(offered)
     merged = _written(dict(held or {}), offered, "", conflicts)
     if conflicts:
         merged["conflicts"] = _appended(merged.get("conflicts"), conflicts)
     return _with_the_findings(merged)
+
+
+def _refused_kinds(offered):
+    """
+    Features in *offered* naming a `kind` off `FEATURE_KIND`, checked only
+    when *offered* itself carries `"kind_vocabulary": "closed"` — the marker
+    `config/prompts/design.md` asks a Design turn to send on every reply once
+    it is written under ADR-0026's closed kind list.
+
+    A recorded model with no marker took the prose grammar this ticket
+    replaces, and is not checked here at all: enforcing the closed list
+    against every recorded reading is the alternative ADR-0026 rejects by
+    name — "a closed list added to the prompts and nothing else", already
+    measured at 14.9% compliance — so the gate is the marker the model
+    itself sends, not a guess made from the shape of what it sent.
+
+    The reason named is actionable rather than a bare refusal, so a re-ask
+    costs one turn and not a loop that spends the revision budget: a value
+    one of FCC-231's banned prose synonyms maps onto (`round` onto `fillet`,
+    `recess` onto `counterbore`) names that kind, a region word (`arm`,
+    `ring`, `web`, ...) names `pad` and the new `region` field it belongs in
+    instead, and anything else names only the count of the closed list.
+    """
+    if not isinstance(offered, dict) or offered.get("kind_vocabulary") != CLOSED_KIND_VOCABULARY:
+        return []
+    found = []
+    for feature in offered.get("features") or []:
+        if not isinstance(feature, dict):
+            continue
+        kind = feature.get("kind")
+        if not kind or kind in FEATURE_KIND:
+            continue
+        where = _under(_under("features", feature.get("id") or "a feature"), "kind")
+        found.append({
+            "about": where,
+            "stands": _refusal_reason(kind),
+            "was_also_said": "refused — the field is left as not yet filled",
+            "kind": A_CONFLICT,
+        })
+    return found
+
+
+def _refusal_reason(kind):
+    lowered = str(kind).strip().lower()
+    mapped = _BANNED_KIND_SYNONYM.get(lowered)
+    if mapped:
+        return "%r is not a kind; the kind is %r" % (kind, mapped)
+    if lowered in _REGION_WORD:
+        return "%r is not a kind; the kind is %r, and %r is the region" % (kind, "pad", kind)
+    return "%r is not one of the closed kind vocabulary's %d values" % (kind, len(FEATURE_KIND))
+
+
+def _without_refused_kinds(offered):
+    features = []
+    for feature in offered.get("features") or []:
+        if isinstance(feature, dict) and feature.get("kind") \
+                and feature["kind"] not in FEATURE_KIND:
+            feature = {key: value for key, value in feature.items() if key != "kind"}
+        features.append(feature)
+    return dict(offered, features=features)
 
 
 def corrected(model, address, value, because):
@@ -203,11 +283,300 @@ def _the_entry(node, step):
 
 def _with_the_findings(model):
     found = (silhouette(model) + direction(model) + pointing(model)
-             + crosswise(model) + placement(model) + twice_over(model)
-             + settled_by_nothing(model))
+             + crosswise(model) + placement(model) + placed_by_nothing(model)
+             + twice_over(model) + settled_by_nothing(model)
+             + unsafe_supersession(model) + twice_placed(model))
     if found:
         model["conflicts"] = _appended(model.get("conflicts"), found)
     return model
+
+
+def unsafe_supersession(model) -> list:
+    """
+    Features marked superseded_by that carry values differing from the canonical.
+
+    When reconciliation marks a feature superseded_by another, _features()
+    filters it out and its values are lost. If those values differ from the
+    canonical feature's values, that is a silent reading loss — worse than
+    the loud conflict it should be. This check catches such cases and raises
+    them as conflicts so the user settles them at the Plan Gate.
+
+    Only features are covered. Envelope entries and datums are not filtered by
+    superseded_by — envelope values stay in entries() because _a_value() returns
+    True before _superseded() is checked, and datums have no values to lose.
+
+    Order-independence: the detection runs on the final merged model, comparing
+    the values on two features that both already exist. The conflict entry names
+    them in sorted (alphabetical) order, so the same pair produces the same
+    conflict regardless of which page landed first or which feature carries the
+    superseded_by marker. ADR-0019 requires this: merge() is order-independent,
+    and this finding must be too.
+    """
+    features = (model or {}).get("features") or []
+    by_id = {f.get("id"): f for f in features
+             if isinstance(f, dict) and f.get("id")}
+
+    found = []
+    for feature in features:
+        if not isinstance(feature, dict):
+            continue
+        canonical_id = feature.get("superseded_by")
+        if not canonical_id:
+            continue
+        canonical = by_id.get(canonical_id)
+        if not canonical:
+            continue
+
+        differing = _differing_feature_values(feature, canonical)
+        if not differing:
+            continue
+
+        this_id = feature.get("id") or "unknown"
+        pair = sorted([this_id, canonical_id])
+        found.append({
+            "about": "features → %s and %s (synonym pair, values differ)" % (pair[0], pair[1]),
+            "stands": "%s says %s" % (pair[0], differing[pair[0]]),
+            "was_also_said": "%s says %s" % (pair[1], differing[pair[1]]),
+            "kind": A_CONFLICT,
+        })
+    return found
+
+
+def _differing_feature_values(superseded, canonical):
+    """
+    The first position value where superseded and canonical disagree, or None.
+
+    Compares ONLY the value content of position entries, never provenance keys
+    (flag, round_in, seen_in, from, because, was). Two entries with the same
+    value but read from different views are NOT a conflict.
+
+    Does NOT compare axis (design.md:497-500 and crosswise() own axis rules),
+    and skips position comparisons where values have different units (mm vs °)
+    since those are different physical quantities, not conflicting readings.
+
+    Returns a dict mapping each feature id to its value at the differing field,
+    suitable for the conflict message, or None if values agree.
+    """
+    sup_id = superseded.get("id") or "unknown"
+    can_id = canonical.get("id") or "unknown"
+
+    superseded_pos = superseded.get("position") or {}
+    canonical_pos = canonical.get("position") or {}
+    if isinstance(superseded_pos, dict) and isinstance(canonical_pos, dict):
+        for datum in set(superseded_pos) & set(canonical_pos):
+            sv = superseded_pos.get(datum)
+            cv = canonical_pos.get(datum)
+            if not sv or not cv:
+                continue
+            sv_value = _extract_value(sv)
+            cv_value = _extract_value(cv)
+            if sv_value and cv_value and sv_value != cv_value:
+                if _different_units(sv_value, cv_value):
+                    continue
+                return {
+                    sup_id: "position → %s: %s" % (datum, sv_value),
+                    can_id: "position → %s: %s" % (datum, cv_value),
+                }
+    return None
+
+
+def _numeric_value(text):
+    """
+    The numeric part of a measurement, or None if the text is not a number.
+
+    Extracts the first number from strings like "25 mm", "0 mm (origin)",
+    "42.5 mm (reference: ...)", but returns None for non-numeric placeholders
+    like "to be read again off the later page".
+
+    Two features agreeing on a non-numeric placeholder is not evidence they
+    describe the same placement — only agreement on actual measurements counts.
+    """
+    if not text:
+        return None
+
+    text_str = str(text)
+    match = re.search(r'[-+]?(?:\d+\.?\d*|\.\d+)', text_str)
+    if match:
+        try:
+            return float(match.group(0))
+        except ValueError:
+            return None
+    return None
+
+
+def _axis_direction(feature):
+    """
+    The direction (length/width/height/depth/thickness) an axis runs along, or None.
+
+    Classifies the axis value by the words it uses: "along the depth",
+    "perpendicular to the front face", "parallel to the height", etc.
+    Returns one of _A_DIRECTION or None if the axis is missing or does not
+    name a direction from that vocabulary.
+
+    Features whose axis is described through faces ("perpendicular to the top
+    and bottom faces") rather than a direction word are invisible to this
+    check — they have no direction the check can classify, so they are excluded
+    from comparison. This is a known limitation: the check sees only features
+    whose axis is named by a direction word.
+    """
+    axis_val = feature.get("axis")
+    if not axis_val:
+        return None
+
+    if isinstance(axis_val, dict):
+        axis_val = axis_val.get("value")
+    if not axis_val:
+        return None
+
+    axis_text = str(axis_val).lower()
+
+    directions_found = [direction for direction in _A_DIRECTION
+                       if direction in axis_text]
+
+    if len(directions_found) == 1:
+        return directions_found[0]
+
+    return None
+
+
+def twice_placed(model) -> list:
+    """
+    Two features with the same axis direction, agreeing at one datum and
+    differing at another — one placement described twice.
+
+    The recorded run (logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl,
+    2023 pipe clamp) produced bore-ring and boss-ring. Both run along the
+    depth ("perpendicular to the front view, running front-to-rear" and
+    "perpendicular to the front face"). Both agree at "the left end face:
+    65.5 mm" and differ at "the bottom face": bore-ring says 25 mm, boss-ring
+    says 15 mm. One physical ring, two descriptions with conflicting heights,
+    and both passed into Acceptance where satisfying them simultaneously is
+    impossible.
+
+    Agreement and disagreement count only for actual measurements, never for
+    placeholders. Two features both saying "to be read again" at a datum is
+    not evidence they describe the same placement — the check compares numbers,
+    and a datum carrying no number is skipped.
+
+    The rule requires all three:
+    1. Axes point the same way (both along depth, both along height, etc.)
+    2. At least one shared datum where numeric values agree
+    3. At least one shared datum where numeric values differ
+
+    Without (1), two features may share datums by coincidence but describe
+    different geometry: bore-ring and hole-right both say "the bottom face:
+    25 mm" but bore-ring runs along depth while hole-right is described
+    through faces, so its axis is not classified and it is excluded from
+    the check entirely.
+
+    Without (2), two features along the same axis but placed differently are
+    legitimately separate: two holes both vertical but at different positions.
+
+    Without (3), two features agreeing everywhere are synonym candidates for
+    reconciliation (superseded_by), not conflicts.
+
+    Only features NOT already marked superseded_by are checked — synonyms
+    resolved by reconciliation do not trigger this.
+
+    Returns conflicts naming both features in sorted order (ADR-0019
+    order-independence: same pair produces same conflict entry regardless
+    of which page arrived first).
+    """
+    features = [feature for feature in _features(model)
+                if not feature.get("superseded_by")]
+
+    by_direction = {}
+    for feature in features:
+        direction = _axis_direction(feature)
+        if direction:
+            by_direction.setdefault(direction, []).append(feature)
+
+    found = []
+    for direction, group in by_direction.items():
+        for index_a, feature_a in enumerate(group):
+            for feature_b in group[index_a + 1:]:
+                position_a = feature_a.get("position") or {}
+                position_b = feature_b.get("position") or {}
+
+                if not isinstance(position_a, dict) or not isinstance(position_b, dict):
+                    continue
+
+                shared_datums = set(position_a.keys()) & set(position_b.keys())
+                if not shared_datums:
+                    continue
+
+                agreeing = []
+                differing = []
+
+                for datum in shared_datums:
+                    value_a = _extract_value(position_a[datum])
+                    value_b = _extract_value(position_b[datum])
+
+                    if not value_a or not value_b:
+                        continue
+
+                    if _different_units(value_a, value_b):
+                        continue
+
+                    numeric_a = _numeric_value(value_a)
+                    numeric_b = _numeric_value(value_b)
+
+                    if numeric_a is None or numeric_b is None:
+                        continue
+
+                    if numeric_a == numeric_b:
+                        agreeing.append((datum, value_a))
+                    else:
+                        differing.append((datum, value_a, value_b))
+
+                if agreeing and differing:
+                    id_a = feature_a.get("id") or "unknown"
+                    id_b = feature_b.get("id") or "unknown"
+                    pair = sorted([id_a, id_b])
+
+                    datum_diff, value_a_diff, value_b_diff = differing[0]
+
+                    found.append({
+                        "about": "features → %s and %s (same axis, one placement described twice)" % (pair[0], pair[1]),
+                        "stands": "%s says %s: %s" % (pair[0], datum_diff, value_a_diff if pair[0] == id_a else value_b_diff),
+                        "was_also_said": "%s says %s: %s" % (pair[1], datum_diff, value_b_diff if pair[1] == id_b else value_a_diff),
+                        "kind": A_CONFLICT,
+                    })
+
+    return found
+
+
+def _different_units(value_a, value_b):
+    """
+    Whether two values have different units and thus cannot be compared.
+
+    A length (mm) and an angle (°) are different physical quantities, not two
+    readings of one dimension that might conflict.
+    """
+    a = str(value_a).lower()
+    b = str(value_b).lower()
+    a_is_length = "mm" in a or "cm" in a or "m " in a
+    b_is_length = "mm" in b or "cm" in b or "m " in b
+    a_is_angle = "°" in a or "deg" in a
+    b_is_angle = "°" in b or "deg" in b
+    if (a_is_length and b_is_angle) or (a_is_angle and b_is_length):
+        return True
+    return False
+
+
+def _extract_value(payload):
+    """
+    The value a payload states, stripped of provenance.
+
+    A payload is either a dict with a value key (the measurement) and provenance
+    keys (flag, round_in, seen_in, from, because, was), or a bare value. This
+    returns only the measurement, never the provenance.
+    """
+    if isinstance(payload, dict) and "value" in payload:
+        return payload["value"]
+    if isinstance(payload, dict):
+        return None
+    return payload
 
 
 _ROUNDED_OUTSIDE = ("capsule", "obround", "racetrack", "oval",
@@ -892,26 +1261,27 @@ _A_CAVITY = ("cutout", "cut-out", "cut out", "slot", "pocket", "recess",
              "relief", "notch", "opening", "scallop")
 
 
-def twice_over(model) -> list:
+def placed_by_nothing(model) -> list:
     """
-    A cavity nothing places, which is how one cavity becomes two features.
+    A cavity nothing places, built wherever the profile happens to allow.
 
     The recorded run (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`,
     the 2023 pipe clamp) described the one cavity in the web twice: `slot-arm`,
     30 mm long, off the plan, and `cutout-web`, "profile as drawn in VIEW B",
     off the detail the sheet points at with `SEE VIEW B FOR CLARITY OF CUTOUT`.
-    One physical cavity, two features, and the second carried `position: {}` —
-    nothing at all. Plan then built both: a slot 8 mm wide it invented, and an
-    R10 circle it invented, and the circle cut the Body into two solids and
-    ended the run.
+    `cutout-web` carried `position: {}` — nothing at all. Plan then built both:
+    a slot 8 mm wide it invented, and an R10 circle it invented, and the
+    circle cut the Body into two solids and ended the run. This finding is the
+    empty `position` alone, checkable and wrong on its own whether or not a
+    second feature is the same physical cavity — `twice_over` is the arithmetic
+    check for that; this one predates it and stays a separate defect
+    (ADR-0026, FCC-232).
 
-    The finding is the empty `position`, because that is what is checkable and
-    what is wrong on its own: a cavity nobody placed is built wherever the
-    builder likes. `placement` cannot reach it — that one asks whether a size in
-    a direction has a position in that direction, and this feature had no sizes
-    either. Where another cavity is drawn in a view this one is also drawn in,
-    the finding says so as well: two cavities sharing a view, one of them
-    placed by nothing, is the shape this defect arrives in.
+    `placement` cannot reach it — that one asks whether a size in a direction
+    has a position in that direction, and this feature had no sizes either.
+    Where another cavity is drawn in a view this one is also drawn in, the
+    finding says so as well: two cavities sharing a view, one of them placed by
+    nothing, is the shape this defect arrives in.
 
     A cavity is a hole in the material that is not a drilled one, in the words a
     description uses for it. It is what a detail view is usually drawn for, and a
@@ -939,6 +1309,61 @@ def twice_over(model) -> list:
             "was_also_said": str(feature.get("kind") or feature.get("topology") or ""),
             "kind": A_GAP,
         })
+    return found
+
+
+def twice_over(model) -> list:
+    """
+    Two features of the same `kind`, placed against a shared datum, and not
+    already reconciled by `superseded_by` — one physical feature read twice.
+
+    `config/prompts/design.md`'s reconciliation turn already asks the model
+    for exactly this arithmetic: "same kind, overlapping position datums ...
+    if all values match, add superseded_by ... if any value differs, raise a
+    conflicts entry" — a rule the prompt could ask for and this module could
+    not check, because `kind` was prose and no two readings of it were ever
+    equal. `docs/research/ste-design-duplicates.md` names four such pairs
+    across 47 recorded models — `slot-arm`/`cutout-web`, `slot`/`cutout-blend`,
+    `bore-upper`/`hole-boss`, `left-mounting-hole`/`phase2-left-mounting-slot`
+    — none caught before this ticket because the only check written was an
+    empty `position` (`placed_by_nothing`), which is a proxy the sheet does
+    not always leave: `bore-upper` and `hole-boss` both carry a filled
+    `position`, framed off two different datums that pin the same point.
+
+    `kind` equality is exact — the enum this ticket closes it into — never a
+    substring search of `id`/`kind`/`topology` the way the rest of this module
+    reads what a feature is elsewhere (ADR-0026: "no substring search, and no
+    proxy standing in for a check that could not be written"). Values at a
+    shared datum are not required to agree: agreement is a plain duplicate,
+    disagreement is `unsafe_supersession`'s territory once `superseded_by`
+    names the pair — this finding is what points the model at declaring it.
+    """
+    features = [feature for feature in _features(model) if not feature.get("superseded_by")]
+
+    found = []
+    for index, feature_a in enumerate(features):
+        for feature_b in features[index + 1:]:
+            kind_a, kind_b = feature_a.get("kind"), feature_b.get("kind")
+            if not kind_a or kind_a != kind_b:
+                continue
+            position_a = feature_a.get("position") or {}
+            position_b = feature_b.get("position") or {}
+            if not isinstance(position_a, dict) or not isinstance(position_b, dict):
+                continue
+            shared = sorted(set(position_a) & set(position_b))
+            if not shared:
+                continue
+            id_a = feature_a.get("id") or "unknown"
+            id_b = feature_b.get("id") or "unknown"
+            pair = sorted([id_a, id_b])
+            found.append({
+                "about": "features → %s and %s (same kind, placed against %s)"
+                         % (pair[0], pair[1], ", ".join(shared)),
+                "stands": "both are a %s, placed against %s — one physical feature described twice"
+                          % (kind_a, ", ".join(shared)),
+                "was_also_said": kind_a,
+                "kind": A_GAP,
+            })
     return found
 
 

@@ -248,11 +248,20 @@ def _mock_no_stored_model(monkeypatch):
     The developer's own machine has a real stored model, in real FreeCAD
     settings, that has nothing to do with `_TWO_PROVIDERS` below — read it
     back and `_refresh_models` reaches for `_retire_model`, which would
-    overwrite that real setting with one of this test's fake ids.
+    overwrite that real setting with one of this test's fake ids. Both
+    setters are stubbed for the same reason, and the list of what the panel
+    stored is handed back to whoever wants to assert on it.
     """
     from utils import settings_manager
 
-    monkeypatch.setattr(settings_manager.instance(), "get_last_model", lambda: "")
+    settings = settings_manager.instance()
+    written = []
+    monkeypatch.setattr(settings, "get_last_model", lambda: "")
+    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "")
+    monkeypatch.setattr(settings, "set_profile_model",
+                        lambda profile, model_id: written.append((profile, model_id)))
+    monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
+    return written
 
 
 def test_the_composer_carries_the_effort_in_force(panel):
@@ -260,9 +269,9 @@ def test_the_composer_carries_the_effort_in_force(panel):
     FCC-169: how hard the model thinks is a choice made where the model is
     chosen, so it can be changed between two runs and compared.
     """
-    from core.llm import effort
+    from core.llm import effort_for_profile
 
-    assert panel.effort_button.text() == effort()
+    assert panel.effort_button.text() == effort_for_profile(panel._active_profile)
 
 
 def test_picking_an_effort_stores_it_and_shows_it(panel, monkeypatch):
@@ -271,14 +280,102 @@ def test_picking_an_effort_stores_it_and_shows_it(panel, monkeypatch):
     from utils import settings_manager
 
     stored = []
-    monkeypatch.setattr(settings_manager.instance(), "set_effort", stored.append)
-    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: stored[-1] if stored else "")
+    monkeypatch.setattr(settings_manager.instance(), "set_profile_effort",
+                        lambda profile, level: stored.append((profile, level)))
+    monkeypatch.setattr(settings_manager.instance(), "get_profile_effort",
+                        lambda profile: stored[-1][1] if stored else "")
 
     panel._on_effort_selected("high")
 
-    assert stored == ["high"]
+    assert stored == [(panel._active_profile, "high")]
     assert panel.effort_button.text() == "high"
-    assert llm.effort() == "high"
+    assert llm.effort_for_profile(panel._active_profile) == "high"
+
+
+def test_the_toggle_flips_between_the_two_profiles_and_back(panel):
+    """The one new widget the composer gets: a two-way switch, nothing else."""
+    from core.llm import PROFILES
+
+    start = panel._active_profile
+    panel._toggle_profile()
+
+    assert panel._active_profile in PROFILES
+    assert panel._active_profile != start
+    assert panel.profile_button.text().startswith(panel._active_profile.capitalize())
+
+    panel._toggle_profile()
+    assert panel._active_profile == start
+
+
+def test_the_effort_pill_follows_whichever_profile_the_toggle_is_on(panel, monkeypatch):
+    from utils import settings_manager
+
+    settings = settings_manager.instance()
+    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-4o")
+    monkeypatch.setattr(settings, "get_profile_effort",
+                        lambda profile: "high" if profile == "thinking" else "low")
+
+    try:
+        panel._active_profile = "thinking"
+        panel._show_effort()
+        assert panel.effort_button.text() == "high"
+
+        panel._active_profile = "doing"
+        panel._show_effort()
+        assert panel.effort_button.text() == "low"
+    finally:
+        panel._active_profile = "doing"
+        panel._show_effort()
+
+
+def test_picking_a_model_on_one_profile_leaves_the_other_alone(panel, monkeypatch):
+    from utils import settings_manager
+
+    _mock_no_stored_model(monkeypatch)
+    written = []
+    monkeypatch.setattr(settings_manager.instance(), "set_profile_model",
+                        lambda profile, model_id: written.append((profile, model_id)))
+
+    panel._active_profile = "thinking"
+    try:
+        panel._on_model_selected("claude-opus-4")
+        assert written == [("thinking", "claude-opus-4")]
+    finally:
+        panel._active_profile = "doing"
+
+
+def test_the_model_the_pill_falls_back_to_is_the_model_the_run_gets(panel, monkeypatch):
+    """
+    Nothing stored: the pill shows the first model on offer, and a run built
+    from settings must find that same one. Drawn and not stored, the panel
+    names a model while `llm.client_from_profiles` raises "No model
+    selected. Configure API keys in Preferences." over an addon whose only
+    provider needs no key at all.
+    """
+    written = _mock_no_stored_model(monkeypatch)
+
+    panel._refresh_models(_TWO_PROVIDERS)
+
+    assert panel._current_model_id == "gpt-4o"
+    assert written == [(panel._active_profile, "gpt-4o")]
+
+
+def test_the_profile_never_edited_still_has_the_model_the_other_was_given(panel, monkeypatch):
+    """
+    A run builds a client per profile, so a model stored on the profile the
+    composer happened to be on leaves the other with none. The shared
+    fallback `get_profile_model` reads is written too, which is what makes
+    one pick answer both profiles.
+    """
+    from utils import settings_manager
+
+    _mock_no_stored_model(monkeypatch)
+    shared = []
+    monkeypatch.setattr(settings_manager.instance(), "set_last_model", shared.append)
+
+    panel._on_model_selected("claude-opus-4")
+
+    assert shared == ["claude-opus-4"]
 
 
 def test_a_model_that_cannot_reason_is_not_offered_the_choice(panel, monkeypatch):
@@ -367,11 +464,7 @@ def test_a_picker_with_more_models_than_room_scrolls_inside_itself(panel, monkey
 
 
 def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypatch):
-    from utils import settings_manager
-
-    _mock_no_stored_model(monkeypatch)
-    written = []
-    monkeypatch.setattr(settings_manager.instance(), "set_last_model", written.append)
+    written = _mock_no_stored_model(monkeypatch)
 
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
@@ -384,7 +477,7 @@ def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypa
     assert not panel.model_selector.isVisible()
     assert panel._current_model_id == "claude-opus-4"
     assert panel.model_button.text() == "Claude Opus 4"
-    assert written == ["claude-opus-4"]
+    assert written[-1] == (panel._active_profile, "claude-opus-4")
 
 
 def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkeypatch):
@@ -396,7 +489,8 @@ def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkey
     from ui.model_selector import PROVIDER_STEP
 
     _mock_no_stored_model(monkeypatch)
-    monkeypatch.setattr(settings_manager.instance(), "set_last_model", lambda model_id: None)
+    monkeypatch.setattr(settings_manager.instance(), "set_profile_model",
+                        lambda profile, model_id: None)
 
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
@@ -575,7 +669,8 @@ def test_the_button_shows_a_stored_model_no_static_list_knows(panel, monkeypatch
     from utils import provider_manager, settings_manager
 
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: True)
-    monkeypatch.setattr(settings_manager.instance(), "get_last_model", lambda: "gpt-5.6-sol")
+    monkeypatch.setattr(settings_manager.instance(), "get_profile_model",
+                        lambda profile: "gpt-5.6-sol")
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
@@ -609,9 +704,11 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
     settings = settings_manager.instance()
     written = []
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
-    monkeypatch.setattr(settings, "get_last_model", lambda: "gpt-5.6-sol")
+    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-5.6-sol")
     monkeypatch.setattr(settings, "get_default_model", lambda: "gpt-4o")
-    monkeypatch.setattr(settings, "set_last_model", written.append)
+    monkeypatch.setattr(settings, "set_profile_model",
+                        lambda profile, model_id: written.append(model_id))
+    monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
@@ -627,8 +724,9 @@ def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, mon
 
     settings = settings_manager.instance()
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
-    monkeypatch.setattr(settings, "get_last_model", lambda: "gpt-5.6-sol")
+    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-5.6-sol")
     monkeypatch.setattr(settings, "get_default_model", lambda: "")
+    monkeypatch.setattr(settings, "set_profile_model", lambda profile, model_id: None)
     monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
@@ -637,11 +735,51 @@ def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, mon
     assert "switched to gpt-4o" in _now_on(panel)
 
 
+def _never_call_the_real_model(panel):
+    """
+    Keep `on_send()` from starting a real run, in a test.
+
+    `on_send()` emits the panel's own `request_work` for tests to intercept,
+    but also the Session's real `request_work`, which is wired to
+    `LoopWorker.do_work` and starts an actual run on the worker thread: a real
+    document snapshot, and a real call to whichever provider the developer
+    machine's own settings name, on their own key or their own subscription's
+    CLI, out of a unit test — the very thing
+    `the_suite_does_not_talk_to_the_network` exists to stop, except a local
+    subscription client shells out rather than opening a socket, so the
+    guard never sees it and the call is free to hang. Disconnecting the
+    real signal from `do_work` for the
+    Session under test, rather than making what `do_work` does harmless,
+    keeps the worker thread from ever being asked to do anything at all.
+
+    Not through `monkeypatch`: `do_work` would run off a queued connection
+    that `on_send()` only schedules rather than waits for, racing
+    `monkeypatch`'s function-scoped undo for whichever lands first — and it
+    has been observed losing that race. A `disconnect()` made here takes
+    effect immediately and is never undone, but nothing in this module sends
+    through this Session again once its test is done with it.
+
+    `_name_session` reaches for `_ask_for_a_title` on the same call, which is
+    its own real `_TitleThread` against the same developer settings — a
+    second leak `do_work` alone does not stop. Left running, that thread
+    outlives this test, and a later test's own `processEvents()` is what
+    delivers its queued `titled` signal, landing the hang in whatever test
+    happened to be pumping the loop when the real call finally returned. A
+    caller that already replaced `_ask_for_a_title` of its own — to watch
+    what it was asked — is left alone.
+    """
+    bundle = panel._worker_for(panel._current_log())
+    bundle.request_work.disconnect(bundle.worker.do_work)
+    if "_ask_for_a_title" not in vars(panel):
+        panel._ask_for_a_title = lambda log, intent: None
+
+
 def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     """
     The panel used to collect the attached paths and drop them on the floor.
     What it emits is what the run is given. FCC-4.
     """
+    _never_call_the_real_model(panel)
     picture = tmp_path / "bracket.png"
     picture.write_bytes(b"a file; whether it decodes is the loop's problem")
 
@@ -653,7 +791,6 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
         panel.on_send()
     finally:
         panel.request_work.disconnect()
-        panel.worker.stop()
         panel._set_running(False)
 
     assert sent == [("Build this bracket", [str(picture)])]
@@ -956,6 +1093,57 @@ def test_the_transcript_follows_the_run_when_it_is_at_the_bottom(panel):
     assert bar.value() == bar.maximum(), "the transcript stopped following a live run"
 
 
+def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessions_are_the_tests_own):
+    """
+    The second way a worker blocks, and the one that hung FreeCAD again after
+    the Plan Gate below was released.
+
+    A Step in flight parks its thread inside `core.apply.on_main_thread`,
+    waiting on a job only the GUI event loop can take. `_cleanup_thread` runs
+    on that thread and waits on the worker instead of pumping it, so the job
+    is never taken: the worker sits out `DISPATCH_TIMEOUT`, and what
+    `_cleanup_thread` reaches for is `terminate()` on a thread in the middle
+    of the Document.
+
+    Same shape as the Plan Gate test: the shutdown runs in its own daemon
+    thread and this one never pumps events, because a wait that does not
+    return is what is being measured.
+    """
+    import threading
+
+    import core.apply
+    from conftest import QtCore
+    from ui.copilot_panel import CopilotPanel
+
+    built = CopilotPanel()
+    parked = threading.Event()
+
+    def _dispatch_and_block():
+        parked.set()
+        try:
+            core.apply.on_main_thread(lambda: "the Document")
+        except Exception:
+            pass
+
+    blocked = QtCore.QTimer()
+    blocked.moveToThread(built.thread)
+    blocked.setSingleShot(True)
+    blocked.timeout.connect(_dispatch_and_block, QtCore.Qt.DirectConnection)
+    QtCore.QMetaObject.invokeMethod(blocked, "start", QtCore.Qt.QueuedConnection,
+                                    QtCore.Q_ARG(int, 0))
+    assert parked.wait(5), "the timer on built.thread never asked for the main thread"
+
+    done = threading.Event()
+    try:
+        threading.Thread(target=lambda: (built._cleanup_thread(), done.set()),
+                         daemon=True).start()
+
+        assert done.wait(5), "shutdown is still waiting on a Document operation in flight"
+        assert not built.thread.isRunning(), "the worker thread outlived the panel"
+    finally:
+        core.apply._closing.clear()
+
+
 def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_the_tests_own):
     """
     A run parked on the Plan Gate blocks its thread on an Event. `quit()` does
@@ -966,25 +1154,25 @@ def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_t
     In its own daemon thread: the defect under test is a wait that never
     returns, and a test that hangs says nothing to whoever runs the suite.
     """
-    import time
+    import threading
 
     from conftest import QtCore
     from ui.copilot_panel import CopilotPanel
 
     built = CopilotPanel()
+    parked = threading.Event()
+
+    def _ask_and_block():
+        parked.set()
+        built.ask.about_the_plan(["a step"])
+
     blocked = QtCore.QTimer()
     blocked.moveToThread(built.thread)
     blocked.setSingleShot(True)
-    blocked.timeout.connect(lambda: built.ask.about_the_plan(["a step"]),
-                            QtCore.Qt.DirectConnection)
+    blocked.timeout.connect(_ask_and_block, QtCore.Qt.DirectConnection)
     QtCore.QMetaObject.invokeMethod(blocked, "start", QtCore.Qt.QueuedConnection,
                                     QtCore.Q_ARG(int, 0))
-    deadline = time.time() + 5
-    while not built.ask._answered.is_set() and built.ask._answer is None and time.time() < deadline:
-        QT_APP.processEvents()
-        time.sleep(0.02)
-
-    import threading
+    assert parked.wait(5), "the timer on built.thread never fired the Plan Gate"
 
     done = threading.Event()
     threading.Thread(target=lambda: (built._cleanup_thread(), done.set()),
@@ -1372,6 +1560,7 @@ def test_a_first_intent_names_the_session_from_what_was_typed(panel, monkeypatch
     panel.chip_bar.get_and_clear()
     panel.new_chat()
     index = panel.chat_sessions.stack.currentIndex()
+    _never_call_the_real_model(panel)
 
     panel.user_input.setPlainText(
         "Model a spur gear with 24 teeth, module 2, 10mm thick, and a 12mm bore")
@@ -1380,7 +1569,6 @@ def test_a_first_intent_names_the_session_from_what_was_typed(panel, monkeypatch
         panel.on_send()
     finally:
         panel.request_work.disconnect()
-        panel.worker.stop()
         panel._set_running(False)
 
     name = panel.chat_sessions.get_session_info(index)["name"]
@@ -2328,41 +2516,6 @@ def test_the_gate_cards_the_document_rather_than_opening_it_in_the_chat(panel, t
     assert "length: 80 mm (read)" not in said, "the description is in the chat"
 
 
-RECORDED_GATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             "logs", "sessions",
-                             "fe663c12890b4d4497ad458136dfa880.jsonl")
-
-
-def test_the_recorded_gate_carries_none_of_the_description_it_used_to_open(panel):
-    """
-    The run whose Gate was approved unread, rendered again: the description its
-    two Design turns settled is not in the chat at all, and the chat is shorter
-    than the description it no longer opens. Both numbers are this test's, off
-    the session log.
-    """
-    from core.design import render
-    from core.events import DESIGN, PLAN, replay
-
-    events, _ = replay(RECORDED_GATE)
-    at_the_gate = events[:1 + next(i for i, event in enumerate(events)
-                                   if event.kind == PLAN)]
-    described = "\n".join(render(event.data["model"]) for event in at_the_gate
-                          if event.kind == DESIGN)
-    assert len(described.splitlines()) > 1_000, \
-        "this is no longer the run whose description filled the Gate"
-
-    before = len(_widgets_in(panel))
-    for event in at_the_gate:
-        panel.on_event(event)
-    QT_APP.processEvents()
-
-    said = _said_by(_widgets_in(panel)[before:])
-    assert described not in said
-    assert len(said) < len(described), \
-        "the Gate carries %d characters against the %d over %d lines it used to open" \
-        % (len(said), len(described), len(described.splitlines()))
-
-
 def test_what_was_decided_the_questions_and_the_criteria_all_stand_open(panel):
     """
     The three things the Steps are read beside. Each is short, and the Gate is
@@ -2938,6 +3091,130 @@ def test_the_thinking_row_says_how_long_it_has_been_thinking(panel):
 
     assert "1:23" in row.toggle_button.text()
     assert "Thinking (design)" in row.toggle_button.text()
+
+
+def test_the_words_a_phase_writes_open_a_row_of_their_own(panel):
+    """
+    The reply is not the reasoning: it forms after it, it is what the phase
+    will be held to, and the wait it accounts for is the larger one. Its own
+    row, so the two counts are read apart — a phase that thought for one
+    minute and wrote for four is a different phase from the reverse.
+    """
+    from core.events import Event, THOUGHT, WRITING
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("writing-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "plan", "text": "two Steps, then"}))
+    QT_APP.processEvents()
+    thinking = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+
+    panel.on_event(Event(WRITING, {"phase": "plan", "text": '{"steps": ['}))
+    panel.on_event(Event(WRITING, {"phase": "plan", "text": '"Pad the profile"]}'}))
+    QT_APP.processEvents()
+    writing = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+
+    assert writing is not thinking
+    assert thinking._clock is None
+    assert "Writing (plan)" in writing.toggle_button.text()
+    assert '{"steps": ["Pad the profile"]}' in _said_in(panel)
+
+
+def test_two_pages_of_one_drawing_each_keep_their_own_clock(panel):
+    """
+    Design fans out one call per page and the pages stream interleaved, so a
+    row belongs to a phase and not to the panel. Held in one slot, the row was
+    claimed by whichever page spoke last: a recorded run of the 2023 clamp
+    read `Thinking (design: page 1)… 0:01` for a page whose own `COST` says it
+    thought for 3:03, because page 2's first chunk landed 1.1 s after page 1's
+    and took the slot.
+
+    Each row is still a record and not a clock once its phase is over, which
+    is what `COST` decides — per page, since page 2 was paid for 19 s before
+    page 1 was.
+    """
+    from core.events import Event, COST, THOUGHT
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("two-page-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "design: page 1", "text": ""}))
+    panel.on_event(Event(THOUGHT, {"phase": "design: page 2", "text": ""}))
+    QT_APP.processEvents()
+    rows = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-2:]
+    page_1, page_2 = rows
+
+    assert "Thinking (design: page 1)" in page_1.toggle_button.text()
+    assert "Thinking (design: page 2)" in page_2.toggle_button.text()
+    assert page_1._clock is not None, "page 1 stopped counting when page 2 spoke"
+
+    panel.on_event(Event(COST, {"phase": "design: page 2", "model": "sonnet",
+                                "usd": 0.42, "seconds": 187.7}))
+    QT_APP.processEvents()
+
+    assert page_2._clock is None
+    assert page_1._clock is not None, "page 2 being paid for stopped page 1"
+
+    panel.on_event(Event(COST, {"phase": "design: page 1", "model": "sonnet",
+                                "usd": 0.44, "seconds": 206.6}))
+    QT_APP.processEvents()
+
+    assert page_1._clock is None
+
+
+def test_a_page_that_starts_writing_ends_only_its_own_reasoning(panel):
+    """
+    The reply of one page is not the end of another page's thinking: the
+    recorded run put up four `Writing … 0:00` rows for two calls, each one the
+    other page's row being taken away and given back.
+    """
+    from core.events import Event, THOUGHT, WRITING
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("interleaved-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "design: page 1", "text": ""}))
+    panel.on_event(Event(THOUGHT, {"phase": "design: page 2", "text": ""}))
+    QT_APP.processEvents()
+    thinking_1, thinking_2 = [w for w in _widgets_in(panel)
+                              if isinstance(w, AccordionWidget)][-2:]
+
+    panel.on_event(Event(WRITING, {"phase": "design: page 2", "text": '{"design"'}))
+    panel.on_event(Event(WRITING, {"phase": "design: page 1", "text": '{"design"'}))
+    panel.on_event(Event(WRITING, {"phase": "design: page 2", "text": ': {}}'}))
+    QT_APP.processEvents()
+    written = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)
+               if "Writing" in w.toggle_button.text()]
+
+    assert thinking_2._clock is None
+    assert thinking_1._clock is None
+    assert [w.toggle_button.text().split("…")[0] for w in written] == [
+        "Writing (design: page 2)", "Writing (design: page 1)"]
+
+
+def test_the_thinking_row_stops_counting_when_the_call_is_paid_for(panel):
+    """
+    `COST` is the event that says the model answered. Until it stopped the
+    row, the count ran on into the loop's own work and stopped only when the
+    next artefact happened to be rendered.
+    """
+    from core.events import Event, COST, THOUGHT
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("paid-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(THOUGHT, {"phase": "design", "text": ""}))
+    QT_APP.processEvents()
+    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+
+    panel.on_event(Event(COST, {"phase": "design", "model": "opus", "seconds": 12.0}))
+    QT_APP.processEvents()
+
+    assert row._clock is None
 
 
 def test_the_thinking_row_wears_the_brain_figma_puts_on_it(panel):

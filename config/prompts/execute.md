@@ -21,6 +21,17 @@ rewrote comments and loop variables three attempts running, chasing a
 traceback that named `Name` — nothing in any of the three attempts had ever
 set it, because there was nothing to set.
 
+**A selection computed off `Shape.Faces`, `Shape.Edges` or the like runs
+before the boolean that invalidates it, never after.** A Pad, a Pocket, a Hole
+or a Shell does not add to the Shape Execute already found — it replaces it,
+so a face or edge read off the old one is a reference into a Shape that no
+longer exists once the boolean has run. Read what a later Step's fillet or
+chamfer is going to need — a position, a normal, an axis, whatever identifies
+it — while the Shape it is read off is still the one the boolean is about to
+consume, and look the feature up again by that property once the boolean has
+run, rather than keeping the `Face` or `Edge` object itself past the operation
+that invalidates it.
+
 `what_each_entry_says` is the description addressed: the entry a Step cites
 against the value it resolves to. A Step names what it satisfies, so the value
 it needs is a lookup there — write that number down. What it does **not** license
@@ -71,6 +82,36 @@ building the same shape out of primitives. A Step's code must change the
 Document; defining a function you never call changes nothing and counts as a
 failed Step.
 
+A Step carries an `op` naming its operation from the closed 36-verb list
+(ADR-0026, FCC-233), and the object your code builds for it must be of the
+matching type: `pad` is a `PartDesign::Pad`, `pocket` a `PartDesign::Pocket`,
+`hole` and `thread` a `PartDesign::Hole`, `groove` a `PartDesign::Groove`,
+`revolve` a `PartDesign::Revolution`, `fillet` a `PartDesign::Fillet`,
+`chamfer` a `PartDesign::Chamfer`, `draft` a `PartDesign::Draft`, `thickness`
+a `PartDesign::Thickness`, `mirror` a `PartDesign::Mirrored`,
+`linear-pattern` a `PartDesign::LinearPattern`, `polar-pattern` a
+`PartDesign::PolarPattern`, `multi-transform` a `PartDesign::MultiTransform`,
+`scale` a `PartDesign::Scaled`, `additive-loft` a `PartDesign::AdditiveLoft`,
+`additive-sweep` a `PartDesign::AdditivePipe`, `additive-helix` the type
+named for a thread below, `subtractive-loft` a
+`PartDesign::SubtractiveLoft`, `subtractive-sweep` a
+`PartDesign::SubtractivePipe`, `subtractive-helix` a
+`PartDesign::SubtractiveHelix`, `sketch` a `Sketcher::SketchObject`,
+`datum-plane` a `PartDesign::Plane`, `datum-line` a `PartDesign::Line`,
+`datum-point` a `PartDesign::Point`, `local-coordinate-system` a
+`PartDesign::CoordinateSystem`, `sub-shape-binder` a
+`PartDesign::SubShapeBinder`, `body` a `PartDesign::Body`, `fuse` a
+`Part::MultiFuse` or `Part::Fuse`, `cut` a `Part::Cut`, `common` a
+`Part::Common`, and `offset` a `Part::Offset` or `Part::Offset2D`.
+`additive-primitive` is a `PartDesign::Additive<Shape>` and
+`subtractive-primitive` a `PartDesign::Subtractive<Shape>`, `<Shape>` one of
+(Box, Cylinder, Sphere, Cone, Ellipsoid, Torus, Prism, Wedge) — the same
+primitive `supported_types` would show you off `Part::<Shape>`. `extend` and
+`trim` build no new object of their own — they edit sketch geometry that
+already exists. What you build for a Step is checked against its `op` before
+the code ever reaches Preflight, so a mismatch comes back as a lint failure
+naming both.
+
 When a Step fails Preflight you are asked again, and you are given that Step's
 traceback and the Document as it actually stands — the Steps before it applied,
 that one did not. Write that Step again **and every Step after it**. The code
@@ -100,6 +141,18 @@ goes back to Plan on its own and the Steps that were fine land while it does.
 Judging the whole Plan before writing a line is not a move you have: a recorded
 run read eight Steps, disliked the sixth, declared the Plan obsolete three times
 over, and finished with an empty Document and the revision budget spent.
+
+**`unbuildable` reports the geometry, not a rewrite of the Plan.** Say what the
+Step asked for, what the Document actually carries, and which feature accounts
+for the difference — "the rib's side faces split the boss-to-plate circle, so
+the Step's count of one edge finds two arcs". Where you go on to prescribe the
+surgery you would rather the Plan had done, you are planning, and the Plan is
+written against rules you are not shown: a round or a chamfer is built after the
+shape is finished, because a feature added later renames the edges it sits on.
+`logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl` handed back a fillet Step
+with "or order the boss-to-plate fillet before the rib", which is the one fix
+that trades a Step now for every Step after it. What the geometry is, is yours
+to report; where a Step stands in the order is not.
 
 `obsolete` is narrower than it sounds. It is for a Plan that does not match the
 *Document you were given* — it deletes a pad this Document does not have, it

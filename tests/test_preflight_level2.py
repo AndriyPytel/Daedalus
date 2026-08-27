@@ -331,9 +331,13 @@ def test_an_undecodable_byte_on_stdout_does_not_hang_the_request(fresh):
 
 
 def test_an_infinite_loop_is_killed_on_timeout(fresh):
+    """
+    A real hang, killed by a real timeout — only the timeout itself is
+    scaffolding, short enough that the wait is not the point of the test.
+    """
     hung = fresh.pid
 
-    result = fresh.check("while True:\n    pass", timeout=3)
+    result = fresh.check("while True:\n    pass", timeout=0.5)
 
     assert not result.ok
     assert "timed out" in result.traceback

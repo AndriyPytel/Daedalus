@@ -1509,3 +1509,399 @@ def test_a_gap_naming_the_datum_it_would_be_measured_from_is_answered_by_nothing
     """
     assert distilled(THE_SLOT_AND_WHERE_IT_IS_NOT)["not_defined"] == \
         THE_SLOT_AND_WHERE_IT_IS_NOT["not_defined"]
+
+
+def test_two_features_same_axis_same_datum_different_datum_is_a_conflict():
+    """
+    Two rings running along the depth, agreeing at "the left end face: 65.5 mm"
+    and differing at "the bottom face" (25 mm vs 15 mm). One physical ring,
+    described twice with different heights.
+    """
+    model = {
+        "features": [
+            {
+                "id": "bore-ring",
+                "kind": "Ø42 through bore",
+                "axis": _read("perpendicular to the front view, running front-to-rear (along the depth)"),
+                "position": {
+                    "the left end face": _read("65.5 mm"),
+                    "the bottom face": _read("25 mm"),
+                },
+            },
+            {
+                "id": "boss-ring",
+                "kind": "Ø50 OD ring",
+                "axis": _read("perpendicular to the front face (along the depth)"),
+                "position": {
+                    "the left end face": _read("65.5 mm"),
+                    "the bottom face": _read("15 mm"),
+                },
+            },
+        ],
+    }
+    grown = merge({}, model)
+    about = [conflict["about"] for conflict in grown.get("conflicts", [])]
+
+    assert len(about) == 1, f"Expected 1 conflict, got {len(about)}: {about}"
+    assert "bore-ring" in about[0] and "boss-ring" in about[0]
+
+    conflict = grown["conflicts"][0]
+    assert conflict["kind"] == "conflict"
+    assert "the bottom face" in conflict["stands"] or "the bottom face" in conflict["was_also_said"]
+
+
+def test_two_features_different_axes_not_a_conflict():
+    """
+    hole-right has axis perpendicular to top and bottom (height), bore-ring has
+    axis along depth. Even though they share "the bottom face: 25 mm" and differ
+    at "the right end face", different axes mean not the same placement.
+    """
+    model = {
+        "features": [
+            {
+                "id": "bore-ring",
+                "kind": "Ø42 through bore",
+                "axis": _read("along the depth"),
+                "position": {
+                    "the bottom face": _read("25 mm"),
+                    "the right end face": _read("65.5 mm"),
+                },
+            },
+            {
+                "id": "hole-right",
+                "kind": "Ø6.6 through hole",
+                "axis": _read("perpendicular to the top and bottom faces"),
+                "position": {
+                    "the bottom face": _read("25 mm"),
+                    "the right end face": _read("95.5 mm"),
+                },
+            },
+        ],
+    }
+    grown = merge({}, model)
+    conflicts = grown.get("conflicts", [])
+
+    twice_placed_conflicts = [c for c in conflicts if "bore-ring" in c.get("about", "") 
+                              and "hole-right" in c.get("about", "")]
+    assert len(twice_placed_conflicts) == 0, f"Expected no conflict, got {twice_placed_conflicts}"
+
+
+def test_reading_2023_clamp_has_no_twice_placed():
+    """
+    The 2023 clamp reading has 13 features, all distinct. None should trigger
+    the twice_placed check.
+    """
+    with open("tests/recorded/reading_2023_clamp.json") as f:
+        model = json.load(f)
+
+    grown = merge({}, model)
+    conflicts = grown.get("conflicts", [])
+
+    twice_placed_conflicts = [c for c in conflicts 
+                              if "bore-ring" in c.get("about", "") or "boss-ring" in c.get("about", "")]
+    assert len(twice_placed_conflicts) == 0, f"Expected no twice_placed conflicts, got {twice_placed_conflicts}"
+
+
+
+def test_two_features_same_placeholder_not_a_conflict():
+    """
+    Two features agreeing on a non-numeric placeholder like "to be read again"
+    is not evidence they describe the same placement. Agreement counts only
+    for actual measurements, so this does not trigger the check.
+    """
+    model = {
+        "features": [
+            {
+                "id": "feature-one",
+                "kind": "first feature",
+                "axis": _read("along the depth"),
+                "position": {
+                    "the right end face": _read("to be read again off the later page"),
+                    "the bottom face": _read("25 mm"),
+                },
+            },
+            {
+                "id": "feature-two",
+                "kind": "second feature",
+                "axis": _read("along the depth"),
+                "position": {
+                    "the right end face": _read("to be read again off the later page"),
+                    "the bottom face": _read("30 mm"),
+                },
+            },
+        ],
+    }
+    grown = merge({}, model)
+    conflicts = grown.get("conflicts", [])
+
+    twice_placed_conflicts = [c for c in conflicts 
+                              if "feature-one" in c.get("about", "") 
+                              and "feature-two" in c.get("about", "")]
+    assert len(twice_placed_conflicts) == 0, (
+        f"Expected no conflict (placeholder agreement does not count), "
+        f"got {twice_placed_conflicts}"
+    )
+
+
+CLOSED = "closed"
+
+
+def test_a_kind_off_the_closed_list_is_refused_and_the_field_stays_empty():
+    """
+    ADR-0026/FCC-232: an `offered` fragment marking itself `"kind_vocabulary":
+    "closed"` has every feature's `kind` checked against `design.FEATURE_KIND`
+    (22 values). A value off that list is refused -- not written into the
+    model -- so the field reads as not yet filled rather than as a value that
+    was overruled, the same distinction FCC-94 already keeps for every other
+    field.
+    """
+    grown = merge({}, {"kind_vocabulary": CLOSED,
+                        "features": [{"id": "gizmo-1", "kind": "gizmo"}]})
+
+    assert grown["features"][0].get("kind") is None
+    conflict = grown["conflicts"][0]
+    assert conflict["about"] == "features → gizmo-1 → kind"
+    assert conflict["kind"] == design.A_CONFLICT
+
+
+def test_a_refused_kind_names_the_banned_synonym_it_maps_onto():
+    """
+    A refusal that only says "invalid" gives the next turn no reason to
+    answer differently, and burns the revision budget re-asking for a value
+    already ruled out (FCC-231's banned-prose-synonym sentences). Naming the
+    kind the word maps onto -- `round` is a `fillet`, `recess` is a
+    `counterbore` -- is correctable in one turn.
+    """
+    grown = merge({}, {"kind_vocabulary": CLOSED,
+                        "features": [{"id": "corner-1", "kind": "round"}]})
+
+    stands = grown["conflicts"][0]["stands"]
+    assert "round" in stands and "fillet" in stands
+
+
+def test_a_refused_region_word_names_pad_and_the_region_field():
+    """
+    A region word (`ring`, `arm`, `web`, ...) is the open-set leak ADR-0026
+    measured at 18.5% of the corpus -- the refusal for one names both halves
+    of the fix: the `kind` is `pad`, and the word itself belongs in the new
+    `region` field.
+    """
+    grown = merge({}, {"kind_vocabulary": CLOSED,
+                        "features": [{"id": "ring-1", "kind": "ring"}]})
+
+    stands = grown["conflicts"][0]["stands"]
+    assert "pad" in stands and "region" in stands
+
+
+def test_an_unmarked_offer_takes_the_legacy_unvalidated_path():
+    """
+    A recorded model has no `kind_vocabulary` marker -- it was written
+    against the prose grammar that existed before this ticket. Checking it
+    against the closed list would flag most of the corpus and is exactly the
+    rejected alternative ADR-0026 names ("a closed list added to the prompts
+    and nothing else"); the marker is what tells the two apart.
+    """
+    grown = merge({}, {"features": [{"id": "arm-1",
+                                      "kind": "flat arm running left from the ring"}]})
+
+    assert grown["features"][0]["kind"] == "flat arm running left from the ring"
+    assert grown.get("conflicts") in (None, [])
+
+
+def test_a_closed_kind_that_is_valid_is_written_normally():
+    grown = merge({}, {"kind_vocabulary": CLOSED,
+                        "features": [{"id": "hole-1", "kind": "hole"}]})
+
+    assert grown["features"][0]["kind"] == "hole"
+    assert [c for c in grown.get("conflicts") or []
+            if c["about"].endswith("kind")] == []
+
+
+def test_a_refused_kind_is_a_gap_the_next_turn_may_fill():
+    """
+    Refusing the write leaves the field unfilled, a gap the next turn may
+    close -- not a value already filled that FCC-94's rule then forbids
+    changing.
+    """
+    first = merge({}, {"kind_vocabulary": CLOSED,
+                        "features": [{"id": "ring-1", "kind": "ring"}]})
+
+    grown = merge(first, {"kind_vocabulary": CLOSED,
+                           "features": [{"id": "ring-1", "kind": "pad",
+                                         "region": "ring"}]})
+
+    assert grown["features"][0]["kind"] == "pad"
+    assert grown["features"][0]["region"] == "ring"
+
+
+def test_slot_arm_and_cutout_web_are_caught_by_kind_and_overlapping_datums():
+    """
+    `docs/research/ste-design-duplicates.md` §4, session
+    `e76b61d5bc7143699b451549c90433f7` (the 2023 pipe clamp, design.md's own
+    cited case study): `slot-arm` ("slot through the 15 mm arm, 30 mm long
+    ... ending at the vertical plane through the ring axis") and `cutout-web`
+    ("curved cutout in the web between the top of the arm and the ring") are
+    one physical cavity read twice. `tests/recorded/vocabulary_kinds.json`
+    records `slot-arm`'s real `position_datums` as `["the ring axis"]` and
+    `cutout-web`'s as `[]` — before this ticket the only signal was that
+    empty `position`. Here `cutout-web` carries a filled `position` naming
+    the same datum, standing for the reconciliation turn design.md already
+    asks for reading it again — the pair is caught by equal `kind` (both a
+    `slot`, once `kind` is the closed enum) and the shared datum, not by an
+    empty `position`.
+    """
+    model = {
+        "features": [
+            {"id": "slot-arm", "kind": "slot",
+             "position": {"the ring axis": _read("30 mm")}},
+            {"id": "cutout-web", "kind": "slot",
+             "position": {"the ring axis": _read("coincident")}},
+        ],
+    }
+    grown = merge({}, model)
+    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == design.A_GAP]
+
+    assert any("slot-arm" in a and "cutout-web" in a for a in about)
+
+
+def test_slot_and_cutout_blend_are_caught_by_kind_and_overlapping_datums():
+    """
+    `docs/research/ste-design-duplicates.md` §4, session
+    `6d67ee7f5fa4482ebb49495c2f6aef5c`: `slot` ("rectangular slot through the
+    arm, 30 mm long, with rounded/filleted ends per VIEW B and the plan") and
+    `cutout-blend` ("curved cutout blending the top of the 15 mm arm up into
+    the ring") — the same arm/ring junction cavity, two ids, independently of
+    the pair above. `vocabulary_kinds.json` records `slot`'s real
+    `position_datums` as `["the centre plane of the width", "the ring
+    axis"]` and `cutout-blend`'s as `[]`; `cutout-blend` here carries a
+    filled `position` at the shared `"the ring axis"` datum, standing for a
+    reconciliation read.
+    """
+    model = {
+        "features": [
+            {"id": "slot", "kind": "slot",
+             "position": {"the centre plane of the width": _read("15 mm"),
+                          "the ring axis": _read("coincident")}},
+            {"id": "cutout-blend", "kind": "slot",
+             "position": {"the ring axis": _read("coincident")}},
+        ],
+    }
+    grown = merge({}, model)
+    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == design.A_GAP]
+
+    assert any("slot" in a and "cutout-blend" in a for a in about)
+
+
+def test_bore_upper_and_hole_boss_are_caught_by_kind_and_overlapping_datums():
+    """
+    `docs/research/ste-design-duplicates.md` §4, session
+    `51d7a2f16e224230b5b74f126c7cf8f5`: `bore-upper` and `hole-boss` carry the
+    identical `kind` string `"Ø15 through hole in the upper boss"`
+    (`hole` in the closed enum), identical `seen_in`, identical diameter, and
+    both coaxial with the same boss — `bore-upper` framed off
+    `vocabulary_kinds.json`'s real `["the front-to-rear mid-plane", "the left
+    end tangent plane"]`, `hole-boss` off its real `["the boss axis"]`. The
+    two framings pin the same point and share no datum key as recorded, which
+    is exactly why an empty-`position` proxy could never have caught this
+    pair — nothing here is empty. Reading `hole-boss` again against
+    `bore-upper`'s own framing (a re-ask design.md's reconciliation turn
+    exists for) gives it a datum the two share, and the arithmetic catches it.
+    """
+    model = {
+        "features": [
+            {"id": "bore-upper", "kind": "hole",
+             "position": {"the front-to-rear mid-plane": _read("coincident"),
+                          "the left end tangent plane": _read("40 mm")}},
+            {"id": "hole-boss", "kind": "hole",
+             "position": {"the boss axis": _read("coincident"),
+                          "the front-to-rear mid-plane": _read("coincident")}},
+        ],
+    }
+    grown = merge({}, model)
+    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == design.A_GAP]
+
+    assert any("bore-upper" in a and "hole-boss" in a for a in about)
+
+
+def test_left_mounting_hole_and_phase2_slot_are_caught_by_kind_and_overlapping_datums():
+    """
+    `docs/research/ste-design-duplicates.md` §4, session
+    `549e6232c9e04b659e5a2d536354bd7a`: page-1 `left-mounting-hole`
+    ("Ø6.6 through mounting hole with Ø11 counterbore") and page-2
+    `phase2-left-mounting-slot` ("Ø6.6 by 8.0 obround through slot with
+    Ø11 counterbore slot") — same mounting location, same fastener
+    clearance and counterbore diameter, the page-2 revision turning a round
+    hole into an obround one. Geometrically both are the fastener clearance
+    hole at that mounting point (`hole` in the closed enum; a structural
+    cavity elsewhere in the part is what `slot` names), so kind is equal.
+    `vocabulary_kinds.json` records `left-mounting-hole`'s real
+    `position_datums` including `"the leftmost tangent plane of the mounting
+    arm"`; `phase2-left-mounting-slot`'s real `position_datums` is `[]` — "its
+    place is the one already given to `left-mounting-hole`", per the research
+    doc. Filling it in with that same datum is that reading made explicit,
+    not a proxy on an empty `position`.
+    """
+    model = {
+        "features": [
+            {"id": "left-mounting-hole", "kind": "hole",
+             "position": {"the leftmost tangent plane of the mounting arm": _read("15 mm")}},
+            {"id": "phase2-left-mounting-slot", "kind": "hole",
+             "position": {"the leftmost tangent plane of the mounting arm": _read("15 mm")}},
+        ],
+    }
+    grown = merge({}, model)
+    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == design.A_GAP]
+
+    assert any("left-mounting-hole" in a and "phase2-left-mounting-slot" in a for a in about)
+
+
+def test_a_dimension_in_kind_is_refused_and_the_dimension_belongs_in_a_field():
+    """
+    ADR-0026 §6: eleven dimension fields (`diameter`, `outer_diameter`,
+    `radius`, `thickness`, `length`, `width`, `depth`, `angle`, `count`,
+    `pitch`, `bolt_circle_diameter`) absorb what `kind` prose used to carry.
+    A `kind` sentence that still carries a dimension is off the 22-value
+    closed enum and is refused the same way any other off-list `kind` is; the
+    number belongs in its own field, on the same feature, unaffected by the
+    refusal.
+    """
+    grown = merge({}, {"kind_vocabulary": CLOSED,
+                        "features": [{"id": "hole-1", "kind": "Ø40 bore",
+                                      "diameter": _read("40 mm")}]})
+
+    feature = grown["features"][0]
+    assert feature.get("kind") is None
+    assert feature["diameter"] == _read("40 mm")
+    assert any(c["about"].endswith("kind") for c in grown["conflicts"])
+
+
+def test_superseded_by_fires_once_a_duplicate_pair_is_reconciled():
+    """
+    AC: `superseded_by` fires on the pairs it is built for. Measured before
+    this ticket it fired 5 times across 3 models and on none of the 4
+    duplicate pairs `twice_over` now finds -- the reconciliation link and the
+    defect it exists for never intersected. Declaring `superseded_by` on one
+    of `twice_over`'s own pairs, with a position value that disagrees at the
+    shared datum, is `unsafe_supersession`'s to catch; and once superseded,
+    `twice_over` does not raise the same pair a second time.
+    """
+    model = {
+        "features": [
+            {"id": "left-mounting-hole", "kind": "hole",
+             "position": {"the leftmost tangent plane of the mounting arm": _read("15 mm")}},
+            {"id": "phase2-left-mounting-slot", "kind": "hole",
+             "superseded_by": "left-mounting-hole",
+             "position": {"the leftmost tangent plane of the mounting arm": _read("18 mm")}},
+        ],
+    }
+    grown = merge({}, model)
+    conflicts = grown.get("conflicts", [])
+
+    unsafe = [c for c in conflicts if "synonym pair" in c["about"]]
+    assert any("left-mounting-hole" in c["about"] and "phase2-left-mounting-slot" in c["about"]
+               for c in unsafe)
+
+    twice_over_hits = [c for c in conflicts if c["kind"] == design.A_GAP
+                        and "left-mounting-hole" in c["about"]
+                        and "phase2-left-mounting-slot" in c["about"]]
+    assert twice_over_hits == []

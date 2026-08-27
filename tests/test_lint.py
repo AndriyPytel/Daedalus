@@ -461,3 +461,48 @@ def test_reading_midplane_is_untouched():
     and a Step is free to look at what is already there.
     """
     assert lint("was = pad.Midplane").ok
+
+
+def test_addobject_typeid_matching_the_steps_op_is_accepted():
+    code = "pad = doc.addObject('PartDesign::Pad', 'Pad')"
+
+    assert lint(code, op="pad").ok
+
+
+def test_addobject_typeid_not_matching_the_steps_op_is_rejected():
+    """
+    ADR-0026/FCC-233: `execute.md`'s verb-to-TypeId table says `pad` builds a
+    `PartDesign::Pad`. `Part::Extrusion` is not the TypeId any of the 36
+    approved operations builds, so a Step declared `op: "pad"` that writes it
+    is rejected the same way a `Gui` import already is.
+    """
+    code = "pad = doc.addObject('Part::Extrusion', 'Pad')"
+
+    result = lint(code, op="pad")
+
+    assert not result.ok
+    assert "Part::Extrusion" in result.report()
+    assert "pad" in result.report()
+
+
+def test_scaffolding_typeids_are_accepted_under_any_op():
+    """A Body and a Sketcher profile are common to every operation, not just
+    the one the Step is named for."""
+    code = ("body = doc.addObject('PartDesign::Body', 'Body')\n"
+            "sketch = body.newObject('Sketcher::SketchObject', 'Sketch')\n"
+            "pad = doc.addObject('PartDesign::Pad', 'Pad')")
+
+    assert lint(code, op="pad").ok
+
+
+def test_no_op_given_skips_the_typeid_check():
+    """Legacy code, applied without a declared `op`, is not held to the
+    allow-list at all — `core/lint.py` gained this check under FCC-233 and
+    every recorded run before it never named one."""
+    code = "pad = doc.addObject('Part::Extrusion', 'Pad')"
+
+    assert lint(code).ok
+
+
+def test_an_op_off_the_36_list_skips_the_typeid_check():
+    assert lint("pad = doc.addObject('Part::Extrusion', 'Pad')", op="squish").ok

@@ -24,7 +24,7 @@ import pytest
 from core.apply import ApplyPipeline
 from core.events import (
     APPLIED, BLOCKED, CALL_STARTED, COST, INTENT, PLAN, REVIEW_VERDICT,
-    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, EventStream,
+    STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, WRITING, EventStream,
 )
 from core.freecad_tools import build_registry
 from core.llm import ScriptedLLMClient
@@ -158,40 +158,56 @@ def worker():
         yield running
 
 
-@pytest.fixture
-def doc():
+def _drive_the_slice(worker, render_dir):
+    """
+    Run the whole slice once against a document of its own and hand back
+    everything to assert on. The document is closed when the caller is done.
+    """
     import FreeCAD
 
-    document = FreeCAD.newDocument("VerticalSlice")
-    document.UndoMode = 1
+    doc = FreeCAD.newDocument("VerticalSlice")
+    doc.UndoMode = 1
     try:
-        yield document
+        pipeline = ApplyPipeline(document=doc, worker=worker,
+                                 dispatch=lambda func, timeout=None: func(),
+                                 render_dir=render_dir,
+                                 confirm=lambda kinds: False)
+        events = EventStream()
+        gate = {"asked": [], "objects_at_the_gate": None}
+
+        def plan_gate(steps):
+            gate["asked"].append(list(steps))
+            gate["objects_at_the_gate"] = [o.Name for o in doc.Objects]
+            return Approval(APPROVE)
+
+        result = run("Make a %gmm square padded to %gmm with filleted top edges"
+                     % (SQUARE, PAD_CHANGED),
+                     llm=scripted_model(), tools=build_registry(doc, pipeline=pipeline),
+                     events=events, gate=plan_gate)
+
+        yield {"result": result, "events": events, "doc": doc,
+               "pipeline": pipeline, "gate": gate}
     finally:
-        FreeCAD.closeDocument(document.Name)
+        FreeCAD.closeDocument(doc.Name)
+
+
+@pytest.fixture(scope="module")
+def slice_run(worker, tmp_path_factory):
+    """
+    The one run every read-only assertion in this module shares.
+
+    Driving it per test cost the suite 132s of its 220s: the run itself is
+    0.9s, but the thirteenth in a row hung the Preflight Worker until the
+    120s timeout took it. A test that changes the document asks for
+    own_slice_run instead.
+    """
+    yield from _drive_the_slice(worker, str(tmp_path_factory.mktemp("slice")))
 
 
 @pytest.fixture
-def slice_run(doc, worker, tmp_path):
-    """Run the whole slice once and hand back everything to assert on."""
-    pipeline = ApplyPipeline(document=doc, worker=worker,
-                             dispatch=lambda func, timeout=None: func(),
-                             render_dir=str(tmp_path),
-                             confirm=lambda kinds: False)
-    events = EventStream()
-    gate = {"asked": [], "objects_at_the_gate": None}
-
-    def plan_gate(steps):
-        gate["asked"].append(list(steps))
-        gate["objects_at_the_gate"] = [o.Name for o in doc.Objects]
-        return Approval(APPROVE)
-
-    result = run("Make a %gmm square padded to %gmm with filleted top edges"
-                 % (SQUARE, PAD_CHANGED),
-                 llm=scripted_model(), tools=build_registry(doc, pipeline=pipeline),
-                 events=events, gate=plan_gate)
-
-    return {"result": result, "events": events, "doc": doc,
-            "pipeline": pipeline, "gate": gate}
+def own_slice_run(worker, tmp_path):
+    """A run of its own, for a test that changes the document it asserts on."""
+    yield from _drive_the_slice(worker, str(tmp_path))
 
 
 def test_the_full_loop_runs_end_to_end(slice_run):
@@ -254,7 +270,7 @@ def _top_flat_area(shape):
                if abs(face.CenterOfMass.z - top) < 1e-6)
 
 
-def test_the_fillet_stays_on_the_intended_edge_after_an_upstream_change(slice_run):
+def test_the_fillet_stays_on_the_intended_edge_after_an_upstream_change(own_slice_run):
     """
     Change the pad length — upstream of the fillet in the history — and the
     fillet must still be on the top edges. A hardcoded `Edge12` would not
@@ -263,7 +279,7 @@ def test_the_fillet_stays_on_the_intended_edge_after_an_upstream_change(slice_ru
     The section stays square, so the filleted top stays the same area on all
     four of its edges.
     """
-    doc = slice_run["doc"]
+    doc = own_slice_run["doc"]
     fillet = doc.getObject("Fillet")
     before = _top_flat_area(fillet.Shape)
 
@@ -276,12 +292,12 @@ def test_the_fillet_stays_on_the_intended_edge_after_an_upstream_change(slice_ru
     assert _top_flat_area(fillet.Shape) == pytest.approx((SQUARE - 2 * RADIUS) ** 2)
 
 
-def test_the_fillet_survives_a_change_further_upstream_still(slice_run):
+def test_the_fillet_survives_a_change_further_upstream_still(own_slice_run):
     """
     The sketch dimension, two features upstream of the fillet. The top is 20 by
     10 afterwards, still filleted on all four of its edges.
     """
-    doc = slice_run["doc"]
+    doc = own_slice_run["doc"]
     sketch, fillet = doc.getObject("Sketch"), doc.getObject("Fillet")
     distance_x = [n for n, c in enumerate(sketch.Constraints) if c.Type == "DistanceX"][0]
 
@@ -292,8 +308,8 @@ def test_the_fillet_survives_a_change_further_upstream_still(slice_run):
     assert _top_flat_area(fillet.Shape) == pytest.approx((20 - 2 * RADIUS) * (SQUARE - 2 * RADIUS))
 
 
-def test_one_undo_takes_back_exactly_one_step(slice_run):
-    doc = slice_run["doc"]
+def test_one_undo_takes_back_exactly_one_step(own_slice_run):
+    doc = own_slice_run["doc"]
     assert doc.getObject("Hole") is not None
 
     doc.undo()
@@ -303,9 +319,9 @@ def test_one_undo_takes_back_exactly_one_step(slice_run):
     assert doc.getObject("Pad").Length.Value == PAD_CHANGED
 
 
-def test_each_step_of_the_run_undoes_in_turn(slice_run):
+def test_each_step_of_the_run_undoes_in_turn(own_slice_run):
     """Five undos take the run apart, one Step at a time, in reverse order."""
-    doc = slice_run["doc"]
+    doc = own_slice_run["doc"]
 
     assert doc.UndoNames == ["Drill the hole", "Fillet the top edges",
                              "Change the pad length", "Pad the sketch",
@@ -328,12 +344,13 @@ def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
     Every event the panel draws the run from. The six Tool calls are the five
     applies plus the one review_views the loop drives at the end.
 
-    CALL_STARTED, COST, and THOUGHT are per-call bookkeeping and say nothing
+    CALL_STARTED, COST, THOUGHT and WRITING are per-call bookkeeping and say nothing
     about the order of the run, so they are filtered out before checking the
     structural event sequence.
     """
     events = slice_run["events"]
-    kinds = [e.kind for e in events if e.kind not in (CALL_STARTED, COST, THOUGHT)]
+    kinds = [e.kind for e in events
+             if e.kind not in (CALL_STARTED, COST, THOUGHT, WRITING)]
 
     assert kinds[:2] == [INTENT, PLAN]
     assert len(events.of(STEP_STARTED)) == 5

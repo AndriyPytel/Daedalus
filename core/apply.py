@@ -17,12 +17,41 @@ from core.events import ANSWER, QUESTION
 from core.freecad_tools import description, fit_view
 from core.lint import lint
 from core.preflight import PreflightWorker, copy_of
-from core.preflight_worker import step_namespace
+from core.preflight_worker import register_step_source, step_namespace, trimmed_traceback
 
 DISPATCH_TIMEOUT = 60.0
 
 _dispatcher = None
 _dispatcher_lock = threading.Lock()
+_closing = threading.Event()
+_waiting = set()
+
+
+class Closing(Exception):
+    """
+    The Document operation was abandoned: FreeCAD is closing.
+
+    Not a `RuntimeError`: `utils.logger._console` reads that one as "there is
+    no Qt application at all" and writes the line straight to
+    `FreeCAD.Console` from whatever thread it is on, which is the cross-thread
+    call that segfaults. A line lost while FreeCAD closes is already in the
+    file.
+    """
+
+
+def closing():
+    """
+    Release every caller waiting on the main thread, and refuse new ones.
+
+    The main thread takes these jobs from its event loop, and the panel's own
+    shutdown runs on that thread without pumping it — so a worker parked here
+    when FreeCAD is closing waits out `DISPATCH_TIMEOUT` for a job nobody will
+    ever take, and is force-ended mid-mutation of the Document instead. That
+    is FreeCAD hanging on exit.
+    """
+    _closing.set()
+    for done in list(_waiting):
+        done.set()
 
 
 @dataclass
@@ -87,6 +116,9 @@ class _Dispatcher:
         if QtCore.QThread.currentThread() == self._app.thread():
             return func()
 
+        if _closing.is_set():
+            raise Closing("The Document operation was abandoned: FreeCAD is closing.")
+
         outcome = {}
         done = threading.Event()
 
@@ -98,11 +130,18 @@ class _Dispatcher:
             finally:
                 done.set()
 
-        self._relay.job.emit(run)
-        if not done.wait(timeout):
-            raise TimeoutError(
-                "The Document operation did not return within %ss on the main thread." % timeout
-            )
+        _waiting.add(done)
+        try:
+            self._relay.job.emit(run)
+            if not done.wait(timeout):
+                raise TimeoutError(
+                    "The Document operation did not return within %ss on the main thread."
+                    % timeout
+                )
+        finally:
+            _waiting.discard(done)
+        if not outcome:
+            raise Closing("The Document operation was abandoned: FreeCAD is closing.")
         if "error" in outcome:
             raise outcome["error"]
         return outcome["value"]
@@ -135,6 +174,7 @@ def run_in_transaction(doc, code, label="Copilot Step"):
     """
     doc.openTransaction(label)
     try:
+        register_step_source(code)
         exec(compile(code, "<step>", "exec"), step_namespace(doc))  # noqa: S102
         doc.recompute()
     except BaseException:
@@ -245,7 +285,7 @@ class ApplyPipeline:
         self._renders += 1
         return os.path.join(directory, "copilot_step_%d.png" % self._renders)
 
-    def apply(self, code, selection=None, label="Copilot Step") -> ApplyResult:
+    def apply(self, code, selection=None, label="Copilot Step", op=None) -> ApplyResult:
         """
         Lint *code*, Preflight it, and land it on the live Document.
 
@@ -262,8 +302,13 @@ class ApplyPipeline:
         A Step that lands is fitted into the viewport, which is the one place
         anything moves the user's camera without being asked to — `fit_view`
         holds why.
+
+        `op` is this Step's declared operation (ADR-0026, FCC-233), `None` for
+        a legacy Plan or one Execute wrote without the closed vocabulary in
+        force — lint only checks the TypeId a Step's code builds where it has
+        one to check against.
         """
-        checked = lint(code, selection)
+        checked = lint(code, selection, op=op)
         if not checked.ok:
             return ApplyResult(ok=False, traceback=checked.report())
 
@@ -292,12 +337,10 @@ class ApplyPipeline:
         try:
             self._dispatch(lambda: self._transaction(doc, code, label))
         except BaseException as exc:
-            import traceback as tb
             return ApplyResult(
                 ok=False,
                 traceback="The Step passed Preflight but failed against the real Document, "
-                          "so it was rolled back:\n\n" + "".join(
-                              tb.format_exception(type(exc), exc, exc.__traceback__)),
+                          "so it was rolled back:\n\n" + trimmed_traceback(exc),
             )
 
         self._dispatch(lambda: fit_view(doc))
