@@ -285,7 +285,7 @@ class ApplyPipeline:
         self._renders += 1
         return os.path.join(directory, "copilot_step_%d.png" % self._renders)
 
-    def apply(self, code, selection=None, label="Copilot Step") -> ApplyResult:
+    def apply(self, code, selection=None, label="Copilot Step", op=None) -> ApplyResult:
         """
         Lint *code*, Preflight it, and land it on the live Document.
 
@@ -302,8 +302,13 @@ class ApplyPipeline:
         A Step that lands is fitted into the viewport, which is the one place
         anything moves the user's camera without being asked to — `fit_view`
         holds why.
+
+        `op` is this Step's declared operation (ADR-0026, FCC-233), `None` for
+        a legacy Plan or one Execute wrote without the closed vocabulary in
+        force — lint only checks the TypeId a Step's code builds where it has
+        one to check against.
         """
-        checked = lint(code, selection)
+        checked = lint(code, selection, op=op)
         if not checked.ok:
             return ApplyResult(ok=False, traceback=checked.report())
 

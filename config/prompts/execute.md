@@ -82,6 +82,36 @@ building the same shape out of primitives. A Step's code must change the
 Document; defining a function you never call changes nothing and counts as a
 failed Step.
 
+A Step carries an `op` naming its operation from the closed 36-verb list
+(ADR-0026, FCC-233), and the object your code builds for it must be of the
+matching type: `pad` is a `PartDesign::Pad`, `pocket` a `PartDesign::Pocket`,
+`hole` and `thread` a `PartDesign::Hole`, `groove` a `PartDesign::Groove`,
+`revolve` a `PartDesign::Revolution`, `fillet` a `PartDesign::Fillet`,
+`chamfer` a `PartDesign::Chamfer`, `draft` a `PartDesign::Draft`, `thickness`
+a `PartDesign::Thickness`, `mirror` a `PartDesign::Mirrored`,
+`linear-pattern` a `PartDesign::LinearPattern`, `polar-pattern` a
+`PartDesign::PolarPattern`, `multi-transform` a `PartDesign::MultiTransform`,
+`scale` a `PartDesign::Scaled`, `additive-loft` a `PartDesign::AdditiveLoft`,
+`additive-sweep` a `PartDesign::AdditivePipe`, `additive-helix` the type
+named for a thread below, `subtractive-loft` a
+`PartDesign::SubtractiveLoft`, `subtractive-sweep` a
+`PartDesign::SubtractivePipe`, `subtractive-helix` a
+`PartDesign::SubtractiveHelix`, `sketch` a `Sketcher::SketchObject`,
+`datum-plane` a `PartDesign::Plane`, `datum-line` a `PartDesign::Line`,
+`datum-point` a `PartDesign::Point`, `local-coordinate-system` a
+`PartDesign::CoordinateSystem`, `sub-shape-binder` a
+`PartDesign::SubShapeBinder`, `body` a `PartDesign::Body`, `fuse` a
+`Part::MultiFuse` or `Part::Fuse`, `cut` a `Part::Cut`, `common` a
+`Part::Common`, and `offset` a `Part::Offset` or `Part::Offset2D`.
+`additive-primitive` is a `PartDesign::Additive<Shape>` and
+`subtractive-primitive` a `PartDesign::Subtractive<Shape>`, `<Shape>` one of
+(Box, Cylinder, Sphere, Cone, Ellipsoid, Torus, Prism, Wedge) — the same
+primitive `supported_types` would show you off `Part::<Shape>`. `extend` and
+`trim` build no new object of their own — they edit sketch geometry that
+already exists. What you build for a Step is checked against its `op` before
+the code ever reaches Preflight, so a mismatch comes back as a lint failure
+naming both.
+
 When a Step fails Preflight you are asked again, and you are given that Step's
 traceback and the Document as it actually stands — the Steps before it applied,
 that one did not. Write that Step again **and every Step after it**. The code

@@ -89,6 +89,21 @@ def _freecad_version():
 
 _VIEW_NAMES = ("isometric", "the opposite isometric", "above", "the front")
 
+OP_VERBS = (
+    "pad", "revolve", "additive-loft", "additive-sweep", "additive-helix",
+    "additive-primitive",
+    "pocket", "hole", "groove", "subtractive-loft", "subtractive-sweep",
+    "subtractive-helix", "subtractive-primitive",
+    "fillet", "chamfer", "draft", "thickness",
+    "mirror", "linear-pattern", "polar-pattern", "multi-transform", "scale",
+    "sketch", "datum-plane", "datum-line", "datum-point",
+    "local-coordinate-system", "sub-shape-binder", "body",
+    "fuse", "cut", "common",
+    "thread", "extend", "trim", "offset",
+)
+
+OP_VOCABULARY = "closed"
+
 
 class PhaseError(Exception):
     """A phase gave back something the loop cannot act on."""
@@ -179,30 +194,39 @@ class _Revisions:
     """
     How many times the Plan has been rewritten, and why (FCC-22).
 
-    Seven unrelated things replan: the Plan leaves part of the description
-    unplanned, a sum it states does not come out, the user amends at the Plan
-    Gate, Execute finds a Step out of date, Execute cannot build one, the
-    acceptance checks fail, and Review rejects the result. Mechanical causes
-    (UNCOVERED, MISCOUNTED) spend their own ceiling; execution causes (OBSOLETE,
+    Eight unrelated things replan: the Plan leaves part of the description
+    unplanned, a sum it states does not come out, a Step names an operation
+    off the closed list, the user amends at the Plan Gate, Execute finds a
+    Step out of date, Execute cannot build one, the acceptance checks fail,
+    and Review rejects the result. Mechanical causes (UNCOVERED, MISCOUNTED,
+    OP_REFUSED) spend their own ceiling; execution causes (OBSOLETE,
     UNBUILDABLE, ASSERTED, REJECTED, AMENDED) spend revisions_ceiling. They used
     to share one *counter* too, so whichever branch spent the last unit was
     reported as the cause of all of them, and a run stopped by two amendments
     told the user Execute kept finding the Plan out of date.
+
+    OP_REFUSED sits with UNCOVERED and MISCOUNTED rather than with
+    UNBUILDABLE: the closed-vocabulary check that raises it runs over the
+    Plan reply itself, before Execute is ever asked for code, the same way
+    UNCOVERED and MISCOUNTED are read straight off the Plan and never touch a
+    Document (ADR-0026, FCC-233).
     """
 
     UNCOVERED = "uncovered"
     MISCOUNTED = "miscounted"
+    OP_REFUSED = "op_refused"
     AMENDED = "amended"
     OBSOLETE = "obsolete"
     UNBUILDABLE = "unbuildable"
     ASSERTED = "asserted"
     REJECTED = "rejected"
 
-    MECHANICAL_CAUSES = {UNCOVERED, MISCOUNTED}
+    MECHANICAL_CAUSES = {UNCOVERED, MISCOUNTED, OP_REFUSED}
 
     _SAID = (
         (UNCOVERED, "the Plan left part of the description unplanned %s"),
         (MISCOUNTED, "the Plan's own arithmetic did not come out %s"),
+        (OP_REFUSED, "a Step named an operation off the closed list %s"),
         (AMENDED, "you amended the Plan %s"),
         (OBSOLETE, "Execute found the Plan out of date %s"),
         (UNBUILDABLE, "Execute could not build a Step %s"),
@@ -1154,6 +1178,15 @@ class Plan:
     instead of Steps. It is offered only once Plan has asked something the
     drawing cannot answer, so it is how a question about the build is settled
     rather than a second route to the Document.
+
+    `ops` is the operation each Step of `steps` declared, position for
+    position, `None` where none was declared or the closed vocabulary was
+    not in force (ADR-0026, FCC-233) — Execute is told it, and `core/lint.py`
+    checks the TypeId a Step's code builds against it. `unbuildable` is every
+    Step `_steps_of` refused outright because its `op` was not one of the 36:
+    it never reaches Execute, so no code is ever asked for it, and the entry
+    it would have satisfied is left to the ordinary coverage check to send
+    back through Plan again.
     """
 
     steps: list
@@ -1161,6 +1194,8 @@ class Plan:
     acceptance: list = field(default_factory=list)
     satisfies: list = field(default_factory=list)
     cites: list = field(default_factory=list)
+    ops: list = field(default_factory=list)
+    unbuildable: list = field(default_factory=list)
     look: dict = None
 
 
@@ -1231,7 +1266,8 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
 
     reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
                  json.dumps(request, indent=2, default=str))
-    steps, satisfies, cites = _steps_of(reply.get("steps", []))
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        reply.get("steps", []), reply.get("op_vocabulary"))
 
     look = reply.get("look")
     if not steps and looking and isinstance(look, dict) and look:
@@ -1242,8 +1278,8 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
         return Plan(steps=[], question=question)
     if not steps:
         raise PhaseError("Plan produced no Steps for this Intent.")
-    return Plan(steps=steps, satisfies=satisfies, cites=cites,
-                acceptance=_acceptance_of(the_part))
+    return Plan(steps=steps, satisfies=satisfies, cites=cites, ops=ops,
+                unbuildable=unbuildable, acceptance=_acceptance_of(the_part))
 
 
 def _addressed(acceptance):
@@ -1262,38 +1298,62 @@ def _addressed(acceptance):
     return addressed
 
 
-def _steps_of(planned):
+def _steps_of(planned, op_vocabulary=None):
     """
-    The prose of each Step, and every entry of the description the Plan cites.
+    The prose of each Step, the entries the Plan cites, the operation each
+    kept Step declared, and the Steps refused outright.
 
-    A Step is `{"do": …, "satisfies": [...]}`, or the bare string it has always
-    been. What a Step satisfies goes into its own prose rather than beside it,
-    because the Plan Gate shows prose: a reader who cannot tell from the Gate
-    which part of the part a Step is for cannot tell that one physical cavity
-    has been planned three times, which is what Steps 4, 5 and 6 of the recorded
-    run were (FCC-94).
+    A Step is `{"do": …, "op": …, "satisfies": [...]}`, or the bare string it
+    has always been. What a Step satisfies goes into its own prose rather than
+    beside it, because the Plan Gate shows prose: a reader who cannot tell
+    from the Gate which part of the part a Step is for cannot tell that one
+    physical cavity has been planned three times, which is what Steps 4, 5
+    and 6 of the recorded run were (FCC-94).
 
     A Step citing nothing is not refused here. The rule is coverage over the
     whole Plan — no entry may be left to no Step — and a Plan is the only thing
     that can be judged against it; a Step may legitimately carry work no entry
     of the description names.
+
+    `op` is checked against `OP_VERBS` (ADR-0026, FCC-233) only where *planned*
+    itself carries `"op_vocabulary": "closed"` — the marker FCC-232 already
+    put on `kind`, kept the same shape here rather than invented a second one.
+    A recorded Plan predates the closed vocabulary and carries no marker at
+    all, and takes this same legacy path whether or not a Step happens to
+    have an `op` field: checking one against the list is exactly the
+    prompt-only alternative ADR-0026 measured at 14.9% and rejected by name.
+
+    A Step whose `op` is off the list under the marker is refused rather than
+    kept: it is left out of `steps` entirely, so it is never sent to Execute
+    and no code is ever asked for it, and what it cited is left out of
+    `satisfies` too, so the ordinary coverage check is what sends it back
+    through Plan again — no second `unbuildable` code path was written for a
+    case the first one already covers.
     """
-    steps, satisfies, cites = [], [], []
+    steps, satisfies, cites, ops, unbuildable = [], [], [], [], []
+    closed = op_vocabulary == OP_VOCABULARY
     for step in planned:
         if isinstance(step, dict):
             prose = str(step.get("do") or step.get("step") or "").strip()
             cited = [_as_written(entry) for entry in (step.get("satisfies") or ())
                      if _as_written(entry)]
+            op = str(step.get("op") or "").strip() or None
         else:
-            prose, cited = str(step).strip(), []
+            prose, cited, op = str(step).strip(), [], None
         if not prose:
+            continue
+        if closed and op and op not in OP_VERBS:
+            unbuildable.append({"step": prose,
+                                "why": "%r is not one of the 36 approved operations" % op,
+                                "entries": cited})
             continue
         steps.append(prose + (" (satisfies: %s)" % ", ".join(_in_the_prose(entry)
                                                              for entry in cited)
                               if cited else ""))
         satisfies.extend(cited)
         cites.append(cited)
-    return steps, satisfies, cites
+        ops.append(op if closed else None)
+    return steps, satisfies, cites, ops, unbuildable
 
 
 def _as_written(entry):
@@ -1387,6 +1447,23 @@ def _unconsumed(the_part, satisfies, standing=()):
             if entry["flag"] in ("read", "derived")
             and not any(said == entry["about"] or said.startswith(entry["about"] + ":")
                         for said in cited)]
+
+
+def _op_off_the_list(unbuildable) -> str:
+    """
+    What Plan is told when one of its own Steps named an operation off the
+    closed 36-verb list (ADR-0026, FCC-233) — the same actionability rule
+    FCC-232's refused `kind` applied: name the Step, name why, and hand back
+    the list it has to pick from, so the next Plan has a reason to choose a
+    different verb instead of restating the one just refused.
+    """
+    named = "\n".join("- %r %s" % (item["step"], item["why"]) for item in unbuildable)
+    return (named
+            + "\nEvery build op has to be one of these 36: "
+            + ", ".join(OP_VERBS)
+            + ".\nRewrite the Step(s) named above with one of them, or with a `question` "
+              "if the part genuinely needs none of them. Send back every Step you already "
+              "wrote that was kept, unchanged, beside the rewritten one(s).")
 
 
 def _plan_the_rest(unconsumed) -> str:
@@ -3697,6 +3774,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     while True:
         steps = planned.steps
 
+        if planned.unbuildable:
+            planned = rewrite(_Revisions.OP_REFUSED,
+                              "A Step named an operation off the closed list.",
+                              _op_off_the_list(planned.unbuildable), progress["tried"],
+                              reason="; ".join(item["why"] for item in planned.unbuildable))
+            continue
+
         unconsumed = _unconsumed(part["the_part"], planned.satisfies,
                                  progress["satisfied"])
         if unconsumed:
@@ -3756,7 +3840,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part["the_part"]), looks,
                                 planned.acceptance, planned.cites, ledger,
-                                start=carried)
+                                start=carried, ops=planned.ops)
         last_pass["steps"], last_pass["applied"] = steps, outcome["applied_here"]
         applied = progress["applied"]
 
@@ -3937,7 +4021,7 @@ def _trailing_gap(written, number, total):
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
-                  start=0):
+                  start=0, ops=()):
     """
     One pass over the Plan: written in one call, applied one Step at a time.
 
@@ -4001,6 +4085,12 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     a Step that had just landed. The count this pass actually reached, carried
     Steps included, comes back on `applied_here` so the next revision, if
     there is one, has it to carry from in turn.
+
+    `ops` is `planned.ops`, index for index with `steps`: where an entry is
+    truthy it rides onto the `apply_step` call as `op`, which is what lets
+    `core/lint.py` check the TypeId that Step's code actually builds
+    (ADR-0026, FCC-233). A legacy, unmarked Plan's `ops` is all `None`, so
+    `apply_step` is called exactly as it always was — no `op` key at all.
 """
     if cancelled():
         raise Stopped()
@@ -4057,6 +4147,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         ran_dry = False
         if outcome.code:
             arguments = {"code": outcome.code, "label": outcome.label}
+            if index < len(ops) and ops[index]:
+                arguments["op"] = ops[index]
             events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
             result = tools.call("apply_step", arguments)
             events.emit(TOOL_RESULT, name="apply_step", result=result)

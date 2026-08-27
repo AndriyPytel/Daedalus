@@ -923,16 +923,22 @@ def _register_apply(registry, pipeline, selection):
                     "type": "string",
                     "description": "Short name for the undo entry, e.g. 'Pad the base sketch'.",
                 },
+                "op": {
+                    "type": "string",
+                    "description": "This Step's operation, one of the 36 in plan.md's closed "
+                                   "list — carried straight from the Plan, not asked for here.",
+                },
             },
             "required": ["code"],
         },
     )
-    def apply_step(code, label="Copilot Step"):
+    def apply_step(code, label="Copilot Step", op=None):
         """
         Preflight lives behind this Tool: from here up, a Step was applied or
         it was not, and there is no third thing to know about.
         """
-        return pipeline.apply(code, selection=selection(), label=label).as_tool_result()
+        return pipeline.apply(code, selection=selection(), label=label,
+                              op=op).as_tool_result()
 
     @registry.tool(
         "check_assertions",

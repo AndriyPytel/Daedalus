@@ -314,12 +314,16 @@ class FakeTools:
 
         @registry.tool("apply_step", "Apply one Step.", {
             "type": "object",
-            "properties": {"code": {"type": "string"}, "label": {"type": "string"}},
+            "properties": {"code": {"type": "string"}, "label": {"type": "string"},
+                          "op": {"type": "string"}},
             "required": ["code"],
         })
-        def apply_step(code, label="Step"):
+        def apply_step(code, label="Step", op=None):
             """A None entry, or running off the end, means "this one worked"."""
-            self.calls.append(("apply_step", {"code": code, "label": label}))
+            arguments = {"code": code, "label": label}
+            if op is not None:
+                arguments["op"] = op
+            self.calls.append(("apply_step", arguments))
             queued = self.applies.pop(0) if self.applies else None
             result = queued if queued is not None else dict(self.APPLIED)
             if result.get("status") == "applied":
@@ -8319,3 +8323,151 @@ def test_type_cache_fixture_redirects_to_tmp_path(tmp_path):
 
     assert str(tmp_path) in loop.TYPE_CACHE_PATH, \
         "TYPE_CACHE_PATH %s not under tmp_path %s" % (loop.TYPE_CACHE_PATH, tmp_path)
+
+
+CLOSED_OPS = "closed"
+
+
+def test_a_closed_step_op_off_the_36_list_is_refused_and_names_the_verb():
+    """
+    ADR-0026/FCC-233: `_steps_of` checks a Step's `op` against `OP_VERBS` (36
+    values) only when the Plan reply itself carries `"op_vocabulary":
+    "closed"` — the same gate FCC-232 put on `kind`. Refused rather than
+    silently kept, so it never reaches Execute at all: no code is produced
+    for it and its citation is left unaccounted for, which is what sends the
+    entry it was meant to satisfy back through the ordinary coverage check
+    instead of a code path invented for the purpose.
+    """
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Squish the tab flat", "op": "squish",
+          "satisfies": ["envelope → depth: 10 mm (read)"]}],
+        CLOSED_OPS)
+
+    assert steps == []
+    assert satisfies == []
+    assert ops == []
+    assert len(unbuildable) == 1
+    assert "squish" in unbuildable[0]["why"]
+
+
+def test_a_closed_step_op_on_the_36_list_is_kept_with_its_op():
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Pad the base profile 6 mm", "op": "pad"}], CLOSED_OPS)
+
+    assert steps == ["Pad the base profile 6 mm"]
+    assert ops == ["pad"]
+    assert unbuildable == []
+
+
+def test_an_unmarked_reply_takes_the_legacy_path_op_or_not():
+    """
+    No `op_vocabulary` marker — the shape every recorded fixture (pre-FCC-233)
+    and every bare-string Step already has — is never checked, whatever `op`
+    (if any) rides along with it.
+    """
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(
+        [{"do": "Squish the tab flat", "op": "squish"}], None)
+
+    assert steps == ["Squish the tab flat"]
+    assert unbuildable == []
+
+
+def test_a_bare_string_step_is_unaffected_by_the_op_check():
+    from core.loop import _steps_of
+
+    steps, satisfies, cites, ops, unbuildable = _steps_of(["Pad the base profile 6 mm"],
+                                                          CLOSED_OPS)
+
+    assert steps == ["Pad the base profile 6 mm"]
+    assert ops == [None]
+    assert unbuildable == []
+
+
+def test_the_op_vocabulary_is_36_verbs_the_32_reachable_plus_four():
+    from core.loop import OP_VERBS
+
+    assert len(OP_VERBS) == 36
+    for verb in ("thread", "extend", "trim", "offset"):
+        assert verb in OP_VERBS
+
+
+def test_an_off_list_op_sends_plan_back_naming_the_verb_and_the_36_allowed():
+    """
+    Excluding the Step is not by itself enough: a Plan told only "an entry is
+    uncovered" has no reason to pick a different verb next turn, which is the
+    same actionability rule FCC-232 had to apply to a refused `kind`
+    (ADR-0026, FCC-233). The revision names the refused verb and hands back
+    the 36 it may choose from instead.
+    """
+    _, events, llm, _ = drive([
+        json.dumps({"steps": [
+            {"do": "Add a box", "op": "pad"},
+            {"do": "Machine a lattice into it", "op": "lattice-mill"},
+        ], "op_vocabulary": CLOSED_OPS}),
+        json.dumps({"steps": [
+            {"do": "Add a box", "op": "pad"},
+            {"do": "Emboss a lattice texture", "op": "additive-primitive"},
+        ], "op_vocabulary": CLOSED_OPS}),
+        code_reply("doc.addObject('Part::Box', 'Box')",
+                   "doc.addObject('Part::Feature', 'Lattice')"),
+        verdict_reply("pass"),
+    ])
+
+    revised = events.first(PLAN_REVISED)
+    assert revised.data["because"] == "a Step named an operation off the closed list"
+    assert "lattice-mill" in revised.data["reason"]
+    retry = json.dumps(llm.calls[2])
+    assert "Every build op has to be one of these 36" in retry
+    assert "additive-primitive" in retry
+
+
+def test_a_run_never_asks_execute_about_a_step_whose_op_was_refused():
+    """
+    A Plan reply names one buildable Step and one off-list `op`. The revised
+    Plan Execute is actually shown carries the fixed Step alone — the refused
+    op never reaches Execute, so no code is ever asked for it.
+    """
+    _, _, llm, _ = drive([
+        json.dumps({"steps": [
+            {"do": "Add a box", "op": "pad"},
+            {"do": "Machine a lattice into it", "op": "lattice-mill"},
+        ], "op_vocabulary": CLOSED_OPS}),
+        json.dumps({"steps": [
+            {"do": "Add a box", "op": "pad"},
+            {"do": "Emboss a lattice texture", "op": "additive-primitive"},
+        ], "op_vocabulary": CLOSED_OPS}),
+        code_reply("doc.addObject('Part::Box', 'Box')",
+                   "doc.addObject('Part::Feature', 'Lattice')"),
+        verdict_reply("pass"),
+    ])
+
+    asked = json.dumps(llm.calls[3])
+    assert "lattice-mill" not in asked
+    assert "Add a box" in asked
+
+
+def test_a_closed_marked_steps_op_reaches_the_apply_step_tool_call():
+    """
+    ADR-0026/FCC-233: `core/lint.py` can only check the TypeId a Step's code
+    builds against its declared `op` if that `op` actually reaches
+    `apply_step`. A legacy, unmarked Plan (every other test in this file)
+    still calls `apply_step` with exactly `{"code", "label"}` — no `op` key
+    at all — so the lint check it feeds stays off for every recorded fixture.
+    """
+    _, events, _, tools = drive([
+        json.dumps({"steps": [{"do": "Add a box", "op": "pad"}],
+                    "op_vocabulary": CLOSED_OPS}),
+        code_reply("doc.addObject('Part::Box', 'Box')", label="Add the box"),
+        verdict_reply("pass"),
+    ])
+
+    assert ("apply_step", {"code": "doc.addObject('Part::Box', 'Box')",
+                           "label": "Add the box", "op": "pad"}) in tools.calls
+    call = events.first(TOOL_CALL)
+    assert call.data["arguments"]["op"] == "pad"
