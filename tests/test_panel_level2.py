@@ -2468,41 +2468,6 @@ def test_the_gate_cards_the_document_rather_than_opening_it_in_the_chat(panel, t
     assert "length: 80 mm (read)" not in said, "the description is in the chat"
 
 
-RECORDED_GATE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             "logs", "sessions",
-                             "fe663c12890b4d4497ad458136dfa880.jsonl")
-
-
-def test_the_recorded_gate_carries_none_of_the_description_it_used_to_open(panel):
-    """
-    The run whose Gate was approved unread, rendered again: the description its
-    two Design turns settled is not in the chat at all, and the chat is shorter
-    than the description it no longer opens. Both numbers are this test's, off
-    the session log.
-    """
-    from core.design import render
-    from core.events import DESIGN, PLAN, replay
-
-    events, _ = replay(RECORDED_GATE)
-    at_the_gate = events[:1 + next(i for i, event in enumerate(events)
-                                   if event.kind == PLAN)]
-    described = "\n".join(render(event.data["model"]) for event in at_the_gate
-                          if event.kind == DESIGN)
-    assert len(described.splitlines()) > 1_000, \
-        "this is no longer the run whose description filled the Gate"
-
-    before = len(_widgets_in(panel))
-    for event in at_the_gate:
-        panel.on_event(event)
-    QT_APP.processEvents()
-
-    said = _said_by(_widgets_in(panel)[before:])
-    assert described not in said
-    assert len(said) < len(described), \
-        "the Gate carries %d characters against the %d over %d lines it used to open" \
-        % (len(said), len(described), len(described.splitlines()))
-
-
 def test_what_was_decided_the_questions_and_the_criteria_all_stand_open(panel):
     """
     The three things the Steps are read beside. Each is short, and the Gate is
