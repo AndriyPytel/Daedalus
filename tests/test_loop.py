@@ -8129,3 +8129,57 @@ def test_a_conflict_the_tracing_settles_is_left_read_by_the_new_step(monkeypatch
 
     axis = entry_at(looked, "features → clamp-bore → axis")
     assert axis["flag"] == "traced"
+
+
+
+
+
+
+
+def test_mechanical_revisions_do_not_consume_execution_budget():
+    """
+    UNCOVERED and MISCOUNTED spend their own ceiling without reducing what
+    UNBUILDABLE, OBSOLETE, ASSERTED, REJECTED, and AMENDED have left.
+
+    The recorded run (logs/sessions/247c2aa...) spent 2 of 3 revisions on
+    coverage checks before Execute ever tried Step 6, leaving exactly one
+    attempt at the geometry. Mechanical checks are visible without a provider
+    call, so they must not eat the budget for failures only a real attempt
+    can surface.
+    """
+    result, events, _, tools = drive([
+        design_reply(A_PART),
+        plan_reply("Step 1"),
+        plan_reply("Step 1 revised", satisfies=everything(A_PART)),
+        code_reply("step1()"),
+        json.dumps({"unbuildable": "the sketch is overconstrained"}),
+        plan_reply("Step 1 without overconstraint", satisfies=everything(A_PART)),
+        code_reply("step1_fixed()"),
+        assertion_reply("assert True"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(revisions=3, mechanical_revisions=2),
+       applies=[failed("the sketch is overconstrained")])
+
+    assert result.ok, "mechanical revisions left room for one execution handback"
+    revised = events.of(PLAN_REVISED)
+    assert len(revised) == 2, f"Expected 2 revisions, got {len(revised)}"
+    assert revised[0].data["because"] == "the Plan left part of the description unplanned"
+    assert revised[1].data["because"] == "Execute could not build a Step"
+    assert tools.applied_codes() == ["step1()", "step1_fixed()"]
+
+
+def test_block_reason_names_mechanical_ceiling_when_hit():
+    """
+    When mechanical budget runs out, block_reason says so clearly.
+    """
+    result, events, _, _ = drive([
+        design_reply(A_PART),
+        plan_reply("v1"),
+        plan_reply("v2"),
+        plan_reply("v3"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(revisions=5, mechanical_revisions=2))
+
+    assert result.blocked
+    blocked = events.first(BLOCKED)
+    reason = blocked.data["reason"]
+    assert "mechanical ceiling" in reason,         "block_reason distinguishes mechanical ceiling from execution ceiling"
