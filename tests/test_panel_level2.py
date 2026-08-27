@@ -660,6 +660,54 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     assert not panel.chip_bar.isVisible(), "the next Intent would reuse this one's files"
 
 
+def test_a_part_path_a_run_left_behind_carries_into_the_next_send_unless_a_new_drawing_arrives(
+        panel, tmp_path):
+    """
+    Mirrors `bundle.outstanding` (FCC-98): `on_run_finished` remembers the
+    last Part path a run left behind, and `on_send` forwards it into the next
+    request unless the composer has a fresh attachment waiting — FCC-210.
+    """
+    import types
+
+    log = panel._current_log()
+    bundle = panel._worker_for(log)
+    written = str(tmp_path / "part.yaml")
+
+    panel.on_run_finished(types.SimpleNamespace(ok=True, unmet=[], the_part_path=written), log)
+    assert bundle.the_part_path == written
+
+    sent = []
+    panel.request_work.connect(
+        lambda intent, files, log, outstanding, the_part_path=None: sent.append(the_part_path))
+    try:
+        panel.user_input.setPlainText("make this hole 5 mm wider")
+        panel.on_send()
+    finally:
+        panel.request_work.disconnect()
+        panel.worker.stop()
+        panel._set_running(False)
+
+    assert sent == [written]
+
+    drawing = tmp_path / "bracket.png"
+    drawing.write_bytes(b"a file; whether it decodes is the loop's problem")
+    panel.chip_bar.add_file(str(drawing))
+
+    sent_with_new_drawing = []
+    panel.request_work.connect(
+        lambda intent, files, log, outstanding, the_part_path=None:
+        sent_with_new_drawing.append(the_part_path))
+    try:
+        panel.user_input.setPlainText("Build this bracket")
+        panel.on_send()
+    finally:
+        panel.request_work.disconnect()
+        panel.worker.stop()
+        panel._set_running(False)
+
+    assert sent_with_new_drawing == [""]
+
+
 def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, monkeypatch):
     """
     Told before the run, not after Plan already ignored it — and the chips stay

@@ -360,7 +360,7 @@ def _describes_a_part(turn):
         return False
 
 
-def scripted(turns, attachments=()):
+def scripted(turns, attachments=(), resuming=False):
     """
     The provider, turn by turn, with the Design turn every run opens with.
 
@@ -371,22 +371,28 @@ def scripted(turns, attachments=()):
     means by not writing one. A run with a drawing has always scripted its own
     and is left alone, because a Design reply in the wrong shape — the case
     those tests are about — is not one this could recognise.
+
+    `resuming` is a run given a prior Part and no new attachment (FCC-210):
+    Design does not run at all, so nothing is inserted ahead of the script.
     """
     turns = list(turns)
-    if turns and not attachments and not _describes_a_part(turns[0]):
+    if turns and not attachments and not resuming and not _describes_a_part(turns[0]):
         turns.insert(0, design_reply())
     return ScriptedLLMClient(turns)
 
 
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
-          views=None, checks=(), attachments=(), decide=None, outstanding=()):
+          views=None, checks=(), attachments=(), decide=None, outstanding=(),
+          the_part_path=None):
     """Run the loop over scripted turns and hand back everything to assert on."""
-    llm = scripted(turns, attachments)
+    llm = scripted(turns, attachments, resuming=bool(the_part_path))
     tools = FakeTools(applies, views=views, checks=checks)
     events = EventStream()
     kwargs = {"ask": ask} if ask is not None else {}
     if decide is not None:
         kwargs["decide"] = decide
+    if the_part_path is not None:
+        kwargs["the_part_path"] = the_part_path
     result = run(intent, llm=llm, tools=tools.registry, events=events,
                  budgets=budgets or Budgets(), attachments=list(attachments),
                  outstanding=list(outstanding), **kwargs)
@@ -1923,6 +1929,75 @@ def test_the_file_says_which_sheet_the_part_was_read_from():
     read_from = part_file.provenance(events.last(PART).data["path"])
     assert read_from["sheet"] == os.path.basename(MODEL_MANIA)
     assert read_from["views"], "the views it was read from are not recorded"
+
+
+def test_a_run_given_a_prior_part_skips_the_design_phase():
+    """
+    The second half of one conversation plans from what the first half already
+    read off the sheet, rather than asking Design to describe it again — the
+    bug this fixes (FCC-210, ev160-178 of session 796bf66c).
+    """
+    from core import part_file
+
+    _, first, _, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    written = first.last(PART).data["path"]
+
+    result, events, llm, _ = drive([
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], the_part_path=written)
+
+    assert not events.of(DESIGN)
+    assert not _turns_of(llm, "design")
+    assert _turns_of(llm, "plan")[0]["what_the_part_is"] == render(part_file.read(written))
+    assert result.the_part_path == written
+
+
+def test_a_run_with_no_prior_part_still_runs_design():
+    """A fresh Session, with nothing to resume, behaves exactly as today."""
+    result, events, llm, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+
+    assert events.of(DESIGN)
+    assert llm.calls, "Design never asked the provider anything"
+    written = events.last(PART).data["path"]
+    assert result.the_part_path == written
+
+
+def test_an_attachment_on_a_resumed_run_overrides_the_prior_part():
+    """
+    A new drawing mid-chat replaces the carried Part rather than resuming it —
+    Design runs again, on the new sheet.
+    """
+    _, first, _, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    written = first.last(PART).data["path"]
+
+    result, events, llm, _ = drive([
+        design_reply(A_PART),
+        plan_reply("Only", satisfies=everything(A_PART)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], the_part_path=written)
+
+    assert events.of(DESIGN)
+    assert llm.calls, "Design never asked the provider anything"
+    assert result.the_part_path != written
+    assert result.the_part_path == events.last(PART).data["path"]
 
 
 THE_2023_CLAMP = modelmania_harness.the_2023_clamp_as_read()
