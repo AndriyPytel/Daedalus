@@ -100,9 +100,11 @@ named for a thread below, `subtractive-loft` a
 `datum-plane` a `PartDesign::Plane`, `datum-line` a `PartDesign::Line`,
 `datum-point` a `PartDesign::Point`, `local-coordinate-system` a
 `PartDesign::CoordinateSystem`, `sub-shape-binder` a
-`PartDesign::SubShapeBinder`, `body` a `PartDesign::Body`, `fuse` a
-`Part::MultiFuse` or `Part::Fuse`, `cut` a `Part::Cut`, `common` a
-`Part::Common`, and `offset` a `Part::Offset` or `Part::Offset2D`.
+`PartDesign::SubShapeBinder` or the older `PartDesign::ShapeBinder`, `body` a
+`PartDesign::Body`, `fuse` a `Part::MultiFuse` or `Part::Fuse`, `cut` a
+`Part::Cut`, `common` a `Part::Common` or `Part::MultiCommon`, and `offset` a
+`Part::Offset` or `Part::Offset2D`. `hole` also accepts a `PartDesign::Pocket`
+— cutting a hole with a circular-sketch Pocket is a normal FreeCAD technique.
 `additive-primitive` is a `PartDesign::Additive<Shape>` and
 `subtractive-primitive` a `PartDesign::Subtractive<Shape>`, `<Shape>` one of
 (Box, Cylinder, Sphere, Cone, Ellipsoid, Torus, Prism, Wedge) — the same
