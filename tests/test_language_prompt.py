@@ -91,3 +91,36 @@ def test_design_never_names_its_own_artefact_a_model():
                 if not any(phrase in line for phrase in naming_a_revision)]
 
     assert not offenders, offenders
+
+
+def _reply_skeleton(phase):
+    with open(os.path.join(PROMPTS_DIR, phase + ".md"), encoding="utf-8") as f:
+        text = f.read()
+    return text[text.rfind("Reply with JSON only"):]
+
+
+def test_a_reply_shows_the_marker_language_md_declares_for_its_own_phase():
+    """
+    FCC-236: `core.design.merge()`'s closed-kind check fires only when a
+    Design reply carries `"kind_vocabulary": "closed"` — the marker
+    `language.md`'s own "Naming from a closed vocabulary" section says
+    every reply carries. `plan.md`'s reply skeleton already shows
+    `op_vocabulary` this way; `design.md`'s must show `kind_vocabulary` the
+    same way, or the check it switches on is asked for only in prose.
+
+    The markers checked come off `language.md` itself, via `_language_sections`
+    and a regex over each section's own text — not a list of markers kept
+    here to go stale against it.
+    """
+    import re
+
+    marker = re.compile(r'"(\w+_vocabulary)":\s*"closed"')
+    sections = _language_sections()
+
+    for phase in (DESIGN_PHASE, PLAN_PHASE):
+        skeleton = _reply_skeleton(phase)
+        for heading in _PHASE_VOCABULARY[phase]:
+            for name in marker.findall(sections[heading]):
+                assert '"%s"' % name in skeleton, (
+                    "%s's reply skeleton does not show %r, which language.md "
+                    "declares every reply of its phase carries" % (phase, name))

@@ -57,19 +57,19 @@ FIRST_PASS_CEILING_RATIO = 1.65
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 6242, "input_tokens": 23217},
-            {"label": "page 2", "pictures": 14, "total_chars": 6046, "input_tokens": 23955},
+            {"label": "page 1", "pictures": 15, "total_chars": 6242, "input_tokens": 23225},
+            {"label": "page 2", "pictures": 14, "total_chars": 6046, "input_tokens": 23963},
         ],
-        "reconcile": {"total_chars": 39592, "input_tokens": 19684},
-        "total": 66856,
+        "reconcile": {"total_chars": 39592, "input_tokens": 19692},
+        "total": 66880,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7572, "input_tokens": 21524},
-            {"label": "page 2", "pictures": 15, "total_chars": 7475, "input_tokens": 24408},
+            {"label": "page 1", "pictures": 15, "total_chars": 7572, "input_tokens": 21532},
+            {"label": "page 2", "pictures": 15, "total_chars": 7475, "input_tokens": 24416},
         ],
-        "reconcile": {"total_chars": 40311, "input_tokens": 19863},
-        "total": 65795,
+        "reconcile": {"total_chars": 40311, "input_tokens": 19871},
+        "total": 65819,
     },
 }
 

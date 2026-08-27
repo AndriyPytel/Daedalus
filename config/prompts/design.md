@@ -633,6 +633,7 @@ whole run, so it is asked once, before any Plan exists. Unanswered it is not
 fatal: settle it yourself, `assumed`, with `because`.
 
 Reply with JSON only:
-{"design": { … the description, or the fragment you are adding … }, "question": "..."}
+{"kind_vocabulary": "closed",
+ "design": { … the description, or the fragment you are adding … }, "question": "..."}
 `question` is `""` when you need nothing. `design` is `{}` when you have nothing
 to add.
