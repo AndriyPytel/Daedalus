@@ -80,9 +80,27 @@ class Budgets:
 
     `revisions` is the floor under `revisions_ceiling`, which scales the
     allowance with the Plan's length. Without it, Execute declaring Step after
-    Step obsolete never terminates. It is one ceiling over all seven causes of
-    a replan (see `_Revisions`): separate budgets would let them cycle into
-    each other and would raise the worst-case number of Plan calls in a run.
+    Step obsolete never terminates.
+
+    There are two separate ceilings over the seven causes of a replan. Mechanical
+    causes (UNCOVERED, MISCOUNTED) are visible without running Execute and spend
+    their own budget; execution causes (OBSOLETE, UNBUILDABLE, ASSERTED, REJECTED,
+    AMENDED) spend `revisions_ceiling`. This keeps mechanical failures from consuming
+    the budget for failures only a real attempt can surface. The worst-case number
+    of Plan calls is additive — mechanical_revisions + revisions_ceiling — because
+    the mechanical ceiling never resets: a Plan that fails coverage twice has spent
+    those attempts for the whole run, and a third UNCOVERED blocks immediately even
+    if UNBUILDABLE triggered a replan between them (logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl).
+
+    `mechanical_revisions` is that ceiling, and it is a constant rather than scaling
+    with Plan length: a coverage failure is a failure of the whole Plan at once, not
+    of one Step among many. It is two because that is where the corpus sits. Of 456 sessions in `logs/sessions/`,
+    43 blocked on revisions, and UNCOVERED appeared in the breakdown 1 time in 2 runs,
+    2 times in 1 run, and 3 times in 1 run — typical is one, observed maximum is three.
+    A ceiling of two cuts that one tail run on the mechanical budget instead of letting
+    it consume execution revisions, which is the whole point of the split, and it does
+    not touch the runs that spent one (logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl
+    is the 2-time case that named the defect).
 
     `rereads` is how many times a question may be put back to the drawing, and
     nothing else. A re-read is still a provider call, and without a ceiling a
@@ -118,6 +136,7 @@ class Budgets:
     attempts_per_step: int = 3
     review_cycles: int = 2
     revisions: int = 3
+    mechanical_revisions: int = 2
     looks_per_turn: int = 6
     rereads: int = 3
     trailing_gap_retries: int = 1
@@ -142,8 +161,10 @@ class _Revisions:
     Seven unrelated things replan: the Plan leaves part of the description
     unplanned, a sum it states does not come out, the user amends at the Plan
     Gate, Execute finds a Step out of date, Execute cannot build one, the
-    acceptance checks fail, and Review rejects the result. They share one ceiling, which is deliberate — but they
-    used to share one *counter* too, so whichever branch spent the last unit was
+    acceptance checks fail, and Review rejects the result. Mechanical causes
+    (UNCOVERED, MISCOUNTED) spend their own ceiling; execution causes (OBSOLETE,
+    UNBUILDABLE, ASSERTED, REJECTED, AMENDED) spend revisions_ceiling. They used
+    to share one *counter* too, so whichever branch spent the last unit was
     reported as the cause of all of them, and a run stopped by two amendments
     told the user Execute kept finding the Plan out of date.
     """
@@ -155,6 +176,8 @@ class _Revisions:
     UNBUILDABLE = "unbuildable"
     ASSERTED = "asserted"
     REJECTED = "rejected"
+
+    MECHANICAL_CAUSES = {UNCOVERED, MISCOUNTED}
 
     _SAID = (
         (UNCOVERED, "the Plan left part of the description unplanned %s"),
@@ -175,12 +198,23 @@ class _Revisions:
     def spent_total(self) -> int:
         return sum(self._spent.values())
 
+    def mechanical_spent(self) -> int:
+        return sum(self._spent[cause] for cause in self.MECHANICAL_CAUSES)
+
+    def execution_spent(self) -> int:
+        return sum(self._spent[cause] for cause in self._spent if cause not in self.MECHANICAL_CAUSES)
+
     def named(self, cause) -> str:
         """The cause in words, without the count `breakdown` puts on it."""
         return (dict(self._SAID)[cause] % "").strip()
 
-    def exhausted(self, budgets, steps) -> bool:
-        return self.spent_total() >= revisions_ceiling(budgets, steps)
+    def exhausted(self, budgets, steps, cause=None) -> bool:
+        if cause in self.MECHANICAL_CAUSES:
+            return self.mechanical_spent() >= budgets.mechanical_revisions
+        if cause is not None and cause not in self.MECHANICAL_CAUSES:
+            return self.execution_spent() >= revisions_ceiling(budgets, steps)
+        return (self.mechanical_spent() >= budgets.mechanical_revisions or
+                self.execution_spent() >= revisions_ceiling(budgets, steps))
 
     def _causes_spent(self) -> list:
         return [cause for cause, _ in self._SAID if self._spent[cause]]
@@ -202,11 +236,22 @@ class _Revisions:
         A ceiling of nought is a run that may not replan at all, and it has no
         breakdown to give. Where one cause spent the lot the breakdown has
         already named it, so the refusal is not repeated after it.
+
+        Names the ceiling that was hit: mechanical_revisions when a mechanical
+        cause blocked, revisions_ceiling when an execution cause blocked.
         """
         if not self._causes_spent():
             return "The Plan may not be rewritten in this run. " + refused
-        reason = ("The Plan has been rewritten %d times, which is the whole budget — %s."
-                  % (revisions_ceiling(budgets, steps), self.breakdown()))
+
+        if cause in self.MECHANICAL_CAUSES:
+            ceiling_hit = budgets.mechanical_revisions
+            ceiling_name = "the mechanical ceiling"
+        else:
+            ceiling_hit = revisions_ceiling(budgets, steps)
+            ceiling_name = "the whole budget"
+
+        reason = ("The Plan has been rewritten %d times, which is %s — %s."
+                  % (ceiling_hit, ceiling_name, self.breakdown()))
         if self._causes_spent() != [cause]:
             reason += " " + refused
         if self._spent[self.OBSOLETE] or cause == self.OBSOLETE:
@@ -3550,7 +3595,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         without being shown it — so it wrote from the complaint alone, which
         names only what was wrong.
         """
-        if revisions.exhausted(budgets, steps):
+        if revisions.exhausted(budgets, steps, cause):
             raise _OutOfRevisions(
                 revisions.block_reason(budgets, steps, cause, refused), tried)
         revisions.spend(cause)
