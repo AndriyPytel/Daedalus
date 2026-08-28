@@ -41,7 +41,7 @@ from typing import List
 from core.arithmetic import wrong_sums
 from core.ledger import Ledger
 from core.design import (
-    A_CHECK_HAZARD, ROUND_IN, UNDER, corrected, decided_for_you, distilled,
+    A_CHECK_HAZARD, A_CONFLICT, ROUND_IN, UNDER, corrected, decided_for_you, distilled,
     each_disagreement_once, entries, entry_at, merge, nobody_carries_the_outside,
     read_off_the_wrong_view, render, said_at, settled_by_the_tracing,
     what_the_trace_says, where_the_direction_is,
@@ -1205,7 +1205,8 @@ def _first_pass(intent, llm, events, attachments, cancelled):
                 the_part = merge(the_part, {"conflicts": [
                     {"about": "the %s of this drawing" % label,
                      "stands": "Design could not be asked about it: %s" % failed,
-                     "kind": A_CHECK_HAZARD}]})
+                     "kind": A_CHECK_HAZARD,
+                     "machine_written": True}]})
                 events.emit(ERROR, message="Design could not read the %s: %s"
                                           % (label, failed))
                 continue
@@ -2891,6 +2892,11 @@ def _every_number_is_the_sheets(the_part, intent, attachments, llm, events, budg
     Put to the drawing once and then left on the part as a conflict. Nothing is
     settled and no run stops: the number may be right and derived from
     something this cannot see, and the Gate is where a person says so.
+
+    Signs `kind: A_CONFLICT` and `machine_written: True` on what it appends
+    (FCC-249) — previously neither was set, so `_which_kind_it_is`'s default
+    covered the kind and nothing at all covered authorship. FCC-248 found
+    this and could not fix it, the file being another lane's.
     """
     found = _off_the_sheet(attachments, the_part)
     if not found:
@@ -2911,7 +2917,9 @@ def _every_number_is_the_sheets(the_part, intent, attachments, llm, events, budg
         {"about": "the value %g on this part" % number,
          "stands": "no callout prints it, no dimension line measures it and "
                    "nothing traced is that size",
-         "was_also_said": "the drawing"}
+         "was_also_said": "the drawing",
+         "kind": A_CONFLICT,
+         "machine_written": True}
         for number in found]}) if found else the_part
 
 
@@ -3025,7 +3033,8 @@ def _the_geometry_disagrees(attachments, events, budget=A_READING_BUDGET):
                       "stands": "the solver could not be asked about it, so nothing "
                                 "here says whether the view draws what the sheet "
                                 "prints",
-                      "kind": A_CHECK_HAZARD}
+                      "kind": A_CHECK_HAZARD,
+                      "machine_written": True}
                      for view in sorted(set(unchecked)))
     return found
 

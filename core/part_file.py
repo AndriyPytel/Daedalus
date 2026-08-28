@@ -119,9 +119,11 @@ def logged(model, reading) -> None:
     where they are already looking, under the name of the reading it belongs to,
     and nothing downstream opens it.
 
-    `conflicts` is written grouped by kind (`grouped_conflicts`) rather than in
-    the order the merge appended it: a run's disagreements are the rare entry
-    among many gaps (FCC-244), and a flat list puts them anywhere in it.
+    `conflicts` is written grouped by authorship (`grouped_conflicts`), every
+    entry the model itself wrote ahead of every one a validator appended,
+    rather than in the order the merge appended it (FCC-249; `kind` grouped
+    it before this, and could not: `A_CONFLICT` is correct for a validator's
+    own finding as much as for the model's, FCC-248).
     """
     if not model or not reading:
         return

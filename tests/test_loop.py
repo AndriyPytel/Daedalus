@@ -7788,6 +7788,25 @@ def test_a_number_on_no_sheet_is_put_to_the_drawing_and_then_left_as_a_conflict(
     assert "1234" in str(grown["conflicts"][0])
 
 
+def test_a_number_off_the_sheet_is_signed_as_machine_written(monkeypatch):
+    """
+    FCC-249: `_every_number_is_the_sheets` never set `kind`, relying on
+    `_which_kind_it_is`'s default (FCC-248 found this and could not fix it,
+    the file being another lane's). It is the second machine check, beside
+    `crosswise`, whose entries fell through to that default; both are signed
+    here the same way.
+    """
+    monkeypatch.setattr(loop, "_off_the_sheet", lambda attachments, part: [1234.0])
+    monkeypatch.setattr(loop, "design", lambda payload, llm, events, attachments: ({}, None))
+
+    grown = loop._every_number_is_the_sheets(
+        {"features": []}, "Make the clamp", ["a.pdf"], None, None, loop.Budgets(),
+        lambda: False)
+
+    assert grown["conflicts"][0]["kind"] == loop.A_CONFLICT
+    assert grown["conflicts"][0]["machine_written"] is True
+
+
 def test_a_number_the_look_accounted_for_is_not_a_conflict(monkeypatch):
     """Where the re-read points at where it came from, there is nothing to record."""
     answers = iter([[1234.0], []])
