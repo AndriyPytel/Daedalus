@@ -9,6 +9,7 @@ Callers see "applied" or "failed, here is the traceback". Preflight sits
 Document operations are marshalled to the Qt main thread and block the caller
 until they return, so there are never concurrent mutations of the Document.
 """
+import contextlib
 import os
 import threading
 from dataclasses import dataclass, field
@@ -24,6 +25,8 @@ DISPATCH_TIMEOUT = 60.0
 _dispatcher = None
 _dispatcher_lock = threading.Lock()
 _closing = threading.Event()
+_stopping = 0
+_stopping_lock = threading.Lock()
 _waiting = set()
 
 
@@ -39,19 +42,53 @@ class Closing(Exception):
     """
 
 
-def closing():
-    """
-    Release every caller waiting on the main thread, and refuse new ones.
+def _refusing() -> bool:
+    return _closing.is_set() or bool(_stopping)
 
-    The main thread takes these jobs from its event loop, and the panel's own
-    shutdown runs on that thread without pumping it — so a worker parked here
-    when FreeCAD is closing waits out `DISPATCH_TIMEOUT` for a job nobody will
-    ever take, and is force-ended mid-mutation of the Document instead. That
-    is FreeCAD hanging on exit.
-    """
-    _closing.set()
+
+def _release():
     for done in list(_waiting):
         done.set()
+
+
+@contextlib.contextmanager
+def stopping():
+    """
+    One Session's teardown: refuse and release for as long as it lasts.
+
+    The main thread takes these jobs from its event loop, and a teardown runs
+    on that thread without pumping it — so a worker parked here waits out
+    `DISPATCH_TIMEOUT` for a job nobody will ever take, and is force-ended
+    mid-mutation of the Document instead. Measured on the Document a run was
+    bound to closing under it: 3.0 s of frozen GUI and then SIGSEGV.
+
+    Releasing once is not enough and was measured not to be: a run told to
+    stop is unwinding, and the next thing it asks the main thread for arrives
+    after that release. So the refusal stands until the teardown returns.
+
+    A window and not `closing`'s latch, because one Session going does not end
+    the others: `_closing` is never cleared, and refusing on it here would
+    leave every other Session's Document operation refused for the rest of the
+    FreeCAD session, where Sessions run in parallel (FCC-181).
+    """
+    global _stopping
+
+    with _stopping_lock:
+        _stopping += 1
+    try:
+        _release()
+        yield
+    finally:
+        with _stopping_lock:
+            _stopping -= 1
+
+
+def closing():
+    """
+    The same release, and no new caller is ever taken: FreeCAD itself is going.
+    """
+    _closing.set()
+    _release()
 
 
 @dataclass
@@ -112,12 +149,18 @@ class _Dispatcher:
         self._relay = Relay()
 
     def on_main_thread(self, func, timeout=DISPATCH_TIMEOUT):
+        """
+        The caller is registered as waiting before it is refused, not after.
+
+        A teardown that begins between the refusal check and the registration
+        would find nothing to release and this caller would wait out the
+        timeout — the race `stopping` exists to close. Registered first, the
+        release always reaches it, and the empty `outcome` is what turns that
+        release into `Closing`.
+        """
         QtCore = self._qtcore
         if QtCore.QThread.currentThread() == self._app.thread():
             return func()
-
-        if _closing.is_set():
-            raise Closing("The Document operation was abandoned: FreeCAD is closing.")
 
         outcome = {}
         done = threading.Event()
@@ -132,6 +175,8 @@ class _Dispatcher:
 
         _waiting.add(done)
         try:
+            if _refusing():
+                raise Closing("The Document operation was abandoned: FreeCAD is closing.")
             self._relay.job.emit(run)
             if not done.wait(timeout):
                 raise TimeoutError(

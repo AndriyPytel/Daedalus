@@ -744,15 +744,34 @@ class _SessionWorker(QtCore.QObject):
         self.thread.start()
 
     def shut_down(self, grace_ms: int):
-        """Stop the run, whatever it is in the middle of, and end the thread."""
-        self.worker.stop()
-        if self.worker.pipeline is not None:
-            self.worker.pipeline.shutdown()
-        if self.thread.isRunning():
-            self.thread.quit()
-            if not self.thread.wait(grace_ms):
-                self.thread.terminate()
-                self.thread.wait(1000)
+        """
+        Stop the run, whatever it is in the middle of, and end the thread.
+
+        A run parks on two things, and both are released before anything is
+        waited on. A question is released by `stop`. A Step in flight is inside
+        `core.apply.on_main_thread`, waiting on a job only the GUI thread's
+        event loop can take — and that thread is the one running this, so
+        nothing would take it: `core.apply.stopping()` is what hands the run
+        back its own thread, and keeps handing it back for as long as the
+        teardown lasts, because a run unwinding asks again. Without it the wait
+        below expires and a thread in the middle of the Document is ended from
+        outside.
+
+        FreeCAD deletes its Documents before it emits `aboutToQuit`, so this,
+        and not the panel's `_cleanup_thread`, is the teardown a closing
+        FreeCAD reaches first (`slotDeletedDocument`).
+        """
+        from core.apply import stopping
+
+        with stopping():
+            self.worker.stop()
+            if self.worker.pipeline is not None:
+                self.worker.pipeline.shutdown()
+            if self.thread.isRunning():
+                self.thread.quit()
+                if not self.thread.wait(grace_ms):
+                    self.thread.terminate()
+                    self.thread.wait(1000)
 
 
 class CopilotPanel(QtWidgets.QDockWidget):

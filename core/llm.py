@@ -698,6 +698,12 @@ class ClaudeCodeClient:
         nothing arrives to check the time against. The kill is what ends that
         loop, and `overdue` is what says the end was ours.
 
+        The ceiling is a daemon thread: a non-daemon one is joined by the
+        interpreter on the way out, so a call in flight when FreeCAD closes
+        would hold the process for the rest of the ceiling — 1500 s at `high`.
+        The cancel below is not the guarantee, because a run whose thread was
+        ended from outside never closes this generator.
+
         Thinking whose words the provider withholds is reported once per call,
         as one wordless chunk. That the model reasoned is a fact worth the
         panel's row -- a phase that takes four minutes has to say it is doing
@@ -714,6 +720,7 @@ class ClaudeCodeClient:
             process.kill()
 
         ceiling = threading.Timer(self.timeout, give_up)
+        ceiling.daemon = True
         ceiling.start()
         try:
             process.stdin.write(json.dumps(_user_turn(messages)) + "\n")
