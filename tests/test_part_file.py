@@ -200,6 +200,39 @@ def test_a_missing_pyyaml_is_loud_when_logging_the_evidence(monkeypatch, sheet, 
         part_file.logged(THE_CLAMP, str(tmp_path / "parts" / "a-reading.yaml"))
 
 
+THE_CLAMP_WITH_MIXED_FINDINGS = dict(
+    THE_CLAMP,
+    conflicts=[
+        {"about": "the general tolerance", "stands": "the title block prints ±0.2",
+         "was_also_said": "note 3 prints ±0.5"},
+        {"about": "features → right-mounting-hole → axis",
+         "stands": "nothing records which way its axis points",
+         "kind": "gap"},
+        {"about": "the line work in the front view",
+         "stands": "the solver could not be asked about it",
+         "kind": "check hazard"},
+    ],
+)
+
+
+def test_the_evidence_log_stands_the_disagreements_before_the_gaps(sheet, tmp_path):
+    """
+    FCC-244: `logged` writes the evidence sidecar grouped by kind
+    (`design.grouped_conflicts`) rather than in the order the merge appended
+    it, so a person who opens the file meets the one real disagreement before
+    the gaps nothing on the sheet supplied.
+    """
+    reading_path = str(tmp_path / "parts" / "a-reading.yaml")
+    os.makedirs(os.path.dirname(reading_path), exist_ok=True)
+    open(reading_path, "w", encoding="utf-8").close()
+
+    part_file.logged(THE_CLAMP_WITH_MIXED_FINDINGS, reading_path)
+
+    written = part_file.read(part_file.evidence(reading_path))
+    kinds = [conflict.get("kind") for conflict in written["conflicts"]]
+    assert kinds == [None, "gap", "check hazard"]
+
+
 def test_a_missing_pyyaml_is_loud_when_reading_a_file_back(monkeypatch, sheet, tmp_path):
     path = part_file.saved(THE_CLAMP, sheet, into=str(tmp_path / "parts"))
     monkeypatch.setattr(part_file, "yaml", None)

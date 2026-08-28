@@ -708,6 +708,39 @@ def test_the_gate_reads_the_conflicts_grouped_by_kind():
     assert "kind:" not in conflicts, "the heading already says which kind it is"
 
 
+def test_grouped_conflicts_orders_the_evidence_log_the_way_render_orders_text():
+    """
+    FCC-244: `part_file.logged` writes `each_disagreement_once`'s list to the
+    evidence sidecar beside the reading -- the surface FCC-156 actually built
+    ("the list stands in the log beside it"), not the Plan Gate, which is
+    shown the distilled document alone and opens no other file. A YAML log has
+    no heading to say a kind once for a whole group, so `grouped_conflicts`
+    reorders the entries themselves, in `_grouped_by_kind`'s order -- the same
+    one `_under_each_kind` already renders `render()`'s text in -- and leaves
+    `kind` on each entry rather than dropping it the way rendered text does.
+    """
+    grouped = design.grouped_conflicts(A_PART_NOBODY_AGREES_ON)["conflicts"]
+
+    kinds = [design._which_kind_it_is(conflict) for conflict in grouped]
+    assert kinds.index(design.A_CONFLICT) < kinds.index(design.A_GAP) \
+        < kinds.index(design.A_CHECK_HAZARD)
+    assert grouped[kinds.index(design.A_GAP)]["kind"] == design.A_GAP
+
+
+def test_a_gap_never_stands_among_the_disagreements_in_the_grouped_log():
+    """
+    AC1: every entry `direction`, `placement` and `twice_over` write for a
+    value nothing on the part supplies is a gap, and `grouped_conflicts` must
+    never let one of them stand ahead of, or between, entries `KINDS` treats as
+    a disagreement.
+    """
+    reading = each_disagreement_once(merge({}, A_CAVITY_NOTHING_PLACES_OR_POINTS))
+    grouped = design.grouped_conflicts(reading)["conflicts"]
+
+    assert [design._which_kind_it_is(conflict) for conflict in grouped] == \
+        [design.A_GAP] * len(grouped)
+
+
 A_CAVITY_NOTHING_PLACES_OR_POINTS = {
     "features": [{"id": "the-slot", "kind": "the arm slot", "topology": "through",
                   "height": _read("15 mm"), "seen_in": ["VIEW B"]}],
@@ -2081,3 +2114,55 @@ def test_how_many_recorded_conflict_entries_satisfy_the_pinned_shape():
     matching = [entry for entry in entries
                if all(field in entry for field in design.CONFLICT_ENTRY_FIELDS)]
     assert len(matching) == 32
+
+
+def test_how_many_recorded_conflict_entries_are_machine_written_gaps():
+    """
+    FCC-244, half of AC3, and a dead end on its own: `tests/recorded/`
+    carries no machine-written `kind: gap` at all. `_every_conflict_entry`
+    walks raw model replies and small merge fixtures, none of which has been
+    through `direction`/`placement`/`twice_over` -- the passes that write a
+    gap only run inside `merge()`, on a fully merged document, and none of
+    these 38 entries came from one. 0 of 38 recorded entries are gaps; that is
+    a limit of how the corpus was extracted, not a measurement of the ratio.
+    The real ratio is computed in
+    `test_the_validators_fire_on_every_recorded_description`, by running the
+    validators instead of hoping their output was already recorded.
+    """
+    entries = _every_conflict_entry()
+
+    gaps = [entry for entry in entries if design._which_kind_it_is(entry) == design.A_GAP]
+    assert len(entries) == 38
+    assert len(gaps) == 0
+
+
+def test_the_validators_fire_on_every_recorded_description():
+    """
+    FCC-244 AC3, the real answer: the gap-finding passes are deterministic
+    given a description, so the true count is produced by running them over
+    `tests/recorded/vocabulary_kinds.json`'s 47 descriptions through the real
+    `merge()` path, not by searching for their output in a corpus extracted
+    before they ran.
+
+    387 machine-written findings total, none of the 47 descriptions producing
+    zero (mean 8.23, median 8, max 16, min 1). Set beside FCC-237's 38
+    model-written conflict entries for this same corpus (32 of which match
+    the pinned shape), the ratio is 387 machine to 38 model -- about 91%
+    machine-written, close to the live session this ticket was opened against
+    (22 of 23, 96%). The anecdote holds up.
+
+    Every description firing at least once is the more interesting half: a
+    notice that fires on every run is not a notice, so FCC-248's threshold
+    cannot be "the evidence file is non-empty" -- the file is never empty --
+    and must be "the file holds at least one entry the model itself wrote",
+    which is exactly what `grouped_conflicts` already separates out.
+    """
+    with open(os.path.join(RECORDED, "vocabulary_kinds.json"), encoding="utf-8") as handle:
+        descriptions = json.load(handle)["models"]
+
+    counts = [len((merge({}, description) or {}).get("conflicts") or [])
+              for description in descriptions]
+
+    assert len(descriptions) == 47
+    assert sum(counts) == 387
+    assert min(counts) > 0

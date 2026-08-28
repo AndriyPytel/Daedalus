@@ -43,7 +43,7 @@ try:
 except ImportError:  # pragma: no cover - the addon installs PyYAML
     yaml = None
 
-from core.design import SECTIONS
+from core.design import SECTIONS, grouped_conflicts
 
 
 class MissingPyYAML(RuntimeError):
@@ -118,14 +118,18 @@ def logged(model, reading) -> None:
     something to whoever asks afterwards where a number came from. So it is kept
     where they are already looking, under the name of the reading it belongs to,
     and nothing downstream opens it.
+
+    `conflicts` is written grouped by kind (`grouped_conflicts`) rather than in
+    the order the merge appended it: a run's disagreements are the rare entry
+    among many gaps (FCC-244), and a flat list puts them anywhere in it.
     """
     if not model or not reading:
         return
     if yaml is None:
         raise MissingPyYAML()
     with open(evidence(reading), "w", encoding="utf-8") as handle:
-        yaml.safe_dump(_ordered(model), handle, sort_keys=False, allow_unicode=True,
-                       default_flow_style=False)
+        yaml.safe_dump(_ordered(grouped_conflicts(model)), handle, sort_keys=False,
+                       allow_unicode=True, default_flow_style=False)
 
 
 def evidence(reading) -> str:

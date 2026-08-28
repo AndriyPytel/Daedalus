@@ -1660,11 +1660,11 @@ def _under_each_kind(conflicts):
     under has just said it.
     """
     written = []
-    standing = _one_to_an_address(conflicts)
+    grouped = _grouped_by_kind(_one_to_an_address(conflicts))
     for kind in KINDS:
         found = [{key: said for key, said in conflict.items() if key != "kind"}
                  if isinstance(conflict, dict) else conflict
-                 for conflict in standing if _which_kind_it_is(conflict) == kind]
+                 for conflict in grouped[kind]]
         if found:
             written.append("  " + HEADED[kind])
             written.extend(_lines(found, "    "))
@@ -1766,6 +1766,14 @@ def each_disagreement_once(model) -> dict:
     (FCC-156), so the list stands in the log beside it and the user settles it
     at the Gate off the reading they are shown.
 
+    That sentence names the Gate because FCC-156 does, but no code path opens
+    the log for a person to read: the Plan Gate is shown the distilled document
+    alone, and nothing in `ui/` links, narrates or opens the file this list is
+    written to (FCC-244). "The user settles it" is FCC-156's aspiration for
+    that log, not a description of a screen; the log itself is still the
+    intended surface, so `grouped_conflicts` orders what is written to it
+    rather than inventing a second one.
+
     Said once here and not in the merge, because the merge only ever grows: a
     pass writes down what it found in the words it found it in, and which of
     those entries is one disagreement is decided where the list is written down
@@ -1773,6 +1781,44 @@ def each_disagreement_once(model) -> dict:
     """
     standing = _one_to_an_address((model or {}).get("conflicts") or ())
     return dict(model, conflicts=standing) if standing else model
+
+
+def _grouped_by_kind(conflicts):
+    """
+    *conflicts*, one list per member of `KINDS`, in `KINDS`' own order —
+    disagreements, then gaps, then check hazards — each list keeping the
+    order its entries arrived in.
+
+    `_under_each_kind` and `grouped_conflicts` both need this grouping, one to
+    render it as headed text and the other to write it back out as structured
+    entries a heading cannot carry, so the grouping is pulled out once rather
+    than kept as `_under_each_kind`'s private loop (FCC-244).
+    """
+    return {kind: [conflict for conflict in conflicts if _which_kind_it_is(conflict) == kind]
+            for kind in KINDS}
+
+
+def grouped_conflicts(model) -> dict:
+    """
+    *model*, with `conflicts` reordered so every disagreement stands before
+    every gap and every gap before every check hazard.
+
+    The log `each_disagreement_once` leaves beside the reading
+    (`part_file.logged`) is a flat list in whatever order the merge appended
+    it, and a person reading it meets the twelve things nothing on the sheet
+    supplied before the one thing the sheet itself disagrees about (FCC-244:
+    22 of 23 entries in the recorded run this was measured against were gaps,
+    for one entry that was a real disagreement). `_under_each_kind` already
+    orders `render()`'s text this way; `_grouped_by_kind` is that same
+    ordering, reused rather than reimplemented, kept structured here because a
+    YAML file has no heading to say a kind once for a whole group — each entry
+    keeps its own `kind`, unlike `_under_each_kind`'s rendered lines.
+    """
+    conflicts = (model or {}).get("conflicts")
+    if not conflicts:
+        return model
+    grouped = _grouped_by_kind(conflicts)
+    return dict(model, conflicts=[conflict for kind in KINDS for conflict in grouped[kind]])
 
 
 def _which_kind_it_is(conflict):
