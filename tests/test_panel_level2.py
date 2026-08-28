@@ -845,6 +845,40 @@ def test_a_part_path_a_run_left_behind_carries_into_the_next_send_unless_a_new_d
     assert sent_with_new_drawing == [""]
 
 
+def test_a_run_accepted_over_failed_checks_is_not_shown_as_a_plain_success(panel):
+    """
+    `result.ok=True` covers two endings: Review passed, and the user took a
+    build its own checks had already failed. A blank status line read as the
+    first for both, which is the blank a saved Part with a known-bad pocket
+    and lug left behind it (logs/analysis-mm2023-defects.md).
+    """
+    import types
+
+    log = panel._current_log()
+    panel._worker_for(log)
+
+    panel.on_run_finished(
+        types.SimpleNamespace(ok=True, unmet=["pocket-front", "lug-right"],
+                              the_part_path=""), log)
+
+    status = panel._queue_widget._now_label._full
+    assert "not verified" in status
+    assert "pocket-front" in status and "lug-right" in status
+
+
+def test_a_clean_pass_still_clears_the_queue_line(panel):
+    """The honest branch does not cost the quiet one: no `unmet` is still blank."""
+    import types
+
+    log = panel._current_log()
+    panel._worker_for(log)
+    panel._queue_widget.now("Working…")
+
+    panel.on_run_finished(types.SimpleNamespace(ok=True, unmet=[], the_part_path=""), log)
+
+    assert panel._queue_widget._now_label._full == ""
+
+
 def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, monkeypatch):
     """
     Told before the run, not after Plan already ignored it — and the chips stay
@@ -1180,6 +1214,54 @@ def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_t
 
     assert done.wait(5), "shutdown is still waiting on a run parked at the Plan Gate"
     assert not built.thread.isRunning(), "the worker thread outlived the panel"
+
+
+@pytest.mark.parametrize("asker, args, snippet", [
+    ("about_missing_values", ({"q": "diameter?"},), "could not find on the drawing"),
+    ("about_objects_we_do_not_own", (["Sketch"],), "did not create"),
+    ("about_the_plan", (["a step"],), "approve its Plan"),
+    ("about_the_revision", ({"why": "no", "applied": 1},), "did not pass its checks"),
+])
+def test_a_blocked_question_pages_freecads_notification_area(
+        sessions_are_the_tests_own, monkeypatch, asker, args, snippet):
+    """
+    A person who walked away from a two-hour run is exactly who any of the
+    four questions `AskTheUser` asks may be waiting on, so `_ask` raises
+    FreeCAD's own Notification Area before it blocks -- something to come
+    back to beyond a status line under a composer nobody is looking at.
+    """
+    import threading
+
+    from conftest import QtCore
+    from ui.copilot_panel import CopilotPanel
+
+    calls = []
+    monkeypatch.setattr("utils.logger.notify_user", lambda msg: calls.append(msg))
+
+    built = CopilotPanel()
+    parked = threading.Event()
+
+    def _ask_and_block():
+        parked.set()
+        getattr(built.ask, asker)(*args)
+
+    blocked = QtCore.QTimer()
+    blocked.moveToThread(built.thread)
+    blocked.setSingleShot(True)
+    blocked.timeout.connect(_ask_and_block, QtCore.Qt.DirectConnection)
+    QtCore.QMetaObject.invokeMethod(blocked, "start", QtCore.Qt.QueuedConnection,
+                                    QtCore.Q_ARG(int, 0))
+    assert parked.wait(5), "the timer on built.thread never fired %s" % asker
+
+    for _ in range(50):
+        if calls:
+            break
+        QtCore.QThread.msleep(20)
+    built.ask.abandon()
+    built._cleanup_thread()
+
+    assert len(calls) == 1
+    assert snippet in calls[0]
 
 
 def test_the_panel_docks_on_the_main_window_once(sessions_are_the_tests_own):

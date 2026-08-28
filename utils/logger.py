@@ -189,3 +189,20 @@ def generate_crash_report(exc: Exception, context: str = "") -> str:
     return report
 
 
+def notify_user(message: str) -> None:
+    """
+    Raise FreeCAD's own Notification Area for something a person, not a
+    developer, needs to see -- a run stopped on a question and nobody is
+    looking at the panel.
+
+    `PrintUserWarning` is `Base::IntendedRecipient::User`, which the
+    Notification Area shows as a pop-up bubble by default; the addon's own
+    `PrintWarning`/`PrintError` calls above are `Developer`-recipient and are
+    suppressed there unless the user has opted in under Preferences, so they
+    are not a substitute (FreeCAD 1.1 `src/Gui/NotificationArea.cpp`,
+    `NotificationAreaObserver::sendLog`). Routed through `_console` for the
+    same reason every other call here is: built off the GUI thread, the
+    Notification Area's own widgets crash FreeCAD (see the module docstring).
+    """
+    _console(FreeCAD.Console.PrintUserWarning, message)
+

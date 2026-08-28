@@ -354,6 +354,10 @@ def _install_fake_freecad_console(tmp_path):
         def PrintMessage(msg):
             calls.append(("message", msg, QtCore.QThread.currentThread()))
 
+        @staticmethod
+        def PrintUserWarning(msg):
+            calls.append(("user_warning", msg, QtCore.QThread.currentThread()))
+
     fake_freecad = types.ModuleType("FreeCAD")
     fake_freecad.Console = _Console
     fake_freecad.getUserAppDataDir = lambda: str(tmp_path) + "/"
@@ -399,6 +403,32 @@ def test_a_log_line_from_a_worker_thread_reaches_freecad_console_on_the_main_thr
     level, msg, thread = calls[0]
     assert level == "error"
     assert "boom" in msg
+    assert thread == main
+
+
+def test_notify_user_reaches_freecad_s_own_notification_area_from_a_worker_thread(qt_app, tmp_path):
+    """
+    `PrintUserWarning` is `Base::IntendedRecipient::User`, which FreeCAD's
+    Notification Area pops up by default -- unlike the `PrintWarning`/
+    `PrintError` `Developer`-recipient calls the rest of this module makes,
+    which are suppressed there unless a user opts in (FreeCAD 1.1
+    `NotificationAreaObserver::sendLog`). It needs the same off-thread guard
+    as every other `FreeCAD.Console` call here, so it goes through `_console`
+    too.
+    """
+    app, QtCore = qt_app
+    main = QtCore.QThread.currentThread()
+    calls, restore = _install_fake_freecad_console(tmp_path)
+    try:
+        import utils.logger as ul
+        run_off_thread(lambda: ul.notify_user("attention needed"), qt_app)
+    finally:
+        restore()
+
+    assert len(calls) == 1
+    level, msg, thread = calls[0]
+    assert level == "user_warning"
+    assert "attention needed" in msg
     assert thread == main
 
 
