@@ -1,0 +1,109 @@
+{
+  "cost": {
+    "assertion_calls": 11,
+    "assertion_mean_seconds": 259.642962325703,
+    "assertion_mean_usd": 0.6015054090909091,
+    "evidence_check_execution_seconds": 1.213475227355957,
+    "evidence_session": "480b9995421e443d97b439a4f55bc3fe",
+    "evidence_write_seconds": 485.5895428657532,
+    "execute_calls": 285,
+    "execute_mean_seconds": 195.7137894847937,
+    "execute_mean_usd": 0.5030968329629629,
+    "execute_median_seconds": 126.7455780506134,
+    "execute_min_seconds": 5.095168113708496
+  },
+  "failing_sessions": [
+    {
+      "downstream_steps_after_earliest_failure": 15,
+      "earliest_owning_step": 0,
+      "n_steps": 16,
+      "session": "mm23-off",
+      "unmet_count": 12
+    },
+    {
+      "downstream_steps_after_earliest_failure": 1,
+      "earliest_owning_step": 4,
+      "n_steps": 6,
+      "session": "mm25-off",
+      "unmet_count": 1
+    },
+    {
+      "downstream_steps_after_earliest_failure": 4,
+      "earliest_owning_step": 3,
+      "n_steps": 8,
+      "session": "0de34f88d1274dcebb02ac67e0e52fb0",
+      "unmet_count": 4
+    },
+    {
+      "downstream_steps_after_earliest_failure": null,
+      "earliest_owning_step": null,
+      "n_steps": 8,
+      "session": "141a41df15544013a9740a45138fa7ad",
+      "unmet_count": 28
+    },
+    {
+      "downstream_steps_after_earliest_failure": 4,
+      "earliest_owning_step": 7,
+      "n_steps": 12,
+      "session": "480b9995421e443d97b439a4f55bc3fe",
+      "unmet_count": 2
+    },
+    {
+      "downstream_steps_after_earliest_failure": 8,
+      "earliest_owning_step": 0,
+      "n_steps": 9,
+      "session": "7cbde8a3e04d4b40b88933e6dc5bbe02",
+      "unmet_count": 57
+    },
+    {
+      "downstream_steps_after_earliest_failure": null,
+      "earliest_owning_step": null,
+      "n_steps": 8,
+      "session": "8d07a842d06b487d8e7729ecba27ce4b",
+      "unmet_count": 2
+    },
+    {
+      "downstream_steps_after_earliest_failure": 9,
+      "earliest_owning_step": 0,
+      "n_steps": 10,
+      "session": "98a5ead873c94103ba8a2baf653dd436",
+      "unmet_count": 28
+    },
+    {
+      "downstream_steps_after_earliest_failure": null,
+      "earliest_owning_step": null,
+      "n_steps": 7,
+      "session": "a7b95d14ea20491c8dd6c654b3285bf3",
+      "unmet_count": 1
+    },
+    {
+      "downstream_steps_after_earliest_failure": null,
+      "earliest_owning_step": null,
+      "n_steps": 8,
+      "session": "c7d892a556624c57b31b508362be4b4b",
+      "unmet_count": 5
+    },
+    {
+      "downstream_steps_after_earliest_failure": 5,
+      "earliest_owning_step": 4,
+      "n_steps": 10,
+      "session": "f1f13395f7454a53afb790366e03a7ea",
+      "unmet_count": 9
+    },
+    {
+      "downstream_steps_after_earliest_failure": null,
+      "earliest_owning_step": null,
+      "n_steps": 16,
+      "session": "f30e802ef400453e8d9a8c7e476c0d73",
+      "unmet_count": 1
+    }
+  ],
+  "measured_from": {
+    "downstream_steps_after_earliest_failure": 46,
+    "qualifying_steps_with_satisfies": 540,
+    "sessions_with_assertion_failure": 12,
+    "sessions_with_plan_event": 85,
+    "sessions_with_resolvable_owning_step": 7,
+    "total_steps": 740
+  }
+}
