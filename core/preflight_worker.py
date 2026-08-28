@@ -678,6 +678,44 @@ def trimmed_traceback(exc):
     return "".join(traceback.format_exception(type(exc), exc, trimmed or tb))
 
 
+def _recompute_scope(doc, touched):
+    """
+    What `preflight()`'s own recompute should touch: this Step's own writes,
+    resolved back to live objects, plus everything downstream of them.
+
+    `doc.recompute(objs)` recomputes exactly *objs* and their own
+    dependencies -- it does not walk `InList` the way the argument-free form
+    does, so a Step that edits an existing feature rather than only
+    appending a new one at the tip would leave every feature built on it
+    `Touched` with a stale `Shape`, not `Invalid`: the failure scan right
+    after (`"Invalid" in o.State`) would not see it, and Preflight would pass
+    a Step silently on the wrong shape. Following `InList` out to its whole
+    closure is what keeps this scoped recompute as correct as the bare
+    `doc.recompute()` it replaces, while still bounded to what this Step
+    could actually have affected rather than the whole Document.
+
+    `None` asks the caller for the ordinary full recompute -- a Step that
+    only deleted something leaves nothing of its own to target, and the
+    Document's dependency graph is what has to catch the consequences of a
+    deletion, not a list of names.
+    """
+    names = touched.created | touched.modified()
+    roots = [o for o in (doc.getObject(name) for name in names) if o is not None]
+    if not roots:
+        return None
+    seen = set()
+    scope = []
+    stack = list(roots)
+    while stack:
+        obj = stack.pop()
+        if obj.Name in seen:
+            continue
+        seen.add(obj.Name)
+        scope.append(obj)
+        stack.extend(obj.InList)
+    return scope
+
+
 def preflight(request):
     import FreeCAD
 
@@ -700,7 +738,11 @@ def preflight(request):
             return response
     finally:
         FreeCAD.removeDocumentObserver(touched)
-    doc.recompute()
+    scope = _recompute_scope(doc, touched)
+    if scope is None:
+        doc.recompute()
+    else:
+        doc.recompute(scope)
 
     failures = ["%s (%s): %s" % (o.Name, o.TypeId, _why_it_failed(o))
                 for o in doc.Objects if o.State and "Invalid" in o.State]
