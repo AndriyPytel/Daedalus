@@ -1061,6 +1061,15 @@ def crosswise(model) -> list:
 
     Its mirror is the same rule read the other way: two features round in one
     view whose axes were written differently cannot both be right either.
+
+    Says `kind: A_CONFLICT` on every entry rather than leaving it for
+    `_which_kind_it_is`'s default to supply (FCC-248): the two axes not
+    agreeing is a conflict by the same words `HEADED` gives that kind, and an
+    unset field said nothing about who found it. The rate this changes is
+    zero — A_CONFLICT is what the default already returned for an unset
+    `kind`, so `tests/recorded/evidence_kind_ratio.json`'s 23 of 26 sessions
+    with a `conflict`-kind entry read 23 of 26 before this tag and 23 of 26
+    after it. Tagging makes the kind intentional; it does not move the count.
     """
     seen = []
     for feature in _features(model):
@@ -1082,6 +1091,7 @@ def crosswise(model) -> list:
                           % ((view,) + next((other.split(UNDER)[-1], at)
                                             for at, other in along if at != view)),
                 "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
+                "kind": A_CONFLICT,
             })
 
     for view in {at for at, _, _ in seen}:
@@ -1095,6 +1105,7 @@ def crosswise(model) -> list:
                           "round in it here were given %d different ones"
                           % (view, len({said for said, _ in here})),
                 "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
+                "kind": A_CONFLICT,
             })
     return found
 

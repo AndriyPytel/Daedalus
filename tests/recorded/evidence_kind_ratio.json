@@ -1,0 +1,135 @@
+{
+  "captured_at": "2026-08-28T03:42:24",
+  "sessions": [
+    {
+      "session": "069d21dbac10416392533fe7c06b62d4",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "0aed73b0953642fd8e53f2476bc71677",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "0de34f88d1274dcebb02ac67e0e52fb0",
+      "has_conflict_kind": false,
+      "has_conflict_kind_excluding_crosswise_and_untraced": false
+    },
+    {
+      "session": "1b6cd765da1e4304a6215035d1ec5a56",
+      "has_conflict_kind": false,
+      "has_conflict_kind_excluding_crosswise_and_untraced": false
+    },
+    {
+      "session": "247c2aaed0734866a8aa9d169f7303bd",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "3fdc7475dbda4d50b57b157cd67dea59",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": false
+    },
+    {
+      "session": "45ee20f1f9a34c60a79bfd62d2dace8c",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "480b9995421e443d97b439a4f55bc3fe",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "4eebde83eaa74822a268716cb5b1a729",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "51d7a2f16e224230b5b74f126c7cf8f5",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "5d9249424bce45d2b25485002ba1c630",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "66a15a679b574ef49848d47632258c78",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": false
+    },
+    {
+      "session": "7330dead9b7b47a7a32005ad4ebf2760",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "78471005550b4105b7446fa2f5605ba2",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "7cbde8a3e04d4b40b88933e6dc5bbe02",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "8f70ae7d93154154ada691ee2fc52a1c",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "98a5ead873c94103ba8a2baf653dd436",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": false
+    },
+    {
+      "session": "a7b95d14ea20491c8dd6c654b3285bf3",
+      "has_conflict_kind": false,
+      "has_conflict_kind_excluding_crosswise_and_untraced": false
+    },
+    {
+      "session": "afa0142baef847b0a9cd9139390af993",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "b70b6931ea9e4434bb2ba37e23c6222f",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "b83650955ecd41c89a54907fe84ea8ba",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "cd594cb0281244f7b366d94dd8740714",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "cffbc01e488b45499b996ece0765b47f",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "f1f13395f7454a53afb790366e03a7ea",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": false
+    },
+    {
+      "session": "f30e802ef400453e8d9a8c7e476c0d73",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    },
+    {
+      "session": "f5d8007284aa4a57845782918305d6f0",
+      "has_conflict_kind": true,
+      "has_conflict_kind_excluding_crosswise_and_untraced": true
+    }
+  ]
+}
