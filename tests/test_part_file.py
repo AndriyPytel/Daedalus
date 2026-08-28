@@ -217,10 +217,12 @@ THE_CLAMP_WITH_MIXED_FINDINGS = dict(
 
 def test_the_evidence_log_stands_the_disagreements_before_the_gaps(sheet, tmp_path):
     """
-    FCC-244: `logged` writes the evidence sidecar grouped by kind
-    (`design.grouped_conflicts`) rather than in the order the merge appended
-    it, so a person who opens the file meets the one real disagreement before
-    the gaps nothing on the sheet supplied.
+    FCC-244, ordering updated by FCC-249: `logged` writes the evidence
+    sidecar through `design.grouped_conflicts` rather than in the order the
+    merge appended it. None of `THE_CLAMP_WITH_MIXED_FINDINGS`' three entries
+    carries `machine_written`, so all three fall in one authorship bucket and
+    keep their arrival order -- the same order this test has always checked,
+    now for a different reason than "grouped by kind".
     """
     reading_path = str(tmp_path / "parts" / "a-reading.yaml")
     os.makedirs(os.path.dirname(reading_path), exist_ok=True)

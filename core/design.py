@@ -189,6 +189,7 @@ def _refused_kinds(offered):
             "stands": _refusal_reason(kind),
             "was_also_said": "refused — the field is left as not yet filled",
             "kind": A_CONFLICT,
+            "machine_written": True,
         })
     return found
 
@@ -257,6 +258,7 @@ def _refused_conflicts(offered):
                       % (", ".join(CONFLICT_ENTRY_FIELDS), ", ".join(missing)),
             "was_also_said": entry,
             "kind": A_CONFLICT,
+            "machine_written": True,
         })
     return found
 
@@ -394,6 +396,7 @@ def unsafe_supersession(model) -> list:
             "stands": "%s says %s" % (pair[0], differing[pair[0]]),
             "was_also_said": "%s says %s" % (pair[1], differing[pair[1]]),
             "kind": A_CONFLICT,
+            "machine_written": True,
         })
     return found
 
@@ -597,6 +600,7 @@ def twice_placed(model) -> list:
                         "stands": "%s says %s: %s" % (pair[0], datum_diff, value_a_diff if pair[0] == id_a else value_b_diff),
                         "was_also_said": "%s says %s: %s" % (pair[1], datum_diff, value_b_diff if pair[1] == id_b else value_a_diff),
                         "kind": A_CONFLICT,
+                        "machine_written": True,
                     })
 
     return found
@@ -725,6 +729,7 @@ def silhouette(model) -> list:
             "stands": "no feature carries the outer contour, so the outside of the part is "
                       "whatever profile the envelope's overall sizes are padded into",
             "was_also_said": "%s: %s" % (where, why),
+            "machine_written": True,
         })
 
     for datum in model.get("datums") or ():
@@ -736,6 +741,7 @@ def silhouette(model) -> list:
                 "about": _under("datums", datum.get("name") or "an end face"),
                 "stands": datum.get("is") or datum.get("name"),
                 "was_also_said": "%s: %s" % (where, why),
+                "machine_written": True,
             })
     return found
 
@@ -851,6 +857,7 @@ def direction(model) -> list:
                     "was_also_said": str(feature.get("kind")
                                          or feature.get("topology") or ""),
                     "kind": A_GAP,
+                    "machine_written": True,
                 })
     return found
 
@@ -955,6 +962,7 @@ def pointing(model) -> list:
                 "stands": why + ", so either the axis or this position was read off the "
                                 "wrong view",
                 "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
+                "machine_written": True,
             })
     return found
 
@@ -1092,6 +1100,7 @@ def crosswise(model) -> list:
                                             for at, other in along if at != view)),
                 "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
                 "kind": A_CONFLICT,
+                "machine_written": True,
             })
 
     for view in {at for at, _, _ in seen}:
@@ -1106,6 +1115,7 @@ def crosswise(model) -> list:
                           % (view, len({said for said, _ in here})),
                 "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
                 "kind": A_CONFLICT,
+                "machine_written": True,
             })
     return found
 
@@ -1211,6 +1221,7 @@ def grounded(model, round_here) -> list:
                       % (wide, view, wide, " and ".join(instead)),
             "was_also_said": "%s: %s" % (_under(where, ROUND_IN), view),
             "instead": instead[0],
+            "machine_written": True,
         })
     return found
 
@@ -1372,6 +1383,7 @@ def placement(model) -> list:
                 "was_also_said": "%s: %s" % (_under(where, way),
                                              _one_value(feature[way]) or feature[way]),
                 "kind": A_GAP,
+                "machine_written": True,
             })
     return found
 
@@ -1427,6 +1439,7 @@ def placed_by_nothing(model) -> list:
             "stands": stands,
             "was_also_said": str(feature.get("kind") or feature.get("topology") or ""),
             "kind": A_GAP,
+            "machine_written": True,
         })
     return found
 
@@ -1482,6 +1495,7 @@ def twice_over(model) -> list:
                           % (kind_a, ", ".join(shared)),
                 "was_also_said": kind_a,
                 "kind": A_GAP,
+                "machine_written": True,
             })
     return found
 
@@ -1516,6 +1530,7 @@ def settled_by_nothing(model) -> list:
                           % (node.get("flag"), says),
                 "was_also_said": str(node.get("value") or ""),
                 "kind": A_GAP,
+                "machine_written": True,
             })
     return found
 
@@ -1668,12 +1683,14 @@ def _under_each_kind(conflicts):
     (`each_disagreement_once`). The merge holds both and goes on holding them.
 
     The kind is not written on the entry as well, because the heading it stands
-    under has just said it.
+    under has just said it. `machine_written` (FCC-249) is dropped the same
+    way: who found it is not what the Gate reads a finding to settle.
     """
     written = []
     grouped = _grouped_by_kind(_one_to_an_address(conflicts))
     for kind in KINDS:
-        found = [{key: said for key, said in conflict.items() if key != "kind"}
+        found = [{key: said for key, said in conflict.items()
+                 if key not in ("kind", "machine_written")}
                  if isinstance(conflict, dict) else conflict
                  for conflict in grouped[kind]]
         if found:
@@ -1811,25 +1828,66 @@ def _grouped_by_kind(conflicts):
 
 def grouped_conflicts(model) -> dict:
     """
-    *model*, with `conflicts` reordered so every disagreement stands before
-    every gap and every gap before every check hazard.
+    *model*, with `conflicts` reordered so every model-written entry stands
+    before every machine-written one.
 
-    The log `each_disagreement_once` leaves beside the reading
-    (`part_file.logged`) is a flat list in whatever order the merge appended
-    it, and a person reading it meets the twelve things nothing on the sheet
-    supplied before the one thing the sheet itself disagrees about (FCC-244:
-    22 of 23 entries in the recorded run this was measured against were gaps,
-    for one entry that was a real disagreement). `_under_each_kind` already
-    orders `render()`'s text this way; `_grouped_by_kind` is that same
-    ordering, reused rather than reimplemented, kept structured here because a
-    YAML file has no heading to say a kind once for a whole group — each entry
-    keeps its own `kind`, unlike `_under_each_kind`'s rendered lines.
+    Ordered by `kind` before FCC-249 — disagreement, then gap, then check
+    hazard — which still buried the one thing that mattered: `crosswise` and
+    `_every_number_is_the_sheets` read as `A_CONFLICT` too
+    (`_which_kind_it_is`'s default, FCC-248), the same kind the model's own
+    disagreement reads as, so a real reading of the sheet stood wherever the
+    merge happened to append it among however many machine-detected
+    disagreements shared its kind. `machine_written` (FCC-249) is the field
+    that actually knows; ordering by it is what `kind` was always asked to do
+    and could not (FCC-248: at least one `A_CONFLICT` entry stands in 88% of
+    recorded sessions, 73% even with the two worst-offending machine checks
+    excluded — no kind-based order clears that bar).
+
+    `_under_each_kind` orders `render()`'s Plan Gate text by `kind` still —
+    the three-kind grouping FCC-244 built is a different question, choose
+    between two readings against supply a value against read the sheet again,
+    and this ticket does not reopen it. Only the evidence sidecar
+    `part_file.logged` writes through this function moves.
     """
     conflicts = (model or {}).get("conflicts")
     if not conflicts:
         return model
-    grouped = _grouped_by_kind(conflicts)
-    return dict(model, conflicts=[conflict for kind in KINDS for conflict in grouped[kind]])
+    model_written = [conflict for conflict in conflicts if not _is_machine_written(conflict)]
+    machine_written = [conflict for conflict in conflicts if _is_machine_written(conflict)]
+    return dict(model, conflicts=model_written + machine_written)
+
+
+def _is_machine_written(conflict):
+    """
+    Whether *conflict* was appended by a validator, read off the field it
+    signs itself with at the moment it appends (FCC-249) — never off `kind`
+    (`A_CONFLICT` is the correct tag for a validator's own finding as much as
+    for the model's, FCC-248 measured that at 88% of sessions) and never off
+    shape (a model reply can land on the exact field set a validator writes,
+    FCC-237: 44 of 46 entries in one session missing `what` entirely).
+    """
+    return bool(isinstance(conflict, dict) and conflict.get("machine_written"))
+
+
+def _worth_a_notice(model) -> bool:
+    """
+    FCC-248's condition, decidable now that authorship is signed rather than
+    guessed: whether *model*'s conflicts hold at least one entry the model
+    itself wrote.
+
+    Stated, not wired — called from nowhere in this file or in `ui/`. Not
+    settled by a rate measured here, either: `tests/recorded/vocabulary_
+    kinds.json`'s 47 descriptions carry no `conflicts` entry at all before
+    `merge()` runs, so nothing computed from them can say how often this
+    predicate holds. The two recorded corpora that do carry conflicts put it
+    near one model-written entry per description (session `480b9995421e44
+    3d97b439a4f55bc3fe`: 1 of 29; `reading_2023_clamp.json`: 1 of 33) — not
+    the rare case a naive reading of the empty corpus would suggest. Whether
+    the notice ships, and against which real rate, is FCC-248's question,
+    reopened once signed entries accumulate from runs made after this ships.
+    """
+    return any(not _is_machine_written(conflict)
+              for conflict in (model or {}).get("conflicts") or ())
 
 
 def _which_kind_it_is(conflict):

@@ -2054,6 +2054,7 @@ def test_a_malformed_conflict_entry_is_refused_under_the_kind_vocabulary_marker(
         "was_also_said": {"what": "the split's own width", "note": "ambiguous",
                           "resolution": "left as printed"},
         "kind": design.A_CONFLICT,
+        "machine_written": True,
     }]
 
 
@@ -2242,3 +2243,223 @@ def test_a_conflict_kind_entry_fires_on_most_real_sessions_not_a_rare_few():
     assert sum(session["has_conflict_kind"] for session in sessions) == 23
     assert sum(session["has_conflict_kind_excluding_crosswise_and_untraced"]
               for session in sessions) == 19
+
+
+def _machine_written(conflict):
+    return bool(isinstance(conflict, dict) and conflict.get("machine_written"))
+
+
+def test_every_validator_signs_the_finding_it_writes():
+    """
+    FCC-249 AC1: authorship is written where the finding is created, not
+    inferred later off `kind` (`A_CONFLICT` is correct for both a
+    model-written disagreement and a machine-detected one, FCC-248) or off
+    shape (a model reply can land on a validator's own field set, FCC-237).
+    Every one of `merge()`'s validators appends `machine_written: True` --
+    exercised here by running the whole pipeline over a description that
+    trips a gap, a synonym conflict and a duplicate placement together.
+    """
+    grown = merge({}, A_DESCRIPTION_EVERY_VALIDATOR_CAN_FIRE_ON)
+
+    assert grown["conflicts"]
+    assert all(_machine_written(conflict) for conflict in grown["conflicts"])
+
+
+A_DESCRIPTION_EVERY_VALIDATOR_CAN_FIRE_ON = {
+    "features": [
+        {"id": "the-slot", "kind": "the arm slot", "topology": "through",
+         "position_datums": ["the left end face"]},
+        {"id": "hole-a", "kind": "hole", "position_datums": ["the left end face"],
+         "length": _read("10 mm")},
+        {"id": "hole-b", "kind": "hole", "position_datums": ["the left end face"],
+         "length": _read("10 mm")},
+    ],
+}
+
+
+def test_a_model_entry_untouched_by_a_validator_carries_no_authorship_field():
+    """
+    FCC-249 AC2: the one entry the raw description already carries under
+    `conflicts` -- the model's own reading of the sheet -- passes through
+    `merge()` unrewritten and unsigned.
+    """
+    offered = {"conflicts": [{"about": "the arm's depth", "stands": "the sheet prints 30",
+                              "was_also_said": "the view draws it closer to 28"}]}
+
+    grown = merge({}, offered)
+
+    assert len(grown["conflicts"]) == 1
+    assert not _machine_written(grown["conflicts"][0])
+
+
+def test_no_new_kind_value_carries_authorship():
+    """
+    FCC-249 AC5: authorship is a second axis, not a longer `KINDS`. The whole
+    of FCC-230 exists because `kind` once carried two meanings; adding
+    `"machine"` to the list that already answers "what sort of finding" would
+    rebuild the exact defect four tickets removed it for.
+    """
+    assert design.KINDS == (design.A_CONFLICT, design.A_GAP, design.A_CHECK_HAZARD)
+    assert "machine" not in design.KINDS and "model" not in design.KINDS
+
+
+def test_grouped_conflicts_now_orders_by_authorship_not_by_kind():
+    """
+    FCC-249 AC4: `grouped_conflicts` -- the ordering `part_file.logged` writes
+    the evidence sidecar through -- now stands every model-written entry
+    ahead of every machine-written one, in place of the `kind` order it used
+    before this ticket (`_under_each_kind`, used by `render()`, is untouched:
+    the Plan Gate's own three-kind grouping is a different question).
+
+    A machine-written `A_CONFLICT` (`crosswise`'s own kind, FCC-248) arrives
+    before `THE_PART`'s one model entry, which also reads as `A_CONFLICT`
+    through `_which_kind_it_is`'s default -- the exact pair the old, kind-only
+    order could never tell apart, kept apart here only by which one is
+    signed.
+    """
+    a_machine_conflict = dict(THE_PART["conflicts"][0],
+                              about="features → hole-40-left → axis",
+                              machine_written=True)
+    reading = dict(THE_PART, conflicts=[a_machine_conflict] + THE_PART["conflicts"] + [
+        dict(A_PART_NOBODY_AGREES_ON["conflicts"][-2], machine_written=True),
+        dict(A_PART_NOBODY_AGREES_ON["conflicts"][-1], machine_written=True),
+    ])
+
+    grouped = design.grouped_conflicts(reading)["conflicts"]
+
+    assert [_machine_written(conflict) for conflict in grouped] == [False, True, True, True]
+    assert grouped[0] == THE_PART["conflicts"][0]
+
+
+def test_fcc_248s_condition_is_stated_but_not_wired():
+    """
+    FCC-249 AC4: FCC-248's condition -- "the evidence file holds at least one
+    entry the model itself wrote" -- is now decidable, stated here as a
+    one-line predicate over the signed field. Not called from `core/loop.py`
+    or `ui/`: whether the notice ships is still FCC-248's question, reopened
+    on this ticket's measured count rather than settled by this ticket's
+    code.
+    """
+    fires = dict(THE_PART)
+    quiet = dict(THE_PART, conflicts=[dict(THE_PART["conflicts"][0], machine_written=True)])
+
+    assert design._worth_a_notice(fires) is True
+    assert design._worth_a_notice(quiet) is False
+    assert design._worth_a_notice({}) is False
+
+
+def test_the_machine_and_model_counts_read_off_the_field_disagree_with_38():
+    """
+    FCC-249 AC3, measured rather than assumed to agree -- and 387:38 was
+    never a ratio in the first place.
+
+    The 387 is `merge()` run over `tests/recorded/vocabulary_kinds.json`'s 47
+    descriptions -- the corpus and the method FCC-244 used -- and every one
+    of the resulting entries now reads `machine_written: True` straight off
+    the field. That half reproduces exactly.
+
+    The 38 never came from this corpus. It came from `_every_conflict_entry()`
+    walking a disjoint set of already-recorded entries elsewhere in
+    `tests/recorded/` -- 33 of them sitting in `reading_2023_clamp.json`, a
+    fixture that predates this field and so cannot carry it no matter who
+    wrote each entry. FCC-244 divided one by the other and read the result as
+    a machine-to-model share; it was two unrelated populations wearing one
+    ratio.
+
+    This test does not repeat that mistake by pairing 387 with a different
+    number from a different corpus. The 5 below is `_every_conflict_entry_in`
+    restricted to `claude-code-design-effort.jsonl` -- the one place in
+    `tests/recorded/` a "conflicts" entry is unambiguously the model's own,
+    untouched, raw output -- and it is a *second, separate* count, over a
+    *different* corpus than the 387, not its pair. Reported as two disjoint
+    counts: 387 machine-signed entries over `vocabulary_kinds.json`, and 5
+    unambiguously model-written entries over `claude-code-design-effort.jsonl`
+    -- not "387:5", which would carry the same defect 387:38 did.
+
+    The corrected figure for the corpus FCC-244 actually used, computed
+    the same way over the same 47 descriptions, is 387 machine to 0 model
+    (see `test_no_recorded_description_holds_a_model_written_conflict` for
+    why that zero is a different kind of number, and not the rate).
+    """
+    with open(os.path.join(RECORDED, "vocabulary_kinds.json"), encoding="utf-8") as handle:
+        descriptions = json.load(handle)["models"]
+    machine = [conflict for description in descriptions
+              for conflict in (merge({}, description) or {}).get("conflicts") or ()]
+
+    assert len(descriptions) == 47
+    assert len(machine) == 387
+    assert all(_machine_written(conflict) for conflict in machine)
+
+    model_written = _every_conflict_entry_in("claude-code-design-effort.jsonl")
+
+    assert len(model_written) == 5
+    assert not any(_machine_written(conflict) for conflict in model_written)
+    assert (len(machine), len(model_written)) != (387, 38)
+
+
+def _every_conflict_entry_in(name):
+    found = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            entries = node.get("conflicts")
+            if isinstance(entries, list):
+                found.extend(entry for entry in entries if isinstance(entry, dict))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    with open(os.path.join(RECORDED, name), encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            walk(record)
+            reply = ((record.get("result") or {}).get("result")
+                     if isinstance(record.get("result"), dict) else None)
+            if isinstance(reply, str):
+                try:
+                    walk(json.loads(reply))
+                except json.JSONDecodeError:
+                    pass
+    return found
+
+
+def test_no_recorded_description_holds_a_model_written_conflict():
+    """
+    Not FCC-248's number. `tests/recorded/vocabulary_kinds.json`'s 47 raw
+    descriptions carry 0 `conflicts` entries between them before `merge()`
+    ever runs -- every one of the 47 is missing the key outright. So "0 of 47
+    hold a model-written entry after merge()" is the extraction speaking, the
+    same wall FCC-244 hit and reported honestly
+    (`test_how_many_recorded_conflict_entries_are_machine_written_gaps`): a
+    corpus that carries no conflict entries at all cannot say how often one
+    is model-written, any more than it could say how often one is a gap.
+
+    This corpus cannot answer FCC-248's question, because it carries no
+    conflict entries to begin with; the question becomes answerable once
+    signed entries accumulate from runs made after this ticket ships, not
+    from this fixture. Two corpora that do carry conflict entries say the
+    true rate is not zero and is not rare: session
+    `480b9995421e443d97b439a4f55bc3fe`'s evidence sidecar holds 28 machine and
+    1 model of 29 (FCC-248's own comment), and `reading_2023_clamp.json` holds
+    32 validator-shaped and 1 no validator produces of 33 -- roughly one
+    model-written entry per description, consistently, in every corpus that
+    has any conflicts to look at.
+    """
+    with open(os.path.join(RECORDED, "vocabulary_kinds.json"), encoding="utf-8") as handle:
+        descriptions = json.load(handle)["models"]
+
+    holds_a_model_entry = sum(
+        any(not _machine_written(conflict)
+           for conflict in (merge({}, description) or {}).get("conflicts") or ())
+        for description in descriptions)
+
+    assert len(descriptions) == 47
+    assert holds_a_model_entry == 0
