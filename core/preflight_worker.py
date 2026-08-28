@@ -553,6 +553,11 @@ def _features_that_moved_no_material(doc, created):
     A feature is a step the user would recognise as cutting or adding metal; a
     Sketch, a datum or a Body itself is not, and neither is anything outside
     PartDesign.
+
+    Returns the idle features themselves, not formatted text (FCC-246): the
+    caller diagnoses each one before it has anything to print, and this
+    function's own comparison — the one line FCC-246's AC 4 leaves alone —
+    stays exactly what it was.
     """
     idle = []
     for name in sorted(created):
@@ -563,9 +568,69 @@ def _features_that_moved_no_material(doc, created):
         before = _volume_of(base) if base is not None else 0.0
         now = _volume_of(obj)
         if abs(now - before) <= _VOLUME_TOLERANCE * max(1.0, abs(before)):
-            idle.append("%s (%s): %s mm3 before, %s mm3 after"
-                        % (obj.Name, obj.TypeId, round(before, 6), round(now, 6)))
+            idle.append((obj, before, now))
     return idle
+
+
+def _idle_feature_cause(before, after_reversed_flip):
+    """
+    FCC-245's own replay, as a decision rule: 3 of the 12 recorded
+    volume-neutral failures moved volume when `Reversed` was flipped (a
+    profile on the right face pointing the wrong way), the other 9 did not
+    (a profile that overlaps the solid at neither sign of `Reversed`). Scored
+    against `tests/recorded/preflight_volume_neutral_failures.json`, this
+    rule reproduces the recorded cause in all 12 -- it is the same comparison
+    FCC-245 made, against the same tolerance `_features_that_moved_no_material`
+    already uses to call a feature idle in the first place.
+    """
+    if abs(after_reversed_flip - before) > _VOLUME_TOLERANCE * max(1.0, abs(before)):
+        return "direction"
+    return "no-overlap"
+
+
+def _diagnose_idle_feature(obj, before, now):
+    """
+    Tell a wrong-direction Pocket from one whose profile never touches the
+    solid, by flipping `Reversed` and recomputing -- FCC-245's own method,
+    replayed live at the moment the check fires instead of offline afterward.
+
+    Only features that carry `Reversed` (Pad, Pocket, Groove and their
+    Additive/Subtractive siblings) are candidates: a Fillet or a Hole has no
+    direction to flip, and `None` tells the caller to say it cannot tell
+    rather than naming a cause it never measured.
+    """
+    if not hasattr(obj, "Reversed"):
+        return None
+    original = obj.Reversed
+    try:
+        obj.Reversed = not original
+        obj.Document.recompute([obj])
+        flipped = _volume_of(obj)
+    finally:
+        obj.Reversed = original
+        obj.Document.recompute([obj])
+    return _idle_feature_cause(before, flipped)
+
+
+_IDLE_CAUSE_MESSAGE = {
+    "direction": (
+        "flipping Reversed changed its volume: the profile sits on the right "
+        "face but the cut travels away from the solid instead of into it. Set "
+        "Reversed=True (or use Type='ThroughAll' or SideType='Symmetric' for a "
+        "through cut rather than a length that may run the wrong way)."
+    ),
+    "no-overlap": (
+        "flipping Reversed left its volume unchanged either way: the profile "
+        "does not overlap the solid at all, at either sign of Reversed. Check "
+        "the sketch's placement against the Body's BoundBox -- Reversed will "
+        "not fix this."
+    ),
+    None: (
+        "flipping Reversed is not possible on this feature type, so the check "
+        "cannot tell a wrong direction from a placement that misses the solid. "
+        "Compare the feature's placement against the Body's BoundBox by hand."
+    ),
+}
 
 
 def _measured(namespace):
@@ -644,18 +709,20 @@ def preflight(request):
 
     idle = _features_that_moved_no_material(doc, touched.created)
     if idle:
+        lines = []
+        for obj, before, now in idle:
+            cause = _diagnose_idle_feature(obj, before, now)
+            lines.append(
+                "%s (%s): %s mm3 before, %s mm3 after -- %s"
+                % (obj.Name, obj.TypeId, round(before, 6), round(now, 6),
+                   _IDLE_CAUSE_MESSAGE[cause])
+            )
         raise RuntimeError(
             "this Step added a feature that neither removed nor added any material:\n"
-            + "\n".join(idle)
+            + "\n".join(lines)
             + "\nA Pad, Pocket, Hole or Fillet that leaves the Body's volume exactly as it "
               "found it did not happen, and FreeCAD reports it up-to-date and valid all the "
-              "same: a Pocket whose profile is extruded away from the solid cuts nothing.\n"
-              "A Pocket travels along the *negative* of its sketch normal unless Reversed is "
-              "True, so the sketch has to sit on the face the cut starts from with its normal "
-              "pointing out of the material, or carry Reversed=True when it does not. Check "
-              "the sign against the Body's BoundBox and use Type='ThroughAll' or "
-              "SideType='Symmetric' for a through hole rather than a length that may run "
-              "the wrong way."
+              "same: a Pocket whose profile is extruded away from the solid cuts nothing."
         )
 
     scattered = _bodies_in_pieces(doc)
