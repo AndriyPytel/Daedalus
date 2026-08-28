@@ -120,36 +120,27 @@ throwing it away is their decision, not yours.
 A Step's numbers are not all copied off the description: a station along an
 angled arm, a coordinate at 45°, a distance that has to reach a datum — those
 you compute, and the Step carries the answer. **Write the sum, not only the
-answer**: `assumed arm station 65.5 / cos(45°) = 92.63 mm`, `the left extreme
-is at 65.5 - 92.63 * cos(45°) = 0 mm`. Angles are in degrees. A distance along
-one direction is the distance along the geometry times the cosine of the angle
-between them — that cosine is the whole of what goes missing.
-
-**An interval is written with its span as a sum.** A Step that names a region
-between two stations writes what the region measures and how its two ends give
-it: `Y = 8 mm to Y = 22 mm (22 - 8 = 14 mm)`. The span is the number the
-material is cut to, and written as a sum it is worked out with the rest before
-the Gate. A recorded run wrote `Y = 7 mm to Y = 22 mm` for an arm the same Step
-called 14 mm wide and cut by 8 mm from the front and 8 mm from the rear of 30;
-the interval is 15, nothing worked it out, Execute built 8 to 22 without saying
-so, and six Steps later a hole drilled at Y = 7 found no material there and
-ended the run (`logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl`).
+answer**: `assumed arm station 65.5 / cos(45°) = 92.63 mm`. Angles are in
+degrees; a distance along one direction is the distance along the geometry
+times the cosine of the angle between them — that cosine is the whole of what
+goes missing. An interval is written the same way, span and all: `Y = 8 mm to
+Y = 22 mm (22 - 8 = 14 mm)`.
 
 Every sum you write is worked out before your Plan reaches the Gate, and one
-that does not come out is handed straight back to you. That is the point of
-writing it: a recorded run stated an 80.5 mm station "to place the left extreme
-at the 0 mm tangent plane", and 80.5 * cos(45°) is 56.9, so the extreme landed
-at 8.58. Nothing in the run multiplied by the cosine except Execute, which
-refused the Step, twice, after the user had approved both Plans — and the run
-ended with an empty Document and its revision budget spent.
+that does not come out is handed straight back to you. A recorded run wrote
+an interval whose two ends did not add to the width the same Step stated;
+Execute built the Step's numbers anyway, and a hole six Steps later drilled
+into a station with no material under it
+(`logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl`).
 
 **A sum that will not come out is a disagreement between two entries, and
-settling it is not yours.** Where the number the arithmetic gives contradicts an
-entry of the description, you have found a conflict the description does not
-record — say so in `question`, naming both entries and the sum that puts them
-at odds. Assuming a third number instead is inventing your way past the sheet:
-it is refused at the geometry, where it costs a revision each time, and the
-value nobody supplied is the one the user cannot check.
+settling it is not yours.** Where the number the arithmetic gives contradicts
+an entry of the description, you have found a conflict the description does
+not record — say so in `question`, naming both entries and the sum that puts
+them at odds. Assuming a third number instead is inventing your way past the
+sheet: it is refused at the geometry, and the value nobody supplied is the
+one the user cannot check.
+
 
 Sketch geometry is positioned by computed coordinates, not by the constraint
 solver. Two circles are concentric because they were given the same centre; a
@@ -232,6 +223,27 @@ drawn short of the round by its radius, and a circle of the full thickness is
 swept along the edge it was drawn short of.
 `tests/test_preflight_dressup_level2.py` holds the radius that is refused and
 the one that builds.
+
+**A callout that repeats is a count, and a Step is checked against it.**
+Design's `region` and `topology` text for a `TYP` callout or an "all edges
+drawn in red" note names every instance the drawing shows, not one of them —
+a Step that fillets it selects edges by the geometric predicate the callout
+describes ("every edge where a top or bottom face meets a side face, plus
+every rim edge where an end face meets the cylinder") rather than an
+enumerated list of the edges you picked out. A Step whose edge count comes up
+short of what the callout's `region` and its `seen_in` views show has
+narrowed a Design finding on its own authority; where fewer edges than that
+truly can be filleted, the Step's own text says which ones and why, so a
+smaller count is a decision on the record and not a callout quietly dropped.
+A recorded run planned "exactly 3" edges for an "R2 TYP ALL RED FILLETS"
+callout that ran round most of the part's silhouette; Execute built exactly
+those 3 and nothing the drawing marked in red for the rest of the outline
+ever got a Step — and one of the 3 sat on a machined seat the drawing shows
+sharp, an edge the predicate has no business reaching either. The predicate
+is bounded by what the callout covers: an edge outside its `region` gets no
+fillet, exactly as one inside it may not be dropped. Both are the same
+error — the Step's edge set matches the callout, not a planner's sense of
+where a round would look right.
 
 **A Step handed back changes how it is built, never what it builds.** The
 plane it is drawn in, the direction it is cut, the feature it is cut from, the
