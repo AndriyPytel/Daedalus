@@ -33,6 +33,8 @@ def test_a_run_that_reached_a_verdict():
     assert result.preflight_failures == 0
     assert result.cost_usd == 0
     assert result.wall_clock_seconds == 137.2473270893097
+    assert result.gate_wait_seconds == 0.0
+    assert result.working_seconds == result.wall_clock_seconds
     assert result.truncated is False
 
 
@@ -219,3 +221,61 @@ def test_assertion_fail_rate_counts_named_checks_not_whole_batches(tmp_path):
     result = measure(log_path)
 
     assert result.assertion_fail_rate == pytest.approx(12 / 110)
+
+
+def _write_gate_log(tmp_path, gate_pairs):
+    """
+    *gate_pairs* is a list of ("asked", at) / ("decision", at) tuples in
+    stream order; an "asked" with no matching "decision" is left dangling on
+    purpose, the way a run cut off mid-wait leaves its log.
+    """
+    from core.events import Event, GATE, INTENT
+
+    events = [Event(kind=INTENT, data={"text": "a nut"}, at=gate_pairs[0][1] - 1.0)]
+    for kind, at in gate_pairs:
+        data = {"steps": 1, "asked": True} if kind == "asked" else {"decision": "approve"}
+        events.append(Event(kind=GATE, data=data, at=at))
+
+    log_path = str(tmp_path / "run.jsonl")
+    with open(log_path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(event.as_json() for event in events))
+    return log_path
+
+
+def test_gate_wait_is_excluded_from_working_time(tmp_path):
+    """
+    12:45:57 asked, 13:40:09 decided — 54 minutes of a 124 minute run spent
+    waiting on the user's plan approval (`logs/sessions/90de8d14...`). Wall
+    clock keeps the whole 54 minutes; working time does not.
+    """
+    log_path = _write_gate_log(tmp_path, [("asked", 100.0), ("decision", 3340.0)])
+
+    result = measure(log_path)
+
+    assert result.gate_wait_seconds == pytest.approx(3240.0)
+    assert result.working_seconds == pytest.approx(result.wall_clock_seconds - 3240.0)
+
+
+def test_gate_wait_sums_across_multiple_asks_in_one_run(tmp_path):
+    log_path = _write_gate_log(tmp_path, [
+        ("asked", 100.0), ("decision", 130.0),
+        ("asked", 200.0), ("decision", 260.0),
+    ])
+
+    result = measure(log_path)
+
+    assert result.gate_wait_seconds == pytest.approx(30.0 + 60.0)
+
+
+def test_a_run_cut_off_mid_wait_does_not_crash_or_go_negative(tmp_path):
+    """A trailing `asked` with no `decision` after it: the run's log ends there."""
+    log_path = _write_gate_log(tmp_path, [
+        ("asked", 100.0), ("decision", 130.0),
+        ("asked", 200.0),
+    ])
+
+    result = measure(log_path)
+
+    assert result.gate_wait_seconds == pytest.approx(30.0)
+    assert result.gate_wait_seconds >= 0
+    assert result.working_seconds >= 0
