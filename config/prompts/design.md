@@ -206,16 +206,11 @@ not a picture of it.
 **Measure it.** A centre line is an axis. A dimension's extension lines are
 drawn from the very faces that dimension measures, so the faces are at those
 coordinates whether or not anything was printed between them. A contour is the
-part. Two entities and a subtraction settle most of what looks undimensioned:
-in the recorded run
-(`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`, the 2023 pipe clamp)
-the height at which the arm meets the ring was reported `not_defined`, put to
-the user, and then invented — while the elevation's line work carried the ring's
-centre line at y=48.01 and the arm's two faces at 37.99 and 23.00, which is an
-arm 10.0 mm below the axis and flush with the ring's lowest tangent. The part
-was built 17.5 mm wrong on a distance the file gives to a hundredth of a
-millimetre. A value you measure there is `derived`, with `from` naming the
-entities you measured.
+part. Two entities and a subtraction settle most of what looks undimensioned: a
+recorded run (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`) reported
+`not_defined` and invented a height the line work already carried to a
+hundredth of a millimetre, and built 17.5 mm wrong. A value you measure there
+is `derived`, with `from` naming the entities you measured.
 
 Where a view says its **body was placed as a picture**, its outline is not in
 the line work and what is listed is its annotation only — measure the axes and
@@ -337,18 +332,15 @@ repeated from what the other dimensions already fix, so it is `read`, never
 
 **A circle drawn in the annotation is not a circle on the part.** A detail
 callout is a balloon — a thin dash-dot circle or rectangle drawn around a
-region, with a leader to "SEE VIEW B", "DETAIL C" — and it is drawn in whatever
-colour and line style the sheet reserves for its notes, alongside the section
-arrows, the view titles and the projection symbol. It has no dimension on it
-and it bounds nothing: it says *where to look*, and the part inside it is drawn
-at size in the view it names. A recorded run
-(`logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl`, the 2023 pipe clamp)
-took the balloon of "SEE VIEW B FOR CLARITY OF CUTOUT" for the cutout, cut a
-circle of that radius through the part, and swallowed the ring the clamp exists
-to close. So before a curve becomes geometry, ask what line drew it: the part
-is drawn in the line style the rest of the part is in, and a leader, an arrow,
-a centre mark, a hatch boundary, a cutting line and a detail balloon are none
-of them contours.
+region, with a leader to "SEE VIEW B", "DETAIL C" — drawn in whatever colour
+and line style the sheet reserves for its notes. It has no dimension on it and
+it bounds nothing: it says *where to look*, and the part inside it is drawn at
+size in the view it names. A recorded run
+(`logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl`) took such a balloon
+for the cutout itself and cut a circle of that radius through the part,
+swallowing the ring the clamp exists to close. So before a curve becomes
+geometry, ask what line drew it: a leader, an arrow, a centre mark, a hatch
+boundary, a cutting line and a detail balloon are none of them contours.
 
 **A pointer is a place to look, not a gap in the sheet.** "SEE VIEW B",
 "DETAIL A", "SECTION A-A" is the draughtsman saying outright that the shape is
@@ -361,13 +353,11 @@ what gets built instead is whatever the number nearest to hand happened to be.
 **A detail view is another picture of a feature, not another feature.** The
 same cavity is drawn in the plan, sectioned in SECTION A-A and blown up in
 VIEW B, and each of those is where you *look* at it; there is one hole in the
-material. In the recorded run
-(`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`, the 2023 pipe clamp)
-the one cavity in the web became `slot-arm`, 30 mm long off the plan, and
-`cutout-web`, "profile as drawn in VIEW B" — and the second was written with an
-empty `position`, because there was nothing left to place: its place was already
-on the first. Plan built both, inventing a width for one and a radius for the
-other, and the second cut the part into two pieces.
+material. A recorded run
+(`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`) split one web cavity
+into two features, one of them with an empty `position` because there was
+nothing left to place it with; Plan built both, inventing values for the
+second, and cut the part into two pieces.
 
 So before you write a second feature, ask whether the sheet is showing you the
 same one twice: one feature, one `id`, every view it is drawn in listed in

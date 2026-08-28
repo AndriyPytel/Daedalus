@@ -13,8 +13,8 @@ import inspect
 import json
 
 from core.events import (
-    BLOCKED, CALL_STARTED, COST, GATE, INTENT, PLAN, PLAN_REVISED, STEP_STARTED,
-    THOUGHT, WRITING, EventStream,
+    ANSWER, ASSERTION, BLOCKED, CALL_STARTED, COST, GATE, INTENT, PLAN, PLAN_REVISED,
+    QUESTION, STEP_STARTED, THOUGHT, WRITING, EventStream,
 )
 from core.llm import ScriptedLLMClient
 from core.loop import (
@@ -408,6 +408,24 @@ def test_ok_finishes_the_run_without_a_revision():
     assert len(decide.shown) == 1
 
 
+def test_taking_a_failed_result_carries_the_failed_checks_on_the_answer():
+    """
+    `ok=True` alone does not say a saved Part is sound -- it also covers a
+    build taken over its own failed checks, with nothing else anywhere
+    saying so (logs/analysis-mm2023-defects.md). `unmet` is on the
+    `LoopResult` the same way it already reaches the `ASSERTION` event.
+    """
+    decide = Decider(ACCEPT)
+
+    result, events, _ = drive_with(
+        a_run_whose_checks_fail(), decide, attachments=[RENDER_PNG],
+        checks=[{"ok": False, "traceback": FAILED_CHECKS}])
+
+    assert result.ok
+    assert result.unmet
+    assert result.unmet == events.first(ASSERTION).data["unmet"]
+
+
 def test_accepting_does_not_spend_a_review_on_a_result_already_judged():
     """
     Taking a result that failed its checks ends the run there. Review is not
@@ -645,3 +663,183 @@ def test_the_gate_event_carries_the_plan_that_was_actually_approved():
 
     _, decided = events.of(GATE)
     assert decided.data["steps"] == ["Only this one"]
+
+
+def _auto_approve(monkeypatch, on=True):
+    from utils import settings_manager
+
+    monkeypatch.setattr(settings_manager.instance(), "get_auto_approve_plan", lambda: on)
+
+
+def test_auto_mode_off_by_default_still_asks():
+    """The pref itself, unmocked: the run must ask unless it was turned on."""
+    from utils import settings_manager
+
+    grp = settings_manager.instance()._grp()
+    assert grp.GetBool("AutoApprovePlan", False) is False
+    gate = Gate(Approval(APPROVE))
+
+    _, events, _ = drive(
+        [plan_reply("Create a 10mm box"), code_reply("box()"), verdict_reply("pass")], gate)
+
+    assert gate.shown == [["Create a 10mm box"]]
+    asked_event, decided_event = events.of(GATE)
+    assert asked_event.data["asked"] is True
+    assert decided_event.data.get("auto") is None
+
+
+def test_auto_mode_skips_the_gate_entirely_on_the_first_plan(monkeypatch):
+    _auto_approve(monkeypatch)
+    gate = Gate(Approval(REJECT))
+
+    result, events, tools = drive(
+        [plan_reply("Create a 10mm box"), code_reply("box()"), verdict_reply("pass")], gate)
+
+    assert gate.shown == [], "auto mode called the gate nobody is meant to answer"
+    assert result.ok
+    assert tools.applied_codes() == ["box()"]
+    asked_event, decided_event = events.of(GATE)
+    assert asked_event.data["asked"] is False
+    assert decided_event.data["decision"] == APPROVE
+    assert decided_event.data["standing"] is True
+    assert decided_event.data["auto"] is True
+
+
+def test_auto_mode_auto_approves_an_unread_assumption_too(monkeypatch):
+    """
+    Manual standing approval still stops for a new assumption (FCC-101); auto
+    mode's whole point is that nothing stops the run, so it does not.
+    """
+    _auto_approve(monkeypatch)
+    gate = Gate(Approval(REJECT))
+
+    result, events, _ = drive([
+        plan_reply("Cut an assumed rectangular pocket 30 wide"),
+        code_reply("cut()"), verdict_reply("pass"),
+    ], gate)
+
+    assert gate.shown == []
+    assert result.ok
+    decided_event = events.of(GATE)[-1]
+    assert decided_event.data["auto"] is True
+    assert decided_event.data["assumed"] == ["Cut an assumed rectangular pocket 30 wide"]
+
+
+def test_auto_mode_off_leaves_manual_gate_events_unchanged(monkeypatch):
+    """
+    Proof the bug fix's code path costs nothing when the pref is off: the
+    Gate event stream for a manual standing approval, with the pref explicitly
+    false, is the same one `test_a_standing_approval_is_on_the_stream_as_an_approval_not_as_a_silence`
+    already asserts for a build with no auto mode at all.
+    """
+    _auto_approve(monkeypatch, on=False)
+    gate = Gate(Approval(APPROVE, standing=True))
+
+    _, events, tools = drive([
+        plan_reply("Create a 10mm box"), code_reply("box()"), verdict_reply("pass"),
+    ], gate)
+
+    gates = events.of(GATE)
+    assert [g.data.get("decision") for g in gates] == [None, "approve"]
+    assert gates[0].data["asked"] is True
+    assert gates[1].data["standing"] is True
+    assert gates[1].data.get("auto") is None
+
+
+def test_auto_mode_revises_a_failed_assertion_without_asking_anybody(monkeypatch):
+    """
+    The hole this closes: `decide=self.ask.about_the_revision` blocked on a
+    bare `Event().wait()` with nobody left to answer it once auto mode had
+    already bypassed the Plan Gate. `decide` is never called here — the
+    default `revise_by_default` path is reused rather than a second policy.
+    """
+    _auto_approve(monkeypatch)
+
+    def never_call_me(failure):
+        raise AssertionError("decide was called in auto mode: %r" % (failure,))
+
+    result, events, tools = drive_with(
+        a_run_whose_checks_fail(
+            plan_reply("Make it 13 mm"),
+            code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
+        never_call_me, gate=Gate(Approval(APPROVE), Approval(APPROVE)),
+        attachments=[RENDER_PNG],
+        checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
+
+    assert result.ok
+    assert tools.applied_codes() == ["make()", "fix()"]
+    assert events.first(PLAN_REVISED) is not None
+
+
+def test_auto_mode_marks_the_revision_answer_as_automatic_with_the_failed_checks(
+        monkeypatch):
+    _auto_approve(monkeypatch)
+
+    _, events, _ = drive_with(
+        a_run_whose_checks_fail(
+            plan_reply("Make it 13 mm"),
+            code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
+        lambda failure: REVISE, gate=Gate(Approval(APPROVE), Approval(APPROVE)),
+        attachments=[RENDER_PNG],
+        checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
+
+    question = events.first(QUESTION)
+    answer = events.first(ANSWER)
+    assert question.data["auto"] is True
+    assert answer.data["auto"] is True
+    assert answer.data["by"] == "auto"
+    assert "across the flats" in " ".join(answer.data["unmet"])
+
+
+def test_auto_mode_off_leaves_the_decision_events_unchanged(monkeypatch):
+    """
+    Proof the auto path costs nothing when the pref is off: the same scenario
+    `test_revise_replans_and_the_revision_goes_through_the_gate` already
+    drives, with the pref explicitly false, produces the identical QUESTION
+    and ANSWER shape that test already asserts on indirectly.
+    """
+    _auto_approve(monkeypatch, on=False)
+    decide = Decider(REVISE)
+
+    _, events, _ = drive_with(
+        a_run_whose_checks_fail(
+            plan_reply("Make it 13 mm"),
+            code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
+        decide, gate=Gate(Approval(APPROVE), Approval(APPROVE)), attachments=[RENDER_PNG],
+        checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
+
+    question = events.first(QUESTION)
+    answer = events.first(ANSWER)
+    assert "auto" not in question.data
+    assert answer.data["by"] == "user"
+    assert "auto" not in answer.data
+    assert len(decide.shown) == 1
+
+
+def test_auto_mode_composes_with_the_revision_budget_running_out(monkeypatch):
+    """
+    G3/G2 composition: auto-revising a Step that keeps failing its checks
+    still spends the shared revision budget, and running out of it still
+    stops the run through the same `_block` every other exhausted cause
+    already goes through — rather than looping or hanging on a question
+    nobody is left to answer. `revisions_ceiling` is 3 on a 1-Step Plan
+    (`Budgets`'s own default), so the 4th failure is the one that finds it
+    already spent.
+    """
+    _auto_approve(monkeypatch)
+
+    result, events, _ = drive_with([
+        design_reply(THE_NUT), plan_reply("Make it"),
+        code_reply("make()"), assertion_reply("check()"),
+        plan_reply("Make it v2"), code_reply("make2()"), assertion_reply("check()"),
+        plan_reply("Make it v3"), code_reply("make3()"), assertion_reply("check()"),
+        plan_reply("Make it v4"), code_reply("make4()"), assertion_reply("check()"),
+    ], lambda failure: REVISE, gate=Gate(*[Approval(APPROVE) for _ in range(4)]),
+        attachments=[RENDER_PNG], checks=[{"ok": False, "traceback": FAILED_CHECKS}] * 4)
+
+    assert result.blocked
+    assert not result.ok
+    answers = events.of(ANSWER)
+    auto_answers = [a for a in answers if a.data.get("auto")]
+    assert len(auto_answers) == 4
+    assert all(a.data["by"] == "auto" for a in auto_answers)

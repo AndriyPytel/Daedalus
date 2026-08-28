@@ -443,16 +443,14 @@ def test_a_base_that_is_not_a_selection_is_untouched():
 
 def test_writing_the_deprecated_midplane_is_refused():
     """
-    FreeCAD 1.1 warns on every write to `Midplane` and prints two lines per
-    extrusion into the Report view; `SideType` is what replaced it, and
-    `SideType='Symmetric'` is what `Midplane=True` meant. The prompt no longer
-    teaches the old spelling, and this is what catches the run that writes it
-    anyway.
+    `Midplane` still works on FreeCAD 1.1.3; writing it costs two lines of
+    warning into the Report view, not a traceback. `execute.md:183-184`
+    already tells the model to write `SideType` instead, so this Step is
+    accepted rather than rejected -- a lint rule earns a whole retry cycle
+    only for a mistake Preflight cannot teach a way out of, and this one is
+    not that: FreeCAD's own console warning already says what to fix.
     """
-    result = lint("pad.Midplane = True")
-
-    assert not result.ok
-    assert "SideType" in result.report()
+    assert lint("pad.Midplane = True").ok
 
 
 def test_reading_midplane_is_untouched():

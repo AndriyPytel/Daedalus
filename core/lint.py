@@ -1,7 +1,7 @@
 """
 The AST lint that runs before Preflight.
 
-Seven rules, each about a failure a Preflight traceback cannot teach the way
+Six rules, each about a failure a Preflight traceback cannot teach the way
 out of (ADR-0008):
 
 - **No literal `Edge12` / `Face3` / `Vertex7`** (ADR-0005). FreeCAD 1.0's
@@ -37,12 +37,13 @@ out of (ADR-0008):
   handler that only passes, discards the traceback the correction path is
   built on. Code that catches its own exception and says nothing disables the
   mechanism the architecture rests on.
-- **No deprecated property is written**. `Midplane` still exists on FreeCAD
-  1.1.3 and still works, so nothing raises and Preflight sees nothing: what it
-  does is print two lines into the Report view per extrusion, which is a run's
-  worth of warning over a working part. `SideType` replaced it, and
-  `SideType='Symmetric'` is what `Midplane=True` meant. Reading it is left
-  alone — `describe_type` reports it as a property that is there.
+
+`Midplane=True` is not one of these rules: it still works on FreeCAD 1.1.3, so
+writing it costs two lines of warning into the Report view, not a traceback
+Preflight cannot teach a way out of. Rejecting the whole Step for it costs a
+full retry cycle for a one-keyword fix the model already gets right on the
+next attempt; `execute.md` tells it to write `SideType` instead, and that is
+where the correction belongs.
 
 A Sketcher constraint is checked against a hardcoded table of names and
 arities. `Sketcher.Constraint`'s C++ constructor segfaults on a name it does
@@ -195,16 +196,6 @@ _RAW_SHAPE_REASON = (
     "genuinely belongs outside a Body, build it as Part::Feature and say so."
 )
 
-_DEPRECATED_PROPERTIES = {
-    "Midplane": "SideType — `SideType='Symmetric'` is what `Midplane=True` meant",
-}
-
-_DEPRECATED_REASON = (
-    "%s is deprecated and FreeCAD prints two lines of warning into the Report "
-    "view for every write to it, once per extrusion, for a run's worth of "
-    "Steps. Write %s instead."
-)
-
 _SWALLOWED_REASON = (
     "This Step's error handling breaks the correction path: %s. A failed Step "
     "answers itself (ADR-0008) — the traceback is what goes back and gets "
@@ -332,10 +323,6 @@ def lint(code: str, selection=None, op=None) -> LintResult:
                 complain(_SWALLOWED_REASON % swallowed)
 
         elif isinstance(node, ast.Assign):
-            deprecated = _deprecated_property(node)
-            if deprecated:
-                complain(_DEPRECATED_REASON
-                         % (deprecated, _DEPRECATED_PROPERTIES[deprecated]))
             disguised = _shape_assignment(node, features)
             if disguised:
                 complain(_RAW_SHAPE_REASON % disguised)
@@ -477,14 +464,6 @@ def _uncounted_selection(node: ast.Assign, counted: set):
             if not all(isinstance(gen.iter, ast.Name) and gen.iter.id in counted
                        and not gen.ifs for gen in elements.generators):
                 return ast.unparse(target)
-    return None
-
-
-def _deprecated_property(node: ast.Assign):
-    """The name in `feature.Midplane = ...`, whatever the feature is called."""
-    for target in node.targets:
-        if isinstance(target, ast.Attribute) and target.attr in _DEPRECATED_PROPERTIES:
-            return target.attr
     return None
 
 

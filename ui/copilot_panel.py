@@ -423,6 +423,11 @@ class AskTheUser(QtCore.QObject):
     values Plan is missing, and what to do about a result that did not pass.
     All are asked from the loop's thread and must be answered by a person, so
     the signal crosses to the GUI thread and the worker waits on an Event.
+
+    A run parked here is waiting on a person who may not be at the screen,
+    so `_ask` pages them through FreeCAD's own Notification Area before it
+    blocks, rather than leaving only a status line under a composer nobody
+    is looking at.
     """
 
     plan_gate = QtCore.Signal(object)
@@ -436,7 +441,8 @@ class AskTheUser(QtCore.QObject):
         self._answer = None
 
     def about_the_plan(self, steps):
-        return self._ask(self.plan_gate, steps)
+        return self._ask(self.plan_gate, steps,
+                         "FreeCAD Copilot needs you to approve its Plan before it continues.")
 
     def about_objects_we_do_not_own(self, kinds):
         """
@@ -448,7 +454,9 @@ class AskTheUser(QtCore.QObject):
         explicit yes. It is the choke point every asker routes through, so the
         guard is there rather than repeated in each of them.
         """
-        return self._ask(self.owned_objects, kinds)
+        return self._ask(self.owned_objects, kinds,
+                         "FreeCAD Copilot wants to delete something it did not create and "
+                         "needs your permission.")
 
     def about_missing_values(self, question):
         """
@@ -458,7 +466,8 @@ class AskTheUser(QtCore.QObject):
         the Plan Gate's answer and not one of these — anything that is not
         text is nobody answering.
         """
-        answer = self._ask(self.missing_values, question)
+        answer = self._ask(self.missing_values, question,
+                           "FreeCAD Copilot needs a value it could not find on the drawing.")
         return answer if isinstance(answer, str) else ""
 
     def about_the_revision(self, failure):
@@ -473,10 +482,12 @@ class AskTheUser(QtCore.QObject):
         """
         from core.loop import DECISIONS, REVISE
 
-        answer = self._ask(self.revision, failure)
+        answer = self._ask(self.revision, failure,
+                           "FreeCAD Copilot needs you to say what to do about a result that "
+                           "did not pass its checks.")
         return answer if answer in DECISIONS else REVISE
 
-    def _ask(self, signal, payload):
+    def _ask(self, signal, payload, notify):
         """
         Emit the question, then block until someone answers it.
 
@@ -490,6 +501,12 @@ class AskTheUser(QtCore.QObject):
         delivered by an event loop this very thread is now blocked out of, so
         `wait()` never returns and the process deadlocks with no traceback and
         no CPU to show for it. Refusing to wait names the fault instead.
+
+        *notify* reaches FreeCAD's own Notification Area (`utils.logger ::
+        notify_user`) once it is clear the wait is real -- an answer already
+        sitting in `_answered` (the same-thread case above, and a test's
+        direct connection) is not a person walking away from a two-hour run,
+        and does not need paging back.
         """
         self._answered.clear()
         self._answer = None
@@ -499,6 +516,9 @@ class AskTheUser(QtCore.QObject):
                 "%s was asked on the thread that has to answer it; "
                 "no event loop can deliver the answer." % signal
             )
+        if not self._answered.is_set():
+            from utils.logger import notify_user
+            notify_user(notify)
         self._answered.wait()
         return self._answer
 
@@ -2469,6 +2489,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
         Part path is what the run read or wrote, empty where neither happened
         (FCC-210).
 
+        `ok=True` covers two different endings: Review passed, or the user
+        took a build its own checks had already failed — the blank a saved
+        Part with a known-bad pocket and lug carries nowhere else
+        (logs/analysis-mm2023-defects.md). `result.unmet` is what tells the
+        two apart, so only a genuinely clean pass gets the blank status line.
+
         *log* names which Session finished — this Session's own worker keeps
         running whether or not it is the one on screen (FCC-181), so the
         bookkeeping happens here regardless, and only the widgets are guarded
@@ -2488,7 +2514,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self._set_running(False)
         self._the_thinking_stops()
-        if result is not None and result.ok:
+        if result is not None and result.ok and result.unmet:
+            self._queue_widget.now(
+                "Finished, but not verified — you took it as it is over %d failed "
+                "check%s: %s" % (len(result.unmet), "" if len(result.unmet) == 1 else "s",
+                                 ", ".join(result.unmet)))
+        elif result is not None and result.ok:
             self._queue_widget.now("")
         else:
             self._queue_widget.now("Stopped. Your Document is unchanged beyond the "
