@@ -469,7 +469,12 @@ class LoopResult:
 
     `unmet` is what the acceptance checks said did not hold when the run ended,
     whatever the run ended as. A run the user took as it is still leaves these
-    wrong in the Document, and the next run is entitled to know.
+    wrong in the Document, and the next run is entitled to know -- `ok=True`
+    beside a non-empty `unmet` is exactly that: taken as it is, not passed. A
+    saved Part carries nothing else saying so (logs/analysis-mm2023-defects.md:
+    a failing pocket and lug, unrecorded anywhere), which is why both of
+    `_run`'s ACCEPT returns set `unmet` from the same acceptance list every
+    other ending already reads.
 
     `the_part_path` is the Part reading this run planned from: the one it
     wrote, or the one it was handed and skipped Design to read instead
@@ -3772,6 +3777,17 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     saying which one it is standing on. AMEND, and anything that is not an
     approval, replans: no Step runs on a decision the Gate does not recognise.
 
+    `settings_manager.get_auto_approve_plan` is the one exception to "asked
+    about, standing approval or not": on, it stands over every Gate from the
+    first Plan on, including a Step with an assumption nobody has read, so an
+    unattended run never stalls waiting on a human who is not there. `gate`
+    itself is never called while it is on. What it accepted without asking
+    stays honest on the stream regardless: the `GATE` event carries
+    `auto: true` and, when it skipped an unread assumption, the Step text
+    that assumption was in, under `assumed` — the same evidence a human
+    approval leaves, for whoever reads the Session back. Off by default, so a
+    run only goes unattended once the user has turned it on.
+
     A Step that comes back a second time with nothing applied in between is not
     a Step Plan can write differently. What Execute refuses is the description
     behind it, and rewriting the words leaves the run where it is: a recorded
@@ -3818,7 +3834,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             cancelled, asking, tools, feedback, attachments, revising, ledger)
         return planned
 
-    def decided(why, applied):
+    def decided(why, applied, unmet=()):
         """
         What the user wants done about a result that did not pass.
 
@@ -3843,8 +3859,24 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         nothing: no record that the user had been offered the choice, none of
         which one they took, and a Document carried into the next run with six
         entries still wrong and nothing anywhere saying so (FCC-98).
+
+        `auto_approve` reaches this question the same way it already reaches
+        the Plan Gate, past the exact point the Plan Gate stops waiting: an
+        unattended run does not block on a bare `Event().wait()` nobody is
+        left to set. `revise_by_default` — the answer a headless caller with
+        no `decide` of its own already gets — is reused rather than a second
+        auto policy invented beside it, so `decide` itself is never called in
+        auto mode. `unmet` is the checks that did not hold, carried on the
+        answer the way the Plan Gate carries what an auto-approval overruled,
+        so the stream says what was decided without asking rather than
+        leaving the next reader of it to infer a human was ever there.
         """
         if not applied:
+            return REVISE
+        if auto_approve:
+            events.emit(QUESTION, text=_WHAT_NOW % why, auto=True)
+            events.emit(ANSWER, by="auto", text=_DECIDED[REVISE], auto=True,
+                        unmet=list(unmet))
             return REVISE
         events.emit(QUESTION, text=_WHAT_NOW % why)
         answer = decide({"why": why, "applied": applied})
@@ -3863,6 +3895,9 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     standing = {"approval": False, "read": set()}
     looks = _what_this_build_has(tools)
     last_pass = {"steps": None, "applied": 0}
+
+    from utils import settings_manager
+    auto_approve = settings_manager.instance().get_auto_approve_plan()
 
     def rewrite(cause, refused, feedback, tried, reason=None):
         """
@@ -3920,8 +3955,15 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         unread = _assumed(steps) - standing["read"]
         overruled = {"assumed": len(unread)} if standing["approval"] and unread else {}
         events.emit(GATE, steps=len(steps),
-                    asked=bool(unread) or not standing["approval"], **overruled)
-        if standing["approval"] and not unread:
+                    asked=(bool(unread) or not standing["approval"]) and not auto_approve,
+                    **overruled)
+        if auto_approve:
+            approval = Approval(APPROVE, standing=True)
+            standing["approval"] = True
+            standing["read"] |= _assumed(steps)
+            events.emit(GATE, decision=APPROVE, standing=True, auto=True, steps=list(steps),
+                        **({"assumed": sorted(unread)} if unread else {}))
+        elif standing["approval"] and not unread:
             approval = Approval(APPROVE, standing=True)
             events.emit(GATE, decision=APPROVE, standing=True, steps=list(steps))
         else:
@@ -3993,9 +4035,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             + list(not_reached)
         if checked is not None and checked.failed:
             feedback = _why_the_checks_failed(checked.traceback)
-            answer = decided(feedback, applied)
+            answer = decided(feedback, applied, unmet=checked.unmet)
             if answer == ACCEPT:
                 return LoopResult(ok=True, verdict="pass", steps_applied=applied,
+                                  unmet=list(progress["unmet"]),
                                   reason="You took the result as it is, although the "
                                          "acceptance checks did not pass.")
             if answer == START_OVER:
@@ -4016,10 +4059,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               steps_applied=applied)
 
         feedback = reason
-        answer = decided(reason, applied)
+        answer = decided(reason, applied, unmet=list(checked.unmet) if checked is not None else ())
         if answer == ACCEPT:
             return LoopResult(ok=True, verdict="pass", reason=reason,
-                              steps_applied=applied)
+                              steps_applied=applied, unmet=list(progress["unmet"]))
         if answer == START_OVER:
             feedback += _MAY_START_AGAIN
 
