@@ -306,10 +306,10 @@ class FakeTools:
                                     "value": "10.0 mm"}]}
 
         @registry.tool("materials", "The material cards this build has, with their uuids.", {
-            "type": "object", "properties": {"name": {"type": "string"}},
+            "type": "object", "properties": {},
         })
-        def materials(name=None):
-            self.calls.append(("materials", {"name": name}))
+        def materials():
+            self.calls.append(("materials", {}))
             return {"materials": [{"name": "Steel-Generic", "uuid": "b9b3a6ff-1c8e",
                                    "density": "7900.00 kg/m^3"}], "count": 1}
 
@@ -4840,14 +4840,15 @@ def test_a_question_about_a_material_card_is_answered_from_the_tools():
     result, events, llm, tools = drive([
         design_reply(SETTLED),
         question_reply(A_MATERIAL_CARD),
-        look_reply("materials", name="plain carbon steel"),
+        look_reply("materials"),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
         code_reply("pad()"), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok, result.reason
-    assert ("materials", {"name": "plain carbon steel"}) in tools.calls, \
-        "the question never reached the Tool that answers it: %s" % tools.calls
+    taken = [call for call in tools.calls if call[0] == "materials"]
+    assert taken and all(arguments == {} for _, arguments in taken), \
+        "the question never reached the Tool, or reached it with a filter: %s" % tools.calls
     design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
     assert len(design_turns) == 1, "the sheet was asked what no drawing prints"
     assert "b9b3a6ff-1c8e" in json.dumps(_turns_of(llm, "plan")[-1]), \
@@ -4865,7 +4866,7 @@ def test_rereads_are_spent_only_on_questions_put_to_the_drawing():
     result, events, llm, tools = drive([
         design_reply(SETTLED),
         question_reply(A_MATERIAL_CARD),
-        look_reply("materials", name="steel"),
+        look_reply("materials"),
         question_reply("Where is the O8 hole?"),
         design_reply({"datums": [{"name": "the left end face", "is": "the flat face"}]}),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),

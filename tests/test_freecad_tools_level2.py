@@ -285,18 +285,17 @@ def test_materials_carry_the_uuid_shape_material_needs(tools):
     and cannot be guessed — `describe_object` reports that ShapeMaterial is a
     Materials::PropertyMaterial and stops there.
     """
-    answer = tools.call("materials", {"name": "alumin"})
+    answer = tools.call("materials", {})
 
-    assert answer["count"], "this build ships no aluminium card at all"
+    assert answer["count"], "this build ships no material cards at all"
     for card in answer["materials"]:
-        assert "alumin" in card["name"].lower()
         assert card["uuid"], "a card came back with no uuid, which is the point of the Tool"
 
 
 def test_a_materials_density_is_reported_so_a_card_can_be_chosen_by_it(tools):
     """The prompt says 2700 kg/m³; the card that has it is picked, not edited."""
-    with_density = [card for card in tools.call("materials", {"name": "alumin"})["materials"]
-                    if card["density"]]
+    with_density = [card for card in tools.call("materials", {})["materials"]
+                    if "alumin" in card["name"].lower() and card["density"]]
 
     assert with_density, "no aluminium card reported a density, so none can be chosen by one"
     assert any("2.7" in card["density"] for card in with_density), \
@@ -311,26 +310,38 @@ def test_a_card_with_no_density_is_still_listed_rather_than_dropped(tools):
     assert all("density" in card for card in everything)
 
 
-def test_materials_unfiltered_is_a_page_and_says_so(tools):
+def test_every_card_this_build_has_comes_back_in_one_call(tools):
+    """
+    The whole shelf, sorted, in the one answer the run is handed before it is
+    asked for a Step.
+
+    A page of 40 of the 200 cards FreeCAD 1.1 ships sent the run looking for
+    the rest a name at a time: "steel", then "carbon", then "plain", then
+    "steel-g" — 20 of the 31 recorded sessions that reach a material call the
+    Tool between two and five times, and `logs/ab-rlm-agentic/opus/mm25-off.jsonl`
+    spent four turns on 9.2 KB of pages and never saw the shelf. All 200 cards
+    are 19 KB in one answer, which is what a page plus the turns spent chasing
+    it already cost.
+    """
     answer = tools.call("materials", {})
 
-    assert len(answer["materials"]) <= 40
-    if answer["count"] > len(answer["materials"]):
-        assert "filter by name" in answer["truncated"]
+    assert len(answer["materials"]) == answer["count"], \
+        "the answer is a page of the cards, not the cards"
+    assert "truncated" not in answer
+
+    names = [card["name"].lower() for card in answer["materials"]]
+    assert names == sorted(names)
+    assert any("steel" in name for name in names) and any("alumin" in name for name in names)
 
 
-def test_a_name_that_matches_nothing_hands_back_the_shelf_rather_than_nothing(tools):
+def test_materials_takes_no_name_to_filter_by(tools):
     """
-    The recorded run asked for "plain carbon steel"; the cards are named
-    "Steel-Generic". An empty list reads as "this build has no materials", and
-    Execute spent three replans on that reading rather than picking a card.
+    A filter is what the paging was for. The cards are handed over whole before
+    Execute's first turn, so a name to match against is the caller's own work on
+    a list it already holds, not a round trip.
     """
-    answer = tools.call("materials", {"name": "unobtainium"})
-
-    assert answer["count"], "a name off a title block came back with nothing to choose from"
-    assert "unobtainium" in answer["nothing_matched"]
-    assert any("steel" in card["name"].lower() for card in answer["materials"]), \
-        "the whole shelf was promised and the steels are not on it"
+    with pytest.raises(ToolError, match="unknown argument"):
+        tools.call("materials", {"name": "steel"})
 
 
 def _plate(doc, holes=1):

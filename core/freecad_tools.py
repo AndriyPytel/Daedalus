@@ -112,7 +112,6 @@ TRAPS = [
 ]
 
 _SNAPSHOT_LIMIT = 200
-_MATERIALS_LIMIT = 40
 
 _GEOMETRY_MODULES = ("Part", "PartDesign", "Sketcher")
 
@@ -840,23 +839,21 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
         "The material cards this FreeCAD has, with the uuid ShapeMaterial needs. A "
         "uuid is not something to guess and a card's density is not something to set "
         "— pick the card that already has the density asked for.",
-        {
-            "type": "object",
-            "properties": {"name": {"type": "string",
-                                    "description": "Optional case-insensitive name filter, e.g. 'alumin'."}},
-        },
+        {"type": "object", "properties": {}},
     )
-    def materials(name=None):
+    def materials():
         """
-        The material cards this build has, filtered by name where one is given.
+        Every material card this build has, sorted by name.
 
-        The 200 cards that ship with FreeCAD 1.1 are the same list every call,
-        so the unfiltered answer is a page of them rather than the lot. A title
-        block says "plain carbon steel" where the cards say "Steel-Generic", so
-        a name that matches nothing whole is matched on a word of itself, and
-        failing that gets the whole shelf: an empty list is the one answer that
-        reads as "this build has no material to assign", and a recorded run
-        spent every revision it had on that reading rather than picking a card.
+        The 200 cards FreeCAD 1.1 ships are the same list every call and 19 KB
+        of JSON in one answer, so the whole shelf is handed over once rather
+        than paged. A page of 40 with a name to filter by cost more than it
+        saved: a title block says "plain carbon steel" where the cards say
+        "Steel-Generic", so 20 of the 31 recorded sessions that reach a
+        material called the Tool two to five times guessing names, and
+        `logs/ab-rlm-agentic/opus/mm25-off.jsonl` spent four turns and 9.2 KB
+        on pages without ever seeing the shelf. Matching a name against a list
+        already in hand is not a round trip.
         """
         try:
             import Materials
@@ -864,29 +861,11 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
             raise ToolError("This FreeCAD build has no Materials module, so no material "
                             "can be assigned.")
         cards = Materials.MaterialManager().Materials
-
-        def listed(match):
-            return sorted(({"name": card.Name, "uuid": uuid,
-                            "density": _physical(card, "Density")}
-                           for uuid, card in cards.items() if match(card.Name.lower())),
-                          key=lambda entry: entry["name"].lower())
-
-        wanted = (name or "").lower()
-        found = listed(lambda card: wanted in card)
-        widened = bool(wanted) and not found
-        if widened:
-            words = [word for word in wanted.split() if len(word) > 2]
-            found = (listed(lambda card: any(word in card for word in words))
-                     or listed(lambda card: True))
-        result = {"materials": found[:_MATERIALS_LIMIT], "count": len(found)}
-        if widened:
-            result["nothing_matched"] = (
-                "no card's name contains %r, so a wider list is given instead — pick the "
-                "nearest card rather than treating the material as unavailable." % name)
-        if len(found) > _MATERIALS_LIMIT:
-            result["truncated"] = ("showing %d of %d — filter by name"
-                                   % (_MATERIALS_LIMIT, len(found)))
-        return result
+        found = sorted(({"name": card.Name, "uuid": uuid,
+                         "density": _physical(card, "Density")}
+                        for uuid, card in cards.items()),
+                       key=lambda entry: entry["name"].lower())
+        return {"materials": found, "count": len(found)}
 
     if pipeline is not None:
         _register_apply(registry, pipeline, _selection)

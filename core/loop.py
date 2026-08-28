@@ -2307,10 +2307,10 @@ def _what_this_build_has(tools):
     being told a look now was a failed attempt — so it declared the Step
     unbuildable and said the Tool was unavailable (FCC-146).
 
-    Unfiltered, because a page of cards is what the request wants to carry: a
-    name to match against was the question in the first place. A budget the
-    model does not have to spend is the only one it cannot run out of at the
-    last Step.
+    The whole shelf, because a name to match against was the question in the
+    first place: a page of it sent recorded runs back two to five times for
+    the rest, a guessed name at a time. A budget the model does not have to
+    spend is the only one it cannot run out of at the last Step.
 
     Not narrated, because nothing asked: this is knowledge the run is handed
     with the request, not a question anybody put and an answer that came back.

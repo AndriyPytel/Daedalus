@@ -96,8 +96,9 @@ def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc):
     the two are running different programs (ADR-0002).
     """
     registry = build_registry(doc)
-    aluminium = [card for card in registry.call("materials", {"name": "alumin"})["materials"]
-                 if card["density"] and "2.7" in card["density"]][0]
+    aluminium = [card for card in registry.call("materials", {})["materials"]
+                 if "alumin" in card["name"].lower()
+                 and card["density"] and "2.7" in card["density"]][0]
 
     result = pipeline.apply(
         "body = doc.addObject('PartDesign::Body', 'Body')\n"
