@@ -1,0 +1,100 @@
+{
+  "candidate_sessions": [
+    {
+      "session": "0aed73b0953642fd8e53f2476bc71677",
+      "n_steps": 9,
+      "env_complete_idx": 0
+    },
+    {
+      "session": "2e935bffb8f24af48c6c3e6d2587f42a",
+      "n_steps": 12,
+      "env_complete_idx": 2
+    },
+    {
+      "session": "480b9995421e443d97b439a4f55bc3fe",
+      "n_steps": 12,
+      "env_complete_idx": 3
+    },
+    {
+      "session": "4eebde83eaa74822a268716cb5b1a729",
+      "n_steps": 7,
+      "env_complete_idx": 0
+    },
+    {
+      "session": "78471005550b4105b7446fa2f5605ba2",
+      "n_steps": 7,
+      "env_complete_idx": 2
+    },
+    {
+      "session": "84b22511078e4d1381bca2a22db6032a",
+      "n_steps": 7,
+      "env_complete_idx": 0
+    },
+    {
+      "session": "98a5ead873c94103ba8a2baf653dd436",
+      "n_steps": 10,
+      "env_complete_idx": 0
+    },
+    {
+      "session": "a7b95d14ea20491c8dd6c654b3285bf3",
+      "n_steps": 7,
+      "env_complete_idx": 0
+    },
+    {
+      "session": "c7d892a556624c57b31b508362be4b4b",
+      "n_steps": 8,
+      "env_complete_idx": 0
+    },
+    {
+      "session": "d857e2b227d546a29e4bde91952412ef",
+      "n_steps": 8,
+      "env_complete_idx": 5
+    },
+    {
+      "session": "f1f13395f7454a53afb790366e03a7ea",
+      "n_steps": 10,
+      "env_complete_idx": 1
+    },
+    {
+      "session": "f30e802ef400453e8d9a8c7e476c0d73",
+      "n_steps": 16,
+      "env_complete_idx": 5
+    },
+    {
+      "session": "f5d8007284aa4a57845782918305d6f0",
+      "n_steps": 7,
+      "env_complete_idx": 3
+    }
+  ],
+  "step_codes": {
+    "a7b95d14ea20491c8dd6c654b3285bf3": {
+      "n_steps": 7,
+      "env_complete_idx": 0,
+      "codes": [
+        "import math\n\ndoc_body = doc.getObject('Body')\nif doc_body is None:\n    raise RuntimeError('No Body in Document')\n\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_Hex')\ndoc_body.addObject(sk)\nsk.AttachmentSupport = [(doc.getObject('XY_Plane'), '')]\nsk.MapMode = 'FlatFace'\n\nR = 8.0 / 0.86603  # circumradius from apothem 8 mm, cos(30 deg) = 0.86603\npts = []\nfor a in (0.0, 60.0, 120.0, 180.0, 240.0, 300.0):\n    t = math.radians(a)\n    pts.append(App.Vector(R * math.cos(t), R * math.sin(t), 0.0))\n\nfor i in range(6):\n    sk.addGeometry(Part.LineSegment(pts[i], pts[(i + 1) % 6]), False)\nfor i in range(6):\n    sk.addConstraint(Sketcher.Constraint('Coincident', i, 2, (i + 1) % 6, 1))\ndoc.recompute()\n\npad = doc.addObject('PartDesign::Pad', 'Pad_Hex')\npad.Profile = sk\npad.Length = 9.3\npad.Reversed = False\npad.Midplane = False\ndoc_body.addObject(pad)\ndoc.recompute()\nif pad.State and 'Invalid' in pad.State:\n    raise RuntimeError('Pad_Hex failed to recompute')\n",
+        "doc_body = doc.getObject('Body')\n\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_Core')\ndoc_body.addObject(sk)\nsk.AttachmentSupport = [(doc.getObject('XY_Plane'), '')]\nsk.MapMode = 'FlatFace'\nsk.addGeometry(Part.Circle(App.Vector(0.0, 0.0, 0.0), App.Vector(0, 0, 1), 8.376 / 2.0), False)\ndoc.recompute()\n\npocket = doc.addObject('PartDesign::Pocket', 'Pocket_Core')\npocket.Profile = sk\npocket.Type = 'ThroughAll'\npocket.Midplane = True\ndoc_body.addObject(pocket)\ndoc.recompute()\nif pocket.State and 'Invalid' in pocket.State:\n    raise RuntimeError('Pocket_Core failed to recompute')\n",
+        "doc_body = doc.getObject('Body')\n\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_ThreadProfile')\ndoc_body.addObject(sk)\nsk.AttachmentSupport = [(doc.getObject('XZ_Plane'), '')]\nsk.MapMode = 'FlatFace'\n# XZ sketch local coords: local x -> global X (radius), local y -> global Z\nz0 = -1.5\nhalf_flat = 1.5 / 8.0 / 2.0          # P/8 flat, half width = 0.09375\nflank = (5.0 - 4.188) * 0.57735       # 0.4688 axial gain over the radial run\nzo_lo = z0 - half_flat                # -1.59375\nzo_hi = z0 + half_flat                # -1.40625\nzi_lo = z0 - (half_flat + flank)      # -2.0626\nzi_hi = z0 + (half_flat + flank)      # -0.9374\np = [\n    App.Vector(5.0, zo_lo, 0.0),\n    App.Vector(5.0, zo_hi, 0.0),\n    App.Vector(4.188, zi_hi, 0.0),\n    App.Vector(4.0, zi_hi, 0.0),\n    App.Vector(4.0, zi_lo, 0.0),\n    App.Vector(4.188, zi_lo, 0.0),\n]\nfor i in range(len(p)):\n    sk.addGeometry(Part.LineSegment(p[i], p[(i + 1) % len(p)]), False)\nfor i in range(len(p)):\n    sk.addConstraint(Sketcher.Constraint('Coincident', i, 2, (i + 1) % len(p), 1))\ndoc.recompute()\n\nhx = doc.addObject('PartDesign::SubtractiveHelix', 'Thread_M10')\nhx.Profile = sk\nhx.ReferenceAxis = (doc.getObject('Z_Axis'), [''])\nhx.Mode = 'pitch-height-angle'\nhx.HasBeenEdited = True\nhx.Pitch = 1.5\nhx.Height = 9.3 + 2 * 1.5\nhx.Angle = 0.0\nhx.Growth = 0.0\nhx.LeftHanded = False   # right-hand thread\nhx.Reversed = False\nhx.Midplane = False\ndoc_body.addObject(hx)\ndoc.recompute()\nif hx.State and 'Invalid' in hx.State:\n    raise RuntimeError('Thread_M10 failed to recompute')\n",
+        "doc_body = doc.getObject('Body')\n\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_ChamferTop')\ndoc_body.addObject(sk)\nsk.AttachmentSupport = [(doc.getObject('XZ_Plane'), '')]\nsk.MapMode = 'FlatFace'\ndrop = 2.7 * 0.57735  # 1.5588 axial drop over the 2.7 mm radial run\np = [\n    App.Vector(7.3, 9.3, 0.0),\n    App.Vector(10.0, 9.3, 0.0),\n    App.Vector(10.0, 9.3 - drop, 0.0),\n]\nfor i in range(3):\n    sk.addGeometry(Part.LineSegment(p[i], p[(i + 1) % 3]), False)\nfor i in range(3):\n    sk.addConstraint(Sketcher.Constraint('Coincident', i, 2, (i + 1) % 3, 1))\ndoc.recompute()\n\ngr = doc.addObject('PartDesign::Groove', 'Chamfer_Top')\ngr.Profile = sk\ngr.ReferenceAxis = (doc.getObject('Z_Axis'), [''])\ngr.Angle = 360.0\ngr.Midplane = False\ngr.Reversed = False\ndoc_body.addObject(gr)\ndoc.recompute()\nif gr.State and 'Invalid' in gr.State:\n    raise RuntimeError('Chamfer_Top failed to recompute')\n",
+        "doc_body = doc.getObject('Body')\n\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_ChamferBearing')\ndoc_body.addObject(sk)\nsk.AttachmentSupport = [(doc.getObject('XZ_Plane'), '')]\nsk.MapMode = 'FlatFace'\nrise = 2.7 * 0.57735  # 1.5588 axial rise over the 2.7 mm radial run\np = [\n    App.Vector(7.3, 0.0, 0.0),\n    App.Vector(10.0, 0.0, 0.0),\n    App.Vector(10.0, rise, 0.0),\n]\nfor i in range(3):\n    sk.addGeometry(Part.LineSegment(p[i], p[(i + 1) % 3]), False)\nfor i in range(3):\n    sk.addConstraint(Sketcher.Constraint('Coincident', i, 2, (i + 1) % 3, 1))\ndoc.recompute()\n\ngr = doc.addObject('PartDesign::Groove', 'Chamfer_Bearing')\ngr.Profile = sk\ngr.ReferenceAxis = (doc.getObject('Z_Axis'), [''])\ngr.Angle = 360.0\ngr.Midplane = False\ngr.Reversed = False\ndoc_body.addObject(gr)\ndoc.recompute()\nif gr.State and 'Invalid' in gr.State:\n    raise RuntimeError('Chamfer_Bearing failed to recompute')\n",
+        "doc_body = doc.getObject('Body')\n\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_ThreadEntry')\ndoc_body.addObject(sk)\nsk.AttachmentSupport = [(doc.getObject('XZ_Plane'), '')]\nsk.MapMode = 'FlatFace'\ndepth = (5.3 - 4.188) * 0.57735  # 0.642 mm axial depth\nwires = [\n    [App.Vector(4.0, 9.3, 0.0), App.Vector(5.3, 9.3, 0.0),\n     App.Vector(4.188, 9.3 - depth, 0.0), App.Vector(4.0, 9.3 - depth, 0.0)],\n    [App.Vector(4.0, 0.0, 0.0), App.Vector(5.3, 0.0, 0.0),\n     App.Vector(4.188, depth, 0.0), App.Vector(4.0, depth, 0.0)],\n]\nbase = 0\nfor w in wires:\n    n = len(w)\n    for i in range(n):\n        sk.addGeometry(Part.LineSegment(w[i], w[(i + 1) % n]), False)\n    for i in range(n):\n        sk.addConstraint(Sketcher.Constraint('Coincident', base + i, 2, base + (i + 1) % n, 1))\n    base += n\ndoc.recompute()\n\ngr = doc.addObject('PartDesign::Groove', 'ThreadEntry_Chamfers')\ngr.Profile = sk\ngr.ReferenceAxis = (doc.getObject('Z_Axis'), [''])\ngr.Angle = 360.0\ngr.Midplane = False\ngr.Reversed = False\ndoc_body.addObject(gr)\ndoc.recompute()\nif gr.State and 'Invalid' in gr.State:\n    raise RuntimeError('ThreadEntry_Chamfers failed to recompute')\n",
+        "import Materials\n\ndoc_body = doc.getObject('Body')\nmgr = Materials.MaterialManager()\ncards = mgr.Materials  # uuid -> Material\n\nwanted = ['Steel-Generic', 'CalculiX-Steel', 'Steel']\nchosen_uuid = None\nfor name in wanted:\n    for u in cards:\n        if cards[u].Name == name:\n            chosen_uuid = u\n            break\n    if chosen_uuid is not None:\n        break\nif chosen_uuid is None:\n    raise RuntimeError('No plain steel material card found among %d cards' % len(cards))\n\ndoc_body.ShapeMaterial = mgr.getMaterial(chosen_uuid)\ndoc.recompute()\n"
+      ]
+    },
+    "f1f13395f7454a53afb790366e03a7ea": {
+      "n_steps": 10,
+      "env_complete_idx": 1,
+      "codes": [
+        "import math\nbody = next(o for o in doc.Objects if o.TypeId == 'PartDesign::Body')\n\ndef rrect(sk, x0, x1, y0, y1, r):\n    n = App.Vector(0, 0, 1)\n    g = [\n        Part.LineSegment(App.Vector(x0 + r, y0, 0), App.Vector(x1 - r, y0, 0)),\n        Part.LineSegment(App.Vector(x1, y0 + r, 0), App.Vector(x1, y1 - r, 0)),\n        Part.LineSegment(App.Vector(x1 - r, y1, 0), App.Vector(x0 + r, y1, 0)),\n        Part.LineSegment(App.Vector(x0, y1 - r, 0), App.Vector(x0, y0 + r, 0)),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x1 - r, y0 + r, 0), n, r), -math.pi / 2.0, 0.0),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x1 - r, y1 - r, 0), n, r), 0.0, math.pi / 2.0),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x0 + r, y1 - r, 0), n, r), math.pi / 2.0, math.pi),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x0 + r, y0 + r, 0), n, r), math.pi, 1.5 * math.pi),\n    ]\n    sk.addGeometry(g, False)\n\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_Outer')\nbody.addObject(sk)\nsk.AttachmentSupport = [(doc.getObject('XY_Plane'), '')]\nsk.MapMode = 'FlatFace'\ndoc.recompute()\nrrect(sk, 0.0, 300.0, 0.0, 216.0, 27.0)\ndoc.recompute()\n\npad = doc.addObject('PartDesign::Pad', 'Pad_Base')\npad.Profile = sk\npad.Length = 75.0\npad.Midplane = False\nnrm = sk.Placement.Rotation.multVec(App.Vector(0, 0, 1))\npad.Reversed = (nrm.dot(App.Vector(0, 0, 1)) < 0)\nbody.addObject(pad)\ndoc.recompute()\n",
+        "import math\nbody = next(o for o in doc.Objects if o.TypeId == 'PartDesign::Body')\n\ndef rrect(sk, x0, x1, y0, y1, r):\n    n = App.Vector(0, 0, 1)\n    g = [\n        Part.LineSegment(App.Vector(x0 + r, y0, 0), App.Vector(x1 - r, y0, 0)),\n        Part.LineSegment(App.Vector(x1, y0 + r, 0), App.Vector(x1, y1 - r, 0)),\n        Part.LineSegment(App.Vector(x1 - r, y1, 0), App.Vector(x0 + r, y1, 0)),\n        Part.LineSegment(App.Vector(x0, y1 - r, 0), App.Vector(x0, y0 + r, 0)),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x1 - r, y0 + r, 0), n, r), -math.pi / 2.0, 0.0),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x1 - r, y1 - r, 0), n, r), 0.0, math.pi / 2.0),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x0 + r, y1 - r, 0), n, r), math.pi / 2.0, math.pi),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x0 + r, y0 + r, 0), n, r), math.pi, 1.5 * math.pi),\n    ]\n    sk.addGeometry(g, False)\n\nplane = doc.getObject('XY_Plane')\nnrm0 = plane.Placement.Rotation.multVec(App.Vector(0, 0, 1))\noff = App.Vector(0.0, 0.0, 75.0).dot(nrm0)\n\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_Lid')\nbody.addObject(sk)\nsk.AttachmentSupport = [(plane, '')]\nsk.MapMode = 'FlatFace'\nsk.AttachmentOffset = App.Placement(App.Vector(0, 0, off), App.Rotation())\ndoc.recompute()\nrrect(sk, 0.0, 300.0, 0.0, 216.0, 27.0)\ndoc.recompute()\n\npad = doc.addObject('PartDesign::Pad', 'Pad_Lid')\npad.Profile = sk\npad.Length = 39.0\npad.Midplane = False\nnrm = sk.Placement.Rotation.multVec(App.Vector(0, 0, 1))\npad.Reversed = (nrm.dot(App.Vector(0, 0, 1)) < 0)\nbody.addObject(pad)\ndoc.recompute()\n",
+        "body = next(o for o in doc.Objects if o.TypeId == 'PartDesign::Body')\nbase = body.Tip\nshp = base.Shape\nZTOP = 114.0\nnames = []\nfor i, e in enumerate(shp.Edges):\n    vs = e.Vertexes\n    if len(vs) >= 2 and all(abs(v.Point.z - ZTOP) < 1e-6 for v in vs):\n        names.append('Edge%d' % (i + 1))\nif len(names) != 8:\n    raise RuntimeError('expected 8 edges on the lid top perimeter at Z=114, found %d' % len(names))\nfil = doc.addObject('PartDesign::Fillet', 'Fillet_LidTop')\nfil.Base = (base, names)\nfil.Radius = 9.0\nbody.addObject(fil)\ndoc.recompute()\n",
+        "import math\nbody = next(o for o in doc.Objects if o.TypeId == 'PartDesign::Body')\n\ndef rrect(sk, x0, x1, y0, y1, r):\n    n = App.Vector(0, 0, 1)\n    g = [\n        Part.LineSegment(App.Vector(x0 + r, y0, 0), App.Vector(x1 - r, y0, 0)),\n        Part.LineSegment(App.Vector(x1, y0 + r, 0), App.Vector(x1, y1 - r, 0)),\n        Part.LineSegment(App.Vector(x1 - r, y1, 0), App.Vector(x0 + r, y1, 0)),\n        Part.LineSegment(App.Vector(x0, y1 - r, 0), App.Vector(x0, y0 + r, 0)),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x1 - r, y0 + r, 0), n, r), -math.pi / 2.0, 0.0),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x1 - r, y1 - r, 0), n, r), 0.0, math.pi / 2.0),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x0 + r, y1 - r, 0), n, r), math.pi / 2.0, math.pi),\n        Part.ArcOfCircle(Part.Circle(App.Vector(x0 + r, y0 + r, 0), n, r), math.pi, 1.5 * math.pi),\n    ]\n    sk.addGeometry(g, False)\n\nplane = doc.getObject('XY_Plane')\nnrm0 = plane.Placement.Rotation.multVec(App.Vector(0, 0, 1))\noff = App.Vector(0.0, 0.0, 72.0).dot(nrm0)\n\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_Lip')\nbody.addObject(sk)\nsk.AttachmentSupport = [(plane, '')]\nsk.MapMode = 'FlatFace'\nsk.AttachmentOffset = App.Placement(App.Vector(0, 0, off), App.Rotation())\ndoc.recompute()\nrrect(sk, -3.0, 303.0, -3.0, 219.0, 30.0)\ndoc.recompute()\n\npad = doc.addObject('PartDesign::Pad', 'Pad_Lip')\npad.Profile = sk\npad.Length = 6.0\npad.Midplane = False\nnrm = sk.Placement.Rotation.multVec(App.Vector(0, 0, 1))\npad.Reversed = (nrm.dot(App.Vector(0, 0, 1)) < 0)\nbody.addObject(pad)\ndoc.recompute()\n",
+        "body = next(o for o in doc.Objects if o.TypeId == 'PartDesign::Body')\nplane = doc.getObject('XZ_Plane')\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_LatchFL')\nbody.addObject(sk)\nsk.AttachmentSupport = [(plane, '')]\nsk.MapMode = 'FlatFace'\ndoc.recompute()\ninv = sk.Placement.inverse()\n\ndef loc(x, y, z):\n    q = inv.multVec(App.Vector(x, y, z))\n    return App.Vector(q.x, q.y, 0.0)\n\ncorners = [loc(96.0, 0.0, 48.0), loc(120.0, 0.0, 48.0), loc(120.0, 0.0, 93.0), loc(96.0, 0.0, 93.0)]\ngeo = [Part.LineSegment(corners[i], corners[(i + 1) % 4]) for i in range(4)]\nsk.addGeometry(geo, False)\ndoc.recompute()\n\npad = doc.addObject('PartDesign::Pad', 'Pad_LatchFL')\npad.Profile = sk\npad.Length = 6.0\npad.Midplane = False\nnrm = sk.Placement.Rotation.multVec(App.Vector(0, 0, 1))\npad.Reversed = (nrm.dot(App.Vector(0, -1, 0)) < 0)\nbody.addObject(pad)\ndoc.recompute()\n",
+        "body = next(o for o in doc.Objects if o.TypeId == 'PartDesign::Body')\nplane = doc.getObject('XZ_Plane')\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_LatchFR')\nbody.addObject(sk)\nsk.AttachmentSupport = [(plane, '')]\nsk.MapMode = 'FlatFace'\ndoc.recompute()\ninv = sk.Placement.inverse()\n\ndef loc(x, y, z):\n    q = inv.multVec(App.Vector(x, y, z))\n    return App.Vector(q.x, q.y, 0.0)\n\ncorners = [loc(201.0, 0.0, 48.0), loc(225.0, 0.0, 48.0), loc(225.0, 0.0, 93.0), loc(201.0, 0.0, 93.0)]\ngeo = [Part.LineSegment(corners[i], corners[(i + 1) % 4]) for i in range(4)]\nsk.addGeometry(geo, False)\ndoc.recompute()\n\npad = doc.addObject('PartDesign::Pad', 'Pad_LatchFR')\npad.Profile = sk\npad.Length = 6.0\npad.Midplane = False\nnrm = sk.Placement.Rotation.multVec(App.Vector(0, 0, 1))\npad.Reversed = (nrm.dot(App.Vector(0, -1, 0)) < 0)\nbody.addObject(pad)\ndoc.recompute()\n",
+        "body = next(o for o in doc.Objects if o.TypeId == 'PartDesign::Body')\nplane = doc.getObject('XZ_Plane')\nnrm0 = plane.Placement.Rotation.multVec(App.Vector(0, 0, 1))\noff = App.Vector(0.0, 216.0, 0.0).dot(nrm0)\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_LatchRear')\nbody.addObject(sk)\nsk.AttachmentSupport = [(plane, '')]\nsk.MapMode = 'FlatFace'\nsk.AttachmentOffset = App.Placement(App.Vector(0, 0, off), App.Rotation())\ndoc.recompute()\ninv = sk.Placement.inverse()\n\ndef loc(x, y, z):\n    q = inv.multVec(App.Vector(x, y, z))\n    return App.Vector(q.x, q.y, 0.0)\n\nfor xa, xb in ((96.0, 120.0), (201.0, 225.0)):\n    corners = [loc(xa, 216.0, 48.0), loc(xb, 216.0, 48.0), loc(xb, 216.0, 93.0), loc(xa, 216.0, 93.0)]\n    sk.addGeometry([Part.LineSegment(corners[i], corners[(i + 1) % 4]) for i in range(4)], False)\ndoc.recompute()\n\npad = doc.addObject('PartDesign::Pad', 'Pad_LatchRear')\npad.Profile = sk\npad.Length = 6.0\npad.Midplane = False\nnrm = sk.Placement.Rotation.multVec(App.Vector(0, 0, 1))\npad.Reversed = (nrm.dot(App.Vector(0, 1, 0)) < 0)\nbody.addObject(pad)\ndoc.recompute()\n",
+        "body = next(o for o in doc.Objects if o.TypeId == 'PartDesign::Body')\nplane = doc.getObject('YZ_Plane')\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_RecessLeft')\nbody.addObject(sk)\nsk.AttachmentSupport = [(plane, '')]\nsk.MapMode = 'FlatFace'\ndoc.recompute()\ninv = sk.Placement.inverse()\n\ndef loc(x, y, z):\n    q = inv.multVec(App.Vector(x, y, z))\n    return App.Vector(q.x, q.y, 0.0)\n\nfor yc in (60.0, 135.0):\n    ya, yb = yc - 22.5, yc + 22.5\n    corners = [loc(0.0, ya, 15.0), loc(0.0, yb, 15.0), loc(0.0, yb, 70.0), loc(0.0, ya, 70.0)]\n    sk.addGeometry([Part.LineSegment(corners[i], corners[(i + 1) % 4]) for i in range(4)], False)\ndoc.recompute()\n\npkt = doc.addObject('PartDesign::Pocket', 'Pocket_RecessLeft')\npkt.Profile = sk\npkt.Type = 'Length'\npkt.Length = 3.0\npkt.Midplane = False\nnrm = sk.Placement.Rotation.multVec(App.Vector(0, 0, 1))\ncut_dir = App.Vector(-nrm.x, -nrm.y, -nrm.z)\npkt.Reversed = (cut_dir.dot(App.Vector(1, 0, 0)) < 0)\nbody.addObject(pkt)\ndoc.recompute()\n",
+        "body = next(o for o in doc.Objects if o.TypeId == 'PartDesign::Body')\nplane = doc.getObject('YZ_Plane')\nnrm0 = plane.Placement.Rotation.multVec(App.Vector(0, 0, 1))\noff = App.Vector(300.0, 0.0, 0.0).dot(nrm0)\nsk = doc.addObject('Sketcher::SketchObject', 'Sketch_RecessRight')\nbody.addObject(sk)\nsk.AttachmentSupport = [(plane, '')]\nsk.MapMode = 'FlatFace'\nsk.AttachmentOffset = App.Placement(App.Vector(0, 0, off), App.Rotation())\ndoc.recompute()\ninv = sk.Placement.inverse()\n\ndef loc(x, y, z):\n    q = inv.multVec(App.Vector(x, y, z))\n    return App.Vector(q.x, q.y, 0.0)\n\nfor yc in (60.0, 135.0):\n    ya, yb = yc - 22.5, yc + 22.5\n    corners = [loc(300.0, ya, 15.0), loc(300.0, yb, 15.0), loc(300.0, yb, 70.0), loc(300.0, ya, 70.0)]\n    sk.addGeometry([Part.LineSegment(corners[i], corners[(i + 1) % 4]) for i in range(4)], False)\ndoc.recompute()\n\npkt = doc.addObject('PartDesign::Pocket', 'Pocket_RecessRight')\npkt.Profile = sk\npkt.Type = 'Length'\npkt.Length = 3.0\npkt.Midplane = False\nnrm = sk.Placement.Rotation.multVec(App.Vector(0, 0, 1))\ncut_dir = App.Vector(-nrm.x, -nrm.y, -nrm.z)\npkt.Reversed = (cut_dir.dot(App.Vector(-1, 0, 0)) < 0)\nbody.addObject(pkt)\ndoc.recompute()\n",
+        "body = next(o for o in doc.Objects if o.TypeId == 'PartDesign::Body')\nbase = body.Tip\nshp = base.Shape\nnames = []\nfor i, e in enumerate(shp.Edges):\n    vs = e.Vertexes\n    if len(vs) >= 2 and all(abs(v.Point.z) < 1e-6 for v in vs):\n        names.append('Edge%d' % (i + 1))\nif len(names) != 8:\n    raise RuntimeError('expected 8 edges on the bottom face perimeter at Z=0, found %d' % len(names))\nfil = doc.addObject('PartDesign::Fillet', 'Fillet_BaseBottom')\nfil.Base = (base, names)\nfil.Radius = 6.0\nbody.addObject(fil)\ndoc.recompute()\n"
+      ]
+    }
+  }
+}
