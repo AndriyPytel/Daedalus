@@ -1048,6 +1048,38 @@ def test_the_finding_arrives_through_the_merge_like_every_other():
     assert any("two views" in str(entry.get("stands")) for entry in grown["conflicts"])
 
 
+def test_crosswise_says_its_own_kind_rather_than_falling_into_the_default():
+    """
+    FCC-248: every entry `crosswise` returns left `kind` unset, so
+    `design._which_kind_it_is` fell through to its default -- A_CONFLICT --
+    for both findings. That default exists for the model's own `conflicts`
+    entries, which never carry a `kind` at all (`config/prompts/design.md`
+    asks for `about`/`stands`/`was_also_said` and nothing else); a machine
+    check landing on the same fallback by omission rather than by declaring
+    what it found is the same defect FCC-243 named for `kind` read off the
+    wrong field, one layer up: nothing here says the finding is machine-made.
+
+    A_CONFLICT is still the right kind -- two axes that cannot both be right
+    is "two readings that cannot both be true" to the letter -- so tagging it
+    explicitly changes no session's count: measured across the 26 recorded
+    sessions `tests/recorded/evidence_kind_ratio.json` carries, the 23 that
+    already hold an untagged-but-defaulted `crosswise` or `_every_number_
+    is_the_sheets` (`core/loop.py`, tagged the same way, out of this ticket's
+    lane) finding still hold a `conflict`-kind entry once both declare it
+    themselves. What changes is that the tag is no longer an accident.
+    """
+    found = crosswise(THE_CLAMP_READ_OFF_ONE_VIEW) + crosswise(
+        {"features": [
+            {"id": "left-mounting-hole", "kind": "Ø6.6 hole", "topology": "through",
+             "axis": _round_in("the upper plan", "the height")},
+            {"id": "right-mounting-hole", "kind": "Ø6.6 hole", "topology": "through",
+             "axis": _round_in("the upper plan", "the depth")},
+        ]})
+
+    assert found
+    assert all(entry.get("kind") == design.A_CONFLICT for entry in found)
+
+
 THE_SPLIT_AND_THE_CUTOUT = {
     "features": [
         {"id": "clamp-ring-bore", "kind": "\u00d842 circular clamp bore",
@@ -2166,3 +2198,47 @@ def test_the_validators_fire_on_every_recorded_description():
     assert len(descriptions) == 47
     assert sum(counts) == 387
     assert min(counts) > 0
+
+
+
+def test_a_conflict_kind_entry_fires_on_most_real_sessions_not_a_rare_few():
+    """
+    FCC-248, before AC1-4 are wired: the ticket's own AC2 assumes "the file
+    holds at least one entry the model itself wrote" is a rare condition,
+    citing FCC-244's 2 of 47 recorded *descriptions*
+    (`test_the_validators_fire_on_every_recorded_description`, `merge()` run
+    in isolation, no attachment). Measured the other way -- over real
+    sessions that reached Design and still have their evidence sidecar on
+    disk (`tools/extract_evidence_kind_ratio.py`, fixture below, captured
+    2026-08-28T03:42:24) -- 23 of 26 already hold a `conflict`-kind entry:
+    88%, not 4%.
+
+    The fixture is a snapshot, not a corpus: `logs/sessions/` and
+    `logs/parts/` are the user's own, live while this was measured, and a
+    second run of one sheet overwrites its evidence sidecar in place
+    (`part_file.logged()` names the sidecar off the reading, not off the
+    run) -- re-running the extraction later will read different sessions in
+    different states and is expected to produce a different count, which
+    would say the corpus moved, not that this test is wrong.
+
+    The reason the two numbers disagree is not the moving corpus, though:
+    `core.design.crosswise` and `core.loop._every_number_is_the_sheets` are
+    machine checks that only run in the full pipeline, never inside a bare
+    `merge()` call, and neither sets `kind` on what it appends, so `design.
+    _which_kind_it_is`'s fallback (an unset `kind` reads as `A_CONFLICT`)
+    puts their output in the same bucket a model-written disagreement falls
+    into. Filtering both back out still leaves 19 of 26 -- 73%, still not
+    the rare case AC2 needs. A notice built on this bucket alone would fire
+    on nearly every real run, which is the exact failure AC2 itself warns
+    against. Tagging `crosswise` explicitly (this ticket) does not change
+    either count -- A_CONFLICT was always the default it fell through to.
+    """
+    with open(os.path.join(RECORDED, "evidence_kind_ratio.json"), encoding="utf-8") as handle:
+        fixture = json.load(handle)
+    sessions = fixture["sessions"]
+
+    assert fixture["captured_at"] == "2026-08-28T03:42:24"
+    assert len(sessions) == 26
+    assert sum(session["has_conflict_kind"] for session in sessions) == 23
+    assert sum(session["has_conflict_kind_excluding_crosswise_and_untraced"]
+              for session in sessions) == 19
