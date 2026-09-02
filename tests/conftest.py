@@ -280,3 +280,61 @@ def collect(chunks) -> Reply:
         else:
             reply.text += chunk.text
     return reply
+
+
+class ScratchParameters:
+    """
+    The parameter group `SettingsManager` owns, held in memory for one session.
+
+    `FreeCAD.ParamGet` is the user's own `user.cfg`, and the suite both reads
+    and writes it: the read made 44 Plan Gate tests answer to whatever the
+    developer last set in the General page, and the write, from several xdist
+    workers at once, truncated that file to nothing on 2026-09-02, taking the
+    stored API keys and session list with it.
+
+    Only the four accessors `SettingsManager` calls are implemented, so a
+    fifth one added there fails loudly here rather than silently reaching the
+    real file.
+    """
+
+    def __init__(self):
+        self._values = {}
+
+    def GetString(self, name, default=""):
+        return self._values.get(name, default)
+
+    def SetString(self, name, value):
+        self._values[name] = str(value)
+
+    def GetBool(self, name, default=False):
+        return bool(self._values.get(name, default))
+
+    def SetBool(self, name, value):
+        self._values[name] = bool(value)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def the_settings_never_reach_the_user_s_freecad():
+    """
+    Where `SettingsManager` stores everything, for the length of the session.
+
+    The scope is the session because `test_vertical_slice_level2.py` drives
+    its run from a module-scoped fixture, which is built before any
+    function-scoped patch could take effect.
+    """
+    from utils import settings_manager
+
+    scratch = ScratchParameters()
+    real = settings_manager._SettingsManager._grp
+    settings_manager._SettingsManager._grp = staticmethod(lambda: scratch)
+    yield scratch
+    settings_manager._SettingsManager._grp = real
+
+
+@pytest.fixture
+def clean_auto_approve(the_settings_never_reach_the_user_s_freecad):
+    """The manager with `AutoApprovePlan` off, for a test that turns it on."""
+    from utils import settings_manager
+
+    the_settings_never_reach_the_user_s_freecad.SetBool("AutoApprovePlan", False)
+    return settings_manager.instance()

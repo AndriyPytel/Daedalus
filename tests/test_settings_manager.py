@@ -6,18 +6,6 @@ event loop needed) — settings that are booleans stored in the same
 import pytest
 
 
-@pytest.fixture
-def clean_auto_approve():
-    from utils import settings_manager
-
-    sm = settings_manager.instance()
-    grp = sm._grp()
-    saved = grp.GetBool("AutoApprovePlan", False)
-    grp.SetBool("AutoApprovePlan", False)
-    yield sm
-    grp.SetBool("AutoApprovePlan", saved)
-
-
 def test_auto_approve_plan_defaults_to_off(clean_auto_approve):
     assert clean_auto_approve.get_auto_approve_plan() is False
 

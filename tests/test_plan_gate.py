@@ -671,12 +671,8 @@ def _auto_approve(monkeypatch, on=True):
     monkeypatch.setattr(settings_manager.instance(), "get_auto_approve_plan", lambda: on)
 
 
-def test_auto_mode_off_by_default_still_asks():
+def test_auto_mode_off_by_default_still_asks(clean_auto_approve):
     """The pref itself, unmocked: the run must ask unless it was turned on."""
-    from utils import settings_manager
-
-    grp = settings_manager.instance()._grp()
-    assert grp.GetBool("AutoApprovePlan", False) is False
     gate = Gate(Approval(APPROVE))
 
     _, events, _ = drive(

@@ -11,18 +11,6 @@ from conftest import NO_QT, QT_APP
 pytestmark = pytest.mark.freecad
 
 
-@pytest.fixture
-def clean_auto_approve():
-    from utils import settings_manager
-
-    sm = settings_manager.instance()
-    grp = sm._grp()
-    saved = grp.GetBool("AutoApprovePlan", False)
-    grp.SetBool("AutoApprovePlan", False)
-    yield sm
-    grp.SetBool("AutoApprovePlan", saved)
-
-
 def _page():
     assert QT_APP is not None, NO_QT
     from Mod.pages.general_page import GeneralPage
