@@ -1,0 +1,32 @@
+stall_timeout_minutes: 10
+autonomous_budget_tokens: 10000000
+max_attempts_per_ticket: 3
+
+check:
+  - pytest
+
+tracker: youtrack
+review_by: me
+permissions:
+  commit: ask
+  merge_local: ask
+  push: deny
+  pull_request: deny
+  deploy: deny
+  run_tests: allow
+  external_write: ask
+articles:
+  glossary: FCC-A-1
+  features: FCC-A-2
+
+models:
+  default: anthropic/claude-opus-5
+  worker: anthropic/claude-sonnet-5
+  runner: anthropic/claude-haiku-4-5
+  expert: anthropic/claude-fable-5
+
+# YouTrack connection (migrated from youtrack.md)
+youtrack:
+  instance: https://andriipytel.youtrack.cloud
+  organization: Personal Projects
+  project: FCC

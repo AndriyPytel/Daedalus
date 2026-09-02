@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Issues live in YouTrack, project `FCC`, via the `yt` CLI — not GitHub Issues. Project config: `youtrack.md`.
+Issues live in YouTrack, project `FCC`, via the `yt` CLI — not GitHub Issues. Project config: `myga.yml`.
 
 ### Triage labels
 
@@ -16,7 +16,7 @@ In the YouTrack knowledge base, not in the repo — `FCC-A-3` Project Overview, 
 
 ## YouTrack
 
-Work for this repo lives in YouTrack, not GitHub Issues. Project config: `youtrack.md`.
+Work for this repo lives in YouTrack, not GitHub Issues. Project config: `myga.yml`.
 The `myga-*` skills drive it.
 
 ## Comments
