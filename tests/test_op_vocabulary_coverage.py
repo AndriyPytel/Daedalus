@@ -185,7 +185,7 @@ R_GROUPING = (
 
 R_SURFACE = (
     "Surface-workbench-adjacent tool producing an open surface, not a solid — "
-    "out of scope per docs/research/ste-freecad-verbs.md §4"
+    "out of scope: the closed vocabulary covers solids, not open surfaces"
 )
 
 R_SKETCH_INTERNAL = (

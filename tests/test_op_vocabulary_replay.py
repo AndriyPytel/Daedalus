@@ -1,11 +1,9 @@
 """
 Replays `tests/recorded/vocabulary_steps.json`'s English Steps through the
-same operation-verb extraction `docs/research/ste-plan-verbs.md` measured
-over `logs/` (which is gitignored, hence the tracked fixture — FCC-231's
-established substitute), then collapses every detected verb onto the closed
-36-`op` vocabulary (ADR-0026, FCC-233) the way `docs/research/ste-vocabulary-
-closure.md` §4's synonym clusters and §3(a)'s real-operation classification
-say to: `round`/`apply` fold onto `fillet`, `drill`/`bore`/`counterbore`
+same operation-verb extraction measured over `logs/` (which is gitignored,
+hence the tracked fixture — FCC-231's established substitute), then collapses
+every detected verb onto the closed 36-`op` vocabulary (ADR-0026, FCC-233) the
+way its synonym clusters and its real-operation classification say to: `round`/`apply` fold onto `fillet`, `drill`/`bore`/`counterbore`
 onto `hole`, `join`/`union` onto `fuse`, `draw` onto `sketch`, and so on. A
 constructor verb (`create`/`make`/`build`) followed by an object noun or a
 literal TypeId — `"Create a PartDesign::Pad named ..."` — is resolved off

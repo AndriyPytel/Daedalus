@@ -58,8 +58,8 @@ def _build_qss() -> str:
     hands these widgets to FreeCAD's global stylesheet, including themes that
     did not exist when this was written.
 
-    The rules follow AI Elements' own grammar (`docs/research/fcc169-ai-elements-visual-grammar.md`,
-    read off the user's Figma file). Three of its rules decide most of what is
+    The rules follow AI Elements' own grammar, read off the user's Figma
+    file. Three of its rules decide most of what is
     below. Separation takes the cheapest form that still reads: nothing, then a
     one-pixel hairline with no fill, then a wash, and a filled surface only for
     the handful of things meant to be taken for a panel of their own — the

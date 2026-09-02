@@ -2,7 +2,7 @@
 Level 1 -- the QSS constants FCC-171 hands every later child of FCC-169.
 
 The values are the ones the AI Elements design language repeats
-(`docs/research/fcc169-ai-elements-visual-grammar.md`, read off the user's own Figma file), and
+(read off the user's own Figma file), and
 the colours ADR-0011 (FCC-A-16) carves out as exceptions to "the panel has no
 colours of its own".
 """

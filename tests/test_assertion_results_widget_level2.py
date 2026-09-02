@@ -13,8 +13,8 @@ split `test_review_verdict_widget_level2.py` draws for the Review card.
 
 FCC-169 rebuilt this card to Figma's `TestResults` anatomy: the tests below
 that touch icon colour and progress proportion are this file's part of that
--- rule 1 of the ten (`docs/research/fcc169-ai-elements-visual-grammar.md`
-D), a row is never recoloured to report its state, only the mark beside it
+-- rule 1 of the ten, a row is never recoloured to report its state, only
+the mark beside it
 and the word after it change.
 """
 import pytest

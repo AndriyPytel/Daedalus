@@ -367,7 +367,7 @@ class EffortPopup(_ListPopup):
     changes it to compare one run against the next, which is the whole reason
     it exists. The levels are the routes' own, not names of ours: what the
     Claude Code CLI takes as `--effort` and what LiteLLM normalises as
-    `reasoning_effort` (docs/research is in `/tmp` -- see `core.llm`).
+    `reasoning_effort` (see `core.llm`).
 
     A model that cannot reason at all is not offered the choice: the trigger
     says so and never opens this list, since a picker that changes nothing is

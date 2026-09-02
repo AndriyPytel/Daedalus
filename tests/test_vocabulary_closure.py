@@ -7,8 +7,7 @@ copied into this file: a test carrying its own copy of the closed list
 passes even while the prompt says something else, which is the defect this
 whole epic is about. Coverage is measured against
 `tests/recorded/vocabulary_kinds.json` (47 design-model sessions, 410
-features) exactly as `docs/research/ste-vocabulary-closure.md` measured it,
-and reproduces the same 6 named residual features that document computed.
+features), and 6 residual features remain, each of them named.
 """
 import json
 import os
@@ -108,9 +107,8 @@ def _classify(text, kinds, synonyms):
 
 def test_the_kind_vocabulary_covers_all_but_six_of_410_features():
     """Residue target from FCC-231's Acceptance Criteria: 6 or fewer of 410,
-    each one named. `docs/research/ste-vocabulary-closure.md` §2c names the
-    same six — two `material specification` entries, one reference region,
-    and three snap-latch features no kind names cleanly."""
+    each one named: two `material specification` entries, one reference
+    region, and three snap-latch features no kind names cleanly."""
     kinds, synonyms = _kind_vocabulary(_naming_section(_vocabulary_md()))
 
     with open(VOCABULARY_KINDS, encoding="utf-8") as f:

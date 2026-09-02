@@ -1,6 +1,6 @@
 """
 Structured Assertion results (FCC-179), rebuilt to Figma's `TestResults`
-anatomy (FCC-169, `docs/research/fcc169-ai-elements-visual-grammar.md` B8):
+anatomy (FCC-169, Figma component B8):
 a header (summary left, a derived fact right), a proportional progress
 track, then one row per check.
 
@@ -21,7 +21,7 @@ duration to print in the header's secondary slot -- the percent passed is
 shown there instead, since it is the one fact this card can derive rather
 than invent.
 
-Rule 1 of the ten (`docs/research/fcc169-ai-elements-visual-grammar.md` D):
+Rule 1 of the ten in AI Elements' visual grammar:
 state is never a repaint. A row keeps its background in every state; only
 the leading icon (tinted `SUCCESS`/`FAIL`) and the trailing status word
 change. The word itself carries no colour -- if it did, the row would be

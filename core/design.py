@@ -1454,8 +1454,7 @@ def twice_over(model) -> list:
     if all values match, add superseded_by ... if any value differs, raise a
     conflicts entry" — a rule the prompt could ask for and this module could
     not check, because `kind` was prose and no two readings of it were ever
-    equal. `docs/research/ste-design-duplicates.md` names four such pairs
-    across 47 recorded models — `slot-arm`/`cutout-web`, `slot`/`cutout-blend`,
+    equal. Four such pairs stand in 47 recorded models — `slot-arm`/`cutout-web`, `slot`/`cutout-blend`,
     `bore-upper`/`hole-boss`, `left-mounting-hole`/`phase2-left-mounting-slot`
     — none caught before this ticket because the only check written was an
     empty `position` (`placed_by_nothing`), which is a proxy the sheet does

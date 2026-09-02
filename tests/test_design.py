@@ -1860,8 +1860,7 @@ def test_a_refused_kind_is_a_gap_the_next_turn_may_fill():
 
 def test_slot_arm_and_cutout_web_are_caught_by_kind_and_overlapping_datums():
     """
-    `docs/research/ste-design-duplicates.md` §4, session
-    `e76b61d5bc7143699b451549c90433f7` (the 2023 pipe clamp, design.md's own
+    Session `e76b61d5bc7143699b451549c90433f7` (the 2023 pipe clamp, design.md's own
     cited case study): `slot-arm` ("slot through the 15 mm arm, 30 mm long
     ... ending at the vertical plane through the ring axis") and `cutout-web`
     ("curved cutout in the web between the top of the arm and the ring") are
@@ -1890,8 +1889,7 @@ def test_slot_arm_and_cutout_web_are_caught_by_kind_and_overlapping_datums():
 
 def test_slot_and_cutout_blend_are_caught_by_kind_and_overlapping_datums():
     """
-    `docs/research/ste-design-duplicates.md` §4, session
-    `6d67ee7f5fa4482ebb49495c2f6aef5c`: `slot` ("rectangular slot through the
+    Session `6d67ee7f5fa4482ebb49495c2f6aef5c`: `slot` ("rectangular slot through the
     arm, 30 mm long, with rounded/filleted ends per VIEW B and the plan") and
     `cutout-blend` ("curved cutout blending the top of the 15 mm arm up into
     the ring") — the same arm/ring junction cavity, two ids, independently of
@@ -1918,8 +1916,7 @@ def test_slot_and_cutout_blend_are_caught_by_kind_and_overlapping_datums():
 
 def test_bore_upper_and_hole_boss_are_caught_by_kind_and_overlapping_datums():
     """
-    `docs/research/ste-design-duplicates.md` §4, session
-    `51d7a2f16e224230b5b74f126c7cf8f5`: `bore-upper` and `hole-boss` carry the
+    Session `51d7a2f16e224230b5b74f126c7cf8f5`: `bore-upper` and `hole-boss` carry the
     identical `kind` string `"Ø15 through hole in the upper boss"`
     (`hole` in the closed enum), identical `seen_in`, identical diameter, and
     both coaxial with the same boss — `bore-upper` framed off
@@ -1949,8 +1946,7 @@ def test_bore_upper_and_hole_boss_are_caught_by_kind_and_overlapping_datums():
 
 def test_left_mounting_hole_and_phase2_slot_are_caught_by_kind_and_overlapping_datums():
     """
-    `docs/research/ste-design-duplicates.md` §4, session
-    `549e6232c9e04b659e5a2d536354bd7a`: page-1 `left-mounting-hole`
+    Session `549e6232c9e04b659e5a2d536354bd7a`: page-1 `left-mounting-hole`
     ("Ø6.6 through mounting hole with Ø11 counterbore") and page-2
     `phase2-left-mounting-slot` ("Ø6.6 by 8.0 obround through slot with
     Ø11 counterbore slot") — same mounting location, same fastener
