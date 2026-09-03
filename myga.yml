@@ -7,6 +7,7 @@ check:
 
 tracker: youtrack
 review_by: me
+external_tracking: false
 permissions:
   commit: ask
   merge_local: ask
