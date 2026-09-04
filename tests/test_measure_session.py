@@ -11,7 +11,7 @@ import pytest
 
 from core.measure import Measurement, compare, measure
 from tests.test_loop import (
-    ASSERT_FAILED, CHECKS, a_run_over_the_nut, assertion_failed,
+    ASSERT_FAILED, CHECKS, SELF_INTERSECTION_HELD, a_run_over_the_nut, assertion_failed,
     assertion_reply, code_reply, planning_the_nut, verdict_reply,
 )
 
@@ -148,7 +148,8 @@ def test_a_run_with_a_failed_assertion_that_passed_on_retry(tmp_path):
         code_reply("fix()"),
         assertion_reply(CHECKS),
         verdict_reply("pass"),
-        checks=[assertion_failed(ASSERT_FAILED), None])
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED),
+                SELF_INTERSECTION_HELD, None])
 
     log_path = str(tmp_path / "run.jsonl")
     with open(log_path, "w", encoding="utf-8") as handle:

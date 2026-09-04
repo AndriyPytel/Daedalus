@@ -385,6 +385,8 @@ def drive_with(turns, decide, gate=None, applies=(), checks=(), attachments=()):
 FAILED_CHECKS = ('Traceback (most recent call last):\n'
                  "AssertionError: 13.0 mm across the flats\n")
 
+SELF_INTERSECTION_HELD = {"ok": True}
+
 THE_NUT = {"envelope": {"across the flats": {"value": "13.0 mm", "flag": "assumed"}}}
 
 
@@ -399,7 +401,7 @@ def test_ok_finishes_the_run_without_a_revision():
 
     result, events, tools = drive_with(
         a_run_whose_checks_fail(), decide, attachments=[RENDER_PNG],
-        checks=[{"ok": False, "traceback": FAILED_CHECKS}])
+        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}])
 
     assert result.ok
     assert result.steps_applied == 1
@@ -419,7 +421,7 @@ def test_taking_a_failed_result_carries_the_failed_checks_on_the_answer():
 
     result, events, _ = drive_with(
         a_run_whose_checks_fail(), decide, attachments=[RENDER_PNG],
-        checks=[{"ok": False, "traceback": FAILED_CHECKS}])
+        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}])
 
     assert result.ok
     assert result.unmet
@@ -436,7 +438,7 @@ def test_accepting_does_not_spend_a_review_on_a_result_already_judged():
 
     result, _, _ = drive_with(
         a_run_whose_checks_fail(), decide, attachments=[RENDER_PNG],
-        checks=[{"ok": False, "traceback": FAILED_CHECKS}])
+        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}])
 
     assert result.ok
     assert "acceptance checks did not pass" in result.reason
@@ -457,7 +459,7 @@ def test_stopping_while_the_decision_is_open_is_recorded_as_stopped():
         return "released-by-abandon"
 
     llm = ScriptedLLMClient(a_run_whose_checks_fail())
-    tools = FakeTools(checks=[{"ok": False, "traceback": FAILED_CHECKS}])
+    tools = FakeTools(checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}])
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=EventStream(),
                  cancelled=lambda: bool(stopped), decide=presses_stop,
                  attachments=[RENDER_PNG])
@@ -476,7 +478,8 @@ def test_revise_replans_and_the_revision_goes_through_the_gate():
             plan_reply("Make it 13 mm"),
             code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
         decide, gate=gate, attachments=[RENDER_PNG],
-        checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
+        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
+                SELF_INTERSECTION_HELD, {"ok": True}])
 
     assert result.ok
     assert gate.shown == [["Make it"], ["Make it 13 mm"]]
@@ -498,7 +501,8 @@ def test_start_over_replans_with_an_explicit_permission_and_still_hits_the_gate(
             plan_reply("Start from nothing"),
             code_reply("again()"), assertion_reply("check()"), verdict_reply("pass")),
         decide, gate=gate, attachments=[RENDER_PNG],
-        checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
+        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
+                SELF_INTERSECTION_HELD, {"ok": True}])
 
     assert gate.shown == [["Make it"], ["Start from nothing"]]
     assert "delete what was built" in events.first(PLAN_REVISED).data["reason"]
@@ -513,7 +517,7 @@ def test_the_decision_is_not_raised_when_nothing_was_applied():
             plan_reply("Try again"),
             code_reply("again()"), assertion_reply("check()"), verdict_reply("pass")),
         decide, applies=[failed("boom"), failed("boom"), failed("boom")],
-        attachments=[RENDER_PNG], checks=[{"ok": True}])
+        attachments=[RENDER_PNG], checks=[SELF_INTERSECTION_HELD, {"ok": True}])
 
     assert decide.shown == []
 
@@ -760,7 +764,8 @@ def test_auto_mode_revises_a_failed_assertion_without_asking_anybody(monkeypatch
             code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
         never_call_me, gate=Gate(Approval(APPROVE), Approval(APPROVE)),
         attachments=[RENDER_PNG],
-        checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
+        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
+                SELF_INTERSECTION_HELD, {"ok": True}])
 
     assert result.ok
     assert tools.applied_codes() == ["make()", "fix()"]
@@ -777,7 +782,8 @@ def test_auto_mode_marks_the_revision_answer_as_automatic_with_the_failed_checks
             code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
         lambda failure: REVISE, gate=Gate(Approval(APPROVE), Approval(APPROVE)),
         attachments=[RENDER_PNG],
-        checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
+        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
+                SELF_INTERSECTION_HELD, {"ok": True}])
 
     question = events.first(QUESTION)
     answer = events.first(ANSWER)
@@ -802,7 +808,8 @@ def test_auto_mode_off_leaves_the_decision_events_unchanged(monkeypatch):
             plan_reply("Make it 13 mm"),
             code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
         decide, gate=Gate(Approval(APPROVE), Approval(APPROVE)), attachments=[RENDER_PNG],
-        checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
+        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
+                SELF_INTERSECTION_HELD, {"ok": True}])
 
     question = events.first(QUESTION)
     answer = events.first(ANSWER)
@@ -831,7 +838,8 @@ def test_auto_mode_composes_with_the_revision_budget_running_out(monkeypatch):
         plan_reply("Make it v3"), code_reply("make3()"), assertion_reply("check()"),
         plan_reply("Make it v4"), code_reply("make4()"), assertion_reply("check()"),
     ], lambda failure: REVISE, gate=Gate(*[Approval(APPROVE) for _ in range(4)]),
-        attachments=[RENDER_PNG], checks=[{"ok": False, "traceback": FAILED_CHECKS}] * 4)
+        attachments=[RENDER_PNG],
+        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}] * 4)
 
     assert result.blocked
     assert not result.ok
