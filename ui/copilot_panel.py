@@ -791,6 +791,20 @@ class CopilotPanel(QtWidgets.QDockWidget):
     _QUEUE_DISPATCH = None
     _EVIDENCE_DISPATCH = None
 
+    @classmethod
+    def _dispatch_table(cls, attr, build):
+        """
+        Build-once-per-class cache one of the three dispatch tables shares:
+        `on_event`, `_update_queue` and `_update_review_evidence` each had
+        the same `if attr is None: attr = build()` dance written out three
+        times; this is the one copy they call instead.
+        """
+        table = getattr(cls, attr)
+        if table is None:
+            table = build()
+            setattr(cls, attr, table)
+        return table
+
     def __init__(self):
         super().__init__("FreeCAD Copilot")
         self.setObjectName("FreeCadCopilotPanel")
@@ -1810,35 +1824,32 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._update_queue(event)
         self._update_review_evidence(event)
 
-        if CopilotPanel._ON_EVENT_DISPATCH is None:
-            CopilotPanel._ON_EVENT_DISPATCH = {
-                ev.CALL_STARTED: CopilotPanel._oe_call_started,
-                ev.COST: CopilotPanel._oe_cost,
-                ev.THOUGHT: CopilotPanel._oe_thought,
-                ev.WRITING: CopilotPanel._oe_writing,
-                ev.ATTACHED: CopilotPanel._oe_attached,
-                ev.TOOL_CALL: CopilotPanel._oe_tool_call,
-                ev.TOOL_RESULT: CopilotPanel._oe_tool_result,
-                ev.PART: CopilotPanel._oe_part,
-                ev.PLAN: CopilotPanel._oe_plan,
-                ev.ASSERTION: CopilotPanel._oe_assertion,
-                ev.STEP_STARTED: CopilotPanel._oe_step_started,
-                ev.APPLIED: CopilotPanel._oe_applied,
-                ev.BLOCKED: CopilotPanel._oe_blocked,
-                ev.QUESTION: CopilotPanel._noop,
-                ev.ANSWER: CopilotPanel._noop,
-                ev.DESIGN: CopilotPanel._noop,
-                ev.OUTSTANDING: CopilotPanel._noop,
-                ev.REVIEW_SUSPECTED: CopilotPanel._noop,
-                ev.GATE: CopilotPanel._noop,
-                ev.UNBUILT: CopilotPanel._noop,
-                ev.PREFLIGHT_FAILED: CopilotPanel._noop,
-                ev.REVIEW_VERDICT: CopilotPanel._noop,
-                ev.PLAN_REVISED: CopilotPanel._noop,
-                ev.ERROR: CopilotPanel._noop,
-            }
-
-        handler = CopilotPanel._ON_EVENT_DISPATCH.get(event.kind)
+        handler = CopilotPanel._dispatch_table("_ON_EVENT_DISPATCH", lambda: {
+            ev.CALL_STARTED: CopilotPanel._oe_call_started,
+            ev.COST: CopilotPanel._oe_cost,
+            ev.THOUGHT: CopilotPanel._oe_thought,
+            ev.WRITING: CopilotPanel._oe_writing,
+            ev.ATTACHED: CopilotPanel._oe_attached,
+            ev.TOOL_CALL: CopilotPanel._oe_tool_call,
+            ev.TOOL_RESULT: CopilotPanel._oe_tool_result,
+            ev.PART: CopilotPanel._oe_part,
+            ev.PLAN: CopilotPanel._oe_plan,
+            ev.ASSERTION: CopilotPanel._oe_assertion,
+            ev.STEP_STARTED: CopilotPanel._oe_step_started,
+            ev.APPLIED: CopilotPanel._oe_applied,
+            ev.BLOCKED: CopilotPanel._oe_blocked,
+            ev.QUESTION: CopilotPanel._noop,
+            ev.ANSWER: CopilotPanel._noop,
+            ev.DESIGN: CopilotPanel._noop,
+            ev.OUTSTANDING: CopilotPanel._noop,
+            ev.REVIEW_SUSPECTED: CopilotPanel._noop,
+            ev.GATE: CopilotPanel._noop,
+            ev.UNBUILT: CopilotPanel._noop,
+            ev.PREFLIGHT_FAILED: CopilotPanel._noop,
+            ev.REVIEW_VERDICT: CopilotPanel._noop,
+            ev.PLAN_REVISED: CopilotPanel._noop,
+            ev.ERROR: CopilotPanel._noop,
+        }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "on_event")
         elif handler(self, event, data):
@@ -1960,37 +1971,35 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         data = event.data
 
-        if CopilotPanel._QUEUE_DISPATCH is None:
-            from core import events as ev
-            CopilotPanel._QUEUE_DISPATCH = {
-                ev.INTENT: CopilotPanel._uq_intent,
-                ev.CALL_STARTED: CopilotPanel._uq_call_started,
-                ev.COST: CopilotPanel._uq_cost,
-                ev.THOUGHT: CopilotPanel._noop,
-                ev.WRITING: CopilotPanel._noop,
-                ev.QUESTION: CopilotPanel._noop,
-                ev.ANSWER: CopilotPanel._noop,
-                ev.ATTACHED: CopilotPanel._noop,
-                ev.DESIGN: CopilotPanel._noop,
-                ev.PART: CopilotPanel._uq_part,
-                ev.PLAN: CopilotPanel._uq_plan,
-                ev.PLAN_REVISED: CopilotPanel._uq_plan,
-                ev.GATE: CopilotPanel._uq_gate,
-                ev.STEP_STARTED: CopilotPanel._uq_step_started,
-                ev.TOOL_CALL: CopilotPanel._noop,
-                ev.TOOL_RESULT: CopilotPanel._noop,
-                ev.PREFLIGHT_FAILED: CopilotPanel._uq_preflight_failed,
-                ev.APPLIED: CopilotPanel._uq_applied,
-                ev.ASSERTION: CopilotPanel._uq_assertion,
-                ev.OUTSTANDING: CopilotPanel._noop,
-                ev.UNBUILT: CopilotPanel._uq_unbuilt,
-                ev.REVIEW_VERDICT: CopilotPanel._uq_review_verdict,
-                ev.REVIEW_SUSPECTED: CopilotPanel._noop,
-                ev.BLOCKED: CopilotPanel._uq_fail_current,
-                ev.ERROR: CopilotPanel._uq_fail_current,
-            }
+        from core import events as ev
 
-        handler = CopilotPanel._QUEUE_DISPATCH.get(event.kind)
+        handler = CopilotPanel._dispatch_table("_QUEUE_DISPATCH", lambda: {
+            ev.INTENT: CopilotPanel._uq_intent,
+            ev.CALL_STARTED: CopilotPanel._uq_call_started,
+            ev.COST: CopilotPanel._uq_cost,
+            ev.THOUGHT: CopilotPanel._noop,
+            ev.WRITING: CopilotPanel._noop,
+            ev.QUESTION: CopilotPanel._noop,
+            ev.ANSWER: CopilotPanel._noop,
+            ev.ATTACHED: CopilotPanel._noop,
+            ev.DESIGN: CopilotPanel._noop,
+            ev.PART: CopilotPanel._uq_part,
+            ev.PLAN: CopilotPanel._uq_plan,
+            ev.PLAN_REVISED: CopilotPanel._uq_plan,
+            ev.GATE: CopilotPanel._uq_gate,
+            ev.STEP_STARTED: CopilotPanel._uq_step_started,
+            ev.TOOL_CALL: CopilotPanel._noop,
+            ev.TOOL_RESULT: CopilotPanel._noop,
+            ev.PREFLIGHT_FAILED: CopilotPanel._uq_preflight_failed,
+            ev.APPLIED: CopilotPanel._uq_applied,
+            ev.ASSERTION: CopilotPanel._uq_assertion,
+            ev.OUTSTANDING: CopilotPanel._noop,
+            ev.UNBUILT: CopilotPanel._uq_unbuilt,
+            ev.REVIEW_VERDICT: CopilotPanel._uq_review_verdict,
+            ev.REVIEW_SUSPECTED: CopilotPanel._noop,
+            ev.BLOCKED: CopilotPanel._uq_fail_current,
+            ev.ERROR: CopilotPanel._uq_fail_current,
+        }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "_update_queue")
         else:
@@ -2058,37 +2067,35 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         data = event.data
 
-        if CopilotPanel._EVIDENCE_DISPATCH is None:
-            from core import events as ev
-            CopilotPanel._EVIDENCE_DISPATCH = {
-                ev.INTENT: CopilotPanel._noop,
-                ev.THOUGHT: CopilotPanel._noop,
-                ev.WRITING: CopilotPanel._noop,
-                ev.QUESTION: CopilotPanel._noop,
-                ev.ANSWER: CopilotPanel._noop,
-                ev.ATTACHED: CopilotPanel._noop,
-                ev.DESIGN: CopilotPanel._noop,
-                ev.PART: CopilotPanel._noop,
-                ev.PLAN: CopilotPanel._noop,
-                ev.PLAN_REVISED: CopilotPanel._noop,
-                ev.GATE: CopilotPanel._noop,
-                ev.STEP_STARTED: CopilotPanel._noop,
-                ev.TOOL_CALL: CopilotPanel._noop,
-                ev.TOOL_RESULT: CopilotPanel._ev_tool_result,
-                ev.PREFLIGHT_FAILED: CopilotPanel._noop,
-                ev.APPLIED: CopilotPanel._noop,
-                ev.ASSERTION: CopilotPanel._ev_assertion,
-                ev.OUTSTANDING: CopilotPanel._noop,
-                ev.UNBUILT: CopilotPanel._noop,
-                ev.REVIEW_VERDICT: CopilotPanel._ev_review_verdict,
-                ev.REVIEW_SUSPECTED: CopilotPanel._noop,
-                ev.BLOCKED: CopilotPanel._noop,
-                ev.CALL_STARTED: CopilotPanel._noop,
-                ev.COST: CopilotPanel._noop,
-                ev.ERROR: CopilotPanel._noop,
-            }
+        from core import events as ev
 
-        handler = CopilotPanel._EVIDENCE_DISPATCH.get(event.kind)
+        handler = CopilotPanel._dispatch_table("_EVIDENCE_DISPATCH", lambda: {
+            ev.INTENT: CopilotPanel._noop,
+            ev.THOUGHT: CopilotPanel._noop,
+            ev.WRITING: CopilotPanel._noop,
+            ev.QUESTION: CopilotPanel._noop,
+            ev.ANSWER: CopilotPanel._noop,
+            ev.ATTACHED: CopilotPanel._noop,
+            ev.DESIGN: CopilotPanel._noop,
+            ev.PART: CopilotPanel._noop,
+            ev.PLAN: CopilotPanel._noop,
+            ev.PLAN_REVISED: CopilotPanel._noop,
+            ev.GATE: CopilotPanel._noop,
+            ev.STEP_STARTED: CopilotPanel._noop,
+            ev.TOOL_CALL: CopilotPanel._noop,
+            ev.TOOL_RESULT: CopilotPanel._ev_tool_result,
+            ev.PREFLIGHT_FAILED: CopilotPanel._noop,
+            ev.APPLIED: CopilotPanel._noop,
+            ev.ASSERTION: CopilotPanel._ev_assertion,
+            ev.OUTSTANDING: CopilotPanel._noop,
+            ev.UNBUILT: CopilotPanel._noop,
+            ev.REVIEW_VERDICT: CopilotPanel._ev_review_verdict,
+            ev.REVIEW_SUSPECTED: CopilotPanel._noop,
+            ev.BLOCKED: CopilotPanel._noop,
+            ev.CALL_STARTED: CopilotPanel._noop,
+            ev.COST: CopilotPanel._noop,
+            ev.ERROR: CopilotPanel._noop,
+        }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "_update_review_evidence")
         else:

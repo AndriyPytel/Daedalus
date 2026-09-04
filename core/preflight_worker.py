@@ -44,6 +44,17 @@ def respond(payload):
     sys.stdout.flush()
 
 
+def _ensure_on_path():
+    """
+    Put the repo root on `sys.path` if it is not there already, so this
+    child process can import `core.*` the way `preflight` and `reading`
+    both need to, on demand rather than at module load.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+
 def load_fresh(path):
     """
     Reload the Document copy from disk, every time.
@@ -663,9 +674,7 @@ def preflight(request):
         result["failed"] = failed
     render_path = request.get("render_path")
     if render_path:
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if root not in sys.path:
-            sys.path.insert(0, root)
+        _ensure_on_path()
         from core.preflight_render import render
 
         result["render"] = render(doc, render_path)
@@ -681,9 +690,7 @@ def reading(request):
     worker thread, and `Sketcher.Constraint` is the call that segfaults
     (FCC-19, FCC-126).
     """
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if root not in sys.path:
-        sys.path.insert(0, root)
+    _ensure_on_path()
     from core import sketch_check
 
     outline, view, between = sketch_check.from_request(request)
