@@ -2421,6 +2421,38 @@ assert all(abs(a - b) <= %s for a, b in zip(built, asked)), (
 """
 
 
+SELF_INTERSECTION_CHECK = """
+import os
+import tempfile
+from OCC.Core.BOPAlgo import BOPAlgo_ArgumentAnalyzer
+from OCC.Core.BRep import BRep_Builder
+from OCC.Core.BRepTools import breptools
+from OCC.Core.TopoDS import TopoDS_Shape
+
+held = []
+failed = []
+for obj in doc.Objects:
+    shape = getattr(obj, 'Shape', None)
+    if shape is None or shape.isNull() or not shape.Solids:
+        continue
+    handle, path = tempfile.mkstemp(suffix='.brep')
+    os.close(handle)
+    shape.exportBrep(path)
+    occ_shape = TopoDS_Shape()
+    breptools.Read(occ_shape, path, BRep_Builder())
+    os.remove(path)
+    analyzer = BOPAlgo_ArgumentAnalyzer()
+    analyzer.SetShape1(occ_shape)
+    analyzer.SetSelfInterMode(True)
+    analyzer.Perform()
+    if analyzer.HasFaulty():
+        failed.append(obj.Name + " self-intersects (BOPAlgo_SelfIntersect)")
+    else:
+        held.append(obj.Name)
+assert not failed, "these did not hold: " + "; ".join(failed)
+"""
+
+
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
               after_a_retry=()):
     """
@@ -2446,12 +2478,16 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
     The envelope is measured first and without asking anybody: three sizes
     against three sizes is arithmetic, and a run that built the wrong part
-    should not have to wait for a provider to say so. The entries a retry
-    touched go with the request, because a Step that failed a check and passed
-    on the retry is a Step whose feature was changed to get past it —
-    shortened, moved, turned around — and passing the second time says the
-    workaround was legal, never that it is still the feature the drawing asked
-    for; those are the entries to measure rather than to take on trust.
+    should not have to wait for a provider to say so. Self-intersection is
+    measured next, also without asking anybody: `BOPAlgo_SelfIntersect` is too
+    expensive to run after every Step (FCC-253 Q4), so it runs once here,
+    against every solid the finished Document holds, the same way the
+    envelope does. The entries a retry touched go with the request, because a
+    Step that failed a check and passed on the retry is a Step whose feature
+    was changed to get past it — shortened, moved, turned around — and
+    passing the second time says the workaround was legal, never that it is
+    still the feature the drawing asked for; those are the entries to measure
+    rather than to take on trust.
 
     `cancelled` is asked between attempts the way Execute's is: three provider
     calls is long enough that Stop must not wait them out. Checks that could
@@ -2466,14 +2502,16 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
     cancelled = cancelled or (lambda: False)
 
-    measured = the_envelope_measured(acceptance)
-    if measured:
+    for label, measured in (("the envelope check", the_envelope_measured(acceptance)),
+                            ("the self-intersection check", SELF_INTERSECTION_CHECK)):
+        if not measured:
+            continue
         events.emit(TOOL_CALL, name="check_assertions", arguments={"code": measured})
         result = tools.call("check_assertions", {"code": measured})
         events.emit(TOOL_RESULT, name="check_assertions", result=result)
         if not result.get("ok"):
-            traceback = result.get("traceback") or "The envelope check failed."
-            unmet = _unmet_in(traceback) or ["the envelope"]
+            traceback = result.get("traceback") or (label + " failed.")
+            unmet = _unmet_in(traceback) or [label]
             events.emit(ASSERTION, ok=False, code=measured, confirmed=[],
                         uncovered=[], traceback=traceback, unmet=unmet)
             return Checked(failed=True, traceback=traceback, unmet=unmet)

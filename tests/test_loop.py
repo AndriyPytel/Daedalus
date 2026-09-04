@@ -2807,6 +2807,43 @@ def test_an_envelope_of_anything_but_three_plain_sizes_is_not_measured_here():
         ["envelope → length: as long as the arm reaches (assumed)"]) == ""
 
 
+def test_self_intersection_is_checked_once_for_the_whole_document():
+    """
+    FCC-256: `BOPAlgo_SelfIntersect` is too expensive to run per Step (FCC-253
+    Q4), so it runs exactly once here, against every solid the finished
+    Document holds — never per Body the way `_bodies_in_pieces` (ticket 1)
+    runs in Preflight.
+    """
+    from core.loop import SELF_INTERSECTION_CHECK
+
+    assert "SetSelfInterMode" in SELF_INTERSECTION_CHECK
+    assert "BOPAlgo_SelfIntersect" in SELF_INTERSECTION_CHECK
+    assert "for obj in doc.Objects" in SELF_INTERSECTION_CHECK, \
+        "the check must run once against the whole Document, not per Body"
+
+
+def test_a_self_intersecting_document_is_caught_before_a_provider_writes_checks():
+    """A Document with a self-intersecting solid fails before Review ever sees it."""
+    _, events, llm, tools = drive([
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG],
+        checks=[{"ok": False, "traceback": "AssertionError: these did not hold: "
+                                           "Twist self-intersects (BOPAlgo_SelfIntersect)"}],
+        decide=lambda why: "accept")
+
+    ran = [args["code"] for name, args in tools.calls if name == "check_assertions"]
+    assert "BOPAlgo_SelfIntersect" in ran[0], "self-intersection was not measured first"
+    assert events.first(ASSERTION).data["unmet"] == \
+        ["Twist self-intersects (BOPAlgo_SelfIntersect)"]
+    assert events.first(ASSERTION).data["confirmed"] == [], \
+        "the self-intersection check measures nothing to confirm"
+    assert not any(call[0]["content"] == prompt("assertion") for call in llm.calls), \
+        "a provider was asked to write checks for a Document already known to self-intersect"
+
+
 def test_the_envelope_check_runs_against_the_document_and_can_fail_it():
     """A part of the wrong overall size fails before a provider is asked."""
     A_PART_WITH_AN_ENVELOPE = {
@@ -4365,6 +4402,7 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
         CALL_STARTED, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
+        TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
         CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
     ]
@@ -5300,6 +5338,9 @@ def assertion_failed(traceback):
     return {"ok": False, "traceback": traceback}
 
 
+SELF_INTERSECTION_HELD = {"ok": True}
+
+
 ASSERT_FAILED = ('Traceback (most recent call last):\n'
                  '  File "<step>", line 2, in <module>\n'
                  "AssertionError: 13.0 mm across the flats\n")
@@ -5328,8 +5369,8 @@ def test_the_assertion_phase_runs_after_the_last_step_and_between_the_two_review
 
     assert [name for name, _ in tools.calls
             if name in ("apply_step", "check_assertions")] == [
-        "apply_step", "apply_step", "check_assertions"]
-    checked = next(args for name, args in tools.calls if name == "check_assertions")
+        "apply_step", "apply_step", "check_assertions", "check_assertions"]
+    checked = [args for name, args in tools.calls if name == "check_assertions"][-1]
     assert checked["code"] == CHECKS.strip(), "the Tool ran something other than the checks"
 
     kinds = [e.kind for e in events]
@@ -5430,7 +5471,8 @@ def test_failed_assertions_return_to_plan_and_never_to_execute():
         suspect_reply(),
         assertion_reply(CHECKS),
         verdict_reply("pass"),
-        checks=[assertion_failed(ASSERT_FAILED), None])
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED),
+                SELF_INTERSECTION_HELD, None])
 
     to_plan = json.dumps(llm.calls[5])
     to_execute = json.dumps(llm.calls[6])
@@ -5451,7 +5493,7 @@ def test_a_run_out_of_revisions_names_the_assertions_not_review():
     result, _, _, _ = a_run_over_the_nut(
         *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS)] * 5,
         budgets=Budgets(revisions=2),
-        checks=[assertion_failed(ASSERT_FAILED)] * 5,
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED)] * 5,
     )
 
     assert result.blocked
@@ -5523,11 +5565,11 @@ def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
         assertion_reply("bad_check()"),
         assertion_reply(CHECKS),
         verdict_reply("pass"),
-        checks=[assertion_failed(CHECK_IS_BROKEN), None])
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(CHECK_IS_BROKEN), None])
 
     assert result.ok
     assert events.first(PLAN_REVISED) is None, "a broken check sent Plan to rebuild"
-    assert len([c for c in tools.calls if c[0] == "check_assertions"]) == 2
+    assert len([c for c in tools.calls if c[0] == "check_assertions"]) == 3
     assert "AttributeError" in json.dumps(llm.calls[5])
 
 
@@ -5545,7 +5587,7 @@ def test_a_check_that_cannot_be_written_lets_review_judge_alone():
         assertion_reply("bad_check()"),
         assertion_reply("bad_check()"),
         verdict_reply("pass"),
-        checks=[assertion_failed(CHECK_IS_BROKEN)] * 3)
+        checks=[SELF_INTERSECTION_HELD] + [assertion_failed(CHECK_IS_BROKEN)] * 3)
 
     assert result.ok
     assert events.first(PLAN_REVISED) is None
@@ -6001,7 +6043,7 @@ def test_the_entries_that_did_not_hold_come_out_on_the_result():
     result, _, _, _ = a_run_over_the_nut(
         *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass")] * 5,
         budgets=Budgets(revisions=1),
-        checks=[assertion_failed(SIX_FAILED)] * 5,
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)] * 5,
     )
 
     assert result.unmet == ["envelope \u2192 across the flats: 13.0 mm (read)",
@@ -6017,7 +6059,7 @@ def test_a_result_the_user_took_as_it_is_still_says_what_is_wrong_with_it():
 
     result, _, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
-        checks=[assertion_failed(SIX_FAILED)],
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)],
         decide=lambda failure: ACCEPT,
     )
 
@@ -6042,7 +6084,7 @@ def test_a_run_stopped_partway_still_reports_what_was_wrong():
     result, _, _, _ = a_run_over_the_nut(
         *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS)] * 5,
         budgets=Budgets(revisions=1),
-        checks=[assertion_failed(SIX_FAILED)] * 5,
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)] * 5,
     )
 
     assert result.blocked
@@ -6052,7 +6094,7 @@ def test_a_run_stopped_partway_still_reports_what_was_wrong():
 def test_the_assertion_event_names_the_entries_and_not_only_the_traceback():
     _, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
-        checks=[assertion_failed(SIX_FAILED)],
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)],
         decide=lambda failure: "accept",
     )
 
@@ -6080,7 +6122,8 @@ def test_a_mixed_result_reports_both_what_held_and_what_did_not():
     """
     _, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
-        checks=[assertion_mixed([ACCEPTANCE[0]], [ACCEPTANCE[1]], MIXED_TRACEBACK)],
+        checks=[SELF_INTERSECTION_HELD,
+                assertion_mixed([ACCEPTANCE[0]], [ACCEPTANCE[1]], MIXED_TRACEBACK)],
         decide=lambda failure: "accept",
     )
 
@@ -6099,7 +6142,7 @@ def test_a_passing_runs_confirmed_is_measured_not_inferred():
     """
     _, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
-        checks=[{"ok": True, "held": [ACCEPTANCE[0]]}],
+        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [ACCEPTANCE[0]]}],
     )
 
     data = events.first(ASSERTION).data
@@ -6121,7 +6164,8 @@ def test_a_check_that_measured_but_never_defined_held_still_reports_confirmed_em
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(),
         assertion_reply(CHECKS),
         verdict_reply("pass"),
-        checks=[{"ok": False, "traceback": ASSERT_FAILED, "failed": [ACCEPTANCE[0]]}],
+        checks=[SELF_INTERSECTION_HELD,
+                {"ok": False, "traceback": ASSERT_FAILED, "failed": [ACCEPTANCE[0]]}],
         decide=lambda failure: "accept",
     )
 
@@ -6138,7 +6182,7 @@ def test_a_document_that_cannot_recompute_leaves_the_whole_list_outstanding():
 
     result, _, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
-        checks=[assertion_failed(broken)],
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(broken)],
         decide=lambda failure: "accept",
     )
 
@@ -6150,7 +6194,7 @@ def test_what_the_user_decided_about_a_failed_result_is_on_the_stream():
 
     _, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
-        checks=[assertion_failed(SIX_FAILED)],
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)],
         decide=lambda failure: decided.append(failure) or "accept",
     )
 
@@ -6169,7 +6213,7 @@ def test_starting_over_is_recorded_as_the_licence_it_is():
     _, events, _, _ = a_run_over_the_nut(
         *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass")] * 5,
         budgets=Budgets(revisions=1),
-        checks=[assertion_failed(SIX_FAILED)] * 5,
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)] * 5,
         decide=lambda failure: START_OVER,
     )
 
@@ -7009,7 +7053,7 @@ def test_a_standing_approval_still_lets_the_user_be_asked_about_the_result():
         gate,
         [design_reply(A_NUT), planning_the_nut("Make it"), code_reply("make()"),
          suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass")],
-        checks=[assertion_failed(ASSERT_FAILED)],
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED)],
         attachments=[RENDER_PNG],
         decide=lambda failure: decided.append(failure) or ACCEPT,
     )
