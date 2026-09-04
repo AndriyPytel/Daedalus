@@ -418,6 +418,49 @@ def _bodies_in_pieces(doc):
     return scattered
 
 
+def _bodies_with_invalid_shape(doc):
+    """
+    Every PartDesign Body whose Shape fails OCC's own `isValid()` (FCC-255).
+
+    A self-touching wire -- two lobes pinched at one vertex -- pads into a
+    single solid that recomputes Up-to-date, and nothing about that state
+    says the geometry is broken: `isValid()` is the one question Preflight
+    never asked before this, cheap enough to ask on every Step (FCC-253 Q4).
+    """
+    invalid = []
+    for obj in doc.Objects:
+        if obj.TypeId != "PartDesign::Body":
+            continue
+        shape = getattr(obj, "Shape", None)
+        if shape is None or shape.isNull():
+            continue
+        if not shape.isValid():
+            invalid.append("%s: invalid shape" % obj.Name)
+    return invalid
+
+
+def _bodies_with_inverted_solid(doc):
+    """
+    Every PartDesign Body whose Shape carries a negative signed volume
+    (FCC-255).
+
+    A boss cut instead of added, a profile wound the wrong way -- the
+    Solution Notes' own examples of a feature that comes out inverted. The
+    Body still recomputes Up-to-date; only the sign of `Shape.Volume` says
+    it came out inside-out.
+    """
+    inverted = []
+    for obj in doc.Objects:
+        if obj.TypeId != "PartDesign::Body":
+            continue
+        shape = getattr(obj, "Shape", None)
+        if shape is None or shape.isNull():
+            continue
+        if shape.Volume < 0:
+            inverted.append("%s: inverted solid (volume %s)" % (obj.Name, shape.Volume))
+    return inverted
+
+
 _A_DRESSUP = {"PartDesign::Fillet": ("Radius", "makeFillet"),
               "PartDesign::Chamfer": ("Size", "makeChamfer")}
 
@@ -775,6 +818,20 @@ def preflight(request):
               "separate lumps rather than one part — the profiles that make up the outline "
               "have to meet, and anything that is genuinely a second part belongs in a "
               "second Body.")
+
+    invalid = _bodies_with_invalid_shape(doc)
+    if invalid:
+        raise RuntimeError(
+            "this Step left a Body with an invalid Shape:\n" + "\n".join(invalid)
+            + "\nOCC's own isValid() says the geometry is broken -- a self-touching wire or "
+              "a face that folds back on itself, not a Body it will let through unnoticed.")
+
+    inverted = _bodies_with_inverted_solid(doc)
+    if inverted:
+        raise RuntimeError(
+            "this Step left a Body with an inverted solid:\n" + "\n".join(inverted)
+            + "\nA negative signed volume is a solid that came out inside-out -- a boss cut "
+              "instead of added, a profile wound the wrong way.")
 
     result = {
         "ok": True,
