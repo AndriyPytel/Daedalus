@@ -115,6 +115,38 @@ def test_a_clean_step_comes_back_ok_with_a_render(warm, tmp_path):
     assert os.path.getsize(png) > 1000, "the render is empty"
 
 
+def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm, tmp_path):
+    """
+    FCC-270 — `render` moved out of `preflight_worker` into `preflight_render`
+    with no change to its body; the worker calls the moved function through the
+    same `sys.path` trick `reading` already used for `core.sketch_check`. If the
+    child process could not see the new module, `warm.check` below would come
+    back `ok=False` with an ImportError traceback instead of a render.
+    """
+    import FreeCAD
+
+    from core.preflight_render import render as render_directly
+
+    via_worker = str(tmp_path / "via_worker.png")
+    result = warm.check(
+        "box = doc.addObject('Part::Box', 'Box')\nbox.Length = 10",
+        render_path=via_worker,
+    )
+    assert result.ok, result.traceback
+
+    doc = FreeCAD.newDocument("DirectRender")
+    box = doc.addObject("Part::Box", "Box")
+    box.Length = 10
+    doc.recompute()
+    try:
+        via_direct_call = str(tmp_path / "direct.png")
+        render_directly(doc, via_direct_call)
+
+        assert open(via_worker, "rb").read() == open(via_direct_call, "rb").read()
+    finally:
+        FreeCAD.closeDocument(doc.Name)
+
+
 def test_the_worker_stays_warm_between_requests(warm):
     first = warm.check("doc.addObject('Part::Box', 'A')")
     second = warm.check("doc.addObject('Part::Box', 'B')")
