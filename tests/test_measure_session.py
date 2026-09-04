@@ -143,11 +143,12 @@ def test_a_run_with_a_failed_assertion_that_passed_on_retry(tmp_path):
     _, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"),
         code_reply("make()"),
+        verdict_reply("pass"),
         assertion_reply(CHECKS),
         planning_the_nut("Make it 13 mm across the flats"),
         code_reply("fix()"),
-        assertion_reply(CHECKS),
         verdict_reply("pass"),
+        assertion_reply(CHECKS),
         checks=[assertion_failed(ASSERT_FAILED), None])
 
     log_path = str(tmp_path / "run.jsonl")

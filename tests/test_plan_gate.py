@@ -390,7 +390,7 @@ THE_NUT = {"envelope": {"across the flats": {"value": "13.0 mm", "flag": "assume
 
 def a_run_whose_checks_fail(*extra):
     return [design_reply(THE_NUT), plan_reply("Make it"),
-            code_reply("make()"), assertion_reply("check()")] + list(extra)
+            code_reply("make()"), verdict_reply("pass"), assertion_reply("check()")] + list(extra)
 
 
 def test_ok_finishes_the_run_without_a_revision():
@@ -474,7 +474,7 @@ def test_revise_replans_and_the_revision_goes_through_the_gate():
     result, events, tools = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Make it 13 mm"),
-            code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("fix()"), verdict_reply("pass"), assertion_reply("check()")),
         decide, gate=gate, attachments=[RENDER_PNG],
         checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
 
@@ -496,7 +496,7 @@ def test_start_over_replans_with_an_explicit_permission_and_still_hits_the_gate(
     _, events, _ = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Start from nothing"),
-            code_reply("again()"), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("again()"), verdict_reply("pass"), assertion_reply("check()")),
         decide, gate=gate, attachments=[RENDER_PNG],
         checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
 
@@ -511,7 +511,7 @@ def test_the_decision_is_not_raised_when_nothing_was_applied():
     _, events, _ = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Try again"),
-            code_reply("again()"), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("again()"), verdict_reply("pass"), assertion_reply("check()")),
         decide, applies=[failed("boom"), failed("boom"), failed("boom")],
         attachments=[RENDER_PNG], checks=[{"ok": True}])
 
@@ -611,7 +611,7 @@ def test_amending_over_a_decision_replans_without_asking_it_again():
                     "satisfies": ["features \u2192 outer-profile \u2192 radius"]}),
         plan_reply({"do": "Pad the R30 profile",
                     "satisfies": ["features \u2192 outer-profile \u2192 radius"]}),
-        code_reply("pad()"), assertion_reply("check()"), verdict_reply("pass"),
+        code_reply("pad()"), verdict_reply("pass"), assertion_reply("check()"),
     ]), tools=FakeTools().registry, events=events, gate=gate,
         attachments=[RENDER_PNG], ask=lambda question: asked.append(question) or "R30")
 
@@ -757,7 +757,7 @@ def test_auto_mode_revises_a_failed_assertion_without_asking_anybody(monkeypatch
     result, events, tools = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Make it 13 mm"),
-            code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("fix()"), verdict_reply("pass"), assertion_reply("check()")),
         never_call_me, gate=Gate(Approval(APPROVE), Approval(APPROVE)),
         attachments=[RENDER_PNG],
         checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
@@ -774,7 +774,7 @@ def test_auto_mode_marks_the_revision_answer_as_automatic_with_the_failed_checks
     _, events, _ = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Make it 13 mm"),
-            code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("fix()"), verdict_reply("pass"), assertion_reply("check()")),
         lambda failure: REVISE, gate=Gate(Approval(APPROVE), Approval(APPROVE)),
         attachments=[RENDER_PNG],
         checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
@@ -800,7 +800,7 @@ def test_auto_mode_off_leaves_the_decision_events_unchanged(monkeypatch):
     _, events, _ = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Make it 13 mm"),
-            code_reply("fix()"), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("fix()"), verdict_reply("pass"), assertion_reply("check()")),
         decide, gate=Gate(Approval(APPROVE), Approval(APPROVE)), attachments=[RENDER_PNG],
         checks=[{"ok": False, "traceback": FAILED_CHECKS}, {"ok": True}])
 
@@ -826,10 +826,10 @@ def test_auto_mode_composes_with_the_revision_budget_running_out(monkeypatch):
 
     result, events, _ = drive_with([
         design_reply(THE_NUT), plan_reply("Make it"),
-        code_reply("make()"), assertion_reply("check()"),
-        plan_reply("Make it v2"), code_reply("make2()"), assertion_reply("check()"),
-        plan_reply("Make it v3"), code_reply("make3()"), assertion_reply("check()"),
-        plan_reply("Make it v4"), code_reply("make4()"), assertion_reply("check()"),
+        code_reply("make()"), verdict_reply("pass"), assertion_reply("check()"),
+        plan_reply("Make it v2"), code_reply("make2()"), verdict_reply("pass"), assertion_reply("check()"),
+        plan_reply("Make it v3"), code_reply("make3()"), verdict_reply("pass"), assertion_reply("check()"),
+        plan_reply("Make it v4"), code_reply("make4()"), verdict_reply("pass"), assertion_reply("check()"),
     ], lambda failure: REVISE, gate=Gate(*[Approval(APPROVE) for _ in range(4)]),
         attachments=[RENDER_PNG], checks=[{"ok": False, "traceback": FAILED_CHECKS}] * 4)
 

@@ -3799,15 +3799,15 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     and spend the same budget: the Step no longer makes sense, or it cannot be
     built (ADR-0013).
 
-    The acceptance checks run once the run is over and before Review, against
-    the finished Document, and a failure there is a rejection. No acceptance
-    list means no phase at all, not a phase that checks nothing. What they
-    found is carried on `progress["unmet"]` whatever happens next, and a pass
-    clears it, including the entries inherited from the run before. A user who
-    takes a failed result goes straight out without Review: they have already
-    judged it, and a verdict nobody will act on is a provider call spent on
-    nothing. A rejection by Review is bounded by `review_cycles` and spends the
-    shared revision budget as well.
+    Review runs once the run is over, on the finished Document, and only once
+    Review has passed do the acceptance checks run — a failure there is a
+    rejection too. No acceptance list means no phase at all, not a phase that
+    checks nothing. What they found is carried on `progress["unmet"]`
+    whatever happens next, and a pass clears it, including the entries
+    inherited from the run before. A user who takes a failed result goes
+    straight out: Review has already passed the same Document, so nothing is
+    left unrun to save by skipping it. A rejection by Review is bounded by
+    `review_cycles` and spends the shared revision budget as well.
     """
     if cancelled():
         raise Stopped()
@@ -4025,6 +4025,32 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
         described = outcome["description"] or described
 
+        views = _review_views(tools, events)
+        verdict, reason = review(intent, views, described, llm, events, attachments)
+        events.emit(REVIEW_VERDICT, verdict=verdict, reason=reason)
+
+        if verdict != "pass":
+            feedback = reason
+            answer = decided(reason, applied, unmet=list(progress["unmet"]))
+            if answer == ACCEPT:
+                return LoopResult(ok=True, verdict="pass", reason=reason,
+                                  steps_applied=applied, unmet=list(progress["unmet"]))
+            if answer == START_OVER:
+                feedback += _MAY_START_AGAIN
+
+            rejections += 1
+            if rejections > budgets.review_cycles:
+                return _block(
+                    events,
+                    "Review rejected the result %d times; the budget of %d Review cycles per Plan "
+                    "is spent." % (rejections, budgets.review_cycles),
+                    outcome["tried"] + [{"review": reason}], applied,
+                )
+
+            planned = rewrite(_Revisions.REJECTED, "Review has rejected the result again.",
+                              feedback, outcome["tried"] + [{"review": reason}])
+            continue
+
         checking = _also_check(planned.acceptance, outstanding)
         not_reached = _not_reached(outcome.get("unbuilt") or [], checking)
         acceptance = [entry for entry in checking if entry not in not_reached]
@@ -4049,34 +4075,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               outcome["tried"] + [{"assertion": checked.traceback}])
             continue
 
-        views = _review_views(tools, events)
-        verdict, reason = review(intent, views, described, llm, events, attachments,
-                                 checked=checked)
-        events.emit(REVIEW_VERDICT, verdict=verdict, reason=reason)
-
-        if verdict == "pass":
-            return LoopResult(ok=True, verdict=verdict, reason=reason,
-                              steps_applied=applied)
-
-        feedback = reason
-        answer = decided(reason, applied, unmet=list(checked.unmet) if checked is not None else ())
-        if answer == ACCEPT:
-            return LoopResult(ok=True, verdict="pass", reason=reason,
-                              steps_applied=applied, unmet=list(progress["unmet"]))
-        if answer == START_OVER:
-            feedback += _MAY_START_AGAIN
-
-        rejections += 1
-        if rejections > budgets.review_cycles:
-            return _block(
-                events,
-                "Review rejected the result %d times; the budget of %d Review cycles per Plan "
-                "is spent." % (rejections, budgets.review_cycles),
-                outcome["tried"] + [{"review": reason}], applied,
-            )
-
-        planned = rewrite(_Revisions.REJECTED, "Review has rejected the result again.",
-                          feedback, outcome["tried"] + [{"review": reason}])
+        return LoopResult(ok=True, verdict=verdict, reason=reason,
+                          steps_applied=applied)
 
 
 _GOING_NOWHERE = (
