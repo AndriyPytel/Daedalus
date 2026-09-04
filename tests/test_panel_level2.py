@@ -2733,7 +2733,6 @@ def test_a_suspicion_before_assertion_does_not_start_or_finish_review(panel, tmp
     panel._reset_render_state()
 
 
-
 def _review_transcript_evidence(panel, tmp_path, verdict="fail",
                                 reason="the flange is mirrored"):
     """

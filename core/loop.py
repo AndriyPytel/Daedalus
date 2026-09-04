@@ -1475,7 +1475,7 @@ def _in_the_prose(entry):
     standing approval may not stand over.
     """
     address, _, value = _as_written(entry).partition(": ")
-    flag = re.search(r"\((?:read|derived|assumed)\)$", value)
+    flag = re.search(r"\((?:read|derived|assumed|suspected)\)$", value)
     return address + (" " + flag.group(0) if flag else "")
 
 
