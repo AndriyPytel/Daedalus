@@ -214,6 +214,32 @@ def test_the_camera_is_restored_after_a_section_capture_too(gui, tmp_path):
     assert viewport.camera == "wherever the user left it"
 
 
+def test_the_clip_plane_comes_off_even_when_the_section_capture_raises(gui, tmp_path):
+    """
+    The camera-restore guarantee (FCC-261) names the clip plane in the same
+    breath as the camera, but `saveImage` can raise mid-section — a bad
+    path is exactly what a Preflight run can hit. A `finally` that only
+    calls `view.setCamera` leaves the plane on for the rest of the user's
+    session.
+    """
+    viewport = View3D()
+    gui(SpreadsheetView(), [viewport])
+    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
+
+    def raise_on_section(path, width, height, background):
+        if path == paths[REVIEW_VIEWS.index(_SECTION_VIEW)]:
+            raise RuntimeError("saveImage failed")
+        viewport.saved.append(path)
+
+    viewport.saveImage = raise_on_section
+
+    with pytest.raises(RuntimeError):
+        capture_review_views(paths)
+
+    assert [toggle for toggle, _ in viewport.clipped] == [1, 0]
+    assert viewport.camera == "wherever the user left it"
+
+
 def test_fit_view_moves_the_bound_documents_camera_not_the_focused_tabs(two_documents_open):
     """
     A Session bound to a Document (FCC-181) fits that Document's own view

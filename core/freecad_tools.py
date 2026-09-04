@@ -315,17 +315,48 @@ def fit_view(document=None):
             view_object.Visibility = True
 
 
+def _cavity_center(box, material):
+    """
+    The centre of mass of the largest void inside `box`, or None with
+    nothing hollow to find.
+
+    `material` is the fused Shape of the tip features only — "only what
+    nothing else uses", the same `obj.InList` reading `_inventory` already
+    takes, so a Box consumed by a Shell or a Cut does not paper over the
+    cavity its own result carves. Cutting that material from a solid built
+    on `box` itself leaves exactly the voids a shell, bore or blind pocket
+    opens up; the biggest by volume is the one worth a plane through it.
+
+    Costs one boolean `cut`: measured at ~0.11s for a 200x200x30 plate cut
+    by forty 8mm bores (`tests/test_freecad_tools_level2.py`), and the same
+    single call, void or not, on anything smaller.
+    """
+    import FreeCAD
+    import Part
+
+    solid = Part.makeBox(box.XLength, box.YLength, box.ZLength,
+                          FreeCAD.Vector(box.XMin, box.YMin, box.ZMin))
+    try:
+        voids = [void for void in solid.cut(material).Solids if void.Volume > 1e-6]
+    except Part.OCCError:
+        return None
+    if not voids:
+        return None
+    return max(voids, key=lambda void: void.Volume).CenterOfMass
+
+
 def _section_plane(document):
     """
     A placement that cuts through the part's real interior, not one of its
     faces — the one thing a shell, a bore or a blind pocket needs to become
     visible that the existing four views cannot give it (FCC-261).
 
-    Read off the same real geometry `overall_size` measures rather than
-    guessed at: the middle of the modelled bounding box's Y axis is inside
-    the material on any part, whatever it is modelled along, and inside the
-    cavity too when the cavity sits where cavities usually do — centred in
-    what holds it.
+    The plane sits at the centre of the largest actual void the modelled
+    geometry has (`_cavity_center`), not a guess at where a cavity usually
+    sits — a bore or pocket well off from the part's own bounding-box
+    centre still gets cut through it rather than past it. A solid part with
+    nothing hollow, or a void `_cavity_center` cannot resolve, falls back to
+    the bounding box's own centre, so a section view is still produced.
 
     `document` is the Session's own bound Document (FCC-181); the `None`
     default reads `FreeCAD.ActiveDocument`, matching every other reader in
@@ -337,14 +368,18 @@ def _section_plane(document):
     if doc is None:
         return None
     box = None
+    material = None
     for obj in doc.Objects:
         bound = _measurable(obj)
         if bound is None:
             continue
         box = bound if box is None else box.united(bound)
+        if not obj.InList:
+            material = obj.Shape if material is None else material.fuse(obj.Shape)
     if box is None:
         return None
-    return FreeCAD.Placement(box.Center, FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), -90))
+    center = _cavity_center(box, material) or box.Center
+    return FreeCAD.Placement(center, FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), -90))
 
 
 def capture_review_views(paths, document=None, size=(800, 600)):
@@ -386,6 +421,7 @@ def capture_review_views(paths, document=None, size=(800, 600)):
         return []
 
     camera = view.getCamera()
+    sectioned = False
     written = []
     try:
         for name, path in zip(REVIEW_VIEWS, paths):
@@ -397,15 +433,19 @@ def capture_review_views(paths, document=None, size=(800, 600)):
                 if plane is None:
                     continue
                 view.toggleClippingPlane(1, False, True, plane)
+                sectioned = True
             else:
                 getattr(view, name)()
             view.fitAll()
             view.saveImage(path, size[0], size[1], "Current")
             if name == _SECTION_VIEW:
                 view.toggleClippingPlane(0)
+                sectioned = False
             written.append(path)
     finally:
         view.setCamera(camera)
+        if sectioned:
+            view.toggleClippingPlane(0)
     return written
 
 
