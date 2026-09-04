@@ -754,6 +754,11 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
                     "No object named %r. Existing: %s"
                     % (name, ", ".join(o.Name for o in doc.Objects) or "(the Document is empty)")
                 )
+            if len(by_label) > 1:
+                raise ToolError(
+                    "Label %r matches more than one object: %s. Use Name instead of Label."
+                    % (name, ", ".join(o.Name for o in by_label))
+                )
             obj = by_label[0]
 
         described = {
