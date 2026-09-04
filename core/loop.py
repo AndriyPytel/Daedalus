@@ -2347,6 +2347,13 @@ class Checked:
     `unmet` is the entries that did not hold, named one by one. The traceback
     says the same thing in prose, and prose is what Plan reads; this is what
     survives the end of the run.
+
+    `geometry` is the per-feature fingerprint `check_assertions` measured
+    alongside whatever it was asked to check (FCC-260) — Volume and BoundBox,
+    read back off `PreflightResult` the same way `confirmed` reads `held`.
+    Empty wherever no `check_assertions` call ran, which the fingerprint
+    comparison at the call site reads as "nothing to compare yet" rather than
+    "everything moved".
     """
 
     failed: bool = False
@@ -2354,6 +2361,7 @@ class Checked:
     confirmed: list = field(default_factory=list)
     uncovered: list = field(default_factory=list)
     unmet: list = field(default_factory=list)
+    geometry: dict = field(default_factory=dict)
 
 
 
@@ -2514,7 +2522,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
             unmet = _unmet_in(traceback) or [label]
             events.emit(ASSERTION, ok=False, code=measured, confirmed=[],
                         uncovered=[], traceback=traceback, unmet=unmet)
-            return Checked(failed=True, traceback=traceback, unmet=unmet)
+            return Checked(failed=True, traceback=traceback, unmet=unmet,
+                           geometry=result.get("geometry") or {})
 
     attempts = []
     for _ in range(budgets.attempts_per_step):
@@ -2540,7 +2549,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
             held = result.get("held")
             confirmed = list(held) if held is not None else \
                 [entry for entry in acceptance if entry not in uncovered]
-            checked = Checked(confirmed=confirmed, uncovered=uncovered)
+            checked = Checked(confirmed=confirmed, uncovered=uncovered,
+                              geometry=result.get("geometry") or {})
             events.emit(ASSERTION, ok=True, code=code, confirmed=confirmed,
                         uncovered=uncovered, traceback="")
             return checked
@@ -2555,7 +2565,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
             events.emit(ASSERTION, ok=False, code=code, confirmed=confirmed,
                         uncovered=uncovered, traceback=traceback, unmet=unmet)
             return Checked(failed=True, confirmed=confirmed, traceback=traceback,
-                           uncovered=uncovered, unmet=unmet)
+                           uncovered=uncovered, unmet=unmet,
+                           geometry=result.get("geometry") or {})
 
         attempts.append({"code": code, "traceback": traceback})
 
@@ -2625,6 +2636,56 @@ def _why_the_checks_failed(traceback):
                 + traceback)
     return ("The result does not meet its acceptance list. The check that failed says "
             "which entry:\n" + traceback)
+
+
+_GEOMETRY_TOLERANCE = 1e-6
+
+
+def _geometry_close(before, now):
+    return all(abs(a - b) <= _GEOMETRY_TOLERANCE * max(1.0, abs(b))
+               for a, b in zip(before, now))
+
+
+def _geometry_regressions(baseline, geometry, retried_names):
+    """
+    Features whose geometry moved since the last Assertion pass that held,
+    and are not one of the exact Names a retried Step actually touched.
+
+    `core/apply.py` and Preflight track only the names a Step declared
+    touching, never whether some other feature's geometry moved underneath a
+    repair Step — `config/prompts/assertion.md` already documents the result:
+    a slot shortened until it passes an acceptance check, a clamp that no
+    longer opens. `retried_names` is the exact per-Step `created`/`modified`
+    Names `apply_step` already measures (`core/apply.py`), carried out of
+    `_work_through` for every Step an attempt retried — an exact match against
+    FreeCAD `Object.Name`, not a substring against Acceptance citation prose:
+    a prefix relationship between two Names ("Slot" of "SlotChamfer", or
+    FreeCAD's own auto-numbered "Fillet" of "Fillet001") never excuses one for
+    the other.
+
+    `baseline` is a snapshot from the last Assertion pass that held (built by
+    the caller, one entry per feature Volume and BoundBox). An empty baseline
+    has nothing to compare against and reports nothing moved, which is the
+    invariant that makes the very first Assertion pass of a run a no-op here.
+    """
+    touched = set(retried_names or ())
+    moved = []
+    for name, was in (baseline or {}).items():
+        if name in touched:
+            continue
+        now = (geometry or {}).get(name)
+        if now is None or was is None or _geometry_close(was, now):
+            continue
+        moved.append(name)
+    return sorted(moved)
+
+
+_GEOMETRY_REGRESSION = (
+    "these features' geometry changed and nothing said they were touched: %s. "
+    "A feature not named in what this run built or retried moved anyway — the "
+    "failure config/prompts/assertion.md already documents as a slot "
+    "shortened until it passes, or a clamp that stops opening."
+)
 
 
 def _review_content(request, views, attachments):
@@ -3916,6 +3977,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
     asking = _Asking()
     ledger = Ledger(_FAILED_THIS_WAY)
+    geometry_baseline = {}
 
     def replan(feedback=None, revising=()):
         planned, part["the_part"] = _plan_once_it_knows_enough(
@@ -4124,6 +4186,21 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         checked = (assertion(acceptance, described, tools, llm, events, budgets,
                              cancelled, after_a_retry=outcome.get("retried"))
                    if acceptance else None)
+        if checked is not None and checked.geometry:
+            regressed = _geometry_regressions(geometry_baseline, checked.geometry,
+                                              outcome.get("retried_names"))
+            if regressed and not checked.failed:
+                traceback = _GEOMETRY_REGRESSION % ", ".join(regressed)
+                events.emit(ASSERTION, ok=False, code="", confirmed=checked.confirmed,
+                            uncovered=checked.uncovered, traceback=traceback,
+                            unmet=regressed)
+                checked = Checked(failed=True, confirmed=checked.confirmed,
+                                  traceback=traceback, uncovered=checked.uncovered,
+                                  unmet=list(checked.unmet) + regressed,
+                                  geometry=checked.geometry)
+            if not checked.failed:
+                geometry_baseline.clear()
+                geometry_baseline.update(checked.geometry)
         progress["unmet"] = (list(checked.unmet) if checked is not None else []) \
             + list(not_reached)
         if checked is not None and checked.failed:
@@ -4355,6 +4432,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     free_trailing_gaps = 0
     index = 0
     retried = set()
+    retried_names = set()
     unbuilt = []
     looks = looks if looks is not None else Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
     written = execute(steps, tools, llm, events, start, budgets=budgets,
@@ -4427,6 +4505,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             progress["satisfied"].extend(cites[index] if index < len(cites) else ())
             if attempts:
                 retried.add(index)
+                retried_names.update(result.get("created", []))
+                retried_names.update(result.get("modified", []))
             described = result.get("description") or described
             events.emit(APPLIED, step=index + 1, label=outcome.label,
                         created=result.get("created", []))
@@ -4470,7 +4550,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             "applied_here": index,
             "tried": [], "unbuilt": unbuilt, "retried": sorted(
                 {cited for at in retried for cited in (cites[at] if at < len(cites)
-                                                       else ())})}
+                                                       else ())}),
+            "retried_names": sorted(retried_names)}
 
 
 _A_PROPERTY_OF_THE_DOCUMENT = ("material", "appearance", "colour", "color",

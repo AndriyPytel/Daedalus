@@ -570,6 +570,29 @@ _MOVES_MATERIAL = "PartDesign::Feature"
 _VOLUME_TOLERANCE = 1e-9
 
 
+def _geometry_of(obj):
+    """
+    Volume plus the BoundBox corners for one feature (FCC-260).
+
+    Not `Shape.hashCode()`: measured directly, it is stable for one live
+    Shape but changes across `doc.saveCopy` + `FreeCAD.openDocument` on
+    identical geometry — every `check_assertions` call reopens the Document
+    from a fresh copy (`core/preflight.py::copy_of`), so a hash that moves on
+    reload would report every feature as regressed on every single Assertion
+    pass. Volume and BoundBox were measured the same way and are exactly
+    reproduced after a save/reload/recompute of unchanged geometry.
+    """
+    shape = getattr(obj, "Shape", None)
+    if shape is None or shape.isNull():
+        return None
+    box = shape.BoundBox
+    return (shape.Volume, box.XMin, box.YMin, box.ZMin, box.XMax, box.YMax, box.ZMax)
+
+
+def _geometry_snapshot(doc):
+    return {o.Name: _geometry_of(o) for o in doc.Objects}
+
+
 def _volume_of(obj):
     shape = getattr(obj, "Shape", None)
     if shape is None or shape.isNull():
@@ -839,6 +862,7 @@ def preflight(request):
         "created": sorted(touched.created),
         "deleted": sorted(touched.deleted),
         "modified": sorted(touched.modified()),
+        "geometry": _geometry_snapshot(doc),
     }
     held, failed = _measured(namespace)
     if held is not None:

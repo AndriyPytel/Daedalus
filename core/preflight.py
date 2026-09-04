@@ -49,6 +49,11 @@ class PreflightResult:
     (`core/preflight_worker.py :: _measured`) — `None` where nothing measured
     them, an ordinary Step included, rather than `[]`, which would read as
     "measured, and nothing held or failed".
+
+    `geometry` is every feature's Volume and BoundBox (FCC-260), always
+    present on a successful Preflight — cheap enough to take every time —
+    and empty where Preflight never reached a finished Document to measure
+    at all.
     """
 
     ok: bool
@@ -60,6 +65,7 @@ class PreflightResult:
     modified: list = field(default_factory=list)
     held: list = None
     failed: list = None
+    geometry: dict = field(default_factory=dict)
 
     @classmethod
     def from_response(cls, response):
@@ -85,7 +91,8 @@ class PreflightResult:
                    created=response.get("created", []),
                    deleted=response.get("deleted", []),
                    modified=response.get("modified", []),
-                   held=held, failed=failed)
+                   held=held, failed=failed,
+                   geometry=response.get("geometry") or {})
 
 
 def find_freecadcmd():

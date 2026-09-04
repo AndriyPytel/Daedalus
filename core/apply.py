@@ -56,17 +56,25 @@ def closing():
 
 @dataclass
 class ApplyResult:
-    """All the loop ever learns about a Step: it landed, or here is why not."""
+    """
+    All the loop ever learns about a Step: it landed, or here is why not.
+
+    `modified` is Preflight's own measured list (`PreflightResult.modified`),
+    carried past the `_CHANGED_NOTHING` check it already decides rather than
+    dropped there — the exact FreeCAD Names a landed Step altered without
+    creating, alongside `created`.
+    """
 
     ok: bool
     traceback: str = ""
     description: dict = field(default_factory=dict)
     created: list = field(default_factory=list)
+    modified: list = field(default_factory=list)
 
     def as_tool_result(self) -> dict:
         if self.ok:
             return {"status": "applied", "created": self.created,
-                    "description": self.description}
+                    "modified": self.modified, "description": self.description}
         return {"status": "failed", "traceback": self.traceback}
 
 
@@ -347,7 +355,8 @@ class ApplyPipeline:
         described = self._dispatch(lambda: description(doc))
         created = [o["name"] for o in described["features"] if o["name"] not in before]
         self.owned.update(created)
-        return ApplyResult(ok=True, description=described, created=created)
+        return ApplyResult(ok=True, description=described, created=created,
+                           modified=list(preflighted.modified))
 
     def check_assertions(self, code):
         """
@@ -363,6 +372,11 @@ class ApplyPipeline:
         (`PreflightResult`) up as they are — `None` where nothing measured
         them, a list otherwise — and it is the caller's to decide what that
         means, the same way it already decides what `ok` and `traceback` mean.
+
+        `geometry` carries the same per-feature Volume/BoundBox `apply_step`
+        already measures on every Step (`PreflightResult.geometry`, FCC-260) —
+        this is Assertion's only reach into it, since the geometry-diff check
+        the phase repairs against runs once per run rather than once per Step.
         """
         doc = self._dispatch(self._active)
         if doc is None:
@@ -374,7 +388,8 @@ class ApplyPipeline:
         finally:
             _discard(copy)
         return {"ok": bool(checked.ok), "traceback": checked.traceback or "",
-                "held": checked.held, "failed": checked.failed}
+                "held": checked.held, "failed": checked.failed,
+                "geometry": checked.geometry}
 
     def review_views(self):
         """
