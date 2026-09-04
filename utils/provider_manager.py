@@ -155,6 +155,7 @@ class _ProviderManager(QObject):
         import FreeCAD
         from utils import settings_manager
 
+        self._threads.pop(provider, None)
         where = settings_manager.instance().get_base_url_for_provider(provider)
         at = f" at {where}" if where else ""
         FreeCAD.Console.PrintWarning(
