@@ -43,6 +43,7 @@ import os
 import re
 import tempfile
 from dataclasses import replace
+from unittest.mock import Mock
 
 import pytest
 
@@ -4406,6 +4407,25 @@ def test_a_provider_that_keeps_cutting_the_stream_is_given_up_on():
     assert len(llm.calls) == 4, "design, then Plan three times"
 
 
+
+def test_a_cut_off_stream_backs_off_before_the_retry(monkeypatch):
+    """
+    A gateway cutting a stream is a random drop, not the model: three
+    instant retries in the same overloaded moment have the same odds of
+    landing in it again. A short, growing pause between attempts gives the
+    gateway a chance to clear before the next one goes out.
+    """
+    sleeps = []
+    monkeypatch.setattr(loop.time, "sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr(loop, "_one_call", Mock(side_effect=[
+        StreamCutOff("cut once"), StreamCutOff("cut twice"), ("body text", "", "")]))
+
+    body, thought, reasoning = loop._streamed(None, EventStream(), "Plan", "system", "user")
+
+    assert body == "body text"
+    assert sleeps == [1, 2], "a growing pause between the two failed attempts"
+
+
 def test_the_event_stream_of_a_clean_run():
     """
     Execute's reasoning stands before the first Step starts rather than
@@ -8069,6 +8089,27 @@ def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypat
     assert "the front view" in events.last(ERROR).data["message"]
 
 
+
+def test_a_worker_that_could_not_start_names_why_on_the_transcript(monkeypatch):
+    """
+    `None` from `_a_freecad_of_our_own` is "nothing to start", said the same
+    way whether headless FreeCAD is absent (expected) or `PreflightWorker`
+    regressed (a real bug) — `except Exception: return None` used to make
+    those indistinguishable even on the transcript.
+    """
+    def broken_worker(*_, **__):
+        raise RuntimeError("no headless binary")
+
+    monkeypatch.setattr(loop.preflight, "PreflightWorker", broken_worker)
+    events = EventStream()
+
+    assert loop._a_freecad_of_our_own(events) is None
+    errors = events.of(ERROR)
+    assert len(errors) == 1
+    assert "RuntimeError" in errors[0].data["message"]
+    assert "no headless binary" in errors[0].data["message"]
+
+
 def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch):
     """
     A timeout per outline is no bound at all: a sweep can spend one timeout for
@@ -8117,7 +8158,7 @@ def test_a_sheet_is_read_once_however_many_phases_ask_for_it(tmp_path, monkeypat
 
     Reading one is not cheap: measured on the four sheets in `tests/modelmania`,
     the three phases cost 17.3 s when each re-renders them and 6.2 s when the
-    reader hands back what it already read. The cache is `_ALREADY_READ`, keyed
+    reader hands back what it already read. The cache is `_read_cached`, keyed
     by what the file is, so this holds the phases to one render and not the
     reader to one call.
     """
@@ -8130,7 +8171,7 @@ def test_a_sheet_is_read_once_however_many_phases_ask_for_it(tmp_path, monkeypat
     def no_headless_freecad(*_, **__):
         raise RuntimeError("No headless FreeCAD found.")
 
-    monkeypatch.setattr(loop.sheet_reader, "_ALREADY_READ", {})
+    loop.sheet_reader._read_cached.cache_clear()
     monkeypatch.setattr(loop.sheet_reader, "_read",
                         lambda where, *_, **__: read.append(where) or sheet)
     monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
@@ -8777,6 +8818,33 @@ def test_corrupted_cache_file_does_not_crash_the_run(tmp_path):
 
     looks.remember("describe_type", {"type_id": "PartDesign::Hole"}, 
                   {"properties": ["Depth"]})
+
+
+
+def test_two_sessions_writing_the_disk_cache_do_not_erase_each_other(tmp_path):
+    """
+    Two `Looks` each hold their own snapshot of the cache, read once at
+    `__init__`. A second session that already has its snapshot before the
+    first session's write used to overwrite the file with only its own
+    entries, losing the first session's on `os.replace`.
+    """
+    from core.loop import Looks
+
+    cache_path = str(tmp_path / "type_cache.json")
+
+    first_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+    second_looks = Looks(cache_path=cache_path, freecad_version="0.21.0")
+
+    first_looks.remember("describe_type", {"type_id": "PartDesign::Pad"},
+                        {"properties": ["Length"]})
+    second_looks.remember("describe_type", {"type_id": "PartDesign::Fillet"},
+                         {"properties": ["Radius"]})
+
+    with open(cache_path, encoding="utf-8") as handle:
+        on_disk = json.load(handle)
+
+    assert len(on_disk) == 2, \
+        "both sessions' entries survive; neither write erases the other"
 
 
 def test_disk_cached_type_is_reported_as_already_known(tmp_path):

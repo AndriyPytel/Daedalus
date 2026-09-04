@@ -17,6 +17,7 @@ lays its labels out differently: a note that mentions a view, and a section
 label printed below the section instead of inside it.
 """
 import os
+import threading
 import time
 
 import numpy
@@ -2020,6 +2021,91 @@ def test_a_read_failure_is_logged_once_and_then_cached_quiet(monkeypatch, caplog
     assert len(warnings) == 1
     assert str(copy) in warnings[0].message
 
+
+
+@needs_pymupdf
+def test_two_sessions_reading_the_same_sheet_at_once_render_it_once(monkeypatch, tmp_path):
+    """
+    FCC-267: two `QThread` sessions (FCC-181) can call `read()` on the same
+    path at the same moment; `_ALREADY_READ` was a plain dict with no lock, so
+    both could pass the check before either had written the cache and both
+    would render. `_read` is patched to block until both threads are running,
+    proving the second thread waits on `_READ_LOCK` for the first's result
+    instead of rendering its own.
+    """
+    import shutil as shutil_module
+
+    copy = tmp_path / "fcc-267.pdf"
+    shutil_module.copyfile(SHEET, copy)
+
+    calls = []
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_read(path, into, legible_px, max_edge):
+        calls.append(path)
+        started.set()
+        release.wait(timeout=2)
+        return None
+
+    monkeypatch.setattr(sheet_reader, "_read", slow_read)
+
+    results = []
+
+    def call():
+        results.append(sheet_reader.read(str(copy)))
+
+    first = threading.Thread(target=call)
+    first.start()
+    assert started.wait(timeout=2), "the first thread never reached _read"
+
+    second = threading.Thread(target=call)
+    second.start()
+    release.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert len(calls) == 1
+    assert results == [None, None]
+
+
+def test_the_cache_never_grows_past_128_entries():
+    """
+    FCC-267: `_ALREADY_READ` had no upper bound and lived for the process's
+    whole life. `_read_cached` is an `lru_cache(maxsize=128)`, so pushing 200
+    unique keys through it must still leave at most 128 held.
+    """
+    sheet_reader._read_cached.cache_clear()
+    for i in range(200):
+        path = "/tmp/fcc-267-%d.pdf" % i
+        key = (path, float(i), i, sheet_reader.LEGIBLE_PX, sheet_reader.MAX_EDGE, None)
+        sheet_reader._read_cached(key, path, None, sheet_reader.LEGIBLE_PX,
+                                  sheet_reader.MAX_EDGE)
+
+    assert sheet_reader._read_cached.cache_info().currsize <= 128
+
+
+@needs_pymupdf
+def test_a_page_fills_the_accumulator_by_field_name_not_position(tmp_path):
+    """
+    FCC-266: `_a_page` used to take nine same-typed `list` accumulators as
+    positional arguments — two adjacent ones swapped at the call site compiles
+    and passes static analysis without a warning. Calling it directly against
+    a fresh `_PageAccumulator` and reading each field back by name is the test
+    that a positional swap could not have passed.
+    """
+    document = sheet_reader.pymupdf.open(SHEET)
+    page_state = sheet_reader._PageAccumulator()
+
+    sheet_reader._a_page(document[0], 1, len(document), str(tmp_path),
+                        sheet_reader.LEGIBLE_PX, sheet_reader.MAX_EDGE, page_state)
+
+    assert page_state.overviews and os.path.isfile(page_state.overviews[0])
+    assert page_state.crops
+    assert page_state.printed
+    assert page_state.callouts
+    assert page_state.leaders
+    assert page_state.drawn
 
 def _rectangle_hole(shape, top, left, height, width):
     """A boolean mask, True over one rectangle, for a known hole's patch."""
