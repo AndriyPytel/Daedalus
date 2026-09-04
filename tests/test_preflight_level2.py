@@ -23,6 +23,43 @@ from core.preflight import PreflightWorker, copy_of, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
+
+def _wait_until(predicate, timeout=2.0, interval=0.01):
+    """
+    Polls `predicate` instead of a fixed sleep, so the drain thread gets as
+    long as it actually needs on a slow CI runner and the test does not pay
+    for time it did not need on a fast one. FCC-284.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(interval)
+    raise TimeoutError(f"condition not met within {timeout}s")
+
+
+def test_wait_until_returns_as_soon_as_the_predicate_is_true():
+    """
+    The predicate this poll is built for (`fresh._stderr_text()` catching up)
+    can turn true well inside the old fixed 0.5s — this pins that the loop
+    does not wait out `timeout` regardless. FCC-284.
+    """
+    started = time.monotonic()
+
+    _wait_until(lambda: True, timeout=2.0)
+
+    assert time.monotonic() - started < 0.5
+
+
+def test_wait_until_raises_on_timeout_instead_of_hanging():
+    started = time.monotonic()
+
+    with pytest.raises(TimeoutError):
+        _wait_until(lambda: False, timeout=0.05)
+
+    assert time.monotonic() - started < 0.5
+
+
 CRASHING_CODE = "import ctypes; ctypes.string_at(0)"
 
 GENERIC_DEATH_ENDS = "Rewrite the Step to avoid whatever crashed the core."
@@ -251,7 +288,7 @@ def test_a_death_on_the_write_reports_the_dead_workers_stderr(fresh):
 
     The real race — dying between the liveness check and the write — cannot be
     staged, so the write is what fails here. What is under test is the
-    ordering. The half-second is what the drain thread needs to catch up.
+    ordering. `_wait_until` is what the drain thread gets to catch up.
     """
     class _Dead:
         def write(self, _):
@@ -261,7 +298,7 @@ def test_a_death_on_the_write_reports_the_dead_workers_stderr(fresh):
             pass
 
     fresh.check("import sys; sys.stderr.write('the worker had something to say\\n')")
-    time.sleep(0.5)
+    _wait_until(lambda: "the worker had something to say" in fresh._stderr_text())
     fresh._process.stdin = _Dead()
 
     result = fresh.check("doc.addObject('Part::Box', 'Box')")
@@ -276,14 +313,14 @@ def test_a_step_that_writes_cyrillic_to_stderr_is_read_back_intact(fresh):
     The Worker's stderr is the only diagnostic a later death has to offer, and
     an object Label, a path or a message is not obliged to be ASCII. FCC-51.
 
-    The half-second is what the drain thread needs to catch up.
+    `_wait_until` is what the drain thread gets to catch up.
     """
     result = fresh.check(
         "import sys; sys.stderr.write('деталь не побудована\\n'); sys.stderr.flush()"
     )
 
     assert result.ok, result.traceback
-    time.sleep(0.5)
+    _wait_until(lambda: "деталь не побудована" in fresh._stderr_text())
     assert "деталь не побудована" in fresh._stderr_text()
 
 
@@ -300,14 +337,14 @@ def test_an_undecodable_byte_on_stderr_does_not_cost_us_the_diagnostics(fresh):
     fresh.check(
         r"import sys; sys.stderr.buffer.write(b'\xd0 broken\n'); sys.stderr.flush()"
     )
-    time.sleep(0.5)
+    _wait_until(lambda: "broken" in fresh._stderr_text())
 
     result = fresh.check(
         "import sys; sys.stderr.write('and this still arrives\\n'); sys.stderr.flush()"
     )
 
     assert result.ok, result.traceback
-    time.sleep(0.5)
+    _wait_until(lambda: "and this still arrives" in fresh._stderr_text())
     assert "and this still arrives" in fresh._stderr_text(), \
         "the drain thread died on the undecodable byte and took the rest with it"
 
