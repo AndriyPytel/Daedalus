@@ -2345,6 +2345,13 @@ class Checked:
     `unmet` is the entries that did not hold, named one by one. The traceback
     says the same thing in prose, and prose is what Plan reads; this is what
     survives the end of the run.
+
+    `geometry` is the per-feature fingerprint `check_assertions` measured
+    alongside whatever it was asked to check (FCC-260) — Volume and BoundBox,
+    read back off `PreflightResult` the same way `confirmed` reads `held`.
+    Empty wherever no `check_assertions` call ran, which the fingerprint
+    comparison at the call site reads as "nothing to compare yet" rather than
+    "everything moved".
     """
 
     failed: bool = False
@@ -2352,6 +2359,7 @@ class Checked:
     confirmed: list = field(default_factory=list)
     uncovered: list = field(default_factory=list)
     unmet: list = field(default_factory=list)
+    geometry: dict = field(default_factory=dict)
 
 
 
@@ -2474,7 +2482,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
             unmet = _unmet_in(traceback) or ["the envelope"]
             events.emit(ASSERTION, ok=False, code=measured, confirmed=[],
                         uncovered=[], traceback=traceback, unmet=unmet)
-            return Checked(failed=True, traceback=traceback, unmet=unmet)
+            return Checked(failed=True, traceback=traceback, unmet=unmet,
+                           geometry=result.get("geometry") or {})
 
     attempts = []
     for _ in range(budgets.attempts_per_step):
@@ -2500,7 +2509,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
             held = result.get("held")
             confirmed = list(held) if held is not None else \
                 [entry for entry in acceptance if entry not in uncovered]
-            checked = Checked(confirmed=confirmed, uncovered=uncovered)
+            checked = Checked(confirmed=confirmed, uncovered=uncovered,
+                              geometry=result.get("geometry") or {})
             events.emit(ASSERTION, ok=True, code=code, confirmed=confirmed,
                         uncovered=uncovered, traceback="")
             return checked
@@ -2515,7 +2525,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
             events.emit(ASSERTION, ok=False, code=code, confirmed=confirmed,
                         uncovered=uncovered, traceback=traceback, unmet=unmet)
             return Checked(failed=True, confirmed=confirmed, traceback=traceback,
-                           uncovered=uncovered, unmet=unmet)
+                           uncovered=uncovered, unmet=unmet,
+                           geometry=result.get("geometry") or {})
 
         attempts.append({"code": code, "traceback": traceback})
 
@@ -2585,6 +2596,76 @@ def _why_the_checks_failed(traceback):
                 + traceback)
     return ("The result does not meet its acceptance list. The check that failed says "
             "which entry:\n" + traceback)
+
+
+_GEOMETRY_TOLERANCE = 1e-6
+
+
+def _geometry_close(before, now):
+    return all(abs(a - b) <= _GEOMETRY_TOLERANCE * max(1.0, abs(b))
+               for a, b in zip(before, now))
+
+
+def _geometry_regressions(baseline, geometry, retried):
+    """
+    Features whose geometry moved since the last Assertion pass that held,
+    and were never named in what a retry touched (FCC-260).
+
+    `core/apply.py` and Preflight track only the names a Step declared
+    touching, never whether some other feature's geometry moved underneath a
+    repair Step — `config/prompts/assertion.md` already documents the result:
+    a slot shortened until it passes an acceptance check, a clamp that no
+    longer opens. `entries_a_retry_touched` (this file, the request `assertion`
+    builds) is the one thing this build already tracks about what a retry
+    changed to get past a check, so a feature outside that list moved for no
+    reason the run itself can name.
+
+    The two sides of the match are two different vocabularies with nothing in
+    this codebase relating them. `retried` holds Acceptance citations —
+    `core/design.py::entries`' own address paths, written by Design before any
+    FreeCAD object exists, one string like "features -> ring-split -> width".
+    `geometry`'s keys are FreeCAD `Object.Name`, chosen ad hoc inside whatever
+    Python Execute happened to write (`doc.addObject(TypeId, "Whatever")`) —
+    there is no field anywhere that carries a description id onto the Document
+    object it became. Substring is not a shortcut taken over an exact match
+    that was available; it is the only join there is, because no exact one
+    exists, and the check is fuzzy on both sides of it as a result:
+
+    - A feature whose Name is not a literal substring of the citation prose
+      (the common case — "Fillet" is not a word "ring-split -> width" ever
+      contains) reads as "not named" whether or not a retry actually touched
+      it under a different word for the same thing, biasing this check toward
+      flagging retried features it has no way to recognise as retried.
+    - A feature whose Name happens to be a *prefix* of another Name a retry's
+      citation does mention is excused it never earned: "Slot" reads as
+      "named" the moment a citation contains "SlotChamfer", pinned by
+      `test_a_shorter_names_feature_is_wrongly_excused_by_a_longer_ones_retry`
+      in tests/test_geometry_regression_across_a_run.py.
+
+    `baseline` is a snapshot from the last Assertion pass that held (built by
+    the caller, one entry per feature Volume and BoundBox) rather than
+    anything read off the Document itself: nothing before FCC-260 kept one,
+    so genesis — the very first Assertion pass of a run — has nothing to
+    compare against and reports nothing moved.
+    """
+    named = " ".join(retried or ()).lower()
+    moved = []
+    for name, was in (baseline or {}).items():
+        if name.lower() in named:
+            continue
+        now = (geometry or {}).get(name)
+        if now is None or was is None or _geometry_close(was, now):
+            continue
+        moved.append(name)
+    return sorted(moved)
+
+
+_GEOMETRY_REGRESSION = (
+    "these features' geometry changed and nothing said they were touched: %s. "
+    "A feature not named in what this run built or retried moved anyway — the "
+    "failure config/prompts/assertion.md already documents as a slot "
+    "shortened until it passes, or a clamp that stops opening."
+)
 
 
 def review(intent, views, described, llm, events, attachments=(), checked=None):
@@ -3827,6 +3908,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
     asking = _Asking()
     ledger = Ledger(_FAILED_THIS_WAY)
+    geometry_baseline = {}
 
     def replan(feedback=None, revising=()):
         planned, part["the_part"] = _plan_once_it_knows_enough(
@@ -4031,6 +4113,21 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         checked = (assertion(acceptance, described, tools, llm, events, budgets,
                              cancelled, after_a_retry=outcome.get("retried"))
                    if acceptance else None)
+        if checked is not None and checked.geometry:
+            regressed = _geometry_regressions(geometry_baseline, checked.geometry,
+                                              outcome.get("retried"))
+            if regressed and not checked.failed:
+                traceback = _GEOMETRY_REGRESSION % ", ".join(regressed)
+                events.emit(ASSERTION, ok=False, code="", confirmed=checked.confirmed,
+                            uncovered=checked.uncovered, traceback=traceback,
+                            unmet=regressed)
+                checked = Checked(failed=True, confirmed=checked.confirmed,
+                                  traceback=traceback, uncovered=checked.uncovered,
+                                  unmet=list(checked.unmet) + regressed,
+                                  geometry=checked.geometry)
+            if not checked.failed:
+                geometry_baseline.clear()
+                geometry_baseline.update(checked.geometry)
         progress["unmet"] = (list(checked.unmet) if checked is not None else []) \
             + list(not_reached)
         if checked is not None and checked.failed:

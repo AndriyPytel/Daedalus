@@ -363,6 +363,11 @@ class ApplyPipeline:
         (`PreflightResult`) up as they are — `None` where nothing measured
         them, a list otherwise — and it is the caller's to decide what that
         means, the same way it already decides what `ok` and `traceback` mean.
+
+        `geometry` carries the same per-feature Volume/BoundBox `apply_step`
+        already measures on every Step (`PreflightResult.geometry`, FCC-260) —
+        this is Assertion's only reach into it, since the geometry-diff check
+        the phase repairs against runs once per run rather than once per Step.
         """
         doc = self._dispatch(self._active)
         if doc is None:
@@ -374,7 +379,8 @@ class ApplyPipeline:
         finally:
             _discard(copy)
         return {"ok": bool(checked.ok), "traceback": checked.traceback or "",
-                "held": checked.held, "failed": checked.failed}
+                "held": checked.held, "failed": checked.failed,
+                "geometry": checked.geometry}
 
     def review_views(self):
         """

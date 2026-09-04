@@ -5324,6 +5324,80 @@ def test_failed_assertions_return_to_plan_and_never_to_execute():
     assert events.first(ASSERTION).data["ok"] is False
 
 
+def test_a_feature_that_moved_without_a_retry_touching_it_fails_a_later_assertion_pass():
+    """
+    FCC-260: the geometry-diff defect. A feature no Step named and no retry
+    touched moved between two Assertion passes of the same run — the "slot
+    shortened until it passes" class `config/prompts/assertion.md` documents,
+    caught here rather than only when it happens to sit inside an unmet
+    acceptance entry.
+
+    Review rejects the first pass for an unrelated reason, so a second full
+    cycle runs; nothing in it retries a Step, so `entries_a_retry_touched` is
+    empty. The `Fillet` fingerprint moves anyway (the fake `check_assertions`
+    queue says so, standing in for a real one drifting on this run) and the
+    second Assertion pass fails on it even though both checks in the fake
+    themselves reported `ok: True`.
+    """
+    result, events, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"),
+        code_reply("make()"),
+        assertion_reply(CHECKS),
+        verdict_reply("fail", "wrong flank"),
+        planning_the_nut("Make it again"),
+        code_reply("fix()"),
+        assertion_reply(CHECKS),
+        budgets=Budgets(revisions=1),
+        checks=[
+            {"ok": True, "confirmed": [ACCEPTANCE[0]],
+             "geometry": {"Fillet": [10.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]}},
+            {"ok": True, "confirmed": [ACCEPTANCE[0]],
+             "geometry": {"Fillet": [15.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]}},
+        ])
+
+    assert result.blocked
+    second_pass = events.of(ASSERTION)[-1].data
+    assert second_pass["ok"] is False
+    assert "Fillet" in second_pass["traceback"]
+    assert "Fillet" in second_pass["unmet"]
+
+
+def test_a_feature_named_in_what_a_retry_touched_does_not_fail_a_later_assertion_pass():
+    """
+    The mirror of the test above: the same feature moves, but the retry that
+    passed a Step in the second cycle already named it, so the geometry-diff
+    check is not the thing that sends the workaround back — the existing
+    Assertion verdict decides alone, the same way it did before FCC-260.
+    """
+    A_SPLIT = {"features": [{"id": "ring-split", "kind": "2 mm split",
+                             "width": {"value": "2 mm", "flag": "read"}}]}
+
+    _, events, llm, _ = drive([
+        design_reply(A_SPLIT),
+        plan_reply("Pocket the split", satisfies=everything(A_SPLIT)),
+        code_reply("split_through()"),
+        assertion_reply("assert True, 'the split'"),
+        verdict_reply("fail", "still off"),
+        plan_reply("Pocket the split again", satisfies=everything(A_SPLIT)),
+        code_reply("split_through_2()"),
+        code_reply("split_shortened()"),
+        assertion_reply("assert True, 'the split'"),
+        verdict_reply("pass"),
+    ],
+        budgets=Budgets(revisions=1),
+        applies=[None, failed("this Step left a Body in more than one piece"), None],
+        attachments=[RENDER_PNG],
+        checks=[
+            {"ok": True, "geometry": {"ring-split": [10.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]}},
+            {"ok": True, "geometry": {"ring-split": [8.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]}},
+        ])
+
+    touched = _turns_of(llm, "assertion")[1]["entries_a_retry_touched"]
+    assert "ring-split" in " ".join(touched)
+    assert events.of(ASSERTION)[-1].data["ok"] is True, \
+        "a feature the retry already named should not fail the geometry check"
+
+
 def test_a_run_out_of_revisions_names_the_assertions_not_review():
     """
     FCC-22's separate accounting, extended: a run stopped by failed checks must

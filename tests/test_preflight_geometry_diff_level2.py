@@ -1,28 +1,26 @@
 """
-Level 2 -- Preflight refuses a Step that leaves an untouched sibling feature's
-geometry altered (FCC-260).
+Level 2 -- the geometry fingerprint FCC-260's Assertion check compares, off a
+real headless FreeCAD Document.
 
-`core/apply.py` and Preflight track only the NAMES a Step's own code touched
-(`created`/`deleted`/`modified`) -- never whether some other feature's shape
-moved underneath it. `config/prompts/assertion.md` already documents this
-exact failure class: a slot shortened until it passes an acceptance check, a
-clamp that no longer opens. Both examples are a feature the Step never named
-whose geometry changed anyway, caught here rather than only by accident, if
-the feature's name happened to already sit in the Acceptance list.
+The check itself lives in the Assertion phase (core/loop.py::run,
+core/loop.py::_geometry_regressions), keyed on `entries_a_retry_touched`
+(core/loop.py:2463) rather than on anything Preflight can see -- Preflight's
+own `_recompute_scope` means nothing outside a Step's declared scope can ever
+have a different Shape within one Preflight call (`core/preflight_worker.py`),
+so a per-Step "untouched but moved" check can only ever fire on a legitimate
+dependency cascade (`tests/test_apply_level2.py::
+test_a_dependent_recompute_is_not_reported_as_a_modification`). What
+Preflight can measure, and what `check_assertions` hands the Assertion phase
+every time it runs, is the current fingerprint -- Volume and BoundBox, read
+straight off `PreflightResult.geometry` (`core/preflight_worker.py::
+_geometry_snapshot`). This is that wiring, proved against a real Document;
+the comparison itself is Level 1 (tests/test_geometry_regression_across_a_run.py,
+tests/test_loop.py).
 
 Reproduced with `Part::Fillet` on a `Part::Box`, the same fixture shape
 `test_preflight_worker_recompute_scope.py` already uses for "a dependent left
-stale by a scoped recompute" -- here the Box shrinks by an amount the Fillet
-still fits, so the Fillet stays Valid and only its own geometry changes,
-which is the case that check does not cover.
-
-Left red on purpose: this fixture is the exact shape
-`tests/test_apply_level2.py::test_a_dependent_recompute_is_not_reported_as_a_modification`
-requires to pass -- a legitimate dependency cascade, not the "slot shortened
-by an unrelated retry" class the ticket names. A Preflight-level check strict
-enough to catch this fixture is strict enough to break that test, so which
-phase FCC-260's check actually belongs in is open; see the ticket for the
-resolution before turning this green.
+stale by a scoped recompute": editing the Box moves the Fillet's own Shape as
+a side effect, without the Step ever naming Fillet.
 """
 import pytest
 
@@ -59,58 +57,32 @@ def a_box_with_a_fillet():
         FreeCAD.closeDocument(doc.Name)
 
 
-@pytest.fixture
-def a_box_with_a_fillet_and_an_unrelated_box():
-    """The same Fillet fixture, plus a second Box nothing else depends on."""
-    import FreeCAD
-
-    doc = FreeCAD.newDocument("GeometryDiffFalsePositiveFixture")
-    box = doc.addObject("Part::Box", "Box")
-    box.Length = box.Width = box.Height = 20
-    fillet = doc.addObject("Part::Fillet", "Fillet")
-    fillet.Base = box
-    fillet.Edges = [(1, 2.0, 2.0)]
-    other = doc.addObject("Part::Box", "Other")
-    other.Length = other.Width = other.Height = 5
-    other.Placement.Base.x = 100
-    doc.recompute()
-    try:
-        yield copy_of(doc)
-    finally:
-        FreeCAD.closeDocument(doc.Name)
-
-
-def test_a_feature_that_moved_without_being_named_touched_fails_preflight(worker, a_box_with_a_fillet):
-    result = worker.check(
-        "box = doc.getObject('Box')\n"
-        "box.Length = 15\n"
-        "box.Width = 15\n"
-        "box.Height = 15\n",
-        a_box_with_a_fillet,
-    )
-
-    assert not result.ok, "Fillet's geometry moved as a side effect and was not caught"
-
-
-def test_the_failure_names_the_feature_and_says_it_was_not_declared_touched(worker, a_box_with_a_fillet):
-    said = worker.check(
-        "box = doc.getObject('Box')\n"
-        "box.Length = 15\n"
-        "box.Width = 15\n"
-        "box.Height = 15\n",
-        a_box_with_a_fillet,
-    ).traceback
-
-    assert "Fillet" in said, said
-    assert "not" in said and "touched" in said, \
-        "the failure does not say the feature was never declared touched: %s" % said
-
-
-def test_a_step_that_only_touches_what_it_declares_passes(worker, a_box_with_a_fillet_and_an_unrelated_box):
-    result = worker.check(
-        "other = doc.getObject('Other')\n"
-        "other.Length = 8\n",
-        a_box_with_a_fillet_and_an_unrelated_box,
-    )
+def test_a_successful_check_carries_a_fingerprint_for_every_feature(worker, a_box_with_a_fillet):
+    result = worker.check("pass\n", a_box_with_a_fillet)
 
     assert result.ok, result.traceback
+    assert set(result.geometry) == {"Box", "Fillet"}
+    assert all(len(fingerprint) == 7 for fingerprint in result.geometry.values()), \
+        "Volume plus a six-number BoundBox is the whole of the fingerprint"
+
+
+def test_editing_the_box_moves_the_fillets_own_fingerprint_too(worker, a_box_with_a_fillet):
+    before = worker.check("pass\n", a_box_with_a_fillet).geometry["Fillet"]
+
+    after = worker.check(
+        "box = doc.getObject('Box')\n"
+        "box.Length = 15\n"
+        "box.Width = 15\n"
+        "box.Height = 15\n",
+        a_box_with_a_fillet,
+    ).geometry["Fillet"]
+
+    assert before != after, \
+        "Fillet's geometry did not move as a side effect of resizing Box -- fixture is wrong"
+
+
+def test_a_check_that_touches_nothing_reports_the_same_fingerprint_twice(worker, a_box_with_a_fillet):
+    first = worker.check("pass\n", a_box_with_a_fillet).geometry
+    second = worker.check("pass\n", a_box_with_a_fillet).geometry
+
+    assert first == second, "an unedited copy fingerprinted differently across two calls"
