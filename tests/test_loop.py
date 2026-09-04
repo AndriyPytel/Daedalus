@@ -3933,6 +3933,8 @@ def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
     assert "the same result seen from" in review_content[0]["text"]
     assert "not several" in review_content[0]["text"]
 
+    assert "review_views" not in llm.calls[2][1]["content"]
+
 
 def test_view_names_names_every_review_view_including_the_section():
     """
@@ -3944,8 +3946,6 @@ def test_view_names_names_every_review_view_including_the_section():
     from core.loop import _VIEW_NAMES
 
     assert len(_VIEW_NAMES) == len(REVIEW_VIEWS)
-
-    assert "review_views" not in llm.calls[2][1]["content"]
 
 
 def test_a_run_with_no_views_still_reaches_a_verdict():

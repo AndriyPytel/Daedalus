@@ -169,7 +169,15 @@ diagonally across from isometric's. `capture_review_views` builds it instead,
 from whatever orientation `viewIsometric` is already holding.
 """
 
-REVIEW_VIEWS = ("viewIsometric", _OPPOSITE_ISOMETRIC, "viewTop", "viewFront")
+_SECTION_VIEW = "section"
+"""
+Not a `FreeCADGui` orientation either — `capture_review_views` builds the
+cutaway itself, clipping through whatever `_section_plane` finds to be the
+part's own interior, the way FreeCAD's own View > Cross-sections does
+(`View3DInventorPy.toggleClippingPlane`).
+"""
+
+REVIEW_VIEWS = ("viewIsometric", _OPPOSITE_ISOMETRIC, "viewTop", "viewFront", _SECTION_VIEW)
 
 
 _A_3D_VIEW = "Gui::View3DInventor"
@@ -307,17 +315,58 @@ def fit_view(document=None):
             view_object.Visibility = True
 
 
+def _section_plane(document):
+    """
+    A placement that cuts through the part's real interior, not one of its
+    faces — the one thing a shell, a bore or a blind pocket needs to become
+    visible that the existing four views cannot give it (FCC-261).
+
+    Read off the same real geometry `overall_size` measures rather than
+    guessed at: the middle of the modelled bounding box's Y axis is inside
+    the material on any part, whatever it is modelled along, and inside the
+    cavity too when the cavity sits where cavities usually do — centred in
+    what holds it.
+
+    `document` is the Session's own bound Document (FCC-181); the `None`
+    default reads `FreeCAD.ActiveDocument`, matching every other reader in
+    this module. None with nothing modelled to cut through yet.
+    """
+    import FreeCAD
+
+    doc = document if document is not None else FreeCAD.ActiveDocument
+    if doc is None:
+        return None
+    box = None
+    for obj in doc.Objects:
+        bound = _measurable(obj)
+        if bound is None:
+            continue
+        box = bound if box is None else box.united(bound)
+    if box is None:
+        return None
+    return FreeCAD.Placement(box.Center, FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), -90))
+
+
 def capture_review_views(paths, document=None, size=(800, 600)):
     """
-    The four views Review judges, captured once, camera put back afterwards.
+    The five views Review judges, captured once, camera put back afterwards.
 
-    Two isometrics from opposite corners of the part's box, plus top and
-    front. Front-right-top and the corner diagonally across from it between
-    them show every one of a cube's six faces by construction, which the old
-    isometric/front/top/right never did — three of the six were outside all
-    four of those, the same blind spot `FCC-63` closed for a single mirrored
-    isometry, one level deeper. The spellings were checked against
-    libFreeCADGui rather than recalled.
+    Two isometrics from opposite corners of the part's box, plus top, front
+    and a section. Front-right-top and the corner diagonally across from it
+    between them show every one of a cube's six faces by construction, which
+    the old isometric/front/top/right never did — three of the six were
+    outside all four of those, the same blind spot `FCC-63` closed for a
+    single mirrored isometry, one level deeper. The spellings were checked
+    against libFreeCADGui rather than recalled.
+
+    The section is a fifth capture, not a replacement (FCC-261): a shell, a
+    bore or a blind pocket is invisible to all four of the others because
+    none of them cuts into the part. `_section_plane` finds where to cut;
+    `toggleClippingPlane` is the same call FreeCAD's own View > Cross-sections
+    makes, so the cutaway a user could open by hand is the one Review is
+    handed. A part with nothing modelled yet has no plane to cut with, and
+    that capture is skipped rather than saved as a plain front view wearing
+    the section's name.
 
     `document` is the Session's own bound Document (FCC-181), read through
     `FreeCADGui.getDocument(name)` rather than whichever tab is in front.
@@ -325,9 +374,10 @@ def capture_review_views(paths, document=None, size=(800, 600)):
     Returns the paths actually written — empty with no GUI, which is what
     leaves the headless fallback to the Preflight Worker's rasteriser.
 
-    The camera is restored whatever happens. The user did not ask for their
-    view to be moved, and a run that ends with the part face-on because Review
-    looked at it last has damaged something that belongs to them.
+    The camera is restored whatever happens, and so is the clipping plane:
+    the user did not ask for their view to be moved or left mid-cutaway, and
+    a run that ends with the part face-on or sectioned because Review looked
+    at it last has damaged something that belongs to them.
     """
     import FreeCAD
 
@@ -342,10 +392,17 @@ def capture_review_views(paths, document=None, size=(800, 600)):
             if name == _OPPOSITE_ISOMETRIC:
                 view.setCameraOrientation(view.getCameraOrientation().multiply(
                     FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), 180)))
+            elif name == _SECTION_VIEW:
+                plane = _section_plane(document)
+                if plane is None:
+                    continue
+                view.toggleClippingPlane(1, False, True, plane)
             else:
                 getattr(view, name)()
             view.fitAll()
             view.saveImage(path, size[0], size[1], "Current")
+            if name == _SECTION_VIEW:
+                view.toggleClippingPlane(0)
             written.append(path)
     finally:
         view.setCamera(camera)
