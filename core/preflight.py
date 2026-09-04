@@ -305,7 +305,10 @@ class PreflightWorker:
             return None
         if raw is None:
             return None
-        return json.loads(raw)
+        try:
+            return json.loads(raw)
+        except ValueError:
+            return None
 
     def _stderr_text(self):
         return "".join(self._stderr or [])[-4000:]

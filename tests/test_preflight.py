@@ -110,3 +110,16 @@ def test_a_restart_that_fails_after_a_death_is_a_result_and_not_an_exception(
 
 def _never_comes_up(*_, **__):
     raise RuntimeError("Preflight Worker did not come up: ")
+
+
+def test_a_truncated_json_line_is_a_dead_worker_not_a_raised_exception(unstarted):
+    """
+    A worker can die mid-write of its own response — `respond()`'s
+    `sys.stdout.write` gets cut off without the trailing newline, most often
+    by a segfault inside the FreeCAD core. `_await_response` must treat that
+    the same way it treats a dead reader: a result, not a `JSONDecodeError`
+    escaping the "never raises" contract. FCC-275.
+    """
+    unstarted._lines.put('{"ok": true, "featur')
+
+    assert unstarted._await_response(timeout=1) is None
