@@ -56,6 +56,7 @@ for.
 attach dialog offers. A PDF is a full attachment rather than a second-class
 one: drawings arrive as PDFs.
 """
+import collections
 import json
 import os
 import re
@@ -706,6 +707,13 @@ class ClaudeCodeClient:
         count, and the words never follow. One chunk rather than one per
         delta, because the count was reported before and 1506 lines of it
         filled a 45-minute session with a number nobody can act on.
+
+        `noise` keeps the last lines `_parsed` dropped as not-JSON: since
+        stderr is merged into stdout (`_spawn_claude`), that is where the CLI's
+        plain-text error lands on a failing exit, and it is the only detail
+        left to report once `process.stderr` is `None`. `process.stderr` is
+        still read when `noise` is empty, for a `process` that keeps it
+        separate rather than merged.
         """
         overdue = threading.Event()
 
@@ -721,9 +729,12 @@ class ClaudeCodeClient:
             process.stdin.close()
 
             said_it_was_thinking = False
+            noise = collections.deque(maxlen=20)
             for line in process.stdout:
                 event = _parsed(line)
                 if event is None:
+                    if line.strip():
+                        noise.append(line.strip())
                     continue
                 refusal = _refusal_in(event, self.model)
                 if refusal is not None:
@@ -744,11 +755,13 @@ class ClaudeCodeClient:
                     "again, or ask for a smaller Step." % self.model,
                     "no reply in %g seconds" % self.timeout)
             if code:
+                detail = "\n".join(noise).strip()
+                if not detail:
+                    detail = ((process.stderr and process.stderr.read()) or "").strip()
                 raise ProviderRefused(
                     "%s could not be reached: the claude CLI exited with status %s. "
                     "Check it is installed and signed in with `claude auth status`."
-                    % (self.model, code),
-                    (process.stderr.read() or "").strip()[:400])
+                    % (self.model, code), detail[:400])
         finally:
             ceiling.cancel()
             process.kill()
@@ -761,6 +774,12 @@ def _spawn_claude(argv: list, cwd: str):
     The pipes are decoded as UTF-8 rather than by the locale: inside FreeCAD.app
     neither LANG nor LC_ALL is set, so the locale resolves to ascii and the
     first non-ASCII byte kills the read.
+
+    stderr is merged into stdout: `claude` runs with `--verbose`, and an
+    undrained stderr pipe fills its OS buffer and deadlocks the write, taking
+    the stdout read loop down with it. `_parsed` already drops any line that
+    is not the expected JSON, so the merged CLI noise is skipped rather than
+    mistaken for an event.
     """
     return subprocess.Popen(
         argv,
@@ -768,7 +787,7 @@ def _spawn_claude(argv: list, cwd: str):
         env=_environment(),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
         encoding="utf-8",
         errors="replace",

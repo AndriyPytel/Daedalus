@@ -20,7 +20,10 @@ import json
 import os
 import shutil
 import subprocess
+import sys
+import tempfile
 import threading
+import time
 
 import pytest
 
@@ -375,6 +378,71 @@ def test_a_call_that_never_answers_ends_the_run_rather_than_hanging_it():
     assert "did not answer in time" in str(refusal.value)
     assert spawn.process.killed.is_set(), "the process was left running"
 
+
+
+def test_stderr_beyond_the_os_pipe_buffer_does_not_block_the_stream():
+    """
+    `claude` is started with `--verbose`, so its stderr can carry more than
+    the OS pipe buffer (~64 KB). A separate `stderr=PIPE` nobody drains until
+    the process exits blocks that write, and the `for line in process.stdout`
+    loop this code reads its answer from blocks with it, right up to the
+    ceiling. `stderr=subprocess.STDOUT` in `_spawn_claude` folds it into the
+    same pipe this loop already reads, so there is nothing left to block on.
+    """
+    script = (
+        "import sys\n"
+        "sys.stderr.write('x' * 200000 + chr(10))\n"
+        "sys.stderr.flush()\n"
+        "print('{\"type\": \"result\", \"subtype\": \"success\", "
+        "\"is_error\": false, \"total_cost_usd\": 0.01}')\n"
+    )
+    handle = tempfile.NamedTemporaryFile(
+        mode="w", suffix=".py", delete=False, encoding="utf-8")
+    handle.write(script)
+    handle.close()
+
+    def spawn(argv, cwd):
+        return llm._spawn_claude([sys.executable, handle.name], cwd)
+
+    client = ClaudeCodeClient(model=MODEL, spawn=spawn, timeout=5.0)
+
+    try:
+        started = time.monotonic()
+        collect(client.stream(a_turn()))
+        elapsed = time.monotonic() - started
+    finally:
+        os.unlink(handle.name)
+
+    assert elapsed < 5.0
+
+
+def test_the_clis_plain_text_noise_survives_as_the_error_detail_once_merged():
+    """
+    FCC-273 merged stderr into stdout, so `process.stderr` is `None` and no
+    longer carries the reason a non-zero exit failed -- the CLI's plain-text
+    lines, dropped by `_parsed` as noise, are the only trace of it left.
+    """
+    class _ProcessWithMergedStderr:
+        def __init__(self, lines, returncode):
+            self.stdin = _Pipe()
+            self.stdout = iter(lines)
+            self.stderr = None
+            self.returncode = returncode
+
+        def kill(self):
+            pass
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    process = _ProcessWithMergedStderr(
+        ["Error: invalid API key\n", "some other CLI noise\n"], returncode=1)
+    client, _ = client_over(process)
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream(a_turn()))
+
+    assert "invalid API key" in refusal.value.said
 
 def test_the_ceiling_a_call_waits_under_is_the_one_its_own_effort_measured():
     """A call is made at one effort, and the wait it is allowed is that effort's."""
