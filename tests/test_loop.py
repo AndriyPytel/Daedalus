@@ -5489,8 +5489,12 @@ def test_review_is_told_not_to_fail_on_a_suspicion_the_checks_never_confirmed():
     stops that reading from becoming its own `fail`: the same rule that
     already keeps a dimension off the picture (`a diameter was never a
     pixel`), generalised from dimensions to any visual suspicion (FCC-204).
+    Proof has to be the request `review()` actually receives, not the static
+    prompt text: `checked=` is the channel this carries, and it stays gated
+    to `review()` alone (not `review_suspect()`, which runs before Assertion
+    and cannot see what the checks found).
     """
-    _, _, llm, _ = a_run_over_the_nut(
+    result, _, llm, _ = a_run_over_the_nut(
         planning_the_nut("Make it"),
         code_reply("make()"),
         suspect_reply(),
@@ -5498,10 +5502,11 @@ def test_review_is_told_not_to_fail_on_a_suspicion_the_checks_never_confirmed():
         verdict_reply("pass"),
         views=[RENDER_PNG] * 4)
 
-    review_system = _system_messages(llm)[-1]
+    review_request = json.loads(llm.calls[-1][1]["content"][0]["text"].split("\n\n")[0])
 
-    assert review_system == prompt("review")
-    assert "hypothesis to measure" in review_system
+    assert review_request["what_the_checks_could_not_cover"] == [ACCEPTANCE[1]]
+    assert result.ok
+    assert result.verdict == "pass"
 
 
 def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():

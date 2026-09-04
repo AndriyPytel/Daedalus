@@ -10,9 +10,10 @@ import os
 import pytest
 
 from core.measure import Measurement, compare, measure
+from core.events import REVIEW_VERDICT
 from tests.test_loop import (
     ASSERT_FAILED, CHECKS, a_run_over_the_nut, assertion_failed,
-    assertion_reply, code_reply, planning_the_nut, verdict_reply,
+    assertion_reply, code_reply, planning_the_nut, suspect_reply, verdict_reply,
 )
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "recorded", "sessions")
@@ -138,18 +139,25 @@ def test_a_run_with_a_failed_assertion_that_passed_on_retry(tmp_path):
     One failed check, replanned, one that passed: half of this run's own
     Assertion attempts failed. Built through `core.loop.run` itself rather
     than hand-written JSON, because nothing in `tests/recorded/sessions`
-    carries a failed `assertion` event.
+    carries a failed `assertion` event. `result.ok` and a logged
+    `review_verdict` event guard against a script that scores a rate of
+    0.0 for the wrong reason — an aborted run with zero verdicts logged
+    reads identically to a run where Review genuinely never failed.
     """
-    _, events, _, _ = a_run_over_the_nut(
+    result, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"),
         code_reply("make()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply(CHECKS),
         planning_the_nut("Make it 13 mm across the flats"),
         code_reply("fix()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply(CHECKS),
+        verdict_reply("pass"),
         checks=[assertion_failed(ASSERT_FAILED), None])
+
+    assert result.ok
+    assert events.first(REVIEW_VERDICT) is not None
 
     log_path = str(tmp_path / "run.jsonl")
     with open(log_path, "w", encoding="utf-8") as handle:
