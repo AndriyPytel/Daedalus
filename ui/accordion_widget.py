@@ -89,6 +89,8 @@ class AccordionWidget(QtWidgets.QFrame):
 
         self._is_expanded = False
         self._detail = True
+        self._buffer = ""
+        self._flush_pending = False
         self._anim = None
         self._effect = None
         self._clock = None
@@ -101,13 +103,36 @@ class AccordionWidget(QtWidgets.QFrame):
         Appends by straight concatenation: reasoning arrives as fragments and
         carries its own newlines, so a paragraph break per call would break a
         streamed sentence across a dozen lines.
+
+        `content_area` has word-wrap on, so `setText` relays out everything
+        accumulated so far, not just the new fragment. Buffering here and
+        flushing once per event-loop turn (`QTimer.singleShot(0, ...)`)
+        coalesces a whole burst of streamed deltas into one relayout instead
+        of one per delta.
         """
-        self.content_area.setText(self.content_area.text() + text)
+        self._buffer += text
+        if not self._flush_pending:
+            self._flush_pending = True
+            QtCore.QTimer.singleShot(0, self._flush)
         if not self._detail:
             self._detail = True
             self.setCursor(QtCore.Qt.ArrowCursor)
             self.toggle_button.setCursor(QtCore.Qt.PointingHandCursor)
             self._paint_chevron()
+
+    def _flush(self):
+        """
+        A row can be gone by the time its flush fires -- the transcript
+        widget it lived in was cleared or replaced -- so `setText` on an
+        already-deleted QLabel is swallowed rather than left to abort the
+        rest of this event-loop pass, which is what one dead row otherwise
+        does to every other flush queued behind it.
+        """
+        self._flush_pending = False
+        try:
+            self.content_area.setText(self._buffer)
+        except RuntimeError:
+            pass
 
     def opens_onto_nothing(self):
         """
