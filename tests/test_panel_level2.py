@@ -3614,3 +3614,88 @@ def test_copilot_panel_has_no_dead_request_work_signal():
     from ui.copilot_panel import CopilotPanel
 
     assert not hasattr(CopilotPanel, "request_work")
+
+
+def _kinds_referenced_in(source: str) -> set:
+    """
+    Every `ev.NAME`-shaped token appearing in a method's own source, standing
+    in for "this kind is handled here" without parsing the branch structure —
+    the three dispatchers guard some kinds with an extra condition
+    (`ev.ASSERTION and data.get("ok") is not None`) and a regex over the
+    source sees those the same as a plain `==`, which is what a completeness
+    check needs: mentioned at all, not mentioned in a particular shape.
+    """
+    import re
+
+    return set(re.findall(r"ev\.([A-Z_]+)", source))
+
+
+def _unhandled_kinds(all_kinds, method_sources, allowlist):
+    handled = set(allowlist)
+    for source in method_sources:
+        handled |= _kinds_referenced_in(source)
+    return set(all_kinds) - handled
+
+
+PANEL_DISPATCH_ALLOWLIST = {
+    "QUESTION", "ANSWER", "DESIGN", "OUTSTANDING", "REVIEW_SUSPECTED",
+}
+
+
+def test_every_event_kind_is_handled_by_a_panel_dispatcher_or_allowlisted():
+    """
+    `on_event`, `_update_queue` and `_update_review_evidence` (FCC-285) each
+    run their own `if event.kind == ev.X` chain over the same stream. A kind
+    missing from all three today renders nothing and fails nothing — this is
+    the CI check that would have caught it, without touching any of the three
+    chains: it just reads their source and cross-checks it against
+    `core.events.KINDS`.
+
+    `PANEL_DISPATCH_ALLOWLIST` is the kinds none of the three chains branch
+    on by name: `QUESTION`/`ANSWER` never reach the panel as events (they are
+    the loop asking and the user answering), and `DESIGN`/`OUTSTANDING`/
+    `REVIEW_SUSPECTED` are narrated generically by `_say(narrate(event))`
+    at the tail of `on_event` rather than singled out.
+    """
+    import inspect
+
+    from core import events as ev
+    from ui.copilot_panel import CopilotPanel
+
+    sources = [
+        inspect.getsource(CopilotPanel.on_event),
+        inspect.getsource(CopilotPanel._update_queue),
+        inspect.getsource(CopilotPanel._update_review_evidence),
+    ]
+    kind_names = {name for name in dir(ev) if name.isupper() and getattr(ev, name) in ev.KINDS}
+
+    missing = _unhandled_kinds(kind_names, sources, PANEL_DISPATCH_ALLOWLIST)
+    assert not missing, (
+        f"event kind(s) {missing} are in core.events.KINDS but not handled by "
+        f"on_event/_update_queue/_update_review_evidence and not in "
+        f"PANEL_DISPATCH_ALLOWLIST"
+    )
+
+
+def test_the_completeness_check_actually_catches_a_missing_kind():
+    """
+    Proves `_unhandled_kinds` is not a check that always passes: a fake kind
+    left out of every fixture source and out of the allowlist is reported,
+    and putting it back into either clears the report. Runs against a fake
+    kind and fake sources so it says nothing about the real `core.events`.
+    """
+    fake_kinds = ("KEPT", "DROPPED")
+    handled_source = 'if event.kind == ev.KEPT:\n    pass\n'
+    unhandled_source = 'if event.kind == ev.OTHER:\n    pass\n'
+
+    missing = _unhandled_kinds(fake_kinds, [handled_source, unhandled_source], allowlist=set())
+    assert missing == {"DROPPED"}
+
+    missing_allowlisted = _unhandled_kinds(
+        fake_kinds, [handled_source, unhandled_source], allowlist={"DROPPED"})
+    assert missing_allowlisted == set()
+
+    handled_source_with_dropped = handled_source + 'elif event.kind == ev.DROPPED:\n    pass\n'
+    missing_now_handled = _unhandled_kinds(
+        fake_kinds, [handled_source_with_dropped, unhandled_source], allowlist=set())
+    assert missing_now_handled == set()

@@ -787,6 +787,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
     be in front.
     """
 
+    _ON_EVENT_DISPATCH = None
+    _QUEUE_DISPATCH = None
+    _EVIDENCE_DISPATCH = None
+
     def __init__(self):
         super().__init__("FreeCAD Copilot")
         self.setObjectName("FreeCadCopilotPanel")
@@ -1765,8 +1769,16 @@ class CopilotPanel(QtWidgets.QDockWidget):
         of code, a picture, reasoning as it streams, and the path of the
         document as a link that opens it.
 
-        No calls back into the loop. A kind nobody narrates and nobody renders
-        is simply not shown — nothing breaks.
+        No calls back into the loop. `_ON_EVENT_DISPATCH` is one table, built
+        once and cached on the class the first time an event arrives, mapping
+        every `core.events.KINDS` member to a `_oe_*` method that returns True
+        to end the method here or False to fall through to the narrated line
+        below (FCC-285) -- the same shape `_update_queue` and
+        `_update_review_evidence` share. A kind the table does not name is not
+        silently skipped: `_report_unknown_kind` puts it on the transcript
+        instead, because `tests/test_panel_level2.py`'s completeness test is
+        what keeps the table matching `core.events.KINDS`, not a promise
+        nothing here can break.
 
         Structure is handled first: those events carry more than a sentence,
         and some of them also change the Plan widget's marks. The revised Steps
@@ -1798,59 +1810,39 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._update_queue(event)
         self._update_review_evidence(event)
 
-        if event.kind == ev.CALL_STARTED:
+        if CopilotPanel._ON_EVENT_DISPATCH is None:
+            CopilotPanel._ON_EVENT_DISPATCH = {
+                ev.CALL_STARTED: CopilotPanel._oe_call_started,
+                ev.COST: CopilotPanel._oe_cost,
+                ev.THOUGHT: CopilotPanel._oe_thought,
+                ev.WRITING: CopilotPanel._oe_writing,
+                ev.ATTACHED: CopilotPanel._oe_attached,
+                ev.TOOL_CALL: CopilotPanel._oe_tool_call,
+                ev.TOOL_RESULT: CopilotPanel._oe_tool_result,
+                ev.PART: CopilotPanel._oe_part,
+                ev.PLAN: CopilotPanel._oe_plan,
+                ev.ASSERTION: CopilotPanel._oe_assertion,
+                ev.STEP_STARTED: CopilotPanel._oe_step_started,
+                ev.APPLIED: CopilotPanel._oe_applied,
+                ev.BLOCKED: CopilotPanel._oe_blocked,
+                ev.QUESTION: CopilotPanel._noop,
+                ev.ANSWER: CopilotPanel._noop,
+                ev.DESIGN: CopilotPanel._noop,
+                ev.OUTSTANDING: CopilotPanel._noop,
+                ev.REVIEW_SUSPECTED: CopilotPanel._noop,
+                ev.GATE: CopilotPanel._noop,
+                ev.UNBUILT: CopilotPanel._noop,
+                ev.PREFLIGHT_FAILED: CopilotPanel._noop,
+                ev.REVIEW_VERDICT: CopilotPanel._noop,
+                ev.PLAN_REVISED: CopilotPanel._noop,
+                ev.ERROR: CopilotPanel._noop,
+            }
+
+        handler = CopilotPanel._ON_EVENT_DISPATCH.get(event.kind)
+        if handler is None:
+            self._report_unknown_kind(event, "on_event")
+        elif handler(self, event, data):
             return
-
-        if event.kind == ev.COST:
-            self._total_usd += data.get("usd", 0.0)
-            self._last_event_time = event.at
-            self._update_usage_total()
-            self._the_thinking_stops(data.get("phase"))
-            return
-
-        if event.kind == ev.THOUGHT:
-            self._render_thought(data["phase"], data["text"])
-            return
-
-        if event.kind == ev.WRITING:
-            self._render_writing(data["phase"], data["text"])
-            return
-
-        if event.kind == ev.ATTACHED:
-            self._render_attachments(data["files"])
-            return
-
-        if event.kind == ev.TOOL_CALL:
-            self._render_tool_call(data["name"], data["arguments"], event.at)
-            return
-
-        if event.kind == ev.TOOL_RESULT:
-            self._time_the_tool_call(event.at)
-
-        if event.kind == ev.PART:
-            self._render_part(narrate(event).line, data["path"])
-            return
-
-        if event.kind == ev.PLAN:
-            self._render_plan(data["steps"], "Plan", data.get("acceptance", ()),
-                              data.get("unanswered", ()), data.get("decided", ()))
-            return
-
-        if event.kind == ev.ASSERTION and data.get("ok") is not None:
-            self.add_chat_widget(AssertionResultsWidget(data))
-            return
-
-        if event.kind == ev.STEP_STARTED:
-            self._the_thinking_stops()
-            self._current_step = data["index"]
-            if self._plan_widget:
-                self._plan_widget.highlight(data["index"])
-
-        elif event.kind == ev.APPLIED and self._plan_widget:
-            self._plan_widget.mark(data["step"], PLAN_DONE)
-
-        elif event.kind == ev.BLOCKED and self._plan_widget and self._current_step:
-            self._plan_widget.mark(self._current_step, PLAN_FAILED)
 
         if not self._card_will_repeat_it(event):
             self._say(narrate(event))
@@ -1858,6 +1850,84 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if event.kind == ev.PLAN_REVISED:
             self._render_plan(data["steps"], "Revised Plan", data.get("acceptance", ()),
                               data.get("unanswered", ()), data.get("decided", ()))
+
+    def _oe_call_started(self, event, data):
+        return True
+
+    def _oe_cost(self, event, data):
+        self._total_usd += data.get("usd", 0.0)
+        self._last_event_time = event.at
+        self._update_usage_total()
+        self._the_thinking_stops(data.get("phase"))
+        return True
+
+    def _oe_thought(self, event, data):
+        self._render_thought(data["phase"], data["text"])
+        return True
+
+    def _oe_writing(self, event, data):
+        self._render_writing(data["phase"], data["text"])
+        return True
+
+    def _oe_attached(self, event, data):
+        self._render_attachments(data["files"])
+        return True
+
+    def _oe_tool_call(self, event, data):
+        self._render_tool_call(data["name"], data["arguments"], event.at)
+        return True
+
+    def _oe_tool_result(self, event, data):
+        self._time_the_tool_call(event.at)
+        return False
+
+    def _oe_part(self, event, data):
+        from core.narrate import narrate
+
+        self._render_part(narrate(event).line, data["path"])
+        return True
+
+    def _oe_plan(self, event, data):
+        self._render_plan(data["steps"], "Plan", data.get("acceptance", ()),
+                          data.get("unanswered", ()), data.get("decided", ()))
+        return True
+
+    def _oe_assertion(self, event, data):
+        if data.get("ok") is not None:
+            self.add_chat_widget(AssertionResultsWidget(data))
+            return True
+        return False
+
+    def _oe_step_started(self, event, data):
+        self._the_thinking_stops()
+        self._current_step = data["index"]
+        if self._plan_widget:
+            self._plan_widget.highlight(data["index"])
+        return False
+
+    def _oe_applied(self, event, data):
+        if self._plan_widget:
+            self._plan_widget.mark(data["step"], PLAN_DONE)
+        return False
+
+    def _oe_blocked(self, event, data):
+        if self._plan_widget and self._current_step:
+            self._plan_widget.mark(self._current_step, PLAN_FAILED)
+        return False
+
+    def _noop(self, event, data):
+        return False
+
+    def _report_unknown_kind(self, event, dispatcher):
+        """
+        An `event.kind` none of the three dispatch tables names, put on the
+        transcript instead of the silent no-op FCC-285 found: with the
+        completeness test in `tests/test_panel_level2.py` holding every table
+        to `core.events.KINDS`, the one way to reach this is a session log
+        that names a kind no code in this file ever emitted.
+        """
+        self.add_chat_widget(AssistantMessageWidget(
+            "\u26a0 %s: unrecognized event kind %r" % (dispatcher, event.kind)))
 
     @staticmethod
     def _card_will_repeat_it(event) -> bool:
@@ -1882,46 +1952,91 @@ class CopilotPanel(QtWidgets.QDockWidget):
         Time tracking uses event.at deltas so replayed sessions show the same
         durations the live run showed. CALL_STARTED starts the live call clock;
         COST ends it.
-        """
-        from core import events as ev
-        from core.loop import APPROVE
 
+        `_QUEUE_DISPATCH` (FCC-285) is `on_event`'s table shape reused here:
+        built once, cached on the class, one `_uq_*` method per
+        `core.events.KINDS` member so a kind missing here is a fact
+        `tests/test_panel_level2.py`'s completeness test can see.
+        """
         data = event.data
 
-        if event.kind == ev.INTENT:
-            self._queue_widget.reset(at=event.at)
-            return
+        if CopilotPanel._QUEUE_DISPATCH is None:
+            from core import events as ev
+            CopilotPanel._QUEUE_DISPATCH = {
+                ev.INTENT: CopilotPanel._uq_intent,
+                ev.CALL_STARTED: CopilotPanel._uq_call_started,
+                ev.COST: CopilotPanel._uq_cost,
+                ev.THOUGHT: CopilotPanel._noop,
+                ev.WRITING: CopilotPanel._noop,
+                ev.QUESTION: CopilotPanel._noop,
+                ev.ANSWER: CopilotPanel._noop,
+                ev.ATTACHED: CopilotPanel._noop,
+                ev.DESIGN: CopilotPanel._noop,
+                ev.PART: CopilotPanel._uq_part,
+                ev.PLAN: CopilotPanel._uq_plan,
+                ev.PLAN_REVISED: CopilotPanel._uq_plan,
+                ev.GATE: CopilotPanel._uq_gate,
+                ev.STEP_STARTED: CopilotPanel._uq_step_started,
+                ev.TOOL_CALL: CopilotPanel._noop,
+                ev.TOOL_RESULT: CopilotPanel._noop,
+                ev.PREFLIGHT_FAILED: CopilotPanel._uq_preflight_failed,
+                ev.APPLIED: CopilotPanel._uq_applied,
+                ev.ASSERTION: CopilotPanel._uq_assertion,
+                ev.OUTSTANDING: CopilotPanel._noop,
+                ev.UNBUILT: CopilotPanel._uq_unbuilt,
+                ev.REVIEW_VERDICT: CopilotPanel._uq_review_verdict,
+                ev.REVIEW_SUSPECTED: CopilotPanel._noop,
+                ev.BLOCKED: CopilotPanel._uq_fail_current,
+                ev.ERROR: CopilotPanel._uq_fail_current,
+            }
 
-        if event.kind == ev.CALL_STARTED:
-            phase = data.get("phase")
-            ceiling = data.get("ceiling")
-            self._queue_widget.call_started(phase, ceiling, event.at)
-            return
+        handler = CopilotPanel._QUEUE_DISPATCH.get(event.kind)
+        if handler is None:
+            self._report_unknown_kind(event, "_update_queue")
+        else:
+            handler(self, event, data)
 
-        if event.kind == ev.COST:
-            self._queue_widget.call_ended(event.at)
-            return
+    def _uq_intent(self, event, data):
+        self._queue_widget.reset(at=event.at)
 
-        if event.kind == ev.PART:
-            self._queue_widget.design_written(at=event.at)
-        elif event.kind in (ev.PLAN, ev.PLAN_REVISED):
-            self._queue_widget.start_plan(data["steps"], at=event.at)
-        elif event.kind == ev.GATE and data.get("decision") == APPROVE:
+    def _uq_call_started(self, event, data):
+        self._queue_widget.call_started(data.get("phase"), data.get("ceiling"), event.at)
+
+    def _uq_cost(self, event, data):
+        self._queue_widget.call_ended(event.at)
+
+    def _uq_part(self, event, data):
+        self._queue_widget.design_written(at=event.at)
+
+    def _uq_plan(self, event, data):
+        self._queue_widget.start_plan(data["steps"], at=event.at)
+
+    def _uq_gate(self, event, data):
+        from core.loop import APPROVE
+
+        if data.get("decision") == APPROVE:
             self._queue_widget.start_execute(data.get("steps"), at=event.at)
-        elif event.kind == ev.STEP_STARTED:
-            self._queue_widget.step_started(data["index"], at=event.at)
-        elif event.kind == ev.APPLIED:
-            self._queue_widget.step_applied(data["step"], at=event.at)
-        elif event.kind == ev.UNBUILT:
-            self._queue_widget.step_unbuilt(data["step"], at=event.at)
-        elif event.kind == ev.PREFLIGHT_FAILED:
-            self._queue_widget.step_failed(data["step"], at=event.at)
-        elif event.kind == ev.ASSERTION:
-            self._queue_widget.start_review(at=event.at)
-        elif event.kind == ev.REVIEW_VERDICT:
-            self._queue_widget.finish_review(at=event.at)
-        elif event.kind in (ev.BLOCKED, ev.ERROR):
-            self._queue_widget.fail_current(at=event.at)
+
+    def _uq_step_started(self, event, data):
+        self._queue_widget.step_started(data["index"], at=event.at)
+
+    def _uq_applied(self, event, data):
+        self._queue_widget.step_applied(data["step"], at=event.at)
+
+    def _uq_unbuilt(self, event, data):
+        self._queue_widget.step_unbuilt(data["step"], at=event.at)
+
+    def _uq_preflight_failed(self, event, data):
+        self._queue_widget.step_failed(data["step"], at=event.at)
+
+    def _uq_assertion(self, event, data):
+        self._queue_widget.start_review(at=event.at)
+
+    def _uq_review_verdict(self, event, data):
+        self._queue_widget.finish_review(at=event.at)
+
+    def _uq_fail_current(self, event, data):
+        self._queue_widget.fail_current(at=event.at)
 
     def _update_review_evidence(self, event):
         """
@@ -1936,18 +2051,59 @@ class CopilotPanel(QtWidgets.QDockWidget):
         after them or the cycle stops there -- so a verdict left over from an
         earlier revision of this same run cannot be mistaken for the one
         belonging to this cycle.
-        """
-        from core import events as ev
 
+        `_EVIDENCE_DISPATCH` is the third of the FCC-285 tables -- see
+        `_update_queue` for why every kind gets an entry rather than a
+        default.
+        """
         data = event.data
 
-        if event.kind == ev.ASSERTION:
-            self._last_assertion_event = event
-            self._last_review_verdict_event = None
-        elif event.kind == ev.TOOL_RESULT and data.get("name") == "review_views":
+        if CopilotPanel._EVIDENCE_DISPATCH is None:
+            from core import events as ev
+            CopilotPanel._EVIDENCE_DISPATCH = {
+                ev.INTENT: CopilotPanel._noop,
+                ev.THOUGHT: CopilotPanel._noop,
+                ev.WRITING: CopilotPanel._noop,
+                ev.QUESTION: CopilotPanel._noop,
+                ev.ANSWER: CopilotPanel._noop,
+                ev.ATTACHED: CopilotPanel._noop,
+                ev.DESIGN: CopilotPanel._noop,
+                ev.PART: CopilotPanel._noop,
+                ev.PLAN: CopilotPanel._noop,
+                ev.PLAN_REVISED: CopilotPanel._noop,
+                ev.GATE: CopilotPanel._noop,
+                ev.STEP_STARTED: CopilotPanel._noop,
+                ev.TOOL_CALL: CopilotPanel._noop,
+                ev.TOOL_RESULT: CopilotPanel._ev_tool_result,
+                ev.PREFLIGHT_FAILED: CopilotPanel._noop,
+                ev.APPLIED: CopilotPanel._noop,
+                ev.ASSERTION: CopilotPanel._ev_assertion,
+                ev.OUTSTANDING: CopilotPanel._noop,
+                ev.UNBUILT: CopilotPanel._noop,
+                ev.REVIEW_VERDICT: CopilotPanel._ev_review_verdict,
+                ev.REVIEW_SUSPECTED: CopilotPanel._noop,
+                ev.BLOCKED: CopilotPanel._noop,
+                ev.CALL_STARTED: CopilotPanel._noop,
+                ev.COST: CopilotPanel._noop,
+                ev.ERROR: CopilotPanel._noop,
+            }
+
+        handler = CopilotPanel._EVIDENCE_DISPATCH.get(event.kind)
+        if handler is None:
+            self._report_unknown_kind(event, "_update_review_evidence")
+        else:
+            handler(self, event, data)
+
+    def _ev_assertion(self, event, data):
+        self._last_assertion_event = event
+        self._last_review_verdict_event = None
+
+    def _ev_tool_result(self, event, data):
+        if data.get("name") == "review_views":
             self._last_review_views = list((data.get("result") or {}).get("views") or [])
-        elif event.kind == ev.REVIEW_VERDICT:
-            self._last_review_verdict_event = event
+
+    def _ev_review_verdict(self, event, data):
+        self._last_review_verdict_event = event
 
     def _say(self, narration):
         """
