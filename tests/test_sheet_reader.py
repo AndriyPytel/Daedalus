@@ -17,7 +17,9 @@ lays its labels out differently: a note that mentions a view, and a section
 label printed below the section instead of inside it.
 """
 import os
+import time
 
+import numpy
 import pytest
 
 from core import sheet_reader
@@ -1955,3 +1957,116 @@ def test_the_centre_line_a_distance_is_taken_off_is_said_in_the_list(sheet_2023)
 
     assert "the second of them on a centre line" in said
     assert "measured from the middle of the part and not from a face" in said
+
+
+@needs_pymupdf
+def test_read_registers_its_temp_dir_for_atexit_cleanup(monkeypatch, tmp_path):
+    """
+    `read()` called with no `into=` makes its own `mkdtemp` directory, and
+    nothing else in the repo ever removes an `fcc-sheet-*` directory
+    (`grep -rn rmtree core ui` — FCC-263). The cleanup has to be registered
+    at creation time, so this patches `atexit.register` to capture the
+    callback instead of letting it run at interpreter exit. Read a copy of
+    the sheet at a path no other test has used, so `_ALREADY_READ` cannot
+    hand back a sheet another test already cached without the patch active.
+    """
+    import shutil as shutil_module
+
+    copy = tmp_path / "fcc-263.pdf"
+    shutil_module.copyfile(SHEET, copy)
+
+    registered = []
+    monkeypatch.setattr(sheet_reader.atexit, "register",
+                         lambda callback: registered.append(callback))
+
+    sheet = sheet_reader.read(str(copy))
+
+    assert registered, "_read() did not register a cleanup callback"
+    directory = os.path.dirname(sheet.overview)
+    assert os.path.isdir(directory)
+
+    registered[0]()
+
+    assert not os.path.isdir(directory)
+
+
+@needs_pymupdf
+def test_a_read_failure_is_logged_once_and_then_cached_quiet(monkeypatch, caplog, tmp_path):
+    """
+    A failing `_read` is caught so one bad sheet does not stop the run (the
+    docstring above), but until now nothing said the failure happened
+    (`grep -n "^import\\|^from" core/sheet_reader.py` had no `logging` —
+    FCC-265). The second call with the same key must hit `_ALREADY_READ` and
+    not log again. Reads a copy at a path no other test has used, so the
+    cache another test filled cannot hand back a non-exception result.
+    """
+    import shutil as shutil_module
+
+    copy = tmp_path / "fcc-265.pdf"
+    shutil_module.copyfile(SHEET, copy)
+
+    def boom(path, into, legible_px, max_edge):
+        raise ValueError("staged failure")
+
+    monkeypatch.setattr(sheet_reader, "_read", boom)
+
+    with caplog.at_level("WARNING", logger="core.sheet_reader"):
+        first = sheet_reader.read(str(copy), into=None)
+        second = sheet_reader.read(str(copy), into=None)
+
+    assert first is None
+    assert second is None
+    warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warnings) == 1
+    assert str(copy) in warnings[0].message
+
+
+def _rectangle_hole(shape, top, left, height, width):
+    """A boolean mask, True over one rectangle, for a known hole's patch."""
+    patch = numpy.zeros(shape, dtype=bool)
+    patch[top:top + height, left:left + width] = True
+    return patch
+
+
+def test_the_holes_in_finds_the_same_holes_the_full_grid_scan_would():
+    """
+    A part with one hole big enough to count (`A_HOLE` is 120 px) and one too
+    small to (16 px) — the small one must stay out of the result, same as
+    before. The expected boundary and outline are built from `_boundary` and
+    `_outline` directly on the known hole rectangle, not from a second copy
+    of `_the_holes_in`'s own loop, so this does not just check the function
+    against itself.
+    """
+    shape = (60, 60)
+    part = numpy.ones(shape, dtype=bool)
+    part[10:22, 10:22] = False  # 12 x 12 = 144 px, over A_HOLE
+    part[40:44, 40:44] = False  # 4 x 4 = 16 px, under A_HOLE
+
+    big_hole = _rectangle_hole(shape, 10, 10, 12, 12)
+    expected_boundary = sheet_reader._boundary(big_hole)
+    expected_outline = sheet_reader._outline(big_hole)
+
+    holes = sheet_reader._the_holes_in(part)
+
+    assert len(holes) == 1
+    numpy.testing.assert_array_equal(holes[0][0], expected_boundary)
+    assert len(holes[0][1]) == len(expected_outline)
+    assert all(numpy.array_equal(got, want)
+               for got, want in zip(holes[0][1], expected_outline))
+
+
+def test_the_holes_in_does_not_visit_every_pixel_of_a_sparse_canvas():
+    """
+    A 2000 x 2000 canvas with one small hole: the pure-Python double loop
+    over every pixel measured 0.177s on this machine (three runs, no
+    outlier); the `numpy.nonzero`-filtered version measured 0.012s on the
+    same canvas. 0.08s sits between the two with margin either way.
+    """
+    part = numpy.ones((2000, 2000), dtype=bool)
+    part[500:520, 500:530] = False
+
+    start = time.perf_counter()
+    sheet_reader._the_holes_in(part)
+    elapsed = time.perf_counter() - start
+
+    assert elapsed < 0.08

@@ -91,9 +91,13 @@ with an empty printed list.
 
 Nothing here imports FreeCAD, and nothing here reads a model's mind.
 """
+import atexit
+import functools
+import logging
 import math
 import os
 import re
+import shutil
 import tempfile
 
 try:
@@ -112,6 +116,8 @@ except ImportError:  # pragma: no cover
 from dataclasses import dataclass, field, replace
 
 LEGIBLE_PX = 50
+
+_LOG = logging.getLogger(__name__)
 
 INK_OF_THE_BOX = 0.55
 
@@ -391,6 +397,7 @@ def read(path, into=None, legible_px=LEGIBLE_PX, max_edge=MAX_EDGE):
     try:
         read_now = _read(path, into, legible_px, max_edge)
     except Exception:
+        _LOG.warning("could not read sheet %s", path, exc_info=True)
         read_now = None
     _ALREADY_READ[key] = read_now
     return read_now
@@ -403,7 +410,9 @@ def _still_there(sheet):
 
 
 def _read(path, into, legible_px, max_edge):
-    into = into or tempfile.mkdtemp(prefix="fcc-sheet-")
+    if not into:
+        into = tempfile.mkdtemp(prefix="fcc-sheet-")
+        atexit.register(functools.partial(shutil.rmtree, into, ignore_errors=True))
     os.makedirs(into, exist_ok=True)
     extension = os.path.splitext(path)[1].lower()
 
@@ -2255,14 +2264,14 @@ def _the_holes_in(part):
     _flood(edge, outside, front)
 
     holes, seen = [], outside.copy()
-    for y in range(height):
-        for x in range(width):
-            if edge[y, x] and not seen[y, x]:
-                patch = numpy.zeros(part.shape, dtype=bool)
-                _flood(edge, patch, [(y, x)])
-                seen |= patch
-                if int(patch.sum()) >= A_HOLE:
-                    holes.append((_boundary(patch), _outline(patch)))
+    ys, xs = numpy.nonzero(edge & ~seen)
+    for y, x in zip(ys.tolist(), xs.tolist()):
+        if not seen[y, x]:
+            patch = numpy.zeros(part.shape, dtype=bool)
+            _flood(edge, patch, [(y, x)])
+            seen |= patch
+            if int(patch.sum()) >= A_HOLE:
+                holes.append((_boundary(patch), _outline(patch)))
     return holes
 
 
