@@ -314,6 +314,17 @@ The count is checked against the file after you answer, so a callout you leave
 unaccounted for comes straight back to you naming the number — which is cheaper
 for both of us if it does not have to.
 
+**A callout the file measured belongs to the two points it was measured
+between.** An entry carrying its dimension line's two ends carries its own
+geometry: the number is the distance between those two points, in that view's
+millimetres, and the feature it is a value of is the feature they stand on.
+Not the feature nearest the number on the paper, and not whatever the crop it
+is legible in happens to show — a dimension is printed clear of the part it
+measures, and a view is tiled where the paper is empty, so both put a number
+beside something it says nothing about. Where the two points disagree with the
+feature you were about to attach it to, the points are right and the eye is
+wrong.
+
 ## A curve is not read until its centre is placed
 
 A radius on its own puts a curve nowhere: R30 with its centre on one side of a
@@ -414,19 +425,31 @@ satisfied exactly as well by a rectangular prism as by the obround plate the
 drawing shows, and where nothing else carries the outer contour, a prism is what
 gets built: the sizes all check out, and the part is the wrong part.
 
-So **the outer contour is a feature like any other**, with an `id`, a `kind`
-naming the shape in an engineer's words, the plane it lies in, and a value for
-every radius and every radius centre:
+So **the outer contour is a feature like any other**, with an `id`, the
+drawing's own word for it in `region`, the shape in `topology`, the plane it
+lies in, and a value for every radius and every radius centre:
 
-    {"id": "outer-profile",
-     "kind": "obround (capsule) outer profile, 150 long by 50 tall, ends R25",
+    {"id": "pad-outer",
+     "kind": "pad",
+     "region": "obround (capsule) outer profile",
      "topology": "the profile lies in the plane of the length and the height, "
-                 "extruded 100 mm front to rear",
+                 "150 long by 50 tall with both ends R25, extruded 100 mm "
+                 "front to rear",
      "position": {"the left end face": {"value": "25 mm", "flag": "read"}},
      "radius": {"value": "25 mm", "flag": "read"}}
 
-Write it for every part, including the plain one: `kind` of "rectangular outer
-profile, 150 by 100" is one line and it says the ends are flat on purpose.
+Write it for every part, including the plain one: a `region` of "rectangular
+outer profile" is one word and it says the ends are flat on purpose.
+
+**Two ends of different radii are two features.** `radius` holds one number,
+so a contour written as one feature carries one end radius, and the end you
+did not read is silently given the radius of the end you did. Where the ends
+differ, write each as its own `ear` — `ear-left` with its R7 and `ear-right`
+with its R12.5, each placed from its own datum — and leave `pad-outer` the
+contour they stand at the ends of. A recorded run over `mm2023-phase1.pdf`
+wrote one `radius: 12.5` for a part whose left end is R7, and built a left
+lug 25 wide where the sheet prints 14, with its bore 12.5 from the end where
+the sheet places it 7.
 
 **A shape word inside another feature's prose is not the shape being recorded.**
 "the two capsule-shaped exterior perimeter loops", written under a fillet's edge

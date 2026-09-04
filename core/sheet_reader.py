@@ -316,6 +316,10 @@ class Between:
     a distance measured from one is measured from the middle of the part, not
     a face — the difference between a slot 14 wide sitting symmetric on the
     mid-plane and a wall 7 in from the front.
+
+    `at` is where the number is printed, the same coordinates `Printed.at`
+    carries, so a distance joins the string it was read off without matching
+    on the text — which two 15s printed in one view make ambiguous.
     """
     printed: float
     first: tuple
@@ -323,6 +327,7 @@ class Between:
     view: str = ""
     text: str = ""
     on_a_centre_line: tuple = ()
+    at: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -2637,6 +2642,7 @@ def _measured_between(page, words, measured_by, named, millimetres_per_point, ga
         view, rect = _the_view_holding(named, feet[0])
         found.append(Between(
             printed=printed, view=view, text=str(word[4]).strip(),
+            at=(round(word[0], 1), round(word[1], 1)),
             first=_in_millimetres(feet[0], rect, millimetres_per_point),
             second=_in_millimetres(feet[1], rect, millimetres_per_point),
             on_a_centre_line=on))
@@ -3185,6 +3191,13 @@ def _the_printed_list(sheet, views=None):
     callout, not the words an extractor split one into), and without the
     title block (the record of the sheet, not the part).
 
+    A callout the file could measure carries the two points it was measured
+    between, on its own line. They are in `between` as well, under a heading
+    of their own, and a recorded run over `mm2023-phase1.pdf` read the 7 and
+    the 14 of the bottom view off the tile they are legible in — which shows
+    neither end of the part — and gave both to a cutout it invented, with the
+    two feet that place them a hundred lines further down.
+
     `views` keeps only callouts whose `seen_in` names one of them, and
     returns `None` rather than a header nobody asked for where none do.
     """
@@ -3193,7 +3206,11 @@ def _the_printed_list(sheet, views=None):
              "This is exact — it is the draughtsman's own text — and it is the "
              "list `printed_on_the_sheet` has to account for. The title block is "
              "not here: a drawing number, a date and a scale are printed on the "
-             "sheet and are not values of the part."]
+             "sheet and are not values of the part. Where a callout says what it "
+             "is measured between, those two points are what it is a value of — "
+             "a dimension is printed clear of the part it measures, so what it "
+             "is printed next to is not."]
+    spans = {entry.at: entry for entry in sheet.between}
     added = False
     for callout in _the_callouts(sheet):
         if views is not None and _the_view_of(callout[0].seen_in) not in views:
@@ -3201,8 +3218,7 @@ def _the_printed_list(sheet, views=None):
         added = True
         where = " — %s" % callout[0].seen_in if callout[0].seen_in else ""
         measured = "".join(
-            "; the sheet measures %.1f mm between the faces this one's "
-            "dimension line is drawn across" % entry.measures
+            _the_span_of(entry, spans.get(entry.at))
             for entry in callout if entry.measures is not None)
         lines.append("  %s%s%s" % (
             " ".join(entry.notation + entry.text for entry in callout),
@@ -3210,6 +3226,51 @@ def _the_printed_list(sheet, views=None):
     if views is not None and not added:
         return None
     return "\n".join(lines)
+
+
+def _the_span_of(entry, span):
+    """
+    What one measured callout says about itself, on its own line.
+
+    The number the sheet's own line work measures where this one is printed,
+    and — where the two feet of that line were found — where the line runs,
+    in the millimetres of the view the drawn list is in. Which way it runs is
+    said in words as well as in the two points: a distance drawn up the view
+    and a distance drawn across it are different values of different features,
+    and the pair of coordinates that says so is read wrong more easily than
+    the phrase is.
+    """
+    said = ("; the sheet measures %.1f mm between the faces this one's "
+            "dimension line is drawn across" % entry.measures)
+    if span is None:
+        return said
+    return said + (", %s, from %s to %s%s" % (
+        _the_run_of(span), spelt(span.first), spelt(span.second),
+        _standing_on_a_centre_line(span.on_a_centre_line)))
+
+
+def _the_run_of(span):
+    """
+    Which way a dimension line runs, in the view's own axes.
+
+    Read off the two feet rather than off the line, which is not kept: a foot
+    stands where its own extension line meets the part, and the two stand at
+    their own stations along it, so the component across the run is not zero
+    even on a distance drawn square. The 108 of the 2023 sheet has its feet
+    10 mm apart across a 108 mm run. `_A_SQUARE_RUN` is how much of that a run
+    may carry and still be called square; a distance genuinely drawn at 45°
+    lands at 1.0 and is called neither.
+    """
+    across = abs(span.second[0] - span.first[0])
+    up = abs(span.second[1] - span.first[1])
+    if up <= _A_SQUARE_RUN * across:
+        return "drawn across the view"
+    if across <= _A_SQUARE_RUN * up:
+        return "drawn up the view"
+    return "drawn at an angle"
+
+
+_A_SQUARE_RUN = 0.25
 
 
 def _the_leader_list(sheet, views=None):

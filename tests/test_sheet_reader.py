@@ -17,6 +17,7 @@ lays its labels out differently: a note that mentions a view, and a section
 label printed below the section instead of inside it.
 """
 import os
+import re
 import threading
 
 import numpy
@@ -753,8 +754,12 @@ def test_one_design_call_carries_the_sheet_cut_to_what_it_can_prove(sheet_2023):
     is said rather than sent again, and a picture no region reaches is one
     low-cost crop instead of nothing. The text is the sheet's record reduced
     to the part's evidence. The 351 entities nothing can prove anything about
-    would be another 13,917 characters beside the 43,923 that go out, and
-    they would be carried again on every turn of the phase.
+    would be another 13,917 characters beside the 44,876 that go out, and
+    they would be carried again on every turn of the phase. 953 of those are
+    the feet of the fourteen measured callouts, said on the callout's own line
+    as well as in the list of their own: the run that read the 7 and the 14 of
+    the bottom view off the wrong tile was given them once, a hundred lines
+    further down.
     """
     told = sheet_reader.shown(sheet_2023)
     pictures = [piece["show"] for piece in told if "show" in piece]
@@ -763,7 +768,7 @@ def test_one_design_call_carries_the_sheet_cut_to_what_it_can_prove(sheet_2023):
                 if entity.role == "unclassified"]
 
     assert (len(pictures), sum(_costs(path) for path in pictures)) == (27, 21291)
-    assert characters == 43923
+    assert characters == 44876
     assert characters < 45000, "the sheet grew back into the request"
     assert sum(len(sheet_reader._said(entity)) for entity in left_out) == 13917
 
@@ -2200,3 +2205,45 @@ def test_the_holes_in_does_not_visit_every_pixel_of_a_sparse_canvas(monkeypatch)
     sheet_reader._the_holes_in(part)
 
     assert sum(visited) < 1000
+
+
+@needs_pymupdf
+def test_a_measured_callout_carries_the_two_points_it_measures_between(sheet_2023):
+    """
+    The 7 and the 14 of the bottom view are printed one above the other, clear
+    of the lug they measure and in a tile that shows neither end of the part.
+    Read by eye off that tile, a recorded run over `mm2023-phase1.pdf` gave
+    both to a cutout it invented in the arm; read off the two feet of their
+    own dimension lines they are the lug's width and its bore's offset, which
+    is what they are.
+
+    The two feet are already proved (`Between`); what this holds is that they
+    arrive on the callout's own line, since the run that misread them was
+    given them a hundred lines further down, under a heading of their own.
+    """
+    said = sheet_reader._the_printed_list(sheet_2023)
+    lines = {line.strip().split(" \u2014 ")[0]: line
+             for line in said.splitlines() if line.startswith("  ")}
+
+    assert "drawn up the view" in lines["14"], lines["14"]
+    assert "drawn up the view" in lines["7"], lines["7"]
+    assert "on a centre line" in lines["7"], lines["7"]
+    assert "on a centre line" not in lines["14"], lines["14"]
+    assert "drawn across the view" in lines["108"], lines["108"]
+    for text in ("14", "7", "108"):
+        assert re.search(r"from \(-?\d+\.\d\d, -?\d+\.\d\d\) to "
+                         r"\(-?\d+\.\d\d, -?\d+\.\d\d\)", lines[text]), lines[text]
+
+
+@needs_pymupdf
+def test_a_distance_says_which_printed_string_it_was_measured_from(sheet_2023):
+    """
+    `Between.at` is `Printed.at` — the join that lets a distance be reported
+    on the callout's own line without matching on the text, which two 15s in
+    one view make ambiguous.
+    """
+    printed_at = {entry.at for entry in sheet_2023.printed}
+
+    assert sheet_2023.between
+    assert all(entry.at in printed_at for entry in sheet_2023.between)
+    assert len({entry.at for entry in sheet_2023.between}) == len(sheet_2023.between)

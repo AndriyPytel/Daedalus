@@ -156,7 +156,7 @@ def test_design_is_told_the_outer_contour_is_a_feature():
     design_system = " ".join(_system_messages(llm)[0].split())
 
     assert "The outside of the part is a feature, not three numbers" in design_system
-    assert "obround" in design_system and "outer-profile" in design_system
+    assert "obround" in design_system and "pad-outer" in design_system
     assert "A shape word inside another feature's prose is not the shape being recorded" \
         in design_system
 

@@ -17,7 +17,7 @@ multi-view sheet no longer takes that call at all.
 
 `FIRST_PASS_CEILING_RATIO` is measured, not chosen: it is the smallest ratio
 that passes the current baselines. Raising it requires re-measurement and a
-stated reason. The current value (1.65) is what Design's own call is
+stated reason. The current value (1.69) is what Design's own call is
 charged for the shared vocabulary it actually uses (ADR-0026, FCC-234):
 `core.loop.prompt` composes each phase from the sections of `config/prompts/
 language.md` that phase reads, not the whole file, so Design carries the
@@ -26,6 +26,13 @@ checks an `op`, so the 36-verb section and the Step-sentence-rules section
 stay out of its own call. That cost buys name convergence across pages and
 a `kind` two readings can actually compare, so merge() sees a real
 disagreement instead of two synonyms passing each other.
+
+The ratio was 1.65 until a measured callout began carrying the two feet of
+its own dimension line on its own line: 953 characters on the 2023 sheet and
+1,064 on the 2024 one, per page-sized call, or 1.9% of the first pass. What it
+buys is the attribution the feet decide — a run that read the 7 and the 14 of
+the 2023 bottom view off the tile they are legible in gave both to a feature
+it invented, and rebuilt the part around it.
 """
 import json
 import os
@@ -52,24 +59,24 @@ SINGLE_CALL_BASELINE = {
     "model-mania-2024.pdf": 39970,
 }
 
-FIRST_PASS_CEILING_RATIO = 1.65
+FIRST_PASS_CEILING_RATIO = 1.69
 
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 6242, "input_tokens": 23250},
-            {"label": "page 2", "pictures": 14, "total_chars": 6046, "input_tokens": 23988},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 23665},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 24403},
         ],
-        "reconcile": {"total_chars": 39592, "input_tokens": 19717},
-        "total": 66955,
+        "reconcile": {"total_chars": 40545, "input_tokens": 20132},
+        "total": 68200,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7572, "input_tokens": 21557},
-            {"label": "page 2", "pictures": 15, "total_chars": 7475, "input_tokens": 24441},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 22000},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 24884},
         ],
-        "reconcile": {"total_chars": 40311, "input_tokens": 19896},
-        "total": 65894,
+        "reconcile": {"total_chars": 41375, "input_tokens": 20339},
+        "total": 67223,
     },
 }
 

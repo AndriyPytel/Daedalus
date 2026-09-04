@@ -124,3 +124,30 @@ def test_a_reply_shows_the_marker_language_md_declares_for_its_own_phase():
                 assert '"%s"' % name in skeleton, (
                     "%s's reply skeleton does not show %r, which language.md "
                     "declares every reply of its phase carries" % (phase, name))
+
+
+def test_no_prompt_shows_a_kind_off_the_closed_list():
+    """
+    A `kind` written into an example is what the phase copies. `design.md`
+    showed the outer contour as `"kind": "obround (capsule) outer profile,
+    150 long by 50 tall, ends R25"` — a shape word and two dimensions, both
+    of which `language.md` refuses ("an outline or a contour is a `pad`", "a
+    dimension the drawing gives ... is never in `kind`"). The five runs over
+    `mm2023-phase1.pdf` split on it: the one that copied the example kept the
+    left end R7 and the right R12.5, and every run that obeyed the closed
+    list collapsed both to one `radius` and mirrored the end it read onto the
+    end it did not.
+
+    The list is read out of `language.md`, so closing a kind there closes it
+    here without this test being touched.
+    """
+    import re
+
+    closed = re.search(r"kind is one of \(([^)]*)\)", _language_md(), re.S)
+    kinds = {word.strip() for word in closed.group(1).replace("\n", " ").split(",")}
+
+    for phase in PHASES:
+        with open(os.path.join(PROMPTS_DIR, phase + ".md"), encoding="utf-8") as f:
+            text = f.read()
+        for shown in re.findall(r'"kind":\s*"([^"]*)"', text):
+            assert shown in kinds, (phase, shown)
