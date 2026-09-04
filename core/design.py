@@ -97,6 +97,18 @@ HEADED = {A_CONFLICT: "Two readings that cannot both be true",
           A_GAP: "A value nothing on the part supplies",
           A_CHECK_HAZARD: "A check that could not be run"}
 
+
+def _conflict(about, stands, was_also_said, kind=A_CONFLICT):
+    """
+    FCC-269: the shared conflict-finding dict, in place of eighteen hand-typed
+    copies. `silhouette`, `pointing` and `grounded` write the same four fields
+    without `kind`, on purpose: `_which_kind_it_is`'s default (FCC-248) already
+    reads an absent `kind` as `A_CONFLICT`, so those call sites stay a plain
+    literal rather than call this with a kind the dict would carry either way.
+    """
+    return {"about": about, "stands": stands, "was_also_said": was_also_said,
+            "kind": kind, "machine_written": True}
+
 FEATURE_KIND = ("hole", "slot", "pocket", "cutout", "pad", "fillet", "chamfer",
                 "boss", "rib", "thread", "counterbore", "countersink", "groove",
                 "notch", "tab", "lug", "ear", "flange", "step", "shoulder",
@@ -184,13 +196,9 @@ def _refused_kinds(offered):
         if not kind or kind in FEATURE_KIND:
             continue
         where = _under(_under("features", feature.get("id") or "a feature"), "kind")
-        found.append({
-            "about": where,
-            "stands": _refusal_reason(kind),
-            "was_also_said": "refused — the field is left as not yet filled",
-            "kind": A_CONFLICT,
-            "machine_written": True,
-        })
+        found.append(_conflict(
+            where, _refusal_reason(kind),
+            "refused — the field is left as not yet filled"))
     return found
 
 
@@ -252,14 +260,11 @@ def _refused_conflicts(offered):
         missing = [field for field in CONFLICT_ENTRY_FIELDS if field not in entry]
         if not missing:
             continue
-        found.append({
-            "about": entry.get("about") or _under("conflicts", "entry %d" % index),
-            "stands": "refused — a conflict entry carries %s, missing %s"
-                      % (", ".join(CONFLICT_ENTRY_FIELDS), ", ".join(missing)),
-            "was_also_said": entry,
-            "kind": A_CONFLICT,
-            "machine_written": True,
-        })
+        found.append(_conflict(
+            entry.get("about") or _under("conflicts", "entry %d" % index),
+            "refused — a conflict entry carries %s, missing %s"
+            % (", ".join(CONFLICT_ENTRY_FIELDS), ", ".join(missing)),
+            entry))
     return found
 
 
@@ -391,13 +396,10 @@ def unsafe_supersession(model) -> list:
 
         this_id = feature.get("id") or "unknown"
         pair = sorted([this_id, canonical_id])
-        found.append({
-            "about": "features → %s and %s (synonym pair, values differ)" % (pair[0], pair[1]),
-            "stands": "%s says %s" % (pair[0], differing[pair[0]]),
-            "was_also_said": "%s says %s" % (pair[1], differing[pair[1]]),
-            "kind": A_CONFLICT,
-            "machine_written": True,
-        })
+        found.append(_conflict(
+            "features → %s and %s (synonym pair, values differ)" % (pair[0], pair[1]),
+            "%s says %s" % (pair[0], differing[pair[0]]),
+            "%s says %s" % (pair[1], differing[pair[1]])))
     return found
 
 
@@ -595,13 +597,10 @@ def twice_placed(model) -> list:
 
                     datum_diff, value_a_diff, value_b_diff = differing[0]
 
-                    found.append({
-                        "about": "features → %s and %s (same axis, one placement described twice)" % (pair[0], pair[1]),
-                        "stands": "%s says %s: %s" % (pair[0], datum_diff, value_a_diff if pair[0] == id_a else value_b_diff),
-                        "was_also_said": "%s says %s: %s" % (pair[1], datum_diff, value_b_diff if pair[1] == id_b else value_a_diff),
-                        "kind": A_CONFLICT,
-                        "machine_written": True,
-                    })
+                    found.append(_conflict(
+                        "features → %s and %s (same axis, one placement described twice)" % (pair[0], pair[1]),
+                        "%s says %s: %s" % (pair[0], datum_diff, value_a_diff if pair[0] == id_a else value_b_diff),
+                        "%s says %s: %s" % (pair[1], datum_diff, value_b_diff if pair[1] == id_b else value_a_diff)))
 
     return found
 
@@ -850,15 +849,12 @@ def direction(model) -> list:
                 (_HAS_AN_AXIS, _HAS_AN_AXIS_PROSE, "axis", "which way its axis points"),
                 (_LIES_IN_A_PLANE, _LIES_IN_A_PLANE, "plane", "which plane it lies in")):
             if _is_one_of(feature, closed, prose) and not _filled(feature.get(field)):
-                found.append({
-                    "about": _under(where, field),
-                    "stands": "nothing records %s, so it is built along the base "
-                              "profile like everything else" % missing,
-                    "was_also_said": str(feature.get("kind")
-                                         or feature.get("topology") or ""),
-                    "kind": A_GAP,
-                    "machine_written": True,
-                })
+                found.append(_conflict(
+                    _under(where, field),
+                    "nothing records %s, so it is built along the base "
+                    "profile like everything else" % missing,
+                    str(feature.get("kind") or feature.get("topology") or ""),
+                    kind=A_GAP))
     return found
 
 
@@ -1092,31 +1088,25 @@ def crosswise(model) -> list:
         if len({view for view, _ in along}) < 2:
             continue
         for view, where in along:
-            found.append({
-                "about": _under(where, "axis"),
-                "stands": "this is round in %s, and %s is round in %s — two views, so "
-                          "the two axes cross, and these were written the same way"
-                          % ((view,) + next((other.split(UNDER)[-1], at)
-                                            for at, other in along if at != view)),
-                "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
-                "kind": A_CONFLICT,
-                "machine_written": True,
-            })
+            found.append(_conflict(
+                _under(where, "axis"),
+                "this is round in %s, and %s is round in %s — two views, so "
+                "the two axes cross, and these were written the same way"
+                % ((view,) + next((other.split(UNDER)[-1], at)
+                                  for at, other in along if at != view)),
+                "%s: %s" % (_under(where, "axis"), axis)))
 
     for view in {at for at, _, _ in seen}:
         here = [(said, where) for at, said, where in seen if at == view]
         if len({said for said, _ in here}) < 2:
             continue
         for axis, where in here:
-            found.append({
-                "about": _under(where, "axis"),
-                "stands": "everything round in %s has the one axis, and the features "
-                          "round in it here were given %d different ones"
-                          % (view, len({said for said, _ in here})),
-                "was_also_said": "%s: %s" % (_under(where, "axis"), axis),
-                "kind": A_CONFLICT,
-                "machine_written": True,
-            })
+            found.append(_conflict(
+                _under(where, "axis"),
+                "everything round in %s has the one axis, and the features "
+                "round in it here were given %d different ones"
+                % (view, len({said for said, _ in here})),
+                "%s: %s" % (_under(where, "axis"), axis)))
     return found
 
 
@@ -1375,16 +1365,14 @@ def placement(model) -> list:
         for way in _A_DIRECTION:
             if not _filled(feature.get(way)) or way in placed or way in along_its_own:
                 continue
-            found.append({
-                "about": _under(_under(where, "position"), "the " + way),
-                "stands": "the feature has a size in the %s and no position in the %s "
-                          "against a datum that fixes it, and a position nobody named "
-                          "defaults to centred" % (way, way),
-                "was_also_said": "%s: %s" % (_under(where, way),
-                                             _one_value(feature[way]) or feature[way]),
-                "kind": A_GAP,
-                "machine_written": True,
-            })
+            found.append(_conflict(
+                _under(_under(where, "position"), "the " + way),
+                "the feature has a size in the %s and no position in the %s "
+                "against a datum that fixes it, and a position nobody named "
+                "defaults to centred" % (way, way),
+                "%s: %s" % (_under(where, way),
+                           _one_value(feature[way]) or feature[way]),
+                kind=A_GAP))
     return found
 
 
@@ -1434,13 +1422,11 @@ def placed_by_nothing(model) -> list:
             stands += (", and %s is a cavity drawn in a view this one is drawn in — one "
                        "cavity described twice is two cavities built"
                        % ", ".join(name for name in alongside if name))
-        found.append({
-            "about": _under(where, "position"),
-            "stands": stands,
-            "was_also_said": str(feature.get("kind") or feature.get("topology") or ""),
-            "kind": A_GAP,
-            "machine_written": True,
-        })
+        found.append(_conflict(
+            _under(where, "position"),
+            stands,
+            str(feature.get("kind") or feature.get("topology") or ""),
+            kind=A_GAP))
     return found
 
 
@@ -1487,15 +1473,13 @@ def twice_over(model) -> list:
             id_a = feature_a.get("id") or "unknown"
             id_b = feature_b.get("id") or "unknown"
             pair = sorted([id_a, id_b])
-            found.append({
-                "about": "features → %s and %s (same kind, placed against %s)"
-                         % (pair[0], pair[1], ", ".join(shared)),
-                "stands": "both are a %s, placed against %s — one physical feature described twice"
-                          % (kind_a, ", ".join(shared)),
-                "was_also_said": kind_a,
-                "kind": A_GAP,
-                "machine_written": True,
-            })
+            found.append(_conflict(
+                "features → %s and %s (same kind, placed against %s)"
+                % (pair[0], pair[1], ", ".join(shared)),
+                "both are a %s, placed against %s — one physical feature described twice"
+                % (kind_a, ", ".join(shared)),
+                kind_a,
+                kind=A_GAP))
     return found
 
 
@@ -1522,15 +1506,13 @@ def settled_by_nothing(model) -> list:
     for path, node in _each_value(model, ""):
         says = _SAYS_WHAT_SETTLED_IT.get(str(node.get("flag") or ""))
         if says and not _filled(node.get(says)):
-            found.append({
-                "about": path,
-                "stands": "`%s` with no `%s`: nothing else on the model can say "
-                          "afterwards where the value came from"
-                          % (node.get("flag"), says),
-                "was_also_said": str(node.get("value") or ""),
-                "kind": A_GAP,
-                "machine_written": True,
-            })
+            found.append(_conflict(
+                path,
+                "`%s` with no `%s`: nothing else on the model can say "
+                "afterwards where the value came from"
+                % (node.get("flag"), says),
+                str(node.get("value") or ""),
+                kind=A_GAP))
     return found
 
 

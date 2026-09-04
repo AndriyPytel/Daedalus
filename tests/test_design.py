@@ -2459,3 +2459,25 @@ def test_no_recorded_description_holds_a_model_written_conflict():
 
     assert len(descriptions) == 47
     assert holds_a_model_entry == 0
+
+
+def test__conflict_builds_the_shared_finding_dict():
+    """
+    FCC-269: the one place the five conflict-finding fields are assembled,
+    so a new one lands here instead of in each of the eleven call sites that
+    already spelled out `kind` by hand.
+    """
+    assert design._conflict("about", "stands", "was_also_said") == {
+        "about": "about",
+        "stands": "stands",
+        "was_also_said": "was_also_said",
+        "kind": design.A_CONFLICT,
+        "machine_written": True,
+    }
+    assert design._conflict("about", "stands", "was_also_said", kind=design.A_GAP) == {
+        "about": "about",
+        "stands": "stands",
+        "was_also_said": "was_also_said",
+        "kind": design.A_GAP,
+        "machine_written": True,
+    }
