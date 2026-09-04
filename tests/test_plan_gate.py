@@ -20,7 +20,7 @@ from core.llm import ScriptedLLMClient
 from core.loop import (
     ACCEPT, AMEND, APPROVE, REJECT, REVISE, START_OVER, Approval, Budgets, run,
 )
-from tests.test_loop import (
+from tests.loop_helpers import (
     RENDER_PNG, FakeTools, assertion_reply, code_reply, design_reply, failed,
     obsolete_reply, plan_reply, question_reply, scripted, suspect_reply, verdict_reply,
 )
@@ -372,7 +372,7 @@ class Decider:
 
 
 def drive_with(turns, decide, gate=None, applies=(), checks=(), attachments=()):
-    from tests.test_loop import FakeTools as Tools
+    from tests.loop_helpers import FakeTools as Tools
 
     llm = scripted(turns, attachments)
     tools = Tools(applies, checks=checks)

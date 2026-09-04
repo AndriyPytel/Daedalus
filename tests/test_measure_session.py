@@ -11,7 +11,7 @@ import pytest
 
 from core.measure import Measurement, compare, measure
 from core.events import REVIEW_VERDICT
-from tests.test_loop import (
+from tests.loop_helpers import (
     ASSERT_FAILED, CHECKS, SELF_INTERSECTION_HELD, a_run_over_the_nut, assertion_failed,
     assertion_reply, code_reply, planning_the_nut, suspect_reply, verdict_reply,
 )
