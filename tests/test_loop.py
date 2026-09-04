@@ -9184,3 +9184,17 @@ def test_split_to_budget_opens_each_shared_image_at_most_once():
 
     assert sorted(set(opened)) == sorted(opened), (
         "a shared image was reopened across recursion levels: %r" % opened)
+
+
+def test_run_state_namespaces_are_dataclasses_that_reject_a_typo():
+    """
+    FCC-276: `progress`, `standing`, `part`, `last_pass` inside `_run` are
+    `@dataclass` instances, so a typo'd field name is an immediate
+    `AttributeError` rather than a silently created dict key.
+    """
+    for name, typo in (("Progress", "aplied"), ("Standing", "aproval"),
+                       ("Part", "teh_part"), ("LastPass", "stepz")):
+        cls = getattr(loop, name)
+        instance = cls()
+        with pytest.raises(AttributeError):
+            getattr(instance, typo)

@@ -2037,7 +2037,7 @@ def _said(reply, start):
     travel: what it was, not what it wrote.
 
     Capped at 300 characters. This same string reaches `PREFLIGHT_FAILED`, then
-    `progress["tried"]`, then the handback to Plan, and an Execute reply
+    `progress.tried`, then the handback to Plan, and an Execute reply
     carries the code for a whole Plan — recording it whole would put that code
     back into the next request and into the transcript, which is the cost this
     exists to avoid, not to move.
@@ -2882,6 +2882,24 @@ class _Asking:
         self.re_aimed = 0
 
 
+@dataclass
+class Progress:
+    """
+    What a run has done to the Document so far, carried across every Plan and
+    every revision within it — the one state a run's `except` clauses and its
+    final `LoopResult` both read from, so it is built once in `run` and handed
+    down rather than kept as several locals.
+
+    Named fields catch a typo'd read or write as `AttributeError` at the call
+    site instead of a dict silently growing a new, never-read key (FCC-276).
+    """
+    applied: int = 0
+    tried: list = field(default_factory=list)
+    unmet: list = field(default_factory=list)
+    satisfied: list = field(default_factory=list)
+    the_part_path: str = ""
+
+
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
         gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
         outstanding=(), the_part_path=None) -> LoopResult:
@@ -2919,8 +2937,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     events = events if events is not None else EventStream()
     events.emit(INTENT, text=intent)
     budgets = budgets or Budgets()
-    progress = {"applied": 0, "tried": [], "unmet": list(outstanding), "satisfied": [],
-               "the_part_path": the_part_path or ""}
+    progress = Progress(unmet=list(outstanding), the_part_path=the_part_path or "")
 
     def outcome(result):
         """
@@ -2934,8 +2951,8 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
         ways out of `_run` and the eight that are not the happy one are the
         ones that matter here.
         """
-        result.unmet = list(progress["unmet"])
-        result.the_part_path = progress["the_part_path"]
+        result.unmet = list(progress.unmet)
+        result.the_part_path = progress.the_part_path
         return result
 
     try:
@@ -2945,11 +2962,11 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     except Stopped:
         return outcome(_block(events, "Stopped by you. Everything applied so far is still in "
                                       "the Document; undo it Step by Step if you want it "
-                                      "gone.", [], progress["applied"]))
+                                      "gone.", [], progress.applied))
     except _OutOfRevisions as spent:
-        return outcome(_block(events, spent.reason, spent.tried, progress["applied"]))
+        return outcome(_block(events, spent.reason, spent.tried, progress.applied))
     except ProviderRefused as exc:
-        return outcome(_block(events, str(exc), progress["tried"], progress["applied"],
+        return outcome(_block(events, str(exc), progress.tried, progress.applied,
                               said=exc.said))
     except PhaseError as exc:
         events.emit(ERROR, message=str(exc))
@@ -3927,6 +3944,47 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             asking.unanswered.append(planned.question)
 
 
+@dataclass
+class Standing:
+    """
+    The Plan Gate's standing approval within one run: whether the user has
+    said "yes to future Steps like these" already, and which assumed values
+    they have been shown and read. Local to `_run` — a new run starts over.
+
+    Named fields catch a typo'd read or write as `AttributeError` at the call
+    site instead of a dict silently growing a new, never-read key (FCC-276).
+    """
+    approval: bool = False
+    read: set = field(default_factory=set)
+
+
+@dataclass
+class Part:
+    """
+    The description Plan and the Gate read, mutated in place by `replan` so
+    every closure inside `_run` that reads it sees the latest description
+    without needing `nonlocal` — only the field is written, never the name.
+
+    Named field catches a typo'd read or write as `AttributeError` at the call
+    site instead of a dict silently growing a new, never-read key (FCC-276).
+    """
+    the_part: object = None
+
+
+@dataclass
+class LastPass:
+    """
+    What the previous pass over the Plan's Steps applied, so a revised Plan
+    knows how much of its own head is already standing in the Document
+    (`_carried_over`) and does not write or apply those Steps again.
+
+    Named fields catch a typo'd read or write as `AttributeError` at the call
+    site instead of a dict silently growing a new, never-read key (FCC-276).
+    """
+    steps: object = None
+    applied: int = 0
+
+
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
          decide=revise_by_default, outstanding=(), the_part_path=None):
     """
@@ -3997,7 +4055,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     `review_suspect` never rejects a run by itself — it is diagnostic, not
     authoritative (FCC-258) — so nothing it notices skips the acceptance
     checks or is judged before they run. What the checks found is carried on
-    `progress["unmet"]` whatever happens next, and a pass clears it, including
+    `progress.unmet` whatever happens next, and a pass clears it, including
     the entries inherited from the run before. A user who takes a failed
     result goes straight out: the gating Review has already passed the same
     Document, so nothing is left unrun to save by skipping it. A rejection by
@@ -4013,20 +4071,20 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                      for path in attachments])
 
     if the_part_path and not attachments:
-        part = {"the_part": part_file.read(the_part_path)}
+        part = Part(part_file.read(the_part_path))
     else:
-        part = {"the_part": _describe_the_part(intent, llm, events, budgets, ask, cancelled,
-                                               attachments)}
+        part = Part(_describe_the_part(intent, llm, events, budgets, ask, cancelled,
+                                       attachments))
         written = events.last(PART)
-        progress["the_part_path"] = written.data["path"] if written else ""
+        progress.the_part_path = written.data["path"] if written else ""
 
     asking = _Asking()
     ledger = Ledger(_FAILED_THIS_WAY)
     geometry_baseline = {}
 
     def replan(feedback=None, revising=()):
-        planned, part["the_part"] = _plan_once_it_knows_enough(
-            intent, tools.call("snapshot"), llm, events, budgets, part["the_part"],
+        planned, part.the_part = _plan_once_it_knows_enough(
+            intent, tools.call("snapshot"), llm, events, budgets, part.the_part,
             cancelled, asking, tools, feedback, attachments, revising, ledger)
         return planned
 
@@ -4082,15 +4140,15 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
     planned = replan(_still_wrong(outstanding) if outstanding else None)
     _emit_plan(events, PLAN, planned, unanswered=asking.unanswered,
-               decided=decided_for_you(part["the_part"]))
+               decided=decided_for_you(part.the_part))
 
     rejections = 0
     revisions = _Revisions()
     stuck = {"applied": None}
     described = {}
-    standing = {"approval": False, "read": set()}
+    standing = Standing()
     looks = _what_this_build_has(tools)
-    last_pass = {"steps": None, "applied": 0}
+    last_pass = LastPass()
 
     from utils import settings_manager
     auto_approve = settings_manager.instance().get_auto_approve_plan()
@@ -4116,7 +4174,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         revised = replan(feedback, revising=list(steps))
         _emit_plan(events, PLAN_REVISED, revised, reason=reason or feedback,
                    unanswered=asking.unanswered,
-                   decided=decided_for_you(part["the_part"]),
+                   decided=decided_for_you(part.the_part),
                    revision=revisions.spent_total(),
                    of=revisions_ceiling(budgets, steps), because=revisions.named(cause))
         return revised
@@ -4127,16 +4185,16 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         if planned.unbuildable:
             planned = rewrite(_Revisions.OP_REFUSED,
                               "A Step named an operation off the closed list.",
-                              _op_off_the_list(planned.unbuildable), progress["tried"],
+                              _op_off_the_list(planned.unbuildable), progress.tried,
                               reason="; ".join(item["why"] for item in planned.unbuildable))
             continue
 
-        unconsumed = _unconsumed(part["the_part"], planned.satisfies,
-                                 progress["satisfied"])
+        unconsumed = _unconsumed(part.the_part, planned.satisfies,
+                                 progress.satisfied)
         if unconsumed:
             planned = rewrite(_Revisions.UNCOVERED,
                               "The Plan still leaves part of the description unplanned.",
-                              _plan_the_rest(unconsumed), progress["tried"],
+                              _plan_the_rest(unconsumed), progress.tried,
                               reason="no Step accounted for " + ", ".join(unconsumed))
             continue
 
@@ -4144,62 +4202,62 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         if miscounted:
             planned = rewrite(_Revisions.MISCOUNTED,
                               "The Plan's arithmetic still does not come out.",
-                              _do_the_sums(miscounted), progress["tried"],
+                              _do_the_sums(miscounted), progress.tried,
                               reason="; ".join(miscounted))
             continue
 
-        unread = _assumed(steps) - standing["read"]
-        overruled = {"assumed": len(unread)} if standing["approval"] and unread else {}
+        unread = _assumed(steps) - standing.read
+        overruled = {"assumed": len(unread)} if standing.approval and unread else {}
         events.emit(GATE, steps=len(steps),
-                    asked=(bool(unread) or not standing["approval"]) and not auto_approve,
+                    asked=(bool(unread) or not standing.approval) and not auto_approve,
                     **overruled)
         if auto_approve:
             approval = Approval(APPROVE, standing=True)
-            standing["approval"] = True
-            standing["read"] |= _assumed(steps)
+            standing.approval = True
+            standing.read |= _assumed(steps)
             events.emit(GATE, decision=APPROVE, standing=True, auto=True, steps=list(steps),
                         **({"assumed": sorted(unread)} if unread else {}))
-        elif standing["approval"] and not unread:
+        elif standing.approval and not unread:
             approval = Approval(APPROVE, standing=True)
             events.emit(GATE, decision=APPROVE, standing=True, steps=list(steps))
         else:
             approval = gate(list(steps)) or Approval(APPROVE)
-            standing["approval"] = bool(getattr(approval, "standing", False)
+            standing.approval = bool(getattr(approval, "standing", False)
                                         and approval.decision == APPROVE)
             if approval.decision == APPROVE:
-                standing["read"] |= _assumed(steps)
+                standing.read |= _assumed(steps)
                 if approval.steps:
                     steps = list(approval.steps)
             events.emit(GATE, decision=approval.decision,
-                        standing=standing["approval"], steps=list(steps))
+                        standing=standing.approval, steps=list(steps))
 
         if approval.decision == REJECT:
-            applied = progress["applied"]
+            applied = progress.applied
             said = "You rejected the Plan, so nothing was applied."
             if applied:
                 said = ("You rejected the Plan, so nothing more was applied. The Document keeps "
                         "the %d Step%s an earlier Plan already applied."
                         % (applied, "" if applied == 1 else "s"))
-            return _block(events, said, progress["tried"], applied)
+            return _block(events, said, progress.tried, applied)
 
         if approval.decision != APPROVE:
             planned = rewrite(_Revisions.AMENDED,
                               "Your latest amendment was not planned.",
-                              approval.feedback, progress["tried"],
+                              approval.feedback, progress.tried,
                               reason="You asked for: " + approval.feedback)
             continue
 
         if not steps:
             return _block(events, "The Plan came back with no Steps, so there is nothing to "
-                                  "apply and nothing to review.", progress["tried"],
-                          progress["applied"])
-        carried = _carried_over(last_pass["steps"], steps, last_pass["applied"])
+                                  "apply and nothing to review.", progress.tried,
+                          progress.applied)
+        carried = _carried_over(last_pass.steps, steps, last_pass.applied)
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
-                                progress, render(part["the_part"]), looks,
+                                progress, render(part.the_part), looks,
                                 planned.acceptance, planned.cites, ledger,
                                 start=carried, ops=planned.ops)
-        last_pass["steps"], last_pass["applied"] = steps, outcome["applied_here"]
-        applied = progress["applied"]
+        last_pass.steps, last_pass.applied = steps, outcome["applied_here"]
+        applied = progress.applied
 
         if outcome["handback"] and stuck["applied"] == applied \
                 and not revisions.exhausted(budgets, steps):
@@ -4245,14 +4303,14 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             if not checked.failed:
                 geometry_baseline.clear()
                 geometry_baseline.update(checked.geometry)
-        progress["unmet"] = (list(checked.unmet) if checked is not None else []) \
+        progress.unmet = (list(checked.unmet) if checked is not None else []) \
             + list(not_reached)
         if checked is not None and checked.failed:
             feedback = _why_the_checks_failed(checked.traceback)
             answer = decided(feedback, applied, unmet=checked.unmet)
             if answer == ACCEPT:
                 return LoopResult(ok=True, verdict="pass", steps_applied=applied,
-                                  unmet=list(progress["unmet"]),
+                                  unmet=list(progress.unmet),
                                   reason="You took the result as it is, although the "
                                          "acceptance checks did not pass.")
             if answer == START_OVER:
@@ -4269,10 +4327,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
         if verdict != "pass":
             feedback = reason
-            answer = decided(reason, applied, unmet=list(progress["unmet"]))
+            answer = decided(reason, applied, unmet=list(progress.unmet))
             if answer == ACCEPT:
                 return LoopResult(ok=True, verdict="pass", reason=reason,
-                                  steps_applied=applied, unmet=list(progress["unmet"]))
+                                  steps_applied=applied, unmet=list(progress.unmet))
             if answer == START_OVER:
                 feedback += _MAY_START_AGAIN
 
@@ -4422,7 +4480,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     counts against `attempts_per_step` exactly as any other failure does, so a
     Step whose every reply runs dry still hands back rather than asking forever.
 
-    What the Steps that landed cite goes onto `progress["satisfied"]` as they
+    What the Steps that landed cite goes onto `progress.satisfied` as they
     land, because that is what the coverage check subtracts from the description
     when a handback sends the rest of the work back to Plan.
 
@@ -4457,7 +4515,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     `start` is where a revised Plan's own head is already standing in the
     Document (`_carried_over`, called by `_run` before this): the Steps below
     it are neither written nor applied again, only accounted for — `APPLIED`
-    on the stream and their citations onto `progress["satisfied"]`, exactly as
+    on the stream and their citations onto `progress.satisfied`, exactly as
     a Step that had just landed. The count this pass actually reached, carried
     Steps included, comes back on `applied_here` so the next revision, if
     there is one, has it to carry from in turn.
@@ -4484,7 +4542,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                       ledger=ledger)
 
     while index < start:
-        progress["satisfied"].extend(cites[index] if index < len(cites) else ())
+        progress.satisfied.extend(cites[index] if index < len(cites) else ())
         events.emit(APPLIED, step=index + 1, label="", created=[])
         index += 1
 
@@ -4545,8 +4603,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             result = {"status": "failed", "traceback": no_code}
 
         if result.get("status") == "applied":
-            progress["applied"] += 1
-            progress["satisfied"].extend(cites[index] if index < len(cites) else ())
+            progress.applied += 1
+            progress.satisfied.extend(cites[index] if index < len(cites) else ())
             if attempts:
                 retried.add(index)
                 retried_names.update(result.get("created", []))
@@ -4563,7 +4621,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         traceback = result.get("traceback", "The Step failed without saying why.")
         attempts.append(Attempt(code=outcome.code or "", traceback=traceback))
-        progress["tried"] = [_tried(step, a) for a in attempts]
+        progress.tried = [_tried(step, a) for a in attempts]
         events.emit(PREFLIGHT_FAILED, step=index + 1, attempt=len(attempts),
                     traceback=traceback)
         if ledger is not None:
