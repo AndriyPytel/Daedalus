@@ -2705,6 +2705,35 @@ def test_a_review_that_passed_still_says_so_in_the_transcript(panel, tmp_path):
     panel._reset_render_state()
 
 
+def test_a_suspicion_before_assertion_does_not_start_or_finish_review(panel, tmp_path):
+    """
+    `review_suspect` runs before Assertion now (FCC-257, FCC-258), so a
+    `review_suspected` event is on the real stream ahead of `assertion` on
+    every pass. Driven through `on_event` as the loop actually emits them: the
+    Queue must not read a `review_suspected` event as the Assertion-is-done,
+    Review-is-running signal that `assertion` alone still means, and the
+    verdict card's evidence must not be reset or set by it either.
+    """
+    from core.events import Event, REVIEW_SUSPECTED, REVIEW_VERDICT
+    from ui.queue_widget import DONE, REVIEW, RUNNING
+
+    panel.on_event(Event(REVIEW_SUSPECTED, {"suspected": ["envelope → width: 40 mm (suspected)"]}))
+
+    assert panel._queue_widget._states[REVIEW] != RUNNING, (
+        "review_suspected alone must not start the Review slot")
+    assert panel._last_review_verdict_event is None, (
+        "review_suspected must not touch the verdict card's evidence")
+
+    views = _review_transcript_evidence(panel, tmp_path)
+
+    assert panel._queue_widget._states[REVIEW] == DONE
+    assert panel._last_review_verdict_event.kind == REVIEW_VERDICT
+    assert panel._last_review_views == views
+
+    panel._reset_render_state()
+
+
+
 def _review_transcript_evidence(panel, tmp_path, verdict="fail",
                                 reason="the flange is mirrored"):
     """

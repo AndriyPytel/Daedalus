@@ -49,8 +49,8 @@ from core.design import (
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, DESIGN,
     ERROR, GATE, INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, EventStream,
+    PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED,
+    THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, EventStream,
 )
 from core import part_file, preflight, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
@@ -61,6 +61,7 @@ DESIGN_PHASE = "design"
 PLAN_PHASE = "plan"
 EXECUTE_PHASE = "execute"
 ASSERTION_PHASE = "assertion"
+REVIEW_SUSPECT_PHASE = "review_suspect"
 REVIEW_PHASE = "review"
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
@@ -515,6 +516,7 @@ _PHASE_VOCABULARY = {
                  "The artefacts are English"),
     EXECUTE_PHASE: ("The operation is one of 36", "The artefacts are English"),
     ASSERTION_PHASE: ("The artefacts are English",),
+    REVIEW_SUSPECT_PHASE: ("The artefacts are English",),
     REVIEW_PHASE: ("The artefacts are English",),
 }
 
@@ -553,8 +555,8 @@ def prompt(phase, ledger=""):
     Plan and Execute write and check an `op`, so they get the 36-verb
     section, and Plan also gets the sentence rules since it is the phase
     that writes the Steps those rules and the English-only check bind;
-    Assertion and Review write English verdicts and nothing else language.md
-    defines, so English is all either needs. The vocabulary lives once, in
+    Assertion and both Review phases write English and nothing else language.md
+    defines, so English is all any of the three needs. The vocabulary lives once, in
     one file, one heading per closed list — a phase composing only some of
     those headings is still reading its one source of truth, not a copy of
     it. Appended after the phase's own body rather than before it, so a
@@ -2587,33 +2589,15 @@ def _why_the_checks_failed(traceback):
             "which entry:\n" + traceback)
 
 
-def review(intent, views, described, llm, events, attachments=(), checked=None):
+def _review_content(request, views, attachments):
     """
-    Judge the outcome against the Intent.
+    A Review request's content blocks — the views, named for the prose, then
+    whatever the user attached to the Intent.
 
-    Given the Intent, the views, the Description of the finished Document, and
-    whatever the user showed with the Intent. Deliberately not given the Plan,
-    the code, or Execute's reasoning — an independent judgement of how it
-    turned out, not of how it was produced.
-
-    One view is not enough — a mirrored tooth flank reads only from above, and
-    in isometry it is foreshortened, which is why Review passed one. Neither is
-    the picture enough on its own: a hole is a dimension, not a pixel, and the
-    Description is where it can be read (FCC-81).
-
-    Without the attachments this compared a render against a sentence, so "does
-    this resemble what I was shown" was not a question it could ask (FCC-47).
-
-    The views arrive in the order `capture_review_views` writes them, which is
-    what `_VIEW_NAMES` names them by for Review's own prose. What the checks
-    confirmed and what they could not cover go with them, so the verdict is
-    about what the checks did not cover rather than a second opinion on what
-    they did (ADR-0015).
+    Both Review calls send this shape; only what they put in `request` before
+    calling this differs, and neither is told how the result was produced
+    (ADR-0003).
     """
-    request = {"intent": intent, "the_document_as_it_now_stands": described}
-    if checked is not None:
-        request["facts_the_checks_confirmed"] = list(checked.confirmed)
-        request["what_the_checks_could_not_cover"] = list(checked.uncovered)
     content = [{"type": "text", "text": json.dumps(request, indent=2, default=str)}]
 
     pictures = [picture for picture in map(_as_image, views or ()) if picture]
@@ -2636,6 +2620,67 @@ def review(intent, views, described, llm, events, attachments=(), checked=None):
             % (len(shown), "s are" if len(shown) > 1 else " is")
         )
         content.extend(shown)
+    return content
+
+
+def review_suspect(intent, views, described, llm, events, attachments=()):
+    """
+    Look at the finished Document before Assertion measures it, and name what
+    a render alone can only suspect.
+
+    Runs first, on the same views and the same Description Review #2 judges
+    later, so what it notices still has Assertion ahead of it to confirm or
+    refute — never a verdict of its own (FCC-204: a suspicion that could pass
+    or fail the run on its own is the flaw ADR-0015 already ruled out).
+
+    What it returns is zero or more Acceptance entries, each written the way
+    every other entry already is — `address: value` — and flagged `suspected`
+    here rather than trusted from the reply, the way a view-read entry is
+    flagged `derived` by the loop and not by the phase that read it. Assertion
+    reads them exactly as it reads the rest of the list (FCC-258).
+    """
+    request = {"intent": intent, "the_document_as_it_now_stands": described}
+    content = _review_content(request, views, attachments)
+
+    reply = _ask(llm, events, REVIEW_SUSPECT_PHASE, prompt(REVIEW_SUSPECT_PHASE), content)
+
+    suspected = [str(entry).strip() for entry in (reply.get("suspected") or ())
+                if str(entry).strip()]
+    return [entry + " (suspected)" for entry in suspected]
+
+
+def review(intent, views, described, llm, events, attachments=(), checked=None):
+    """
+    Judge the outcome against the Intent.
+
+    Given the Intent, the views, the Description of the finished Document, and
+    whatever the user showed with the Intent. Deliberately not given the Plan,
+    the code, or Execute's reasoning — an independent judgement of how it
+    turned out, not of how it was produced.
+
+    One view is not enough — a mirrored tooth flank reads only from above, and
+    in isometry it is foreshortened, which is why Review passed one. Neither is
+    the picture enough on its own: a hole is a dimension, not a pixel, and the
+    Description is where it can be read (FCC-81).
+
+    Without the attachments this compared a render against a sentence, so "does
+    this resemble what I was shown" was not a question it could ask (FCC-47).
+
+    The views arrive in the order `capture_review_views` writes them, which is
+    what `_VIEW_NAMES` names them by for Review's own prose — the same views
+    `review_suspect` was shown, captured once for both (a render does not
+    change between them; Assertion does not draw). What the checks confirmed
+    and what they could not cover go with them, so the verdict is about what
+    the checks did not cover rather than a second opinion on what they did
+    (ADR-0015). This is the run's one gating verdict: `review_suspect` never
+    supplies one, so `measure.py`'s review_fail_rate stays a measure of this
+    call alone.
+    """
+    request = {"intent": intent, "the_document_as_it_now_stands": described}
+    if checked is not None:
+        request["facts_the_checks_confirmed"] = list(checked.confirmed)
+        request["what_the_checks_could_not_cover"] = list(checked.uncovered)
+    content = _review_content(request, views, attachments)
 
     reply = _ask(llm, events, REVIEW_PHASE, prompt(REVIEW_PHASE), content)
 
@@ -3799,15 +3844,21 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     and spend the same budget: the Step no longer makes sense, or it cannot be
     built (ADR-0013).
 
-    The acceptance checks run once the run is over and before Review, against
-    the finished Document, and a failure there is a rejection. No acceptance
-    list means no phase at all, not a phase that checks nothing. What they
-    found is carried on `progress["unmet"]` whatever happens next, and a pass
-    clears it, including the entries inherited from the run before. A user who
-    takes a failed result goes straight out without Review: they have already
-    judged it, and a verdict nobody will act on is a provider call spent on
-    nothing. A rejection by Review is bounded by `review_cycles` and spends the
-    shared revision budget as well.
+    Review looks at the finished Document twice, with Assertion run between
+    the two: once, `review_suspect`, to notice what a render alone cannot
+    confirm and hand it to Assertion as more of the acceptance list to
+    measure, and once more, gating, once Assertion has answered. Assertion's
+    own failure is a rejection there, before the gating Review ever runs. No
+    acceptance list means no phase at all, not a phase that checks nothing.
+    `review_suspect` never rejects a run by itself — it is diagnostic, not
+    authoritative (FCC-258) — so nothing it notices skips the acceptance
+    checks or is judged before they run. What the checks found is carried on
+    `progress["unmet"]` whatever happens next, and a pass clears it, including
+    the entries inherited from the run before. A user who takes a failed
+    result goes straight out: the gating Review has already passed the same
+    Document, so nothing is left unrun to save by skipping it. A rejection by
+    the gating Review is bounded by `review_cycles` and spends the shared
+    revision budget as well.
     """
     if cancelled():
         raise Stopped()
@@ -4025,7 +4076,11 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
         described = outcome["description"] or described
 
-        checking = _also_check(planned.acceptance, outstanding)
+        views = _review_views(tools, events)
+        suspected = review_suspect(intent, views, described, llm, events, attachments)
+        events.emit(REVIEW_SUSPECTED, suspected=list(suspected))
+
+        checking = _also_check(_also_check(planned.acceptance, outstanding), suspected)
         not_reached = _not_reached(outcome.get("unbuilt") or [], checking)
         acceptance = [entry for entry in checking if entry not in not_reached]
         checked = (assertion(acceptance, described, tools, llm, events, budgets,
@@ -4049,34 +4104,34 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               outcome["tried"] + [{"assertion": checked.traceback}])
             continue
 
-        views = _review_views(tools, events)
         verdict, reason = review(intent, views, described, llm, events, attachments,
                                  checked=checked)
         events.emit(REVIEW_VERDICT, verdict=verdict, reason=reason)
 
-        if verdict == "pass":
-            return LoopResult(ok=True, verdict=verdict, reason=reason,
-                              steps_applied=applied)
+        if verdict != "pass":
+            feedback = reason
+            answer = decided(reason, applied, unmet=list(progress["unmet"]))
+            if answer == ACCEPT:
+                return LoopResult(ok=True, verdict="pass", reason=reason,
+                                  steps_applied=applied, unmet=list(progress["unmet"]))
+            if answer == START_OVER:
+                feedback += _MAY_START_AGAIN
 
-        feedback = reason
-        answer = decided(reason, applied, unmet=list(checked.unmet) if checked is not None else ())
-        if answer == ACCEPT:
-            return LoopResult(ok=True, verdict="pass", reason=reason,
-                              steps_applied=applied, unmet=list(progress["unmet"]))
-        if answer == START_OVER:
-            feedback += _MAY_START_AGAIN
+            rejections += 1
+            if rejections > budgets.review_cycles:
+                return _block(
+                    events,
+                    "Review rejected the result %d times; the budget of %d Review cycles per Plan "
+                    "is spent." % (rejections, budgets.review_cycles),
+                    outcome["tried"] + [{"review": reason}], applied,
+                )
 
-        rejections += 1
-        if rejections > budgets.review_cycles:
-            return _block(
-                events,
-                "Review rejected the result %d times; the budget of %d Review cycles per Plan "
-                "is spent." % (rejections, budgets.review_cycles),
-                outcome["tried"] + [{"review": reason}], applied,
-            )
+            planned = rewrite(_Revisions.REJECTED, "Review has rejected the result again.",
+                              feedback, outcome["tried"] + [{"review": reason}])
+            continue
 
-        planned = rewrite(_Revisions.REJECTED, "Review has rejected the result again.",
-                          feedback, outcome["tried"] + [{"review": reason}])
+        return LoopResult(ok=True, verdict=verdict, reason=reason,
+                          steps_applied=applied)
 
 
 _GOING_NOWHERE = (
