@@ -344,6 +344,8 @@ class ApplyPipeline:
 
         try:
             self._dispatch(lambda: self._transaction(doc, code, label))
+        except Closing:
+            raise
         except BaseException as exc:
             return ApplyResult(
                 ok=False,

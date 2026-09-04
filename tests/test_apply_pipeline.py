@@ -7,7 +7,7 @@ that is visible from outside — the caller gets "applied" or "failed".
 """
 import pytest
 
-from core.apply import ApplyPipeline
+from core.apply import ApplyPipeline, Closing
 from core.preflight import PreflightResult
 
 
@@ -188,6 +188,17 @@ def test_a_step_that_passes_preflight_but_fails_for_real_is_reported_as_such(tra
     assert not result.ok
     assert "rolled back" in result.traceback
     assert "the live Document disagreed" in result.traceback
+
+
+def test_closing_during_the_transaction_is_a_clean_stop_not_a_failed_step(trace):
+    def transaction(document, code, label):
+        raise Closing("shutting down")
+
+    pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
+                             dispatch=lambda f, timeout=None: f(), transaction=transaction)
+
+    with pytest.raises(Closing):
+        pipeline.apply("doc.recompute()")
 
 
 def test_no_open_document_is_a_reason_not_a_crash():
