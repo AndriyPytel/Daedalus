@@ -629,3 +629,84 @@ def test_traps_carries_the_seed_taxonomy_classes_not_yet_in_it():
     ):
         assert any(substring in trap for trap in TRAPS), \
             "no TRAPS entry carries %r" % substring
+
+
+def test_build_registry_registers_the_same_tools_and_schemas_as_before_the_split():
+    """
+    Golden schema list captured from `build_registry` before FCC-268 split it
+    into `_register_*` functions, so a tool silently dropped or renamed in the
+    split fails this test instead of surfacing later as a missing LLM tool.
+    """
+    expected = [
+        {
+            "name": "snapshot",
+            "description": "The cheap summary of Document state: what objects exist, what is active, "
+                            "and what the user has selected. Not the whole tree — call describe_object "
+                            "for detail on one object.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "overall_size",
+            "description": "How big the finished part is. Driven by the loop once before Review, "
+                            "never by a phase.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "describe_object",
+            "description": "Every property this object actually has in the running FreeCAD, with its "
+                            "type, group, documentation and current value. Use this instead of guessing "
+                            "a property name.",
+            "parameters": {
+                "type": "object",
+                "properties": {"name": {"type": "string", "description": "The object's Name, not its Label."}},
+                "required": ["name"],
+            },
+        },
+        {
+            "name": "describe_type",
+            "description": "Every property a type has, before any object of it exists — with the "
+                            "spellings this build accepts where a property is a choice between named "
+                            "values. Use this to check a type you are about to create; use "
+                            "describe_object for one that is already in the Document.",
+            "parameters": {
+                "type": "object",
+                "properties": {"type_id": {"type": "string",
+                                           "description": "The full type, e.g. 'PartDesign::Pocket'."}},
+                "required": ["type_id"],
+            },
+        },
+        {
+            "name": "supported_types",
+            "description": "The object types this Document can actually create, straight from the "
+                            "running FreeCAD. Filter with a prefix such as 'Part::' or 'PartDesign::'.",
+            "parameters": {
+                "type": "object",
+                "properties": {"prefix": {"type": "string", "description": "Optional case-insensitive prefix filter."}},
+            },
+        },
+        {
+            "name": "dependencies",
+            "description": "What this object is built from and what would break if it changed. "
+                            "Check this before modifying or deleting anything.",
+            "parameters": {
+                "type": "object",
+                "properties": {"name": {"type": "string", "description": "The object's Name."}},
+                "required": ["name"],
+            },
+        },
+        {
+            "name": "materials",
+            "description": "The material cards this FreeCAD has, with the uuid ShapeMaterial needs. A "
+                            "uuid is not something to guess and a card's density is not something to set "
+                            "— pick the card that already has the density asked for.",
+            "parameters": {
+                "type": "object",
+                "properties": {"name": {"type": "string",
+                                        "description": "Optional case-insensitive name filter, e.g. 'alumin'."}},
+            },
+        },
+    ]
+
+    registry = build_registry()
+    described = sorted(registry.describe(), key=lambda tool: tool["name"])
+    assert described == sorted(expected, key=lambda tool: tool["name"])

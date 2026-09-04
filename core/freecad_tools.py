@@ -799,6 +799,17 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
 
     registry = ToolRegistry()
 
+    _register_document(registry, active)
+    _register_introspection(registry, active)
+    _register_material(registry)
+
+    if pipeline is not None:
+        _register_apply(registry, pipeline, _selection)
+
+    return registry
+
+
+def _register_document(registry, active):
     @registry.tool(
         "snapshot",
         "The cheap summary of Document state: what objects exist, what is active, "
@@ -830,6 +841,32 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
     def overall_size():
         return {"size_mm": _overall_size(active())}
 
+    @registry.tool(
+        "dependencies",
+        "What this object is built from and what would break if it changed. "
+        "Check this before modifying or deleting anything.",
+        {
+            "type": "object",
+            "properties": {"name": {"type": "string", "description": "The object's Name."}},
+            "required": ["name"],
+        },
+    )
+    def dependencies(name):
+        doc = active()
+        obj = doc.getObject(name)
+        if obj is None:
+            raise ToolError(
+                "No object named %r. Existing: %s"
+                % (name, ", ".join(o.Name for o in doc.Objects) or "(the Document is empty)")
+            )
+        return {
+            "name": obj.Name,
+            "depends_on": [o.Name for o in obj.OutList],
+            "used_by": [o.Name for o in obj.InList],
+        }
+
+
+def _register_introspection(registry, active):
     @registry.tool(
         "describe_object",
         "Every property this object actually has in the running FreeCAD, with its "
@@ -913,30 +950,8 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
             types = [t for t in types if t.lower().startswith(lowered)]
         return {"types": types, "count": len(types)}
 
-    @registry.tool(
-        "dependencies",
-        "What this object is built from and what would break if it changed. "
-        "Check this before modifying or deleting anything.",
-        {
-            "type": "object",
-            "properties": {"name": {"type": "string", "description": "The object's Name."}},
-            "required": ["name"],
-        },
-    )
-    def dependencies(name):
-        doc = active()
-        obj = doc.getObject(name)
-        if obj is None:
-            raise ToolError(
-                "No object named %r. Existing: %s"
-                % (name, ", ".join(o.Name for o in doc.Objects) or "(the Document is empty)")
-            )
-        return {
-            "name": obj.Name,
-            "depends_on": [o.Name for o in obj.OutList],
-            "used_by": [o.Name for o in obj.InList],
-        }
 
+def _register_material(registry):
     @registry.tool(
         "materials",
         "The material cards this FreeCAD has, with the uuid ShapeMaterial needs. A "
@@ -989,11 +1004,6 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
             result["truncated"] = ("showing %d of %d — filter by name"
                                    % (_MATERIALS_LIMIT, len(found)))
         return result
-
-    if pipeline is not None:
-        _register_apply(registry, pipeline, _selection)
-
-    return registry
 
 
 def _physical(card, quantity):
