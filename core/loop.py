@@ -685,6 +685,7 @@ def _streamed(llm, events, phase, system, user, prior=()):
         except StreamCutOff:
             if attempt == _CUT_OFF_ATTEMPTS - 1:
                 raise
+            time.sleep(2 ** attempt)
 
 
 def _one_call(llm, events, phase, system, user, prior=()):
@@ -2177,8 +2178,9 @@ class Looks:
         """
         Write one describe_type answer to disk, atomically.
 
-        Concurrent runs both write; a unique temporary name plus os.replace
-        makes last-write-wins safe.
+        Concurrent runs both write; a fresh read merged into this session's
+        own entries just before the write, then a unique temporary name plus
+        os.replace, keeps a session's own snapshot from erasing another's.
         """
         if not self._cache_path or name != "describe_type":
             return
@@ -2189,10 +2191,11 @@ class Looks:
         try:
             directory = os.path.dirname(self._cache_path)
             os.makedirs(directory, exist_ok=True)
+            merged = {**self._load_disk_cache(), **self._disk_cache}
             fd, tmp_path = tempfile.mkstemp(dir=directory, suffix=".json")
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                    json.dump(self._disk_cache, handle, indent=2, sort_keys=True)
+                    json.dump(merged, handle, indent=2, sort_keys=True)
                 os.replace(tmp_path, self._cache_path)
             except OSError:
                 try:
@@ -3179,7 +3182,7 @@ def _the_geometry_disagrees(attachments, events, budget=A_READING_BUDGET):
     if not traced:
         return []
 
-    worker = _a_freecad_of_our_own()
+    worker = _a_freecad_of_our_own(events)
     found = []
     if worker is None:
         unchecked = [view for outline, view, _ in traced if outline.entities]
@@ -3257,7 +3260,7 @@ def _what_the_solver_said(worker, outline, view, between, unchecked, timeout=Non
     return found
 
 
-def _a_freecad_of_our_own():
+def _a_freecad_of_our_own(events):
     """
     A headless FreeCAD to build the reading in, or nothing.
 
@@ -3276,7 +3279,9 @@ def _a_freecad_of_our_own():
         worker = preflight.PreflightWorker()
         worker.start()
         return worker
-    except Exception:
+    except Exception as exc:
+        events.emit(ERROR, message="the headless FreeCAD could not start: "
+                                    "%s: %s" % (type(exc).__name__, exc))
         return None
 
 
