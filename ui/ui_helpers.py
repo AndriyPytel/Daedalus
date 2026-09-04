@@ -1,3 +1,4 @@
+import functools
 import os
 
 import FreeCAD
@@ -15,6 +16,7 @@ class UIHelpers:
     """Helper class for SVG icons and common UI styling."""
 
     @staticmethod
+    @functools.lru_cache(maxsize=None)
     def _icon_svg(name):
         """
         The named icon's raw markup, read from `ui/icons/<name>.svg`, or
@@ -30,6 +32,10 @@ class UIHelpers:
 
         `currentColor` stands in for the colour: `get_icon` replaces it with a
         literal before the SVG is rasterised, so every file must carry it.
+
+        The markup is cached because `get_icon` is called on every repaint --
+        `QueueWidget._repaint_phases` alone asks six times per event -- and an
+        icon file does not change while FreeCAD is running.
         """
         path = os.path.join(ICON_DIR, "%s.svg" % name)
         try:
