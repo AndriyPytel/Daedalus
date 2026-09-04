@@ -88,7 +88,7 @@ def _freecad_version():
         return "unknown"
 
 
-_VIEW_NAMES = ("isometric", "the opposite isometric", "above", "the front")
+_VIEW_NAMES = ("isometric", "the opposite isometric", "above", "the front", "the section")
 
 OP_VERBS = (
     "pad", "revolve", "additive-loft", "additive-sweep", "additive-helix",

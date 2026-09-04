@@ -68,6 +68,104 @@ def test_fitting_the_view_where_there_is_no_view_is_not_a_failure():
     assert fit_view() is None
 
 
+def test_the_section_plane_lands_in_an_off_center_cavity_not_the_wholepart_bbox_center(doc):
+    """
+    FCC-261: a shelled 40mm cube's cavity sits at the same point as its own
+    exterior bbox centre, so that fixture cannot tell a plane that actually
+    targets the cavity from one that just takes the whole part's bbox
+    centre — both give the same answer. This part can: a 15mm-deep blind
+    bore near one end of a 60x20x20 block, with 30mm of unbored material
+    past it, so the block's own bbox centre (x=30) sits 10mm outside the
+    bore (x 10-20) while the bore's own centre (x=15) does not.
+    """
+    import FreeCAD
+
+    from core.freecad_tools import _section_plane
+
+    box = doc.addObject("Part::Box", "Box")
+    box.Length, box.Width, box.Height = 60, 20, 20
+    doc.recompute()
+    bore = doc.addObject("Part::Cylinder", "Bore")
+    bore.Radius = 5
+    bore.Height = 15
+    bore.Placement.Base = FreeCAD.Vector(15, 10, 5)
+    doc.recompute()
+    pocket = doc.addObject("Part::Cut", "Pocket")
+    pocket.Base = box
+    pocket.Tool = bore
+    doc.recompute()
+
+    plane = _section_plane(doc)
+
+    assert plane is not None
+    bbox = pocket.Shape.BoundBox
+    assert (bbox.XMin, bbox.XMax) == (0, 60), "the bore must not shrink the block's own exterior"
+    assert 10 < plane.Base.x < 20
+    assert 5 < plane.Base.y < 15
+    assert 5 < plane.Base.z < 20
+    assert plane.Rotation.isSame(FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), -90), 1e-9)
+
+
+def test_the_section_plane_falls_back_to_the_bbox_center_with_nothing_hollow(doc):
+    """
+    FCC-261: a solid block has no void to centre on, and a solid part is
+    still owed a section view — the fallback this test pins down.
+    """
+    from core.freecad_tools import _section_plane
+
+    box = doc.addObject("Part::Box", "Box")
+    box.Length, box.Width, box.Height = 40, 20, 10
+    doc.recompute()
+
+    plane = _section_plane(doc)
+
+    assert plane is not None
+    assert (plane.Base.x, plane.Base.y, plane.Base.z) == (20.0, 10.0, 5.0)
+
+
+def test_the_cavity_search_costs_a_fraction_of_a_second_even_on_a_forty_hole_plate(doc):
+    """
+    FCC-261: `_cavity_center` runs one boolean `cut` per Review section
+    capture, so its cost has to stay well under what one capture can spend.
+    Measured at ~0.11s for this fixture (a 200x200x30 plate, forty 8mm
+    bores) on the machine this suite runs on; the 1s ceiling here is the
+    budget that number is checked against, not the number itself.
+    """
+    import time
+
+    import FreeCAD
+
+    from core.freecad_tools import _section_plane
+
+    plate = doc.addObject("Part::Box", "Plate")
+    plate.Length, plate.Width, plate.Height = 200, 200, 30
+    doc.recompute()
+    previous = plate
+    for index in range(40):
+        bore = doc.addObject("Part::Cylinder", "Bore%d" % index)
+        bore.Radius = 4
+        bore.Height = 40
+        bore.Placement.Base = FreeCAD.Vector(10 + (index % 8) * 20, 10 + (index // 8) * 20, -5)
+        cut = doc.addObject("Part::Cut", "Cut%d" % index)
+        cut.Base = previous
+        cut.Tool = bore
+        previous = cut
+        doc.recompute()
+
+    started = time.perf_counter()
+    plane = _section_plane(doc)
+    elapsed = time.perf_counter() - started
+
+    assert plane is not None
+    assert elapsed < 1.0
+
+
+def test_the_section_plane_is_none_with_nothing_modelled_yet(doc):
+    from core.freecad_tools import _section_plane
+
+    assert _section_plane(doc) is None
+
+
 def test_the_overall_size_is_what_is_modelled(tools, part):
     """
     The one number a drawing states outright, and the one nothing else in the

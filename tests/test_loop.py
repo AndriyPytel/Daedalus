@@ -4023,6 +4023,18 @@ def test_the_same_four_views_reach_both_review_calls():
             == [part["image_url"] for part in review_content if part["type"] == "image_url"])
 
 
+def test_view_names_names_every_review_view_including_the_section():
+    """
+    FCC-261: `_VIEW_NAMES` labels Review's own prose off `len(pictures)`, so a
+    `REVIEW_VIEWS` that grew a fifth entry and left this short of it would
+    mislabel the section capture rather than fail loudly.
+    """
+    from core.freecad_tools import REVIEW_VIEWS
+    from core.loop import _VIEW_NAMES
+
+    assert len(_VIEW_NAMES) == len(REVIEW_VIEWS)
+
+
 def test_a_run_with_no_views_still_reaches_a_verdict():
     """
     No views still degrades Review to the Description alone, and a registry with
