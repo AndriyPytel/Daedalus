@@ -9,7 +9,7 @@ tracker: youtrack
 review_by: manager
 external_tracking: false
 permissions:
-  commit: ask
+  commit: allow
   merge_local: allow
   push: deny
   pull_request: deny
