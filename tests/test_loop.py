@@ -3991,7 +3991,9 @@ def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
 
     assert [name for name, _ in tools.calls].count("review_views") == 1
 
-    review_content = llm.calls[3][1]["content"]
+    assert llm.calls[4][0]["content"] == prompt("review")
+
+    review_content = llm.calls[4][1]["content"]
     assert sum(1 for part in review_content if part["type"] == "image_url") == 4
     assert "the same result seen from" in review_content[0]["text"]
     assert "not several" in review_content[0]["text"]
@@ -5449,6 +5451,34 @@ def test_a_suspicion_never_gates_but_reaches_assertions_acceptance_list():
             "a suspected row must not replace the acceptance list, only extend it")
 
 
+def test_a_refuted_suspicion_fails_assertion_and_replans_then_passes():
+    """
+    The other half of the confirmed suspicion above (FCC-258's own Testing
+    Strategy: a suspicion that Assertion measures and finds false, with the
+    run still passing once it is fixed). A `suspected` row is measured
+    exactly like any other acceptance entry — a failed check on it rejects
+    through the same `replan()` path as a Plan-authored entry, no separate
+    remediation, and the run's own retry clears it.
+    """
+    raised = "thread → pitch: 1.25 mm"
+    result, events, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"),
+        suspect_reply(raised), assertion_reply(CHECKS),
+        planning_the_nut("Make it 13 mm across the flats"), code_reply("fix()"),
+        suspect_reply(), assertion_reply(CHECKS),
+        verdict_reply("pass"),
+        checks=[assertion_failed(ASSERT_FAILED), None])
+
+    assert result.ok
+    assert result.verdict == "pass"
+    assert events.first(REVIEW_SUSPECTED).data["suspected"] == [raised + " (suspected)"]
+    assert events.first(ASSERTION).data["ok"] is False
+    assert events.first(PLAN_REVISED).data["because"] == "the acceptance checks failed"
+    assert events.first(REVIEW_VERDICT).data["verdict"] == "pass"
+
+    first_assertion_request = json.loads(llm.calls[4][-1]["content"])
+    assert raised + " (suspected)" in first_assertion_request["acceptance"]
+
 
 def test_an_empty_acceptance_list_costs_no_llm_call():
     """
@@ -5879,6 +5909,17 @@ def test_a_step_carries_the_address_it_cites_and_not_the_paragraph_behind_it():
     assert step == ("Pad the blank and cut the opening (satisfies: %s (read), %s (read))"
                     % (CAVITY_DEPTH, CAVITY_POCKET))
     assert "100 mm" not in step and "20 mm" not in step
+
+def test_a_suspected_citation_keeps_its_flag_through_the_trim():
+    """
+    `_in_the_prose` trims a citation to its address and flag (FCC-127); a
+    `suspected` row must survive that trim the same way `read`, `derived`
+    and `assumed` already do, or a Plan citing a carried-forward suspicion
+    in a later Step loses the one thing that told the Gate it was never
+    confirmed (FCC-258 AC3).
+    """
+    assert loop._in_the_prose("thread \u2192 pitch: 1.25 mm (suspected)") == (
+        "thread \u2192 pitch (suspected)")
 
 
 def test_one_entry_may_feed_several_steps():
@@ -8412,6 +8453,35 @@ def test_the_entry_the_unbuilt_step_satisfied_comes_back_unmet_with_the_reason()
     assert said["description"].startswith("Assign plain carbon steel to the Body")
     assert _turns_of(llm, "assertion")[0]["acceptance"] == [THE_LENGTH], \
         "the checks were asked to measure a Step that was never built"
+
+def test_a_rejected_review_carries_the_unbuilt_step_s_entry_on_the_auto_answer(clean_auto_approve):
+    """
+    An unbuilt Step's acceptance entry is `not_reached`, folded into
+    `progress["unmet"]` alongside whatever the checks left `unmet` (always
+    empty here, since Assertion only reaches this point having passed).
+    On an unattended run this reaches the stream through `decided()`'s
+    `unmet` argument, on the `ANSWER` event Review's rejection produces —
+    an auto-approved run must show the entry a Step never built as unmet
+    the same way a user-approved one does (`result.unmet`, proven above).
+    """
+    clean_auto_approve.set_auto_approve_plan(True)
+
+    result, events, _, _ = drive([
+        design_reply(A_BRACKET_IN_STEEL),
+        plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
+                   {"do": "Assign plain carbon steel to the Body",
+                    "satisfies": [THE_MATERIAL]}),
+        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": NO_CARD}),
+        suspect_reply(),
+        assertion_reply(CHECKS),
+        verdict_reply("fail", reason="the pad reads shallow"),
+    ], attachments=[RENDER_PNG], budgets=Budgets(review_cycles=0))
+
+    assert result.blocked
+    answer = events.first(ANSWER).data
+    assert answer["by"] == "auto"
+    assert answer["unmet"] == [THE_MATERIAL]
 
 
 def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
