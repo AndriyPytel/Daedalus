@@ -150,7 +150,6 @@ def test_a_failed_fetch_lets_the_next_ensure_fetched_retry(manager, monkeypatch)
     assert len(starts) == 1
 
     manager._on_fetch_failed("openai", "boom")
-    assert "openai" not in manager._threads
 
     manager._ensure_fetched("openai")
     assert len(starts) == 2

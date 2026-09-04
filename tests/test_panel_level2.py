@@ -782,17 +782,18 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     picture = tmp_path / "bracket.png"
     picture.write_bytes(b"a file; whether it decodes is the loop's problem")
 
-    from unittest.mock import MagicMock
-
     bundle = panel._worker_for(panel._current_log())
-    bundle.request_work = MagicMock()
-    panel.chip_bar.add_file(str(picture))
-    panel.user_input.setPlainText("Build this bracket")
-    panel.on_send()
-    panel._set_running(False)
+    sent = []
+    bundle.request_work.connect(lambda intent, files, log: sent.append((intent, files)))
+    try:
+        panel.chip_bar.add_file(str(picture))
+        panel.user_input.setPlainText("Build this bracket")
+        panel.on_send()
+    finally:
+        bundle.request_work.disconnect()
+        panel._set_running(False)
 
-    intent, attachments = bundle.request_work.emit.call_args[0][:2]
-    assert (intent, attachments) == ("Build this bracket", [str(picture)])
+    assert sent == [("Build this bracket", [str(picture)])]
     assert not panel.chip_bar.isVisible(), "the next Intent would reuse this one's files"
 
 
@@ -812,27 +813,38 @@ def test_a_part_path_a_run_left_behind_carries_into_the_next_send_unless_a_new_d
     panel.on_run_finished(types.SimpleNamespace(ok=True, unmet=[], the_part_path=written), log)
     assert bundle.the_part_path == written
 
-    from unittest.mock import MagicMock
+    _never_call_the_real_model(panel)
 
-    bundle.request_work = MagicMock()
-    panel.user_input.setPlainText("make this hole 5 mm wider")
-    panel.on_send()
-    panel.worker.stop()
-    panel._set_running(False)
+    sent = []
+    bundle.request_work.connect(
+        lambda intent, files, log, outstanding, the_part_path=None: sent.append(the_part_path))
+    try:
+        panel.user_input.setPlainText("make this hole 5 mm wider")
+        panel.on_send()
+    finally:
+        bundle.request_work.disconnect()
+        panel.worker.stop()
+        panel._set_running(False)
 
-    assert bundle.request_work.emit.call_args[0][4] == written
+    assert sent == [written]
 
     drawing = tmp_path / "bracket.png"
     drawing.write_bytes(b"a file; whether it decodes is the loop's problem")
     panel.chip_bar.add_file(str(drawing))
 
-    bundle.request_work = MagicMock()
-    panel.user_input.setPlainText("Build this bracket")
-    panel.on_send()
-    panel.worker.stop()
-    panel._set_running(False)
+    sent_with_new_drawing = []
+    bundle.request_work.connect(
+        lambda intent, files, log, outstanding, the_part_path=None:
+        sent_with_new_drawing.append(the_part_path))
+    try:
+        panel.user_input.setPlainText("Build this bracket")
+        panel.on_send()
+    finally:
+        bundle.request_work.disconnect()
+        panel.worker.stop()
+        panel._set_running(False)
 
-    assert bundle.request_work.emit.call_args[0][4] == ""
+    assert sent_with_new_drawing == [""]
 
 
 def test_a_run_accepted_over_failed_checks_is_not_shown_as_a_plain_success(panel):
@@ -882,14 +894,17 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     drawing.write_text("ISO-10303-21;")
     panel.chip_bar.add_file(str(drawing))
 
-    from unittest.mock import MagicMock
-
     bundle = panel._worker_for(panel._current_log())
-    bundle.request_work = MagicMock()
-    panel.user_input.setPlainText("Build this bracket")
-    panel.on_send()
+    sent = []
+    listener = lambda intent, files, log: sent.append(intent)
+    bundle.request_work.connect(listener)
+    try:
+        panel.user_input.setPlainText("Build this bracket")
+        panel.on_send()
+    finally:
+        bundle.request_work.disconnect(listener)
 
-    assert not bundle.request_work.emit.called, "the run started with an attachment it could not use"
+    assert sent == [], "the run started with an attachment it could not use"
     assert panel.chip_bar.files() == [str(drawing)], "the user cannot take the chip off"
     assert panel.user_input.toPlainText() == "Build this bracket"
     said = _said_in(panel)
@@ -1633,14 +1648,15 @@ def test_a_first_intent_names_the_session_from_what_was_typed(panel, monkeypatch
     index = panel.chat_sessions.stack.currentIndex()
     _never_call_the_real_model(panel)
 
-    from unittest.mock import MagicMock
-
     bundle = panel._worker_for(panel._current_log())
-    bundle.request_work = MagicMock()
+    bundle.request_work.connect(lambda *_: None)
     panel.user_input.setPlainText(
         "Model a spur gear with 24 teeth, module 2, 10mm thick, and a 12mm bore")
-    panel.on_send()
-    panel._set_running(False)
+    try:
+        panel.on_send()
+    finally:
+        bundle.request_work.disconnect()
+        panel._set_running(False)
 
     name = panel.chat_sessions.get_session_info(index)["name"]
     assert name.startswith("Model a spur gear")
@@ -2267,20 +2283,22 @@ def test_enter_while_a_question_is_open_answers_it_rather_than_starting_a_run(pa
     and the re-plan asked it again — which is what "it planned first and only
     then started asking" looked like from the outside. FCC-71.
     """
-    from unittest.mock import MagicMock
-
-    answered = []
+    answered, sent = [], []
     monkeypatch.setattr(panel.ask, "answer", answered.append)
     bundle = panel._worker_for(panel._current_log())
-    bundle.request_work = MagicMock()
-    panel.on_missing_values("How many teeth?")
-    QT_APP.processEvents()
-    panel.user_input.setPlainText("20 teeth, module 2")
-    panel.on_send()
-    QT_APP.processEvents()
+    listener = lambda intent, files, log: sent.append(intent)
+    bundle.request_work.connect(listener)
+    try:
+        panel.on_missing_values("How many teeth?")
+        QT_APP.processEvents()
+        panel.user_input.setPlainText("20 teeth, module 2")
+        panel.on_send()
+        QT_APP.processEvents()
+    finally:
+        bundle.request_work.disconnect(listener)
 
     assert answered == ["20 teeth, module 2"]
-    assert not bundle.request_work.emit.called, "Enter started a second run instead of answering the question"
+    assert sent == [], "Enter started a second run instead of answering the question"
     assert panel._question_card is None, "the card is still open after being answered"
     assert panel.user_input.toPlainText() == "", "the composer kept the answer"
 
