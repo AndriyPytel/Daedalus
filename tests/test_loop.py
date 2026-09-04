@@ -5385,7 +5385,8 @@ def test_a_feature_named_in_what_a_retry_touched_does_not_fail_a_later_assertion
         verdict_reply("pass"),
     ],
         budgets=Budgets(revisions=1),
-        applies=[None, failed("this Step left a Body in more than one piece"), None],
+        applies=[None, failed("this Step left a Body in more than one piece"),
+                {"status": "applied", "created": ["ring-split"], "description": DESCRIPTION}],
         attachments=[RENDER_PNG],
         checks=[
             {"ok": True, "geometry": {"ring-split": [10.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0]}},

@@ -56,17 +56,25 @@ def closing():
 
 @dataclass
 class ApplyResult:
-    """All the loop ever learns about a Step: it landed, or here is why not."""
+    """
+    All the loop ever learns about a Step: it landed, or here is why not.
+
+    `modified` is Preflight's own measured list (`PreflightResult.modified`),
+    carried past the `_CHANGED_NOTHING` check it already decides rather than
+    dropped there — the exact FreeCAD Names a landed Step altered without
+    creating, alongside `created`.
+    """
 
     ok: bool
     traceback: str = ""
     description: dict = field(default_factory=dict)
     created: list = field(default_factory=list)
+    modified: list = field(default_factory=list)
 
     def as_tool_result(self) -> dict:
         if self.ok:
             return {"status": "applied", "created": self.created,
-                    "description": self.description}
+                    "modified": self.modified, "description": self.description}
         return {"status": "failed", "traceback": self.traceback}
 
 
@@ -347,7 +355,8 @@ class ApplyPipeline:
         described = self._dispatch(lambda: description(doc))
         created = [o["name"] for o in described["features"] if o["name"] not in before]
         self.owned.update(created)
-        return ApplyResult(ok=True, description=described, created=created)
+        return ApplyResult(ok=True, description=described, created=created,
+                           modified=list(preflighted.modified))
 
     def check_assertions(self, code):
         """

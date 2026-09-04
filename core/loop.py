@@ -2606,52 +2606,32 @@ def _geometry_close(before, now):
                for a, b in zip(before, now))
 
 
-def _geometry_regressions(baseline, geometry, retried):
+def _geometry_regressions(baseline, geometry, retried_names):
     """
     Features whose geometry moved since the last Assertion pass that held,
-    and were never named in what a retry touched (FCC-260).
+    and are not one of the exact Names a retried Step actually touched.
 
     `core/apply.py` and Preflight track only the names a Step declared
     touching, never whether some other feature's geometry moved underneath a
     repair Step — `config/prompts/assertion.md` already documents the result:
     a slot shortened until it passes an acceptance check, a clamp that no
-    longer opens. `entries_a_retry_touched` (this file, the request `assertion`
-    builds) is the one thing this build already tracks about what a retry
-    changed to get past a check, so a feature outside that list moved for no
-    reason the run itself can name.
-
-    The two sides of the match are two different vocabularies with nothing in
-    this codebase relating them. `retried` holds Acceptance citations —
-    `core/design.py::entries`' own address paths, written by Design before any
-    FreeCAD object exists, one string like "features -> ring-split -> width".
-    `geometry`'s keys are FreeCAD `Object.Name`, chosen ad hoc inside whatever
-    Python Execute happened to write (`doc.addObject(TypeId, "Whatever")`) —
-    there is no field anywhere that carries a description id onto the Document
-    object it became. Substring is not a shortcut taken over an exact match
-    that was available; it is the only join there is, because no exact one
-    exists, and the check is fuzzy on both sides of it as a result:
-
-    - A feature whose Name is not a literal substring of the citation prose
-      (the common case — "Fillet" is not a word "ring-split -> width" ever
-      contains) reads as "not named" whether or not a retry actually touched
-      it under a different word for the same thing, biasing this check toward
-      flagging retried features it has no way to recognise as retried.
-    - A feature whose Name happens to be a *prefix* of another Name a retry's
-      citation does mention is excused it never earned: "Slot" reads as
-      "named" the moment a citation contains "SlotChamfer", pinned by
-      `test_a_shorter_names_feature_is_wrongly_excused_by_a_longer_ones_retry`
-      in tests/test_geometry_regression_across_a_run.py.
+    longer opens. `retried_names` is the exact per-Step `created`/`modified`
+    Names `apply_step` already measures (`core/apply.py`), carried out of
+    `_work_through` for every Step an attempt retried — an exact match against
+    FreeCAD `Object.Name`, not a substring against Acceptance citation prose:
+    a prefix relationship between two Names ("Slot" of "SlotChamfer", or
+    FreeCAD's own auto-numbered "Fillet" of "Fillet001") never excuses one for
+    the other.
 
     `baseline` is a snapshot from the last Assertion pass that held (built by
-    the caller, one entry per feature Volume and BoundBox) rather than
-    anything read off the Document itself: nothing before FCC-260 kept one,
-    so genesis — the very first Assertion pass of a run — has nothing to
-    compare against and reports nothing moved.
+    the caller, one entry per feature Volume and BoundBox). An empty baseline
+    has nothing to compare against and reports nothing moved, which is the
+    invariant that makes the very first Assertion pass of a run a no-op here.
     """
-    named = " ".join(retried or ()).lower()
+    touched = set(retried_names or ())
     moved = []
     for name, was in (baseline or {}).items():
-        if name.lower() in named:
+        if name in touched:
             continue
         now = (geometry or {}).get(name)
         if now is None or was is None or _geometry_close(was, now):
@@ -4115,7 +4095,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                    if acceptance else None)
         if checked is not None and checked.geometry:
             regressed = _geometry_regressions(geometry_baseline, checked.geometry,
-                                              outcome.get("retried"))
+                                              outcome.get("retried_names"))
             if regressed and not checked.failed:
                 traceback = _GEOMETRY_REGRESSION % ", ".join(regressed)
                 events.emit(ASSERTION, ok=False, code="", confirmed=checked.confirmed,
@@ -4359,6 +4339,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     free_trailing_gaps = 0
     index = 0
     retried = set()
+    retried_names = set()
     unbuilt = []
     looks = looks if looks is not None else Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
     written = execute(steps, tools, llm, events, start, budgets=budgets,
@@ -4431,6 +4412,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             progress["satisfied"].extend(cites[index] if index < len(cites) else ())
             if attempts:
                 retried.add(index)
+                retried_names.update(result.get("created", []))
+                retried_names.update(result.get("modified", []))
             described = result.get("description") or described
             events.emit(APPLIED, step=index + 1, label=outcome.label,
                         created=result.get("created", []))
@@ -4474,7 +4457,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             "applied_here": index,
             "tried": [], "unbuilt": unbuilt, "retried": sorted(
                 {cited for at in retried for cited in (cites[at] if at < len(cites)
-                                                       else ())})}
+                                                       else ())}),
+            "retried_names": sorted(retried_names)}
 
 
 _A_PROPERTY_OF_THE_DOCUMENT = ("material", "appearance", "colour", "color",

@@ -163,7 +163,7 @@ def test_the_caller_sees_applied_or_failed_and_nothing_else(pipeline):
     assert applied["status"] == "applied"
     assert failed == {"status": "failed", "traceback": "boom"}
     assert "preflight" not in repr(applied).lower()
-    assert set(applied) == {"status", "created", "description"}
+    assert set(applied) == {"status", "created", "modified", "description"}
 
 
 def test_a_worker_that_died_reads_as_a_failed_step_not_an_incident(pipeline):

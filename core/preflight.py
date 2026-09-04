@@ -51,9 +51,9 @@ class PreflightResult:
     "measured, and nothing held or failed".
 
     `geometry` is every feature's Volume and BoundBox (FCC-260), always
-    present on a successful Preflight — cheap enough to take every time
-    (measured against the suite's own fixtures) — and empty where Preflight
-    never reached a finished Document to measure at all.
+    present on a successful Preflight — cheap enough to take every time —
+    and empty where Preflight never reached a finished Document to measure
+    at all.
     """
 
     ok: bool
