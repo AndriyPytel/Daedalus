@@ -163,6 +163,25 @@ def test_describe_object_accepts_a_label_when_the_name_does_not_match(tools, par
     assert tools.call("describe_object", {"name": "Base Plate"})["name"] == "Box"
 
 
+def test_describe_object_raises_on_a_label_collision(tools, part, doc):
+    import FreeCAD
+
+    param = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Document")
+    duplicates_were_allowed = param.GetBool("DuplicateLabels", False)
+    param.SetBool("DuplicateLabels", True)
+    try:
+        doc.getObject("Box").Label = "Profile"
+        doc.getObject("Fillet").Label = "Profile"
+        doc.recompute()
+
+        with pytest.raises(ToolError) as raised:
+            tools.call("describe_object", {"name": "Profile"})
+    finally:
+        param.SetBool("DuplicateLabels", duplicates_were_allowed)
+
+    assert "Box" in str(raised.value) and "Fillet" in str(raised.value)
+
+
 def test_describe_object_on_a_ghost_says_what_does_exist(tools, part):
     with pytest.raises(ToolError) as raised:
         tools.call("describe_object", {"name": "Ghost"})
