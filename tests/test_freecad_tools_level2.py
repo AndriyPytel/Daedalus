@@ -68,6 +68,39 @@ def test_fitting_the_view_where_there_is_no_view_is_not_a_failure():
     assert fit_view() is None
 
 
+def test_the_section_plane_cuts_through_a_shelled_boxs_hollow_interior(doc):
+    """
+    FCC-261: the plane `capture_review_views`'s section mode clips against has
+    to sit inside the part's own cavity, not merely inside its outer
+    bounding box — a plane tangent to a wall would show the same exterior
+    every other view already does. A shelled box is a real, no-fixture-needed
+    cavity: `Value=-3` hollows it 3 mm in from `Face1`, so a plane more than
+    3 mm from either exterior face is necessarily inside the hollow, not the
+    3 mm of material around it.
+    """
+    from core.freecad_tools import _section_plane
+
+    box = doc.addObject("Part::Box", "Box")
+    box.Length, box.Width, box.Height = 40, 40, 40
+    doc.recompute()
+    shell = doc.addObject("Part::Thickness", "Shell")
+    shell.Faces = (box, ["Face1"])
+    shell.Value = -3
+    doc.recompute()
+
+    plane = _section_plane(doc)
+
+    assert plane is not None
+    bound = shell.Shape.BoundBox
+    assert bound.YMin + 3 < plane.Base.y < bound.YMax - 3
+
+
+def test_the_section_plane_is_none_with_nothing_modelled_yet(doc):
+    from core.freecad_tools import _section_plane
+
+    assert _section_plane(doc) is None
+
+
 def test_the_overall_size_is_what_is_modelled(tools, part):
     """
     The one number a drawing states outright, and the one nothing else in the

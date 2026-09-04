@@ -3933,6 +3933,18 @@ def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
     assert "the same result seen from" in review_content[0]["text"]
     assert "not several" in review_content[0]["text"]
 
+
+def test_view_names_names_every_review_view_including_the_section():
+    """
+    FCC-261: `_VIEW_NAMES` labels Review's own prose off `len(pictures)`, so a
+    `REVIEW_VIEWS` that grew a fifth entry and left this short of it would
+    mislabel the section capture rather than fail loudly.
+    """
+    from core.freecad_tools import REVIEW_VIEWS
+    from core.loop import _VIEW_NAMES
+
+    assert len(_VIEW_NAMES) == len(REVIEW_VIEWS)
+
     assert "review_views" not in llm.calls[2][1]["content"]
 
 
