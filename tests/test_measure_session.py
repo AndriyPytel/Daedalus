@@ -168,6 +168,30 @@ def test_a_run_with_a_failed_review_that_passed_on_revision_reads_the_mix():
     assert result.review_fail_rate == 0.5
 
 
+def test_review_suspected_never_counts_toward_the_review_fail_rate(tmp_path):
+    """
+    `review_suspected` is `review_suspect`'s own event, not a verdict — it never
+    gates and it is not what `review_fail_rate` measures. A log with more
+    `review_suspected` events than passing `review_verdict` ones must still
+    read a fail rate of 0%, or the two phases FCC-258 split apart would be
+    read back together (FCC-257, FCC-258).
+    """
+    from core.events import REVIEW_SUSPECTED, REVIEW_VERDICT, EventStream
+
+    events = EventStream()
+    events.emit(REVIEW_SUSPECTED, suspected=["envelope → width: 40 mm (suspected)"])
+    events.emit(REVIEW_SUSPECTED, suspected=["envelope → width: 40 mm (suspected)"])
+    events.emit(REVIEW_VERDICT, verdict="pass", reason="matches the Intent")
+
+    log_path = str(tmp_path / "run.jsonl")
+    with open(log_path, "w", encoding="utf-8") as handle:
+        handle.write(events.as_log())
+
+    result = measure(log_path)
+
+    assert result.review_fail_rate == 0.0
+
+
 def test_compare_reports_the_assertion_and_review_fail_rates():
     table = compare(
         [_fixture("reached_verdict.jsonl")], [_fixture("plan_revision.jsonl")],

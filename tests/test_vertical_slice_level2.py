@@ -142,6 +142,7 @@ def scripted_model():
             {"step": 4, "code": STEP_FILLET, "label": "Fillet the top edges"},
             {"step": 5, "code": STEP_HOLE, "label": "Drill the hole"},
         ]}),
+        json.dumps({"suspected": []}),
         json.dumps({"verdict": "pass",
                     "reason": "A %gmm square padded to %gmm, top edges filleted, "
                               "drilled Ø%g." % (SQUARE, PAD_CHANGED, BORE)}),

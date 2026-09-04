@@ -22,8 +22,8 @@ from dataclasses import dataclass
 
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, INTENT,
-    OUTSTANDING, PART, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT,
-    STEP_STARTED, TOOL_RESULT, UNBUILT,
+    OUTSTANDING, PART, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED,
+    REVIEW_VERDICT, STEP_STARTED, TOOL_RESULT, UNBUILT,
 )
 
 _GATE_SAID = {
@@ -160,6 +160,16 @@ def narrate(event) -> Narration:
             said += "\nNot reached: " + ", ".join(str(entry) for entry in entries)
         return Narration(line=said + "\nNothing in the geometry was waiting on it, so the "
                                      "run carried on.")
+
+    if kind == REVIEW_SUSPECTED:
+        entries = data.get("suspected") or []
+        if not entries:
+            return Narration(line="Review raised nothing to check further before Assertion.")
+        return Narration(
+            line="Review named %d thing%s to check further before judging the result."
+                 % (len(entries), "" if len(entries) == 1 else "s"),
+            title="What Review suspected (%d)" % len(entries),
+            body="\n".join("• " + str(entry) for entry in entries))
 
     if kind == REVIEW_VERDICT:
         return Narration(line="%s Review: %s — %s"

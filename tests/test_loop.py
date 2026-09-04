@@ -49,8 +49,8 @@ import pytest
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
-    REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT,
-    WRITING, EventStream, replay,
+    REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
+    TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
 from core import design, loop, part_file, sheet_reader
 from core.freecad_tools import TRAPS
@@ -233,6 +233,12 @@ def look_reply(tool, **arguments):
 
 def verdict_reply(verdict, reason="", thinking=None):
     body = json.dumps({"verdict": verdict, "reason": reason})
+    return {"reasoning": thinking, "text": body} if thinking else body
+
+
+def suspect_reply(*suspected, thinking=None):
+    """`review_suspect`'s turn: zero or more addresses it wants Assertion to measure."""
+    body = json.dumps({"suspected": list(suspected)})
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
@@ -425,8 +431,8 @@ def _turns_of(llm, phase):
 
 
 @pytest.mark.parametrize("turn, phase",
-                         [(0, "design"), (1, "plan"), (2, "execute"), (3, "review"),
-                          (4, "assertion")])
+                         [(0, "design"), (1, "plan"), (2, "execute"), (3, "review_suspect"),
+                          (4, "assertion"), (5, "review")])
 def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
     """
     The file reached the provider — not that the loader returned a string. The
@@ -439,8 +445,9 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
         design_reply(A_CUBE),
         plan_reply("Add a box", satisfies=everything(A_CUBE)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
@@ -458,13 +465,14 @@ def test_the_traps_land_in_the_prompts_that_ask_for_them():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, execute_system, review_system = _system_messages(llm)
+    _, plan_system, execute_system, suspect_system, review_system = _system_messages(llm)
 
     assert "{{traps}}" not in plan_system
     for text in (plan_system, execute_system):
         assert all(trap in text for trap in TRAPS)
+    assert TRAPS[0] not in suspect_system
     assert TRAPS[0] not in review_system
 
 
@@ -478,9 +486,9 @@ def test_the_sketch_construction_rule_reaches_plan_and_execute():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, execute_system, review_system = (
+    _, plan_system, execute_system, suspect_system, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     for text in (plan_system, execute_system):
@@ -489,6 +497,7 @@ def test_the_sketch_construction_rule_reaches_plan_and_execute():
     assert "same centre" in plan_system
     assert "same centre vector" in execute_system
     assert "never invent a constraint type" in execute_system
+    assert "must genuinely be driven" not in suspect_system
     assert "must genuinely be driven" not in review_system
 
 
@@ -505,8 +514,9 @@ def test_design_is_told_the_outer_contour_is_a_feature():
         design_reply(A_CUBE),
         plan_reply("Add a box", satisfies=everything(A_CUBE)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     design_system = " ".join(_system_messages(llm)[0].split())
 
@@ -526,8 +536,9 @@ def test_assertion_is_told_what_a_fillet_does_to_the_surface_it_replaced():
         design_reply(A_CUBE),
         plan_reply("Add a box", satisfies=everything(A_CUBE)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     assertion_system = " ".join(_system_messages(llm)[4].split())
 
@@ -550,9 +561,9 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
-    _, _, execute_system, _ = (" ".join(text.split()) for text in _system_messages(llm))
+    _, _, execute_system, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     for cancelled in ("invariant of its own", "assert it in the Step's code",
                       "thinner as the radius grows"):
@@ -580,9 +591,9 @@ def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, execute_system, _ = (" ".join(text.split()) for text in _system_messages(llm))
+    _, plan_system, execute_system, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     assert "base, then addition, then subtraction" in plan_system
     assert "fillet or a chamfer only once every one of those stands" in plan_system
@@ -611,9 +622,9 @@ def test_the_reading_rules_moved_to_the_design_phase_whole():
         design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    design_system, plan_system, _, review_system = (
+    design_system, plan_system, _, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     for rule in ("A description is not a description of the *picture*",
@@ -640,9 +651,9 @@ def test_a_value_carries_a_named_datum_and_a_read_or_assumed_flag():
         design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    design_system, _, _, review_system = (
+    design_system, _, _, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "Every value carries its datum and its flag" in design_system
@@ -662,7 +673,7 @@ def test_a_value_the_model_settled_says_who_settled_it_and_on_what():
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM), plan_reply("Add a box"), code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     design_system = " ".join(_system_messages(llm)[0].split())
 
@@ -684,7 +695,7 @@ def test_the_nonmetric_defaults_are_named_and_carry_no_number():
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM), plan_reply("Add a box"), code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     design_system = " ".join(_system_messages(llm)[0].split())
 
@@ -734,7 +745,7 @@ def test_a_curve_is_not_read_until_its_centre_is_placed():
         design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     design_system = " ".join(_system_messages(llm)[0].split())
 
@@ -756,7 +767,7 @@ def test_the_views_decide_what_no_dimension_arrow_says():
         design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     design_system = " ".join(_system_messages(llm)[0].split())
 
@@ -779,7 +790,7 @@ def test_every_callout_printed_on_the_sheet_has_to_be_accounted_for():
         design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     design_system = " ".join(_system_messages(llm)[0].split())
 
@@ -802,7 +813,7 @@ def test_a_fraction_of_a_named_overall_is_a_value_on_equal_terms_with_millimetre
         design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     design_system = " ".join(_system_messages(llm)[0].split())
 
@@ -824,10 +835,11 @@ def test_the_datum_and_the_flag_reach_the_checks_without_anyone_rewriting_them()
         design_reply(A_CUBE),
         plan_reply("Add a box", satisfies=everything(A_CUBE)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    _, plan_system, _, _, assertion_system = (
+    _, plan_system, _, _, assertion_system, _ = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "You do not write the acceptance list" in plan_system
@@ -848,8 +860,9 @@ def test_the_part_travels_as_a_structure_and_reaches_the_gate_laid_out():
         design_reply(A_PART),
         plan_reply("Add a box", satisfies=everything(A_PART)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.first(DESIGN).data["model"] == A_PART, "the structure was flattened away"
@@ -873,7 +886,7 @@ def test_plan_is_handed_a_finished_description_and_not_the_picture():
         design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     plan_system = " ".join(_system_messages(llm)[1].split())
 
@@ -901,9 +914,9 @@ def test_a_step_is_an_action_a_user_would_perform_not_a_call():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, _, review_system = (
+    _, plan_system, _, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "an action a user would perform" in plan_system
@@ -928,7 +941,7 @@ def test_plan_is_told_a_step_that_cannot_fail_alone_takes_the_plan_with_it():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
     plan_system = " ".join(_system_messages(llm)[1].split())
 
@@ -949,7 +962,7 @@ def test_plan_is_told_to_write_the_sum_and_not_only_the_answer():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
     plan_system = " ".join(_system_messages(llm)[1].split())
 
@@ -972,7 +985,7 @@ def test_design_is_told_to_replace_the_feature_the_later_page_supersedes():
         design_reply(A_DATUM),
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     design_system = " ".join(_system_messages(llm)[0].split())
 
@@ -993,7 +1006,7 @@ def test_the_granularity_rules_this_reverses_are_gone_from_plan():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
     plan_system = " ".join(_system_messages(llm)[0].split())
 
@@ -1018,9 +1031,9 @@ def test_plan_names_declared_numbers_and_not_how_a_reference_is_found():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
+    _, plan_system, _, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     assert "A link is written as the name you gave" not in plan_system, \
         "plan.md still asks Plan for the link FCC-71 takes back"
@@ -1037,9 +1050,9 @@ def test_the_positive_form_of_the_lint_rules_reaches_execute():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
-    _, _, execute_system, review_system = (
+    _, _, execute_system, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "computes its own Shape from its Profile" in execute_system
@@ -1060,9 +1073,9 @@ def test_a_step_that_selects_a_subset_says_how_many_it_expects():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, execute_system, review_system = (
+    _, plan_system, execute_system, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "says how many" in plan_system
@@ -1156,7 +1169,7 @@ def test_plan_produces_an_ordered_list_of_steps_from_the_intent_and_a_snapshot()
     result, events, llm, tools = drive([
         plan_reply("Create a 10mm box", "Fillet the top edge"),
         code_reply("doc.addObject('Part::Box', 'Box')", "pass"),
-        verdict_reply("pass", "Looks like a 10mm box."),
+        suspect_reply(), verdict_reply("pass", "Looks like a 10mm box."),
     ])
 
     assert result.ok
@@ -1168,7 +1181,7 @@ def test_plan_is_given_the_intent_and_the_snapshot():
     _, _, llm, tools = drive([
         plan_reply("Only step"),
         code_reply("pass"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     asked = json.dumps(llm.calls[1])
@@ -1181,7 +1194,7 @@ def test_the_steps_run_in_the_order_the_plan_gave_them():
     _, events, _, tools = drive([
         plan_reply("First", "Second", "Third"),
         code_reply("first()", "second()", "third()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert tools.applied_codes() == ["first()", "second()", "third()"]
@@ -1197,7 +1210,7 @@ def test_execute_can_ask_the_document_before_committing_to_code():
         plan_reply("Add a sketch"),
         look_reply("supported_types", prefix="Sketcher::"),
         code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -1214,7 +1227,7 @@ def test_a_look_is_visible_on_the_event_stream():
         plan_reply("Add a sketch"),
         look_reply("supported_types", prefix="Sketcher::"),
         code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert "supported_types" in [e.data["name"] for e in events.of(TOOL_CALL)]
@@ -1234,7 +1247,7 @@ def test_looking_is_budgeted_and_the_last_turn_offers_nothing_to_look_with():
         look_reply("supported_types"),
         look_reply("supported_types"),
         code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], budgets=Budgets(looks_per_turn=2))
 
     assert result.ok
@@ -1348,7 +1361,7 @@ def test_steps_applied_before_a_trailing_gap_stay_applied():
             plan_reply("First", "Second"),
             code_reply("first()"),
             code_reply("second()", first=2),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
     )
 
@@ -1362,7 +1375,7 @@ def test_execute_cannot_apply_its_own_code_through_a_look():
         plan_reply("Add a box"),
         look_reply("apply_step", code="doc.addObject('Part::Box', 'Sneaky')"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -1380,7 +1393,7 @@ def test_execute_can_ask_what_a_type_has_before_any_object_of_it_exists():
         plan_reply("Pocket the plate through"),
         look_reply("describe_type", type_id="PartDesign::Pocket"),
         code_reply("pocket.Type = 'ThroughAll'"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -1398,7 +1411,7 @@ def test_a_look_at_a_tool_that_does_not_exist_is_answered_not_fatal():
         plan_reply("Add a box"),
         look_reply("read_the_manual"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -1415,7 +1428,7 @@ def test_the_whole_plan_is_written_in_one_call():
     result, _, llm, tools = drive([
         plan_reply("First", "Second", "Third"),
         code_reply("first()", "second()", "third()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -1432,7 +1445,7 @@ def test_a_plan_that_needs_no_look_costs_no_look():
     _, events, _, tools = drive([
         plan_reply("First", "Second"),
         code_reply("first()", "second()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     looked = [e.data["name"] for e in events.of(TOOL_CALL)]
@@ -1448,7 +1461,7 @@ def test_each_step_still_gets_its_own_started_event():
     _, events, _, _ = drive([
         plan_reply("First", "Second"),
         code_reply("first()", "second()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     started = events.of(STEP_STARTED)
@@ -1467,7 +1480,7 @@ def test_a_preflight_failure_rewrites_the_failing_step_and_the_whole_tail():
             plan_reply("First", "Second", "Third"),
             code_reply("first()", "second()", "third()"),
             code_reply("second_again()", "third_again()", first=2),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         applies=[None, failed("AttributeError: no Length on this")],
     )
@@ -1494,7 +1507,7 @@ def test_the_regeneration_is_written_against_the_document_as_it_stands():
             plan_reply("First", "Second"),
             code_reply("first()", "second()"),
             code_reply("second_again()", first=2),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         applies=[None, failed("boom")],
     )
@@ -1521,7 +1534,7 @@ def test_a_failure_at_every_step_costs_no_more_than_it_costs_today():
             code_reply("a2()", "b2()", "c2()"),
             code_reply("b3()", "c3()", first=2),
             code_reply("c4()", first=3),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         applies=[failed("a"), None, failed("b"), None, failed("c"), None],
     )
@@ -1542,7 +1555,7 @@ def test_a_step_that_applied_carries_none_of_its_failures_into_the_next_writing(
             code_reply("first_bad()", "second()"),
             code_reply("first_good()", "second()"),
             code_reply("second_good()", first=2),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         applies=[failed("AttributeError: no Length on this"), None, failed("a different boom")],
     )
@@ -1563,7 +1576,7 @@ def test_a_step_the_reply_left_out_fails_that_step_and_not_the_run():
             plan_reply("First", "Second"),
             code_reply("first()"),
             code_reply("second()", first=2),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
     )
 
@@ -1584,7 +1597,7 @@ def test_a_trailing_gap_says_it_ran_out_of_room_and_steers_shorter():
             plan_reply("First", "Second"),
             code_reply("first()"),
             code_reply("second()", first=2),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
     )
 
@@ -1608,7 +1621,7 @@ def test_an_interior_gap_says_a_step_was_skipped_not_that_room_ran_out():
             json.dumps({"steps": [{"step": 1, "code": "first()"},
                                   {"step": 3, "code": "third()"}]}),
             code_reply("second()", "third()", first=2),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
     )
 
@@ -1632,7 +1645,7 @@ def test_a_step_left_out_with_no_reason_records_what_the_reply_carried():
             plan_reply("First", "Second"),
             code_reply("first()"),
             code_reply("second()", first=2),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
     )
 
@@ -1653,7 +1666,7 @@ def test_a_reply_with_nothing_usable_says_so_in_the_traceback():
             plan_reply("Only"),
             json.dumps({"note": "not sure what to build here"}),
             code_reply("built()"),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
     )
 
@@ -1677,7 +1690,7 @@ def test_the_rendering_of_what_was_said_is_capped_not_the_reply():
             plan_reply("First", "Second"),
             json.dumps({"steps": [{"step": 1, "code": "x" * 5000, "label": "Step"}]}),
             code_reply("second()", first=2),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
     )
 
@@ -1698,7 +1711,7 @@ def test_a_step_that_lands_is_unaffected_by_what_the_reply_said():
         [
             plan_reply("First", "Second"),
             code_reply("first()", "second()"),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
     )
 
@@ -1716,7 +1729,7 @@ def test_the_reason_a_recompute_failed_reaches_the_next_attempts_request():
             plan_reply("Add a pad"),
             code_reply("pad_one()"),
             code_reply("pad_two()"),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         applies=[failed("Pad (PartDesign::Pad): Linked shape object is empty"), None],
     )
@@ -1735,7 +1748,7 @@ def test_a_failed_attempt_is_surfaced_before_the_retry():
             plan_reply("Only"),
             code_reply("bad()"),
             code_reply("good()"),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         applies=[failed("ValueError: nope"), None],
     )
@@ -1752,7 +1765,7 @@ def test_execute_can_declare_a_step_obsolete_and_plan_revises():
         obsolete_reply("There is no pad in this Document; nothing to delete."),
         plan_reply("Add the new one"),
         code_reply("add_new()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -1783,7 +1796,7 @@ def test_a_revised_plan_does_not_reapply_steps_that_already_landed():
         plan_reply("Pad the outline", "Fillet the marked edges",
                    "Drill a 6mm hole", "Chamfer the edge"),
         code_reply("drill()", "chamfer()", first=3),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok, result.reason
@@ -1814,7 +1827,7 @@ def test_a_revised_plan_whose_first_step_differs_reexecutes_everything():
                     "unbuildable": "Step 2 needs edges nobody named."}),
         plan_reply("Pad a wider outline", "Fillet the named edges"),
         code_reply("pad_wider()", "fillet_named()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok, result.reason
@@ -1836,7 +1849,7 @@ def test_a_revised_plan_says_which_revision_it_is_and_what_caused_it():
         obsolete_reply("There is no pad in this Document."),
         plan_reply("Add the new one"),
         code_reply("add_new()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], budgets=Budgets(revisions=3))
 
     revised = events.first(PLAN_REVISED).data
@@ -1853,7 +1866,7 @@ def test_the_plan_gate_leaves_both_ends_of_its_wait_on_the_stream():
     _, events, _, _ = drive([
         plan_reply("Add a box"),
         code_reply("add_box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     opened, decided = events.of(GATE)
@@ -1879,7 +1892,7 @@ def test_obsolete_beside_code_does_not_throw_that_code_away():
                     "obsolete": "Step 2 does not say which edges are marked."}),
         plan_reply("Fillet the four corner edges"),
         code_reply("fillet()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -1903,7 +1916,7 @@ def test_a_step_left_out_with_a_reason_hands_back_without_spending_attempts():
                                    "diameter, so it moves no material."}),
         plan_reply("Pocket a wider hex recess"),
         code_reply("hex()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -1934,7 +1947,7 @@ def test_an_unbuildable_reply_on_a_retry_hands_back_instead_of_being_asked_again
                                    "the root edge; there is nothing left to round."}),
         plan_reply("Fillet the root edges at a smaller radius"),
         code_reply("fillet_root_smaller()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed("Fillet (Part::Fillet): FilletId is not part of the shape")])
 
     assert result.ok
@@ -1958,7 +1971,7 @@ def test_an_obsolete_step_is_never_applied():
         obsolete_reply("Already done."),
         plan_reply("Something else"),
         code_reply("something()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert tools.applied_codes() == ["something()"]
@@ -1968,7 +1981,7 @@ def test_review_receives_the_intent_the_render_and_the_document_state():
     _, _, llm, _ = drive([
         plan_reply("Only"),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     asked = json.dumps(llm.calls[-1])
@@ -1986,8 +1999,9 @@ def test_review_and_assertion_are_both_given_the_whole_description():
         design_reply(A_CUBE),
         plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     to_review = json.loads(llm.calls[3][-1]["content"][0]["text"].split("\n\n")[0])
@@ -2003,7 +2017,7 @@ def test_review_is_shown_the_render_as_a_picture_not_as_a_path():
     mean Review judged on the object list while the panel showed the user an
     image the model never saw.
     """
-    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")],
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")],
                          views=[RENDER_PNG])
 
     content = llm.calls[-1][-1]["content"]
@@ -2018,7 +2032,7 @@ def test_review_is_told_when_there_is_no_render_to_judge_by():
     """A sketch-only Step produces no render; Review must not be left guessing."""
     tools = FakeTools(applies=[{"status": "applied", "created": ["Sketch"],
                                 "description": {"features": [], "geometry": {}}}])
-    llm = scripted([plan_reply("Only"), code_reply("sketch()"), verdict_reply("pass")])
+    llm = scripted([plan_reply("Only"), code_reply("sketch()"), suspect_reply(), verdict_reply("pass")])
 
     run("Sketch a square", llm=llm, tools=tools.registry)
 
@@ -2034,7 +2048,7 @@ def test_an_attachment_reaches_the_design_phase_as_a_picture():
     receives it is the Design phase since FCC-86; Plan never sees a picture.
     """
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")])
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools().registry, attachments=[RENDER_PNG])
 
@@ -2063,7 +2077,7 @@ def test_the_part_design_read_is_written_to_a_file_the_run_names():
         design_reply(A_CUBE),
         plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     written = events.last(PART).data["path"]
@@ -2085,7 +2099,7 @@ def test_a_missing_pyyaml_ends_the_run_as_a_sentence_and_not_a_crash_report(monk
         design_reply(A_CUBE),
         plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert not result.ok
@@ -2102,7 +2116,7 @@ def test_the_file_says_which_sheet_the_part_was_read_from():
         design_reply(A_CUBE),
         plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[MODEL_MANIA])
 
     read_from = part_file.provenance(events.last(PART).data["path"])
@@ -2122,14 +2136,14 @@ def test_a_run_given_a_prior_part_skips_the_design_phase():
         design_reply(A_CUBE),
         plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     written = first.last(PART).data["path"]
 
     result, events, llm, _ = drive([
         plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], the_part_path=written)
 
     assert not events.of(DESIGN)
@@ -2144,7 +2158,7 @@ def test_a_run_with_no_prior_part_still_runs_design():
         design_reply(A_CUBE),
         plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.of(DESIGN)
@@ -2162,7 +2176,7 @@ def test_an_attachment_on_a_resumed_run_overrides_the_prior_part():
         design_reply(A_CUBE),
         plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
     written = first.last(PART).data["path"]
 
@@ -2170,7 +2184,7 @@ def test_an_attachment_on_a_resumed_run_overrides_the_prior_part():
         design_reply(A_PART),
         plan_reply("Only", satisfies=everything(A_PART)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], the_part_path=written)
 
     assert events.of(DESIGN)
@@ -2193,8 +2207,9 @@ def test_plan_is_handed_the_document_and_not_everything_design_read():
         design_reply(THE_2023_CLAMP),
         plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
         code_reply("clamp()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the clamp'"),
+        verdict_reply("pass"),
     ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
 
     handed = _turns_of(llm, "plan")[0]["what_the_part_is"]
@@ -2209,8 +2224,9 @@ def _the_clamp_as_it_was_read():
         design_reply(THE_2023_CLAMP),
         plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
         code_reply("clamp()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the clamp'"),
+        verdict_reply("pass"),
     ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
 
     written = events.last(PART).data["path"]
@@ -2293,8 +2309,9 @@ def test_the_file_the_user_opens_is_the_document_the_run_was_planned_from():
         design_reply(A_PART),
         plan_reply("Only", satisfies=everything(A_PART)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     request = _turns_of(llm, "plan")[0]
@@ -2327,8 +2344,9 @@ def test_a_value_corrected_in_the_file_is_the_one_the_run_is_planned_from(monkey
         design_reply(A_PART),
         plan_reply("Only", satisfies=everything(A_PART)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     handed = _turns_of(llm, "plan")[0]["what_the_part_is"]
@@ -2349,8 +2367,9 @@ def test_the_evidence_is_logged_beside_the_reading_distilled_out_of_it():
         plan_reply("Pad the outer profile",
                    satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
         code_reply("pad()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     written = events.last(PART).data["path"]
@@ -2389,8 +2408,9 @@ def test_two_entries_that_cannot_both_be_true_still_reach_the_gate():
         design_reply(THE_HOLE_THAT_CANNOT_BE_BOTH),
         plan_reply("Drill it", satisfies=everything(THE_HOLE_THAT_CANNOT_BE_BOTH)),
         code_reply("drill()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the hole'"),
+        verdict_reply("pass"),
     ])
 
     written = events.last(PART).data["path"]
@@ -2582,8 +2602,9 @@ def test_the_four_that_named_what_ended_the_run_stand_under_conflict():
         design_reply(THE_2023_CLAMP),
         plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
         code_reply("clamp()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the clamp'"),
+        verdict_reply("pass"),
     ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
 
     logged = part_file.read(part_file.evidence(events.last(PART).data["path"]))
@@ -2687,8 +2708,9 @@ def test_the_gaps_the_gate_stands_over_are_the_gaps_plan_is_handed():
         design_reply(THE_2023_CLAMP),
         plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
         code_reply("clamp()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the clamp'"),
+        verdict_reply("pass"),
     ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
 
     document = part_file.read(events.last(PART).data["path"])
@@ -2751,8 +2773,9 @@ def test_a_plan_citing_the_document_it_was_handed_leaves_nothing_unplanned():
         plan_reply("Bore the ring",
                    satisfies=acceptance_of(A_BORE_AND_THE_EVIDENCE_FOR_IT)),
         code_reply("bore()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the bore'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok, result.reason
@@ -2795,7 +2818,7 @@ def test_the_envelope_check_runs_against_the_document_and_can_fail_it():
         design_reply(A_PART_WITH_AN_ENVELOPE),
         plan_reply("Pad the outline", satisfies=everything(A_PART_WITH_AN_ENVELOPE)),
         code_reply("pad()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG],
         checks=[{"ok": False, "traceback": "AssertionError: these did not hold: "
                                            "the envelope. ... measures 108.00 x 30.00 "
@@ -2826,8 +2849,9 @@ def test_a_step_that_only_passed_on_the_retry_is_named_to_the_checks():
         plan_reply("Pocket the split", satisfies=everything(A_SPLIT)),
         code_reply("split_through()"),
         code_reply("split_shortened()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the split'"),
+        verdict_reply("pass"),
     ], applies=[failed("this Step left a Body in more than one piece"), None],
         attachments=[RENDER_PNG])
 
@@ -2840,8 +2864,9 @@ def test_a_step_that_landed_first_time_names_nothing_to_the_checks():
         design_reply(A_CUBE),
         plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert "entries_a_retry_touched" not in _turns_of(llm, "assertion")[0]
@@ -2857,8 +2882,9 @@ def test_execute_is_handed_every_entry_against_the_value_it_resolves_to():
         design_reply(A_PART),
         plan_reply("Sketch the profile", satisfies=everything(A_PART)),
         code_reply("sketch()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     addressed = _turns_of(llm, "execute")[0]["what_each_entry_says"]
@@ -2904,8 +2930,9 @@ def test_a_step_citing_two_planes_is_sent_back_before_it_is_ever_built():
         _both_planes_in_one_step(),
         _one_plane_each(),
         code_reply("profile()", "lug()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the outline'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     told = [turn.get("what_went_wrong_last_time", "")
@@ -2917,7 +2944,7 @@ def test_a_step_citing_two_planes_is_sent_back_before_it_is_ever_built():
 
 def test_a_plan_that_keeps_mixing_them_is_not_sent_back_for_ever():
     drive([design_reply(THE_CLAMP_OUTLINE)] + [_both_planes_in_one_step()] * 4
-          + [code_reply("profile()"), verdict_reply("pass"), assertion_reply("assert True, 'the outline'")],
+          + [code_reply("profile()"), suspect_reply(), assertion_reply("assert True, 'the outline'"), verdict_reply("pass")],
           attachments=[RENDER_PNG], budgets=Budgets(revisions=2))
 
 
@@ -2929,8 +2956,9 @@ def test_a_step_whose_citations_agree_is_planned_once():
         design_reply(one_plane),
         plan_reply("Pad the outer profile", satisfies=everything(one_plane)),
         code_reply("profile()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the outline'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert len(_turns_of(llm, "plan")) == 1
@@ -2949,7 +2977,7 @@ def test_what_is_printed_on_the_sheet_is_written_by_the_reader_not_the_model():
                                                         "two locations"])),
         plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[MODEL_MANIA])
 
     written = events.last(PART).data["path"]
@@ -2992,8 +3020,9 @@ def test_two_holes_that_disagree_and_nothing_to_settle_them_reach_the_gate():
         plan_reply("Pad the outer profile",
                    satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
         code_reply("pad()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok, result.reason
@@ -3016,8 +3045,9 @@ def test_a_reading_whose_directions_agree_carries_on():
         design_reply(THE_CLAMP_READ_PROPERLY),
         plan_reply("Pocket the hole", satisfies=everything(THE_CLAMP_READ_PROPERLY)),
         code_reply("pocket()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the hole'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok
@@ -3028,7 +3058,7 @@ def test_a_run_with_nothing_to_read_writes_no_reading():
     """A run without a drawing describes no part, and a file saying so is a
     file to mistake for a reading later."""
     _, events, _, _ = drive([plan_reply("Only"), code_reply("box()"),
-                             verdict_reply("pass")])
+                             suspect_reply(), verdict_reply("pass")])
 
     assert not events.of(PART)
 
@@ -3077,7 +3107,7 @@ def test_a_sheet_is_shown_as_its_views_and_not_as_one_page():
     reaching Design means the sheet went out at the resolution that misreads.
     """
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")])
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
@@ -3096,7 +3126,7 @@ def test_design_is_told_what_the_sheet_prints_rather_than_asked_to_find_it():
     something else.
     """
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")])
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
@@ -3123,7 +3153,7 @@ def test_every_design_call_of_a_run_carries_a_page_and_not_the_whole_sheet():
         *_first_pass_turns(A_DATUM, [THE_PIPE_CLAMP]), design_reply(A_DATUM),
         plan_reply("Only", satisfies=everything(A_DATUM)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[THE_PIPE_CLAMP])
 
     calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
@@ -3155,7 +3185,7 @@ def test_a_re_read_over_a_named_callout_is_shown_only_the_views_it_is_printed_in
         *_first_pass_turns(A_DATUM, [THE_PIPE_CLAMP]), design_reply(A_DATUM),
         plan_reply("Only", satisfies=everything(A_DATUM)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[THE_PIPE_CLAMP])
 
     calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
@@ -3179,7 +3209,7 @@ def test_a_callout_the_description_never_used_goes_back_to_design_naming_it():
     thin = {"envelope": {"length": read("150 mm")}}
     llm = ScriptedLLMClient([*_first_pass_turns(thin, [MODEL_MANIA]), design_reply({}),
                              plan_reply("Only"), code_reply("box()"),
-                             verdict_reply("pass")])
+                             suspect_reply(), verdict_reply("pass")])
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
@@ -3198,7 +3228,7 @@ def test_looking_again_stops_when_it_stops_finding_anything():
     """
     result, _, llm, _ = drive([*_first_pass_turns(A_DATUM, [MODEL_MANIA]), design_reply({}),
                                plan_reply("Only"), code_reply("box()"),
-                               verdict_reply("pass")],
+                               suspect_reply(), verdict_reply("pass")],
                               attachments=[MODEL_MANIA])
 
     assert result.ok, "the run did not finish: the re-look kept going"
@@ -3217,7 +3247,7 @@ def test_the_second_look_is_bounded_by_the_re_read_ceiling():
         _first_pass_turns({"envelope": {"length": read("150 mm")}}, [MODEL_MANIA])
         + [design_reply({"envelope": {"width %d" % at: read("%d mm" % at)}})
            for at in (40, 35, 30, 20, 10)]
-        + [plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+        + [plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run("Build this", llm=llm, tools=FakeTools().registry,
         budgets=Budgets(rereads=2), attachments=[MODEL_MANIA])
@@ -3260,7 +3290,7 @@ def _a_run_that_reads_the_sheet_every_way(sheet, intent):
                     design_reply({}),
                     plan_reply("Build it",
                                satisfies=everything(A_READING_THAT_PROVOKES_EVERY_RE_READ)),
-                    code_reply("box()"), verdict_reply("pass")],
+                    code_reply("box()"), suspect_reply(), verdict_reply("pass")],
                  intent=intent, attachments=[sheet], ask=lambda question: "12 mm",
                  budgets=Budgets(rereads=1))
 
@@ -3313,7 +3343,7 @@ def test_a_replayed_session_says_what_was_asked_before_it_says_what_was_read(tmp
     events.log_to(path)
     llm = ScriptedLLMClient([design_reply(A_CUBE), plan_reply("Only",
                                                              satisfies=everything(A_CUBE)),
-                             code_reply("box()"), verdict_reply("pass")])
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run(intent, llm=llm, tools=FakeTools().registry, events=events,
         attachments=[MODEL_MANIA])
@@ -3338,7 +3368,7 @@ def test_the_reading_on_disk_says_what_it_was_read_for_and_not_only_what_off():
 
     _, events, _, _ = drive([design_reply(A_CUBE),
                              plan_reply("Only", satisfies=everything(A_CUBE)),
-                             code_reply("box()"), verdict_reply("pass")],
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")],
                             intent=intent, attachments=[MODEL_MANIA])
 
     written = events.last(PART).data["path"]
@@ -3357,7 +3387,7 @@ def test_a_pdf_that_cannot_be_rendered_here_still_goes_out_as_a_file_block():
     """
     drawing = _a_real_pdf()
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")])
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools().registry, attachments=[drawing])
 
@@ -3376,7 +3406,7 @@ def test_a_jpeg_reaches_the_provider_labelled_as_a_jpeg():
     """
     photo = _a_real_png(suffix=".jpg")
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")])
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[photo])
 
@@ -3389,7 +3419,7 @@ def test_the_render_still_goes_to_review_as_a_png():
     The same helper carries Review's four views and the Worker's render, which
     are PNGs we wrote ourselves. That path must come out of this unchanged.
     """
-    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")],
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")],
                          views=[RENDER_PNG])
 
     picture = [b for b in llm.calls[-1][-1]["content"] if b.get("type") == "image_url"][0]
@@ -3405,7 +3435,7 @@ def test_a_pdf_rides_into_review_beside_the_render():
     """
     drawing = _a_real_pdf()
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")])
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
                  attachments=[drawing])
@@ -3418,7 +3448,7 @@ def test_a_pdf_rides_into_review_beside_the_render():
 
 def test_several_attachments_all_reach_the_design_phase():
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")])
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
     second = _a_real_png()
 
     run("From both angles", llm=llm, tools=FakeTools().registry,
@@ -3430,7 +3460,7 @@ def test_several_attachments_all_reach_the_design_phase():
 
 def test_an_intent_with_no_attachments_sends_what_it_always_did():
     """Attaching nothing shows nobody a picture, and Plan's request keeps its shape."""
-    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     shown = llm.calls[0][-1]["content"]
     to_plan = llm.calls[1][-1]["content"]
@@ -3442,7 +3472,7 @@ def test_an_intent_with_no_attachments_sends_what_it_always_did():
 
 def test_an_attachment_that_has_been_moved_is_dropped_not_fatal():
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")])
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools().registry,
                  attachments=["/nowhere/gone.png", RENDER_PNG])
@@ -3459,7 +3489,7 @@ def test_a_run_that_had_an_attachment_says_so_on_the_stream():
     could not either. FCC-88.
     """
     _, events, _, _ = drive([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")],
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")],
                             attachments=[RENDER_PNG])
 
     attached = events.first(ATTACHED)
@@ -3474,7 +3504,7 @@ def test_the_attachment_is_recorded_even_where_the_file_has_gone():
     the record has to survive its file — the name is in the event. FCC-88.
     """
     _, events, _, _ = drive([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")],
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")],
                             attachments=["/nowhere/gone.png", RENDER_PNG])
 
     assert [f["name"] for f in events.first(ATTACHED).data["files"]] == \
@@ -3483,7 +3513,7 @@ def test_the_attachment_is_recorded_even_where_the_file_has_gone():
 
 def test_an_intent_with_no_attachment_adds_no_event():
     _, events, _, _ = drive([plan_reply("Only"), code_reply("box()"),
-                             verdict_reply("pass")])
+                             suspect_reply(), verdict_reply("pass")])
 
     assert events.first(ATTACHED) is None
 
@@ -3497,7 +3527,7 @@ def test_the_description_is_an_event_of_its_own_standing_before_the_plan():
     """
     _, events, _, _ = drive([design_reply(A_PART),
                              plan_reply("Only", satisfies=everything(A_PART)),
-                             code_reply("box()"), verdict_reply("pass"), assertion_reply("assert True")],
+                             code_reply("box()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
                             attachments=[RENDER_PNG])
 
     kinds = [event.kind for event in events]
@@ -3518,7 +3548,7 @@ A_BOX_FROM_WORDS = {
 def _a_run_with_no_drawing():
     """A whole run over an Intent and nothing else, through to a verdict."""
     return drive([design_reply(A_BOX_FROM_WORDS), plan_reply("Pad a 10 mm box"),
-                  code_reply("box()"), verdict_reply("pass"), assertion_reply("assert True")])
+                  code_reply("box()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")])
 
 
 def test_with_nothing_attached_the_part_is_described_from_the_words_alone():
@@ -3565,7 +3595,7 @@ def test_a_question_nobody_answered_is_settled_by_design_and_shown_at_the_gate()
     _, events, _, _ = drive(
         [design_reply(A_DATUM, question="How long, how wide and how tall is the box?"),
          design_reply(A_BOX_FROM_WORDS), plan_reply("Pad a 10 mm box"),
-         code_reply("box()"), verdict_reply("pass"), assertion_reply("assert True")],
+         code_reply("box()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
         ask=lambda question: asked.append(question) or None)
 
     described = events.first(DESIGN).data["model"]
@@ -3611,7 +3641,7 @@ def test_design_asks_the_user_itself_before_any_plan_exists():
         design_reply({"features": [{"id": "hole-35", "kind": "Ø35 hole",
                                     "position": {"the left end face":
                                                  {"value": "25 mm", "flag": "assumed"}}}]}),
-        plan_reply("Only"), code_reply("box()"), verdict_reply("pass"),
+        plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "25 mm from the left end")
 
     assert asked == ["Where are the Ø40 and Ø35 hole axes?"]
@@ -3631,7 +3661,7 @@ def test_the_description_is_carried_into_execute_as_text():
     """
     _, _, llm, _ = drive([design_reply(A_PART),
                           plan_reply("Only", satisfies=everything(A_PART)),
-                          code_reply("box()"), verdict_reply("pass"), assertion_reply("assert True")],
+                          code_reply("box()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
                          attachments=[RENDER_PNG])
 
     asked = llm.calls[2][-1]["content"]
@@ -3646,7 +3676,7 @@ def test_the_description_reaches_plan_under_one_key():
     """
     _, _, llm, _ = drive([design_reply(A_PART),
                           plan_reply("Only", satisfies=everything(A_PART)),
-                          code_reply("box()"), verdict_reply("pass"), assertion_reply("assert True")],
+                          code_reply("box()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
                          attachments=[RENDER_PNG])
 
     request = json.loads(llm.calls[1][-1]["content"])
@@ -3656,7 +3686,7 @@ def test_the_description_reaches_plan_under_one_key():
 
 
 def test_execute_is_told_nothing_extra_when_nothing_was_described():
-    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     assert "what_the_part_is" not in json.loads(llm.calls[1][-1]["content"])
 
@@ -3669,13 +3699,13 @@ def test_a_revision_plans_from_the_same_description_and_does_not_read_again():
     _, events, llm, _ = drive([
         design_reply(A_PART),
         plan_reply("v1", satisfies=everything(A_PART)), code_reply("v1()"),
-        verdict_reply("fail", "not right"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("fail", "not right"),
         plan_reply("v2", satisfies=everything(A_PART)), code_reply("v2()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert len(events.of(DESIGN)) == 1
-    replan = json.loads(llm.calls[4][-1]["content"])
+    replan = json.loads(llm.calls[6][-1]["content"])
     assert replan["what_the_part_is"] == render(distilled(A_PART))
     assert replan["what_went_wrong_last_time"] == "not right"
 
@@ -3686,7 +3716,7 @@ def test_review_is_shown_the_drawing_beside_the_render():
     so "does this resemble what I was shown" was not a question it could ask.
     """
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), verdict_reply("pass")])
+                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
         attachments=[RENDER_PNG])
@@ -3701,7 +3731,7 @@ def test_review_is_shown_the_drawing_beside_the_render():
 
 def test_review_gets_only_the_render_when_nothing_was_attached():
     """The no-attachment request keeps the shape it has always had."""
-    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), verdict_reply("pass")],
+    _, _, llm, _ = drive([plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")],
                          views=[RENDER_PNG])
 
     content = llm.calls[-1][-1]["content"]
@@ -3710,7 +3740,7 @@ def test_review_gets_only_the_render_when_nothing_was_attached():
 
 def test_an_attachment_that_has_been_moved_does_not_break_review():
     llm = scripted([design_reply(), plan_reply("Only"), code_reply("box()"),
-                     verdict_reply("pass")])
+                     suspect_reply(), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
                  attachments=["/nowhere/gone.png"])
@@ -3725,7 +3755,7 @@ def test_review_never_sees_the_plan_the_code_or_executes_reasoning():
         plan_reply("Create a 10mm box using Part::Box"),
         code_reply("doc.addObject('Part::Box', 'Box')",
                    thinking="I will use the Part workbench primitive here."),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     asked = json.dumps(llm.calls[-1])
@@ -3735,18 +3765,19 @@ def test_review_never_sees_the_plan_the_code_or_executes_reasoning():
 
 
 def test_a_failed_verdict_returns_to_plan_and_never_to_execute():
-    """The 4th call is Plan again, carrying the verdict; the 5th is Execute."""
+    """`review_suspect` added a call ahead of it; Plan carrying the verdict is
+    still the next Plan call after it, and Execute the one after that."""
     _, events, llm, _ = drive([
         plan_reply("Make it"),
         code_reply("make()"),
-        verdict_reply("fail", "The box is 20mm, not 10mm."),
+        suspect_reply(), verdict_reply("fail", "The box is 20mm, not 10mm."),
         plan_reply("Set Length to 10"),
         code_reply("fix()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
-    to_plan = json.dumps(llm.calls[4])
-    to_execute = json.dumps(llm.calls[5])
+    to_plan = json.dumps(llm.calls[5])
+    to_execute = json.dumps(llm.calls[6])
 
     assert "The box is 20mm, not 10mm." in to_plan
     assert "The box is 20mm, not 10mm." not in to_execute, "the verdict reached Execute"
@@ -3757,7 +3788,7 @@ def test_the_verdict_is_surfaced_either_way():
     _, events, _, _ = drive([
         plan_reply("Only"),
         code_reply("box()"),
-        verdict_reply("pass", "That is a 10mm box."),
+        suspect_reply(), verdict_reply("pass", "That is a 10mm box."),
     ])
 
     verdict = events.first(REVIEW_VERDICT)
@@ -3797,7 +3828,7 @@ def test_the_acceptance_list_rides_with_the_plan_it_belongs_to():
         design_reply(A_PART),
         plan_reply("Sketch the profile", "Pad it 10 mm", satisfies=everything(A_PART)),
         code_reply("sketch()", "pad()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     plan = events.first(PLAN)
@@ -3816,7 +3847,7 @@ def test_a_run_with_nothing_described_still_plans_and_shows_an_empty_acceptance(
     result, events, _, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -3834,7 +3865,7 @@ def test_no_step_carries_named_parameters_any_more():
         plan_reply({"do": "Pad the base",
                     "parameters": {"type": "PartDesign::Pad", "properties": {"Length": 10}}}),
         code_reply("pad()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert events.first(PLAN).data["steps"] == ["Pad the base"]
@@ -3852,7 +3883,7 @@ def test_review_is_no_longer_told_the_bounding_box():
     Its place is taken by the acceptance list. FCC-75.
     """
     _, _, llm, tools = drive([
-        plan_reply("Pad the base"), code_reply("pad()"), verdict_reply("pass"),
+        plan_reply("Pad the base"), code_reply("pad()"), suspect_reply(), verdict_reply("pass"),
     ])
 
     review_request = llm.calls[-1][1]["content"][0]["text"].split("\n\n")[0]
@@ -3875,7 +3906,7 @@ def test_plan_is_told_to_cite_and_told_it_does_not_write_the_list():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
     plan_system = " ".join(_system_messages(llm)[1].split())
 
@@ -3917,7 +3948,7 @@ def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
     _, _, llm, tools = drive(
         [plan_reply("Add a box"),
          code_reply("doc.addObject('Part::Box', 'Box')"),
-         verdict_reply("pass")],
+         suspect_reply(), verdict_reply("pass")],
         views=views,
     )
 
@@ -3931,6 +3962,30 @@ def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
     assert "review_views" not in llm.calls[2][1]["content"]
 
 
+def test_the_same_four_views_reach_both_review_calls():
+    """
+    `_review_views` is driven once per run and handed to both `review_suspect`
+    and the gating `review` — a picture is not something either phase gets to
+    ask for a second time (FCC-257, FCC-258).
+    """
+    views = [RENDER_PNG] * 4
+    _, _, llm, tools = drive(
+        [plan_reply("Add a box"),
+         code_reply("doc.addObject('Part::Box', 'Box')"),
+         suspect_reply(), verdict_reply("pass")],
+        views=views,
+    )
+
+    assert [name for name, _ in tools.calls].count("review_views") == 1
+
+    suspect_content = llm.calls[3][1]["content"]
+    review_content = llm.calls[4][1]["content"]
+    assert sum(1 for part in suspect_content if part["type"] == "image_url") == 4
+    assert sum(1 for part in review_content if part["type"] == "image_url") == 4
+    assert ([part["image_url"] for part in suspect_content if part["type"] == "image_url"]
+            == [part["image_url"] for part in review_content if part["type"] == "image_url"])
+
+
 def test_a_run_with_no_views_still_reaches_a_verdict():
     """
     No views still degrades Review to the Description alone, and a registry with
@@ -3940,7 +3995,7 @@ def test_a_run_with_no_views_still_reaches_a_verdict():
     result, _, llm, _ = drive(
         [plan_reply("Add a box"),
          code_reply("doc.addObject('Part::Box', 'Box')"),
-         verdict_reply("pass")],
+         suspect_reply(), verdict_reply("pass")],
         applies=[{"status": "applied", "created": ["Box"], "description": {}}],
         views=[],
     )
@@ -3961,7 +4016,7 @@ def test_a_step_that_cannot_be_built_returns_to_plan():
             code_reply("nope1()"), code_reply("nope2()"), code_reply("nope3()"),
             plan_reply("Possible"),
             code_reply("yes()"),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         applies=[failed("one"), failed("two"), failed("three")],
     )
@@ -3986,7 +4041,7 @@ def test_the_replan_after_a_handback_reads_the_document_as_it_is():
             code_reply("nope2()", first=2), code_reply("nope3()", first=2),
             plan_reply("Possible"),
             code_reply("yes()"),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         applies=[None, failed("one"), failed("two"), failed("three")],
     )
@@ -4040,7 +4095,7 @@ def test_a_step_handed_back_after_another_one_landed_is_still_replanned():
                         "unbuildable": "still cuts nothing"}),
             plan_reply("Third"),
             code_reply("third()"),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         budgets=Budgets(revisions=5),
     )
@@ -4093,7 +4148,7 @@ def test_the_attempt_budget_is_per_step_not_per_run():
             code_reply("a1()", "b1()"),
             code_reply("a2()", "b1()"),
             code_reply("b2()", first=2),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         applies=[failed("a"), None, failed("b"), None],
     )
@@ -4104,9 +4159,9 @@ def test_the_attempt_budget_is_per_step_not_per_run():
 
 def test_two_review_cycles_per_plan_then_blocked():
     result, events, _, _ = drive([
-        plan_reply("v1"), code_reply("v1()"), verdict_reply("fail", "not right"),
-        plan_reply("v2"), code_reply("v2()"), verdict_reply("fail", "still not right"),
-        plan_reply("v3"), code_reply("v3()"), verdict_reply("fail", "no better"),
+        plan_reply("v1"), code_reply("v1()"), suspect_reply(), verdict_reply("fail", "not right"),
+        plan_reply("v2"), code_reply("v2()"), suspect_reply(), verdict_reply("fail", "still not right"),
+        plan_reply("v3"), code_reply("v3()"), suspect_reply(), verdict_reply("fail", "no better"),
     ])
 
     assert not result.ok
@@ -4257,10 +4312,10 @@ def test_a_stream_the_provider_cut_off_is_sent_again_rather_than_failing():
     first one throws away a phase for nothing.
     """
     result, _, llm, _ = drive([_cut_off(), plan_reply("Only"),
-                               code_reply("box()"), verdict_reply("pass", "Good.")])
+                               code_reply("box()"), suspect_reply(), verdict_reply("pass", "Good.")])
 
     assert result.ok
-    assert len(llm.calls) == 5, "design, Plan twice, Execute, Review"
+    assert len(llm.calls) == 6, "design, Plan twice, Execute, review_suspect, Review"
 
 
 def test_a_provider_that_keeps_cutting_the_stream_is_given_up_on():
@@ -4276,7 +4331,7 @@ def test_the_event_stream_of_a_clean_run():
     _, events, _, _ = drive([
         plan_reply("Only", thinking="A box is a Part::Box."),
         code_reply("box()", thinking="addObject then set Length."),
-        verdict_reply("pass", "Good.", thinking="The render shows a cube."),
+        suspect_reply(), verdict_reply("pass", "Good.", thinking="The render shows a cube."),
     ])
 
     assert [e.kind for e in events] == [
@@ -4284,6 +4339,7 @@ def test_the_event_stream_of_a_clean_run():
         CALL_STARTED, WRITING, COST,
         CALL_STARTED, THOUGHT, WRITING, COST, PLAN, GATE, GATE,
         CALL_STARTED, THOUGHT, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         CALL_STARTED, THOUGHT, WRITING, COST, REVIEW_VERDICT,
     ]
 
@@ -4298,8 +4354,9 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
         design_reply(A_CUBE),
         plan_reply("Only", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass", "Good."),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass", "Good."),
     ], attachments=[RENDER_PNG])
 
     assert [e.kind for e in events] == [
@@ -4307,14 +4364,15 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
         CALL_STARTED, WRITING, COST, DESIGN, PART,
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
         CALL_STARTED, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
-        CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
+        CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
+        CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
     ]
 
 
 def test_the_event_stream_of_a_retried_run():
     _, events, _, _ = drive(
-        [plan_reply("Only"), code_reply("bad()"), code_reply("good()"), verdict_reply("pass")],
+        [plan_reply("Only"), code_reply("bad()"), code_reply("good()"), suspect_reply(), verdict_reply("pass")],
         applies=[failed("boom"), None],
     )
 
@@ -4325,6 +4383,7 @@ def test_the_event_stream_of_a_retried_run():
         CALL_STARTED, WRITING, COST, STEP_STARTED,
         TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
         CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
     ]
 
@@ -4347,7 +4406,7 @@ def test_the_event_stream_of_a_blocked_run():
 
 def test_tool_calls_and_their_results_are_both_visible():
     _, events, _, _ = drive([
-        plan_reply("Only"), code_reply("box()", label="Add the box"), verdict_reply("pass"),
+        plan_reply("Only"), code_reply("box()", label="Add the box"), suspect_reply(), verdict_reply("pass"),
     ])
 
     call = events.first(TOOL_CALL)
@@ -4364,7 +4423,7 @@ def test_no_step_puts_a_picture_in_the_stream():
     the step render was never among them.
     """
     _, events, _, _ = drive([
-        plan_reply("Only"), code_reply("box()"), verdict_reply("pass"),
+        plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass"),
     ])
 
     assert [e for e in events if e.kind == "render"] == []
@@ -4375,7 +4434,7 @@ def test_reasoning_is_streamed_tagged_with_the_phase_it_came_from():
     _, events, _, _ = drive([
         plan_reply("Only", thinking="planning out loud"),
         code_reply("box()", thinking="coding out loud"),
-        verdict_reply("pass", thinking="judging out loud"),
+        suspect_reply(), verdict_reply("pass", thinking="judging out loud"),
     ])
 
     assert [(e.data["phase"], e.data["text"]) for e in events.of(THOUGHT)] == [
@@ -4398,7 +4457,7 @@ def test_the_words_a_phase_writes_reach_the_stream_as_it_writes_them():
     _, events, _, _ = drive([
         plan_reply("Only"),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     written = "".join(e.data["text"] for e in events.of(WRITING)
@@ -4406,7 +4465,7 @@ def test_the_words_a_phase_writes_reach_the_stream_as_it_writes_them():
 
     assert json.loads(written)["steps"] == ["Only"]
     assert {e.data["phase"] for e in events.of(WRITING)} == {
-        "design", "plan", "execute", "review"}
+        "design", "plan", "execute", "review_suspect", "review"}
 
 
 def test_a_phase_is_answered_by_the_client_its_own_profile_names():
@@ -4431,14 +4490,14 @@ def test_a_phase_is_answered_by_the_client_its_own_profile_names():
             return self._thinking if phase in ("design", "plan") else self._doing
 
     thinking = ScriptedLLMClient([design_reply(), plan_reply("Only")])
-    doing = ScriptedLLMClient([code_reply("box()"), verdict_reply("pass")])
+    doing = ScriptedLLMClient([code_reply("box()"), suspect_reply(), verdict_reply("pass")])
     llm = TwoProfiles(thinking, doing)
     events = EventStream()
 
     result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events)
 
     assert result.ok
-    assert llm.asked == ["design", "plan", "execute", "review"]
+    assert llm.asked == ["design", "plan", "execute", "review_suspect", "review"]
     assert not doing.turns and not thinking.turns
 
 
@@ -4468,7 +4527,7 @@ def a_clean_run(llm):
     return result, events
 
 
-CLEAN = [plan_reply("Only"), code_reply("box()"), verdict_reply("pass")]
+CLEAN = [plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")]
 
 
 def test_a_phase_that_answers_without_thinking_leaves_the_accordion_empty():
@@ -4535,7 +4594,7 @@ def test_a_provider_that_says_nothing_about_what_it_spent_writes_cost_with_only_
     _, events, _, _ = drive(CLEAN)
 
     cost_events = events.of(COST)
-    assert len(cost_events) == 4
+    assert len(cost_events) == 5
     for cost in cost_events:
         assert "seconds" in cost.data
         assert isinstance(cost.data["seconds"], float)
@@ -4586,7 +4645,7 @@ def test_the_stream_can_be_watched_live():
     events.subscribe(lambda event: seen.append(event.kind))
 
     run("Make a box", llm=ScriptedLLMClient([
-        plan_reply("Only"), code_reply("box()"), verdict_reply("pass"),
+        plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass"),
     ]), tools=FakeTools().registry, events=events)
 
     assert seen == [e.kind for e in events]
@@ -4660,7 +4719,7 @@ def test_stopping_says_what_is_already_in_the_document():
 
 def test_a_run_that_is_never_stopped_is_unaffected():
     result, _, _, tools = drive([
-        plan_reply("Only"), code_reply("box()"), verdict_reply("pass"),
+        plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -4679,9 +4738,9 @@ def test_the_loop_takes_everything_it_needs_as_arguments():
 
 
 def test_two_loops_can_run_over_different_dependencies_without_touching_each_other():
-    first = drive([plan_reply("A"), code_reply("a()"), verdict_reply("pass")],
+    first = drive([plan_reply("A"), code_reply("a()"), suspect_reply(), verdict_reply("pass")],
                   intent="First intent")
-    second = drive([plan_reply("B"), code_reply("b()"), verdict_reply("pass")],
+    second = drive([plan_reply("B"), code_reply("b()"), suspect_reply(), verdict_reply("pass")],
                    intent="Second intent")
 
     assert first[3].applied_codes() == ["a()"]
@@ -4693,7 +4752,7 @@ def test_a_run_reports_what_it_did():
     result, _, _, _ = drive([
         plan_reply("First", "Second"),
         code_reply("a()", "b()"),
-        verdict_reply("pass", "Both done."),
+        suspect_reply(), verdict_reply("pass", "Both done."),
     ])
 
     assert result.ok
@@ -4715,7 +4774,7 @@ def test_plan_can_ask_instead_of_planning():
     result, events, _, tools = drive(
         [question_reply(MISSING),
          plan_reply("Sketch the blank, assumed module 2", "Pad it"),
-         code_reply("a()", "b()"), verdict_reply("pass")],
+         code_reply("a()", "b()"), suspect_reply(), verdict_reply("pass")],
         intent=GEAR)
 
     question = events.first(QUESTION)
@@ -4743,7 +4802,7 @@ def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan
         design_reply({}, question=MISSING),
         design_reply(GEAR_AS_TOLD),
         plan_reply("Sketch a 20-tooth module-2 blank"), code_reply("a()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
     tools = FakeTools()
 
@@ -4763,7 +4822,7 @@ def test_a_run_nobody_is_watching_gets_a_plan_that_chose_for_them():
     result, events, llm, _ = drive(
         [question_reply(MISSING),
          plan_reply("Sketch the blank, assumed module 2 and 20 teeth"), code_reply("a()"),
-         verdict_reply("pass")],
+         suspect_reply(), verdict_reply("pass")],
         intent=GEAR)
 
     assert result.ok
@@ -4776,7 +4835,7 @@ def test_with_nobody_to_ask_the_run_does_not_stall():
     """Level 1, Level 2 and headless runs have no user; they must still plan."""
     result, _, llm, _ = drive(
         [question_reply(MISSING), plan_reply("Sketch it, assumed module 2"), code_reply("a()"),
-         verdict_reply("pass")],
+         suspect_reply(), verdict_reply("pass")],
         intent=GEAR)
 
     assert result.ok
@@ -4807,7 +4866,7 @@ def test_a_run_nobody_answered_at_all_reaches_the_gate_rather_than_a_block():
         question_reply("q2"), design_reply({}),
         question_reply("q3"),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
-        code_reply("pad()"), verdict_reply("pass"), assertion_reply("assert True"),
+        code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=2),
         ask=lambda q: asked.append(q) or "some answer")
 
@@ -4837,7 +4896,7 @@ def test_a_question_about_a_material_card_is_answered_from_the_tools():
         question_reply(A_MATERIAL_CARD),
         look_reply("materials", name="plain carbon steel"),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
-        code_reply("pad()"), verdict_reply("pass"), assertion_reply("assert True"),
+        code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok, result.reason
@@ -4864,7 +4923,7 @@ def test_rereads_are_spent_only_on_questions_put_to_the_drawing():
         question_reply("Where is the O8 hole?"),
         design_reply({"datums": [{"name": "the left end face", "is": "the flat face"}]}),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
-        code_reply("pad()"), verdict_reply("pass"), assertion_reply("assert True"),
+        code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
 
     assert result.ok, result.reason
@@ -4886,7 +4945,7 @@ def test_rereads_counts_re_reads_of_the_drawing_and_nothing_else():
         question_reply("q2"),
         question_reply("q3"),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
-        code_reply("pad()"), verdict_reply("pass"), assertion_reply("assert True"),
+        code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
 
     assert result.ok, result.reason
@@ -4920,7 +4979,7 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
         design_reply(OFF_THE_SECTION),
         plan_reply("Pocket both faces 20 mm",
                    satisfies=everything(A_PART, OFF_THE_SECTION)),
-        code_reply("a()"), verdict_reply("pass"), assertion_reply("assert True"),
+        code_reply("a()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "")
 
     assert result.ok
@@ -4954,7 +5013,7 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
         design_reply({"features": [{"id": "hole-8-left",
                                     "position": {"the left end face": read("25 mm")}}]}),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     grown = events.last(DESIGN).data["model"]
@@ -4982,7 +5041,7 @@ def test_a_question_the_sheet_does_not_answer_is_settled_by_the_model():
         question_reply("What general tolerance applies?"),
         design_reply(),
         plan_reply("Sketch it, assumed ±0.1 mm", satisfies=everything(A_PART)),
-        code_reply("a()"), verdict_reply("pass"), assertion_reply("assert True"),
+        code_reply("a()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG],
         ask=lambda q: asked.append(q) or "±0.1 mm")
 
@@ -5004,7 +5063,7 @@ def test_a_drawing_that_keeps_answering_is_never_a_question_for_anybody():
         question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
         question_reply("q2"), design_reply({"datums": [{"name": "d2"}]}),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "an answer")
 
     assert result.ok, result.reason
@@ -5026,7 +5085,7 @@ def test_the_re_reads_have_a_ceiling_of_their_own():
         question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
         question_reply("q2"),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1),
         ask=lambda q: asked.append(q) or "an answer")
 
@@ -5053,7 +5112,7 @@ def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
         question_reply("q1"), design_reply(),
         question_reply("q2"), design_reply(off_the_sheet),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "")
 
     assert result.ok, "the second question killed the run: %s" % result.reason
@@ -5076,7 +5135,7 @@ def test_the_same_question_twice_is_listed_once_and_does_not_end_the_run():
         question_reply("q1"), design_reply(),
         question_reply("q1"), design_reply(),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda _: "")
 
     assert result.ok, result.reason
@@ -5093,7 +5152,7 @@ def test_the_questions_nobody_answered_are_shown_beside_the_plan():
     """
     _, events, _, _ = drive(
         [question_reply("What module?"), plan_reply("Sketch it"), code_reply("a()"),
-         verdict_reply("pass")],
+         suspect_reply(), verdict_reply("pass")],
         intent=GEAR, ask=lambda _: "")
 
     assert events.first(PLAN).data["unanswered"] == ["What module?"]
@@ -5113,7 +5172,7 @@ def test_a_replan_does_not_refill_the_re_read_ceiling():
         plan_reply("Impossible", satisfies=everything(A_PART)), code_reply("nope()"),
         question_reply("q2"),
         plan_reply("Possible", satisfies=everything(A_PART)), code_reply("yes()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], applies=[failed("one")], attachments=[RENDER_PNG],
         budgets=Budgets(rereads=1, attempts_per_step=1),
         ask=lambda q: asked.append(q) or "an answer")
@@ -5133,12 +5192,12 @@ def test_with_no_attachment_a_question_is_settled_by_plan_itself():
 
     result, _, llm, _ = drive(
         [question_reply(MISSING), plan_reply("Sketch it, assumed module 2"),
-         code_reply("a()"), verdict_reply("pass")],
+         code_reply("a()"), suspect_reply(), verdict_reply("pass")],
         intent=GEAR, ask=lambda q: asked.append(q) or "module 2")
 
     assert result.ok, result.reason
     assert asked == []
-    assert len(llm.calls) == 5, "a turn was spent re-reading a drawing that is not there"
+    assert len(llm.calls) == 6, "a turn was spent re-reading a drawing that is not there"
 
 
 def test_a_question_alongside_steps_is_still_a_plan():
@@ -5147,7 +5206,7 @@ def test_a_question_alongside_steps_is_still_a_plan():
 
     result, events, _, _ = drive(
         [json.dumps({"question": "how big?", "steps": ["Sketch it"]}),
-         code_reply("a()"), verdict_reply("pass")],
+         code_reply("a()"), suspect_reply(), verdict_reply("pass")],
         intent=GEAR, ask=lambda q: asked.append(q) or "")
 
     assert result.ok
@@ -5171,7 +5230,7 @@ def test_a_replan_after_a_handback_may_ask_rather_than_planning_blind():
             question_reply(MISSING),
             plan_reply("Possible, assumed module 2"),
             code_reply("yes()"),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         applies=[failed("one"), failed("two"), failed("three")],
         ask=lambda question: asked.append(question) or "module 2, 20 teeth",
@@ -5188,10 +5247,10 @@ def test_a_replan_after_a_rejected_verdict_may_ask_too():
 
     result, events, _, _ = drive(
         [
-            plan_reply("Make it"), code_reply("make()"), verdict_reply("fail", "20mm, not 10mm"),
+            plan_reply("Make it"), code_reply("make()"), suspect_reply(), verdict_reply("fail", "20mm, not 10mm"),
             question_reply(MISSING),
             plan_reply("Make it 10mm across the flats"), code_reply("fix()"),
-            verdict_reply("pass"),
+            suspect_reply(), verdict_reply("pass"),
         ],
         ask=lambda question: asked.append(question) or "10mm across the flats",
     )
@@ -5250,18 +5309,21 @@ CHECK_IS_BROKEN = ('Traceback (most recent call last):\n'
                    "AttributeError: 'Part::Feature' object has no attribute 'Flats'\n")
 
 
-def test_the_assertion_phase_runs_after_the_last_step_and_after_review_has_passed():
+def test_the_assertion_phase_runs_after_the_last_step_and_between_the_two_reviews():
     """
-    Once per run, on the finished Document, and only once Review has already
-    passed it: what is checked is how close the built part is to the goal,
-    not the arithmetic of a state that may not be ready yet. Read-only, so it
-    goes through a Tool of its own rather than through apply. FCC-76, FCC-257.
+    Once per run, on the finished Document, after `review_suspect` has had its
+    look and before the gating Review sees a verdict-worthy result: what is
+    checked is how close the built part is to the goal, not the arithmetic of
+    a state that may not be ready yet, and not a second opinion Review has
+    already given without it. Read-only, so it goes through a Tool of its own
+    rather than through apply. FCC-76, FCC-257, FCC-258.
     """
     _, events, llm, tools = a_run_over_the_nut(
         planning_the_nut("Sketch it", "Pad it"),
         code_reply("sketch()", "pad()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply(CHECKS),
+        verdict_reply("pass"),
     )
 
     assert [name for name, _ in tools.calls
@@ -5271,35 +5333,68 @@ def test_the_assertion_phase_runs_after_the_last_step_and_after_review_has_passe
     assert checked["code"] == CHECKS.strip(), "the Tool ran something other than the checks"
 
     kinds = [e.kind for e in events]
-    assert kinds.index(REVIEW_VERDICT) < kinds.index(ASSERTION)
+    assert kinds.index(REVIEW_SUSPECTED) < kinds.index(ASSERTION) < kinds.index(REVIEW_VERDICT)
     assert events.first(ASSERTION).data["ok"] is True
 
 
-def test_review_passing_outright_still_lets_assertion_gate_the_verdict():
+def test_review_suspecting_nothing_still_lets_assertion_gate_the_verdict():
     """
-    FCC-257's unchanged path: Review sees the finished Document first and
-    passes it outright, raising no suspicion, and Assertion still runs its
-    full acceptance-list check afterward and still decides pass/fail — the
-    reorder changed when Review looks, not who decides the verdict.
+    `review_suspect` raising no suspicion is not the same as Assertion having
+    nothing to do: Assertion still runs its full acceptance-list check and
+    still decides pass/fail, and the gating Review — when Assertion passes —
+    still runs after it (FCC-258).
     """
-    passing, _, _, _ = a_run_over_the_nut(
+    passing, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"),
-        verdict_reply("pass"), assertion_reply(CHECKS))
+        suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"))
 
     assert passing.ok
     assert passing.unmet == []
+    kinds = [e.kind for e in events]
+    assert kinds.index(ASSERTION) < kinds.index(REVIEW_VERDICT)
 
-    failing, events, _, _ = a_run_over_the_nut(
+    failing, failing_events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"),
-        verdict_reply("pass"), assertion_reply(CHECKS),
+        suspect_reply(), assertion_reply(CHECKS),
         checks=[assertion_failed(SIX_FAILED)],
         decide=lambda failure: "accept",
     )
 
     assert failing.ok, "the user took it, so the run passed"
     assert failing.unmet, "Assertion's failed checks did not reach the result"
-    kinds = [e.kind for e in events]
-    assert kinds.index(REVIEW_VERDICT) < kinds.index(ASSERTION)
+    assert REVIEW_VERDICT not in [e.kind for e in failing_events], \
+        "a failure the user accepted never reached the gating Review"
+
+
+def test_a_suspicion_never_gates_but_reaches_assertions_acceptance_list():
+    """
+    `review_suspect` naming something is not a verdict: the pass carries on to
+    Assertion regardless of what it raised, and what it raised is folded into
+    the very list Assertion measures, carrying `(suspected)` the way a Plan
+    entry carries `(read)` or `(assumed)` (FCC-257, FCC-258).
+    """
+    raised = "envelope → width: 40 mm"
+    result, events, llm, _ = a_run_over_the_nut(
+        planning_the_nut("Make it"), code_reply("make()"),
+        suspect_reply(raised), assertion_reply(CHECKS), verdict_reply("pass"))
+
+    assert result.ok
+    assert events.first(REVIEW_SUSPECTED).data["suspected"] == [raised + " (suspected)"]
+
+    all_events = list(events)
+    between = all_events[all_events.index(events.first(REVIEW_SUSPECTED)) + 1:
+                         all_events.index(events.first(ASSERTION))]
+    assert QUESTION not in [e.kind for e in between], (
+        "a suspicion asked the user before Assertion had a chance to measure it")
+    assert PLAN_REVISED not in [e.kind for e in between], (
+        "a suspicion sent the run back to Plan on its own")
+
+    assertion_request = json.loads(llm.calls[-2][-1]["content"])
+    assert raised + " (suspected)" in assertion_request["acceptance"]
+    for entry in ACCEPTANCE:
+        assert entry in assertion_request["acceptance"], (
+            "a suspected row must not replace the acceptance list, only extend it")
+
 
 
 def test_an_empty_acceptance_list_costs_no_llm_call():
@@ -5310,11 +5405,11 @@ def test_an_empty_acceptance_list_costs_no_llm_call():
     result, events, llm, tools = drive([
         plan_reply("Add a box"),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
-    assert len(llm.calls) == 4, "an extra provider call on a Plan with nothing to check"
+    assert len(llm.calls) == 5, "an extra provider call on a Plan with nothing to check"
     assert events.first(ASSERTION) is None
     assert not any(name == "check_assertions" for name, _ in tools.calls)
 
@@ -5328,12 +5423,13 @@ def test_failed_assertions_return_to_plan_and_never_to_execute():
     _, events, llm, _ = a_run_over_the_nut(
         planning_the_nut("Make it"),
         code_reply("make()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply(CHECKS),
         planning_the_nut("Make it 13 mm across the flats"),
         code_reply("fix()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply(CHECKS),
+        verdict_reply("pass"),
         checks=[assertion_failed(ASSERT_FAILED), None])
 
     to_plan = json.dumps(llm.calls[5])
@@ -5353,7 +5449,7 @@ def test_a_run_out_of_revisions_names_the_assertions_not_review():
     not tell the user Review kept rejecting the result. FCC-76.
     """
     result, _, _, _ = a_run_over_the_nut(
-        *[planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS)] * 5,
+        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS)] * 5,
         budgets=Budgets(revisions=2),
         checks=[assertion_failed(ASSERT_FAILED)] * 5,
     )
@@ -5373,6 +5469,7 @@ def test_review_is_told_the_facts_the_checks_confirmed():
     _, events, llm, _ = a_run_over_the_nut(
         planning_the_nut("Make it"),
         code_reply("make()"),
+        suspect_reply(),
         assertion_reply(CHECKS, uncovered=[ACCEPTANCE[1]]),
         verdict_reply("pass"),
         views=[RENDER_PNG] * 4)
@@ -5396,6 +5493,7 @@ def test_review_is_told_not_to_fail_on_a_suspicion_the_checks_never_confirmed():
     _, _, llm, _ = a_run_over_the_nut(
         planning_the_nut("Make it"),
         code_reply("make()"),
+        suspect_reply(),
         assertion_reply(CHECKS, uncovered=[ACCEPTANCE[1]]),
         verdict_reply("pass"),
         views=[RENDER_PNG] * 4)
@@ -5416,9 +5514,10 @@ def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
     result, events, llm, tools = a_run_over_the_nut(
         planning_the_nut("Make it"),
         code_reply("make()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("bad_check()"),
         assertion_reply(CHECKS),
+        verdict_reply("pass"),
         checks=[assertion_failed(CHECK_IS_BROKEN), None])
 
     assert result.ok
@@ -5436,10 +5535,11 @@ def test_a_check_that_cannot_be_written_lets_review_judge_alone():
     result, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"),
         code_reply("make()"),
+        suspect_reply(),
+        assertion_reply("bad_check()"),
+        assertion_reply("bad_check()"),
+        assertion_reply("bad_check()"),
         verdict_reply("pass"),
-        assertion_reply("bad_check()"),
-        assertion_reply("bad_check()"),
-        assertion_reply("bad_check()"),
         checks=[assertion_failed(CHECK_IS_BROKEN)] * 3)
 
     assert result.ok
@@ -5458,10 +5558,11 @@ def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
         design_reply(A_NUT),
         planning_the_nut("Make it"),
         code_reply("make()"),
+        suspect_reply(),
+        assertion_reply("bad_check()"),
+        assertion_reply("bad_check()"),
+        assertion_reply("bad_check()"),
         verdict_reply("pass"),
-        assertion_reply("bad_check()"),
-        assertion_reply("bad_check()"),
-        assertion_reply("bad_check()"),
     ])
     tools = FakeTools(checks=[assertion_failed(CHECK_IS_BROKEN)] * 3)
     events = EventStream()
@@ -5510,7 +5611,7 @@ def test_the_acceptance_is_the_descriptions_own_entries_and_not_plans_paraphrase
         plan_reply("Pad the blank", "Cut the central opening",
                    satisfies=everything(THE_CAVITY)),
         code_reply("pad()", "cut()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     shown = events.first(PLAN).data["acceptance"]
@@ -5529,7 +5630,7 @@ def test_a_value_the_user_assumed_is_still_marked_assumed_in_the_acceptance():
     _, events, _, _ = drive([
         design_reply(told),
         plan_reply("Pad it 150 mm"), code_reply("pad()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.first(PLAN).data["acceptance"] == ["envelope → length: 150 mm (assumed)"]
@@ -5548,7 +5649,7 @@ def test_a_step_says_at_the_gate_which_part_of_the_part_it_is_for():
                    {"do": "Cut the central opening, both faces",
                     "satisfies": [CAVITY_POCKET]}),
         code_reply("pad()", "cut()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.first(PLAN).data["steps"] == [
@@ -5569,7 +5670,7 @@ def test_a_plan_that_leaves_a_read_entry_unconsumed_is_planned_again():
         plan_reply({"do": "Cut the central opening", "satisfies": [CAVITY_POCKET]}),
         plan_reply({"do": "Pad the blank 100 mm front to rear",
                     "satisfies": [CAVITY_DEPTH, CAVITY_POCKET]}),
-        code_reply("pad()"), verdict_reply("pass"), assertion_reply("assert True"),
+        code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok
@@ -5588,7 +5689,7 @@ def test_a_plan_that_leaves_nothing_unconsumed_is_never_replanned():
         design_reply(THE_CAVITY),
         plan_reply({"do": "Pad the blank and cut the opening",
                     "satisfies": [CAVITY_DEPTH, CAVITY_POCKET]}),
-        code_reply("build()"), verdict_reply("pass"), assertion_reply("assert True"),
+        code_reply("build()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.first(PLAN_REVISED) is None
@@ -5606,7 +5707,7 @@ def test_a_plan_citing_the_whole_line_it_was_handed_has_cited_the_entry():
         plan_reply({"do": "Pad the blank and cut the opening",
                     "satisfies": [CAVITY_DEPTH + ": 100 mm (read)",
                                   CAVITY_POCKET + ": 20 mm (read)"]}),
-        code_reply("build()"), verdict_reply("pass"), assertion_reply("assert True"),
+        code_reply("build()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.first(PLAN_REVISED) is None
@@ -5628,7 +5729,7 @@ def test_a_step_carries_the_address_it_cites_and_not_the_paragraph_behind_it():
         plan_reply({"do": "Pad the blank and cut the opening",
                     "satisfies": [CAVITY_DEPTH + ": 100 mm (read)",
                                   CAVITY_POCKET + ": 20 mm (read)"]}),
-        code_reply("build()"), verdict_reply("pass"), assertion_reply("assert True"),
+        code_reply("build()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     step = events.first(PLAN).data["steps"][0]
@@ -5651,7 +5752,7 @@ def test_one_entry_may_feed_several_steps():
                    {"do": "Cut the opening 100 mm deep, front to rear",
                     "satisfies": [CAVITY_DEPTH, CAVITY_POCKET]}),
         code_reply("pad()", "cut()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.first(PLAN_REVISED) is None
@@ -5679,7 +5780,7 @@ def test_no_step_has_to_build_a_feature_the_later_page_replaced():
         design_reply(superseded),
         plan_reply({"do": "Pad the arm at 45°",
                     "satisfies": ["features → angled-arm → position → the ring axis"]}),
-        code_reply("arm()"), verdict_reply("pass"), assertion_reply("assert True"),
+        code_reply("arm()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok
@@ -5698,7 +5799,7 @@ def test_an_assumed_entry_is_not_something_a_plan_can_be_refused_over():
     result, events, _, _ = drive([
         design_reply(told),
         plan_reply("Pad it"), code_reply("pad()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok
@@ -5734,7 +5835,7 @@ def _four_steps_applied_then_a_handback():
         plan_reply({"do": "Bore the central hole from the top face",
                     "satisfies": list(LEFT_TO_BUILD)}),
         code_reply("bore()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ]
 
 
@@ -5791,7 +5892,7 @@ def test_an_entry_no_step_ever_landed_for_is_still_unplanned():
         plan_reply({"do": "Pad part 4", "satisfies": [BUILT[3]]},
                    {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
         code_reply("part4()", "bore()"),
-        verdict_reply("pass"), assertion_reply("assert True"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(revisions=5))
 
     assert result.ok
@@ -5831,7 +5932,7 @@ def test_a_step_whose_sum_does_not_come_out_never_reaches_the_gate():
         plan_reply("Pad the arm to an assumed 92.63 mm station, so the left extreme "
                    "is at 65.5 - 92.63 * cos(45°) = 0 mm"),
         code_reply("arm()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -5870,7 +5971,7 @@ def test_a_run_with_no_attachment_still_plans_and_still_shows_an_acceptance():
     result, events, _, tools = drive(
         [design_reply(told, question=MISSING), design_reply(),
          plan_reply("Pad it 150 mm", satisfies=everything(told)), code_reply("pad()"),
-         verdict_reply("pass"), assertion_reply("assert True")],
+         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
         attachments=[RENDER_PNG], ask=lambda _: "150 mm long")
 
     assert result.ok
@@ -5893,7 +5994,7 @@ def test_the_entries_that_did_not_hold_come_out_on_the_result():
     The second run then rebuilt on top of six entries that were already wrong.
     """
     result, _, _, _ = a_run_over_the_nut(
-        *[planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS)] * 5,
+        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass")] * 5,
         budgets=Budgets(revisions=1),
         checks=[assertion_failed(SIX_FAILED)] * 5,
     )
@@ -5910,7 +6011,7 @@ def test_a_result_the_user_took_as_it_is_still_says_what_is_wrong_with_it():
     from core.loop import ACCEPT
 
     result, _, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         checks=[assertion_failed(SIX_FAILED)],
         decide=lambda failure: ACCEPT,
     )
@@ -5922,7 +6023,7 @@ def test_a_result_the_user_took_as_it_is_still_says_what_is_wrong_with_it():
 
 def test_a_run_whose_checks_passed_leaves_nothing_outstanding():
     result, _, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS))
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"))
 
     assert result.ok
     assert result.unmet == []
@@ -5934,7 +6035,7 @@ def test_a_run_stopped_partway_still_reports_what_was_wrong():
     ran out of revisions is exactly the run whose Document nobody fixed.
     """
     result, _, _, _ = a_run_over_the_nut(
-        *[planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS)] * 5,
+        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS)] * 5,
         budgets=Budgets(revisions=1),
         checks=[assertion_failed(SIX_FAILED)] * 5,
     )
@@ -5945,7 +6046,7 @@ def test_a_run_stopped_partway_still_reports_what_was_wrong():
 
 def test_the_assertion_event_names_the_entries_and_not_only_the_traceback():
     _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         checks=[assertion_failed(SIX_FAILED)],
         decide=lambda failure: "accept",
     )
@@ -5973,7 +6074,7 @@ def test_a_mixed_result_reports_both_what_held_and_what_did_not():
     rather than the failure branch's old hardcoded `confirmed=[]`.
     """
     _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         checks=[assertion_mixed([ACCEPTANCE[0]], [ACCEPTANCE[1]], MIXED_TRACEBACK)],
         decide=lambda failure: "accept",
     )
@@ -5992,7 +6093,7 @@ def test_a_passing_runs_confirmed_is_measured_not_inferred():
     `confirmed` and `unmet`, rather than inferred as held.
     """
     _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         checks=[{"ok": True, "held": [ACCEPTANCE[0]]}],
     )
 
@@ -6012,8 +6113,9 @@ def test_a_check_that_measured_but_never_defined_held_still_reports_confirmed_em
     entry.
     """
     _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(),
         assertion_reply(CHECKS),
+        verdict_reply("pass"),
         checks=[{"ok": False, "traceback": ASSERT_FAILED, "failed": [ACCEPTANCE[0]]}],
         decide=lambda failure: "accept",
     )
@@ -6030,7 +6132,7 @@ def test_a_document_that_cannot_recompute_leaves_the_whole_list_outstanding():
               "Pocket (PartDesign::Pocket): Links go out of the allowed scope\n")
 
     result, _, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         checks=[assertion_failed(broken)],
         decide=lambda failure: "accept",
     )
@@ -6042,7 +6144,7 @@ def test_what_the_user_decided_about_a_failed_result_is_on_the_stream():
     decided = []
 
     _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         checks=[assertion_failed(SIX_FAILED)],
         decide=lambda failure: decided.append(failure) or "accept",
     )
@@ -6060,7 +6162,7 @@ def test_starting_over_is_recorded_as_the_licence_it_is():
     from core.loop import START_OVER
 
     _, events, _, _ = a_run_over_the_nut(
-        *[planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS)] * 5,
+        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass")] * 5,
         budgets=Budgets(revisions=1),
         checks=[assertion_failed(SIX_FAILED)] * 5,
         decide=lambda failure: START_OVER,
@@ -6090,7 +6192,7 @@ def test_a_run_that_inherits_a_failure_says_so_before_it_reads_the_drawing():
     from core.events import OUTSTANDING
 
     _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         outstanding=STILL_WRONG)
 
     assert events.first(OUTSTANDING).data["entries"] == STILL_WRONG
@@ -6100,7 +6202,7 @@ def test_a_run_that_inherits_a_failure_says_so_before_it_reads_the_drawing():
 
 def test_the_first_plan_of_an_inheriting_run_is_told_what_is_wrong():
     _, _, llm, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         outstanding=STILL_WRONG)
 
     to_plan = json.dumps(llm.calls[1])
@@ -6119,7 +6221,7 @@ def test_an_inherited_failure_is_checked_again_at_the_end_of_the_new_run():
     inherited = ["features \u2192 bore-left \u2192 position: 25 mm (read)"]
 
     _, _, llm, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         outstanding=inherited)
 
     checked = json.loads(llm.calls[4][-1]["content"])
@@ -6129,7 +6231,7 @@ def test_an_inherited_failure_is_checked_again_at_the_end_of_the_new_run():
 
 def test_an_inherited_entry_the_new_run_already_lists_is_not_listed_twice():
     _, _, llm, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         outstanding=[ACCEPTANCE[0]])
 
     assert json.loads(llm.calls[4][-1]["content"])["acceptance"] == ACCEPTANCE
@@ -6137,7 +6239,7 @@ def test_an_inherited_entry_the_new_run_already_lists_is_not_listed_twice():
 
 def test_an_inherited_failure_that_now_passes_is_no_longer_outstanding():
     result, _, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         outstanding=STILL_WRONG)
 
     assert result.ok
@@ -6149,7 +6251,7 @@ def test_a_run_that_inherits_nothing_says_nothing_about_it():
     from core.events import OUTSTANDING
 
     _, events, llm, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), verdict_reply("pass"), assertion_reply(CHECKS))
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"))
 
     assert events.first(OUTSTANDING) is None
     assert "acceptance checks did not pass" not in json.dumps(llm.calls[1])
@@ -6161,7 +6263,7 @@ def test_execute_is_handed_what_the_run_already_looked_at():
         plan_reply("Sketch it", "Pad it"),
         look_reply("describe_type", type_id="PartDesign::Pad"),
         code_reply("sketch()", "pad()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     asked_with = json.loads(llm.calls[3][-1]["content"])
@@ -6180,7 +6282,7 @@ def test_a_regeneration_does_not_have_to_look_again():
         look_reply("describe_type", type_id="PartDesign::Pad"),
         code_reply("pad_wrong()"),
         code_reply("pad_right()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed("Reversed")])
 
     regenerated = json.loads(llm.calls[3][-1]["content"])
@@ -6197,7 +6299,7 @@ def test_asking_twice_for_the_same_thing_calls_the_tool_once():
         look_reply("describe_type", type_id="PartDesign::Pad"),
         look_reply("describe_type", type_id="PartDesign::Pad"),
         code_reply("pad()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], budgets=Budgets(looks_per_turn=2))
 
     assert len([c for c in tools.calls if c[0] == "describe_type"]) == 1
@@ -6212,7 +6314,7 @@ def test_a_different_argument_is_a_different_look():
         look_reply("describe_type", type_id="PartDesign::Pad"),
         look_reply("describe_type", type_id="PartDesign::Pocket"),
         code_reply("pad()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], budgets=Budgets(looks_per_turn=2))
 
     assert len([c for c in tools.calls if c[0] == "describe_type"]) == 2
@@ -6230,7 +6332,7 @@ def test_what_an_object_has_is_forgotten_once_a_step_lands():
         code_reply("sketch()", "pad_wrong()"),
         look_reply("describe_object", name="Box"),
         code_reply("pad_right()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[FakeTools.APPLIED, failed("Reversed")])
 
     assert len([c for c in tools.calls if c[0] == "describe_object"]) == 2, \
@@ -6246,7 +6348,7 @@ def test_what_a_type_has_survives_a_step_because_the_build_does_not_change():
         look_reply("describe_type", type_id="PartDesign::Pad"),
         code_reply("sketch()", "pad_wrong()"),
         code_reply("pad_right()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[FakeTools.APPLIED, failed("Reversed")])
 
     regenerated = json.loads(llm.calls[3][-1]["content"])
@@ -6262,7 +6364,7 @@ def test_a_look_that_failed_is_not_remembered_as_an_answer():
         look_reply("describe_object", name="NoSuchThing"),
         look_reply("describe_object", name="NoSuchThing"),
         code_reply("pad()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], budgets=Budgets(looks_per_turn=2))
 
     assert len([c for c in tools.calls if c[0] == "describe_object"]) == 2
@@ -6291,7 +6393,7 @@ def test_execute_is_handed_the_material_cards_without_asking():
     _, _, llm, tools = drive([
         plan_reply("Add a box"),
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert "materials" in [name for name, _ in tools.calls], \
@@ -6319,7 +6421,7 @@ def test_a_turn_may_take_six_looks():
         look_reply("describe_type", type_id="T5"),
         look_reply("describe_type", type_id="T6"),
         code_reply("pad()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok, result.reason
@@ -6333,7 +6435,7 @@ def test_a_plan_that_ends_in_a_material_assignment_uses_a_uuid_from_this_build()
     result, _, llm, tools = drive([
         plan_reply("Pad the profile", "Assign the material"),
         code_reply("pad()", "obj.ShapeMaterial = uuid('b9b3a6ff-1c8e')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok, result.reason
@@ -6364,7 +6466,7 @@ def test_the_recorded_run_reaches_step_eight_and_assigns_a_card():
         look_reply("describe_type", type_id="PartDesign::Fillet"),
         code_reply(*(["step%d()" % number for number in range(1, 8)]
                      + ["obj.ShapeMaterial = uuid('b9b3a6ff-1c8e')"])),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok, result.reason
@@ -6389,7 +6491,7 @@ def test_the_same_failure_twice_is_told_not_to_write_a_third_variation():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL)])
 
     third = json.loads(llm.calls[4][-1]["content"])
@@ -6408,7 +6510,7 @@ def test_the_directive_matches_the_failure_and_not_some_other_one():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(IN_PIECES), failed(IN_PIECES)])
 
     said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
@@ -6426,7 +6528,7 @@ def test_two_different_failures_in_a_row_are_progress_and_are_left_alone():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL), failed(IN_PIECES)])
 
     third = json.loads(llm.calls[3][-1]["content"])
@@ -6438,7 +6540,7 @@ def test_one_failure_says_nothing_about_repeating_yourself():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"), code_reply("second()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL)])
 
     assert "you_have_failed_this_the_same_way_twice" not in json.loads(
@@ -6459,7 +6561,7 @@ def test_a_known_symptom_gets_a_repair_reference_on_the_first_failure():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"), code_reply("second()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_SUCH_PROPERTY)])
 
     retry = _turns_of(llm, "execute")[1]
@@ -6475,7 +6577,7 @@ def test_a_different_known_symptom_gets_its_own_reference():
     _, _, llm, _ = drive([
         plan_reply("Fillet the rim"),
         code_reply("first()"), code_reply("second()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(FILLET_RADIUS)])
 
     reference = _turns_of(llm, "execute")[1]["repair_reference"]
@@ -6488,7 +6590,7 @@ def test_an_unknown_symptom_gets_no_repair_reference():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"), code_reply("second()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed("ZeroDivisionError: division by zero")])
 
     assert "repair_reference" not in _turns_of(llm, "execute")[1]
@@ -6498,7 +6600,7 @@ def test_a_step_that_has_not_failed_yet_gets_no_repair_reference():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert "repair_reference" not in _turns_of(llm, "execute")[0]
@@ -6508,7 +6610,7 @@ def test_a_repair_reference_spends_no_look_and_no_extra_turn():
     result, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"), code_reply("second()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_SUCH_PROPERTY)])
 
     assert result.ok, result.reason
@@ -6521,7 +6623,7 @@ def test_a_failure_nothing_recognises_is_not_given_invented_advice():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed("ZeroDivisionError: division by zero"),
                 failed("ZeroDivisionError: division by zero")])
 
@@ -6533,7 +6635,7 @@ def test_the_directive_offers_leaving_the_step_out_rather_than_repeating():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL)])
 
     said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
@@ -6552,7 +6654,7 @@ def test_a_step_that_never_failed_any_other_way_tells_plan_to_change_the_step():
         code_reply("one()"), code_reply("two()"), code_reply("three()"),
         plan_reply("Cut the hooks, differently"),
         code_reply("four()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL)] * 3, budgets=Budgets(attempts_per_step=3))
 
     to_plan = json.dumps(llm.calls[5])
@@ -6569,7 +6671,7 @@ def test_a_step_that_failed_variously_does_not_tell_plan_to_change_the_step():
         code_reply("one()"), code_reply("two()"), code_reply("three()"),
         plan_reply("Cut the hooks, differently"),
         code_reply("four()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL), failed(IN_PIECES), failed(NO_MATERIAL)],
        budgets=Budgets(attempts_per_step=3))
 
@@ -6721,7 +6823,7 @@ def test_the_ledger_survives_a_step_landing_and_reaches_the_next_steps_prompt():
         code_reply("first_bad()", "second()"),
         code_reply("first_good()", "second()"),
         code_reply("second_again()", first=2),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL), None, failed("boom")])
 
     step_2_retry = _system_messages(llm)[4]
@@ -6735,7 +6837,7 @@ def test_the_ledger_reaches_plans_request_on_replan():
         code_reply("one()"), code_reply("two()"), code_reply("three()"),
         plan_reply("Cut the hooks, differently"),
         code_reply("four()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL)] * 3, budgets=Budgets(attempts_per_step=3))
 
     replan_request = _turns_of(llm, "plan")[1]
@@ -6751,7 +6853,7 @@ def test_a_lint_rejection_fires_the_same_way_twice():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(rejected), failed(rejected)])
 
     said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
@@ -6764,7 +6866,7 @@ def test_changed_nothing_fires_the_same_way_twice():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
         code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(_CHANGED_NOTHING), failed(_CHANGED_NOTHING)])
 
     said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
@@ -6806,7 +6908,7 @@ def test_a_standing_approval_is_not_asked_again_when_the_plan_is_revised():
         obsolete_reply("The Document already has it"),
         plan_reply("Build the rest"),
         code_reply("rest()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -6822,7 +6924,7 @@ def test_without_a_standing_approval_every_plan_still_reaches_the_gate():
         obsolete_reply("The Document already has it"),
         plan_reply("Build the rest"),
         code_reply("rest()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -6839,7 +6941,7 @@ def test_a_standing_approval_is_on_the_stream_as_an_approval_not_as_a_silence():
         obsolete_reply("Already done"),
         plan_reply("Build the rest"),
         code_reply("rest()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     gates = events.of(GATE)
@@ -6862,7 +6964,7 @@ def test_an_ordinary_approval_does_not_stand():
         obsolete_reply("Already done"),
         plan_reply("Build the rest"),
         code_reply("rest()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert all(g.data.get("standing") in (None, False) for g in events.of(GATE))
@@ -6881,7 +6983,7 @@ def test_a_standing_amendment_is_not_a_standing_approval():
         plan_reply("Build it 10mm"),
         plan_reply("Build it 20mm"),
         code_reply("build()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -6901,7 +7003,7 @@ def test_a_standing_approval_still_lets_the_user_be_asked_about_the_result():
     result, _, _, _ = driven_through(
         gate,
         [design_reply(A_NUT), planning_the_nut("Make it"), code_reply("make()"),
-         verdict_reply("pass"), assertion_reply(CHECKS)],
+         suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass")],
         checks=[assertion_failed(ASSERT_FAILED)],
         attachments=[RENDER_PNG],
         decide=lambda failure: decided.append(failure) or ACCEPT,
@@ -6930,7 +7032,7 @@ def test_a_standing_approval_does_not_cover_an_assumption_the_user_has_not_read(
         obsolete_reply("The Document already has it"),
         plan_reply("Cut an assumed circular R30 pocket"),
         code_reply("cut()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -6953,7 +7055,7 @@ def test_a_standing_approval_still_covers_a_revision_that_assumes_nothing_new():
         obsolete_reply("The Document already has it"),
         plan_reply("Cut an assumed rectangular pocket 30 wide"),
         code_reply("cut()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -6971,7 +7073,7 @@ def test_a_plan_that_assumes_nothing_is_covered_by_a_standing_approval():
         obsolete_reply("The Document already has it"),
         plan_reply("Pocket the bore through all"),
         code_reply("cut()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
@@ -6983,12 +7085,12 @@ def test_a_standing_approval_does_not_survive_into_another_run():
     from core.loop import APPROVE, Approval
 
     driven_through(gate_that(Approval(APPROVE, standing=True)), [
-        plan_reply("Build it"), code_reply("build()"), verdict_reply("pass"),
+        plan_reply("Build it"), code_reply("build()"), suspect_reply(), verdict_reply("pass"),
     ])
 
     gate = gate_that()
     driven_through(gate, [
-        plan_reply("Build it"), code_reply("build()"), verdict_reply("pass"),
+        plan_reply("Build it"), code_reply("build()"), suspect_reply(), verdict_reply("pass"),
     ])
 
     assert len(gate.asked) == 1
@@ -7038,7 +7140,7 @@ def test_a_part_whose_outside_nobody_carries_goes_back_to_the_drawing():
         [design_reply(said_in_passing), design_reply(the_contour),
          plan_reply("Pad the profile",
                     satisfies=everything(said_in_passing, the_contour)),
-         code_reply("box()"), verdict_reply("pass"), assertion_reply("assert True, 'the length'")],
+         code_reply("box()"), suspect_reply(), assertion_reply("assert True, 'the length'"), verdict_reply("pass")],
         attachments=[RENDER_PNG])
 
     assert result.ok, result.reason
@@ -7078,7 +7180,7 @@ def test_a_shape_the_drawing_will_not_say_is_settled_and_shown_at_the_gate():
         [design_reply(said_in_passing), design_reply({}), design_reply(settled),
          plan_reply("Pad the profile",
                     satisfies=everything(said_in_passing, settled)),
-         code_reply("pad()"), verdict_reply("pass"), assertion_reply("assert True, 'the length'")],
+         code_reply("pad()"), suspect_reply(), assertion_reply("assert True, 'the length'"), verdict_reply("pass")],
         attachments=[RENDER_PNG], ask=lambda question: asked.append(question) or "")
 
     assert result.ok, result.reason
@@ -7105,7 +7207,7 @@ def test_design_is_given_the_line_work_of_the_views_in_millimetres():
     list, and the drawn line work is sheet-wide, not one page's.
     """
     llm = ScriptedLLMClient([*_first_pass_turns(A_DATUM, [MODEL_MANIA]),
-                             plan_reply("Only"), code_reply("box()"), verdict_reply("pass")])
+                             plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
@@ -7161,7 +7263,7 @@ def test_a_phase_that_answered_in_prose_is_asked_once_more_rather_than_ending_th
         plan_reply("Add a box"),
         "I need to check the Hole feature's properties first.",
         code_reply("doc.addObject('Part::Box', 'Box')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok, result.reason
@@ -7179,7 +7281,7 @@ def test_the_re_ask_quotes_what_the_phase_said_and_names_the_shape():
         plan_reply("Add a box"),
         "I need to check the Hole feature's properties first.",
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     retry = llm.calls[3]
@@ -7245,8 +7347,9 @@ def test_the_re_ask_of_a_phase_that_is_shown_pictures_keeps_the_pictures():
         design_reply(A_CUBE),
         plan_reply("Add a box", satisfies=everything(A_CUBE)),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert _pictures_shown(llm, at=1), "the re-ask went out without the drawing"
@@ -7270,8 +7373,9 @@ def test_a_revision_is_shown_the_plan_it_is_revising():
         plan_reply("Pad the length", satisfies=both[:1]),
         plan_reply("Pad the length", "Pad the width", satisfies=both),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     revised = _turns_of(llm, "plan")[1]
@@ -7287,7 +7391,7 @@ def test_the_first_plan_of_a_run_is_not_a_revision_of_anything():
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
         code_reply("box()"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert "the_plan_you_wrote" not in _turns_of(llm, "plan")[0]
@@ -7303,8 +7407,9 @@ _THE_AXIS_PUT_RIGHT = [
                {"do": "Pocket the mounting hole",
                 "satisfies": ["features → right-mounting-hole → axis"]}),
     code_reply("bore()", "pocket()"),
-    verdict_reply("pass"),
+    suspect_reply(),
     assertion_reply("assert True, 'the hole'"),
+    verdict_reply("pass"),
 ]
 
 
@@ -7357,8 +7462,9 @@ def test_a_re_read_that_settles_nothing_no_longer_stops_the_run():
         plan_reply("Pad the outer profile",
                    satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
         code_reply("pad()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok, result.reason
@@ -7885,8 +7991,9 @@ _THE_BORE_PUT_RIGHT = [
     plan_reply("Bore the ring",
                satisfies=everything(THE_CLAMP_POINTED_AT_THE_WRONG_VIEW)),
     code_reply("bore()"),
-    verdict_reply("pass"),
+    suspect_reply(),
     assertion_reply("assert True, 'the bore'"),
+    verdict_reply("pass"),
 ]
 
 
@@ -7965,7 +8072,7 @@ def test_a_plan_that_asks_for_a_value_is_told_to_choose_and_never_the_user():
 
     result, events, _, tools = drive(
         [question_reply(MISSING), plan_reply("Sketch the blank, assumed module 2"),
-         code_reply("a()"), verdict_reply("pass")],
+         code_reply("a()"), suspect_reply(), verdict_reply("pass")],
         intent=GEAR, ask=lambda question: asked.append(question) or "module 2, 20 teeth")
 
     assert result.ok, result.reason
@@ -8125,8 +8232,9 @@ def a_run_that_cannot_assign_the_material(**kwargs):
                     "satisfies": [THE_MATERIAL]}),
         json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
                     "unbuildable": NO_CARD}),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply(CHECKS),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG], **kwargs)
 
 
@@ -8178,8 +8286,9 @@ def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
         plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
                    {"do": "Pocket a wider recess", "satisfies": [THE_MATERIAL]}),
         code_reply("pad()", "recess()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply(CHECKS),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok, result.reason
@@ -8271,8 +8380,9 @@ def test_mechanical_revisions_do_not_consume_execution_budget():
         json.dumps({"unbuildable": "the sketch is overconstrained"}),
         plan_reply("Step 1 without overconstraint", satisfies=everything(A_PART)),
         code_reply("step1_fixed()"),
-        verdict_reply("pass"),
+        suspect_reply(),
         assertion_reply("assert True"),
+        verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(revisions=3, mechanical_revisions=2),
        applies=[failed("the sketch is overconstrained")])
 
@@ -8605,7 +8715,7 @@ def test_an_off_list_op_sends_plan_back_naming_the_verb_and_the_36_allowed():
         ], "op_vocabulary": CLOSED_OPS}),
         code_reply("doc.addObject('Part::Box', 'Box')",
                    "doc.addObject('Part::Feature', 'Lattice')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     revised = events.first(PLAN_REVISED)
@@ -8633,7 +8743,7 @@ def test_a_run_never_asks_execute_about_a_step_whose_op_was_refused():
         ], "op_vocabulary": CLOSED_OPS}),
         code_reply("doc.addObject('Part::Box', 'Box')",
                    "doc.addObject('Part::Feature', 'Lattice')"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     asked = json.dumps(llm.calls[3])
@@ -8653,7 +8763,7 @@ def test_a_closed_marked_steps_op_reaches_the_apply_step_tool_call():
         json.dumps({"steps": [{"do": "Add a box", "op": "pad"}],
                     "op_vocabulary": CLOSED_OPS}),
         code_reply("doc.addObject('Part::Box', 'Box')", label="Add the box"),
-        verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ])
 
     assert ("apply_step", {"code": "doc.addObject('Part::Box', 'Box')",

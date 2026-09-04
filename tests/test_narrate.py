@@ -18,8 +18,8 @@ import pytest
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, KINDS, OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, REVIEW_VERDICT, STEP_STARTED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, Event,
+    PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED,
+    THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, Event,
 )
 from core.narrate import Narration, narrate
 
@@ -46,6 +46,7 @@ SAMPLES = {
     UNBUILT: {"step": 8, "total": 8, "description": "Assign plain carbon steel",
               "why": "no card in this build carries it",
               "entries": ["material: plain carbon steel (read)"]},
+    REVIEW_SUSPECTED: {"suspected": ["envelope → across the flats: 13.0 mm (suspected)"]},
     REVIEW_VERDICT: {"verdict": "pass", "reason": "matches the Intent"},
     BLOCKED: {"reason": "The budget is spent.", "tried": []},
     CALL_STARTED: {"phase": "plan", "model": "sonnet", "ceiling": 900.0},
