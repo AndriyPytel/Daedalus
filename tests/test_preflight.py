@@ -123,3 +123,42 @@ def test_a_truncated_json_line_is_a_dead_worker_not_a_raised_exception(unstarted
     unstarted._lines.put('{"ok": true, "featur')
 
     assert unstarted._await_response(timeout=1) is None
+
+
+class _AProcessThatDiesMidResponse:
+    """Alive for the liveness check, dead by the time the reply is read."""
+
+    def __init__(self):
+        self.stdin = SimpleNamespace(write=lambda _: None, flush=lambda: None)
+        self._polls = 0
+        self.killed = False
+
+    def poll(self):
+        self._polls += 1
+        return None if self._polls == 1 else -11
+
+    def kill(self):
+        self.killed = True
+
+    def wait(self, timeout=None):
+        return -11
+
+
+def test_a_truncated_stdout_line_comes_back_from_check_as_a_dead_worker(unstarted):
+    """
+    The same crash as above, driven through the public `check()` rather than
+    `_await_response` directly — the entrypoint the "never raises" contract
+    is actually made to (FCC-275 AC2). No `JSONDecodeError` escapes, and the
+    dead process is killed rather than left running with a reader thread
+    still attached to it.
+    """
+    process = _AProcessThatDiesMidResponse()
+    unstarted._process = process
+    unstarted._lines.put('{"ok": true, "featur')
+
+    result = unstarted.check("pad()", timeout=1)
+
+    assert result.ok is False
+    assert result.traceback
+    assert process.killed, "the dead process was left running"
+    assert unstarted._process is None, "no live process was left behind"
