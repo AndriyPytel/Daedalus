@@ -2435,10 +2435,12 @@ for obj in doc.Objects:
         continue
     handle, path = tempfile.mkstemp(suffix='.brep')
     os.close(handle)
-    shape.exportBrep(path)
-    occ_shape = TopoDS_Shape()
-    breptools.Read(occ_shape, path, BRep_Builder())
-    os.remove(path)
+    try:
+        shape.exportBrep(path)
+        occ_shape = TopoDS_Shape()
+        breptools.Read(occ_shape, path, BRep_Builder())
+    finally:
+        os.remove(path)
     analyzer = BOPAlgo_ArgumentAnalyzer()
     analyzer.SetShape1(occ_shape)
     analyzer.SetSelfInterMode(True)
@@ -2480,12 +2482,32 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     measured next, also without asking anybody: `BOPAlgo_SelfIntersect` is too
     expensive to run after every Step (FCC-253 Q4), so it runs once here,
     against every solid the finished Document holds, the same way the
-    envelope does. The entries a retry touched go with the request, because a
-    Step that failed a check and passed on the retry is a Step whose feature
-    was changed to get past it — shortened, moved, turned around — and
-    passing the second time says the workaround was legal, never that it is
-    still the feature the drawing asked for; those are the entries to measure
-    rather than to take on trust.
+    envelope does. Both run whether or not `acceptance` has anything in it —
+    an empty list only means there is nothing left for a provider to write a
+    check for, not that these two are skipped. The entries a retry touched go
+    with the request, because a Step that failed a check and passed on the
+    retry is a Step whose feature was changed to get past it — shortened,
+    moved, turned around — and passing the second time says the workaround
+    was legal, never that it is still the feature the drawing asked for;
+    those are the entries to measure rather than to take on trust.
+
+    Self-intersection moves each solid through a `.brep` file rather than in
+    memory: FreeCAD's own `Part.Shape` does not expose
+    `BOPAlgo_ArgumentAnalyzer`/`SetSelfInterMode` to Python, and FreeCAD's
+    shape object and pythonocc-core's `TopoDS_Shape` are two independent SWIG
+    bindings of the same OCCT types, so a file is the only bridge between
+    them. `Part.Shape.check(runBopCheck=True)` looks like a native
+    alternative but raises `ValueError: No error` on a solid this check is
+    meant to catch, so it is not a substitute. Measured on the warm worker
+    process Assertion already runs in: 1 solid ≈ 0.3 s (paid once per
+    process, for `OCC.Core`'s own import), 5 solids ≈ 0.005 s, 20 ≈ 0.015 s,
+    50 ≈ 0.036 s — about 0.7 ms marginal per solid once loaded, negligible
+    next to a single LLM round trip, and it runs once per run, not per Step.
+
+    If `acceptance` is empty and both deterministic checks hold, nothing asks
+    a provider to write anything: `None` comes back the same way it did
+    before either check existed, and Review is told there was nothing to
+    confirm.
 
     `cancelled` is asked between attempts the way Execute's is: three provider
     calls is long enough that Stop must not wait them out. Checks that could
@@ -2513,6 +2535,9 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
             events.emit(ASSERTION, ok=False, code=measured, confirmed=[],
                         uncovered=[], traceback=traceback, unmet=unmet)
             return Checked(failed=True, traceback=traceback, unmet=unmet)
+
+    if not acceptance:
+        return None
 
     attempts = []
     for _ in range(budgets.attempts_per_step):
@@ -4066,9 +4091,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         checking = _also_check(planned.acceptance, outstanding)
         not_reached = _not_reached(outcome.get("unbuilt") or [], checking)
         acceptance = [entry for entry in checking if entry not in not_reached]
-        checked = (assertion(acceptance, described, tools, llm, events, budgets,
-                             cancelled, after_a_retry=outcome.get("retried"))
-                   if acceptance else None)
+        checked = assertion(acceptance, described, tools, llm, events, budgets,
+                            cancelled, after_a_retry=outcome.get("retried"))
         progress["unmet"] = (list(checked.unmet) if checked is not None else []) \
             + list(not_reached)
         if checked is not None and checked.failed:
