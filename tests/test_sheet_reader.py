@@ -18,7 +18,6 @@ label printed below the section instead of inside it.
 """
 import os
 import threading
-import time
 
 import numpy
 import pytest
@@ -2069,20 +2068,56 @@ def test_two_sessions_reading_the_same_sheet_at_once_render_it_once(monkeypatch,
     assert results == [None, None]
 
 
+def test_evicting_one_stale_key_does_not_wipe_the_other_cached_sheet(monkeypatch, tmp_path):
+    """
+    FCC-267: `read()` used to call `_read_cached.cache_clear()` when one
+    cached sheet's temp images had been swept, wiping the whole 128-entry
+    cache instead of the one stale key. Two sheets are cached, one goes
+    stale, and re-reading it must not force the other, still-good one to
+    render again.
+    """
+    one = tmp_path / "one.pdf"
+    two = tmp_path / "two.pdf"
+    one.write_bytes(b"one")
+    two.write_bytes(b"two")
+
+    calls = []
+
+    def fake_read(path, into, legible_px, max_edge):
+        calls.append(path)
+        return sheet_reader.Sheet(source=path, overview=path)
+
+    monkeypatch.setattr(sheet_reader, "_read", fake_read)
+
+    good = sheet_reader.read(str(one))
+    sheet_reader.read(str(two))
+    assert calls == [str(one), str(two)]
+
+    monkeypatch.setattr(sheet_reader, "_still_there",
+                        lambda sheet: sheet.overview != str(two))
+
+    sheet_reader.read(str(two))
+    assert calls == [str(one), str(two), str(two)]
+
+    assert sheet_reader.read(str(one)) == good
+    assert calls == [str(one), str(two), str(two)]
+
+
 def test_the_cache_never_grows_past_128_entries():
     """
     FCC-267: `_ALREADY_READ` had no upper bound and lived for the process's
-    whole life. `_read_cached` is an `lru_cache(maxsize=128)`, so pushing 200
-    unique keys through it must still leave at most 128 held.
+    whole life. `_read_cached` bounds `_READ_CACHE` to 128 entries itself
+    (`popitem(last=False)` on overflow), so pushing 200 unique keys through
+    it must still leave at most 128 held.
     """
-    sheet_reader._read_cached.cache_clear()
+    sheet_reader._READ_CACHE.clear()
     for i in range(200):
         path = "/tmp/fcc-267-%d.pdf" % i
         key = (path, float(i), i, sheet_reader.LEGIBLE_PX, sheet_reader.MAX_EDGE, None)
         sheet_reader._read_cached(key, path, None, sheet_reader.LEGIBLE_PX,
                                   sheet_reader.MAX_EDGE)
 
-    assert sheet_reader._read_cached.cache_info().currsize <= 128
+    assert len(sheet_reader._READ_CACHE) <= 128
 
 
 @needs_pymupdf
@@ -2141,18 +2176,27 @@ def test_the_holes_in_finds_the_same_holes_the_full_grid_scan_would():
                for got, want in zip(holes[0][1], expected_outline))
 
 
-def test_the_holes_in_does_not_visit_every_pixel_of_a_sparse_canvas():
+def test_the_holes_in_does_not_visit_every_pixel_of_a_sparse_canvas(monkeypatch):
     """
-    A 2000 x 2000 canvas with one small hole: the pure-Python double loop
-    over every pixel measured 0.177s on this machine (three runs, no
-    outlier); the `numpy.nonzero`-filtered version measured 0.012s on the
-    same canvas. 0.08s sits between the two with margin either way.
+    A 2000 x 2000 canvas (4,000,000 px) with one 20 x 30 hole: `_the_holes_in`
+    finds its candidate pixels with `numpy.nonzero`, then walks only the
+    connected patch each one belongs to through `_flood`. Wall-clock timing
+    flakes under CI load, so this counts pixels instead — wrapping `_flood`
+    to sum how many it ever marks `True` proves the walk stayed near the
+    hole's own size, not the canvas's.
     """
     part = numpy.ones((2000, 2000), dtype=bool)
     part[500:520, 500:530] = False
 
-    start = time.perf_counter()
-    sheet_reader._the_holes_in(part)
-    elapsed = time.perf_counter() - start
+    real_flood = sheet_reader._flood
+    visited = []
 
-    assert elapsed < 0.08
+    def counting_flood(where, into, front):
+        real_flood(where, into, front)
+        visited.append(int(into.sum()))
+
+    monkeypatch.setattr(sheet_reader, "_flood", counting_flood)
+
+    sheet_reader._the_holes_in(part)
+
+    assert sum(visited) < 1000

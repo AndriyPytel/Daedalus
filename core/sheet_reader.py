@@ -92,6 +92,7 @@ with an empty printed list.
 Nothing here imports FreeCAD, and nothing here reads a model's mind.
 """
 import atexit
+import collections
 import functools
 import logging
 import math
@@ -363,15 +364,23 @@ def available() -> bool:
 
 
 _READ_LOCK = threading.Lock()
+_READ_CACHE = collections.OrderedDict()
+_READ_CACHE_LIMIT = 128
 
 
-@functools.lru_cache(maxsize=128)
 def _read_cached(key, path, into, legible_px, max_edge):
+    if key in _READ_CACHE:
+        _READ_CACHE.move_to_end(key)
+        return _READ_CACHE[key]
     try:
-        return _read(path, into, legible_px, max_edge)
+        value = _read(path, into, legible_px, max_edge)
     except Exception:
         _LOG.warning("could not read sheet %s", path, exc_info=True)
-        return None
+        value = None
+    _READ_CACHE[key] = value
+    if len(_READ_CACHE) > _READ_CACHE_LIMIT:
+        _READ_CACHE.popitem(last=False)
+    return value
 
 
 def read(path, into=None, legible_px=LEGIBLE_PX, max_edge=MAX_EDGE):
@@ -393,11 +402,8 @@ def read(path, into=None, legible_px=LEGIBLE_PX, max_edge=MAX_EDGE):
 
     `_READ_LOCK` is one lock for every key, not one per key: two sessions
     reading two *different* sheets at the same moment now also serialise,
-    where before they could render in parallel. Measured against two of this
-    repo's own sheets (`mm25-p1-1.pdf`, `model-mania-2024.pdf`) rendered on
-    two threads with no lock at all, the difference against reading them one
-    after the other was under 2% (2.65s either way) — the render is CPU-bound
-    in pure-Python region-finding, not I/O PyMuPDF could overlap, so the
+    where before they could render in parallel. The render is CPU-bound in
+    pure-Python region-finding, not I/O PyMuPDF could overlap, so the
     parallelism this trades away is not worth a per-key lock's own
     bookkeeping. What one lock buys instead is not needing to reason about
     two keys' cache entries racing each other.
@@ -416,7 +422,7 @@ def read(path, into=None, legible_px=LEGIBLE_PX, max_edge=MAX_EDGE):
     with _READ_LOCK:
         held = _read_cached(key, path, into, legible_px, max_edge)
         if held is not None and not _still_there(held):
-            _read_cached.cache_clear()
+            _READ_CACHE.pop(key, None)
             held = _read_cached(key, path, into, legible_px, max_edge)
         return held
 

@@ -339,7 +339,7 @@ def test_a_sheet_is_read_once_however_many_phases_ask_for_it(tmp_path, monkeypat
     def no_headless_freecad(*_, **__):
         raise RuntimeError("No headless FreeCAD found.")
 
-    loop.sheet_reader._read_cached.cache_clear()
+    loop.sheet_reader._READ_CACHE.clear()
     monkeypatch.setattr(loop.sheet_reader, "_read",
                         lambda where, *_, **__: read.append(where) or sheet)
     monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
