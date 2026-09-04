@@ -6,11 +6,11 @@ check:
   - pytest
 
 tracker: youtrack
-review_by: me
+review_by: manager
 external_tracking: false
 permissions:
   commit: ask
-  merge_local: ask
+  merge_local: allow
   push: deny
   pull_request: deny
   deploy: deny
