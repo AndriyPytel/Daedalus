@@ -155,6 +155,43 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
+_SHEET_TEST_FILES = {
+    "test_sheet_reader.py",
+    "test_modelmania_evidence.py",
+    "test_sketch_check_level2.py",
+}
+
+
+def pytest_xdist_make_scheduler(config, log):
+    """
+    Puts the three files that share `tests/modelmania/*.pdf` on one worker
+    under `--dist loadfile` (FCC-283).
+
+    `@pytest.mark.xdist_group("sheets")` on those files, as the ticket asks
+    for, does nothing under `loadfile`: `LoadFileScheduling._split_scope`
+    (xdist/scheduler/loadfile.py) only ever looks at the nodeid's file part,
+    and the marker only affects scheduling under `--dist loadgroup`, which
+    scopes every *other*, unmarked test to itself instead of its file —
+    switching the whole suite's `--dist` would cost every other module the
+    file-level batching it already relies on. This scheduler keeps
+    `loadfile`'s behaviour for every file except these three, which it
+    merges into one scope so `sheet_cache`'s session fixture is the same
+    dict for all of them.
+    """
+    if config.getvalue("dist") != "loadfile":
+        return None
+    from xdist.scheduler import LoadFileScheduling
+
+    class _SheetFilesShareAWorker(LoadFileScheduling):
+        def _split_scope(self, nodeid):
+            scope = super()._split_scope(nodeid)
+            if os.path.basename(scope) in _SHEET_TEST_FILES:
+                return "sheets"
+            return scope
+
+    return _SheetFilesShareAWorker(config, log)
+
+
 @pytest.fixture(scope="session")
 def sheet_cache(tmp_path_factory):
     """
@@ -166,6 +203,11 @@ def sheet_cache(tmp_path_factory):
     `tmp_path_factory.mktemp`. Three modules reading the same `mm25-p1-1.pdf`
     got three renders. This fixture is the one place a sheet is asked for by
     path, so a second module gets back what the first one already parsed.
+
+    That dedup is per-worker: under `-n 8 --dist loadfile` each worker gets
+    its own `session`-scoped instance of this fixture, so the same PDF is
+    still parsed once per worker unless every file that shares it is pinned
+    to the same worker (`pytest_xdist_make_scheduler` above, FCC-283).
     """
     from core import sheet_reader
 
