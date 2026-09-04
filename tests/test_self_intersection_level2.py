@@ -10,10 +10,10 @@ uses it: it already `exec`s code in a namespace with `doc`, `App` and `Part`,
 and already opens a copy from disk rather than the live Document.
 
 TWISTED_SOLID folds a bowtie profile back on itself and caps it into a single
-solid — real self-intersecting geometry, not a shape `isValid()` alone would
-already have caught (FCC-253 Q4 keeps `isValid()`/volume-sign in Preflight
-because they are cheap, and reserves `BOPAlgo_SelfIntersect` for Assertion
-because it is not).
+solid — self-intersecting geometry `BOPAlgo_SelfIntersect` finds and names by
+the failing object (`isValid()` also returns `False` on this fixture; FCC-253
+Q4 keeps `isValid()`/volume-sign in Preflight because they are cheap, and
+reserves `BOPAlgo_SelfIntersect` for Assertion because it is not).
 """
 import pytest
 
@@ -58,32 +58,29 @@ def worker():
         yield running
 
 
-def test_a_clean_solid_holds():
+def test_a_clean_solid_holds(worker):
     """A Box passes: nothing named `failed`."""
-    with PreflightWorker() as running:
-        checked = running.check(CLEAN_BOX + SELF_INTERSECTION_CHECK, None)
+    checked = worker.check(CLEAN_BOX + SELF_INTERSECTION_CHECK, None)
     assert checked.ok, checked.traceback
     assert checked.held == ["Box"]
     assert not checked.failed
 
 
-def test_a_self_intersecting_solid_is_named_by_the_check():
+def test_a_self_intersecting_solid_is_named_by_the_check(worker):
     """A solid folded back on itself fails, and is named by its own object name."""
-    with PreflightWorker() as running:
-        checked = running.check(TWISTED_SOLID + SELF_INTERSECTION_CHECK, None)
+    checked = worker.check(TWISTED_SOLID + SELF_INTERSECTION_CHECK, None)
     assert not checked.ok
     assert "Twist" in checked.traceback
     assert "BOPAlgo_SelfIntersect" in checked.traceback
 
 
-def test_two_separately_valid_solids_that_overlap_each_other_still_hold():
+def test_two_separately_valid_solids_that_overlap_each_other_still_hold(worker):
     """
     FCC-253 Q5: body-to-body (pairwise) intersection is out of scope for this
     epic. Two Boxes that overlap in space are still each, individually, a
     valid solid — this check names neither of them.
     """
-    with PreflightWorker() as running:
-        checked = running.check(TWO_OVERLAPPING_SOLIDS + SELF_INTERSECTION_CHECK, None)
+    checked = worker.check(TWO_OVERLAPPING_SOLIDS + SELF_INTERSECTION_CHECK, None)
     assert checked.ok, checked.traceback
     assert sorted(checked.held) == ["First", "Second"]
     assert not checked.failed

@@ -1441,7 +1441,11 @@ def test_the_whole_plan_is_written_in_one_call():
 
 
 def test_a_plan_that_needs_no_look_costs_no_look():
-    """A Plan whose Steps are all buildable is one Execute call and nothing else."""
+    """
+    A Plan whose Steps are all buildable is one Execute call and nothing
+    else the model has to be asked for — `check_assertions` still runs the
+    deterministic self-intersection check (FCC-256), which asks nobody.
+    """
     _, events, _, tools = drive([
         plan_reply("First", "Second"),
         code_reply("first()", "second()"),
@@ -1449,7 +1453,7 @@ def test_a_plan_that_needs_no_look_costs_no_look():
     ])
 
     looked = [e.data["name"] for e in events.of(TOOL_CALL)]
-    assert set(looked) == {"apply_step"}
+    assert set(looked) == {"apply_step", "check_assertions"}
     assert not [name for name, _ in tools.calls if name in ("supported_types", "describe_type")]
 
 
@@ -2807,19 +2811,44 @@ def test_an_envelope_of_anything_but_three_plain_sizes_is_not_measured_here():
         ["envelope → length: as long as the arm reaches (assumed)"]) == ""
 
 
-def test_self_intersection_is_checked_once_for_the_whole_document():
+def test_self_intersection_check_removes_its_temp_file_even_when_export_fails():
     """
-    FCC-256: `BOPAlgo_SelfIntersect` is too expensive to run per Step (FCC-253
-    Q4), so it runs exactly once here, against every solid the finished
-    Document holds — never per Body the way `_bodies_in_pieces` (ticket 1)
-    runs in Preflight.
+    FCC-256: the `.brep` round-trip opens one temp file per solid
+    (`core/loop.py:SELF_INTERSECTION_CHECK`); a solid whose export raises
+    must not leave it behind. Run once, over the whole Document, is proven
+    behaviourally by `test_two_separately_valid_solids_that_overlap_each_other_still_hold`
+    in `tests/test_self_intersection_level2.py` (real FreeCAD, two solids,
+    one call), not by reading the check's own source here.
     """
+    import glob
+
     from core.loop import SELF_INTERSECTION_CHECK
 
-    assert "SetSelfInterMode" in SELF_INTERSECTION_CHECK
-    assert "BOPAlgo_SelfIntersect" in SELF_INTERSECTION_CHECK
-    assert "for obj in doc.Objects" in SELF_INTERSECTION_CHECK, \
-        "the check must run once against the whole Document, not per Body"
+    class ExplodingShape:
+        Solids = [object()]
+
+        def isNull(self):
+            return False
+
+        def exportBrep(self, path):
+            open(path, "w").close()
+            raise RuntimeError("boom")
+
+    class FakeObject:
+        Name = "Boom"
+        Shape = ExplodingShape()
+
+    class FakeDoc:
+        Objects = [FakeObject()]
+
+    pattern = os.path.join(tempfile.gettempdir(), "*.brep")
+    before = set(glob.glob(pattern))
+    with pytest.raises(RuntimeError):
+        exec(SELF_INTERSECTION_CHECK, {"doc": FakeDoc()})
+    after = set(glob.glob(pattern))
+
+    assert after - before == set(), \
+        "the temp file must be removed even when exportBrep raises"
 
 
 def test_a_self_intersecting_document_is_caught_before_a_provider_writes_checks():
@@ -4378,7 +4407,15 @@ def test_a_provider_that_keeps_cutting_the_stream_is_given_up_on():
 
 
 def test_the_event_stream_of_a_clean_run():
-    """Execute's reasoning stands before the first Step starts rather than inside it: it is reasoning about the whole Plan, and it is spent before any Step runs (FCC-95). What a Step still has of its own is `step_started`, the apply and `applied`."""
+    """
+    Execute's reasoning stands before the first Step starts rather than
+    inside it: it is reasoning about the whole Plan, and it is spent before
+    any Step runs (FCC-95). What a Step still has of its own is
+    `step_started`, the apply and `applied`. The self-intersection check
+    (FCC-256) runs after `applied` and asks nobody, so it carries its own
+    `tool_call`/`tool_result` pair with no `call_started` around it, even
+    with nothing in the acceptance list to check.
+    """
     _, events, _, _ = drive([
         plan_reply("Only", thinking="A box is a Part::Box."),
         code_reply("box()", thinking="addObject then set Length."),
@@ -4391,6 +4428,7 @@ def test_the_event_stream_of_a_clean_run():
         CALL_STARTED, THOUGHT, WRITING, COST, PLAN, GATE, GATE,
         CALL_STARTED, THOUGHT, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
+        TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, THOUGHT, WRITING, COST, REVIEW_VERDICT,
     ]
 
@@ -4423,6 +4461,7 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
 
 
 def test_the_event_stream_of_a_retried_run():
+    """The self-intersection check (FCC-256) still runs after `applied`, unconditionally."""
     _, events, _, _ = drive(
         [plan_reply("Only"), code_reply("bad()"), code_reply("good()"), suspect_reply(), verdict_reply("pass")],
         applies=[failed("boom"), None],
@@ -4436,6 +4475,7 @@ def test_the_event_stream_of_a_retried_run():
         TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
         CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, APPLIED,
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
+        TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
     ]
 
@@ -5467,7 +5507,8 @@ def test_a_refuted_suspicion_fails_assertion_and_replans_then_passes():
         planning_the_nut("Make it 13 mm across the flats"), code_reply("fix()"),
         suspect_reply(), assertion_reply(CHECKS),
         verdict_reply("pass"),
-        checks=[assertion_failed(ASSERT_FAILED), None])
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED),
+                SELF_INTERSECTION_HELD, None])
 
     assert result.ok
     assert result.verdict == "pass"
@@ -5482,8 +5523,10 @@ def test_a_refuted_suspicion_fails_assertion_and_replans_then_passes():
 
 def test_an_empty_acceptance_list_costs_no_llm_call():
     """
-    Nothing to check means no phase at all — not a phase that checks nothing.
-    The run reaches Review exactly as it did before this ticket. FCC-76.
+    Nothing to check means no provider is ever asked to write one. The
+    deterministic self-intersection check still runs — it is unconditional
+    (FCC-256) — but it costs one `check_assertions` call, not a phase, and a
+    clean Document still passes with nothing left unmet. FCC-76.
     """
     result, events, llm, tools = drive([
         plan_reply("Add a box"),
@@ -5492,9 +5535,40 @@ def test_an_empty_acceptance_list_costs_no_llm_call():
     ])
 
     assert result.ok
+    assert result.unmet == [], "a clean Document must not gate the verdict"
     assert len(llm.calls) == 5, "an extra provider call on a Plan with nothing to check"
     assert events.first(ASSERTION) is None
-    assert not any(name == "check_assertions" for name, _ in tools.calls)
+    ran = [args["code"] for name, args in tools.calls if name == "check_assertions"]
+    assert len(ran) == 1 and "BOPAlgo_SelfIntersect" in ran[0], \
+        "the self-intersection check must still run deterministically"
+
+
+def test_a_self_intersecting_document_is_caught_even_with_no_acceptance_list():
+    """
+    FCC-256 AC1: "caught once ... before Review ever judges a render of it" is
+    unconditional. A Plan that writes no acceptance entries must not skip the
+    self-intersection check, and a failing check must still gate the verdict
+    through the same `decided()`/`replan()` path a written check uses — not
+    return `None` and let the run pass regardless.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Add a box"),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], checks=[{"ok": False, "traceback": "AssertionError: these did not hold: "
+                                          "Twist self-intersects (BOPAlgo_SelfIntersect)"}],
+        decide=lambda why: "accept")
+
+    ran = [args["code"] for name, args in tools.calls if name == "check_assertions"]
+    assert ran and "BOPAlgo_SelfIntersect" in ran[0]
+    assert events.first(ASSERTION).data["unmet"] == \
+        ["Twist self-intersects (BOPAlgo_SelfIntersect)"]
+    assert result.unmet == ["Twist self-intersects (BOPAlgo_SelfIntersect)"], \
+        "the failure must reach the caller, not be swallowed as None"
+    assert "acceptance checks did not pass" in result.reason, \
+        "the failure must have gone through the decided()/replan() gate, not a bare pass"
+    assert not any(call[0]["content"] == prompt("assertion") for call in llm.calls), \
+        "an empty acceptance list must still never reach a provider for assertion"
 
 
 def test_failed_assertions_return_to_plan_and_never_to_execute():

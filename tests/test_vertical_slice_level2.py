@@ -342,8 +342,9 @@ def test_each_step_of_the_run_undoes_in_turn(own_slice_run):
 
 def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
     """
-    Every event the panel draws the run from. The six Tool calls are the five
-    applies plus the one review_views the loop drives at the end.
+    Every event the panel draws the run from. The seven Tool calls are the
+    five applies, the self-intersection check (FCC-256, unconditional) and
+    the one review_views the loop drives at the end.
 
     CALL_STARTED, COST, THOUGHT and WRITING are per-call bookkeeping and say nothing
     about the order of the run, so they are filtered out before checking the
@@ -355,8 +356,8 @@ def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
 
     assert kinds[:2] == [INTENT, PLAN]
     assert len(events.of(STEP_STARTED)) == 5
-    assert len(events.of(TOOL_CALL)) == 6
-    assert len(events.of(TOOL_RESULT)) == 6
+    assert len(events.of(TOOL_CALL)) == 7
+    assert len(events.of(TOOL_RESULT)) == 7
     assert len(events.of(APPLIED)) == 5
     assert events.last(REVIEW_VERDICT).data["verdict"] == "pass"
     assert events.first(BLOCKED) is None
