@@ -9126,3 +9126,61 @@ def test_a_closed_marked_steps_op_reaches_the_apply_step_tool_call():
                            "label": "Add the box", "op": "pad"}) in tools.calls
     call = events.first(TOOL_CALL)
     assert call.data["arguments"]["op"] == "pad"
+
+
+def test_split_to_budget_opens_each_shared_image_at_most_once():
+    """
+    FCC-287b: `_split_to_budget` recomputes `_group_tokens` for overlapping
+    subsets of `views` at every recursion level it descends into — a view's
+    image used to be reopened with `PIL.Image.open` once per level, not once
+    per call.
+    """
+    import types
+    from PIL import Image as PILImage
+
+    views = ["a", "b", "c", "d"]
+    pieces_by_view = {view: [{"show": "/fake/%s.png" % view}] for view in views}
+
+    def fake_pieces_of(sheet, views_arg):
+        pieces = []
+        for view in views_arg:
+            pieces.extend(pieces_by_view[view])
+        return pieces
+
+    opened = []
+
+    class FakeImage:
+        def __init__(self, path):
+            self.path = path
+            self.width = 2000
+            self.height = 2000
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def counting_open(path):
+        opened.append(path)
+        return FakeImage(path)
+
+    original_pieces_of = loop._pieces_of
+    original_isfile = os.path.isfile
+    original_open = PILImage.open
+    original_budget = loop._A_GROUP_BUDGET
+    loop._pieces_of = fake_pieces_of
+    os.path.isfile = lambda path: True
+    PILImage.open = counting_open
+    loop._A_GROUP_BUDGET = 1
+    try:
+        sheet = types.SimpleNamespace(printed=False)
+        loop._split_to_budget(sheet, views, 0)
+    finally:
+        loop._pieces_of = original_pieces_of
+        os.path.isfile = original_isfile
+        PILImage.open = original_open
+        loop._A_GROUP_BUDGET = original_budget
+
+    assert sorted(set(opened)) == sorted(opened), (
+        "a shared image was reopened across recursion levels: %r" % opened)

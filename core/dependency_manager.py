@@ -239,7 +239,6 @@ def run_dependency_check():
         else:
             QMessageBox.critical(None, "Installation Error", f"Failed to install '{package}':\n\n{error_msg}\n\nPlease check the Report view for details.")
             all_successful = False
-            break
     
     FreeCAD.Console.PrintMessage("--- [FreeCadCopilot] Dependency installation finished ---\n")
 

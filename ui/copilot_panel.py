@@ -787,8 +787,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
     be in front.
     """
 
-    request_work = QtCore.Signal(str, object, str, object, str)
-
     def __init__(self):
         super().__init__("FreeCAD Copilot")
         self.setObjectName("FreeCadCopilotPanel")
@@ -1675,7 +1673,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._queue_widget.now("Planning…")
         outstanding = list(bundle.outstanding)
         the_part_path = "" if attachments else bundle.the_part_path
-        self.request_work.emit(intent, attachments, log, outstanding, the_part_path)
         bundle.request_work.emit(intent, attachments, log, outstanding, the_part_path)
 
     def _name_session(self, index: int, log: str, intent: str):

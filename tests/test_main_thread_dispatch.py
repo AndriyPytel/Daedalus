@@ -119,6 +119,10 @@ def test_a_dispatch_the_main_thread_will_never_take_is_released_when_freecad_clo
 
     In its own daemon thread, and the events deliberately never pumped: the
     defect under test is a wait that does not return.
+
+    The 0.2s sleep is a heuristic, not a deterministic signal: it proves the
+    worker has not returned yet, not that it never will (`# ponytail:` above
+    it names the ceiling).
     """
     import time
 
@@ -134,6 +138,9 @@ def test_a_dispatch_the_main_thread_will_never_take_is_released_when_freecad_clo
             released.set()
 
     threading.Thread(target=worker, daemon=True).start()
+    # ponytail: heuristic wait, not a signal — flakes if on_main_thread ever
+    # starts taking the queue in under 200ms under load; tighten if
+    # core.apply exposes a "queued" event to wait on instead.
     time.sleep(0.2)
     assert not released.is_set(), "the job ran without the main thread taking it"
 

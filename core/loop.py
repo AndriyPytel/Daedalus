@@ -1073,7 +1073,7 @@ _A_GROUP_BUDGET = 34000
 _A_GROUP_CONCURRENCY = 4
 
 
-def _group_tokens(sheet, views, prompt_tokens):
+def _group_tokens(sheet, views, prompt_tokens, _visual_tokens=None):
     """
     A page-sized turn's own input tokens, estimated the way
     `tests/test_design_payload.py` prices a whole one: text at four characters
@@ -1083,6 +1083,11 @@ def _group_tokens(sheet, views, prompt_tokens):
     Read off `_pieces_of` rather than off `_the_evidence`'s finished blocks: a
     picture is still a path here, not a base64 string decoded a second time
     just to be measured.
+
+    `_visual_tokens` is `_split_to_budget`'s per-file cache, threaded down its
+    recursion: the same picture sits in more than one candidate group as the
+    split narrows, and without it `Image.open` reruns once per recursion
+    level a view survives into rather than once per file.
     """
     chars = sum(len(piece["say"]) for piece in _pieces_of(sheet, views) if "say" in piece)
     if sheet.printed:
@@ -1090,13 +1095,21 @@ def _group_tokens(sheet, views, prompt_tokens):
     from PIL import Image
     visual = 0.0
     for piece in _pieces_of(sheet, views):
-        if "show" in piece and os.path.isfile(piece["show"]):
-            with Image.open(piece["show"]) as picture:
-                visual += picture.width * picture.height / _PIXELS_PER_VISUAL_TOKEN
+        if "show" not in piece or not os.path.isfile(piece["show"]):
+            continue
+        path = piece["show"]
+        if _visual_tokens is not None and path in _visual_tokens:
+            visual += _visual_tokens[path]
+            continue
+        with Image.open(path) as picture:
+            tokens = picture.width * picture.height / _PIXELS_PER_VISUAL_TOKEN
+        if _visual_tokens is not None:
+            _visual_tokens[path] = tokens
+        visual += tokens
     return prompt_tokens + chars // _CHARS_PER_TOKEN + round(visual)
 
 
-def _split_to_budget(sheet, views, prompt_tokens):
+def _split_to_budget(sheet, views, prompt_tokens, _visual_tokens=None):
     """
     *views* as one group, or as two smaller ones split at the middle and
     asked the same question, recursively, until every group prices at or
@@ -1107,11 +1120,13 @@ def _split_to_budget(sheet, views, prompt_tokens):
     the budget clears both with room before a group would grow back toward
     what the whole sheet used to cost in one call.
     """
-    if len(views) <= 1 or _group_tokens(sheet, views, prompt_tokens) <= _A_GROUP_BUDGET:
+    if _visual_tokens is None:
+        _visual_tokens = {}
+    if len(views) <= 1 or _group_tokens(sheet, views, prompt_tokens, _visual_tokens) <= _A_GROUP_BUDGET:
         return [views]
     middle = len(views) // 2
-    return (_split_to_budget(sheet, views[:middle], prompt_tokens)
-           + _split_to_budget(sheet, views[middle:], prompt_tokens))
+    return (_split_to_budget(sheet, views[:middle], prompt_tokens, _visual_tokens)
+           + _split_to_budget(sheet, views[middle:], prompt_tokens, _visual_tokens))
 
 
 def _the_groups(attachments):

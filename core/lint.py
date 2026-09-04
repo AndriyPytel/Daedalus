@@ -302,58 +302,76 @@ def lint(code: str, selection=None, op=None) -> LintResult:
             seen.add(message)
             problems.append(message)
 
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            for part in _element_names(node.value):
-                if part not in allowed and node.value not in allowed:
-                    complain(_ELEMENT_REASON % node.value)
+    def _on_constant(node):
+        if not isinstance(node.value, str):
+            return
+        for part in _element_names(node.value):
+            if part not in allowed and node.value not in allowed:
+                complain(_ELEMENT_REASON % node.value)
 
-        elif isinstance(node, ast.Name) and node.id in GUI_NAMES:
+    def _on_name(node):
+        if node.id in GUI_NAMES:
             complain(_GUI_REASON % node.id)
 
-        elif isinstance(node, ast.Attribute) and node.attr in GUI_NAMES:
+    def _on_attribute(node):
+        if node.attr in GUI_NAMES:
             complain(_GUI_REASON % node.attr)
-
-        elif isinstance(node, ast.Attribute) and node.attr in ACTIVATION_NAMES:
+        elif node.attr in ACTIVATION_NAMES:
             complain(_ACTIVATION_REASON % node.attr)
 
-        elif isinstance(node, ast.ExceptHandler):
-            swallowed = _swallowed(node)
-            if swallowed:
-                complain(_SWALLOWED_REASON % swallowed)
+    def _on_except_handler(node):
+        swallowed = _swallowed(node)
+        if swallowed:
+            complain(_SWALLOWED_REASON % swallowed)
 
-        elif isinstance(node, ast.Assign):
-            disguised = _shape_assignment(node, features)
-            if disguised:
-                complain(_RAW_SHAPE_REASON % disguised)
-            uncounted = _uncounted_selection(node, counted)
-            if uncounted:
-                complain(_UNCOUNTED_SELECTION_REASON % uncounted)
+    def _on_assign(node):
+        disguised = _shape_assignment(node, features)
+        if disguised:
+            complain(_RAW_SHAPE_REASON % disguised)
+        uncounted = _uncounted_selection(node, counted)
+        if uncounted:
+            complain(_UNCOUNTED_SELECTION_REASON % uncounted)
 
-        elif isinstance(node, ast.Call):
-            disguised = _added_property(node, features)
-            if disguised:
-                complain(_RAW_SHAPE_REASON % disguised)
-            elif _is_sketcher_constraint(node):
-                problem = _constraint_problem(node)
-                if problem:
-                    complain(problem)
-            else:
-                mismatch = _typeid_mismatch(node, allowed_typeids)
-                if mismatch:
-                    complain(_TYPEID_REASON % (mismatch, mismatch, op, " or ".join(OP_TYPEIDS[op])))
+    def _on_call(node):
+        disguised = _added_property(node, features)
+        if disguised:
+            complain(_RAW_SHAPE_REASON % disguised)
+        elif _is_sketcher_constraint(node):
+            problem = _constraint_problem(node)
+            if problem:
+                complain(problem)
+        else:
+            mismatch = _typeid_mismatch(node, allowed_typeids)
+            if mismatch:
+                complain(_TYPEID_REASON % (mismatch, mismatch, op, " or ".join(OP_TYPEIDS[op])))
 
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                if alias.name in GUI_NAMES:
-                    complain(_GUI_REASON % alias.name)
+    def _on_import(node):
+        for alias in node.names:
+            if alias.name in GUI_NAMES:
+                complain(_GUI_REASON % alias.name)
 
-        elif isinstance(node, ast.ImportFrom):
-            if node.module in GUI_NAMES:
-                complain(_GUI_REASON % node.module)
-            for alias in node.names:
-                if alias.name in GUI_NAMES:
-                    complain(_GUI_REASON % alias.name)
+    def _on_import_from(node):
+        if node.module in GUI_NAMES:
+            complain(_GUI_REASON % node.module)
+        for alias in node.names:
+            if alias.name in GUI_NAMES:
+                complain(_GUI_REASON % alias.name)
+
+    node_handlers = {
+        ast.Constant: _on_constant,
+        ast.Name: _on_name,
+        ast.Attribute: _on_attribute,
+        ast.ExceptHandler: _on_except_handler,
+        ast.Assign: _on_assign,
+        ast.Call: _on_call,
+        ast.Import: _on_import,
+        ast.ImportFrom: _on_import_from,
+    }
+
+    for node in ast.walk(tree):
+        handler = node_handlers.get(type(node))
+        if handler is not None:
+            handler(node)
 
     return LintResult(problems)
 

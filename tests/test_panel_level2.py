@@ -739,8 +739,7 @@ def _never_call_the_real_model(panel):
     """
     Keep `on_send()` from starting a real run, in a test.
 
-    `on_send()` emits the panel's own `request_work` for tests to intercept,
-    but also the Session's real `request_work`, which is wired to
+    `on_send()` emits the Session's real `request_work`, which is wired to
     `LoopWorker.do_work` and starts an actual run on the worker thread: a real
     document snapshot, and a real call to whichever provider the developer
     machine's own settings name, on their own key or their own subscription's
@@ -783,17 +782,17 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     picture = tmp_path / "bracket.png"
     picture.write_bytes(b"a file; whether it decodes is the loop's problem")
 
-    sent = []
-    panel.request_work.connect(lambda intent, files, log: sent.append((intent, files)))
-    try:
-        panel.chip_bar.add_file(str(picture))
-        panel.user_input.setPlainText("Build this bracket")
-        panel.on_send()
-    finally:
-        panel.request_work.disconnect()
-        panel._set_running(False)
+    from unittest.mock import MagicMock
 
-    assert sent == [("Build this bracket", [str(picture)])]
+    bundle = panel._worker_for(panel._current_log())
+    bundle.request_work = MagicMock()
+    panel.chip_bar.add_file(str(picture))
+    panel.user_input.setPlainText("Build this bracket")
+    panel.on_send()
+    panel._set_running(False)
+
+    intent, attachments = bundle.request_work.emit.call_args[0][:2]
+    assert (intent, attachments) == ("Build this bracket", [str(picture)])
     assert not panel.chip_bar.isVisible(), "the next Intent would reuse this one's files"
 
 
@@ -813,36 +812,27 @@ def test_a_part_path_a_run_left_behind_carries_into_the_next_send_unless_a_new_d
     panel.on_run_finished(types.SimpleNamespace(ok=True, unmet=[], the_part_path=written), log)
     assert bundle.the_part_path == written
 
-    sent = []
-    panel.request_work.connect(
-        lambda intent, files, log, outstanding, the_part_path=None: sent.append(the_part_path))
-    try:
-        panel.user_input.setPlainText("make this hole 5 mm wider")
-        panel.on_send()
-    finally:
-        panel.request_work.disconnect()
-        panel.worker.stop()
-        panel._set_running(False)
+    from unittest.mock import MagicMock
 
-    assert sent == [written]
+    bundle.request_work = MagicMock()
+    panel.user_input.setPlainText("make this hole 5 mm wider")
+    panel.on_send()
+    panel.worker.stop()
+    panel._set_running(False)
+
+    assert bundle.request_work.emit.call_args[0][4] == written
 
     drawing = tmp_path / "bracket.png"
     drawing.write_bytes(b"a file; whether it decodes is the loop's problem")
     panel.chip_bar.add_file(str(drawing))
 
-    sent_with_new_drawing = []
-    panel.request_work.connect(
-        lambda intent, files, log, outstanding, the_part_path=None:
-        sent_with_new_drawing.append(the_part_path))
-    try:
-        panel.user_input.setPlainText("Build this bracket")
-        panel.on_send()
-    finally:
-        panel.request_work.disconnect()
-        panel.worker.stop()
-        panel._set_running(False)
+    bundle.request_work = MagicMock()
+    panel.user_input.setPlainText("Build this bracket")
+    panel.on_send()
+    panel.worker.stop()
+    panel._set_running(False)
 
-    assert sent_with_new_drawing == [""]
+    assert bundle.request_work.emit.call_args[0][4] == ""
 
 
 def test_a_run_accepted_over_failed_checks_is_not_shown_as_a_plain_success(panel):
@@ -892,15 +882,14 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     drawing.write_text("ISO-10303-21;")
     panel.chip_bar.add_file(str(drawing))
 
-    sent = []
-    panel.request_work.connect(lambda intent, files, log: sent.append(intent))
-    try:
-        panel.user_input.setPlainText("Build this bracket")
-        panel.on_send()
-    finally:
-        panel.request_work.disconnect()
+    from unittest.mock import MagicMock
 
-    assert sent == [], "the run started with an attachment it could not use"
+    bundle = panel._worker_for(panel._current_log())
+    bundle.request_work = MagicMock()
+    panel.user_input.setPlainText("Build this bracket")
+    panel.on_send()
+
+    assert not bundle.request_work.emit.called, "the run started with an attachment it could not use"
     assert panel.chip_bar.files() == [str(drawing)], "the user cannot take the chip off"
     assert panel.user_input.toPlainText() == "Build this bracket"
     said = _said_in(panel)
@@ -1644,14 +1633,14 @@ def test_a_first_intent_names_the_session_from_what_was_typed(panel, monkeypatch
     index = panel.chat_sessions.stack.currentIndex()
     _never_call_the_real_model(panel)
 
+    from unittest.mock import MagicMock
+
+    bundle = panel._worker_for(panel._current_log())
+    bundle.request_work = MagicMock()
     panel.user_input.setPlainText(
         "Model a spur gear with 24 teeth, module 2, 10mm thick, and a 12mm bore")
-    panel.request_work.connect(lambda *_: None)
-    try:
-        panel.on_send()
-    finally:
-        panel.request_work.disconnect()
-        panel._set_running(False)
+    panel.on_send()
+    panel._set_running(False)
 
     name = panel.chat_sessions.get_session_info(index)["name"]
     assert name.startswith("Model a spur gear")
@@ -2278,20 +2267,20 @@ def test_enter_while_a_question_is_open_answers_it_rather_than_starting_a_run(pa
     and the re-plan asked it again — which is what "it planned first and only
     then started asking" looked like from the outside. FCC-71.
     """
-    answered, sent = [], []
+    from unittest.mock import MagicMock
+
+    answered = []
     monkeypatch.setattr(panel.ask, "answer", answered.append)
-    panel.request_work.connect(lambda intent, files, log: sent.append(intent))
-    try:
-        panel.on_missing_values("How many teeth?")
-        QT_APP.processEvents()
-        panel.user_input.setPlainText("20 teeth, module 2")
-        panel.on_send()
-        QT_APP.processEvents()
-    finally:
-        panel.request_work.disconnect()
+    bundle = panel._worker_for(panel._current_log())
+    bundle.request_work = MagicMock()
+    panel.on_missing_values("How many teeth?")
+    QT_APP.processEvents()
+    panel.user_input.setPlainText("20 teeth, module 2")
+    panel.on_send()
+    QT_APP.processEvents()
 
     assert answered == ["20 teeth, module 2"]
-    assert sent == [], "Enter started a second run instead of answering the question"
+    assert not bundle.request_work.emit.called, "Enter started a second run instead of answering the question"
     assert panel._question_card is None, "the card is still open after being answered"
     assert panel.user_input.toPlainText() == "", "the composer kept the answer"
 
@@ -3615,3 +3604,13 @@ def test_the_end_of_a_run_reaches_the_panel_on_the_gui_thread(panel):
     assert ran_on.get("emitted_from") not in (None, main), \
         "the signal has to be emitted from the worker thread for this to mean anything"
     assert ran_on.get("slot") == main
+
+
+def test_copilot_panel_has_no_dead_request_work_signal():
+    """
+    `CopilotPanel.request_work` only ever had test subscribers (FCC-287a) —
+    the real work goes through the Session's own `bundle.request_work`.
+    """
+    from ui.copilot_panel import CopilotPanel
+
+    assert not hasattr(CopilotPanel, "request_work")

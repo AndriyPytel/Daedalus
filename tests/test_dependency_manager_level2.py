@@ -195,3 +195,35 @@ def test_versions_are_compared_as_numbers_not_as_text(dependency_manager, tmp_pa
 
     assert (tmp_path / "pydantic-2.13.4.dist-info").exists()
     assert not (tmp_path / "pydantic-2.9.0.dist-info").exists()
+
+
+def test_a_failed_install_does_not_stop_the_rest_from_being_tried(dependency_manager, monkeypatch):
+    """
+    FCC-287e: `run_dependency_check` used to `break` out of the install loop
+    on the first failed package, so packages after it were never attempted.
+    """
+    monkeypatch.setattr(dependency_manager, "missing_packages", lambda: ["a", "b", "c"])
+    monkeypatch.setattr(dependency_manager, "get_target_directory", lambda: "/tmp/x")
+    monkeypatch.setattr(dependency_manager, "prune_superseded", lambda target_directory: [])
+
+    attempted = []
+
+    def fake_install(package, target_directory):
+        attempted.append(package)
+        return (package != "a", "boom" if package == "a" else "")
+
+    monkeypatch.setattr(dependency_manager, "install_package", fake_install)
+    monkeypatch.setattr(dependency_manager, "importlib", dependency_manager.importlib)
+    monkeypatch.setattr(dependency_manager.importlib, "invalidate_caches", lambda: None)
+    monkeypatch.setattr(dependency_manager.QMessageBox, "exec_",
+                        lambda self: dependency_manager.QMessageBox.Yes)
+    monkeypatch.setattr(dependency_manager.QMessageBox, "critical",
+                        staticmethod(lambda *a, **k: None))
+    monkeypatch.setattr(dependency_manager.QMessageBox, "warning",
+                        staticmethod(lambda *a, **k: None))
+    monkeypatch.setattr(dependency_manager.QMessageBox, "information",
+                        staticmethod(lambda *a, **k: None))
+
+    dependency_manager.run_dependency_check()
+
+    assert attempted == ["a", "b", "c"], "the install loop stopped at the first failure"
