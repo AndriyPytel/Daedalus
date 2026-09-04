@@ -94,6 +94,36 @@ def test_pip_is_told_to_upgrade_rather_than_lay_a_version_beside_the_last(
         "pip was told to install without --upgrade: %s" % seen["command"]
 
 
+
+def test_a_hung_install_times_out_rather_than_freezing_freecad(
+        dependency_manager, monkeypatch, tmp_path):
+    """FCC-274: a stalled network must not block InitGui.initialize() forever."""
+    import subprocess as subprocess_module
+
+    def timed_out(command, **kwargs):
+        raise subprocess_module.TimeoutExpired(cmd=command, timeout=120)
+
+    monkeypatch.setattr(dependency_manager.subprocess, "run", timed_out)
+
+    ok, message = dependency_manager.install_package("litellm", str(tmp_path))
+
+    assert not ok
+    assert message
+
+
+def test_a_permission_error_is_reported_rather_than_left_to_crash_initgui(
+        dependency_manager, monkeypatch, tmp_path):
+    """FCC-274: any OSError, not just FileNotFoundError, must return (False, message)."""
+    def refused(command, **kwargs):
+        raise PermissionError("no write access")
+
+    monkeypatch.setattr(dependency_manager.subprocess, "run", refused)
+
+    ok, message = dependency_manager.install_package("litellm", str(tmp_path))
+
+    assert not ok
+    assert message
+
 class _CompletedProcess:
     returncode = 0
     stdout = ""

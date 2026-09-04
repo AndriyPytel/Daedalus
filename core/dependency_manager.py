@@ -137,6 +137,12 @@ def install_package(package_name, target_directory):
     This function uses the robust `freecad.utils.get_python_exe()` to ensure
     the correct Python interpreter is used, which is critical in packaged
     environments like Flatpak or AppImage.
+
+    `InitGui.py:26` calls this synchronously, before `Gui.addWorkbench` and
+    the rest of the addon load, so a `pip install` that hangs on the network
+    freezes FreeCAD before any of it appears. The 120 s ceiling is pip's own
+    default connect/read timeout doubled, room for a slow mirror without
+    leaving a stalled one to block the whole startup indefinitely.
     """
     try:
         from freecad.utils import get_python_exe
@@ -163,7 +169,8 @@ def install_package(package_name, target_directory):
             check=True,
             capture_output=True,
             text=True,
-            encoding='utf-8'
+            encoding='utf-8',
+            timeout=120
         )
         FreeCAD.Console.PrintMessage(process.stdout)
         if process.stderr:
@@ -174,8 +181,8 @@ def install_package(package_name, target_directory):
         error_message += f"Stdout: {e.stdout}\n"
         error_message += f"Stderr: {e.stderr}\n"
         return False, error_message
-    except FileNotFoundError:
-        return False, f"The Python executable '{python_exe}' was not found."
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, f"Could not run '{python_exe}': {e}"
 
 def run_dependency_check():
     """
