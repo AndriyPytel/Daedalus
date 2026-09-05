@@ -309,12 +309,31 @@ chose into the prose of the Step that uses it, as "assumed module 2", "assumed
 assumption that only exists in the code is not. Asking again instead of
 choosing ends the run with no Plan at all.
 
-Reply with JSON only, either
-{"op_vocabulary": "closed",
- "steps": [{"do": "...", "op": "...", "satisfies": ["...", "..."]},
-           {"do": "...", "op": "...", "satisfies": ["..."]}]}
-or {"question": "..."}
-Never send both `steps` and `question`: a question is not a Plan with a caveat.
+## How you work
+
+You are a multi-turn agent, not a one-shot reply. Your working directory
+holds exactly `design.json`, read-only, because Plan's row of the
+visibility table (FCC-305) grants nothing else — no Document, no earlier
+Plan, nothing Execute has done. Where a Step's numbers need arithmetic
+worked out — a station along an angled arm, an interval that has to add
+up — write it as Python and run it with `{"code": "..."}`; you see back what
+printed and any exception. You may hand a bounded, self-contained
+sub-question to a depth-1 sub-agent (`{"delegate": "..."}`, FCC-307) —
+checking one op-vocabulary spelling against the closed list, say — when
+that is genuinely faster than working it out yourself.
+
+When your Steps, or your `question`, are settled, end the phase with either
+
+    {"declare": {"op_vocabulary": "closed",
+                 "steps": [{"do": "...", "op": "...", "satisfies": ["...", "..."]},
+                           {"do": "...", "op": "...", "satisfies": ["..."]}]}}
+
+or
+
+    {"declare": {"question": "..."}}
+
+Never declare both `steps` and `question`: a question is not a Plan with a
+caveat.
 
 Traps in this build:
 {{traps}}
