@@ -19,8 +19,8 @@ from unittest.mock import Mock
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
-    GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, CHANGE_SET, COST,
+    ERROR, GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
@@ -119,6 +119,31 @@ def test_a_replan_does_not_refill_the_re_read_ceiling():
     assert asked == []
     assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "nobody"], \
         "the re-plan refilled the re-read ceiling"
+
+
+def test_a_replan_after_a_reread_is_handed_the_change_set_not_the_whole_part():
+    """
+    FCC-311: the sheet answering Plan's own question grows the description
+    between two calls to Plan within the same re-plan — the one place that
+    happens — so the second call is handed what changed, named by id, rather
+    than the whole re-serialized part beside the one it already saw.
+    """
+    _, events, llm, _ = drive([
+        design_reply(A_PART),
+        question_reply("q1"),
+        design_reply({"datums": [{"name": "d1", "is": "20 mm from the left end"}]}),
+        plan_reply("Impossible", satisfies=everything(A_PART)), code_reply("nope()"),
+        question_reply("q2"),
+        plan_reply("Possible", satisfies=everything(A_PART)), code_reply("yes()"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+    ], applies=[failed("one")], attachments=[RENDER_PNG],
+        budgets=Budgets(rereads=1, attempts_per_step=1))
+
+    reread_plan = json.loads(llm.calls[3][-1]["content"])
+    assert reread_plan["what_the_part_is"] == [
+        {"section": "datums", "kind": "added", "id": "d1",
+         "now": {"name": "d1", "is": "20 mm from the left end"}}]
+    assert events.last(CHANGE_SET).data["changes"] == reread_plan["what_the_part_is"]
 
 
 def test_with_no_attachment_a_question_is_settled_by_plan_itself():

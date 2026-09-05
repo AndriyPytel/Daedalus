@@ -41,14 +41,14 @@ from typing import List
 from core.arithmetic import wrong_sums
 from core.ledger import Ledger
 from core.design import (
-    A_CHECK_HAZARD, A_CONFLICT, ROUND_IN, UNDER, corrected, decided_for_you, distilled,
-    each_disagreement_once, entries, entry_at, merge, nobody_carries_the_outside,
-    read_off_the_wrong_view, render, said_at, settled_by_the_tracing,
-    what_the_trace_says, where_the_direction_is,
+    A_CHECK_HAZARD, A_CONFLICT, ROUND_IN, UNDER, corrected, decided_for_you, diff,
+    distilled, each_disagreement_once, entries, entry_at, merge,
+    nobody_carries_the_outside, read_off_the_wrong_view, render, said_at,
+    settled_by_the_tracing, what_the_trace_says, where_the_direction_is,
 )
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, DESIGN,
-    ERROR, GATE, INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, CHANGE_SET, COST,
+    DESIGN, ERROR, GATE, INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED,
     STOPPED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, EventStream,
 )
@@ -1305,8 +1305,8 @@ class Plan:
     look: dict = None
 
 
-def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered=(),
-         revising=(), looking=(), looked=(), tried=""):
+def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set=None,
+         unanswered=(), revising=(), looking=(), looked=(), tried=""):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
 
@@ -1350,11 +1350,27 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, unanswered
     moment this replan is written; `tried` is every classified failure since
     the run began, Step or Plan, so a revision does not ask for a shape that
     has already failed the same way more than once.
+
+    `change_set` is `core.design.diff`'s answer to what grew since the last
+    call to this same re-plan, in the one place the description changes
+    between two Plan calls of one run: the reread loop of
+    `_plan_once_it_knows_enough`, where a question sent back to the drawing
+    grows the description and Plan is asked again before anything is applied
+    (FCC-311). Given, it replaces the whole rendering under
+    `what_the_part_is` — a moved datum reaches Plan as the datum that moved,
+    not the whole re-serialized part beside the one it already saw. What
+    Plan's Steps are held to, `what_the_plan_must_satisfy`, is still the
+    acceptance of the whole current `the_part`: shrinking that too would let a
+    Step stop citing an entry the change-set did not mention, though nothing
+    changed about it either.
     """
     request = {"intent": intent, "document": snapshot}
     if revising:
         request["the_plan_you_wrote"] = list(revising)
-    if the_part:
+    if change_set is not None:
+        request["what_the_part_is"] = change_set
+        request["what_the_plan_must_satisfy"] = _acceptance_of(the_part)
+    elif the_part:
         request["what_the_part_is"] = render(the_part)
         request["what_the_plan_must_satisfy"] = _acceptance_of(the_part)
     if feedback:
@@ -3892,6 +3908,12 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     before the Plan was settled it is emitted again, because the Gate stands
     over the description the Plan was made from.
 
+    A re-read that grows the description is the one place it changes between
+    two calls to Plan within a single re-plan, so it is also the one place
+    Plan is handed `core.design.diff`'s change-set instead of the whole
+    document (FCC-311): the re-plan that follows is asked about what moved,
+    not handed a part it has already seen in full once this turn.
+
     No question ends the run. A value nobody supplied is settled by the model,
     which says in `because` what it settled it off, and the Gate reads both; a
     stop here would end a run for want of an answer, which is the one thing no
@@ -3903,15 +3925,16 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     know. A run that cannot move is a different matter and is stopped where
     progress is measured, not here (FCC-132).
     """
-    grown, for_the_build = the_part, False
+    grown, for_the_build, change_set = the_part, False, None
     while True:
         if cancelled():
             raise Stopped()
         planned = plan(intent, snapshot, llm, events, feedback=feedback,
-                       the_part=grown, unanswered=asking.unanswered, revising=revising,
-                       looking=_lookable(tools) if for_the_build else (),
+                       the_part=grown, change_set=change_set, unanswered=asking.unanswered,
+                       revising=revising, looking=_lookable(tools) if for_the_build else (),
                        looked=asking.looked_up,
                        tried=ledger.render() if ledger else "")
+        change_set = None
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))
             for_the_build = False
@@ -3941,7 +3964,10 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                           "the_question": planned.question},
                                          llm, events, attachments)
             if from_the_drawing:
-                grown = merge(grown, from_the_drawing)
+                before, grown = grown, merge(grown, from_the_drawing)
+                if grown != before:
+                    change_set = diff(before, grown)
+                    events.emit(CHANGE_SET, changes=change_set)
                 events.emit(ANSWER, text=render(from_the_drawing), by="drawing")
                 continue
             events.emit(ANSWER, text=_SAID_NOTHING, by="drawing")
