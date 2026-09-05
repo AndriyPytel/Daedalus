@@ -654,6 +654,7 @@ class LoopWorker(QtCore.QObject):
             self.finished.emit(None, transcript)
             return
 
+        self.pipeline.start_run()
         try:
             result = run(intent, llm=client, tools=tools,
                          events=events, cancelled=self._stop.is_set,
@@ -666,6 +667,8 @@ class LoopWorker(QtCore.QObject):
         except Exception as exc:
             events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
             self.finished.emit(None, transcript)
+        finally:
+            self.pipeline.end_run()
 
 
 class _TitleThread(QtCore.QThread):
