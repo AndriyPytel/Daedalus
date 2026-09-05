@@ -32,6 +32,7 @@ class _SettingsManager(QObject):
     base_urls_changed   = Signal(dict)
     default_model_changed = Signal(str)
     last_model_changed  = Signal(str)
+    role_table_changed  = Signal(list)
 
     def __init__(self):
         super().__init__()
@@ -200,6 +201,36 @@ class _SettingsManager(QObject):
 
     def set_profile_effort(self, profile: str, level: str):
         self._grp().SetString("ProfileEffort:%s" % profile, level)
+
+    def get_role_table(self) -> list:
+        """
+        One row per role -- `provider`, `model`, `effort` -- seeded with
+        `core.llm.DEFAULT_ROLE_TABLE` (FCC-293's values) the first time this
+        is read, editable from Preferences thereafter (FCC-312).
+        """
+        from core import llm
+
+        raw = self._grp().GetString("RoleModelTable", "")
+        if raw:
+            try:
+                stored = json.loads(raw)
+            except (json.JSONDecodeError, ValueError):
+                stored = None
+            if isinstance(stored, list):
+                return stored
+        return [dict(row) for row in llm.DEFAULT_ROLE_TABLE]
+
+    def set_role_table(self, table: list):
+        """Persist the role table and emit signal."""
+        self._grp().SetString("RoleModelTable", json.dumps(table))
+        self.role_table_changed.emit(table)
+
+    def get_role_model(self, role: str) -> dict:
+        """The stored row for *role*, or `None` if the table has no row for it."""
+        for row in self.get_role_table():
+            if row.get("role") == role:
+                return row
+        return None
 
     def get_llm_credentials(self, model_id: str = None):
         """

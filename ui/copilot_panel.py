@@ -578,12 +578,13 @@ class LoopWorker(QtCore.QObject):
 
     def _get_client(self):
         """
-        One client per run, built for both profiles: `for_phase` is what picks
-        between them, on `core.llm.ProfiledClient` the seam already reads.
+        One client per run, built per role: `for_phase` is what picks a
+        phase's own row from the role table (FCC-312), on `core.llm.RoleClient`
+        the seam already reads.
         """
         if self.client is None:
-            from core.llm import client_from_profiles
-            self.client = client_from_profiles()
+            from core.llm import client_from_roles
+            self.client = client_from_roles()
         return self.client
 
     def _get_tools(self, events=None):
