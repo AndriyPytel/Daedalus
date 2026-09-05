@@ -1838,6 +1838,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             ev.STEP_STARTED: CopilotPanel._oe_step_started,
             ev.APPLIED: CopilotPanel._oe_applied,
             ev.BLOCKED: CopilotPanel._oe_blocked,
+            ev.STOPPED: CopilotPanel._oe_blocked,
             ev.QUESTION: CopilotPanel._noop,
             ev.ANSWER: CopilotPanel._noop,
             ev.DESIGN: CopilotPanel._noop,
@@ -1998,6 +1999,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             ev.REVIEW_VERDICT: CopilotPanel._uq_review_verdict,
             ev.REVIEW_SUSPECTED: CopilotPanel._noop,
             ev.BLOCKED: CopilotPanel._uq_fail_current,
+            ev.STOPPED: CopilotPanel._uq_fail_current,
             ev.ERROR: CopilotPanel._uq_fail_current,
         }).get(event.kind)
         if handler is None:
@@ -2092,6 +2094,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             ev.REVIEW_VERDICT: CopilotPanel._ev_review_verdict,
             ev.REVIEW_SUSPECTED: CopilotPanel._noop,
             ev.BLOCKED: CopilotPanel._noop,
+            ev.STOPPED: CopilotPanel._noop,
             ev.CALL_STARTED: CopilotPanel._noop,
             ev.COST: CopilotPanel._noop,
             ev.ERROR: CopilotPanel._noop,
