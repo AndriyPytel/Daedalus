@@ -1183,8 +1183,11 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
     assert asked_again["the_part_as_you_described_it"] == distilled(A_PART)
 
     to_plan = json.loads(llm.calls[3][-1]["content"])
-    assert "- pocket-front" in to_plan["what_the_part_is"]
-    assert "the front face: 20 mm deep (read)" in to_plan["what_the_part_is"]
+    changed = to_plan["what_the_part_is"]
+    added = [entry for entry in changed if entry["section"] == "features"]
+    assert added == [{"section": "features", "kind": "added", "id": "pocket-front",
+                      "now": OFF_THE_SECTION["features"][0]}], \
+        "the re-plan was not handed the change-set (FCC-311)"
     assert "you_asked_and_were_answered" not in to_plan
 
 
@@ -1209,8 +1212,10 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
     assert grown["conflicts"][0]["was_also_said"] == read("25 mm")
 
     shown = json.loads(llm.calls[3][-1]["content"])["what_the_part_is"]
-    assert "the left end face: 15 mm (read)" in shown
-    assert "In conflict" in shown, "the disagreement never reached the Plan Gate"
+    conflicts_shown = [entry for entry in shown if entry["section"] == "conflicts"]
+    assert conflicts_shown, "the disagreement never reached the Plan Gate (FCC-311)"
+    assert conflicts_shown[0]["now"]["stands"] == read("15 mm")
+    assert conflicts_shown[0]["now"]["was_also_said"] == read("25 mm")
 
 
 def test_a_question_the_sheet_does_not_answer_is_settled_by_the_model():

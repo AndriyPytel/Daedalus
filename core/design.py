@@ -126,6 +126,58 @@ _REGION_WORD = ("arm", "ring", "web", "band", "collar", "profile", "plate",
                 "body", "outline", "contour")
 
 
+ADDED = "added"
+REMOVED = "removed"
+CHANGED = "changed"
+
+_DIFFED_SECTIONS = ("datums", "features", "conflicts")
+
+
+def diff(previous, current):
+    """
+    The semantic change-set from *previous* to *current*.
+
+    Objects are matched by their stable identity — `id` on a feature, `name`
+    on a datum, `about` on a conflict, the same `_HEADED_BY` rule `merge`
+    already dedupes conflicts by — so a moved datum is one `changed` entry
+    against that identity, not a `removed` and an `added` pair a text diff
+    over the re-serialized YAML would produce, and a conflict the growth
+    raised reaches Plan by the address it is about rather than being lost
+    because it carries neither an `id` nor a `name`.
+
+    `envelope` and `not_defined` are not compared: an envelope entry is a
+    value under a key, not an object with an identity to match by, and this
+    hands Plan a change-set of the part and what it disagrees about, not the
+    sweep of what the sheet never said — the full document still carries
+    all of it to Assertion and Review, unchanged by this function existing.
+    """
+    changes = []
+    for section in _DIFFED_SECTIONS:
+        changes.extend(_section_diff(section, (previous or {}).get(section) or (),
+                                     (current or {}).get(section) or ()))
+    return changes
+
+
+def _section_diff(section, before, after):
+    by_identity_before = {_named(entry, _HEADED_BY): entry for entry in before
+                          if _named(entry, _HEADED_BY)}
+    by_identity_after = {_named(entry, _HEADED_BY): entry for entry in after
+                         if _named(entry, _HEADED_BY)}
+    changes = []
+    for identity, entry in by_identity_after.items():
+        if identity not in by_identity_before:
+            changes.append({"section": section, "kind": ADDED, "id": identity,
+                            "now": entry})
+        elif by_identity_before[identity] != entry:
+            changes.append({"section": section, "kind": CHANGED, "id": identity,
+                            "was": by_identity_before[identity], "now": entry})
+    for identity, entry in by_identity_before.items():
+        if identity not in by_identity_after:
+            changes.append({"section": section, "kind": REMOVED, "id": identity,
+                            "was": entry})
+    return changes
+
+
 def merge(held, offered):
     """
     *offered* written into *held*, filling only what is empty.

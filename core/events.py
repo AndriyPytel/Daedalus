@@ -50,6 +50,12 @@ of provider time fell after the last `thought` of every call.
 it was told to stop. FCC-292: a genuine block and a user cancel used to
 share the `blocked` kind, so `core/measure.py`'s blocked rate read a
 person clicking Stop as indistinguishable from a run that ran out of road.
+
+`change_set` is `core.design.diff`'s answer to what a new Design version
+changed since the one Plan last saw, carried on the stream the same turn
+Plan is handed it in place of the whole document (FCC-311): a moved datum on
+the stream as its own entry is the record of why a re-plan cited what it
+cited, without a reader re-deriving the diff from two `design` events by hand.
 """
 import json
 import time
@@ -82,12 +88,13 @@ STOPPED = "stopped"
 CALL_STARTED = "call_started"
 COST = "cost"
 ERROR = "error"
+CHANGE_SET = "change_set"
 
 KINDS = (
     INTENT, THOUGHT, WRITING, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
     GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED,
     ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, REVIEW_SUSPECTED, BLOCKED, STOPPED,
-    CALL_STARTED, COST, ERROR,
+    CALL_STARTED, COST, ERROR, CHANGE_SET,
 )
 
 
