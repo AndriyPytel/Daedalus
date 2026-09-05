@@ -480,7 +480,7 @@ class AskTheUser(QtCore.QObject):
         anything, so a stopped run is recorded as stopped rather than as a
         result the user took (FCC-77).
         """
-        from core.loop import DECISIONS, REVISE
+        from copilot.sdk import DECISIONS, REVISE
 
         answer = self._ask(self.revision, failure,
                            "FreeCAD Copilot needs you to say what to do about a result that "
@@ -529,7 +529,7 @@ class AskTheUser(QtCore.QObject):
     def abandon(self):
         """Release a waiting question so Stop is not swallowed by a prompt."""
         if not self._answered.is_set():
-            from core.loop import REJECT, Approval
+            from copilot.sdk import REJECT, Approval
 
             self._answer = Approval(REJECT)
             self._answered.set()
@@ -644,8 +644,8 @@ class LoopWorker(QtCore.QObject):
         here unless a new attachment arrived to replace it (FCC-210); empty
         means run as today, describing the part from `attachments` alone.
         """
-        from core import events as ev
-        from core.events import EventStream
+        from copilot.sdk import events as ev
+        from copilot.sdk import EventStream
         from core.loop import run
         from utils.logger import generate_crash_report, logger
 
@@ -704,7 +704,7 @@ class _TitleThread(QtCore.QThread):
         self._model_id = model_id
 
     def run(self):
-        from core.session_title import generate
+        from copilot.sdk import generate
 
         self.titled.emit(generate(self._intent, self._model_id))
 
@@ -952,7 +952,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         catch.
         """
         if bundle.worker.document is None:
-            from core.freecad_tools import active_document
+            from copilot.sdk import active_document
             bundle.worker.document = active_document()
 
     def _route_event(self, log: str, event):
@@ -1319,7 +1319,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         and one Intent asks both, whichever one this is set to when it is
         sent.
         """
-        from core.llm import PROFILES
+        from copilot.sdk import PROFILES
 
         self._active_profile = PROFILES[(PROFILES.index(self._active_profile) + 1)
                                         % len(PROFILES)]
@@ -1369,7 +1369,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         all: a picker that changes nothing is a picker that lies, so the
         trigger says so in its tooltip and does not open.
         """
-        from core.llm import EFFORTS, effort_is_honoured
+        from copilot.sdk import EFFORTS, effort_is_honoured
 
         model_id = settings_manager.instance().get_profile_model(self._active_profile)
         if not effort_is_honoured(model_id):
@@ -1396,7 +1396,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         honest thing is to say so where the choice is made rather than to
         take it and drop it (`core.llm.effort_is_honoured`).
         """
-        from core.llm import effort_for_profile, effort_is_honoured
+        from copilot.sdk import effort_for_profile, effort_is_honoured
 
         model_id = settings_manager.instance().get_profile_model(self._active_profile)
         honoured = effort_is_honoured(model_id)
@@ -1430,7 +1430,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _sessions_worth_showing(self) -> list:
         """The indexed Sessions of the Document in focus, or all of them."""
-        from core.freecad_tools import active_document
+        from copilot.sdk import active_document
 
         try:
             identity = str(getattr(active_document(), "Uid", "") or "")
@@ -1559,7 +1559,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         replay would land its widgets after whatever this Session showed the
         last time it was open, doubling everything that had already rendered.
         """
-        from core.events import replay
+        from copilot.sdk import replay
 
         info = self.chat_sessions.get_session_info(index)
         if info is None:
@@ -1661,7 +1661,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         the model changed — and the same Intent sent again. A settings lookup
         that fails is not the user's problem here; the run reports it.
         """
-        from core.llm import selected_model_name, unusable_attachments
+        from copilot.sdk import selected_model_name, unusable_attachments
 
         attached = self.chip_bar.files()
         if not attached:
@@ -1742,7 +1742,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         title callback instead of the log path it named the Session by until
         now, so a renamed or moved log cannot orphan the title in flight.
         """
-        from core.session_title import fallback
+        from copilot.sdk import fallback
 
         if self.chat_sessions.begin(index, fallback(intent)):
             index = self.chat_sessions.stack.currentIndex()
@@ -1863,8 +1863,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
         back out of its transcript opens the same way the live one did, and
         the prompt is shown once instead of twice.
         """
-        from core import events as ev
-        from core.narrate import narrate
+        from copilot.sdk import events as ev
+        from copilot.sdk import narrate
 
         data = event.data
 
@@ -1961,7 +1961,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         return False
 
     def _oe_part(self, event, data):
-        from core.narrate import narrate
+        from copilot.sdk import narrate
 
         self._render_part(narrate(event).line, data["path"])
         return True
@@ -2032,7 +2032,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         that asks it is headed by the very sentence `narrate()` returns.
         Said again above it, the same words read as two verdicts.
         """
-        from core import events as ev
+        from copilot.sdk import events as ev
 
         return (event.kind == ev.REVIEW_VERDICT
                 and event.data.get("verdict") != "pass")
@@ -2052,7 +2052,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         data = event.data
 
-        from core import events as ev
+        from copilot.sdk import events as ev
 
         handler = CopilotPanel._dispatch_table("_QUEUE_DISPATCH", lambda: {
             ev.INTENT: CopilotPanel._uq_intent,
@@ -2108,7 +2108,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._queue_widget.start_plan(data["steps"], at=event.at)
 
     def _uq_gate(self, event, data):
-        from core.loop import APPROVE
+        from copilot.sdk import APPROVE
 
         if data.get("decision") == APPROVE:
             self._queue_widget.start_execute(data.get("steps"), at=event.at)
@@ -2154,7 +2154,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         data = event.data
 
-        from core import events as ev
+        from copilot.sdk import events as ev
 
         handler = CopilotPanel._dispatch_table("_EVIDENCE_DISPATCH", lambda: {
             ev.INTENT: CopilotPanel._noop,
@@ -2508,7 +2508,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         pressed, edited or as-generated, and locks the widget in the same
         breath so nothing typed after Build changes what already ran.
         """
-        from core.loop import APPROVE, Approval
+        from copilot.sdk import APPROVE, Approval
 
         plan_widget = self._plan_widget
 
@@ -2549,7 +2549,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         sentence appears in one screen: the card is headed by it, and Review
         emitted it before either.
         """
-        from core.loop import ACCEPT, REVISE, START_OVER
+        from copilot.sdk import ACCEPT, REVISE, START_OVER
 
         applied = failure.get("applied", 0)
         if self._last_review_verdict_event is not None:
@@ -2581,7 +2581,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         stays the fallback for the one case that is not a count at all, the
         checks that could not be written.
         """
-        from core.narrate import narrate
+        from copilot.sdk import narrate
 
         self._queue_widget.now("Waiting for you to review the result\u2026")
 
@@ -2869,7 +2869,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         the grace period here is the only chance it gets to finish on its
         own before this panel stops tracking it.
         """
-        from core.apply import closing
+        from copilot.sdk import closing
 
         closing()
         FreeCAD.removeDocumentObserver(self)

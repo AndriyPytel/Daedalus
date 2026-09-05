@@ -14,13 +14,20 @@ This replaces `tools/ab_run.py` and `tools/ab_lane.py`, deleted alongside it:
 both hand-assembled a second copy of this same wiring, one call behind the
 loop's own `run()` signature.
 """
-from core.apply import ApplyPipeline
-from core.events import EventStream
-from core.freecad_tools import build_registry
+from core import events
+from core.apply import ApplyPipeline, closing
+from core.events import EventStream, replay
+from core.freecad_tools import active_document, build_registry
 from core.kernel import Kernel
-from core.llm import TEXT, Session, client_from_roles
-from core.loop import NeedsAnswer, auto_approve, revise_by_default, run
+from core.llm import (EFFORTS, PROFILES, TEXT, Session, client_from_roles,
+                      effort_for_profile, effort_is_honoured, selected_model_name,
+                      unusable_attachments)
+from core.loop import (ACCEPT, APPROVE, DECISIONS, REJECT, REVISE, START_OVER,
+                       Approval, NeedsAnswer, auto_approve, revise_by_default, run)
+from core.narrate import narrate
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
+from core.session_title import fallback, generate
+from core.sessions import Sessions
 
 
 class Client:

@@ -12,7 +12,7 @@ signals. A restored Session's chat area is built empty and filled the first
 time it is shown, so opening the panel with a hundred Sessions in history costs
 nothing until one is read.
 """
-from core.sessions import Sessions
+from copilot.sdk import Sessions
 from ui.design_tokens import SPACE_MD, SPACE_SM
 
 try:
