@@ -1,7 +1,7 @@
 """
 The AST lint that runs before Preflight.
 
-Six rules, each about a failure a Preflight traceback cannot teach the way
+Seven rules, each about a failure a Preflight traceback cannot teach the way
 out of (ADR-0008):
 
 - **No literal `Edge12` / `Face3` / `Vertex7`** (ADR-0005). FreeCAD 1.0's
@@ -37,6 +37,13 @@ out of (ADR-0008):
   handler that only passes, discards the traceback the correction path is
   built on. Code that catches its own exception and says nothing disables the
   mechanism the architecture rests on.
+- **No literal-name lookup of an object this Step just allocated** (FCC-302).
+  FreeCAD renames a new object on a name collision rather than raising, so a
+  Step that hands `addObject` a name and later fetches it back with
+  `doc.getObject` on that same literal string is not guaranteed to reach the
+  object it just made — no traceback, no warning, silently the wrong object.
+  A lookup of a name this Step's own code never allocated is the user's own
+  object and stays allowed.
 
 `Midplane=True` is not one of these rules: it still works on FreeCAD 1.1.3, so
 writing it costs two lines of warning into the Report view, not a traceback
@@ -235,6 +242,16 @@ _ACTIVATION_REASON = (
 )
 
 
+_ALLOCATED_NAME_REASON = (
+    "%r was just created by this Step's own addObject/newObject call. FreeCAD "
+    "renames a new object on a name collision rather than raising (FCC-302), "
+    "so fetching it back by the literal string handed to addObject is not "
+    "guaranteed to reach the object this Step just made. Keep the reference "
+    "addObject returned, or address it through the allocated-name map -- "
+    "doc.getObject(names[%r]) -- instead."
+)
+
+
 @dataclass
 class LintResult:
     problems: List[str] = field(default_factory=list)
@@ -293,6 +310,7 @@ def lint(code: str, selection=None, op=None) -> LintResult:
     allowed = selected_elements(selection)
     features = _partdesign_features(tree)
     counted = _counted_selections(tree)
+    allocated = _names_allocated_here(tree)
     allowed_typeids = set(OP_TYPEIDS.get(op, ())) | _SCAFFOLD_TYPEIDS if op in OP_TYPEIDS else None
     problems = []
     seen = set()
@@ -344,6 +362,9 @@ def lint(code: str, selection=None, op=None) -> LintResult:
             mismatch = _typeid_mismatch(node, allowed_typeids)
             if mismatch:
                 complain(_TYPEID_REASON % (mismatch, mismatch, op, " or ".join(OP_TYPEIDS[op])))
+            reused = _allocated_name_lookup(node, allocated)
+            if reused:
+                complain(_ALLOCATED_NAME_REASON % (reused, reused))
 
     def _on_import(node):
         for alias in node.names:
@@ -401,6 +422,38 @@ def _partdesign_features(tree) -> set:
             if isinstance(target, ast.Name):
                 features.add(target.id)
     return features
+
+
+def _names_allocated_here(tree) -> set:
+    """
+    Literal names this Step's own code handed to addObject/newObject.
+
+    Any TypeId, not only PartDesign's — the map FCC-296 built exists because
+    FreeCAD renames on a name collision regardless of what kind of object it
+    is, and a Step re-fetching by that same literal string is the failure
+    FCC-302 reproduced end to end.
+    """
+    allocated = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("addObject", "newObject") and len(node.args) >= 2):
+            continue
+        name = node.args[1]
+        if isinstance(name, ast.Constant) and isinstance(name.value, str):
+            allocated.add(name.value)
+    return allocated
+
+
+def _allocated_name_lookup(node: ast.Call, allocated: set):
+    """The literal name in `doc.getObject('Name')`, where 'Name' is one this
+    Step's own code just allocated -- or None."""
+    if not (isinstance(node.func, ast.Attribute) and node.func.attr == "getObject"
+            and node.args):
+        return None
+    name = node.args[0]
+    if isinstance(name, ast.Constant) and isinstance(name.value, str) and name.value in allocated:
+        return name.value
+    return None
 
 
 def _typeid_mismatch(node, allowed_typeids):

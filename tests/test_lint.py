@@ -504,3 +504,43 @@ def test_no_op_given_skips_the_typeid_check():
 
 def test_an_op_off_the_36_list_skips_the_typeid_check():
     assert lint("pad = doc.addObject('Part::Extrusion', 'Pad')", op="squish").ok
+
+
+
+def test_a_literal_name_lookup_of_an_object_this_step_just_created_is_rejected():
+    """
+    FCC-302's own reproduction: FreeCAD renames a new object on a name
+    collision, so a Step that re-fetches by the literal string it just
+    handed to addObject is not guaranteed to reach the object it made.
+    """
+    code = "doc.addObject('Part::Box', 'Box')\nbox = doc.getObject('Box')"
+
+    result = lint(code)
+
+    assert not result.ok
+    assert "allocated-name map" in result.report()
+    assert "'Box'" in result.report()
+
+
+def test_the_reason_names_the_allocated_name_map():
+    code = "doc.addObject('Part::Box', 'Box')\nbox = doc.getObject('Box')"
+
+    reason = lint(code).report()
+
+    assert "names[" in reason
+
+
+def test_a_lookup_of_an_object_the_user_made_before_the_run_is_accepted():
+    """No addObject('...', 'UsersBox') anywhere in this Step's own code, so
+    the name is not one this run allocated -- it is the user's own object."""
+    assert lint("doc.getObject('UsersBox').Length = 99").ok
+
+
+def test_addressing_the_returned_reference_instead_needs_no_lookup():
+    assert lint("box = doc.addObject('Part::Box', 'Box')\nbox.Length = 10").ok
+
+
+def test_a_lookup_of_a_name_that_is_not_the_one_just_created_is_accepted():
+    code = "doc.addObject('Part::Box', 'Box')\nother = doc.getObject('OtherBox')"
+
+    assert lint(code).ok
