@@ -125,6 +125,15 @@ def test_send_and_stop_share_one_slot(panel):
     assert (panel.stop_button.isVisible(), panel.send_button.isVisible()) == (False, True)
 
 
+def test_abort_shows_alongside_stop_while_a_run_is_going(panel):
+    """Abort is a second way to end the run in flight, not a replacement for Stop."""
+    panel._set_running(True)
+    assert (panel.stop_button.isVisible(), panel.abort_button.isVisible()) == (True, True)
+
+    panel._set_running(False)
+    assert (panel.stop_button.isVisible(), panel.abort_button.isVisible()) == (False, False)
+
+
 def test_the_composer_shows_the_figma_placeholder(panel):
     assert panel.user_input.placeholderText() == "Describe what you want to build\u2026"
 
@@ -2437,6 +2446,34 @@ def test_stopping_releases_a_waiting_question(panel):
 
     assert panel._question_card is None
     assert not card.isEnabled(), "the card is still answerable after Stop"
+
+
+def test_aborting_kills_the_kernel_and_releases_a_waiting_question(panel):
+    """
+    Abort is Stop plus one more thing (FCC-303): the kernel dies now rather
+    than once the in-flight Step finishes on its own, so `pipeline.shutdown`
+    is what tells the two apart at the panel's own boundary.
+    """
+    killed = []
+
+    class FakePipeline:
+        def shutdown(self):
+            killed.append(True)
+
+    panel.worker.pipeline = FakePipeline()
+    panel.on_missing_values("How many teeth?")
+    QT_APP.processEvents()
+    card = panel._question_card
+
+    panel.on_abort()
+    QT_APP.processEvents()
+
+    assert killed == [True]
+    assert panel.worker._abort.is_set()
+    assert panel.worker._stop.is_set()
+    assert panel._question_card is None
+    assert not card.isEnabled(), "the card is still answerable after Abort"
+    panel.worker.pipeline = None
 
 
 def test_the_acceptance_list_is_on_the_plan_card_before_the_gate(panel):

@@ -16,10 +16,11 @@ the field the wording turns on.
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, CHANGE_SET, COST,
-    ERROR, GATE, INTENT, KINDS, OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED, STEP_STARTED,
-    STOPPED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, Event,
+    ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
+    CALL_STARTED, CHANGE_SET, COMPLETED, COST, ERROR, FAILED, GATE, INTENT, KINDS,
+    OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
+    REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED, STEP_STARTED, STOPPED, THOUGHT,
+    TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, Event,
 )
 from core.narrate import Narration, narrate
 
@@ -50,6 +51,10 @@ SAMPLES = {
     REVIEW_VERDICT: {"verdict": "pass", "reason": "matches the Intent"},
     BLOCKED: {"reason": "The budget is spent.", "tried": []},
     STOPPED: {"reason": "Stopped by you."},
+    ABORTED: {"reason": "Aborted. The Step in flight was discarded."},
+    BUDGET_EXHAUSTED: {"reason": "Out of revisions.", "tried": []},
+    FAILED: {"message": "ValueError: no key"},
+    COMPLETED: {},
     CALL_STARTED: {"phase": "plan", "model": "sonnet", "ceiling": 900.0},
     COST: {"phase": "design", "usd": 0.0049255, "model": "sonnet", "seconds": 12.3},
     ERROR: {"message": "ValueError: no key"},

@@ -19,7 +19,7 @@ from unittest.mock import Mock
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
@@ -799,7 +799,7 @@ def test_block_reason_names_mechanical_ceiling_when_hit():
     ], attachments=[RENDER_PNG], budgets=Budgets(revisions=5, mechanical_revisions=2))
 
     assert result.blocked
-    blocked = events.first(BLOCKED)
+    blocked = events.first(BUDGET_EXHAUSTED)
     reason = blocked.data["reason"]
     assert "mechanical ceiling" in reason,         "block_reason distinguishes mechanical ceiling from execution ceiling"
 

@@ -19,8 +19,8 @@ from unittest.mock import Mock
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
-    GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, CALL_STARTED, COMPLETED,
+    COST, ERROR, GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, STOPPED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
@@ -394,7 +394,7 @@ def test_repeated_obsolete_declarations_cannot_loop_forever():
     ])
 
     assert not result.ok
-    assert events.first(BLOCKED) is not None
+    assert events.first(BUDGET_EXHAUSTED) is not None
 
 
 def test_budgets_are_configurable():
@@ -418,7 +418,7 @@ def test_blocked_waits_for_the_user_rather_than_failing_silently():
     assert result.blocked
     assert not result.ok
     assert result.awaiting_user
-    assert events[-1].kind == BLOCKED
+    assert events[-1].kind == BUDGET_EXHAUSTED
 
 
 
@@ -567,6 +567,7 @@ def test_the_event_stream_of_a_clean_run():
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, THOUGHT, WRITING, COST, REVIEW_VERDICT,
+        COMPLETED,
     ]
 
 
@@ -594,6 +595,7 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
         TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
         CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
+        COMPLETED,
     ]
 
 
@@ -614,6 +616,7 @@ def test_the_event_stream_of_a_retried_run():
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
+        COMPLETED,
     ]
 
 
@@ -629,7 +632,7 @@ def test_the_event_stream_of_a_blocked_run():
         CALL_STARTED, WRITING, COST,
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
         CALL_STARTED, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
-        PREFLIGHT_FAILED, BLOCKED,
+        PREFLIGHT_FAILED, BUDGET_EXHAUSTED,
     ]
 
 

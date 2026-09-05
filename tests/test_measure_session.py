@@ -452,3 +452,54 @@ def test_a_session_log_tells_a_user_stop_and_a_genuine_block_apart(tmp_path):
 
     assert any(event.kind == STOPPED for event in stream)
     assert not any(event.kind == BLOCKED for event in stream)
+
+
+def test_blocked_rate_does_not_count_a_budget_exhausted_or_an_aborted_session(tmp_path):
+    """
+    FCC-303 extends FCC-292's split to the rest of the six kinds: a run that
+    spent its own revision ceiling (`budget_exhausted`) and a run the user
+    killed the kernel on (`aborted`) are neither of them the `blocked` a
+    genuine impasse is, so a blocked rate over one of each and one real block
+    must read a third, not a full house.
+    """
+    from core.events import ABORTED, BLOCKED, BUDGET_EXHAUSTED, EventStream, INTENT
+
+    genuinely_blocked = EventStream()
+    genuinely_blocked.emit(INTENT, text="a bracket")
+    genuinely_blocked.emit(BLOCKED, reason="Out of revisions.", tried=[], provider_said="")
+
+    budget_exhausted = EventStream()
+    budget_exhausted.emit(INTENT, text="a nut")
+    budget_exhausted.emit(BUDGET_EXHAUSTED, reason="Out of revisions.", tried=[])
+
+    aborted = EventStream()
+    aborted.emit(INTENT, text="a nut")
+    aborted.emit(ABORTED, reason="Aborted. The Step in flight was discarded.")
+
+    table = compare(
+        [], [_write(tmp_path, "blocked.jsonl", genuinely_blocked),
+             _write(tmp_path, "budget.jsonl", budget_exhausted),
+             _write(tmp_path, "aborted.jsonl", aborted)],
+        experiment_label="one block, one budget-exhausted, one abort",
+    )
+
+    assert _cells(table, "blocked rate") == ["0.0%", "33.3%"]
+
+
+def test_a_session_log_tells_all_six_outcome_kinds_apart(tmp_path):
+    """The event kind itself, one per outcome, extending AC2 to AC3's six."""
+    from core.events import (
+        ABORTED, BLOCKED, BUDGET_EXHAUSTED, COMPLETED, FAILED, INTENT, STOPPED,
+        EventStream, replay,
+    )
+
+    kinds = (COMPLETED, STOPPED, ABORTED, FAILED, BLOCKED, BUDGET_EXHAUSTED)
+    seen = set()
+    for i, kind in enumerate(kinds):
+        events = EventStream()
+        events.emit(INTENT, text="a nut")
+        events.emit(kind)
+        stream, _ = replay(_write(tmp_path, "run-%d.jsonl" % i, events))
+        seen.update(event.kind for event in stream)
+
+    assert seen - {INTENT} == set(kinds)

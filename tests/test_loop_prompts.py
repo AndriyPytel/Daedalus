@@ -19,7 +19,7 @@ from unittest.mock import Mock
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
@@ -856,7 +856,7 @@ def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run()
 
     assert not result.ok
     assert events.first(ERROR) is None
-    blocked = events.first(BLOCKED)
+    blocked = events.first(BUDGET_EXHAUSTED)
     assert blocked is not None
     assert "Step 1 of 1" in blocked.data["reason"]
     assert len(blocked.data["tried"]) == 4
@@ -880,7 +880,7 @@ def test_a_step_that_never_writes_its_tail_still_terminates():
     )
 
     assert not result.ok
-    blocked = events.first(BLOCKED)
+    blocked = events.first(BUDGET_EXHAUSTED)
     assert blocked is not None
     assert len(blocked.data["tried"]) == 4
 

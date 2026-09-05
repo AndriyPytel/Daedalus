@@ -62,6 +62,20 @@ agent a message was classified as belonging to -- as its own entry, separate
 from the `intent` or other verbatim text it was handed alongside: a reader
 sees what the orchestrator decided without it being mixed into the message
 the user actually typed.
+
+A run ends one of six distinct ways, and `core/measure.py`'s rate lambdas may
+never merge two of them (FCC-303, extending FCC-292's `stopped`-vs-`blocked`
+split to the rest): `completed` is `_run` reaching a genuine `ok=True`
+return. `blocked` is a real impasse -- Plan came back empty, a revision hit
+the same wall, the provider refused. `budget_exhausted` is `_OutOfRevisions`
+specifically: the run did not hit a wall, it spent its own ceiling of
+attempts and revisions. `stopped` is the user's Stop: the in-flight Step is
+left to finish and checkpoint, so whatever it produced stays. `aborted` is
+the user's Abort: the kernel is killed while the Step is still in flight, so
+that Step is discarded (never checkpointed, never replayed -- FCC-296's
+rollback-on-failure semantics apply) and only the Steps before it remain.
+`failed` is everything else that ended the run without a decision behind it
+-- a phase raising, a Part that could not be read.
 """
 import json
 import time
@@ -96,12 +110,16 @@ COST = "cost"
 ERROR = "error"
 CHANGE_SET = "change_set"
 ROUTED = "routed"
+COMPLETED = "completed"
+ABORTED = "aborted"
+BUDGET_EXHAUSTED = "budget_exhausted"
+FAILED = "failed"
 
 KINDS = (
     INTENT, THOUGHT, WRITING, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
     GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED,
     ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, REVIEW_SUSPECTED, BLOCKED, STOPPED,
-    CALL_STARTED, COST, ERROR, CHANGE_SET, ROUTED,
+    CALL_STARTED, COST, ERROR, CHANGE_SET, ROUTED, COMPLETED, ABORTED, BUDGET_EXHAUSTED, FAILED,
 )
 
 

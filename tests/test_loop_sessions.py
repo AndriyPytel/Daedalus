@@ -19,7 +19,7 @@ from unittest.mock import Mock
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
@@ -89,7 +89,7 @@ def test_a_trailing_gaps_free_continuation_does_not_count_against_attempts_per_s
     )
 
     assert not result.ok
-    blocked = events.first(BLOCKED)
+    blocked = events.first(BUDGET_EXHAUSTED)
     assert blocked is not None
     assert len(blocked.data["tried"]) == 2
 
@@ -111,7 +111,7 @@ def test_an_interior_gap_gets_no_free_continuation():
     )
 
     assert not result.ok
-    blocked = events.first(BLOCKED)
+    blocked = events.first(BUDGET_EXHAUSTED)
     assert blocked is not None
     assert len(blocked.data["tried"]) == 1
     assert "skipped a Step it could have written" in blocked.data["tried"][0]["traceback"]

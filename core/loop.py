@@ -47,10 +47,11 @@ from core.design import (
     settled_by_the_tracing, what_the_trace_says, where_the_direction_is,
 )
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, CHANGE_SET, COST,
-    DESIGN, ERROR, GATE, INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED,
-    PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED,
-    STOPPED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, EventStream,
+    ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
+    CALL_STARTED, CHANGE_SET, COMPLETED, COST, DESIGN, ERROR, FAILED, GATE, INTENT,
+    OUTSTANDING, PART, PLAN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
+    REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, STOPPED, THOUGHT, TOOL_CALL,
+    TOOL_RESULT, UNBUILT, WRITING, EventStream,
 )
 from core import kernel, part_file, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
@@ -2823,7 +2824,21 @@ def review(intent, views, described, llm, events, attachments=(), checked=None):
 
 
 class Stopped(Exception):
-    """The user stopped the run. Not a failure — a decision."""
+    """
+    The user stopped or aborted the run. Not a failure — a decision.
+
+    One exception for both: every `cancelled()` check in this module already
+    raises it the instant the user's flag reads true, wherever that happens to
+    be — mid-attempt, mid-Step, mid-revision. What tells stop and abort apart
+    is not where this was raised but how the in-flight Step got here. A Stop
+    lets the kernel finish the Step it was already running and checkpoint it,
+    so `cancelled()` only turns true between attempts; an Abort kills the
+    kernel while a Step is still running, so the same check() call that would
+    have returned success instead comes back a crash and unwinds here anyway.
+    `run`'s own boundary is where the two are told apart and where the event
+    is stamped `stopped` or `aborted` — the `aborted` callable it is handed
+    answers only that one question.
+    """
 
 
 class _OutOfRevisions(Exception):
@@ -2890,8 +2905,8 @@ class Progress:
     the_part_path: str = ""
 
 
-def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attachments=(),
-        gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
+def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, aborted=None,
+        attachments=(), gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
         outstanding=(), the_part_path=None) -> LoopResult:
     """
     Turn an Intent into changes to the Document.
@@ -2903,6 +2918,11 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
     is asked what to do about a result that did not pass before a revision may
     wipe it. Nothing is global, so two runs cannot see each other and a
     sub-agent is a narrower Intent.
+
+    `aborted` is read only once `cancelled()` has already ended the run
+    (FCC-303): it says whether this was Abort rather than Stop, so the event
+    stamped at the boundary is `aborted`, not `stopped`. Defaulted to "never",
+    the same as `cancelled`, so a caller with no Abort action just never asks.
 
     `attachments` are files the user showed with the Intent; the Design phase
     sees them, and Review sees them again at the end.
@@ -2943,29 +2963,39 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
         """
         result.unmet = list(progress.unmet)
         result.the_part_path = progress.the_part_path
+        if result.ok:
+            events.emit(COMPLETED)
         return result
 
+    aborted = aborted or (lambda: False)
     try:
         return outcome(_run(intent, llm, tools, events, budgets,
                             cancelled or (lambda: False), gate, progress, attachments,
                             ask, decide, list(outstanding), the_part_path))
     except Stopped:
+        if aborted():
+            return outcome(_aborted(events, "Aborted. The Step in flight was discarded; "
+                                            "everything applied before it is still in the "
+                                            "Document.", progress.applied))
         return outcome(_stopped(events, "Stopped by you. Everything applied so far is still in "
                                         "the Document; undo it Step by Step if you want it "
                                         "gone.", progress.applied))
     except _OutOfRevisions as spent:
-        return outcome(_block(events, spent.reason, spent.tried, progress.applied))
+        return outcome(_budget_exhausted(events, spent.reason, spent.tried, progress.applied))
     except ProviderRefused as exc:
         return outcome(_block(events, str(exc), progress.tried, progress.applied,
                               said=exc.said))
     except PhaseError as exc:
         events.emit(ERROR, message=str(exc))
+        events.emit(FAILED, message=str(exc))
         return outcome(LoopResult(ok=False, reason=str(exc)))
     except part_file.MissingPyYAML as exc:
         events.emit(ERROR, message=str(exc))
+        events.emit(FAILED, message=str(exc))
         return outcome(LoopResult(ok=False, reason=str(exc)))
     except Exception as exc:
         events.emit(ERROR, message="%s: %s" % (type(exc).__name__, exc))
+        events.emit(FAILED, message="%s: %s" % (type(exc).__name__, exc))
         return outcome(LoopResult(ok=False, reason=str(exc)))
 
 
@@ -4750,3 +4780,30 @@ def _stopped(events, reason, applied):
     """
     events.emit(STOPPED, reason=reason)
     return LoopResult(ok=False, blocked=True, reason=reason, steps_applied=applied)
+
+
+def _aborted(events, reason, applied):
+    """
+    A user `Aborted` this run (FCC-303) -- the same `Stopped` exception as a
+    plain Stop, told apart at `run`'s own boundary by the `aborted` callable
+    it was handed.
+
+    `blocked`/`awaiting_user` hold for the same reason `_stopped`'s do: an
+    aborted run is stopped and waiting, not failed and finished, and the
+    event stream is what says which of `stopped`, `aborted` and `blocked`
+    actually happened here.
+    """
+    events.emit(ABORTED, reason=reason)
+    return LoopResult(ok=False, blocked=True, reason=reason, steps_applied=applied)
+
+
+def _budget_exhausted(events, reason, tried, applied):
+    """
+    `_OutOfRevisions` specifically (FCC-303) -- the run did not hit a genuine
+    impasse, it spent its own ceiling of attempts and revisions. Kept off
+    `blocked` so `core/measure.py`'s blocked rate reads only the runs that ran
+    out of road for a reason that was not the budget itself.
+    """
+    events.emit(BUDGET_EXHAUSTED, reason=reason, tried=list(tried))
+    return LoopResult(ok=False, blocked=True, reason=reason, tried=list(tried),
+                      steps_applied=applied)
