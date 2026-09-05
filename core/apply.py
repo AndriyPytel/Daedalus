@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from core.events import ANSWER, QUESTION
 from core.freecad_tools import description, fit_view
 from core.lint import lint
-from core.kernel import Kernel, copy_of
+from core.kernel import Kernel, KernelResult, copy_of
 from core.kernel_worker import register_step_source, step_namespace, trimmed_traceback
 
 DISPATCH_TIMEOUT = 60.0
@@ -251,7 +251,7 @@ class ApplyPipeline:
 
     def __init__(self, document=None, worker=None, dispatch=on_main_thread,
                  transaction=None, render_dir=None, confirm=None, owned=None,
-                 events=None):
+                 events=None, main_window=None):
         self._document = document
         self._worker = worker
         self._dispatch = dispatch
@@ -261,12 +261,22 @@ class ApplyPipeline:
         self._confirm = confirm or refuse_without_asking
         self.owned = set(owned or ())
         self.events = events
+        self._main_window = main_window
+        self.locked = False
 
     @property
     def worker(self) -> Kernel:
         if self._worker is None:
             self._worker = Kernel()
         return self._worker
+
+    @property
+    def main_window(self):
+        if self._main_window is None:
+            import FreeCADGui as Gui
+
+            self._main_window = Gui.getMainWindow()
+        return self._main_window
 
     def shutdown(self):
         """
@@ -277,6 +287,44 @@ class ApplyPipeline:
         """
         if self._worker is not None:
             self._worker.kill()
+
+    def start_run(self) -> KernelResult:
+        """
+        Snapshot the GUI's current Document into the kernel and lock the GUI
+        for the run's duration (FCC-301).
+
+        This is the one moment a run's Steps are not yet the sole writer: the
+        GUI's Document as it stands right now becomes the kernel's starting
+        state, before any Step executes, so a kernel-side object count taken
+        here is directly comparable to the GUI Document's own. Locking the
+        main window is what makes that hold for the rest of the run — Qt
+        itself then refuses input to every Document-editing surface, rather
+        than this code trying to intercept edits it cannot see coming.
+
+        No open Document is not a reason to leave the GUI unlocked: the
+        kernel starts an empty session instead, the same handoff `Kernel.check`
+        already gives an explicit `None`.
+
+        Returns the kernel's own `KernelResult` for the snapshot, so a caller
+        can compare its `objects` against the GUI Document it was taken from.
+        """
+        doc = self._dispatch(self._active)
+        if doc is None:
+            seeded = self.worker.check("pass", document=None)
+        else:
+            copy = self._dispatch(lambda: copy_of(doc))
+            try:
+                seeded = self.worker.check("pass", document=copy)
+            finally:
+                _discard(copy)
+        self._dispatch(lambda: self.main_window.setEnabled(False))
+        self.locked = True
+        return seeded
+
+    def end_run(self):
+        """Unlock the GUI: the run is over, by whichever outcome ended it."""
+        self._dispatch(lambda: self.main_window.setEnabled(True))
+        self.locked = False
 
     def _active(self):
         doc = self._document() if callable(self._document) else self._document

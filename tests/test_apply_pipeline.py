@@ -291,3 +291,64 @@ def test_an_op_none_never_blocks_a_step_the_old_pipeline_would_have_applied(pipe
     result = pipeline.apply("doc.addObject('PartDesign::Pad', 'Pad')")
 
     assert result.ok
+
+
+class FakeMainWindow:
+    """Stands in for `Gui.getMainWindow()`: the only thing a run's lock touches."""
+
+    def __init__(self):
+        self.enabled = True
+
+    def setEnabled(self, value):
+        self.enabled = value
+
+
+def test_start_run_snapshots_the_document_into_the_kernel(pipeline):
+    """
+    AC1: the kernel-side object count matches the GUI Document at run start.
+    """
+    pipeline.document.Objects = [FakeObject("Box"), FakeObject("Cylinder")]
+    pipeline.fake_worker.result = KernelResult(ok=True, objects=[{"name": "Box"},
+                                                                   {"name": "Cylinder"}])
+    window = FakeMainWindow()
+    pipeline._main_window = window
+
+    seeded = pipeline.start_run()
+
+    assert len(seeded.objects) == len(pipeline.document.Objects)
+    assert pipeline.fake_worker.checked[-1]["document"] is not None
+
+
+def test_a_run_in_flight_locks_the_gui(pipeline):
+    """AC2: the GUI is locked, not silently left open, while a run is in flight."""
+    window = FakeMainWindow()
+    pipeline._main_window = window
+
+    pipeline.start_run()
+
+    assert pipeline.locked is True
+    assert window.enabled is False
+
+
+def test_a_run_that_ends_unlocks_the_gui(pipeline):
+    """AC3: after the run ends, the GUI is free again."""
+    window = FakeMainWindow()
+    pipeline._main_window = window
+    pipeline.start_run()
+
+    pipeline.end_run()
+
+    assert pipeline.locked is False
+    assert window.enabled is True
+
+
+def test_start_run_with_no_open_document_still_locks(pipeline):
+    """No Document open is not a reason to leave the GUI unlocked or crash."""
+    pipeline._document = lambda: None
+    window = FakeMainWindow()
+    pipeline._main_window = window
+
+    seeded = pipeline.start_run()
+
+    assert pipeline.locked is True
+    assert seeded.objects == []
