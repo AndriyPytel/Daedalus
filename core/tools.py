@@ -2,9 +2,11 @@
 The Tool registry — the only sanctioned route to the Document.
 
 Tools are plain functions carrying a JSON Schema. Nothing here knows how a
-Tool is called: `describe()` hands out transport-independent descriptions and
-`as_openai_tools()` is one adapter over them. An MCP adapter is another
-adapter, not a change to any Tool.
+Tool is called: `describe()` hands out transport-independent descriptions for
+a caller to adapt to whatever wire format it needs. A Tool is no longer the
+only way to reach the Document -- `core/kernel_worker.py::step_namespace`
+runs a Step's code directly against FreeCAD, and a Tool function is a
+convenience callable from there rather than the sole entry point (FCC-299).
 
 This module never imports FreeCAD. The FreeCAD-backed Tools live in
 `core/freecad_tools.py`; a fake registry for Level 1 is just a few plain
@@ -69,9 +71,6 @@ class ToolRegistry:
     def describe(self) -> List[dict]:
         """Transport-independent. Adapters are built on top of this, not instead."""
         return [tool.describe() for tool in self._tools.values()]
-
-    def as_openai_tools(self) -> List[dict]:
-        return [{"type": "function", "function": tool.describe()} for tool in self._tools.values()]
 
     def __contains__(self, name: str) -> bool:
         return name in self._tools
