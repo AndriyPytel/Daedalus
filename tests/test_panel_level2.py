@@ -391,7 +391,7 @@ def test_a_model_that_cannot_reason_is_not_offered_the_choice(panel, monkeypatch
     """A picker that changes nothing is a picker that lies."""
     from ui import copilot_panel
 
-    monkeypatch.setattr("core.llm.effort_is_honoured", lambda model_id=None: False)
+    monkeypatch.setattr("copilot.sdk.effort_is_honoured", lambda model_id=None: False)
     panel._show_effort()
     panel._open_effort_selector()
 
@@ -896,9 +896,9 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     on the bar, so the offending one can be taken off and the Intent sent
     again. FCC-14.
     """
-    from core import llm
+    from copilot import sdk
 
-    monkeypatch.setattr(llm, "selected_model_name", lambda _=None: "openai/gpt-3.5-turbo")
+    monkeypatch.setattr(sdk, "selected_model_name", lambda _=None: "openai/gpt-3.5-turbo")
     drawing = tmp_path / "bracket.step"
     drawing.write_text("ISO-10303-21;")
     panel.chip_bar.add_file(str(drawing))
