@@ -452,6 +452,17 @@ def nobody_to_ask(question):
     return DECIDE_FOR_ME
 
 
+class NeedsAnswer(Exception):
+    """
+    Raised by an `ask` callback that has nobody to ask (FCC-316).
+
+    `copilot.sdk.Client` raises this instead of guessing when its caller
+    supplied no answer callback; `run` turns it into a blocked, resumable
+    `LoopResult` rather than a failure, carrying the question itself as the
+    reason so the caller can answer it later and pick the same run back up.
+    """
+
+
 @dataclass
 class LoopResult:
     """
@@ -2985,6 +2996,8 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, aborte
     except ProviderRefused as exc:
         return outcome(_block(events, str(exc), progress.tried, progress.applied,
                               said=exc.said))
+    except NeedsAnswer as exc:
+        return outcome(_block(events, str(exc), progress.tried, progress.applied))
     except PhaseError as exc:
         events.emit(ERROR, message=str(exc))
         events.emit(FAILED, message=str(exc))
