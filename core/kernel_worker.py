@@ -297,6 +297,19 @@ def _why_it_failed(obj):
                                        _why_a_dressup_failed(obj)) if said)
 
 
+def _objects_left_in_error(doc):
+    """
+    Every object a recompute left `Invalid` (FCC-11), one line each.
+
+    Named like its siblings (`_bodies_in_pieces`, `_bodies_with_invalid_shape`,
+    `_bodies_with_inverted_solid`) so the post-Step checklist is a set of
+    functions a completeness test can enumerate by name, this one included --
+    it used to be the one check still written inline.
+    """
+    return ["%s (%s): %s" % (o.Name, o.TypeId, _why_it_failed(o))
+            for o in doc.Objects if o.State and "Invalid" in o.State]
+
+
 def _why_a_dressup_failed(obj):
     """
     What a fillet or a chamfer will not say for itself.
@@ -665,8 +678,7 @@ def _run_step_body(doc, namespace, touched, request):
     else:
         doc.recompute(scope)
 
-    failures = ["%s (%s): %s" % (o.Name, o.TypeId, _why_it_failed(o))
-                for o in doc.Objects if o.State and "Invalid" in o.State]
+    failures = _objects_left_in_error(doc)
     if failures:
         raise RuntimeError("recompute left these objects in error:\n" + "\n".join(failures))
 
