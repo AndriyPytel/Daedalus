@@ -24,6 +24,7 @@ re-derived once FCC-309 records real token counts.
 import math
 import os
 
+from core.events import SUB_AGENT_ANSWERED, SUB_AGENT_REFUSED, SUB_AGENT_SPAWNED
 from core.llm import TEXT, Session
 
 TURN_BUDGET = 30
@@ -110,7 +111,7 @@ class SessionTreeSupervisor:
         self.wall_time += seconds
 
 
-def delegate(supervisor, phase_session, phase_depth, llm, prompt):
+def delegate(supervisor, phase_session, phase_depth, llm, prompt, stream=None, phase=None):
     """
     Run one delegated turn under *supervisor*, or refuse it.
 
@@ -120,10 +121,21 @@ def delegate(supervisor, phase_session, phase_depth, llm, prompt):
     settles: "A sub-agent returns an answer, not a transcript." Returns
     `None` without touching *phase_session* or *llm* when `supervisor.spawn`
     refuses the delegation.
+
+    *stream* is the run's `EventStream` and *phase* the spawning phase's
+    name; when given, `SUB_AGENT_SPAWNED` fires before the worker's own turn
+    runs -- so a delegating phase renders as a live row while the worker is
+    still going, not only once it answers (FCC-308) -- and either
+    `SUB_AGENT_ANSWERED` (carrying the worker's full transcript, since only
+    `answer` reaches *phase_session*) or `SUB_AGENT_REFUSED` follows.
     """
     child_depth = supervisor.spawn(phase_depth)
     if child_depth is None:
+        if stream is not None:
+            stream.emit(SUB_AGENT_REFUSED, phase=phase, reason=supervisor.refusals[-1]["reason"])
         return None
+    if stream is not None:
+        stream.emit(SUB_AGENT_SPAWNED, phase=phase, prompt=prompt)
     worker_session = Session()
     try:
         supervisor.record_turn()
@@ -132,4 +144,7 @@ def delegate(supervisor, phase_session, phase_depth, llm, prompt):
     finally:
         supervisor.release()
     phase_session.messages.append({"role": "assistant", "content": answer})
+    if stream is not None:
+        stream.emit(SUB_AGENT_ANSWERED, phase=phase, answer=answer,
+                    transcript=list(worker_session.messages))
     return answer

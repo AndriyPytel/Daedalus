@@ -63,6 +63,16 @@ from the `intent` or other verbatim text it was handed alongside: a reader
 sees what the orchestrator decided without it being mixed into the message
 the user actually typed.
 
+`sub_agent_spawned`, `sub_agent_answered` and `sub_agent_refused` are a
+worker's whole visible life (`core/subagent.py :: delegate`, FCC-308): spawned
+fires before the worker's own turn runs, so a phase that delegates renders as
+a live row under it rather than a phase that just takes longer with nothing
+on the panel to say why; answered carries the worker's answer and its full
+transcript, because only the answer ever reaches the phase agent's own
+conversation (FCC-307's return contract) and the transcript is what stays
+inspectable; refused is `SessionTreeSupervisor.spawn`'s own refusal, its own
+entry rather than a delegation silently missing from the panel.
+
 A run ends one of six distinct ways, and `core/measure.py`'s rate lambdas may
 never merge two of them (FCC-303, extending FCC-292's `stopped`-vs-`blocked`
 split to the rest): `completed` is `_run` reaching a genuine `ok=True`
@@ -114,12 +124,16 @@ COMPLETED = "completed"
 ABORTED = "aborted"
 BUDGET_EXHAUSTED = "budget_exhausted"
 FAILED = "failed"
+SUB_AGENT_SPAWNED = "sub_agent_spawned"
+SUB_AGENT_ANSWERED = "sub_agent_answered"
+SUB_AGENT_REFUSED = "sub_agent_refused"
 
 KINDS = (
     INTENT, THOUGHT, WRITING, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
     GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED,
     ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, REVIEW_SUSPECTED, BLOCKED, STOPPED,
     CALL_STARTED, COST, ERROR, CHANGE_SET, ROUTED, COMPLETED, ABORTED, BUDGET_EXHAUSTED, FAILED,
+    SUB_AGENT_SPAWNED, SUB_AGENT_ANSWERED, SUB_AGENT_REFUSED,
 )
 
 

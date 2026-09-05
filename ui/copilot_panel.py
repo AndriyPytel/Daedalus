@@ -1464,6 +1464,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         self._plan_widget = None
         self._live_rows = {}
+        self._subagent_rows = {}
         self._current_step = 0
         self._question_card = None
         self._answers_to_enter = None
@@ -1913,6 +1914,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
             ev.REVIEW_VERDICT: CopilotPanel._noop,
             ev.PLAN_REVISED: CopilotPanel._noop,
             ev.ERROR: CopilotPanel._noop,
+            ev.SUB_AGENT_SPAWNED: CopilotPanel._oe_sub_agent_spawned,
+            ev.SUB_AGENT_ANSWERED: CopilotPanel._oe_sub_agent_answered,
+            ev.SUB_AGENT_REFUSED: CopilotPanel._oe_sub_agent_refused,
         }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "on_event")
@@ -1989,6 +1993,19 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if self._plan_widget and self._current_step:
             self._plan_widget.mark(self._current_step, PLAN_FAILED)
         return False
+
+    def _oe_sub_agent_spawned(self, event, data):
+        self._render_sub_agent_spawned(data["phase"], data.get("prompt", ""))
+        return True
+
+    def _oe_sub_agent_answered(self, event, data):
+        self._render_sub_agent_answered(data["phase"], data.get("answer", ""),
+                                        data.get("transcript") or [])
+        return True
+
+    def _oe_sub_agent_refused(self, event, data):
+        self._render_sub_agent_refused(data["phase"], data.get("reason", ""))
+        return True
 
     def _noop(self, event, data):
         return False
@@ -2296,6 +2313,44 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if text:
             row.append_text(text)
 
+    def _render_sub_agent_spawned(self, phase, prompt):
+        """
+        A worker's own row, opened the moment it is spawned rather than
+        once it answers -- otherwise the phase that delegated just takes
+        longer with nothing on the panel to say why (FCC-308, AC6). Closed
+        onto nothing until `_render_sub_agent_answered` gives it a
+        transcript to open onto.
+        """
+        row = self._subagent_rows[phase] = AccordionWidget("Sub-agent (%s)…" % phase)
+        row.opens_onto_nothing()
+        self.add_chat_widget(row)
+        row.start_pulsing()
+
+    def _render_sub_agent_answered(self, phase, answer, transcript):
+        """
+        The row `_render_sub_agent_spawned` opened, filled with the worker's
+        full transcript -- inspectable even though *phase_session* itself
+        only ever received *answer* (FCC-307's return contract).
+        """
+        row = self._subagent_rows.pop(phase, None)
+        if row is None:
+            row = AccordionWidget("Sub-agent (%s)" % phase)
+            self.add_chat_widget(row)
+        else:
+            row.stop_pulsing()
+            row.toggle_button.setText("Sub-agent (%s)" % phase)
+        row.append_text("\n".join(
+            "%s: %s" % (message.get("role"), message.get("content"))
+            for message in transcript) or answer)
+
+    def _render_sub_agent_refused(self, phase, reason):
+        """
+        A refused spawn (`SessionTreeSupervisor.spawn`), its own row rather
+        than a delegation silently missing from the panel (FCC-308, AC6).
+        """
+        row = AccordionWidget("Sub-agent refused (%s)" % phase)
+        self.add_chat_widget(row)
+        row.append_text(reason)
 
     def _render_attachments(self, files):
         """

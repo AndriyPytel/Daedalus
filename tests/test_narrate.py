@@ -19,7 +19,8 @@ from core.events import (
     ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
     CALL_STARTED, CHANGE_SET, COMPLETED, COST, ERROR, FAILED, GATE, INTENT, KINDS,
     OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
-    REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED, STEP_STARTED, STOPPED, THOUGHT,
+    REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED, STEP_STARTED, STOPPED, SUB_AGENT_ANSWERED,
+    SUB_AGENT_REFUSED, SUB_AGENT_SPAWNED, THOUGHT,
     TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, Event,
 )
 from core.narrate import Narration, narrate
@@ -61,6 +62,10 @@ SAMPLES = {
     CHANGE_SET: {"changes": [{"section": "datums", "kind": "added", "id": "d1",
                               "now": {"name": "d1", "is": "20 mm from the left end"}}]},
     ROUTED: {"route": "design"},
+    SUB_AGENT_SPAWNED: {"phase": "design", "prompt": "read page 2"},
+    SUB_AGENT_ANSWERED: {"phase": "design", "answer": "13.0 mm",
+                         "transcript": [{"role": "user", "content": "read page 2"}]},
+    SUB_AGENT_REFUSED: {"phase": "design", "reason": "depth"},
 }
 
 
@@ -82,7 +87,8 @@ def test_what_a_call_cost_is_not_narrated():
     assert narrate(an_event(COST)) == Narration()
 
 
-@pytest.mark.parametrize("kind", [PLAN, TOOL_CALL, THOUGHT])
+@pytest.mark.parametrize(
+    "kind", [PLAN, TOOL_CALL, THOUGHT, SUB_AGENT_SPAWNED, SUB_AGENT_ANSWERED, SUB_AGENT_REFUSED])
 def test_the_shapes_that_are_not_prose_say_nothing(kind):
     """
     A Plan is its Steps, a tool call is its code, and reasoning is a stream.

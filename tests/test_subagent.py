@@ -120,3 +120,51 @@ def test_delegate_refused_at_depth_1_returns_none_and_touches_no_session():
     assert answer is None
     assert phase.messages == []
     assert worker_llm.calls == []
+
+
+def test_delegate_emits_spawned_then_answered_on_the_stream():
+    from core.events import EventStream, SUB_AGENT_ANSWERED, SUB_AGENT_SPAWNED
+
+    phase = Session()
+    worker_llm = ScriptedLLMClient(["the answer"])
+    supervisor = sa.SessionTreeSupervisor()
+    stream = EventStream()
+
+    sa.delegate(supervisor, phase, phase_depth=0, llm=worker_llm,
+                prompt="delegate this", stream=stream, phase="design")
+
+    kinds = [event.kind for event in stream]
+    assert kinds == [SUB_AGENT_SPAWNED, SUB_AGENT_ANSWERED]
+    assert stream[0].data == {"phase": "design", "prompt": "delegate this"}
+    assert stream[1].data["phase"] == "design"
+    assert stream[1].data["answer"] == "the answer"
+    assert stream[1].data["transcript"] == worker_llm.calls[0] + [
+        {"role": "assistant", "content": "the answer"}]
+
+
+def test_delegate_emits_nothing_without_a_stream():
+    supervisor = sa.SessionTreeSupervisor()
+    worker_llm = ScriptedLLMClient(["the answer"])
+    phase = Session()
+
+    answer = sa.delegate(supervisor, phase, phase_depth=0, llm=worker_llm, prompt="x")
+
+    assert answer == "the answer"
+
+
+def test_a_refused_delegate_emits_sub_agent_refused_and_calls_the_worker_never():
+    from core.events import EventStream, SUB_AGENT_REFUSED
+
+    phase = Session()
+    worker_llm = ScriptedLLMClient(["should never be asked"])
+    supervisor = sa.SessionTreeSupervisor()
+    stream = EventStream()
+
+    answer = sa.delegate(supervisor, phase, phase_depth=1, llm=worker_llm,
+                          prompt="a worker trying to delegate further",
+                          stream=stream, phase="worker")
+
+    assert answer is None
+    assert worker_llm.calls == []
+    assert [event.kind for event in stream] == [SUB_AGENT_REFUSED]
+    assert stream[0].data == {"phase": "worker", "reason": "depth"}
