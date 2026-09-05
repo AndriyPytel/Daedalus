@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, INTENT,
     OUTSTANDING, PART, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED,
-    REVIEW_VERDICT, STEP_STARTED, STOPPED, TOOL_RESULT, UNBUILT,
+    REVIEW_VERDICT, ROUTED, STEP_STARTED, STOPPED, TOOL_RESULT, UNBUILT,
 )
 
 _GATE_SAID = {
@@ -110,6 +110,9 @@ def narrate(event) -> Narration:
 
     if kind == PART:
         return Narration(line="The part as read: %s" % data.get("path", ""))
+
+    if kind == ROUTED:
+        return Narration(status="Routed to: %s" % data.get("route", ""))
 
     if kind == GATE:
         if data.get("standing") and data.get("decision"):
