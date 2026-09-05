@@ -3656,7 +3656,7 @@ def _unhandled_kinds(all_kinds, method_sources, allowlist):
 
 
 PANEL_DISPATCH_ALLOWLIST = {
-    "QUESTION", "ANSWER", "DESIGN", "OUTSTANDING", "REVIEW_SUSPECTED",
+    "QUESTION", "ANSWER", "DESIGN", "OUTSTANDING", "REVIEW_SUSPECTED", "ROUTED",
 }
 
 
@@ -3672,8 +3672,8 @@ def test_every_event_kind_is_handled_by_a_panel_dispatcher_or_allowlisted():
     `PANEL_DISPATCH_ALLOWLIST` is the kinds none of the three chains branch
     on by name: `QUESTION`/`ANSWER` never reach the panel as events (they are
     the loop asking and the user answering), and `DESIGN`/`OUTSTANDING`/
-    `REVIEW_SUSPECTED` are narrated generically by `_say(narrate(event))`
-    at the tail of `on_event` rather than singled out.
+    `REVIEW_SUSPECTED`/`ROUTED` are narrated generically by
+    `_say(narrate(event))` at the tail of `on_event` rather than singled out.
     """
     import inspect
 

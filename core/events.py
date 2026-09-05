@@ -56,6 +56,12 @@ changed since the one Plan last saw, carried on the stream the same turn
 Plan is handed it in place of the whole document (FCC-311): a moved datum on
 the stream as its own entry is the record of why a re-plan cited what it
 cited, without a reader re-deriving the diff from two `design` events by hand.
+
+`routed` is the orchestrator's own decision (`core/orchestrator.py`) -- which
+agent a message was classified as belonging to -- as its own entry, separate
+from the `intent` or other verbatim text it was handed alongside: a reader
+sees what the orchestrator decided without it being mixed into the message
+the user actually typed.
 """
 import json
 import time
@@ -89,12 +95,13 @@ CALL_STARTED = "call_started"
 COST = "cost"
 ERROR = "error"
 CHANGE_SET = "change_set"
+ROUTED = "routed"
 
 KINDS = (
     INTENT, THOUGHT, WRITING, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
     GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED,
     ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, REVIEW_SUSPECTED, BLOCKED, STOPPED,
-    CALL_STARTED, COST, ERROR, CHANGE_SET,
+    CALL_STARTED, COST, ERROR, CHANGE_SET, ROUTED,
 )
 
 
