@@ -20,7 +20,7 @@ CONTROL = "control"
 
 ROUTES = (DESIGN, RUN_QUESTION, CONTROL)
 
-_SYSTEM = (
+SYSTEM = (
     "You route a user's message to exactly one of three agents. Reply with "
     "one word and nothing else: `design` for a request to create or change "
     "the part, `run_question` for a question about a run already underway "
@@ -37,7 +37,7 @@ def classify(message: str, llm, session: Session = None) -> str:
     DESIGN when the model answers with none of them, since a design request
     is the route every phase already exists to serve.
     """
-    session = session or Session(system=_SYSTEM)
+    session = session or Session(system=SYSTEM)
     said = "".join(chunk.text for chunk in session.turn(llm, message)
                    if chunk.kind == TEXT).strip().lower()
     for candidate in ROUTES:
