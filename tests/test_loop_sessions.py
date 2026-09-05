@@ -85,7 +85,7 @@ def test_a_trailing_gaps_free_continuation_does_not_count_against_attempts_per_s
     """
     result, events, _, _ = drive(
         [plan_reply("Only")] + [json.dumps({"note": "not sure what to build here"})] * 2,
-        budgets=Budgets(looks_per_turn=0, attempts_per_step=1, revisions=0),
+        budgets=Budgets(attempts_per_step=1, revisions=0),
     )
 
     assert not result.ok
@@ -136,54 +136,22 @@ def test_steps_applied_before_a_trailing_gap_stay_applied():
     assert tools.applied_codes() == ["first()", "second()"]
 
 
-def test_execute_cannot_apply_its_own_code_through_a_look():
-    """Execute proposes; the loop decides when a Step runs."""
+def test_execute_leaving_no_code_does_not_apply_anything_and_a_regeneration_does():
+    """
+    A reply with no `steps`, no `obsolete` and no `unbuildable` is a failed
+    attempt now (FCC-304 deleted the mid-turn look Execute used to be able to
+    ask with) — the free trailing-gap continuation gives it one more try, and
+    that one writes the Step.
+    """
     result, _, _, tools = drive([
         plan_reply("Add a box"),
-        look_reply("apply_step", code="doc.addObject('Part::Box', 'Sneaky')"),
+        json.dumps({"note": "what does this build have?"}),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ])
 
     assert result.ok
     assert tools.applied_codes() == ["doc.addObject('Part::Box', 'Box')"]
-
-
-def test_execute_can_ask_what_a_type_has_before_any_object_of_it_exists():
-    """
-    `describe_object` needs an object that is already there and
-    `supported_types` reports names only, so the properties of a type nothing
-    has been built from yet were unreachable — which is how `'Through all'`
-    reached `PartDesign::Pocket.Type` and failed Preflight. FCC-95.
-    """
-    result, _, llm, tools = drive([
-        plan_reply("Pocket the plate through"),
-        look_reply("describe_type", type_id="PartDesign::Pocket"),
-        code_reply("pocket.Type = 'ThroughAll'"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert result.ok
-    assert ("describe_type", {"type_id": "PartDesign::Pocket"}) in tools.calls
-
-    offered = _turns_of(llm, "execute")[0]["tools_you_may_look_with"]
-    assert "describe_type" in [described["name"] for described in offered]
-
-    answered = _turns_of(llm, "execute")[1]["what_you_looked_at"][-1]
-    assert "ThroughAll" in answered["result"]["properties"][0]["enumeration"]
-
-
-def test_a_look_at_a_tool_that_does_not_exist_is_answered_not_fatal():
-    result, _, llm, _ = drive([
-        plan_reply("Add a box"),
-        look_reply("read_the_manual"),
-        code_reply("doc.addObject('Part::Box', 'Box')"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert result.ok
-    answered = json.loads(llm.calls[3][-1]["content"])
-    assert "error" in answered["what_you_looked_at"][-1]["result"]
 
 
 def test_the_whole_plan_is_written_in_one_call():

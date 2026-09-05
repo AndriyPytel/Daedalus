@@ -63,24 +63,15 @@ not need to import them. The code must be a pure function of the Document:
 no Gui.*, no reading the live selection, and no literal element names such as
 Edge12 — compute references from the geometry at execution time instead.
 
-Do not guess at the API. Anything you are unsure of — whether a type exists,
-what a property is called, what its accepted values are spelt like, what an
-object is built from — ask the running FreeCAD with a look before you write
-code. It answers about this exact build. `supported_types` says which types this
-build has, `describe_type` says what a type has before any object of it exists —
-every property, and for a property that is a choice between named values, the
-exact spellings it accepts — and `describe_object` says the same of an object
-already in the Document. Ask once: your looks apply to the whole Plan, so
-looking twice at the same thing spends a turn and tells you nothing new.
-`what_you_looked_at` is everything this run has already been told that is still
-true — every answer about a *type*, which cannot change while FreeCAD is
-running, and every answer about an *object* that no Step has landed on top of
-since. Read it before you ask for anything: what is in it you already have, and
-asking again spends a turn to be handed the same words back.
-If a look shows a type that does what a Step asks, use that type rather than
-building the same shape out of primitives. A Step's code must change the
-Document; defining a function you never call changes nothing and counts as a
-failed Step.
+Do not guess at the API. You get one reply, with no chance to ask the running
+FreeCAD anything before it — `what_you_looked_at` is everything this run has
+already been told and is still true: every material card, every answer about
+a *type*, which cannot change while FreeCAD is running, and every answer about
+an *object* that no Step has landed on top of since. Read it before you write:
+what is in it you already know. Where a type it names does what a Step asks,
+use that type rather than building the same shape out of primitives. A Step's
+code must change the Document; defining a function you never call changes
+nothing and counts as a failed Step.
 
 A Step carries an `op` naming its operation from the closed 36-verb list
 (ADR-0026, FCC-233), and the object your code builds for it must be of the
@@ -226,7 +217,6 @@ raise RuntimeError(...)` before the reference is assigned. The lint refuses a
 `Base` computed into a variable that nothing raises on the length of.
 
 Reply with JSON only, one of:
-  {"look": {"tool": "...", "arguments": {...}}}   to ask, before committing to code
   {"steps": [{"step": 1, "code": "...", "label": "short name for the undo entry"},
              {"step": 2, "code": "...", "label": "..."}],
    "unbuildable": "why the Step you left out cannot be built"}   the key is optional
