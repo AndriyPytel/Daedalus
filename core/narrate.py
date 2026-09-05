@@ -21,9 +21,10 @@ dependency the wrong way.
 from dataclasses import dataclass
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, ERROR, GATE, INTENT,
-    OUTSTANDING, PART, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED,
-    REVIEW_VERDICT, ROUTED, STEP_STARTED, STOPPED, TOOL_RESULT, UNBUILT,
+    ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
+    COMPLETED, ERROR, FAILED, GATE, INTENT, OUTSTANDING, PART, PLAN_REVISED,
+    PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED,
+    STEP_STARTED, STOPPED, TOOL_RESULT, UNBUILT,
 )
 
 _GATE_SAID = {
@@ -189,6 +190,23 @@ def narrate(event) -> Narration:
 
     if kind == STOPPED:
         return Narration(line="⏸  " + data["reason"])
+
+    if kind == ABORTED:
+        return Narration(line="⏹  " + data["reason"])
+
+    if kind == BUDGET_EXHAUSTED:
+        tried = data.get("tried") or []
+        if not tried:
+            return Narration(line="⏸  " + data["reason"])
+        return Narration(line="⏸  " + data["reason"],
+                         title="What was tried (%d)" % len(tried),
+                         body=_what_was_tried(tried))
+
+    if kind == FAILED:
+        return Narration(title="✗ Something went wrong", body=data["message"])
+
+    if kind == COMPLETED:
+        return Narration(line="✓ Done.")
 
     if kind == ERROR:
         return Narration(title="✗ Something went wrong", body=data["message"])

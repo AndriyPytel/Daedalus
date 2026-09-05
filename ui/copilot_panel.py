@@ -571,8 +571,27 @@ class LoopWorker(QtCore.QObject):
         self.pipeline = None
         self.document = None
         self._stop = threading.Event()
+        self._abort = threading.Event()
 
     def stop(self):
+        self._stop.set()
+        self.ask.abandon()
+
+    def abort(self):
+        """
+        Kills the kernel now, discarding whatever Step is in flight (FCC-303).
+
+        Where `stop` only raises the flag and leaves the running Step to
+        finish and checkpoint on its own, this also calls `pipeline.shutdown`
+        -- the same call a Session's own teardown already makes -- so the
+        `Kernel.check` call in flight comes back a crash rather than a result,
+        and `core/kernel.py`'s reopen-the-checkpoint recovery is what keeps
+        the in-flight Step out of the Document. The kernel itself survives:
+        `Kernel.kill` only drops the process, so the next Step run restarts it.
+        """
+        self._abort.set()
+        if self.pipeline is not None:
+            self.pipeline.shutdown()
         self._stop.set()
         self.ask.abandon()
 
@@ -631,6 +650,7 @@ class LoopWorker(QtCore.QObject):
         from utils.logger import generate_crash_report, logger
 
         self._stop.clear()
+        self._abort.clear()
         events = EventStream([self.bridge.subscriber()])
         try:
             events.log_to(transcript)
@@ -659,6 +679,7 @@ class LoopWorker(QtCore.QObject):
         try:
             result = run(intent, llm=client, tools=tools,
                          events=events, cancelled=self._stop.is_set,
+                         aborted=self._abort.is_set,
                          attachments=attachments, gate=self.ask.about_the_plan,
                          ask=self.ask.about_missing_values,
                          decide=self.ask.about_the_revision,
@@ -1116,6 +1137,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.stop_button.setVisible(False)
         strip.addWidget(self.stop_button)
 
+        self.abort_button = QtWidgets.QPushButton()
+        self.abort_button.setObjectName("SendButton")
+        self.abort_button.setIcon(UIHelpers.get_icon("circle_x", size=ICON, on=self.abort_button))
+        self.abort_button.setToolTip("Abort now, discarding the Step in progress")
+        self.abort_button.clicked.connect(self.on_abort)
+        self.abort_button.setVisible(False)
+        strip.addWidget(self.abort_button)
+
         inner.addLayout(strip)
         return card
 
@@ -1182,6 +1211,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
                                    (self.history_btn, "history", ICON),
                                    (self.send_button, "send", ICON),
                                    (self.stop_button, "square", ICON),
+                                   (self.abort_button, "circle_x", ICON),
                                    (self.model_button, "chevron_down", ICON_DENSE)):
             button.setIcon(UIHelpers.get_icon(icon, size=size, on=button))
 
@@ -1752,13 +1782,34 @@ class CopilotPanel(QtWidgets.QDockWidget):
             bundle.pending_question = None
         self.worker.stop()
         self.stop_button.setEnabled(False)
+        self.abort_button.setEnabled(False)
         self._queue_widget.now("Stopping after the current attempt…")
+
+    def on_abort(self):
+        """
+        Kills the kernel now, discarding whatever Step is in flight — where
+        Stop lets it finish (FCC-303).
+        """
+        if self._question_card is not None:
+            self._question_card.setEnabled(False)
+            self._question_card = None
+            self._answers_to_enter = None
+            self._update_composer_enabled()
+        bundle = self._workers.get(self._current_log())
+        if bundle is not None:
+            bundle.pending_question = None
+        self.worker.abort()
+        self.stop_button.setEnabled(False)
+        self.abort_button.setEnabled(False)
+        self._queue_widget.now("Aborting…")
 
     def _set_running(self, running: bool):
         self._running = running
         self.send_button.setVisible(not running)
         self.stop_button.setVisible(running)
         self.stop_button.setEnabled(running)
+        self.abort_button.setVisible(running)
+        self.abort_button.setEnabled(running)
         self._update_composer_enabled()
 
     def _update_composer_enabled(self):
@@ -1846,6 +1897,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
             ev.APPLIED: CopilotPanel._oe_applied,
             ev.BLOCKED: CopilotPanel._oe_blocked,
             ev.STOPPED: CopilotPanel._oe_blocked,
+            ev.ABORTED: CopilotPanel._oe_blocked,
+            ev.BUDGET_EXHAUSTED: CopilotPanel._oe_blocked,
+            ev.FAILED: CopilotPanel._oe_blocked,
+            ev.COMPLETED: CopilotPanel._noop,
             ev.QUESTION: CopilotPanel._noop,
             ev.ANSWER: CopilotPanel._noop,
             ev.DESIGN: CopilotPanel._noop,
@@ -2009,6 +2064,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
             ev.REVIEW_SUSPECTED: CopilotPanel._noop,
             ev.BLOCKED: CopilotPanel._uq_fail_current,
             ev.STOPPED: CopilotPanel._uq_fail_current,
+            ev.ABORTED: CopilotPanel._uq_fail_current,
+            ev.BUDGET_EXHAUSTED: CopilotPanel._uq_fail_current,
+            ev.FAILED: CopilotPanel._uq_fail_current,
+            ev.COMPLETED: CopilotPanel._noop,
             ev.ERROR: CopilotPanel._uq_fail_current,
         }).get(event.kind)
         if handler is None:
@@ -2105,6 +2164,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
             ev.REVIEW_SUSPECTED: CopilotPanel._noop,
             ev.BLOCKED: CopilotPanel._noop,
             ev.STOPPED: CopilotPanel._noop,
+            ev.ABORTED: CopilotPanel._noop,
+            ev.BUDGET_EXHAUSTED: CopilotPanel._noop,
+            ev.FAILED: CopilotPanel._noop,
+            ev.COMPLETED: CopilotPanel._noop,
             ev.CALL_STARTED: CopilotPanel._noop,
             ev.COST: CopilotPanel._noop,
             ev.ERROR: CopilotPanel._noop,

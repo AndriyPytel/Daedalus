@@ -19,7 +19,7 @@ from unittest.mock import Mock
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
@@ -1144,7 +1144,7 @@ def test_three_attempts_per_step_then_blocked_with_what_was_tried():
 
     assert not result.ok
     assert tools.applied_codes() == ["try1()", "try2()", "try3()"]
-    blocked = events.first(BLOCKED)
+    blocked = events.first(BUDGET_EXHAUSTED)
     assert blocked is not None
     assert len(blocked.data["tried"]) == 3
     assert [t["traceback"] for t in blocked.data["tried"]] == ["one", "two", "three"]
