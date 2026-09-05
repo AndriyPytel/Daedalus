@@ -65,6 +65,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Callable, Iterable, Iterator, List
 
@@ -170,6 +171,42 @@ class Chunk:
     text: str
 
 
+class Session:
+    """
+    One agent's conversation: a persistent message list, kept and handed back
+    whole on every `turn`, so a second call to the same agent sees what it
+    said and was told on the first without the caller reassembling
+    `[system, user] + prior` itself (FCC-309).
+
+    `id` is the typed identity a conversation is worked out from, in the seam
+    that used to be a bare log-path string (`core/sessions.py ::
+    SettingsIndex.new_log`, keyed by that path throughout). Wiring the panel's
+    own Session index onto this identity is FCC-310's; this is only the
+    object that identity is on, from here.
+    """
+
+    def __init__(self, id: str = None, system: str = None):
+        self.id = id or uuid.uuid4().hex
+        self.messages: List[dict] = []
+        if system:
+            self.messages.append({"role": "system", "content": system})
+
+    def turn(self, llm, content) -> Iterator[Chunk]:
+        """
+        Stream a reply to *content*, added as this conversation's next user
+        turn. The reply is appended to `messages` too, once the stream is
+        drained, so the conversation *llm* sees on the next `turn` is the
+        whole history rather than one call's worth of it.
+        """
+        self.messages.append({"role": "user", "content": content})
+        text = []
+        for chunk in llm.stream(list(self.messages)):
+            if chunk.kind == TEXT:
+                text.append(chunk.text)
+            yield chunk
+        self.messages.append({"role": "assistant", "content": "".join(text)})
+
+
 class LiteLLMClient:
     """
     Streams from any provider LiteLLM supports.
@@ -256,9 +293,13 @@ class LiteLLMClient:
         if openai_compatible and not finished:
             raise _cut_off(self.model)
 
-        cost = _priced(self.model, chunks, messages)
-        if cost is not None:
-            self.last_cost = {"usd": cost, "model": self.model}
+        cost, tokens = _billed(self.model, chunks, messages)
+        if cost is not None or tokens is not None:
+            self.last_cost = {"model": self.model}
+            if cost is not None:
+                self.last_cost["usd"] = cost
+            if tokens is not None:
+                self.last_cost.update(tokens)
 
 
 def _may_reason(model) -> bool:
@@ -295,33 +336,49 @@ def _output_cap(model, wanted) -> int:
     return min(wanted, known) if known else wanted
 
 
-def _priced(model, chunks, messages):
+def _billed(model, chunks, messages):
     """
     What the raw stream *chunks* would have cost against *model*'s price
-    table, or None.
+    table, and the prompt/completion/cached-prompt token counts the provider
+    reported, or (None, None).
 
     Mid-stream, LiteLLM writes cost onto `CustomStreamWrapper`'s own
     `logging_obj` — an object `stream()` never holds — so this is the
     documented manual route instead: `stream_chunk_builder` needs the full
     *messages* list to reassemble the chunks into a normal `ModelResponse`,
-    and `completion_cost` prices that. Checked against the installed litellm
-    (1.95.0, an `AdditionalPythonPackage` to the FreeCAD interpreter and not
-    the repo's `.venv`).
+    which carries both the price and the `Usage` LiteLLM already parsed off
+    the wire. Checked against the installed litellm (1.95.0, an
+    `AdditionalPythonPackage` to the FreeCAD interpreter and not the repo's
+    `.venv`).
 
     A model LiteLLM has no price table entry for raises out of
     `completion_cost` rather than pricing at zero — a gateway's, the same kind
     `_may_reason` and `_output_cap` already give the benefit of the doubt to —
-    and that is caught here, narrowly around these two calls alone, so a
-    genuine bug in the reassembly still raises rather than reading as just
-    another unpriced model.
+    and that is caught here, narrowly around the price alone, so a call still
+    reports the tokens it spent even where the price table has never heard of
+    the model.
     """
     import litellm
 
     try:
         built = litellm.stream_chunk_builder(chunks, messages=messages)
-        return litellm.completion_cost(completion_response=built, model=model)
     except Exception:
-        return None
+        return None, None
+
+    usage = getattr(built, "usage", None)
+    tokens = None
+    if usage is not None:
+        tokens = {"prompt_tokens": usage.prompt_tokens,
+                  "completion_tokens": usage.completion_tokens}
+        cached = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", None)
+        if cached:
+            tokens["cached_tokens"] = cached
+
+    try:
+        cost = litellm.completion_cost(completion_response=built, model=model)
+    except Exception:
+        cost = None
+    return cost, tokens
 
 
 def _deltas(raw) -> Iterator[Chunk]:
@@ -745,8 +802,8 @@ class ClaudeCodeClient:
                 for chunk in _said(event):
                     yield chunk
                 if event.get("total_cost_usd") is not None:
-                    self.last_cost = {"usd": event["total_cost_usd"],
-                                      "model": self.model}
+                    self.last_cost = {"usd": event["total_cost_usd"], "model": self.model}
+                    self.last_cost.update(_tokens_of(event.get("usage") or {}))
 
             code = process.wait()
             if overdue.is_set():
@@ -1002,6 +1059,25 @@ def _clock(epoch) -> str:
         return time.strftime("%H:%M", time.localtime(float(epoch)))
     except (TypeError, ValueError):
         return "the top of the next window"
+
+
+def _tokens_of(usage: dict) -> dict:
+    """
+    Prompt, completion and cached-prompt token counts off a `result` event's
+    own `usage` -- `input_tokens` and `output_tokens` on this route, where the
+    keyed one reads `prompt_tokens`/`completion_tokens` off LiteLLM's `Usage`.
+    `cache_read_input_tokens` is the preamble a cache hit spared the model,
+    and is omitted rather than zero where nothing was cached.
+    """
+    tokens = {}
+    if usage.get("input_tokens") is not None:
+        tokens["prompt_tokens"] = usage["input_tokens"]
+    if usage.get("output_tokens") is not None:
+        tokens["completion_tokens"] = usage["output_tokens"]
+    cached = usage.get("cache_read_input_tokens")
+    if cached:
+        tokens["cached_tokens"] = cached
+    return tokens
 
 
 class ScriptedLLMClient:

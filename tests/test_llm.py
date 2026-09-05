@@ -476,39 +476,48 @@ def test_a_priced_streaming_call_sets_last_cost():
 
     collect(client.stream([{"role": "user", "content": "hi"}]))
 
-    assert client.last_cost == {"usd": 0.004521, "model": "claude-3-7-sonnet-20250219"}
+    assert client.last_cost == {
+        "usd": 0.004521, "model": "claude-3-7-sonnet-20250219",
+        "prompt_tokens": 1066, "completion_tokens": 37,
+    }
 
 
-def test_an_unpriced_model_leaves_last_cost_none_and_still_delivers_the_answer():
+def test_an_unpriced_model_still_reports_tokens_and_delivers_the_answer():
     """
     `gemini/` carries no fallback: checked directly, `completion_cost` prices
     an unmapped `openai/`-prefixed model at a default $0.0001 rather than
     raising, where an unmapped `gemini/` or `anthropic/` one raises "This
     model isn't mapped yet." `gemini/totally-unknown-model` is picked to reach
-    that raise, which `_priced` must swallow without disturbing the reply
-    already streamed.
+    that raise, which `_billed` must swallow without disturbing the reply
+    already streamed or the token counts the same reassembled `ModelResponse`
+    carries regardless of price.
     """
     client, _ = client_replaying(openai_chunks())
     client.model = "gemini/totally-unknown-model"
 
     reply = collect(client.stream([{"role": "user", "content": "hi"}]))
 
-    assert client.last_cost is None
+    assert "usd" not in client.last_cost
+    assert client.last_cost["prompt_tokens"] == 8
     assert reply.text == "I'll add a 10mm box."
 
 
-def test_last_cost_does_not_carry_over_to_a_call_that_says_nothing():
-    """A cleared `last_cost` is the same guarantee `ClaudeCodeClient` gives, on the keyed route."""
+def test_last_cost_does_not_carry_the_previous_calls_price_over():
+    """
+    A cleared `usd` is the same guarantee `ClaudeCodeClient` gives, on the
+    keyed route — held over, a call priced at nothing would be billed the
+    previous one's number.
+    """
     client, _ = client_replaying(anthropic_chunks())
     client.model = "claude-3-7-sonnet-20250219"
     collect(client.stream([{"role": "user", "content": "hi"}]))
-    assert client.last_cost is not None
+    assert "usd" in client.last_cost
 
     client._completion = lambda **kwargs: iter(openai_chunks())
     client.model = "gemini/totally-unknown-model"
     collect(client.stream([{"role": "user", "content": "hi"}]))
 
-    assert client.last_cost is None
+    assert "usd" not in client.last_cost
 
 
 def test_no_thinking_key_when_the_provider_has_no_reasoning():
@@ -566,6 +575,43 @@ def test_cache_control_is_only_claimed_supported_on_the_route_the_spike_measured
 ])
 def test_model_names_get_the_provider_prefix_litellm_wants(provider, model_id, expected):
     assert litellm_model_name(provider, model_id) == expected
+
+
+def test_a_session_has_its_own_id_and_a_fixed_one_can_be_given():
+    from core.llm import Session
+
+    a, b = Session(), Session()
+
+    assert a.id != b.id
+    assert Session(id="fixed").id == "fixed"
+
+
+def test_a_sessions_second_turn_sees_the_first_without_the_caller_reassembling():
+    from core.llm import Session
+
+    session = Session(system="be terse")
+    client = ScriptedLLMClient(["first reply", "second reply"])
+
+    collect(session.turn(client, "first question"))
+    collect(session.turn(client, "second question"))
+
+    assert client.calls[1] == [
+        {"role": "system", "content": "be terse"},
+        {"role": "user", "content": "first question"},
+        {"role": "assistant", "content": "first reply"},
+        {"role": "user", "content": "second question"},
+    ]
+
+
+def test_a_sessions_turn_still_yields_the_chunks_it_streamed():
+    from core.llm import Session
+
+    session = Session()
+    client = ScriptedLLMClient([{"reasoning": "hmm", "text": "the answer"}])
+
+    reply = collect(session.turn(client, "a question"))
+
+    assert (reply.reasoning, reply.text) == ("hmm", "the answer")
 
 
 def test_scripted_client_replays_turns_in_order_and_records_what_it_was_asked():
