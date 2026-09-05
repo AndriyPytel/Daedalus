@@ -40,6 +40,22 @@ def _wants_a_title(session) -> bool:
                 and not session.get("named") and not session.get("manual"))
 
 
+def _matches(record, session) -> bool:
+    """
+    *session* is the typed identity FCC-309's `core.llm.Session` carries
+    (`.id`), not the record's own log path — a log renamed or moved out from
+    under a record must not silently drop a call already holding this object.
+
+    A bare log-path string is still accepted, matched against the record's
+    own `log`: the worker thread that reports a Document's name back
+    (`ui/copilot_panel.py :: LoopWorker.do_work`) only ever had that string to
+    give, crossing a `QThread` boundary a plain path already crosses safely.
+    """
+    if isinstance(session, str):
+        return record["log"] == session
+    return record.get("session") is not None and record["session"].id == session.id
+
+
 class SettingsIndex:
     """
     Where a Session's index and transcripts really live.
@@ -124,9 +140,12 @@ class Sessions:
         })
 
     def _append(self, record) -> int:
+        from core.llm import Session
+
         session = dict(record)
         session.setdefault("restored", False)
         session.setdefault("document_id", "")
+        session.setdefault("session", Session())
         self._sessions.append(session)
         return len(self._sessions) - 1
 
@@ -175,21 +194,22 @@ class Sessions:
         """Still on its fallback name, so the generated title is worth asking for."""
         return _wants_a_title(self.at(index))
 
-    def title_arrived(self, log: str, title: str):
+    def title_arrived(self, session_id, title: str):
         """
         The generated title, taken once and then frozen. A rename outranks it.
 
-        Keyed by the log, not the position: the call outlives the position, and
-        a Session deleted while one was in flight must not rename its
-        neighbour. Returns the position renamed, or None.
+        Keyed by the Session's own typed identity, not the position or the
+        log path: the call outlives the position, and a Session deleted while
+        one was in flight must not rename its neighbour. Returns the position
+        renamed, or None.
         """
-        session = next((s for s in self._sessions if s["log"] == log), None)
-        if not _wants_a_title(session) or not title.strip():
+        record = next((s for s in self._sessions if _matches(s, session_id)), None)
+        if not _wants_a_title(record) or not title.strip():
             return None
-        session["name"] = title.strip()
-        session["named"] = True
+        record["name"] = title.strip()
+        record["named"] = True
         self._save()
-        return self._sessions.index(session)
+        return self._sessions.index(record)
 
     def rename(self, index: int, new_name: str) -> bool:
         """
@@ -205,7 +225,7 @@ class Sessions:
         self._save()
         return True
 
-    def name_document(self, log: str, document: str, document_id: str = "") -> bool:
+    def name_document(self, session_id, document: str, document_id: str = "") -> bool:
         """
         Record which Document a Session worked on, so the picker can say so.
 
@@ -215,14 +235,16 @@ class Sessions:
         FreeCAD calls every unsaved Document "Unnamed", so a Session that ran
         against yesterday's unsaved Document is matched by name to the empty
         one created this morning, and the panel opens the wrong chat.
+
+        Matched by the Session's own typed identity, the same as `title_arrived`.
         """
-        for session in self._sessions:
-            if session["log"] != log:
+        for record in self._sessions:
+            if not _matches(record, session_id):
                 continue
-            if session["document"] == document and session.get("document_id") == document_id:
+            if record["document"] == document and record.get("document_id") == document_id:
                 return False
-            session["document"] = document
-            session["document_id"] = document_id
+            record["document"] = document
+            record["document_id"] = document_id
             self._save()
             return True
         return False
