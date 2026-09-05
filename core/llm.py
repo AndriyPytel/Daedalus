@@ -1291,3 +1291,70 @@ def client_from_profiles() -> ProfiledClient:
         doing=client_from_settings(sm.get_profile_model("doing"),
                                    effort_for_profile("doing")),
     )
+
+
+ROLES = ("orchestrator", "design", "plan", "execute", "assertion", "review",
+         "sub-agent worker")
+
+DEFAULT_ROLE_TABLE = (
+    {"role": "orchestrator", "provider": "Anthropic",
+     "model": "claude-sonnet-5", "effort": "low"},
+    {"role": "design", "provider": "Anthropic",
+     "model": "claude-opus-5", "effort": "high"},
+    {"role": "plan", "provider": "Anthropic",
+     "model": "claude-opus-5", "effort": "high"},
+    {"role": "execute", "provider": "Anthropic",
+     "model": "claude-sonnet-5", "effort": "medium"},
+    {"role": "assertion", "provider": "Anthropic",
+     "model": "claude-sonnet-5", "effort": "medium"},
+    {"role": "review", "provider": "Anthropic",
+     "model": "claude-sonnet-5", "effort": "medium"},
+    {"role": "sub-agent worker", "provider": "Anthropic",
+     "model": "claude-haiku-4-5", "effort": "low"},
+)
+"""`docs/rlm-role-model-table.md` (FCC-293), as the row `settings_manager ::
+get_role_table` seeds an empty store with. Kept here rather than in
+`settings_manager` because the value each row resolves to -- a provider,
+model and effort triple `client_from_settings` already reads -- is this
+module's vocabulary, not the settings store's."""
+
+
+class RoleClient:
+    """
+    The client a run is actually made with: one built per role the table
+    names, wired so `for_phase` answers a phase from the row that names it
+    (FCC-312), replacing the two-profile split `client_from_profiles` drew.
+
+    A role the table has never heard of -- no phase, the orchestrator or a
+    sub-agent worker call this module has no site for yet, since the table
+    itself carries every role the epic named -- answers from `caller`, the
+    client the caller of `for_phase`/`for_role` was already running under,
+    not a cheaper default: the epic's settled fallback rule.
+    """
+
+    def __init__(self, roles: dict, caller):
+        self.roles = roles
+        self.caller = caller
+
+    def for_role(self, role: str):
+        return self.roles.get(role, self.caller)
+
+    def for_phase(self, phase: str):
+        return self.for_role(phase)
+
+
+def client_from_roles() -> RoleClient:
+    """
+    Build `RoleClient` from the settings table (FCC-312): one client per row,
+    keyed by that row's role, and `caller` -- the fallback a role absent from
+    the table answers from -- built on the same model/effort a caller with no
+    per-role split would already be running under.
+    """
+    from utils import settings_manager
+
+    sm = settings_manager.instance()
+    roles = {
+        row["role"]: client_from_settings(row["model"], row.get("effort"))
+        for row in sm.get_role_table()
+    }
+    return RoleClient(roles=roles, caller=client_from_settings())
