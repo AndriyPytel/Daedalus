@@ -19,7 +19,7 @@ from core.events import EventStream
 from core.freecad_tools import build_registry
 from core.kernel import Kernel
 from core.llm import TEXT, Session, client_from_roles
-from core.loop import auto_approve, nobody_to_ask, revise_by_default, run
+from core.loop import NeedsAnswer, auto_approve, revise_by_default, run
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
 
 
@@ -29,9 +29,14 @@ class Client:
     the same convention `core.kernel.Kernel.check` already uses. *llm* and
     *kernel* default to a real provider and a real headless kernel; a test
     hands in a `ScriptedLLMClient` and a `Kernel` of its own instead.
+
+    *answer* is the caller's answer callback (FCC-316): a question the agent
+    asks reaches it if it is given. Without one, `send` pauses the run in a
+    blocked, resumable `needs-answer` state -- `resume` picks it back up --
+    rather than guessing or failing.
     """
 
-    def __init__(self, document=None, llm=None, kernel=None):
+    def __init__(self, document=None, llm=None, kernel=None, answer=None):
         import FreeCAD
 
         self.document = FreeCAD.openDocument(document) if document else FreeCAD.newDocument()
@@ -42,14 +47,16 @@ class Client:
         self.pipeline = ApplyPipeline(document=self.document, worker=self.kernel,
                                       dispatch=lambda func, timeout=None: func(),
                                       confirm=lambda kinds: False, events=self.events)
+        self.answer = answer
         self._stop = False
         self._abort = False
+        self._pending = None
 
     def watch(self, callback):
         """Subscribe *callback* to every event a `send` emits, as it happens."""
         self.events.subscribe(callback)
 
-    def send(self, prompt, gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
+    def send(self, prompt, gate=auto_approve, ask=None, decide=revise_by_default,
              attachments=()):
         """
         Route *prompt* through the orchestrator and run whichever agent it
@@ -57,15 +64,27 @@ class Client:
         the run progresses, not only once this returns -- and hands back
         whichever handler ran: a `LoopResult` for `design`, text for
         `run_question`, `None` for `control`.
+
+        *ask* answers a Design question for this one call only; without it,
+        this `Client`'s own `answer` callback is used, and without that the
+        run pauses (`_pause`) rather than deciding for itself.
         """
         self._stop = False
         self._abort = False
         tools = build_registry(document=self.document, pipeline=self.pipeline)
 
+        def _pause(question):
+            self._pending = dict(prompt=prompt, gate=gate, decide=decide,
+                                 attachments=attachments)
+            raise NeedsAnswer(question)
+
+        answered_by = ask or self.answer or _pause
+
         def design(message, decision, context):
             return run(message, llm=self.llm, tools=tools, events=self.events,
                        cancelled=lambda: self._stop, aborted=lambda: self._abort,
-                       attachments=list(attachments), gate=gate, ask=ask, decide=decide)
+                       attachments=list(attachments), gate=gate, ask=answered_by,
+                       decide=decide)
 
         def run_question(message, decision, context):
             return "".join(chunk.text for chunk in self.session.turn(self.llm, message)
@@ -80,6 +99,18 @@ class Client:
         return route(prompt, llm=self.llm, events=self.events,
                      handlers={DESIGN: design, RUN_QUESTION: run_question, CONTROL: control},
                      session=self.session)
+
+    def resume(self, answer):
+        """
+        Answer the question a paused run is waiting on, and pick that same
+        run back up (FCC-316) -- *answer* reaches only the question that
+        paused it, then the run carries on as `send` normally would.
+        """
+        pending, self._pending = self._pending, None
+        if pending is None:
+            raise RuntimeError("nothing is paused")
+        return self.send(pending["prompt"], gate=pending["gate"], decide=pending["decide"],
+                         ask=lambda question: answer, attachments=pending["attachments"])
 
     def save(self, path):
         """Write this Client's Document to *path* and hand the path back."""

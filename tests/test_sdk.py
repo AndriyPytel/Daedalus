@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from core.events import COMPLETED, INTENT, ROUTED
+from core.events import ANSWER, COMPLETED, INTENT, QUESTION, ROUTED
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
 
@@ -121,4 +121,95 @@ def test_control_names_abort_separately_from_stop():
     client.send("abort now")
 
     assert client._stop and client._abort
+    client.close()
+
+
+def _a_question_then_a_box_run():
+    """design asks once, then plan -> execute -> review, once it is answered."""
+    return ScriptedLLMClient([
+        "design",
+        json.dumps({"design": {}, "question": "solid or hollow?"}),
+        json.dumps({"design": {"solid": True}, "question": ""}),
+        json.dumps({"steps": ["Add a 10mm cube"]}),
+        json.dumps({"steps": [
+            {"step": 1, "code": "doc.addObject('Part::Box', 'Box')",
+             "label": "Add the box"},
+        ]}),
+        json.dumps({"suspected": []}),
+        json.dumps({"verdict": "pass", "reason": "A 10mm cube."}),
+    ])
+
+
+def test_no_answer_callback_pauses_in_a_resumable_needs_answer_state(kernel):
+    from copilot.sdk import Client
+
+    llm = ScriptedLLMClient(["design", json.dumps({"design": {}, "question": "solid or hollow?"})])
+    client = Client(kernel=kernel, llm=llm)
+    seen = []
+    client.watch(seen.append)
+
+    paused = client.send("Add a box")
+
+    assert paused.blocked and paused.awaiting_user
+    kinds = [event.kind for event in seen]
+    assert kinds.count(QUESTION) == 1
+    assert kinds.count(ANSWER) == 0
+
+    llm.turns.extend([
+        "design",
+        json.dumps({"design": {}, "question": "solid or hollow?"}),
+        json.dumps({"design": {"solid": True}, "question": ""}),
+        json.dumps({"steps": ["Add a 10mm cube"]}),
+        json.dumps({"steps": [
+            {"step": 1, "code": "doc.addObject('Part::Box', 'Box')",
+             "label": "Add the box"},
+        ]}),
+        json.dumps({"suspected": []}),
+        json.dumps({"verdict": "pass", "reason": "A 10mm cube."}),
+    ])
+    result = client.resume("solid")
+
+    assert result.ok, result.reason
+    assert result.steps_applied == 1
+    client.close()
+
+
+def test_an_answer_callback_receives_the_question_without_pausing(kernel):
+    from copilot.sdk import Client
+
+    llm = _a_question_then_a_box_run()
+    answered = []
+
+    def answer(question):
+        answered.append(question)
+        return "solid"
+
+    client = Client(kernel=kernel, llm=llm, answer=answer)
+    seen = []
+    client.watch(seen.append)
+
+    result = client.send("Add a box")
+
+    assert result.ok, result.reason
+    assert answered == ["solid or hollow?"]
+    kinds = [event.kind for event in seen]
+    assert kinds.count(QUESTION) == 1
+    assert kinds.count(ANSWER) == 1
+    client.close()
+
+
+def test_a_declared_auto_answer_policy_is_its_own_distinct_event(kernel):
+    from copilot.sdk import Client
+    from core.loop import nobody_to_ask
+
+    llm = _a_question_then_a_box_run()
+    client = Client(kernel=kernel, llm=llm, answer=nobody_to_ask)
+    seen = []
+    client.watch(seen.append)
+
+    client.send("Add a box")
+
+    answers = [event for event in seen if event.kind == ANSWER]
+    assert len(answers) == 1
+    assert answers[0].data["by"] == "nobody"
     client.close()
