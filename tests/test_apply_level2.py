@@ -5,6 +5,8 @@ The two claims a fake cannot make: one undo takes a whole Step back, and code
 that crashes the C++ core leaves this process — standing in for the user's
 FreeCAD — alive.
 """
+import os
+
 import pytest
 
 from core.apply import ApplyPipeline, run_in_transaction
@@ -240,6 +242,23 @@ def test_apply_step_returns_the_traceback_for_the_assistant_to_correct_against(d
 
 def test_the_read_only_registry_has_no_apply_step(doc):
     assert "apply_step" not in build_registry(doc)
+
+
+def test_a_lint_rejected_step_never_reaches_the_kernels_checkpoint(pipeline, worker):
+    """
+    FCC-298 AC1: a Step that fails one of lint's rules never spends a
+    checkpoint -- it never reaches the kernel at all. Established against a
+    real checkpoint file's mtime, not the kernel's own claim about itself.
+    """
+    baseline = worker.check("doc.addObject('Part::Box', 'Baseline')")
+    assert baseline.ok, baseline.traceback
+    before = os.path.getmtime(baseline.checkpoint)
+
+    result = pipeline.apply("import Gui\nGui.Selection")
+
+    assert not result.ok
+    assert os.path.getmtime(baseline.checkpoint) == before, \
+        "a lint-rejected Step still wrote a new checkpoint"
 
 
 def test_preflight_reports_what_the_step_actually_created(worker):
