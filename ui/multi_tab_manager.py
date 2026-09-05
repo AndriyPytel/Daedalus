@@ -214,8 +214,8 @@ class ChatSessionManager(QtWidgets.QWidget):
     def wants_a_title(self, index: int) -> bool:
         return self.sessions.wants_a_title(index)
 
-    def title_arrived(self, log: str, title: str) -> bool:
-        position = self.sessions.title_arrived(log, title)
+    def title_arrived(self, session_id, title: str) -> bool:
+        position = self.sessions.title_arrived(session_id, title)
         if position is None:
             return False
         self.session_renamed.emit(position, self.sessions.at(position)["name"])
@@ -234,8 +234,8 @@ class ChatSessionManager(QtWidgets.QWidget):
         if self.sessions.rename(index, new_name):
             self.session_renamed.emit(index, new_name.strip())
 
-    def name_document(self, log: str, document: str, document_id: str = ""):
-        self.sessions.name_document(log, document, document_id)
+    def name_document(self, session_id, document: str, document_id: str = ""):
+        self.sessions.name_document(session_id, document, document_id)
 
     def get_current_chat_history(self) -> QtWidgets.QScrollArea | None:
         container = self.stack.currentWidget()

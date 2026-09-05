@@ -95,10 +95,10 @@ def test_a_document_is_recognised_by_its_own_id_not_by_its_name(sessions):
     old chat.
     """
     position = sessions.add("Flange")
-    log = sessions.at(position)["log"]
+    session_id = sessions.at(position)["session"]
     sessions.begin(position, "Flange")
 
-    assert sessions.name_document(log, "Unnamed", "3a991267-6863")
+    assert sessions.name_document(session_id, "Unnamed", "3a991267-6863")
     assert sessions.at(position)["document"] == "Unnamed"
     assert sessions.at(position)["document_id"] == "3a991267-6863"
 
@@ -178,10 +178,21 @@ def test_load_keeps_the_newest_and_deletes_the_rest(index, monkeypatch, tmp_path
 
 def test_a_generated_title_is_taken_once_and_then_frozen(sessions):
     position = _with_an_intent(sessions, "New Chat")
-    log = sessions.at(position)["log"]
+    session_id = sessions.at(position)["session"]
 
-    assert sessions.title_arrived(log, "A 20-tooth gear") == position
-    assert sessions.title_arrived(log, "Something else") is None
+    assert sessions.title_arrived(session_id, "A 20-tooth gear") == position
+    assert sessions.title_arrived(session_id, "Something else") is None
+    assert sessions.at(position)["name"] == "A 20-tooth gear"
+
+
+def test_a_log_rename_does_not_break_a_titles_match(sessions):
+    """The join is the typed identity, not the path — a moved log must not orphan it."""
+    position = _with_an_intent(sessions, "New Chat")
+    session_id = sessions.at(position)["session"]
+
+    sessions.at(position)["log"] = "/elsewhere/renamed.jsonl"
+
+    assert sessions.title_arrived(session_id, "A 20-tooth gear") == position
     assert sessions.at(position)["name"] == "A 20-tooth gear"
 
 
@@ -191,19 +202,19 @@ def test_a_name_the_user_chose_outranks_a_generated_one(sessions):
     sessions.rename(position, "My bracket")
 
     assert not sessions.wants_a_title(position)
-    assert sessions.title_arrived(sessions.at(position)["log"], "A 20-tooth gear") is None
+    assert sessions.title_arrived(sessions.at(position)["session"], "A 20-tooth gear") is None
     assert sessions.at(position)["name"] == "My bracket"
 
 
 def test_a_title_is_keyed_by_the_log_so_it_cannot_rename_a_neighbour(sessions):
     """The call outlives the position; a Session deleted under it must not shift it."""
     first = _with_an_intent(sessions, "New Chat")
-    log = sessions.at(first)["log"]
+    session_id = sessions.at(first)["session"]
     _with_an_intent(sessions, "New Chat")
 
     sessions.remove(0)
 
-    assert sessions.title_arrived(log, "A 20-tooth gear") is None, \
+    assert sessions.title_arrived(session_id, "A 20-tooth gear") is None, \
         "the Session it was for is gone"
     assert sessions.at(0)["name"] == "New Chat"
 
@@ -211,7 +222,7 @@ def test_a_title_is_keyed_by_the_log_so_it_cannot_rename_a_neighbour(sessions):
 def test_an_empty_title_is_not_a_name(sessions):
     position = _with_an_intent(sessions, "New Chat")
 
-    assert sessions.title_arrived(sessions.at(position)["log"], "   ") is None
+    assert sessions.title_arrived(sessions.at(position)["session"], "   ") is None
 
 
 def test_a_session_that_was_never_used_is_not_worth_naming(sessions):
@@ -222,7 +233,7 @@ def test_a_session_that_was_never_used_is_not_worth_naming(sessions):
 def test_naming_the_document_is_written_down(sessions, index):
     position = _with_an_intent(sessions, "New Chat")
 
-    assert sessions.name_document(sessions.at(position)["log"], "Gearbox")
+    assert sessions.name_document(sessions.at(position)["session"], "Gearbox")
     assert index.records[0]["document"] == "Gearbox"
 
 

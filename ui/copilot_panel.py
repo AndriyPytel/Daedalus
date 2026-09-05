@@ -1677,7 +1677,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         bundle = self._worker_for(log)
         self._bind_document(bundle)
 
-        self._name_session(index, log, intent)
+        self._name_session(index, session["session"], intent)
 
         attachments = self.chip_bar.get_and_clear()
         bundle.sent_attachments = attachments
@@ -1696,7 +1696,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         the_part_path = "" if attachments else bundle.the_part_path
         bundle.request_work.emit(intent, attachments, log, outstanding, the_part_path)
 
-    def _name_session(self, index: int, log: str, intent: str):
+    def _name_session(self, index: int, session_id, intent: str):
         """
         The Session takes its name from this Intent, and enters the picker.
 
@@ -1705,7 +1705,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         asked for again on the next Intent if this one produced none (FCC-44).
 
         `begin` bounds the index and may have dropped Sessions before this one,
-        so the position it had is not the position it has.
+        so the position it had is not the position it has. `session_id` is the
+        Session's own typed identity (FCC-309/FCC-310), carried through the
+        title callback instead of the log path it named the Session by until
+        now, so a renamed or moved log cannot orphan the title in flight.
         """
         from core.session_title import fallback
 
@@ -1713,9 +1716,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
             index = self.chat_sessions.stack.currentIndex()
             self.update_header_title(index)
         if self.chat_sessions.wants_a_title(index):
-            self._ask_for_a_title(log, intent)
+            self._ask_for_a_title(session_id, intent)
 
-    def _ask_for_a_title(self, log: str, intent: str):
+    def _ask_for_a_title(self, session_id, intent: str):
         """
         Alongside the run, never in front of it.
 
@@ -1723,13 +1726,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
         collected mid-flight.
         """
         thread = _TitleThread(intent, settings_manager.instance().get_naming_model(), self)
-        thread.titled.connect(lambda title: self._title_arrived(log, title))
+        thread.titled.connect(lambda title: self._title_arrived(session_id, title))
         self._title_threads.append(thread)
         thread.finished.connect(lambda: self._title_threads.remove(thread))
         thread.start()
 
-    def _title_arrived(self, log: str, title: str):
-        if self.chat_sessions.title_arrived(log, title):
+    def _title_arrived(self, session_id, title: str):
+        if self.chat_sessions.title_arrived(session_id, title):
             self.update_header_title(self.chat_sessions.stack.currentIndex())
 
     def on_stop(self):
