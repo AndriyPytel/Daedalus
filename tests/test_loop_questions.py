@@ -1320,41 +1320,6 @@ def test_a_run_that_inherits_nothing_says_nothing_about_it():
     assert "acceptance checks did not pass" not in json.dumps(llm.calls[1])
 
 
-def test_execute_is_handed_what_the_run_already_looked_at():
-    """The turn after the look already carries it, which is the turn it was asked in. What matters is the next Execute call after that."""
-    _, _, llm, _ = drive([
-        plan_reply("Sketch it", "Pad it"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        code_reply("sketch()", "pad()"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    asked_with = json.loads(llm.calls[3][-1]["content"])
-
-    assert [look["tool"] for look in asked_with["what_you_looked_at"]] \
-        == ["materials", "describe_type"]
-
-
-def test_a_regeneration_does_not_have_to_look_again():
-    """
-    The Step failed, so Execute is asked again — and asked with everything the
-    turn before it was told. That is the turn the eight repeats came out of.
-    """
-    _, _, llm, _ = drive([
-        plan_reply("Pad it"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        code_reply("pad_wrong()"),
-        code_reply("pad_right()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed("Reversed")])
-
-    regenerated = json.loads(llm.calls[3][-1]["content"])
-
-    assert [look["tool"] for look in regenerated["what_you_looked_at"]] \
-        == ["materials", "describe_type"]
-    assert regenerated["what_you_looked_at"][-1]["arguments"] == {"type_id": "PartDesign::Pad"}
-
-
 
 
 def test_a_provider_that_keeps_cutting_the_stream_is_given_up_on():

@@ -23,6 +23,32 @@ def _fixture(name):
     return os.path.join(FIXTURES, name)
 
 
+def test_steps_started_and_applied_come_from_the_declaration_event(tmp_path):
+    """
+    FCC-304: a Step's declaration is `STEP_STARTED`, one event per Step, and
+    `steps_started`/`steps_applied` are a plain count of it and of `APPLIED` —
+    a hand count of a driven multi-Step run's own log must match what
+    `measure` reports for it.
+    """
+    from tests.loop_helpers import code_reply, drive, plan_reply, suspect_reply, verdict_reply
+    from core.events import STEP_STARTED, APPLIED
+
+    _, events, _, _ = drive([
+        plan_reply("First", "Second", "Third"),
+        code_reply("first()", "second()", "third()"),
+        suspect_reply(), verdict_reply("pass"),
+    ])
+
+    path = str(tmp_path / "session.jsonl")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(events.as_log())
+
+    result = measure(path)
+
+    assert result.steps_started == len(events.of(STEP_STARTED)) == 3
+    assert result.steps_applied == len(events.of(APPLIED)) == 3
+
+
 def test_a_run_that_reached_a_verdict():
     result = measure(_fixture("reached_verdict.jsonl"))
 

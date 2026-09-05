@@ -836,71 +836,10 @@ def test_the_steps_run_in_the_order_the_plan_gave_them():
     assert [e.data["description"] for e in events.of(STEP_STARTED)] == ["First", "Second", "Third"]
 
 
-def test_execute_can_ask_the_document_before_committing_to_code():
-    """
-    The phase that hallucinates API was the one phase that could not ask:
-    `supported_types` had no caller anywhere outside the tests (ADR-0009).
-    """
-    result, events, llm, tools = drive([
-        plan_reply("Add a sketch"),
-        look_reply("supported_types", prefix="Sketcher::"),
-        code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert result.ok
-    assert ("supported_types", {"prefix": "Sketcher::"}) in tools.calls
-
-    asked_with = json.loads(llm.calls[3][-1]["content"])
-    looked = [look for look in asked_with["what_you_looked_at"]
-              if look["tool"] == "supported_types"]
-    assert looked[0]["result"]["types"] == ["Sketcher::SketchObject"]
-
-
-def test_a_look_is_visible_on_the_event_stream():
-    _, events, _, _ = drive([
-        plan_reply("Add a sketch"),
-        look_reply("supported_types", prefix="Sketcher::"),
-        code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert "supported_types" in [e.data["name"] for e in events.of(TOOL_CALL)]
-    assert "supported_types" in [e.data["name"] for e in events.of(TOOL_RESULT)]
-
-
-def test_looking_is_budgeted_and_the_last_turn_offers_nothing_to_look_with():
-    """
-    Looks are for answering a question, not for stalling instead of coding.
-
-    Scoped, not just mentioned: an empty Tool list and an open invitation to
-    declare the Plan obsolete is how one value nobody could look up threw away
-    every Step that was buildable without it.
-    """
-    result, _, llm, tools = drive([
-        plan_reply("Add a sketch"),
-        look_reply("supported_types"),
-        look_reply("supported_types"),
-        code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
-        suspect_reply(), verdict_reply("pass"),
-    ], budgets=Budgets(looks_per_turn=2))
-
-    assert result.ok
-    assert len([c for c in tools.calls if c[0] == "supported_types"]) == 1
-
-    final = json.loads(llm.calls[4][-1]["content"])
-    assert final["tools_you_may_look_with"] == [], "the last turn still invited a look"
-    assert "code" in final["this_is_your_last_turn"]
-    assert "obsolete" in final["this_is_your_last_turn"]
-    assert "Document" in final["this_is_your_last_turn"]
-    assert "still exists" in final["this_is_your_last_turn"]
-    assert "this_is_your_last_turn" not in json.loads(llm.calls[2][-1]["content"])
-
-
 def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run():
     """
-    A model that spends its looks and then asks for another has failed an
-    attempt, not broken the loop. FCC-8.
+    A reply with no code, no `obsolete` and no `unbuildable` fails the
+    attempt, not the run. FCC-8.
 
     `revisions=0` keeps this on the terminal path: since FCC-61 a Step that
     cannot be built hands back to Plan, and this test is about the attempt, not
@@ -910,8 +849,9 @@ def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run()
     attempts, not three, and every one of them is scripted for.
     """
     result, events, _, _ = drive(
-        [plan_reply("Add a sketch")] + [look_reply("supported_types")] * 12,
-        budgets=Budgets(looks_per_turn=2, attempts_per_step=3, revisions=0),
+        [plan_reply("Add a sketch")]
+        + [json.dumps({"note": "not sure what to build here"})] * 4,
+        budgets=Budgets(attempts_per_step=3, revisions=0),
     )
 
     assert not result.ok
@@ -928,14 +868,14 @@ def test_a_step_that_never_writes_its_tail_still_terminates():
     """
     A trailing gap that recurs on every single call of a Step still bounds:
     `trailing_gap_retries` free continuations, then `attempts_per_step`
-    charged ones, then a handback — never an unbounded re-ask. `looks_per_turn=0`
-    keeps each attempt to one provider call so the arithmetic is exact: 3 free
-    plus 1 charged is 4 tried, from exactly 4 scripted replies and not a 5th —
-    `ScriptedLLMClient` raises if the loop reaches for one.
+    charged ones, then a handback — never an unbounded re-ask. Each attempt is
+    one provider call, so the arithmetic is exact: 3 free plus 1 charged is 4
+    tried, from exactly 4 scripted replies and not a 5th — `ScriptedLLMClient`
+    raises if the loop reaches for one.
     """
     result, events, _, _ = drive(
         [plan_reply("Only")] + [json.dumps({"note": "not sure what to build here"})] * 4,
-        budgets=Budgets(looks_per_turn=0, attempts_per_step=1, revisions=0,
+        budgets=Budgets(attempts_per_step=1, revisions=0,
                         trailing_gap_retries=3),
     )
 

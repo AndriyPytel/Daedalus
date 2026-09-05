@@ -7,10 +7,10 @@ selection: Design says what the part is and has nothing to build with it
 writes the code for every Step of the Plan in one call and the loop applies
 them one at a time (ADR-0021), Assertion measures the finished Document against
 that list once the run is over (ADR-0017), Review judges the outcome, and a
-failure from either of the last two returns to Plan — never to Execute. Within
-its turn Execute may spend a bounded number of read-only looks at the Document
-before it writes code (ADR-0009); that is one phase reading its input, not a
-negotiation between phases.
+failure from either of the last two returns to Plan — never to Execute. Execute
+writes its whole reply in one call: the bounded read-only look loop ADR-0009
+kept is gone (FCC-304), because reading the Document freely is ordinary code
+inside a Step now that the kernel namespace is open (FCC-299).
 
 There is one edge back from Execute to Plan and it carries no geometry: a Step
 that is out of date, or that cannot be built after its attempts are spent, goes
@@ -163,15 +163,6 @@ class Budgets:
     ends for want of an answer, so the count of questions nobody answered is
     not a ceiling on anything (ADR-0022).
 
-    `looks_per_turn` bounds Execute's looks and Plan's alike: a question about
-    the build is a look, and Plan asking one over and over would otherwise
-    never terminate either. It is six because a look is the cheap turn — the
-    provider replies with one line of JSON, where the turn that writes the code
-    for a whole Plan composes every Step — and because two was not enough to
-    reach the last Step of one: a recorded run spent both on the types it built
-    with and was left declaring the eighth of eight Steps unbuildable for want
-    of a material uuid one free call would have given it (FCC-146).
-
     `trailing_gap_retries` is the bounded, free continuation a Step gets when
     Execute's reply simply stops — code for every Step up to some point, then
     nothing, with nothing coded after it either — rather than being told
@@ -191,7 +182,6 @@ class Budgets:
     review_cycles: int = 2
     revisions: int = 3
     mechanical_revisions: int = 2
-    looks_per_turn: int = 6
     rereads: int = 3
     trailing_gap_retries: int = 1
 
@@ -434,8 +424,6 @@ _LOOK_IT_UP = ("You asked for something no drawing prints — what this FreeCAD 
                "type is called, what a card carries. Nobody is asked and the sheet is not "
                "read: look it up with one of the Tools above and plan with what it says. "
                "Reply with {\"look\": {\"tool\": \"...\", \"arguments\": {...}}}.")
-
-_LOOKED_AT_NOTHING = "no Tool here answers it."
 
 
 def _a_question_for_the_build(question):
@@ -1707,11 +1695,6 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     than the request — the same placement `TRAPS` already has, under its own
     heading so the two stay distinguishable.
 
-    It may still spend a bounded number of *looks* on the read-only Tools first
-    (ADR-0009, kept). What is gone is the repetition: identical looks used to
-    recur because nothing carried across Steps, and there are no longer
-    separate Steps for them to recur between.
-
     `as_described` is the part Design holds, rendered. Execute stays on text
     deliberately — the whole drawing is noise against code that is written from
     the Steps and read back off the geometry.
@@ -1724,12 +1707,12 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     for g in arm_lines) / len(arm_lines)` for a hole the description places on
     the longitudinal centre plane (FCC-115).
 
-    What the run already knows is handed over before Execute can ask for it
-    again, which is the whole point of keeping it: a look it does not have to
-    take is a provider turn it does not have to spend. A look still spends the
-    allowance even where the answer was already here — what it costs is the
-    turn, not the Tool call — so the saving is in not needing to ask, which is
-    what `Looks.still_true` is for.
+    What the run already knows — the material cards, and any type facts an
+    earlier regeneration's Steps already read — is handed over unasked
+    (`Looks.still_true`, FCC-99): asking is no longer possible here at all,
+    since `budgets.looks_per_turn` and the turn loop that spent it are gone
+    (FCC-304) — reading the Document freely is ordinary code inside a Step
+    now, bounded only by the tree-wide budget (FCC-307).
 
     A reply that wrote code is not a verdict on the Plan: whatever it objects
     to, it objects to about the Steps it left out, and those go back to Plan
@@ -1762,40 +1745,24 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         if reference:
             request["repair_reference"] = reference
 
-    looked = list(looks.still_true()) if looks is not None else []
-    for remaining in range(budgets.looks_per_turn, -1, -1):
-        request["tools_you_may_look_with"] = _lookable(tools) if remaining else []
-        if not remaining:
-            request["this_is_your_last_turn"] = (
-                "Your looks are spent, so the list above is empty: every Tool still exists "
-                "and none was withheld. Reply with code for every Step you can write. A "
-                "look now is a failed attempt. `obsolete` is for a Plan that no longer "
-                "matches the Document above — never for one Step you could not look a "
-                "value up for, because it throws away the Steps you can build with it. "
-                "Leave that Step out instead and say why in `unbuildable`: the Steps "
-                "before it land, and it goes back to Plan on its own."
-            )
-        if looked:
-            request["what_you_looked_at"] = looked
+    looked = looks.still_true() if looks is not None else []
+    if looked:
+        request["what_you_looked_at"] = looked
 
-        reply = _ask(llm, events, EXECUTE_PHASE,
-                     prompt(EXECUTE_PHASE, ledger.render() if ledger else ""),
-                     json.dumps(request, indent=2, default=str))
+    reply = _ask(llm, events, EXECUTE_PHASE,
+                 prompt(EXECUTE_PHASE, ledger.render() if ledger else ""),
+                 json.dumps(request, indent=2, default=str))
 
-        written = _written(reply.get("steps"), start)
-        if written:
-            return Written(steps=written,
-                           unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
-                           if (reply.get("unbuildable") or reply.get("obsolete")) else None,
-                           said=_said(reply, start))
-        if reply.get("obsolete"):
-            return Written(obsolete=str(reply["obsolete"]))
-        if reply.get("unbuildable"):
-            return Written(unbuildable=str(reply["unbuildable"]))
-        if not reply.get("look") or not remaining:
-            break
-        looked.append(_look(tools, reply["look"], events, looks))
-
+    written = _written(reply.get("steps"), start)
+    if written:
+        return Written(steps=written,
+                       unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
+                       if (reply.get("unbuildable") or reply.get("obsolete")) else None,
+                       said=_said(reply, start))
+    if reply.get("obsolete"):
+        return Written(obsolete=str(reply["obsolete"]))
+    if reply.get("unbuildable"):
+        return Written(unbuildable=str(reply["unbuildable"]))
     return Written(said=_said(reply, start))
 
 
@@ -3877,10 +3844,10 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     A question the drawing was never going to answer does not go to it. A
     material card's uuid, what a type is called, which card carries a density
     are facts about this FreeCAD, and a Tool holds them: Plan is handed the
-    read-only Tools and settles its own question with a look, bounded by
-    `budgets.looks_per_turn` and charged to nothing else. A recorded run put
-    "the UUID of an installed plain carbon steel material card" to the sheet
-    three times, spent every re-read it had on it and stopped (FCC-149).
+    read-only Tools and settles its own question with a look, unbounded since
+    `budgets.looks_per_turn` is gone (FCC-304) — a recorded run put "the UUID
+    of an installed plain carbon steel material card" to the sheet three
+    times before this route existed at all (FCC-149).
 
     Every question about the part reaches the sheet first, including one raised
     after Plan was told to choose for itself. That question is a *new* obstacle
@@ -3952,11 +3919,9 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
         events.emit(QUESTION, text=planned.question)
 
         if _a_question_for_the_build(planned.question):
-            if asking.looks < budgets.looks_per_turn:
-                asking.looks += 1
-                for_the_build = True
-                continue
-            events.emit(ANSWER, text=_LOOKED_AT_NOTHING, by="tools")
+            asking.looks += 1
+            for_the_build = True
+            continue
         elif asking.read_again < budgets.rereads and _pictures(attachments):
             asking.read_again += 1
             from_the_drawing, _ = design({"intent": intent,

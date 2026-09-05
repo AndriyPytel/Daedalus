@@ -80,82 +80,19 @@ from tests.loop_helpers import (
 )
 
 
-def test_asking_twice_for_the_same_thing_calls_the_tool_once():
-    """Both are still narrated: a transcript showing the question and not the answer would read as a look that went nowhere."""
-    _, events, _, tools = drive([
-        plan_reply("Pad it"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        code_reply("pad()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], budgets=Budgets(looks_per_turn=2))
-
-    assert len([c for c in tools.calls if c[0] == "describe_type"]) == 1
-    told = [e for e in events.of(TOOL_RESULT) if e.data["name"] == "describe_type"]
-    assert len(told) == 2
-    assert [e.data["already_known"] for e in told] == [False, True]
-
-
-def test_a_different_argument_is_a_different_look():
-    _, _, _, tools = drive([
-        plan_reply("Pad it"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        look_reply("describe_type", type_id="PartDesign::Pocket"),
-        code_reply("pad()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], budgets=Budgets(looks_per_turn=2))
-
-    assert len([c for c in tools.calls if c[0] == "describe_type"]) == 2
-
-
-def test_what_an_object_has_is_forgotten_once_a_step_lands():
+def test_looks_per_turn_and_its_bounded_loop_are_gone():
     """
-    A property list read off the Document is a fact about the Document as it
-    was. Every applied Step is a chance for it to have moved, so it is not
-    carried across one and not answered from memory after one.
+    FCC-304: the Look budget goes away because reading the Document is
+    ordinary code inside a Step now that the kernel namespace is open
+    (FCC-299) — `looks_per_turn` and the turn loop that spent it must not
+    come back under this or any other name.
     """
-    _, _, llm, tools = drive([
-        plan_reply("Sketch it", "Pad it"),
-        look_reply("describe_object", name="Box"),
-        code_reply("sketch()", "pad_wrong()"),
-        look_reply("describe_object", name="Box"),
-        code_reply("pad_right()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[FakeTools.APPLIED, failed("Reversed")])
-
-    assert len([c for c in tools.calls if c[0] == "describe_object"]) == 2, \
-        "an object read before a Step landed was reported as though it still held"
-    regenerated = json.loads(llm.calls[4][-1]["content"])
-    assert "describe_object" not in [look["tool"] for look in
-                                     regenerated["what_you_looked_at"]]
-
-
-def test_what_a_type_has_survives_a_step_because_the_build_does_not_change():
-    _, _, llm, tools = drive([
-        plan_reply("Sketch it", "Pad it"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        code_reply("sketch()", "pad_wrong()"),
-        code_reply("pad_right()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[FakeTools.APPLIED, failed("Reversed")])
-
-    regenerated = json.loads(llm.calls[3][-1]["content"])
-
-    assert [look["tool"] for look in regenerated["what_you_looked_at"]] \
-        == ["materials", "describe_type"]
-
-
-def test_a_look_that_failed_is_not_remembered_as_an_answer():
-    """A ToolError is a thing to correct, and correcting it means asking again."""
-    _, _, _, tools = drive([
-        plan_reply("Pad it"),
-        look_reply("describe_object", name="NoSuchThing"),
-        look_reply("describe_object", name="NoSuchThing"),
-        code_reply("pad()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], budgets=Budgets(looks_per_turn=2))
-
-    assert len([c for c in tools.calls if c[0] == "describe_object"]) == 2
+    assert not hasattr(Budgets(), "looks_per_turn")
+    source = open(os.path.join(os.path.dirname(loop.__file__), "loop.py"),
+                 encoding="utf-8").read()
+    assert "looks_per_turn:" not in source, "the field is back on Budgets"
+    assert "your looks are spent" not in source.lower(), \
+        "the bounded look loop's last-turn message is back"
 
 
 def test_the_carried_looks_are_bounded():
@@ -193,32 +130,6 @@ def test_execute_is_handed_the_material_cards_without_asking():
     assert cards[0]["result"]["materials"][0]["uuid"] == "b9b3a6ff-1c8e"
 
 
-def test_a_turn_may_take_six_looks():
-    """
-    Six is what the recorded run wanted: `supported_types`, the types of the
-    three features it built, the Body it built them on, and the cards.
-    """
-    assert Budgets().looks_per_turn == 6
-
-    result, _, llm, tools = drive([
-        plan_reply("Pad it"),
-        look_reply("describe_type", type_id="T1"),
-        look_reply("describe_type", type_id="T2"),
-        look_reply("describe_type", type_id="T3"),
-        look_reply("describe_type", type_id="T4"),
-        look_reply("describe_type", type_id="T5"),
-        look_reply("describe_type", type_id="T6"),
-        code_reply("pad()"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert result.ok, result.reason
-    assert len([c for c in tools.calls if c[0] == "describe_type"]) == 6
-    assert tools.applied_codes() == ["pad()"]
-    assert _turns_of(llm, "execute")[5]["tools_you_may_look_with"] != [], \
-        "the sixth look was refused"
-
-
 def test_a_plan_that_ends_in_a_material_assignment_uses_a_uuid_from_this_build():
     result, _, llm, tools = drive([
         plan_reply("Pad the profile", "Assign the material"),
@@ -234,35 +145,6 @@ def test_a_plan_that_ends_in_a_material_assignment_uses_a_uuid_from_this_build()
 
     assert any(uuid in assigned for uuid in known), \
         "the material Step was applied with a uuid this build does not have"
-
-
-def test_the_recorded_run_reaches_step_eight_and_assigns_a_card():
-    """
-    The looks the recorded run took, then code for all eight Steps: the four
-    looks no longer spend the budget the eighth Step needed, because the cards
-    were never on that budget.
-    """
-    steps = ["Sketch the base", "Pad it", "Sketch the pocket", "Pocket it",
-             "Sketch the boss", "Pad the boss", "Fillet the edges",
-             "Assign plain carbon steel"]
-
-    result, _, llm, tools = drive([
-        plan_reply(*steps),
-        look_reply("supported_types", prefix="PartDesign::"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        look_reply("describe_type", type_id="PartDesign::Pocket"),
-        look_reply("describe_type", type_id="PartDesign::Fillet"),
-        code_reply(*(["step%d()" % number for number in range(1, 8)]
-                     + ["obj.ShapeMaterial = uuid('b9b3a6ff-1c8e')"])),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert result.ok, result.reason
-    assert len(tools.applied_codes()) == 8, "the run did not reach Step 8"
-    assert "b9b3a6ff-1c8e" in tools.applied_codes()[7]
-    assert all("this_is_your_last_turn" not in turn
-               for turn in _turns_of(llm, "execute")), \
-        "Execute was told its looks were spent before it wrote the code"
 
 
 
