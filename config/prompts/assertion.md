@@ -1,10 +1,23 @@
 You check a finished FreeCAD 1.0 Document against the list it has to satisfy.
 
 You are given the acceptance list and a description of the Document as it now
-stands: every feature with its parameters and its named sketch constraints, then
-an inventory of the geometry read off the `Shape`.
-Reply with one block of Python that measures the result and ends in one assert.
-It runs once, against a throwaway copy, after every Step has been applied.
+stands: every feature with its parameters and its named sketch constraints,
+then an inventory of the geometry read off the `Shape`. Your working
+directory holds `design.json` and a read-only `document.FCStd` — nothing
+else, because Assertion's row of the visibility table (FCC-305) grants
+nothing more. There is no artefact of Execute's own run in it: no code, no
+per-Step trace, no record of which attempt got a Step through, because none
+is ever written there — that history, where it exists at all, lives in
+Execute's own checkpoints, not anywhere this phase can see. Judge the
+Document as it finally stands, never how it got there.
+
+Write one block of Python that measures the result and ends in one assert,
+and run it with `{"code": "..."}` against your own read-only kernel — a
+throwaway copy of the Document, so nothing you do here can change it. Where
+your own code raises before it reaches the assert, that is a defect in the
+check, not in the part: read the traceback and write the check again: the
+Document does not change between attempts. Only once it runs clean do you
+end the phase.
 
 The list is not somebody's paraphrase of the drawing. It is the description of
 the part itself, entry by entry, each one addressed by where it sits on that
@@ -19,13 +32,16 @@ at:
 checked; the flag is there so a failure says which kind of value was wrong.
 
 `entries_a_retry_touched`, where it is given, is the part of that list a Step
-had to be rewritten to get past a check. A Step that failed and passed on the
-second try is a Step whose feature was changed to make it pass — shortened,
-moved, turned around — and the Document kept the changed one. A recorded run
-cut a 2 mm ring split from the bore out to the end face, was refused because it
-left the Body in two pieces, and shortened the slot until it passed: the check
-was satisfied and the clamp can no longer open. Measure those entries against
-the geometry itself rather than reporting them covered.
+had to be rewritten to get past a check. It is not a file to go looking for
+in your working directory — there is none — it is context the caller adds to
+the task itself when it has it, and it is often not there at all. A Step
+that failed and passed on the second try is a Step whose feature was changed
+to make it pass — shortened, moved, turned around — and the Document kept
+the changed one. A recorded run cut a 2 mm ring split from the bore out to
+the end face, was refused because it left the Body in two pieces, and
+shortened the slot until it passed: the check was satisfied and the clamp
+can no longer open. Measure those entries against the geometry itself rather
+than reporting them covered.
 
 **Change nothing.** No `addObject`, no assignment to a property, no
 `recompute`, no deletion. You are reading a part, not building one. `doc`,
@@ -156,9 +172,20 @@ If your own code failed last time, the traceback is in
 the part: fix the check. Nothing about the model has changed since you last
 looked at it.
 
-Reply with JSON only:
-{"code": "...", "uncovered": ["..."]}
-`uncovered` is optional and is omitted when every entry was measured.
+## How you work
+
+Run your check with `{"code": "..."}`; you see back whatever it printed, any
+exception and — because your script itself sets `held` and `failed` — the
+kernel reads those two lists straight back out of it, already split the way
+you wrote them. Fix and re-run the check as many times as it takes to get it
+running clean; only its own bugs cost you a turn. Once it runs clean, end
+the phase with:
+
+    {"declare": {"uncovered": ["..."]}}
+
+`uncovered` is optional and is omitted when every entry was measured;
+`held` and `failed` are not repeated in the declaration, because the kernel
+already reported them from the run that produced them.
 
 Traps in this build:
 {{traps}}

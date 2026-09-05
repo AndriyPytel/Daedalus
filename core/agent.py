@@ -3,12 +3,14 @@ The multi-turn phase agent: a phase's conversation with its own kernel,
 not one provider call in and one JSON reply out (FCC-321).
 
 Every turn the model replies with one JSON object: `{"code": "..."}` runs
-one more Step against the phase's kernel and hands back what happened, or
-`{"declare": <value>}` ends the phase with `<value>` -- a Step, a verdict,
-whatever that phase's own caller expects (FCC-322 is where that shape is
-decided, not this module). The loop keeps going for as long as the model
-keeps writing code, bounded only by the tree-wide turn/token budget
-(`core/subagent.py`), never a fixed per-phase call count.
+one more Step against the phase's kernel and hands back what happened,
+`{"delegate": "..."}` hands a bounded question to a depth-1 sub-agent
+(`core/subagent.py :: delegate`, FCC-307/FCC-322) and hands back its answer,
+or `{"declare": <value>}` ends the phase with `<value>` -- a Step, a
+verdict, whatever that phase's own caller expects (FCC-322 is where that
+shape is decided, not this module). The loop keeps going for as long as the
+model keeps writing code or delegating, bounded only by the tree-wide
+turn/token budget (`core/subagent.py`), never a fixed per-phase call count.
 
 The kernel is spawned once, per `core/phase_contract.py`'s declared
 visibility row, and kept for the whole phase: every Step after the first
@@ -26,6 +28,7 @@ import shutil
 from core.kernel import Kernel
 from core.llm import TEXT, Session
 from core.phase_contract import spawn
+from core.subagent import delegate
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
@@ -35,7 +38,7 @@ class AgentGaveUp(Exception):
 
 
 def run_phase(phase, working_dir, sources, llm, task, document=None,
-              kernel=None, supervisor=None):
+              kernel=None, supervisor=None, stream=None):
     """
     Run *phase* as a multi-turn agent against its own kernel.
 
@@ -49,14 +52,18 @@ def run_phase(phase, working_dir, sources, llm, task, document=None,
     double with the same `check` contract); one is started and killed here
     when no caller supplies it. *supervisor* is the tree-wide
     `SessionTreeSupervisor` a turn is charged against, when the caller has
-    one.
+    one -- delegating (`{"delegate": "..."}`) raises `AgentGaveUp` outright
+    with no *supervisor*, because there is nothing to charge it against or
+    to bound its depth. *stream* is the run's `EventStream`, handed straight
+    to `subagent.delegate` so a delegation renders live (FCC-308).
 
     Returns `(declared, session, checkpoints)`: what the model declared, its
     whole conversation (FCC-309's `Session`), and every Step's checkpoint
     path in the order the agent produced them.
 
-    Raises `AgentGaveUp` when the model answers outside the `code`/`declare`
-    contract, or when *supervisor* says the budget is spent first.
+    Raises `AgentGaveUp` when the model answers outside the
+    `code`/`delegate`/`declare` contract, or when *supervisor* says the
+    budget is spent first.
     """
     working = spawn(phase, working_dir, **sources)
     session = Session(system=_system(phase, working))
@@ -69,9 +76,19 @@ def run_phase(phase, working_dir, sources, llm, task, document=None,
             message = _parsed(text)
             if "declare" in message:
                 return message["declare"], session, checkpoints
+            if "delegate" in message:
+                if supervisor is None:
+                    raise AgentGaveUp("%s tried to delegate with no supervisor" % phase)
+                answer = delegate(supervisor, session, 0, llm, message["delegate"],
+                                  stream=stream, phase=phase)
+                feedback = ({"delegate_answered": answer} if answer is not None
+                            else {"delegate_refused": supervisor.refusals[-1]["reason"]})
+                text = _say(session, llm, json.dumps(feedback))
+                continue
             if "code" not in message:
                 raise AgentGaveUp(
-                    "%s replied with neither code nor a declaration: %r" % (phase, text))
+                    "%s replied with neither code, a delegation nor a declaration: %r"
+                    % (phase, text))
             if supervisor is not None:
                 supervisor.record_turn()
                 if supervisor.outcome:
@@ -104,8 +121,9 @@ def _system(phase, working_dir):
         "You are the %s agent. Your working directory is %s, holding exactly "
         "the artefacts your phase is allowed to see. Reply with one JSON "
         "object per turn: {\"code\": \"...\"} to run Python against your "
-        "kernel's Document and see what happened, or {\"declare\": ...} once "
-        "you are done." % (phase, working_dir)
+        "kernel's Document and see what happened, {\"delegate\": \"...\"} to "
+        "hand a bounded question to a depth-1 sub-agent and see its answer, or "
+        "{\"declare\": ...} once you are done." % (phase, working_dir)
     )
 
 
