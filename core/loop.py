@@ -52,7 +52,7 @@ from core.events import (
     PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED,
     STOPPED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, EventStream,
 )
-from core import part_file, preflight, sheet_reader, sketch_check
+from core import kernel, part_file, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
 from core.llm import REASONING, ProviderRefused, StreamCutOff, cache_control_supported
 from core.tools import ToolError
@@ -2368,7 +2368,7 @@ class Checked:
 
     `geometry` is the per-feature fingerprint `check_assertions` measured
     alongside whatever it was asked to check (FCC-260) — Volume and BoundBox,
-    read back off `PreflightResult` the same way `confirmed` reads `held`.
+    read back off `KernelResult` the same way `confirmed` reads `held`.
     Empty wherever no `check_assertions` call ran, which the fingerprint
     comparison at the call site reads as "nothing to compare yet" rather than
     "everything moved".
@@ -3230,7 +3230,7 @@ def _the_geometry_disagrees(attachments, events, budget=A_READING_BUDGET):
                     continue
                 found.extend(_what_the_solver_said(
                     worker, outline, view, between, unchecked,
-                    min(left, preflight.DEFAULT_TIMEOUT)))
+                    min(left, kernel.DEFAULT_TIMEOUT)))
         finally:
             worker.kill()
     if unchecked:
@@ -3308,7 +3308,7 @@ def _a_freecad_of_our_own(events):
     like a check that found nothing.
     """
     try:
-        worker = preflight.PreflightWorker()
+        worker = kernel.Kernel()
         worker.start()
         return worker
     except Exception as exc:

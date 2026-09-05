@@ -93,7 +93,7 @@ def test_the_panel_only_ever_asks_the_loop_to_start():
 def test_the_panel_never_touches_the_document_or_the_worker_directly():
     tree = panel_tree()
     forbidden = ("ActiveDocument", "openTransaction", "commitTransaction",
-                 "PreflightWorker", "check")
+                 "Kernel", "check")
     found = {
         node.attr for node in ast.walk(tree)
         if isinstance(node, ast.Attribute) and node.attr in forbidden

@@ -1280,7 +1280,7 @@ def test_a_redundant_constraint_reaches_the_part_in_the_words_of_a_conflict(
 
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=100.0)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+    monkeypatch.setattr(loop.kernel, "Kernel",
                         lambda *_, **__: _AChildThatFoundBoth())
 
     found = loop._the_geometry_disagrees(["a.pdf"], EventStream())

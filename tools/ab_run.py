@@ -84,7 +84,7 @@ def main():
     from core.freecad_tools import build_registry
     from core.llm import ClaudeCodeClient, ProfiledClient
     from core.loop import APPROVE, Approval, run
-    from core.preflight import PreflightWorker
+    from core.kernel import Kernel
 
     _, QtWidgets = _qt()
     QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -118,7 +118,7 @@ def main():
         doc.UndoMode = 1
         started = time.time()
 
-        with PreflightWorker(timeout=180) as worker:
+        with Kernel(timeout=180) as worker:
             pipeline = ApplyPipeline(document=doc, worker=worker,
                                      dispatch=lambda func, timeout=None: func(),
                                      confirm=lambda kinds: False, events=events)

@@ -8,7 +8,7 @@ that is visible from outside — the caller gets "applied" or "failed".
 import pytest
 
 from core.apply import ApplyPipeline, Closing
-from core.preflight import PreflightResult
+from core.kernel import KernelResult
 
 
 class FakeDocument:
@@ -37,7 +37,7 @@ class FakeWorker:
         A real worker reports what the Step touched, and a Step that touched
         nothing is not a success, so the default here has to say it made one.
         """
-        self.result = result or PreflightResult(ok=True, render="/tmp/step.png",
+        self.result = result or KernelResult(ok=True, render="/tmp/step.png",
                                                 created=["Box"])
         self.checked = []
 
@@ -98,7 +98,7 @@ def test_a_step_that_lands_puts_the_part_back_in_the_viewport(pipeline, monkeypa
 def test_a_step_that_never_reached_the_document_leaves_the_camera_alone(pipeline, monkeypatch):
     fitted = []
     monkeypatch.setattr("core.apply.fit_view", lambda doc: fitted.append(doc))
-    pipeline.fake_worker.result = PreflightResult(ok=False, traceback="boom")
+    pipeline.fake_worker.result = KernelResult(ok=False, traceback="boom")
 
     assert not pipeline.apply("doc.recompute()").ok
     assert fitted == []
@@ -119,7 +119,7 @@ def test_a_step_that_changes_nothing_is_not_a_success(pipeline):
     never called it. It raised nothing, so it scored as applied, and the Plan
     moved on to a sketch that did not exist.
     """
-    pipeline.fake_worker.result = PreflightResult(ok=True, render="/tmp/step.png")
+    pipeline.fake_worker.result = KernelResult(ok=True, render="/tmp/step.png")
 
     result = pipeline.apply("def build(doc):\n    doc.addObject('Part::Box', 'Box')\n")
 
@@ -129,7 +129,7 @@ def test_a_step_that_changes_nothing_is_not_a_success(pipeline):
 
 
 def test_preflight_runs_before_the_document_sees_anything(pipeline):
-    pipeline.fake_worker.result = PreflightResult(ok=False, traceback="ValueError: no such property")
+    pipeline.fake_worker.result = KernelResult(ok=False, traceback="ValueError: no such property")
 
     result = pipeline.apply("box.Nonsense = 1")
 
@@ -157,7 +157,7 @@ def test_the_throwaway_copy_is_deleted_afterwards(pipeline):
 
 def test_the_caller_sees_applied_or_failed_and_nothing_else(pipeline):
     applied = pipeline.apply("doc.recompute()").as_tool_result()
-    pipeline.fake_worker.result = PreflightResult(ok=False, traceback="boom")
+    pipeline.fake_worker.result = KernelResult(ok=False, traceback="boom")
     failed = pipeline.apply("doc.recompute()").as_tool_result()
 
     assert applied["status"] == "applied"
@@ -167,7 +167,7 @@ def test_the_caller_sees_applied_or_failed_and_nothing_else(pipeline):
 
 
 def test_a_worker_that_died_reads_as_a_failed_step_not_an_incident(pipeline):
-    pipeline.fake_worker.result = PreflightResult(
+    pipeline.fake_worker.result = KernelResult(
         ok=False, traceback="The Preflight Worker died while running the Step, ...")
 
     result = pipeline.apply("import ctypes; ctypes.string_at(0)")

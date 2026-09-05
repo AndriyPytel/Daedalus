@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.preflight import PreflightWorker
+from core.kernel import Kernel
 
 
 class _StdoutThatDiesMidStream:
@@ -26,7 +26,7 @@ class _StdoutThatDiesMidStream:
 @pytest.fixture
 def unstarted():
     """A worker object with no process behind it; the threads are driven by hand."""
-    worker = PreflightWorker(freecadcmd="/nonexistent/freecadcmd")
+    worker = Kernel(freecadcmd="/nonexistent/freecadcmd")
     worker._lines = queue.Queue()
     return worker
 
@@ -86,7 +86,7 @@ def test_a_worker_that_cannot_come_back_answers_no_reading_instead_of_raising(
     hole in that: `start()` raised out of `reading()`, through
     `_the_geometry_disagrees`, and ended the run at the second death.
     """
-    monkeypatch.setattr(PreflightWorker, "start", _never_comes_up)
+    monkeypatch.setattr(Kernel, "start", _never_comes_up)
 
     assert unstarted.reading({"do": "reading"}, timeout=0.1) is None
 
@@ -95,12 +95,12 @@ def test_a_restart_that_fails_after_a_death_is_a_result_and_not_an_exception(
         unstarted, monkeypatch):
     """
     The same promise on the Step path: whatever happened, the caller gets a
-    PreflightResult back. Here the request goes down the pipe, the worker never
+    KernelResult back. Here the request goes down the pipe, the worker never
     answers, and the replacement cannot be started either.
     """
     unstarted._process = _AProcessThatTakesTheRequest()
     unstarted._lines.put(None)
-    monkeypatch.setattr(PreflightWorker, "start", _never_comes_up)
+    monkeypatch.setattr(Kernel, "start", _never_comes_up)
 
     result = unstarted.check("pad()", timeout=0.1)
 

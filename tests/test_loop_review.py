@@ -130,7 +130,7 @@ def test_the_named_parameters_mechanism_is_gone_from_the_code():
     the next ticket wires back in. FCC-75.
     """
     with pytest.raises(ImportError):
-        from core.preflight_worker import wrong_parameters    # noqa: F401
+        from core.kernel_worker import wrong_parameters    # noqa: F401
 
     from core.freecad_tools import build_registry
     described = {tool["name"]: tool for tool in build_registry(pipeline=object()).describe()}

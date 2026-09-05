@@ -9,7 +9,7 @@ prelude to one.
 alike). 26 was wrong: it came from grepping tracebacks for phrases that also
 match `AssertionError`s the model writes into its own Step code ("removed no
 material"), a different check with overlapping words, not
-`preflight_worker.py::preflight`'s own volume-neutral `RuntimeError`. Counted
+`kernel_worker.py::preflight`'s own volume-neutral `RuntimeError`. Counted
 by `kind: "preflight_failed"` and the exact `RuntimeError` text, the real
 number is 12, across sessions `b31fc95ae4de442fb6ca454b7be68f57` (4),
 `c7d892a556624c57b31b508362be4b4b` (1), `549e6232c9e04b659e5a2d536354bd7a`
@@ -22,7 +22,7 @@ under `freecadcmd` (`/Applications/FreeCAD.app/Contents/Resources/bin/
 freecadcmd`, FreeCAD 1.1.3), then the failing Step's own code with
 `Reversed` flipped (`True`->`False` or `False`->`True`, or appended if the
 Step never set it), then the volume compared the same way
-`preflight_worker.py::_features_that_moved_no_material` does. This is what
+`kernel_worker.py::_features_that_moved_no_material` does. This is what
 `tests/recorded/preflight_volume_neutral_failures.json` freezes -- a `logs/`
 measurement, plus a live FreeCAD run, this suite cannot redo on every call.
 
@@ -35,7 +35,7 @@ Reversed-flip retry on the FCC-239 path) are not built.
 
 **The follow-up this measurement produced, not built here.** The 9 failures
 that do not move under either `Reversed` value still reach the model
-quoting `preflight_worker.py`'s own trap text -- "A Pocket travels along the
+quoting `kernel_worker.py`'s own trap text -- "A Pocket travels along the
 *negative* of its sketch normal unless Reversed is True" -- a diagnosis this
 measurement shows is wrong three times out of four. The two failure shapes
 (wrong-side vs. no-overlap-at-all) are exactly what this measurement

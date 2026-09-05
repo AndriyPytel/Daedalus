@@ -7,8 +7,8 @@ a module earned its place on ALLOWED and nobody said so.
 
 The Document is reached from exactly these places, and each has a reason:
   - core/freecad_tools.py: The Tools themselves. This is the sanctioned route.
-  - core/preflight_worker.py: Runs inside the Preflight Worker's own process,
-    against a throwaway copy. It never touches the user's Document.
+  - core/kernel_worker.py: Runs inside the kernel's own process, against its
+    own checkpointed Document. It never touches the user's Document.
   - core/apply.py: Resolves the Document to hand to the transaction; reached
     only through the apply_step Tool.
   - core/sketch_check.py: Builds the reading as a sketch in a document of its
@@ -28,7 +28,7 @@ PACKAGES = ("core", "ui", "utils", "Mod")
 
 ALLOWED = {
     "core/freecad_tools.py",
-    "core/preflight_worker.py",
+    "core/kernel_worker.py",
     "core/apply.py",
     "core/sketch_check.py",
 }

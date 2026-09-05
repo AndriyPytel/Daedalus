@@ -16,7 +16,7 @@ was still correctly under construction.
 Both live-replay tests here run the real Step code from a real recorded
 session (`tests/recorded/envelope_check_scheduling_replay.json`, built by
 `tools/extract_envelope_scheduling_replay.py`) through
-`core.preflight.PreflightWorker`, so the numbers below are a measured
+`core.kernel.Kernel`, so the numbers below are a measured
 FreeCAD bounding box, not an assumption.
 
 **The verdict.** 1 of 13 qualifying sessions is unsafe
@@ -40,7 +40,7 @@ import os
 
 import pytest
 
-from core.preflight import PreflightWorker, find_freecadcmd
+from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
@@ -70,7 +70,7 @@ def worker():
         find_freecadcmd()
     except RuntimeError as exc:
         pytest.skip(str(exc))
-    with PreflightWorker() as running:
+    with Kernel() as running:
         yield running
 
 
