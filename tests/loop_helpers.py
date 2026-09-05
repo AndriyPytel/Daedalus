@@ -1021,7 +1021,7 @@ def _a_sheet_of_many_outlines(tmp_path, how_many=4):
         between=sheet.between)
 
 
-class _AChildThatCannotComeBack(loop.preflight.PreflightWorker):
+class _AChildThatCannotComeBack(loop.kernel.Kernel):
     """
     A worker that came up once and can never be started again.
 

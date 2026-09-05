@@ -286,7 +286,7 @@ def _core_sources():
 
 
 MAKES_A_DOCUMENT = {
-    "preflight_worker.py": "is the child",
+    "kernel_worker.py": "is the child",
     "sketch_check.py": "runs in the child",
     "freecad_tools.py": "hidden=True, temp=True, and known — FCC-126",
 }

@@ -19,7 +19,7 @@ import time
 
 import pytest
 
-from core.preflight import PreflightWorker, copy_of, find_freecadcmd
+from core.kernel import Kernel, copy_of, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
@@ -76,14 +76,14 @@ def freecadcmd():
 @pytest.fixture(scope="module")
 def warm(freecadcmd):
     """One worker shared by the tests that do not kill it."""
-    with PreflightWorker(freecadcmd) as worker:
+    with Kernel(freecadcmd) as worker:
         yield worker
 
 
 @pytest.fixture
 def fresh(freecadcmd):
     """A worker of its own, for the tests that end its life."""
-    with PreflightWorker(freecadcmd) as worker:
+    with Kernel(freecadcmd) as worker:
         yield worker
 
 

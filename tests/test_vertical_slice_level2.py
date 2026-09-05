@@ -29,7 +29,7 @@ from core.events import (
 from core.freecad_tools import build_registry
 from core.llm import ScriptedLLMClient
 from core.loop import APPROVE, Approval, run
-from core.preflight import PreflightWorker, find_freecadcmd
+from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
@@ -155,7 +155,7 @@ def worker():
         find_freecadcmd()
     except RuntimeError as exc:
         pytest.skip(str(exc))
-    with PreflightWorker(timeout=120) as running:
+    with Kernel(timeout=120) as running:
         yield running
 
 

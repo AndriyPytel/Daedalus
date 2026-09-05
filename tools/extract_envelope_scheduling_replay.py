@@ -12,7 +12,7 @@ part's bounding box?
 acceptance entries (the count `the_envelope_measured` requires to run at
 all) and at least one Step after the last Step citing an envelope address,
 replay every one of that session's own successfully-`applied` Step codes in
-one FreeCAD document (`core.preflight.PreflightWorker`, real FreeCAD via
+one FreeCAD document (`core.kernel.Kernel`, real FreeCAD via
 `freecadcmd`) and measure the built solid's `optimalBoundingBox` after each
 Step. Restricted to sessions with exactly one Plan revision, where the
 recorded `applied` count matches the last Plan's own Step count one-for-one

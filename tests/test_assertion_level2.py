@@ -24,7 +24,7 @@ import pytest
 
 from core.apply import ApplyPipeline
 from core.loop import _the_model_failed
-from core.preflight import PreflightWorker, find_freecadcmd
+from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
@@ -70,7 +70,7 @@ def worker():
         find_freecadcmd()
     except RuntimeError as exc:
         pytest.skip(str(exc))
-    with PreflightWorker() as running:
+    with Kernel() as running:
         yield running
 
 
@@ -271,7 +271,7 @@ def test_the_phase_leaves_the_live_document_exactly_as_it_found_it():
 
         before = [(o.Name, o.Shape.Volume) for o in doc.Objects]
 
-        with PreflightWorker() as running:
+        with Kernel() as running:
             pipeline = ApplyPipeline(document=doc, worker=running,
                                      dispatch=lambda func, timeout=None: func())
             failed = pipeline.check_assertions(
@@ -299,7 +299,7 @@ def test_a_passing_check_reaches_the_loop_as_ok():
         box.Length, box.Width, box.Height = 10, 20, 5
         doc.recompute()
 
-        with PreflightWorker() as running:
+        with Kernel() as running:
             pipeline = ApplyPipeline(document=doc, worker=running,
                                      dispatch=lambda func, timeout=None: func())
             result = pipeline.check_assertions(

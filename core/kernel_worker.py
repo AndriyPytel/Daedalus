@@ -1,32 +1,36 @@
 """
-The child half of Preflight. Runs inside a headless FreeCAD started by
-`core/preflight.py`, as a bare script — so it may import the standard library
+The child half of the kernel. Runs inside a headless FreeCAD started by
+`core/kernel.py`, as a bare script -- so it may import the standard library
 and FreeCAD, and nothing of the addon's own.
 
-Two things are imported *out* of it, by name, and both deliberately: `SENTINEL`
-by `core/preflight.py`, and `step_namespace` by `core/apply.py`, so that
-Preflight and Apply cannot build different namespaces for the same Step.
-
-Two things are imported *in*, each the same way: `reading` imports
-`core.sketch_check`, so that the check and its tests cannot build different
-sketches out of the same reading; `preflight` imports `render` off
-`core.preflight_render`, the rasterizer that has no business in this file's
-JSON protocol. Both cost a `sys.path` entry and buy the one thing this
-process exists for — the solver runs where its death is survivable (FCC-126).
+Two things are imported *out* of it, by name: `SENTINEL` by `core/kernel.py`,
+and `step_namespace` by `core/apply.py`, so that the kernel and the GUI's
+own transaction replay cannot build different namespaces for the same Step.
+`reading` imports `core.sketch_check`; `run_step` imports `render` off
+`core.preflight_render`. Both cost a `sys.path` entry and buy the one thing
+this process exists for -- the solver runs where its death is survivable
+(ADR-0002).
 
 One JSON request per line on stdin, one tagged JSON response per line on
 stdout. FreeCAD writes its own banner to stdout, so responses carry a
-sentinel prefix and the parent ignores everything else. What a reply means is
-read in exactly one place per kind of request: `PreflightResult.from_response`
-for a Step, `sketch_check.from_response` for a reading.
+sentinel prefix and the parent ignores everything else.
+
+The kernel owns one live Document across many Steps. A Step whose code (and
+whose checks, below) succeed gets a checkpoint written to disk and the live
+Document keeps running -- no reopen. A Step that fails is undone by closing
+the live Document and reopening the last checkpoint, so the Document a
+following Step sees is exactly what it would have been had the failed Step
+never run. A request that hands a `document` path is a fresh handoff: the
+session (Document, checkpoint and name map) starts over from that path, or
+from an empty Document where no path is given.
 
 Death is a normal outcome here. If the code under test takes the C++ core
-down, this process goes with it and the parent restarts a new one — which is
+down, this process goes with it and the parent restarts a new one -- which is
 the entire point of the arrangement (ADR-0002). That is also why there is no
 shutdown message: the parent kills the process rather than asking it to go.
 
 `freecadcmd` runs a script with `__name__` set to its basename rather than
-"__main__", and importing this module as `core.preflight_worker` for its
+"__main__", and importing this module as `core.kernel_worker` for its
 `SENTINEL` must not start serving, so both names are named at the foot.
 """
 import difflib
@@ -34,9 +38,10 @@ import json
 import linecache
 import os
 import sys
+import tempfile
 import traceback
 
-SENTINEL = "@@PREFLIGHT@@"
+SENTINEL = "@@KERNEL@@"
 
 
 def respond(payload):
@@ -47,27 +52,12 @@ def respond(payload):
 def _ensure_on_path():
     """
     Put the repo root on `sys.path` if it is not there already, so this
-    child process can import `core.*` the way `preflight` and `reading`
-    both need to, on demand rather than at module load.
+    child process can import `core.*` the way `run_step` and `reading` both
+    need to, on demand rather than at module load.
     """
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if root not in sys.path:
         sys.path.insert(0, root)
-
-
-def load_fresh(path):
-    """
-    Reload the Document copy from disk, every time.
-
-    Mirroring state incrementally would be faster and would eventually
-    diverge — at which point the only safety net starts approving code that
-    crashes in the live Document (ADR-0002).
-    """
-    import FreeCAD
-
-    for doc in list(FreeCAD.listDocuments().values()):
-        FreeCAD.closeDocument(doc.Name)
-    return FreeCAD.openDocument(path) if path else FreeCAD.newDocument("Preflight")
 
 
 def summarise(doc):
@@ -87,7 +77,7 @@ class _Touched:
     `changed` holds one (name, property) pair per notification. The properties
     in `DERIVED` are derived by recompute rather than assigned by the Step, so
     an object whose only changed property is one of those was recalculated
-    rather than modified — counting them would make every dependent object
+    rather than modified -- counting them would make every dependent object
     downstream of a legitimate change look touched.
     """
 
@@ -125,9 +115,9 @@ def step_namespace(doc):
     """
     What a Step's code runs with.
 
-    Preflight and Apply must build this identically or they are running
-    different programs and Preflight stops meaning anything (ADR-0002), so both
-    call this rather than each spelling it out.
+    The kernel and the GUI's own replay (`core/apply.py::run_in_transaction`)
+    must build this identically or they are running different programs
+    (ADR-0002), so both call this rather than each spelling it out.
 
     Sketch geometry is spelled Part.Circle and Part.LineSegment in every
     version of FreeCAD and the Sketcher module holds none of it, so leaving
@@ -150,13 +140,44 @@ def step_namespace(doc):
     return namespace
 
 
+class _NamedDoc:
+    """
+    The live Document, wrapped so `doc.addObject(type, name)` records the name
+    FreeCAD actually allocated under the name the Step asked for.
+
+    The two differ exactly when an earlier Step, or a hand-edit already in the
+    Document, holds that name first -- FreeCAD renames the new object rather
+    than raising, and a later Step addressing it by the literal string it
+    asked for reaches the wrong object, silently. `names` is what a later
+    Step reaches through instead: `doc.getObject(names['Box'])`.
+
+    Every other attribute passes straight through: this is not a new
+    Document API, only the one seam a Step's code creates objects through.
+    """
+
+    def __init__(self, doc, names):
+        self._doc = doc
+        self._names = names
+
+    def addObject(self, type_id, name=None, *args, **kwargs):
+        if name is None:
+            obj = self._doc.addObject(type_id, *args, **kwargs)
+        else:
+            obj = self._doc.addObject(type_id, name, *args, **kwargs)
+            self._names[name] = obj.Name
+        return obj
+
+    def __getattr__(self, item):
+        return getattr(self._doc, item)
+
+
 def _name_of(obj):
     """
     What to call the thing in the hint.
 
     TypeId is the useful name for a DocumentObject, but on a class it is an
-    unbound descriptor whose repr — <attribute 'TypeId' of 'Base.BaseClass'
-    objects> — named nothing the assistant could act on.
+    unbound descriptor whose repr -- <attribute 'TypeId' of 'Base.BaseClass'
+    objects> -- named nothing the assistant could act on.
     """
     type_id = getattr(obj, "TypeId", None)
     if isinstance(type_id, str):
@@ -171,7 +192,7 @@ def introspect(exc):
     FreeCAD names the attribute that is missing and nothing else, so the
     assistant guesses a second spelling of the same wrong idea and the Step
     budget goes on one dead end. Introspection is the answer to API knowledge
-    here as everywhere (ADR-0006) — this just applies it at the moment the
+    here as everywhere (ADR-0006) -- this just applies it at the moment the
     guess fails, rather than hoping the assistant asks first (ADR-0008).
 
     PropertiesList is the sharp answer for a DocumentObject, where `dir()` is
@@ -201,8 +222,8 @@ def _bodies_in_pieces(doc):
     Every PartDesign Body whose result is more than one solid (FCC-27).
 
     A sketch of disjoint profiles pads into separate lumps, and nothing raises:
-    the feature reports itself up-to-date and valid, so Preflight passed it and
-    the only phase that objected was Review, at the end, from a render.
+    the feature reports itself up-to-date and valid, so a check that only
+    watched status would pass it unnoticed.
 
     Only Bodies. A Part::Compound or a Document holding several unrelated
     objects is many solids on purpose; a Body is single-solid by design, which
@@ -227,8 +248,8 @@ def _bodies_with_invalid_shape(doc):
 
     A self-touching wire -- two lobes pinched at one vertex -- pads into a
     single solid that recomputes Up-to-date, and nothing about that state
-    says the geometry is broken: `isValid()` is the one question Preflight
-    never asked before this, cheap enough to ask on every Step (FCC-253 Q4).
+    says the geometry is broken: `isValid()` is the one question worth asking
+    on every Step, cheap enough to afford (FCC-253 Q4).
     """
     invalid = []
     for obj in doc.Objects:
@@ -280,10 +301,10 @@ def _why_a_dressup_failed(obj):
     """
     What a fillet or a chamfer will not say for itself.
 
-    A PartDesign dressup OCC refuses says either nothing at all —
+    A PartDesign dressup OCC refuses says either nothing at all --
     `getStatusString()` is the empty string, and `Fillet_R2
     (PartDesign::Fillet): ` was the whole of the failure Execute was handed
-    (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`) — or `BRep_API:
+    (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`) -- or `BRep_API:
     command not done`, which names no edge and no size either. Both leave one
     thing to change, how the selection is written, and it is rarely the thing
     that is wrong: Execute rewrote the selection twice and then wrote nothing.
@@ -378,12 +399,11 @@ def _geometry_of(obj):
     Volume plus the BoundBox corners for one feature (FCC-260).
 
     Not `Shape.hashCode()`: measured directly, it is stable for one live
-    Shape but changes across `doc.saveCopy` + `FreeCAD.openDocument` on
-    identical geometry — every `check_assertions` call reopens the Document
-    from a fresh copy (`core/preflight.py::copy_of`), so a hash that moves on
-    reload would report every feature as regressed on every single Assertion
-    pass. Volume and BoundBox were measured the same way and are exactly
-    reproduced after a save/reload/recompute of unchanged geometry.
+    Shape but changes across a checkpoint save/reload on identical geometry --
+    `check_assertions` reopens a copy of the Document -- so a hash that moves
+    on reload would report every feature as regressed on every single
+    Assertion pass. Volume and BoundBox were measured the same way and are
+    exactly reproduced after a save/reload/recompute of unchanged geometry.
     """
     shape = getattr(obj, "Shape", None)
     if shape is None or shape.isNull():
@@ -411,8 +431,9 @@ def _features_that_moved_no_material(doc, created):
     The silent failure this exists for: a Pocket sketched on the face at YMin
     with its normal pointing into the part cuts along -Y, away from the solid,
     intersects nothing, and hands back its base shape untouched. FreeCAD calls
-    it 'Up-to-date' and 'Valid', Preflight passed it on that, and five bores in
-    a row went missing from a part every phase reported as applied.
+    it 'Up-to-date' and 'Valid', and a check that only watched status would
+    pass it on that -- and five bores in a row went missing from a part every
+    phase reported as applied.
 
     Read off `BaseFeature` rather than off the Body, because that is the one
     comparison that names the feature at fault: a feature's base is exactly the
@@ -425,8 +446,7 @@ def _features_that_moved_no_material(doc, created):
 
     Returns the idle features themselves, not formatted text (FCC-246): the
     caller diagnoses each one before it has anything to print, and this
-    function's own comparison — the one line FCC-246's AC 4 leaves alone —
-    stays exactly what it was.
+    function's own comparison stays exactly what it was.
     """
     idle = []
     for name in sorted(created):
@@ -504,10 +524,10 @@ _IDLE_CAUSE_MESSAGE = {
 
 def _measured(namespace):
     """
-    The assertion.md script's own `held` and `failed` lists, read back out of
+    An assertion script's own `held` and `failed` lists, read back out of
     the namespace it ran in rather than parsed from a traceback string.
 
-    `None`, not `[]`, for a name the script never defined — a Step's code has
+    `None`, not `[]`, for a name the script never defined -- a Step's code has
     no reason to define either, and an older or deviant check script may not
     either, so absent has to read differently from "measured, and empty". Only
     a list or a tuple counts: a Step happens to be free to call a local
@@ -533,8 +553,8 @@ def register_step_source(code):
 def trimmed_traceback(exc):
     """
     Format *exc* with the worker's own `exec(compile(...))` frame cut off the
-    top, so only the Step's frames — from `"<step>"` down — and the standard
-    call into `preflight()` or `run_in_transaction()` above it reach the reader.
+    top, so only the Step's frames -- from `"<step>"` down -- and the standard
+    call into `run_step()` or `run_in_transaction()` above it reach the reader.
 
     An exception that never passes through a `"<step>"` frame (an error raised
     by the worker itself, not the Step it ran) keeps its traceback whole
@@ -549,7 +569,7 @@ def trimmed_traceback(exc):
 
 def _recompute_scope(doc, touched):
     """
-    What `preflight()`'s own recompute should touch: this Step's own writes,
+    What a Step's own recompute should touch: this Step's own writes,
     resolved back to live objects, plus everything downstream of them.
 
     `doc.recompute(objs)` recomputes exactly *objs* and their own
@@ -557,7 +577,7 @@ def _recompute_scope(doc, touched):
     does, so a Step that edits an existing feature rather than only
     appending a new one at the tip would leave every feature built on it
     `Touched` with a stale `Shape`, not `Invalid`: the failure scan right
-    after (`"Invalid" in o.State`) would not see it, and Preflight would pass
+    after (`"Invalid" in o.State`) would not see it, and the check would pass
     a Step silently on the wrong shape. Following `InList` out to its whole
     closure is what keeps this scoped recompute as correct as the bare
     `doc.recompute()` it replaces, while still bounded to what this Step
@@ -585,28 +605,60 @@ def _recompute_scope(doc, touched):
     return scope
 
 
-def preflight(request):
+_SESSION = {"doc": None, "checkpoint": None, "names": {}}
+
+
+def _checkpoint_path():
+    if _SESSION["checkpoint"] is None:
+        handle, path = tempfile.mkstemp(prefix="kernel_checkpoint_", suffix=".FCStd")
+        os.close(handle)
+        _SESSION["checkpoint"] = path
+    return _SESSION["checkpoint"]
+
+
+def _close_every_document():
     import FreeCAD
 
-    doc = load_fresh(request.get("document"))
-    namespace = step_namespace(doc)
+    for doc in list(FreeCAD.listDocuments().values()):
+        FreeCAD.closeDocument(doc.Name)
 
-    touched = _Touched()
-    FreeCAD.addDocumentObserver(touched)
-    try:
-        try:
-            register_step_source(request["code"])
-            exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
-        except AssertionError as exc:
-            response = {"ok": False, "traceback": trimmed_traceback(exc)}
-            held, failed = _measured(namespace)
-            if held is not None:
-                response["held"] = held
-            if failed is not None:
-                response["failed"] = failed
-            return response
-    finally:
-        FreeCAD.removeDocumentObserver(touched)
+
+def _open_document(path):
+    import FreeCAD
+
+    _close_every_document()
+    return FreeCAD.openDocument(path) if path else FreeCAD.newDocument("Kernel")
+
+
+def _reload_checkpoint():
+    """
+    Undo a failed Step by closing the live Document and reopening the last
+    checkpoint -- the Document a following Step sees is exactly what it would
+    have been had the failed Step never run.
+    """
+    import FreeCAD
+
+    path = _SESSION["checkpoint"]
+    _close_every_document()
+    _SESSION["doc"] = (FreeCAD.openDocument(path) if path and os.path.exists(path)
+                       else FreeCAD.newDocument("Kernel"))
+
+
+def _save_checkpoint(doc):
+    doc.saveCopy(_checkpoint_path())
+
+
+def _run_step_body(doc, namespace, touched, request):
+    """
+    Execute a Step's code against *doc* and the checks that make it wrong.
+
+    Raises on any failure -- an `AssertionError` from the code itself, or a
+    `RuntimeError` from a check below -- for `run_step` to catch and
+    translate into a checkpoint reload. Returns the success payload.
+    """
+    register_step_source(request["code"])
+    exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
+
     scope = _recompute_scope(doc, touched)
     if scope is None:
         doc.recompute()
@@ -632,8 +684,8 @@ def preflight(request):
             "this Step added a feature that neither removed nor added any material:\n"
             + "\n".join(lines)
             + "\nA Pad, Pocket, Hole or Fillet that leaves the Body's volume exactly as it "
-              "found it did not happen, and FreeCAD reports it up-to-date and valid all the "
-              "same: a Pocket whose profile is extruded away from the solid cuts nothing."
+              "found it did not happen: a Pocket whose profile is extruded away from the solid "
+              "cuts nothing."
         )
 
     scattered = _bodies_in_pieces(doc)
@@ -641,7 +693,7 @@ def preflight(request):
         raise RuntimeError(
             "this Step left a Body in more than one piece:\n" + "\n".join(scattered)
             + "\nA PartDesign Body is one solid. Disjoint profiles in one sketch pad into "
-              "separate lumps rather than one part — the profiles that make up the outline "
+              "separate lumps rather than one part -- the profiles that make up the outline "
               "have to meet, and anything that is genuinely a second part belongs in a "
               "second Body.")
 
@@ -681,6 +733,58 @@ def preflight(request):
     return result
 
 
+def run_step(request):
+    """
+    Run one Step against the kernel's live Document.
+
+    A `document` in *request* is a fresh handoff: the session starts over
+    from that path (or an empty Document, for no path at all), with an empty
+    name map and a baseline checkpoint, so a failing first Step still has
+    something to revert to. Anything else continues the running session.
+
+    Pass: the live Document keeps running and a checkpoint is written -- one
+    `saveCopy`, not a reopen. Fail: the live Document is thrown away and the
+    last checkpoint reopened, so the Step never happened, and the name map
+    reverts with it.
+    """
+    import FreeCAD
+
+    if "document" in request or _SESSION["doc"] is None:
+        _SESSION["doc"] = _open_document(request.get("document"))
+        _SESSION["names"] = {}
+        _save_checkpoint(_SESSION["doc"])
+
+    doc = _SESSION["doc"]
+    names = dict(_SESSION["names"])
+    namespace = step_namespace(_NamedDoc(doc, names))
+    namespace["names"] = names
+
+    touched = _Touched()
+    FreeCAD.addDocumentObserver(touched)
+    try:
+        try:
+            response = _run_step_body(doc, namespace, touched, request)
+        except AssertionError as exc:
+            response = {"ok": False, "traceback": trimmed_traceback(exc)}
+            held, failed = _measured(namespace)
+            if held is not None:
+                response["held"] = held
+            if failed is not None:
+                response["failed"] = failed
+        except BaseException as exc:
+            response = {"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)}
+    finally:
+        FreeCAD.removeDocumentObserver(touched)
+
+    if response.get("ok"):
+        _save_checkpoint(doc)
+        _SESSION["names"] = names
+    else:
+        _reload_checkpoint()
+    response["checkpoint"] = _SESSION["checkpoint"]
+    return response
+
+
 def reading(request):
     """
     One outline off a drawing, built as a sketch and put to the solver.
@@ -699,7 +803,7 @@ def reading(request):
     return answer
 
 
-_ASKED_FOR = {"step": preflight, "reading": reading}
+_ASKED_FOR = {"step": run_step, "reading": reading}
 
 
 def serve(stdin=None, respond=respond):
@@ -729,5 +833,5 @@ def serve(stdin=None, respond=respond):
             respond({"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)})
 
 
-if __name__ in ("__main__", "preflight_worker"):
+if __name__ in ("__main__", "kernel_worker"):
     serve()

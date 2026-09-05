@@ -1,17 +1,23 @@
 """
-Preflight: run a Step against a throwaway copy of the Document before the real
-one sees it.
+The kernel: a persistent headless FreeCAD, checkpointed rather than reopened.
 
 The parent half. Owns one long-lived headless FreeCAD, feeds it work over
 stdin, and enforces the timeout. Worker death is an expected outcome, not an
-incident — a crash or a timeout restarts the process silently and comes back
+incident -- a crash or a timeout restarts the process silently and comes back
 as a traceback the assistant can correct against (ADR-0002).
+
+A Step's code runs directly against the kernel's live Document. A Step that
+succeeds is checkpointed (`saveCopy`, no reopen); a Step that fails leaves
+the Document exactly as it was, by reopening the checkpoint. `check` called
+with no `document` argument at all continues the kernel's running session;
+handing it a `document` -- a path, or explicit `None` for an empty Document
+-- is a fresh handoff that starts the session over.
 
 Nothing here imports FreeCAD. The parent is the addon's process; the only
 FreeCAD in play is the child's.
 
 Run as a script it is a smoke check:
-`python -m core.preflight "doc.addObject('Part::Box','Box')"`.
+`python -m core.kernel "doc.addObject('Part::Box','Box')"`.
 """
 import json
 import os
@@ -22,12 +28,14 @@ import tempfile
 import threading
 from dataclasses import dataclass, field
 
-from core.preflight_worker import SENTINEL
+from core.kernel_worker import SENTINEL
 
 DEFAULT_TIMEOUT = 30.0
 STARTUP_TIMEOUT = 60.0
 
-_WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "preflight_worker.py")
+_WORKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kernel_worker.py")
+
+_CONTINUE = object()
 
 _CANDIDATES = (
     "/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd",
@@ -38,22 +46,26 @@ _CANDIDATES = (
 
 
 @dataclass
-class PreflightResult:
+class KernelResult:
     """
-    What the apply Tool sees: it worked, or here is why it did not.
+    What a caller sees for one Step: it landed, or here is why not.
 
     `created`, `deleted` and `modified` are what the Step actually did,
     observed rather than inferred from the code.
 
     `held` and `failed` are an Assertion check's own measured lists
-    (`core/preflight_worker.py :: _measured`) — `None` where nothing measured
+    (`core/kernel_worker.py :: _measured`) -- `None` where nothing measured
     them, an ordinary Step included, rather than `[]`, which would read as
     "measured, and nothing held or failed".
 
     `geometry` is every feature's Volume and BoundBox (FCC-260), always
-    present on a successful Preflight — cheap enough to take every time —
-    and empty where Preflight never reached a finished Document to measure
-    at all.
+    present on a successful Step and empty where the kernel never reached a
+    finished Document to measure at all.
+
+    `checkpoint` is the path of the file the kernel's Document was just saved
+    to (on success) or reloaded from (on failure) -- the on-disk state a
+    caller can reopen and compare against, per this ticket's own TESTING
+    STRATEGY.
     """
 
     ok: bool
@@ -66,6 +78,7 @@ class PreflightResult:
     held: list = None
     failed: list = None
     geometry: dict = field(default_factory=dict)
+    checkpoint: str = None
 
     @classmethod
     def from_response(cls, response):
@@ -74,7 +87,7 @@ class PreflightResult:
 
         The wire shape is read here and nowhere else. It used to be spelled out
         again at the one call site, which is how a field the worker starts
-        sending arrives at the parent and stops there — the two halves are
+        sending arrives at the parent and stops there -- the two halves are
         separate processes and nothing links their spellings but this.
 
         `held` and `failed` are read on both branches: an Assertion check's
@@ -82,9 +95,10 @@ class PreflightResult:
         lists, not only the `ok` one.
         """
         held, failed = response.get("held"), response.get("failed")
+        checkpoint = response.get("checkpoint")
         if not response.get("ok"):
-            return cls(ok=False, traceback=response.get("traceback", "Preflight failed"),
-                       held=held, failed=failed)
+            return cls(ok=False, traceback=response.get("traceback", "the kernel failed"),
+                       held=held, failed=failed, checkpoint=checkpoint)
         return cls(ok=True,
                    render=response.get("render"),
                    objects=response.get("objects", []),
@@ -92,7 +106,8 @@ class PreflightResult:
                    deleted=response.get("deleted", []),
                    modified=response.get("modified", []),
                    held=held, failed=failed,
-                   geometry=response.get("geometry") or {})
+                   geometry=response.get("geometry") or {},
+                   checkpoint=checkpoint)
 
 
 def find_freecadcmd():
@@ -112,11 +127,12 @@ def find_freecadcmd():
     )
 
 
-class PreflightWorker:
+class Kernel:
     """
-    One warm headless FreeCAD, restarted whenever it dies.
+    One warm headless FreeCAD, restarted whenever it dies, owning one live
+    Document across many Steps.
 
-    Callers only ever see a PreflightResult. Whether that came from a clean
+    Callers only ever see a KernelResult. Whether that came from a clean
     run, a Python traceback, a segfault or a timeout is this class's business.
     """
 
@@ -140,11 +156,11 @@ class PreflightWorker:
 
     def start(self):
         """
-        Bring the worker up and wait for it to say it is ready.
+        Bring the kernel up and wait for it to say it is ready.
 
         The pipes are decoded as UTF-8 rather than by the locale: inside
         FreeCAD.app neither LANG nor LC_ALL is set, so the locale resolves to
-        ascii and the first non-ASCII byte the worker emits kills the thread
+        ascii and the first non-ASCII byte the kernel emits kills the thread
         reading that stream.
         """
         if self.alive:
@@ -170,7 +186,7 @@ class PreflightWorker:
         ready = self._await_response(STARTUP_TIMEOUT)
         if ready is None or not ready.get("ready"):
             self.kill()
-            raise RuntimeError("Preflight Worker did not come up: " + self._stderr_text())
+            raise RuntimeError("The kernel did not come up: " + self._stderr_text())
 
     def kill(self):
         if self._process is None:
@@ -184,13 +200,13 @@ class PreflightWorker:
 
     def restart(self):
         """
-        Silent by design — the user is never told the worker died, and silent
+        Silent by design -- the user is never told the kernel died, and silent
         about not coming back either.
 
         A replacement that cannot be started is a request without an answer,
-        not an exception thrown at a caller who asked for a reading: the
-        reading check may cost a reading and never the run. The worker stays
-        dead and the next request tries again.
+        not an exception thrown at a caller who asked for a Step: the Step
+        may cost a Step and never the run. The kernel stays dead and the next
+        request tries again.
         """
         self.kill()
         self.restarts += 1
@@ -206,52 +222,63 @@ class PreflightWorker:
     def __exit__(self, *_):
         self.kill()
 
-    def check(self, code, document=None, render_path=None, timeout=None):
+    def check(self, code, document=_CONTINUE, render_path=None, timeout=None):
         """
-        Run *code* against a fresh copy of *document* in the worker.
+        Run *code* as one Step in the kernel.
 
-        Returns a PreflightResult. Never raises for anything the code did —
-        a crash and a timeout are results, not exceptions.
+        `document` not given at all is the one call this class ever treats
+        specially: it continues the kernel's own running session rather than
+        reloading it, which is the whole point of this class over the worker
+        it replaces. Passing `document` -- an explicit path, or explicit
+        `None` for an empty Document -- is a fresh handoff: the session
+        (Document, checkpoint and name map) starts over from it.
+
+        Returns a KernelResult. Never raises for anything the code did -- a
+        crash and a timeout are results, not exceptions.
         """
-        response, why = self._ask(
-            {"code": code, "document": document, "render_path": render_path},
-            timeout or self.timeout, "the Step")
+        request = {"code": code}
+        if document is not _CONTINUE:
+            request["document"] = document
+        if render_path is not None:
+            request["render_path"] = render_path
+        response, why = self._ask(request, timeout or self.timeout, "the Step")
         if response is None:
-            return PreflightResult(ok=False, traceback=why)
-        return PreflightResult.from_response(response)
+            return KernelResult(ok=False, traceback=why)
+        return KernelResult.from_response(response)
 
     def reading(self, request, timeout=None):
         """
-        Put one traced outline to the solver in the worker, and hand back its reply.
+        Put one traced outline to the solver in the kernel, and hand back its
+        reply.
 
-        None where the worker could not answer — it died on this reading, or it
-        hung — because a reading nobody could check and a reading with nothing
-        wrong come to the same thing upstream: no conflict on the description.
-        The dying is the point. `Sketcher.Constraint` is what segfaults
-        (FCC-19), and here it is fed geometry measured off a drawing rather
-        than code the model wrote (FCC-126).
+        None where the kernel could not answer -- it died on this reading, or
+        it hung -- because a reading nobody could check and a reading with
+        nothing wrong come to the same thing upstream: no conflict on the
+        description. The dying is the point. `Sketcher.Constraint` is what
+        segfaults (FCC-19), and here it is fed geometry measured off a
+        drawing rather than code the model wrote (FCC-126).
         """
         response, _ = self._ask(request, timeout or self.timeout, "the reading")
         return response if response and response.get("ok") else None
 
     def _ask(self, request, timeout, doing):
         """
-        One request down the pipe, one reply back, and a dead worker replaced.
+        One request down the pipe, one reply back, and a dead kernel replaced.
 
         Hands back the reply, or None and the sentence saying why there is
-        none — which the caller phrases as whatever its own result is. Never
+        none -- which the caller phrases as whatever its own result is. Never
         raises: a child that will not come up at all is one more reason for no
         reply, not an exception for a caller who asked a question.
 
-        A worker can die between the liveness check and the write, so its last
-        words are read before the restart replaces them with a live worker's
-        silence.
+        A kernel can die between the liveness check and the write, so its
+        last words are read before the restart replaces them with a live
+        kernel's silence.
         """
         if not self.alive:
             try:
                 self.start()
             except Exception as why:
-                return None, ("The Preflight Worker could not be started, so %s was "
+                return None, ("The kernel could not be started, so %s was "
                               "not run: %s" % (doing, why))
 
         try:
@@ -270,7 +297,7 @@ class PreflightWorker:
         died = None if timed_out else self._died_message("while running " + doing)
         self.restart()
         if timed_out:
-            return None, ("Preflight timed out after %ss — %s did not finish. An "
+            return None, ("The kernel timed out after %ss -- %s did not finish. An "
                           "unbounded loop or a runaway recompute is the usual cause."
                           % (timeout, doing))
         return None, died
@@ -279,7 +306,7 @@ class PreflightWorker:
         """
         Forward tagged responses; FreeCAD's own banner on stdout is noise.
 
-        The None put on the queue at the end is the only "the worker is gone"
+        The None put on the queue at the end is the only "the kernel is gone"
         signal there is. It is sent from a finally so that a reader dying is a
         prompt visible failure rather than every pending request waiting out
         its timeout.
@@ -315,9 +342,9 @@ class PreflightWorker:
 
     def _last_words(self):
         """
-        What the worker said on the way out.
+        What the kernel said on the way out.
 
-        The drain thread bound this worker's stderr when it started and only
+        The drain thread bound this kernel's stderr when it started and only
         returns at EOF, which death is; without the join the last line is lost
         to a race instead of to the reset it used to be lost to.
         """
@@ -328,7 +355,7 @@ class PreflightWorker:
     def _died_message(self, when):
         detail = self._last_words().strip()
         return (
-            "The Preflight Worker died %s, so this code would have taken FreeCAD "
+            "The kernel died %s, so this code would have taken FreeCAD "
             "down with it. Rewrite the Step to avoid whatever crashed the core.%s"
             % (when, ("\n\n" + detail) if detail else "")
         )
@@ -336,11 +363,11 @@ class PreflightWorker:
 
 def copy_of(document):
     """
-    Save a live Document to a throwaway file for the worker to open.
+    Save a live Document to a throwaway file for the kernel to open.
 
     Returns the path; the caller owns it and should delete it.
     """
-    handle, path = tempfile.mkstemp(prefix="preflight_", suffix=".FCStd")
+    handle, path = tempfile.mkstemp(prefix="kernel_", suffix=".FCStd")
     os.close(handle)
     document.saveCopy(path)
     return path
@@ -348,8 +375,8 @@ def copy_of(document):
 
 if __name__ == "__main__":
     code = sys.argv[1] if len(sys.argv) > 1 else "doc.addObject('Part::Box', 'Box')"
-    with PreflightWorker() as worker:
-        result = worker.check(code, render_path="/tmp/preflight_smoke.png")
+    with Kernel() as kernel:
+        result = kernel.check(code, render_path="/tmp/kernel_smoke.png")
         print("ok        :", result.ok)
         print("objects   :", [o["name"] for o in result.objects])
         print("render    :", result.render)

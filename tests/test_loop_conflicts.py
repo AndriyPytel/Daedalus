@@ -105,7 +105,7 @@ def test_without_a_freecad_to_build_in_the_description_is_untouched(
 
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+    monkeypatch.setattr(loop.kernel, "Kernel", no_headless_freecad)
 
     assert [found["kind"] for found
             in loop._the_geometry_disagrees(["a.pdf"], EventStream())] == \
@@ -145,7 +145,7 @@ def test_the_reading_is_never_built_in_the_addon_s_own_process(
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
     monkeypatch.setattr(loop.sketch_check, "checked", _never_called)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+    monkeypatch.setattr(loop.kernel, "Kernel",
                         lambda *_, **__: _AChildThatAnswered())
 
     found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
@@ -176,7 +176,7 @@ def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     events = EventStream()
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+    monkeypatch.setattr(loop.kernel, "Kernel",
                         lambda *_, **__: _AChildThatDied())
 
     assert [found["kind"] for found
@@ -201,7 +201,7 @@ def test_a_child_that_cannot_come_back_leaves_the_rest_unchecked_and_the_run_ali
     sheet = _a_sheet_of_many_outlines(tmp_path)
     events = EventStream()
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+    monkeypatch.setattr(loop.kernel, "Kernel",
                         lambda *_, **__: _AChildThatCannotComeBack())
 
     assert [found["kind"] for found
@@ -225,7 +225,7 @@ def test_an_outline_nobody_could_check_is_a_hazard_on_the_part(tmp_path, monkeyp
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     events = EventStream()
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+    monkeypatch.setattr(loop.kernel, "Kernel", no_headless_freecad)
 
     found = loop._the_geometry_disagrees(["a.pdf"], events)
     reading = each_disagreement_once(merge({"features": []}, {"conflicts": found}))
@@ -251,7 +251,7 @@ def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypat
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     events = EventStream()
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+    monkeypatch.setattr(loop.kernel, "Kernel", no_headless_freecad)
 
     assert [found["kind"] for found
             in loop._the_geometry_disagrees(["a.pdf"], events)] == \
@@ -263,14 +263,14 @@ def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypat
 def test_a_worker_that_could_not_start_names_why_on_the_transcript(monkeypatch):
     """
     `None` from `_a_freecad_of_our_own` is "nothing to start", said the same
-    way whether headless FreeCAD is absent (expected) or `PreflightWorker`
+    way whether headless FreeCAD is absent (expected) or `Kernel`
     regressed (a real bug) — `except Exception: return None` used to make
     those indistinguishable even on the transcript.
     """
     def broken_worker(*_, **__):
         raise RuntimeError("no headless binary")
 
-    monkeypatch.setattr(loop.preflight, "PreflightWorker", broken_worker)
+    monkeypatch.setattr(loop.kernel, "Kernel", broken_worker)
     events = EventStream()
 
     assert loop._a_freecad_of_our_own(events) is None
@@ -304,7 +304,7 @@ def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch)
     events = EventStream()
     monkeypatch.setattr(loop.time, "monotonic", lambda: next(clock))
     monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+    monkeypatch.setattr(loop.kernel, "Kernel",
                         lambda *_, **__: _AChildThatHangs())
 
     assert [found["kind"] for found
@@ -342,7 +342,7 @@ def test_a_sheet_is_read_once_however_many_phases_ask_for_it(tmp_path, monkeypat
     loop.sheet_reader._READ_CACHE.clear()
     monkeypatch.setattr(loop.sheet_reader, "_read",
                         lambda where, *_, **__: read.append(where) or sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+    monkeypatch.setattr(loop.kernel, "Kernel", no_headless_freecad)
 
     loop._the_sweep_is_the_sheets({"features": []}, [str(path)])
     loop._round_evidence([str(path)])

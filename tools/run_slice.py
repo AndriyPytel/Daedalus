@@ -64,7 +64,7 @@ def main():
     from core.freecad_tools import build_registry
     from core.llm import LiteLLMClient
     from core.loop import APPROVE, Approval, run
-    from core.preflight import PreflightWorker
+    from core.kernel import Kernel
 
     key = (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("OPENAI_API_KEY")
            or os.environ.get("GEMINI_API_KEY"))
@@ -84,7 +84,7 @@ def main():
     events.log_to(args.log)
     events.subscribe(_printer())
 
-    with PreflightWorker(timeout=180) as worker:
+    with Kernel(timeout=180) as worker:
         pipeline = ApplyPipeline(
             document=doc, worker=worker,
             dispatch=lambda func, timeout=None: func(),

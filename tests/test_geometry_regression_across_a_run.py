@@ -12,7 +12,7 @@ config/prompts/assertion.md documents, caught even though nothing declared
 touching it.
 
 No FreeCAD import: fingerprints are plain tuples, the same shape
-`core/preflight_worker.py::_geometry_of` produces off a live Shape.
+`core/kernel_worker.py::_geometry_of` produces off a live Shape.
 """
 from core.loop import _geometry_regressions
 

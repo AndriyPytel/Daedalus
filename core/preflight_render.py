@@ -1,6 +1,6 @@
 """
-The software rasterizer behind Preflight's render. Isolated from
-`core.preflight_worker` because it has no dependency on the worker's JSON
+The software rasterizer behind a Step's render. Isolated from
+`core.kernel_worker` because it has no dependency on the kernel's JSON
 protocol or its PartDesign checks -- only on a Document and a path -- and it
 imports `numpy`/`PIL` locally the same way the worker imports FreeCAD locally,
 so moving it does not add a module-level dependency the child process did not

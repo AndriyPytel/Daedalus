@@ -18,7 +18,7 @@ of the deletion is its own question.
 import pytest
 
 from core.apply import ApplyPipeline, refuse_without_asking
-from core.preflight import PreflightResult
+from core.kernel import KernelResult
 from tests.test_apply_pipeline import FakeDocument, FakeObject, FakeWorker
 
 
@@ -50,7 +50,7 @@ def pipeline(worker, confirm=None, owned=None, created=("Box",), events=None):
 
 
 def touching(modified=(), deleted=(), created=()):
-    return FakeWorker(PreflightResult(ok=True, render="/tmp/r.png",
+    return FakeWorker(KernelResult(ok=True, render="/tmp/r.png",
                                       modified=list(modified), deleted=list(deleted),
                                       created=list(created)))
 
@@ -196,7 +196,7 @@ def test_preflight_still_runs_before_the_question_is_asked():
 
 def test_a_failed_preflight_never_reaches_the_question():
     asked = Asked(answer=True)
-    worker = FakeWorker(PreflightResult(ok=False, traceback="boom"))
+    worker = FakeWorker(KernelResult(ok=False, traceback="boom"))
 
     result = pipeline(worker, confirm=asked).apply("x()")
 

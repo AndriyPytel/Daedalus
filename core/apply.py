@@ -16,8 +16,8 @@ from dataclasses import dataclass, field
 from core.events import ANSWER, QUESTION
 from core.freecad_tools import description, fit_view
 from core.lint import lint
-from core.preflight import PreflightWorker, copy_of
-from core.preflight_worker import register_step_source, step_namespace, trimmed_traceback
+from core.kernel import Kernel, copy_of
+from core.kernel_worker import register_step_source, step_namespace, trimmed_traceback
 
 DISPATCH_TIMEOUT = 60.0
 
@@ -59,7 +59,7 @@ class ApplyResult:
     """
     All the loop ever learns about a Step: it landed, or here is why not.
 
-    `modified` is Preflight's own measured list (`PreflightResult.modified`),
+    `modified` is Preflight's own measured list (`KernelResult.modified`),
     carried past the `_CHANGED_NOTHING` check it already decides rather than
     dropped there — the exact FreeCAD Names a landed Step altered without
     creating, alongside `created`.
@@ -263,9 +263,9 @@ class ApplyPipeline:
         self.events = events
 
     @property
-    def worker(self) -> PreflightWorker:
+    def worker(self) -> Kernel:
         if self._worker is None:
-            self._worker = PreflightWorker()
+            self._worker = Kernel()
         return self._worker
 
     def shutdown(self):
@@ -371,12 +371,12 @@ class ApplyPipeline:
         even a check that tried to write could not.
 
         `held` and `failed` carry the check script's own measured lists
-        (`PreflightResult`) up as they are — `None` where nothing measured
+        (`KernelResult`) up as they are — `None` where nothing measured
         them, a list otherwise — and it is the caller's to decide what that
         means, the same way it already decides what `ok` and `traceback` mean.
 
         `geometry` carries the same per-feature Volume/BoundBox `apply_step`
-        already measures on every Step (`PreflightResult.geometry`, FCC-260) —
+        already measures on every Step (`KernelResult.geometry`, FCC-260) —
         this is Assertion's only reach into it, since the geometry-diff check
         the phase repairs against runs once per run rather than once per Step.
         """
