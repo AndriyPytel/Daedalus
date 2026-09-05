@@ -3613,6 +3613,63 @@ def test_a_tool_call_row_carries_how_long_the_call_took(panel):
     assert any("(3.2s)" in title for title in titles), titles
 
 
+def test_a_sub_agent_spawn_shows_a_live_row_before_it_answers(panel):
+    """AC6: the row appears while the worker is still running, not only after."""
+    from core.events import Event, SUB_AGENT_SPAWNED
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("spawn-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(SUB_AGENT_SPAWNED, {"phase": "design", "prompt": "read page 2"}))
+    QT_APP.processEvents()
+
+    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+    assert "Sub-agent (design)" in row.toggle_button.text()
+    assert row._clock is not None, "the row should be pulsing while the worker runs"
+
+
+def test_a_sub_agent_answer_fills_the_spawned_row_with_its_transcript(panel):
+    """Expanding the row shows the worker's full transcript, not only its answer."""
+    from core.events import Event, SUB_AGENT_ANSWERED, SUB_AGENT_SPAWNED
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("answer-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(SUB_AGENT_SPAWNED, {"phase": "design", "prompt": "read page 2"}))
+    panel.on_event(Event(SUB_AGENT_ANSWERED, {
+        "phase": "design", "answer": "13.0 mm",
+        "transcript": [{"role": "user", "content": "read page 2"},
+                       {"role": "assistant", "content": "13.0 mm"}]}))
+    QT_APP.processEvents()
+
+    rows = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)]
+    assert len(rows) == 1, "the answer should fill the spawned row, not add a second one"
+    row = rows[0]
+    assert row._clock is None, "an answered worker is done, not still pulsing"
+    row.toggle_content()
+    assert "read page 2" in row.content_area.text()
+    assert "13.0 mm" in row.content_area.text()
+
+
+def test_a_refused_spawn_renders_its_own_distinct_row(panel):
+    """AC6: a refusal is its own entry, not silently absent from the panel."""
+    from core.events import Event, SUB_AGENT_REFUSED
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("refused-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(SUB_AGENT_REFUSED, {"phase": "worker", "reason": "depth"}))
+    QT_APP.processEvents()
+
+    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+    assert "refused" in row.toggle_button.text().lower()
+    row.toggle_content()
+    assert "depth" in row.content_area.text()
+
+
 def test_the_end_of_a_run_reaches_the_panel_on_the_gui_thread(panel):
     """
     The crash this addon shipped with: `LoopWorker` is moved onto a QThread,
