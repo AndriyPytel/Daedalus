@@ -49,6 +49,7 @@ def test_cost_event_always_has_seconds_field():
     assert abs(cost_data["seconds"] - elapsed) < 0.2
     # ScriptedLLMClient has no last_cost, so usd should be absent
     assert "usd" not in cost_data
+    assert "prompt_tokens" not in cost_data
 
 
 def test_cost_event_includes_usd_when_client_reports_price():
@@ -85,6 +86,8 @@ def test_cost_event_includes_usd_when_client_reports_price():
     assert cost_data["usd"] == 0.004521
     assert cost_data["model"] == "claude-3-7-sonnet-20250219"
     assert cost_data["phase"] == "design"
+    assert cost_data["prompt_tokens"] == 1066
+    assert cost_data["completion_tokens"] == 37
 
 def test_format_elapsed_under_one_hour():
     """M:SS format when under an hour."""

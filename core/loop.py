@@ -704,6 +704,12 @@ def _one_call(llm, events, phase, system, user, prior=()):
     `cost` — 22.4 minutes of a recorded run's 23.6 minutes of provider time,
     and 25.6 of 53.7 in another — and a panel with nothing to show reads as a
     run that has hung.
+
+    `cost` carries whatever the client reported spending: `usd` when a price
+    is known, and `prompt_tokens`/`completion_tokens`/`cached_tokens` when the
+    provider counted them, both routes do (FCC-309). A client that answers
+    with neither — `ScriptedLLMClient` — still gets a `cost` with `seconds`
+    alone, because the wait is a real one.
     """
     llm = llm.for_phase(phase) if hasattr(llm, "for_phase") else llm
     ceiling = getattr(llm, "timeout", None)
@@ -727,11 +733,12 @@ def _one_call(llm, events, phase, system, user, prior=()):
                 text.append(chunk.text)
                 events.emit(WRITING, phase=phase, text=chunk.text)
     finally:
-        spent = getattr(llm, "last_cost", None)
+        spent = getattr(llm, "last_cost", None) or {}
         paid = {"phase": phase, "seconds": time.time() - start,
-                "model": spent["model"] if spent else model}
-        if spent:
-            paid["usd"] = spent["usd"]
+                "model": spent.get("model", model)}
+        for key in ("usd", "prompt_tokens", "completion_tokens", "cached_tokens"):
+            if key in spent:
+                paid[key] = spent[key]
         events.emit(COST, **paid)
     return "".join(text), thought, "".join(reasoning)
 

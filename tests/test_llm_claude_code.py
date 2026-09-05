@@ -288,13 +288,22 @@ def test_nothing_is_spawned_before_the_caller_pulls():
 def test_what_the_call_spent_is_carried_off_the_result_event():
     """
     `stream()` yields Chunks and the client never sees the EventStream, so what
-    the call spent crosses the seam as an attribute of the client.
+    the call spent crosses the seam as an attribute of the client. The
+    `result` event's own `usage` carries the token counts beside the price:
+    `input_tokens`, `output_tokens`, and `cache_read_input_tokens` where the
+    preamble was cached.
     """
     client, _ = client_replaying()
 
     collect(client.stream(a_turn()))
 
-    assert client.last_cost == {"usd": _result(MINIMAL)["total_cost_usd"], "model": MODEL}
+    usage = _result(MINIMAL)["usage"]
+    assert client.last_cost == {
+        "usd": _result(MINIMAL)["total_cost_usd"], "model": MODEL,
+        "prompt_tokens": usage["input_tokens"],
+        "completion_tokens": usage["output_tokens"],
+        "cached_tokens": usage["cache_read_input_tokens"],
+    }
 
 
 def test_a_call_that_says_nothing_about_cost_is_not_billed_the_last_one():
