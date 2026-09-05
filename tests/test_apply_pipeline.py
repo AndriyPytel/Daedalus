@@ -41,7 +41,7 @@ class FakeWorker:
                                                 created=["Box"])
         self.checked = []
 
-    def check(self, code, document=None, render_path=None, timeout=None):
+    def check(self, code, document=None, render_path=None, timeout=None, names=None):
         self.checked.append({"code": code, "document": document,
                              "render_path": render_path})
         return self.result
@@ -57,7 +57,7 @@ def pipeline(trace):
     doc = FakeDocument()
     worker = FakeWorker()
 
-    def transaction(document, code, label):
+    def transaction(document, code, label, **_):
         trace.append(("transaction", label))
         document.Objects.append(FakeObject("Box"))
 
@@ -177,7 +177,7 @@ def test_a_worker_that_died_reads_as_a_failed_step_not_an_incident(pipeline):
 
 
 def test_a_step_that_passes_preflight_but_fails_for_real_is_reported_as_such(trace):
-    def transaction(document, code, label):
+    def transaction(document, code, label, **_):
         raise RuntimeError("the live Document disagreed")
 
     pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
@@ -191,7 +191,7 @@ def test_a_step_that_passes_preflight_but_fails_for_real_is_reported_as_such(tra
 
 
 def test_closing_during_the_transaction_is_a_clean_stop_not_a_failed_step(trace):
-    def transaction(document, code, label):
+    def transaction(document, code, label, **_):
         raise Closing("shutting down")
 
     pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
@@ -267,7 +267,7 @@ def test_every_document_touch_goes_through_the_dispatcher():
 
     doc = FakeDocument()
     pipeline = ApplyPipeline(document=doc, worker=FakeWorker(), dispatch=dispatch,
-                             transaction=lambda *a: None)
+                             transaction=lambda *a, **kw: None)
 
     pipeline.apply("doc.recompute()")
 

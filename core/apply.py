@@ -17,7 +17,8 @@ from core.events import ANSWER, QUESTION
 from core.freecad_tools import description, fit_view
 from core.lint import lint
 from core.kernel import Kernel, KernelResult, copy_of
-from core.kernel_worker import register_step_source, step_namespace, trimmed_traceback
+from core.kernel_worker import (_NamedDoc, register_step_source, signature_of,
+                                step_namespace, trimmed_traceback)
 
 DISPATCH_TIMEOUT = 60.0
 
@@ -37,6 +38,24 @@ class Closing(Exception):
     call that segfaults. A line lost while FreeCAD closes is already in the
     file.
     """
+
+
+class SignatureMismatch(Exception):
+    """
+    A Step's replay did not land what the kernel verified (FCC-302).
+
+    Raised inside the transaction, before `commitTransaction` -- a Step that
+    fails this check never lands, the same as one whose code raised.
+    """
+
+    def __init__(self, landed, expected):
+        self.landed = landed
+        self.expected = expected
+        super().__init__(
+            "The replayed Step's signature did not match what the kernel "
+            "verified -- expected %r, landed %r. It was rolled back rather "
+            "than silently accepted." % (expected, landed)
+        )
 
 
 def closing():
@@ -173,18 +192,38 @@ _CHANGED_NOTHING = (
 )
 
 
-def run_in_transaction(doc, code, label="Copilot Step"):
+def run_in_transaction(doc, code, label="Copilot Step", names=None, expected_signature=None):
     """
     Execute *code* against *doc* as one undoable unit. Main thread only.
 
     Everything the Step does — including the recompute — is inside the
     transaction, so one undo takes the whole Step back.
+
+    *names* is the requested-name -> allocated-name map an earlier Step's
+    Preflight built, exposed to this Step's code the same way the kernel's
+    own session exposes it (`core/kernel_worker.py::run_step`) — built with
+    the same `_NamedDoc` wrapper so a name collision during replay is
+    recorded exactly where the kernel would have recorded it.
+
+    *expected_signature* is what Preflight already verified this code
+    produces (`core/kernel_worker.py::signature_of`); `None` skips the
+    check entirely, since a caller with nothing to compare against has
+    nothing to verify (FCC-302). A mismatch aborts the transaction instead
+    of committing it — caught by `ApplyPipeline.apply` the same way any
+    other failure inside the transaction is.
     """
+    names = {} if names is None else names
     doc.openTransaction(label)
     try:
         register_step_source(code)
-        exec(compile(code, "<step>", "exec"), step_namespace(doc))  # noqa: S102
+        namespace = step_namespace(_NamedDoc(doc, names))
+        namespace["names"] = names
+        exec(compile(code, "<step>", "exec"), namespace)  # noqa: S102
         doc.recompute()
+        if expected_signature:
+            landed = signature_of(doc)
+            if landed != expected_signature:
+                raise SignatureMismatch(landed, expected_signature)
     except BaseException:
         doc.abortTransaction()
         raise
@@ -247,6 +286,16 @@ class ApplyPipeline:
     only thing the user is ever asked that does not go through the loop, so
     without it a Session that authorised a deletion could not say so when it
     was replayed.
+
+    `_names` is the requested-name -> allocated-name map, accumulated across
+    every Step of the run and reset by `start_run` (FCC-302): each `apply()`
+    call is its own fresh handoff to Preflight, against a copy of the
+    Document's own true current state, so the map an earlier Step's name
+    collision produced does not survive in the kernel's own session the way
+    a continuing one would -- it has to be carried here instead, and handed
+    both to Preflight and to the replay so a later Step's code reaches the
+    object an earlier Step actually created rather than a same-named object
+    already in the Document.
     """
 
     def __init__(self, document=None, worker=None, dispatch=on_main_thread,
@@ -263,6 +312,7 @@ class ApplyPipeline:
         self.events = events
         self._main_window = main_window
         self.locked = False
+        self._names = {}
 
     @property
     def worker(self) -> Kernel:
@@ -319,6 +369,7 @@ class ApplyPipeline:
                 _discard(copy)
         self._dispatch(lambda: self.main_window.setEnabled(False))
         self.locked = True
+        self._names = {}
         return seeded
 
     def end_run(self):
@@ -363,6 +414,11 @@ class ApplyPipeline:
         a legacy Plan or one Execute wrote without the closed vocabulary in
         force — lint only checks the TypeId a Step's code builds where it has
         one to check against.
+
+        The replay is never re-linted or re-Preflighted (FCC-302): it runs
+        the same code Preflight already verified, with the same allocated-
+        name map (`self._names`), and is checked against Preflight's own
+        `signature` before it commits rather than after.
         """
         checked = lint(code, selection, op=op)
         if not checked.ok:
@@ -376,7 +432,7 @@ class ApplyPipeline:
 
         copy = self._dispatch(lambda: copy_of(doc))
         try:
-            preflighted = self.worker.check(code, document=copy)
+            preflighted = self.worker.check(code, document=copy, names=self._names)
         finally:
             _discard(copy)
 
@@ -391,7 +447,9 @@ class ApplyPipeline:
             return ApplyResult(ok=False, traceback=_CHANGED_NOTHING)
 
         try:
-            self._dispatch(lambda: self._transaction(doc, code, label))
+            self._dispatch(lambda: self._transaction(
+                doc, code, label, names=preflighted.names,
+                expected_signature=preflighted.signature))
         except Closing:
             raise
         except BaseException as exc:
@@ -401,6 +459,7 @@ class ApplyPipeline:
                           "so it was rolled back:\n\n" + trimmed_traceback(exc),
             )
 
+        self._names = preflighted.names
         self._dispatch(lambda: fit_view(doc))
         described = self._dispatch(lambda: description(doc))
         created = [o["name"] for o in described["features"] if o["name"] not in before]
