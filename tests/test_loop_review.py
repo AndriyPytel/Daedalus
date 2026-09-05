@@ -21,7 +21,7 @@ import pytest
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
-    REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
+    REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, STOPPED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
 from core import design, loop, part_file, sheet_reader
@@ -921,8 +921,8 @@ def test_stopping_says_what_is_already_in_the_document():
     run("Make a box", llm=scripted([plan_reply("First")]),
         tools=FakeTools().registry, events=events, cancelled=lambda: stop["now"])
 
-    blocked = events.first(BLOCKED)
-    assert "still in the Document" in blocked.data["reason"]
+    stopped = events.first(STOPPED)
+    assert "still in the Document" in stopped.data["reason"]
 
 
 def test_a_run_that_is_never_stopped_is_unaffected():
