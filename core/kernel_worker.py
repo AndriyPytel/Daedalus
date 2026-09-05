@@ -69,41 +69,97 @@ def summarise(doc):
 
 DERIVED = {"Shape"}
 
+_EXCLUDED_FROM_DIFF = {"Name", "Label"} | DERIVED
+
+
+def _property_value(obj, prop):
+    try:
+        return getattr(obj, prop)
+    except Exception:
+        return None
+
+
+def _comparable(obj, prop):
+    """
+    Whether *prop* is worth diffing by value.
+
+    `ShapeMaterial` (`Materials::PropertyMaterial`) hands back a freshly
+    built wrapper object on every read, with no value equality of its own --
+    two reads of the same untouched property compare unequal, which would
+    read as a modification on every single Step of a Document that has one.
+    It is excluded by its FreeCAD property type rather than by name, so the
+    same trap does not reopen under a different Tool's own material-typed
+    property.
+    """
+    try:
+        return "Material" not in obj.getTypeIdOfProperty(prop)
+    except Exception:
+        return True
+
+
+def _properties_snapshot(doc):
+    """
+    Every object's own `PropertiesList`, by value, `Name`/`Label` and the
+    derived properties in `DERIVED` left out -- the exclusion rule
+    `fcc-research-doc-diff.md` demonstrated, so a rename or a recompute never
+    reads as a modification.
+    """
+    snapshot = {}
+    for obj in doc.Objects:
+        properties = getattr(obj, "PropertiesList", None) or ()
+        snapshot[obj.Name] = {
+            prop: _property_value(obj, prop)
+            for prop in properties
+            if prop not in _EXCLUDED_FROM_DIFF and _comparable(obj, prop)
+        }
+    return snapshot
+
+
+def _changed_properties(before, after):
+    changed = set()
+    for prop in set(before) | set(after):
+        if prop not in before or prop not in after:
+            changed.add(prop)
+            continue
+        try:
+            if before[prop] != after[prop]:
+                changed.add(prop)
+        except Exception:
+            changed.add(prop)
+    return changed
+
 
 class _Touched:
     """
-    What the Step did, straight from FreeCAD rather than from reading the code.
+    What the Step did, observed off the Document rather than recorded through
+    a call this process hooked (FCC-300) -- the open kernel namespace (FCC-299)
+    means a Step's code no longer has to route through anything here at all.
 
-    `changed` holds one (name, property) pair per notification. The properties
-    in `DERIVED` are derived by recompute rather than assigned by the Step, so
-    an object whose only changed property is one of those was recalculated
-    rather than modified -- counting them would make every dependent object
-    downstream of a legitimate change look touched.
+    A `PropertiesList` snapshot is taken at construction, before the Step's
+    code runs; `diff()` takes a second one and compares by value. It runs
+    before recompute, not after: a computed property like `Shape` changes for
+    every object downstream of a legitimate edit the moment recompute runs,
+    which is exactly the false positive `DERIVED` already existed to guard
+    against under the signal-based mechanism this replaces.
     """
 
-    def __init__(self):
+    def __init__(self, doc):
+        self._before = _properties_snapshot(doc)
         self.created = set()
         self.deleted = set()
-        self.changed = set()
+        self._changed = {}
 
-    def slotCreatedObject(self, obj):
-        self.created.add(obj.Name)
-
-    def slotDeletedObject(self, obj):
-        self.deleted.add(obj.Name)
-
-    def slotChangedObject(self, obj, prop):
-        self.changed.add((obj.Name, prop))
+    def diff(self, doc):
+        after = _properties_snapshot(doc)
+        self.created = set(after) - set(self._before)
+        self.deleted = set(self._before) - set(after)
+        self._changed = {
+            name: _changed_properties(self._before[name], after[name])
+            for name in set(self._before) & set(after)
+        }
 
     def modified(self):
-        names = set()
-        for name in {name for name, _ in self.changed}:
-            if name in self.created or name in self.deleted:
-                continue
-            properties = {prop for changed, prop in self.changed if changed == name}
-            if properties - DERIVED:
-                names.add(name)
-        return names
+        return {name for name, properties in self._changed.items() if properties}
 
 
 _HINT_LIMIT = 60
@@ -671,6 +727,7 @@ def _run_step_body(doc, namespace, touched, request):
     """
     register_step_source(request["code"])
     exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
+    touched.diff(doc)
 
     scope = _recompute_scope(doc, touched)
     if scope is None:
@@ -759,8 +816,6 @@ def run_step(request):
     last checkpoint reopened, so the Step never happened, and the name map
     reverts with it.
     """
-    import FreeCAD
-
     if "document" in request or _SESSION["doc"] is None:
         _SESSION["doc"] = _open_document(request.get("document"))
         _SESSION["names"] = {}
@@ -771,22 +826,18 @@ def run_step(request):
     namespace = step_namespace(_NamedDoc(doc, names))
     namespace["names"] = names
 
-    touched = _Touched()
-    FreeCAD.addDocumentObserver(touched)
+    touched = _Touched(doc)
     try:
-        try:
-            response = _run_step_body(doc, namespace, touched, request)
-        except AssertionError as exc:
-            response = {"ok": False, "traceback": trimmed_traceback(exc)}
-            held, failed = _measured(namespace)
-            if held is not None:
-                response["held"] = held
-            if failed is not None:
-                response["failed"] = failed
-        except BaseException as exc:
-            response = {"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)}
-    finally:
-        FreeCAD.removeDocumentObserver(touched)
+        response = _run_step_body(doc, namespace, touched, request)
+    except AssertionError as exc:
+        response = {"ok": False, "traceback": trimmed_traceback(exc)}
+        held, failed = _measured(namespace)
+        if held is not None:
+            response["held"] = held
+        if failed is not None:
+            response["failed"] = failed
+    except BaseException as exc:
+        response = {"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)}
 
     if response.get("ok"):
         _save_checkpoint(doc)
