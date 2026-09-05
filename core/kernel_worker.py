@@ -485,9 +485,67 @@ def _geometry_snapshot(doc):
     return {o.Name: _geometry_of(o) for o in doc.Objects}
 
 
+def _resolved_targets(obj):
+    """
+    What *obj* actually points at, for the one property this checks: an
+    `App::Link`/`App::LinkGroup`'s `LinkedObject`/`ElementList`, or a
+    Sketch's `ExternalGeometry` -- the reference `copyObject` cannot be
+    trusted to reproduce and `addExternal` re-resolves by name (FCC-302).
+
+    Read by `TypeId` rather than `getattr` alone: `LinkedObject` is `None`
+    on an unset `App::Link`, which is a legitimate signature (nothing
+    resolved yet) rather than "this object has no such property".
+    """
+    type_id = getattr(obj, "TypeId", "") or ""
+    if type_id == "App::Link":
+        linked = getattr(obj, "LinkedObject", None)
+        return getattr(linked, "Name", None)
+    if type_id == "App::LinkGroup":
+        return sorted(getattr(element, "Name", None)
+                      for element in (getattr(obj, "ElementList", None) or ()))
+    external = getattr(obj, "ExternalGeometry", None)
+    if external:
+        return sorted(getattr(ref, "Name", None) for ref, _subs in external)
+    return None
+
+
+def signature_of(doc):
+    """
+    A landed Step reduced to what a replay must reproduce exactly (FCC-302).
+
+    Object count, names and total volume are not enough on their own: a
+    Step whose code runs over the wrong, same-named object matches all
+    three while addressing something the kernel never verified
+    (`fcc-openq-replay.md`). `links` closes that gap with the resolved
+    target of every `App::Link`, `App::LinkGroup` and Sketch
+    `ExternalGeometry` reference, keyed by the referring object's own Name
+    and left out entirely where an object has none of those to resolve.
+    """
+    links = {}
+    for obj in doc.Objects:
+        target = _resolved_targets(obj)
+        if target is not None:
+            links[obj.Name] = target
+    return {
+        "count": len(doc.Objects),
+        "names": sorted(o.Name for o in doc.Objects),
+        "volume": round(sum(_volume_of(o) for o in doc.Objects), 6),
+        "links": links,
+    }
+
+
 def _volume_of(obj):
+    """
+    A feature's own material, zero for anything that is not a closed solid.
+
+    A datum plane's `Shape` is not null but has no `Solids` -- OCC's own
+    volume calculation on an unbounded planar Face is numerically unstable
+    rather than a clean zero, and it differs between two separate processes
+    computing the same Document (FCC-302's own signature check caught this:
+    count, names and every other feature's volume matched exactly).
+    """
     shape = getattr(obj, "Shape", None)
-    if shape is None or shape.isNull():
+    if shape is None or shape.isNull() or not shape.Solids:
         return 0.0
     return shape.Volume
 
@@ -787,6 +845,7 @@ def _run_step_body(doc, namespace, touched, request):
         "deleted": sorted(touched.deleted),
         "modified": sorted(touched.modified()),
         "geometry": _geometry_snapshot(doc),
+        "signature": signature_of(doc),
     }
     held, failed = _measured(namespace)
     if held is not None:
@@ -807,9 +866,12 @@ def run_step(request):
     Run one Step against the kernel's live Document.
 
     A `document` in *request* is a fresh handoff: the session starts over
-    from that path (or an empty Document, for no path at all), with an empty
-    name map and a baseline checkpoint, so a failing first Step still has
-    something to revert to. Anything else continues the running session.
+    from that path (or an empty Document, for no path at all), with a
+    baseline checkpoint and a name map seeded from *request*'s own `names`
+    (empty where not given) rather than always reset -- a caller replaying
+    against the Document's true current state (FCC-302) still needs what an
+    earlier Step allocated, even though every apply() call is its own fresh
+    handoff. Anything else continues the running session.
 
     Pass: the live Document keeps running and a checkpoint is written -- one
     `saveCopy`, not a reopen. Fail: the live Document is thrown away and the
@@ -818,7 +880,7 @@ def run_step(request):
     """
     if "document" in request or _SESSION["doc"] is None:
         _SESSION["doc"] = _open_document(request.get("document"))
-        _SESSION["names"] = {}
+        _SESSION["names"] = dict(request.get("names") or {})
         _save_checkpoint(_SESSION["doc"])
 
     doc = _SESSION["doc"]
@@ -845,6 +907,7 @@ def run_step(request):
     else:
         _reload_checkpoint()
     response["checkpoint"] = _SESSION["checkpoint"]
+    response["names"] = dict(_SESSION["names"])
     return response
 
 

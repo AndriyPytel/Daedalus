@@ -37,7 +37,7 @@ class Asked:
 def pipeline(worker, confirm=None, owned=None, created=("Box",), events=None):
     doc = FakeDocument()
 
-    def transaction(document, code, label):
+    def transaction(document, code, label, **_):
         for name in created:
             document.Objects.append(FakeObject(name))
 
@@ -310,7 +310,7 @@ class Tree(FakeDocument):
 def modelled(worker, objects, confirm=None, owned=None, events=None):
     doc = Tree(objects)
 
-    def transaction(document, code, label):
+    def transaction(document, code, label, **_):
         pass
 
     return ApplyPipeline(document=doc, worker=worker,

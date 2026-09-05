@@ -66,6 +66,8 @@ class KernelResult:
     to (on success) or reloaded from (on failure) -- the on-disk state a
     caller can reopen and compare against, per this ticket's own TESTING
     STRATEGY.
+
+    `names` is the requested-name -> allocated-name map after this Step, what a later Step's `doc.getObject(names[...])` addresses instead of a literal string a name collision may have moved (FCC-302). `signature` is what a replay of this Step's own code must reproduce exactly -- object count, names, total volume, and every `App::Link`/`App::LinkGroup`/`ExternalGeometry` reference's resolved target -- so a Step that ran over the wrong object is caught even where the first three agree.
     """
 
     ok: bool
@@ -79,6 +81,8 @@ class KernelResult:
     failed: list = None
     geometry: dict = field(default_factory=dict)
     checkpoint: str = None
+    names: dict = field(default_factory=dict)
+    signature: dict = field(default_factory=dict)
 
     @classmethod
     def from_response(cls, response):
@@ -96,9 +100,10 @@ class KernelResult:
         """
         held, failed = response.get("held"), response.get("failed")
         checkpoint = response.get("checkpoint")
+        names = response.get("names") or {}
         if not response.get("ok"):
             return cls(ok=False, traceback=response.get("traceback", "the kernel failed"),
-                       held=held, failed=failed, checkpoint=checkpoint)
+                       held=held, failed=failed, checkpoint=checkpoint, names=names)
         return cls(ok=True,
                    render=response.get("render"),
                    objects=response.get("objects", []),
@@ -107,7 +112,8 @@ class KernelResult:
                    modified=response.get("modified", []),
                    held=held, failed=failed,
                    geometry=response.get("geometry") or {},
-                   checkpoint=checkpoint)
+                   checkpoint=checkpoint, names=names,
+                   signature=response.get("signature") or {})
 
 
 def find_freecadcmd():
@@ -222,7 +228,7 @@ class Kernel:
     def __exit__(self, *_):
         self.kill()
 
-    def check(self, code, document=_CONTINUE, render_path=None, timeout=None):
+    def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None):
         """
         Run *code* as one Step in the kernel.
 
@@ -231,7 +237,11 @@ class Kernel:
         reloading it, which is the whole point of this class over the worker
         it replaces. Passing `document` -- an explicit path, or explicit
         `None` for an empty Document -- is a fresh handoff: the session
-        (Document, checkpoint and name map) starts over from it.
+        (Document and checkpoint) starts over from it -- the name map does
+        not, when *names* hands back what an earlier Step already allocated
+        (FCC-302): a caller replaying against the Document's own true state
+        takes a fresh handoff on every Step, but a later Step's code still
+        needs what an earlier one's name collided into.
 
         Returns a KernelResult. Never raises for anything the code did -- a
         crash and a timeout are results, not exceptions.
@@ -241,6 +251,8 @@ class Kernel:
             request["document"] = document
         if render_path is not None:
             request["render_path"] = render_path
+        if names:
+            request["names"] = names
         response, why = self._ask(request, timeout or self.timeout, "the Step")
         if response is None:
             return KernelResult(ok=False, traceback=why)
