@@ -50,7 +50,7 @@ from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, DESIGN,
     ERROR, GATE, INTENT, OUTSTANDING, PART, PLAN, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED,
-    THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, EventStream,
+    STOPPED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, EventStream,
 )
 from core import part_file, preflight, sheet_reader, sketch_check
 from core.freecad_tools import TRAPS
@@ -2960,9 +2960,9 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, attach
                             cancelled or (lambda: False), gate, progress, attachments,
                             ask, decide, list(outstanding), the_part_path))
     except Stopped:
-        return outcome(_block(events, "Stopped by you. Everything applied so far is still in "
-                                      "the Document; undo it Step by Step if you want it "
-                                      "gone.", [], progress.applied))
+        return outcome(_stopped(events, "Stopped by you. Everything applied so far is still in "
+                                        "the Document; undo it Step by Step if you want it "
+                                        "gone.", progress.applied))
     except _OutOfRevisions as spent:
         return outcome(_block(events, spent.reason, spent.tried, progress.applied))
     except ProviderRefused as exc:
@@ -4740,3 +4740,15 @@ def _block(events, reason, tried, applied, said=""):
     events.emit(BLOCKED, reason=reason, tried=list(tried), provider_said=said)
     return LoopResult(ok=False, blocked=True, reason=reason, tried=list(tried),
                       steps_applied=applied)
+
+
+def _stopped(events, reason, applied):
+    """
+    A user `Stopped` this run, not a `blocked` one (FCC-292): the loop's own
+    `blocked`/`awaiting_user` fields still hold — a stopped run is stopped
+    and waiting, not failed and finished — but the event stream says which
+    of the two happened, so `core/measure.py`'s blocked rate counts only
+    the runs that actually ran out of road.
+    """
+    events.emit(STOPPED, reason=reason)
+    return LoopResult(ok=False, blocked=True, reason=reason, steps_applied=applied)

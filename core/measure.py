@@ -161,6 +161,22 @@ def _rate(measurements: List[Measurement], predicate) -> float:
     return sum(1 for m in measurements if predicate(m)) / len(measurements)
 
 
+def _pass_rate(measurements: List[Measurement]) -> float:
+    """
+    The fraction of runs Review passed, of the runs Review actually reached.
+
+    `verdict is None` is Review never running - blocked before it, or the log
+    cut off first - not Review saying no. Folding it into the same denominator
+    as an explicit `verdict == False` reads "we never asked" as a fail
+    alongside "we asked and it said no", and a run nobody judged drags the
+    rate down as hard as one that was judged and failed.
+    """
+    reviewed = [m for m in measurements if m.verdict is not None]
+    if not reviewed:
+        return 0.0
+    return sum(1 for m in reviewed if m.verdict == "pass") / len(reviewed)
+
+
 def _average(measurements: List[Measurement], field) -> float:
     if not measurements:
         return 0.0
@@ -168,7 +184,7 @@ def _average(measurements: List[Measurement], field) -> float:
 
 
 _ROWS = (
-    ("pass rate", lambda ms: _rate(ms, lambda m: m.verdict == "pass"), "{:.1%}"),
+    ("pass rate", _pass_rate, "{:.1%}"),
     ("blocked rate", lambda ms: _rate(ms, lambda m: m.blocked_reason is not None), "{:.1%}"),
     ("avg Steps started", lambda ms: _average(ms, lambda m: m.steps_started), "{:.1f}"),
     ("avg Steps applied", lambda ms: _average(ms, lambda m: m.steps_applied), "{:.1f}"),

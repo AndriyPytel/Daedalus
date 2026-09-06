@@ -19,7 +19,7 @@ from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, KINDS, OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED,
-    THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, Event,
+    STOPPED, THOUGHT, TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, Event,
 )
 from core.narrate import Narration, narrate
 
@@ -49,6 +49,7 @@ SAMPLES = {
     REVIEW_SUSPECTED: {"suspected": ["envelope → across the flats: 13.0 mm (suspected)"]},
     REVIEW_VERDICT: {"verdict": "pass", "reason": "matches the Intent"},
     BLOCKED: {"reason": "The budget is spent.", "tried": []},
+    STOPPED: {"reason": "Stopped by you."},
     CALL_STARTED: {"phase": "plan", "model": "sonnet", "ceiling": 900.0},
     COST: {"phase": "design", "usd": 0.0049255, "model": "sonnet", "seconds": 12.3},
     ERROR: {"message": "ValueError: no key"},

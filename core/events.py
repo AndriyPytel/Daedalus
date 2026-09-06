@@ -44,6 +44,12 @@ differently — reasoning is the model deciding and may be withheld by the
 route, the reply is what the phase will be held to — and because the wait it
 accounts for is the larger one: 22.4 minutes of a recorded run's 23.6 minutes
 of provider time fell after the last `thought` of every call.
+
+`stopped` is the user's own `Stopped` reaching the loop's boundary
+(`core/loop.py :: run`), not a `blocked`: the run did not fail to finish,
+it was told to stop. The two are separate kinds because
+`core/measure.py`'s blocked rate counts only the runs that ran out of
+road, and a person clicking Stop is not one of them.
 """
 import json
 import time
@@ -72,6 +78,7 @@ UNBUILT = "unbuilt"
 REVIEW_VERDICT = "review_verdict"
 REVIEW_SUSPECTED = "review_suspected"
 BLOCKED = "blocked"
+STOPPED = "stopped"
 CALL_STARTED = "call_started"
 COST = "cost"
 ERROR = "error"
@@ -79,8 +86,8 @@ ERROR = "error"
 KINDS = (
     INTENT, THOUGHT, WRITING, QUESTION, ANSWER, ATTACHED, DESIGN, PART, PLAN, PLAN_REVISED,
     GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, APPLIED,
-    ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, REVIEW_SUSPECTED, BLOCKED, CALL_STARTED,
-    COST, ERROR,
+    ASSERTION, OUTSTANDING, UNBUILT, REVIEW_VERDICT, REVIEW_SUSPECTED, BLOCKED, STOPPED,
+    CALL_STARTED, COST, ERROR,
 )
 
 
