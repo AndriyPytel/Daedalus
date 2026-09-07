@@ -54,7 +54,7 @@ from core.events import (
     TOOL_RESULT, UNBUILT, WRITING, EventStream,
 )
 from core import kernel, part_file, sheet_reader, sketch_check
-from core.freecad_tools import TRAPS
+from core.freecad.freecad_tools import TRAPS
 from core.llm import REASONING, ProviderRefused, StreamCutOff, cache_control_supported
 from core.tools import ToolError
 

@@ -1145,7 +1145,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
     The second way a worker blocks, and the one that hung FreeCAD again after
     the Plan Gate below was released.
 
-    A Step in flight parks its thread inside `core.apply.on_main_thread`,
+    A Step in flight parks its thread inside `core.freecad.apply.on_main_thread`,
     waiting on a job only the GUI event loop can take. `_cleanup_thread` runs
     on that thread and waits on the worker instead of pumping it, so the job
     is never taken: the worker sits out `DISPATCH_TIMEOUT`, and what
@@ -1158,7 +1158,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
     """
     import threading
 
-    import core.apply
+    import core.freecad.apply
     from conftest import QtCore
     from ui.copilot_panel import CopilotPanel
 
@@ -1168,7 +1168,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
     def _dispatch_and_block():
         parked.set()
         try:
-            core.apply.on_main_thread(lambda: "the Document")
+            core.freecad.apply.on_main_thread(lambda: "the Document")
         except Exception:
             pass
 
@@ -1188,7 +1188,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
         assert done.wait(5), "shutdown is still waiting on a Document operation in flight"
         assert not built.thread.isRunning(), "the worker thread outlived the panel"
     finally:
-        core.apply._closing.clear()
+        core.freecad.apply._closing.clear()
 
 
 def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_the_tests_own):
@@ -2092,7 +2092,7 @@ def test_a_restored_session_owns_nothing(panel, tmp_path):
     it is not reset on every switch any more, because the pipeline switching
     away from is no longer the pipeline switching in.
     """
-    from core.apply import ApplyPipeline
+    from core.freecad.apply import ApplyPipeline
 
     live = panel.chat_sessions.stack.currentIndex()
     panel.worker.pipeline = ApplyPipeline(owned={"BoxFromTheLiveSession"})
@@ -2113,7 +2113,7 @@ def test_a_restored_session_owns_nothing(panel, tmp_path):
 
 
 def test_a_new_session_owns_nothing(panel):
-    from core.apply import ApplyPipeline
+    from core.freecad.apply import ApplyPipeline
 
     panel.worker.pipeline = ApplyPipeline(owned={"BoxFromAnotherSession"})
 

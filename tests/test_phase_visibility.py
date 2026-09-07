@@ -8,7 +8,7 @@ test cannot silently drift apart.
 """
 import os
 
-from core import phase_contract as pc
+from core.agent import phase_contract as pc
 
 
 def _expected_filenames(phase):

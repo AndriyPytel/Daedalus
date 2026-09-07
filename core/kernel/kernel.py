@@ -28,7 +28,7 @@ import tempfile
 import threading
 from dataclasses import dataclass, field
 
-from core.kernel_worker import SENTINEL
+from core.kernel.kernel_worker import SENTINEL
 
 DEFAULT_TIMEOUT = 30.0
 STARTUP_TIMEOUT = 60.0
@@ -54,7 +54,7 @@ class KernelResult:
     observed rather than inferred from the code.
 
     `held` and `failed` are an Assertion check's own measured lists
-    (`core/kernel_worker.py :: _measured`) -- `None` where nothing measured
+    (`core/kernel/kernel_worker.py :: _measured`) -- `None` where nothing measured
     them, an ordinary Step included, rather than `[]`, which would read as
     "measured, and nothing held or failed".
 

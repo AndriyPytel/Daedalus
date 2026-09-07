@@ -14,7 +14,7 @@ either way.
 import json
 import os
 
-from core.kernel_worker import _idle_feature_cause, _diagnose_idle_feature
+from core.kernel.kernel_worker import _idle_feature_cause, _diagnose_idle_feature
 
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "recorded", "preflight_volume_neutral_failures.json")

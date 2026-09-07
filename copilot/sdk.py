@@ -15,9 +15,9 @@ both hand-assembled a second copy of this same wiring, one call behind the
 loop's own `run()` signature.
 """
 from core import events
-from core.apply import ApplyPipeline, closing
+from core.freecad.apply import ApplyPipeline, closing
 from core.events import EventStream, replay
-from core.freecad_tools import active_document, build_registry
+from core.freecad.freecad_tools import active_document, build_registry
 from core.kernel import Kernel
 from core.llm import (EFFORTS, PROFILES, TEXT, Session, client_from_roles,
                       effort_for_profile, effort_is_honoured, selected_model_name,

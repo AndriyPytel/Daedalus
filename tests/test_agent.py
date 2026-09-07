@@ -7,12 +7,12 @@ import os
 
 import pytest
 
-from core import phase_contract as pc
+from core.agent import phase_contract as pc
 from core.agent import AgentGaveUp, run_phase
 from core.events import SUB_AGENT_ANSWERED, SUB_AGENT_SPAWNED, EventStream
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
-from core.subagent import SessionTreeSupervisor
+from core.agent.subagent import SessionTreeSupervisor
 
 pytestmark = pytest.mark.freecad
 

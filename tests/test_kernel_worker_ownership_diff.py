@@ -10,7 +10,7 @@ demonstrated -- rather than by listening for a call it hooked. Three shapes,
 matching the research's own test shapes: a new object, a changed property, an
 object nothing touched.
 """
-from core.kernel_worker import _Touched
+from core.kernel.kernel_worker import _Touched
 
 
 class FakeObj:

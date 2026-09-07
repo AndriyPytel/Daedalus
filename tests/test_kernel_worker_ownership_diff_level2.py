@@ -12,7 +12,7 @@ home).
 """
 import pytest
 
-from core.apply import ApplyPipeline, run_in_transaction
+from core.freecad.apply import ApplyPipeline, run_in_transaction
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad

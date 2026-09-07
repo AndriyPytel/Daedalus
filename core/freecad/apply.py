@@ -14,10 +14,10 @@ import threading
 from dataclasses import dataclass, field
 
 from core.events import ANSWER, QUESTION
-from core.freecad_tools import description, fit_view
+from core.freecad.freecad_tools import description, fit_view
 from core.lint import lint
 from core.kernel import Kernel, KernelResult, copy_of
-from core.kernel_worker import (_NamedDoc, register_step_source, signature_of,
+from core.kernel.kernel_worker import (_NamedDoc, register_step_source, signature_of,
                                 step_namespace, trimmed_traceback)
 
 DISPATCH_TIMEOUT = 60.0
@@ -201,12 +201,12 @@ def run_in_transaction(doc, code, label="Copilot Step", names=None, expected_sig
 
     *names* is the requested-name -> allocated-name map an earlier Step's
     Preflight built, exposed to this Step's code the same way the kernel's
-    own session exposes it (`core/kernel_worker.py::run_step`) — built with
+    own session exposes it (`core/kernel/kernel_worker.py::run_step`) — built with
     the same `_NamedDoc` wrapper so a name collision during replay is
     recorded exactly where the kernel would have recorded it.
 
     *expected_signature* is what Preflight already verified this code
-    produces (`core/kernel_worker.py::signature_of`); `None` skips the
+    produces (`core/kernel/kernel_worker.py::signature_of`); `None` skips the
     check entirely, since a caller with nothing to compare against has
     nothing to verify (FCC-302). A mismatch aborts the transaction instead
     of committing it — caught by `ApplyPipeline.apply` the same way any
@@ -508,7 +508,7 @@ class ApplyPipeline:
         Worker's rasteriser instead — one isometry, called once, so FCC-46's
         per-pixel depth test and edges are not thrown away (ADR-0015).
         """
-        from core.freecad_tools import REVIEW_VIEWS, capture_review_views
+        from core.freecad.freecad_tools import REVIEW_VIEWS, capture_review_views
 
         doc = self._dispatch(self._active)
         paths = [self._render_path() for _ in REVIEW_VIEWS]

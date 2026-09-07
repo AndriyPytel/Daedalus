@@ -125,7 +125,7 @@ def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm,
     """
     import FreeCAD
 
-    from core.preflight_render import render as render_directly
+    from core.kernel.preflight_render import render as render_directly
 
     via_worker = str(tmp_path / "via_worker.png")
     result = warm.check(

@@ -5,18 +5,18 @@ not one provider call in and one JSON reply out (FCC-321).
 Every turn the model replies with one JSON object: `{"code": "..."}` runs
 one more Step against the phase's kernel and hands back what happened,
 `{"delegate": "..."}` hands a bounded question to a depth-1 sub-agent
-(`core/subagent.py :: delegate`, FCC-307/FCC-322) and hands back its answer,
+(`core/agent/subagent.py :: delegate`, FCC-307/FCC-322) and hands back its answer,
 or `{"declare": <value>}` ends the phase with `<value>` -- a Step, a
 verdict, whatever that phase's own caller expects (FCC-322 is where that
 shape is decided, not this module). The loop keeps going for as long as the
 model keeps writing code or delegating, bounded only by the tree-wide
-turn/token budget (`core/subagent.py`), never a fixed per-phase call count.
+turn/token budget (`core/agent/subagent.py`), never a fixed per-phase call count.
 
-The kernel is spawned once, per `core/phase_contract.py`'s declared
+The kernel is spawned once, per `core/agent/phase_contract.py`'s declared
 visibility row, and kept for the whole phase: every Step after the first
-continues that same session (`core/kernel.py :: Kernel.check`). The kernel
+continues that same session (`core/kernel/kernel.py :: Kernel.check`). The kernel
 itself keeps one checkpoint file, overwritten on every save
-(`core/kernel_worker.py :: _save_checkpoint`), so this module copies it out
+(`core/kernel/kernel_worker.py :: _save_checkpoint`), so this module copies it out
 under `working_dir/checkpoints/` after every successful Step -- the history
 of every attempt the agent made, not only the one it settled on.
 """
@@ -27,8 +27,8 @@ import shutil
 
 from core.kernel import Kernel
 from core.llm import TEXT, Session
-from core.phase_contract import spawn
-from core.subagent import delegate
+from core.agent.phase_contract import spawn
+from core.agent.subagent import delegate
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 

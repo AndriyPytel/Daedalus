@@ -25,7 +25,7 @@ from core.events import (
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
 from core import design, loop, part_file, sheet_reader
-from core.freecad_tools import TRAPS
+from core.freecad.freecad_tools import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
 from core.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
@@ -515,7 +515,7 @@ def test_a_lint_rejection_fires_the_same_way_twice():
 
 
 def test_changed_nothing_fires_the_same_way_twice():
-    from core.apply import _CHANGED_NOTHING
+    from core.freecad.apply import _CHANGED_NOTHING
 
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),

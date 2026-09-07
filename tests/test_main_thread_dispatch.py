@@ -21,7 +21,7 @@ import threading
 
 import pytest
 
-import core.apply
+import core.freecad.apply
 
 
 @pytest.fixture
@@ -32,13 +32,13 @@ def qt_app():
         pytest.skip(NO_QT)
 
     app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
-    core.apply._dispatcher = None
-    core.apply._closing.clear()
+    core.freecad.apply._dispatcher = None
+    core.freecad.apply._closing.clear()
     try:
         yield app, QtCore
     finally:
-        core.apply._dispatcher = None
-        core.apply._closing.clear()
+        core.freecad.apply._dispatcher = None
+        core.freecad.apply._closing.clear()
 
 
 def run_off_thread(job, qt_app, timeout=10):
@@ -74,7 +74,7 @@ def test_work_asked_for_on_a_worker_thread_runs_on_the_main_thread(qt_app):
     main = QtCore.QThread.currentThread()
 
     ran_on = run_off_thread(
-        lambda: core.apply.on_main_thread(lambda: QtCore.QThread.currentThread()),
+        lambda: core.freecad.apply.on_main_thread(lambda: QtCore.QThread.currentThread()),
         qt_app,
     )
 
@@ -89,7 +89,7 @@ def test_the_worker_thread_blocks_until_the_document_operation_returns(qt_app):
         return "done"
 
     def on_worker():
-        result = core.apply.on_main_thread(slow_document_operation)
+        result = core.freecad.apply.on_main_thread(slow_document_operation)
         order.append("worker resumed")
         return result
 
@@ -102,7 +102,7 @@ def test_a_failure_on_the_main_thread_is_re_raised_at_the_caller(qt_app):
         raise ValueError("the C++ core said no")
 
     with pytest.raises(ValueError, match="the C\\+\\+ core said no"):
-        run_off_thread(lambda: core.apply.on_main_thread(explode), qt_app)
+        run_off_thread(lambda: core.freecad.apply.on_main_thread(explode), qt_app)
 
 
 def test_a_dispatch_the_main_thread_will_never_take_is_released_when_freecad_closes(qt_app):
@@ -131,7 +131,7 @@ def test_a_dispatch_the_main_thread_will_never_take_is_released_when_freecad_clo
 
     def worker():
         try:
-            core.apply.on_main_thread(lambda: "the Document")
+            core.freecad.apply.on_main_thread(lambda: "the Document")
         except BaseException as exc:
             outcome["error"] = exc
         finally:
@@ -140,14 +140,14 @@ def test_a_dispatch_the_main_thread_will_never_take_is_released_when_freecad_clo
     threading.Thread(target=worker, daemon=True).start()
     # ponytail: heuristic wait, not a signal — flakes if on_main_thread ever
     # starts taking the queue in under 200ms under load; tighten if
-    # core.apply exposes a "queued" event to wait on instead.
+    # core.freecad.apply exposes a "queued" event to wait on instead.
     time.sleep(0.2)
     assert not released.is_set(), "the job ran without the main thread taking it"
 
-    core.apply.closing()
+    core.freecad.apply.closing()
 
     assert released.wait(2), "shutdown left the worker waiting out the dispatch timeout"
-    assert isinstance(outcome["error"], core.apply.Closing)
+    assert isinstance(outcome["error"], core.freecad.apply.Closing)
 
 
 def test_a_dispatch_asked_for_after_the_close_does_not_wait_at_all(qt_app):
@@ -156,17 +156,17 @@ def test_a_dispatch_asked_for_after_the_close_does_not_wait_at_all(qt_app):
     is gone there is nothing left to take them, so the second and the tenth
     must fail as fast as the first rather than each spending its own timeout.
     """
-    core.apply.closing()
+    core.freecad.apply.closing()
 
-    with pytest.raises(core.apply.Closing):
-        run_off_thread(lambda: core.apply.on_main_thread(lambda: "the Document"), qt_app,
+    with pytest.raises(core.freecad.apply.Closing):
+        run_off_thread(lambda: core.freecad.apply.on_main_thread(lambda: "the Document"), qt_app,
                        timeout=2)
 
 
 def test_already_on_the_main_thread_is_a_straight_call(qt_app):
     app, QtCore = qt_app
 
-    ran_on = core.apply.on_main_thread(lambda: QtCore.QThread.currentThread())
+    ran_on = core.freecad.apply.on_main_thread(lambda: QtCore.QThread.currentThread())
 
     assert ran_on == QtCore.QThread.currentThread()
 
@@ -183,7 +183,7 @@ def test_what_the_user_selected_is_read_on_the_main_thread(qt_app):
     import sys
     import types
 
-    from core import freecad_tools
+    from core.freecad import freecad_tools
 
     app, QtCore = qt_app
     read_on = []
@@ -216,7 +216,7 @@ def test_the_active_body_is_read_on_the_main_thread(qt_app):
     import sys
     import types
 
-    from core import freecad_tools
+    from core.freecad import freecad_tools
 
     app, QtCore = qt_app
     read_on = []
@@ -257,7 +257,7 @@ def test_there_is_no_addtodo_or_singleshot_path_left_anywhere():
     import ast
     import os
 
-    root = os.path.dirname(os.path.dirname(os.path.abspath(core.apply.__file__)))
+    root = os.path.dirname(os.path.dirname(os.path.abspath(core.freecad.apply.__file__)))
     offenders = []
     for package in ("core", "ui", "Mod", "utils"):
         for dirpath, dirnames, filenames in os.walk(os.path.join(root, package)):
@@ -277,12 +277,20 @@ def test_there_is_no_addtodo_or_singleshot_path_left_anywhere():
 
 
 def _core_sources():
+    """
+    Walked from `core.__path__`, not from a leaf module, so the reach stays
+    correct however deep inside `core/` a module is packaged; `core` is a
+    namespace package, so `__file__` is None and `__path__` is what it has.
+    Recursive
+    because the files this test allowlists by bare filename now live in
+    packages, and listing only the flat ones would drop them silently.
+    """
     import os
 
-    root = os.path.dirname(os.path.dirname(os.path.abspath(core.apply.__file__)))
-    here = os.path.join(root, "core")
-    return [(name, os.path.join(here, name))
-            for name in sorted(os.listdir(here)) if name.endswith(".py")]
+    here = os.path.abspath(list(core.__path__)[0])
+    return sorted((name, os.path.join(parent, name))
+                  for parent, _, names in os.walk(here)
+                  for name in names if name.endswith(".py"))
 
 
 MAKES_A_DOCUMENT = {
@@ -325,7 +333,7 @@ def test_the_loop_never_builds_the_reading_itself():
     import ast
     import os
 
-    path = os.path.join(os.path.dirname(os.path.abspath(core.apply.__file__)), "loop.py")
+    path = os.path.join(os.path.abspath(list(core.__path__)[0]), "loop.py")
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), path)
 
@@ -450,20 +458,20 @@ def test_logging_with_no_qt_application_prints_directly_instead_of_raising(tmp_p
     so the handler falls back to calling `FreeCAD.Console` straight away
     instead of propagating the error out of a `logger.error(...)` call.
     """
-    import core.apply
+    import core.freecad.apply
 
     calls, restore = _install_fake_freecad_console(tmp_path)
 
     def _no_qt_application(func, timeout=None):
         raise RuntimeError("No Qt application; nothing to marshal onto.")
 
-    saved_dispatch = core.apply.on_main_thread
-    core.apply.on_main_thread = _no_qt_application
+    saved_dispatch = core.freecad.apply.on_main_thread
+    core.freecad.apply.on_main_thread = _no_qt_application
     try:
         import utils.logger as ul
         ul.logger.error("boom")
     finally:
-        core.apply.on_main_thread = saved_dispatch
+        core.freecad.apply.on_main_thread = saved_dispatch
         restore()
 
     assert len(calls) == 1
@@ -480,7 +488,7 @@ def test_a_line_the_main_thread_never_takes_is_dropped(tmp_path):
     here anyway is the cross-thread `FreeCAD.Console` call the guard exists to
     prevent, and the `FileHandler` already has the line, so it is dropped.
     """
-    import core.apply
+    import core.freecad.apply
 
     calls, restore = _install_fake_freecad_console(tmp_path)
 
@@ -488,14 +496,14 @@ def test_a_line_the_main_thread_never_takes_is_dropped(tmp_path):
         raise TimeoutError(
             "The Document operation did not return within %ss on the main thread." % timeout)
 
-    saved_dispatch = core.apply.on_main_thread
-    core.apply.on_main_thread = _never_comes_back
+    saved_dispatch = core.freecad.apply.on_main_thread
+    core.freecad.apply.on_main_thread = _never_comes_back
     written = []
     try:
         import utils.logger as ul
         ul._console(written.append, "boom")
     finally:
-        core.apply.on_main_thread = saved_dispatch
+        core.freecad.apply.on_main_thread = saved_dispatch
         restore()
 
     assert written == []
@@ -510,22 +518,22 @@ def test_a_line_written_while_freecad_closes_is_dropped_rather_than_written_here
     to `FreeCAD.Console` from the worker thread, which is the cross-thread
     call the guard exists to prevent.
     """
-    import core.apply
+    import core.freecad.apply
 
     calls, restore = _install_fake_freecad_console(tmp_path)
 
     def _freecad_is_closing(func, timeout=None):
-        raise core.apply.Closing(
+        raise core.freecad.apply.Closing(
             "The Document operation was abandoned: FreeCAD is closing.")
 
-    saved_dispatch = core.apply.on_main_thread
-    core.apply.on_main_thread = _freecad_is_closing
+    saved_dispatch = core.freecad.apply.on_main_thread
+    core.freecad.apply.on_main_thread = _freecad_is_closing
     written = []
     try:
         import utils.logger as ul
         ul._console(written.append, "boom")
     finally:
-        core.apply.on_main_thread = saved_dispatch
+        core.freecad.apply.on_main_thread = saved_dispatch
         restore()
 
     assert written == []
@@ -542,20 +550,20 @@ def test_a_dispatch_that_fails_some_other_way_does_not_escape_the_log_call(tmp_p
     handling a crash -- so an escape there costs the `finished` signal and
     the panel never learns the run ended.
     """
-    import core.apply
+    import core.freecad.apply
 
     calls, restore = _install_fake_freecad_console(tmp_path)
 
     def _fails_some_other_way(func, timeout=None):
         raise ImportError("No module named 'PySide2'")
 
-    saved_dispatch = core.apply.on_main_thread
-    core.apply.on_main_thread = _fails_some_other_way
+    saved_dispatch = core.freecad.apply.on_main_thread
+    core.freecad.apply.on_main_thread = _fails_some_other_way
     try:
         import utils.logger as ul
         ul.logger.error("boom")
     finally:
-        core.apply.on_main_thread = saved_dispatch
+        core.freecad.apply.on_main_thread = saved_dispatch
         restore()
 
     assert calls == []

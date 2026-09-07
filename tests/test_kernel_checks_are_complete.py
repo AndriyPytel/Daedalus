@@ -22,7 +22,7 @@ message FreeCAD never writes when there is no GUI (FCC-27, comment
 2026-08-02). There is no console message this kernel could capture, so there
 is nothing here for a sixth check to run.
 """
-from core import kernel_worker
+from core.kernel import kernel_worker
 
 OLD_CHECKS = {
     "a recompute left an object Invalid (FCC-11)": "_objects_left_in_error",

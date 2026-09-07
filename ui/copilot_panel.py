@@ -619,8 +619,8 @@ class LoopWorker(QtCore.QObject):
         after that — a later focus change elsewhere must not redirect a Tool
         call or an Apply that belongs to this Session.
         """
-        from core.apply import ApplyPipeline
-        from core.freecad_tools import build_registry
+        from core.freecad.apply import ApplyPipeline
+        from core.freecad.freecad_tools import build_registry
 
         if self.pipeline is None:
             self.pipeline = ApplyPipeline(document=self.document,
@@ -946,7 +946,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         be the same Document (FCC-181). Every Intent after this one reuses the
         binding regardless of what the user brings to front meanwhile.
 
-        Goes through `core.freecad_tools.active_document` rather than
+        Goes through `core.freecad.freecad_tools.active_document` rather than
         `FreeCAD.ActiveDocument` directly — the panel reaching the Document on
         its own is exactly what `test_registry_is_the_only_route.py` exists to
         catch.
@@ -2848,9 +2848,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         is this panel's child process and goes with it.
 
         A question is not the only thing a run parks on. A Step in flight is
-        inside `core.apply.on_main_thread`, waiting on a job only this thread's
+        inside `core.freecad.apply.on_main_thread`, waiting on a job only this thread's
         event loop can take — and this thread is here, not pumping it. Nothing
-        would take that job, so `core.apply.closing()` comes first: it releases
+        would take that job, so `core.freecad.apply.closing()` comes first: it releases
         every dispatch already waiting and refuses the ones the unwinding run
         makes on its way out. Without it the wait below expires and a thread in
         the middle of the Document is ended from outside.
