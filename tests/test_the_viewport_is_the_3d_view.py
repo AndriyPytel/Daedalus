@@ -108,7 +108,7 @@ def section(monkeypatch):
     import FreeCAD
 
     plane = FreeCAD.Placement()
-    monkeypatch.setattr("core.freecad_tools._section_plane", lambda document: plane)
+    monkeypatch.setattr("core.apply._section_plane", lambda document: plane)
     return plane
 
 
