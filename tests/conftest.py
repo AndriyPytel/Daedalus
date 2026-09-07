@@ -375,8 +375,15 @@ def the_settings_never_reach_the_user_s_freecad():
 
 @pytest.fixture
 def clean_auto_approve(the_settings_never_reach_the_user_s_freecad):
-    """The manager with `AutoApprovePlan` off, for a test that turns it on."""
+    """
+    The manager with `AutoApprovePlan` off, for a test that turns it on.
+
+    The store it writes to lives for the whole session, so the flag is put
+    back on the way out as well: a test that leaves it on makes every later
+    test in the same process take the auto-approved branch of the Gate.
+    """
     from utils import settings_manager
 
     the_settings_never_reach_the_user_s_freecad.SetBool("AutoApprovePlan", False)
-    return settings_manager.instance()
+    yield settings_manager.instance()
+    the_settings_never_reach_the_user_s_freecad.SetBool("AutoApprovePlan", False)
