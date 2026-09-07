@@ -7,7 +7,7 @@ Tool is called: `describe()` hands out transport-independent descriptions and
 adapter, not a change to any Tool.
 
 This module never imports FreeCAD. The FreeCAD-backed Tools live in
-`core/freecad_tools.py`; a fake registry for Level 1 is just a few plain
+`core/apply.py`; a fake registry for Level 1 is just a few plain
 functions handed to `ToolRegistry`.
 """
 from dataclasses import dataclass, field

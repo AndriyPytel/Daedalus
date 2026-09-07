@@ -47,9 +47,9 @@ def _console(write, msg) -> None:
     Qt application at all — Level 1, headless, `freecadcmd` — and there is no
     GUI there to corrupt, so *write* just runs directly.
 
-    Imported locally: `core.apply` imports `core.freecad_tools`, which needs
-    `on_main_thread` too and already imports it locally for the same reason,
-    to keep this module out of that cycle.
+    Imported locally so a monkeypatched `core.apply.on_main_thread` (as
+    `tests/test_main_thread_dispatch.py` does) reaches this call: a
+    module-level binding here would freeze the reference at import time.
 
     LOG_DISPATCH_TIMEOUT is 5s, not the 60s `core.apply.DISPATCH_TIMEOUT`
     gives a Document mutation: a log line is one `PrintError` call, not a

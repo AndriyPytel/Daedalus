@@ -26,7 +26,7 @@ from core.events import (
     APPLIED, BLOCKED, CALL_STARTED, COST, INTENT, PLAN, REVIEW_VERDICT,
     STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, WRITING, EventStream,
 )
-from core.freecad_tools import build_registry
+from core.apply import build_registry
 from core.llm import ScriptedLLMClient
 from core.loop import APPROVE, Approval, run
 from core.preflight import PreflightWorker, find_freecadcmd

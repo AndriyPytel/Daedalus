@@ -10,7 +10,7 @@ import math
 
 import pytest
 
-from core.freecad_tools import TRAPS, build_registry, description, fit_view
+from core.apply import TRAPS, build_registry, description, fit_view
 from core.tools import ToolError
 
 pytestmark = pytest.mark.freecad
@@ -80,7 +80,7 @@ def test_the_section_plane_lands_in_an_off_center_cavity_not_the_wholepart_bbox_
     """
     import FreeCAD
 
-    from core.freecad_tools import _section_plane
+    from core.apply import _section_plane
 
     box = doc.addObject("Part::Box", "Box")
     box.Length, box.Width, box.Height = 60, 20, 20
@@ -111,7 +111,7 @@ def test_the_section_plane_falls_back_to_the_bbox_center_with_nothing_hollow(doc
     FCC-261: a solid block has no void to centre on, and a solid part is
     still owed a section view — the fallback this test pins down.
     """
-    from core.freecad_tools import _section_plane
+    from core.apply import _section_plane
 
     box = doc.addObject("Part::Box", "Box")
     box.Length, box.Width, box.Height = 40, 20, 10
@@ -135,7 +135,7 @@ def test_the_cavity_search_costs_a_fraction_of_a_second_even_on_a_forty_hole_pla
 
     import FreeCAD
 
-    from core.freecad_tools import _section_plane
+    from core.apply import _section_plane
 
     plate = doc.addObject("Part::Box", "Plate")
     plate.Length, plate.Width, plate.Height = 200, 200, 30
@@ -161,7 +161,7 @@ def test_the_cavity_search_costs_a_fraction_of_a_second_even_on_a_forty_hole_pla
 
 
 def test_the_section_plane_is_none_with_nothing_modelled_yet(doc):
-    from core.freecad_tools import _section_plane
+    from core.apply import _section_plane
 
     assert _section_plane(doc) is None
 

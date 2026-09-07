@@ -8,7 +8,7 @@ FreeCAD — alive.
 import pytest
 
 from core.apply import ApplyPipeline, run_in_transaction
-from core.freecad_tools import build_registry
+from core.apply import build_registry
 from core.preflight import PreflightWorker, find_freecadcmd
 
 pytestmark = pytest.mark.freecad

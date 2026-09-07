@@ -600,7 +600,7 @@ class LoopWorker(QtCore.QObject):
         call or an Apply that belongs to this Session.
         """
         from core.apply import ApplyPipeline
-        from core.freecad_tools import build_registry
+        from core.apply import build_registry
 
         if self.pipeline is None:
             self.pipeline = ApplyPipeline(document=self.document,
@@ -921,13 +921,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
         be the same Document (FCC-181). Every Intent after this one reuses the
         binding regardless of what the user brings to front meanwhile.
 
-        Goes through `core.freecad_tools.active_document` rather than
+        Goes through `core.apply.active_document` rather than
         `FreeCAD.ActiveDocument` directly — the panel reaching the Document on
         its own is exactly what `test_registry_is_the_only_route.py` exists to
         catch.
         """
         if bundle.worker.document is None:
-            from core.freecad_tools import active_document
+            from core.apply import active_document
             bundle.worker.document = active_document()
 
     def _route_event(self, log: str, event):
@@ -1396,7 +1396,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _sessions_worth_showing(self) -> list:
         """The indexed Sessions of the Document in focus, or all of them."""
-        from core.freecad_tools import active_document
+        from core.apply import active_document
 
         try:
             identity = str(getattr(active_document(), "Uid", "") or "")

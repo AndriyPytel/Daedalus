@@ -16,7 +16,7 @@ import types
 
 import pytest
 
-from core.freecad_tools import REVIEW_VIEWS, _OPPOSITE_ISOMETRIC, _SECTION_VIEW, capture_review_views, fit_view
+from core.apply import REVIEW_VIEWS, _OPPOSITE_ISOMETRIC, _SECTION_VIEW, capture_review_views, fit_view
 
 
 class SpreadsheetView:

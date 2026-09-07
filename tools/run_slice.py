@@ -61,7 +61,7 @@ def main():
 
     from core.apply import ApplyPipeline
     from core.events import EventStream
-    from core.freecad_tools import build_registry
+    from core.apply import build_registry
     from core.llm import LiteLLMClient
     from core.loop import APPROVE, Approval, run
     from core.preflight import PreflightWorker
