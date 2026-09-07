@@ -1,70 +1,20 @@
-"""
-What the part is: the one description the drawing and the user both write into.
+"""What the part is — the one description the drawing and the user both write into, and the only
+place a value, once filled, is trusted again.
 
-Reading held the sheet as prose, and prose beside prose has nowhere to say
-"this line is already filled". One run read the depth front to rear as 100 mm
-off SECTION B-B and flagged it `read`; two turns later the Plan said
-150 x 50 x 50. The 100 was not overruled, argued with, or flagged — it was gone
-from the part. The same run read one bore axis 20 mm from the left end face and
-then 25 mm, both `read`, and built 25.
+Constraints:
+A filled field never changes; a later source may fill an empty one or add a conflict, never
+replace a value (FCC-59) — two incompatible dimensions stay recorded as a conflict for the user
+to settle at the Plan Gate, not reconciled by the machine.
+Declarative and unordered — no build order, no Cut/Join, no sketch planes — because an ordered
+list is where FCC-59's failure mode wrote an operation the drawing never showed (ADR-0019).
+The merge is generic over the shape (filled stays, empty fills, different conflicts) rather than
+field-by-field, keyed by `id` on a feature and `name` on a datum.
+`entries` addresses every value by path; that enumeration is both the Acceptance list and what a
+Plan's citations are checked against (ADR-0020).
+A conflict's `kind` is written by whoever found it — a finding is known only where it is made.
 
-So the part is a structure, and the structure only ever grows. A field already
-filled cannot change. A later source may fill an empty field and may add a
-conflict; it may never replace a value. Two incompatible dimensions stay
-recorded as a conflict and are not reconciled — that is the FCC-59 boundary, and
-the cost is accepted deliberately: the first pass becomes authoritative even
-where it was wrong, so the disagreement has to reach the user at the Plan Gate
-rather than be settled by the machine.
-
-Declarative and unordered throughout — `datums`, `envelope`, `features`,
-`conflicts`, `not_defined`, and no build order, no Cut/Join, no sketch planes.
-Order is what let FCC-59's failure mode in: an ordered list has somewhere to
-write an operation the drawing never showed, and an unordered one does not
-(ADR-0019).
-
-The merge is generic over the shape rather than written field by field. The
-model comes back from a provider, so a schema hard-coded here would be one more
-thing to drift; what is enforced is the rule — filled stays, empty fills,
-different becomes a conflict — and identity, which is `id` on a feature and
-`name` on a datum.
-
-The same structure is what the run is checked against. `entries` addresses every
-value on it by the path it sits under, and that one enumeration is both the
-Acceptance the finished part is measured against and the set the loop takes a
-Plan's citations away from (ADR-0020).
-
-`SECTIONS` is the order the Plan Gate reads them in: what was on the sheet, what
-the part is measured from, how big it is, what is on it, and then, apart from the
-part itself, what nobody agrees on and what nobody supplied. Of those last three,
-none is the part: a conflict holds two values of which neither is settled, and a
-criterion derived from one would assert whichever half the merge happened to
-keep; a gap is nothing to measure; the sweep of the sheet is callouts, not
-values.
-
-One notation, `UNDER`, separates the steps of an address, for the path a conflict
-is recorded under and the path an entry is cited by alike — two would be two
-things for a reader to learn and one for a Plan to get wrong. Identity, which is
-what makes two entries of a list the same thing, is `id` on a feature and `name`
-on a datum. What a rendered entry is headed by is wider than that, because a
-conflict is read by what it is about and a gap by what is missing, and neither is
-a thing the merge has to recognise again.
-
-An entry of `conflicts` is one of `KINDS` and says which: two readings that
-cannot both be true, a value nothing on the part supplies, or a check that
-could not be run. A user settles the three differently — choose, supply, read
-the sheet again — and a Gate handed one flat column cannot tell them apart, nor
-tell a sheet that agrees with itself from a sheet nobody could check. The kind
-is a field, written by whoever found the thing, because what a finding is is
-known where it is made and is a guess anywhere else. `A_CONFLICT` is what an
-entry that does not say reads as, since that is what the section is for and
-what `config/prompts/design.md` asks the model for.
-
-Its address is `about`, and one address carries one entry wherever the list is
-read: the log beside the document, and the reading the Gate is shown. The merge
-grows the list, so the same disagreement written twice in two words is two
-entries in it and a pass that spells a view differently is a third; which of
-them stands is decided by address and never by the prose — the same choice
-`_unconsumed` makes for the coverage check, and for the same reason.
+`UNDER` is the one path-joining notation, for a conflict's address and an entry's citation alike,
+so identity across the merge is never a matter of matching prose.
 """
 import re
 

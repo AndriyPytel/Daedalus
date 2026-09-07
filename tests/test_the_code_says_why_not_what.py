@@ -19,6 +19,7 @@ where `help()` will show it.
 
 Read with `tokenize` rather than `ast`: comments are not in the tree.
 """
+import ast
 import io
 import os
 import tokenize
@@ -73,3 +74,88 @@ def test_no_comment_carries_a_ticket_id():
     assert not offenders, (
         "a ticket id in a comment is a commit message in the source: %s"
         % ", ".join(offenders))
+
+
+DOCSTRING_BUDGET = {ast.Module: 20, ast.ClassDef: 8, ast.FunctionDef: 8, ast.AsyncFunctionDef: 8}
+PRIVATE_BUDGET = 5
+HISTORY_MARKERS = ("used to", "now instead", "no longer", "replaces the old", "which is now")
+
+DOCUMENTED = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def docstrings():
+    for directory in SEARCHED:
+        for path, _, names in os.walk(os.path.join(ROOT, directory)):
+            if "__pycache__" in path:
+                continue
+            for name in sorted(names):
+                if not name.endswith(".py"):
+                    continue
+                full = os.path.join(path, name)
+                with open(full, encoding="utf-8") as handle:
+                    source = handle.read()
+                where = os.path.relpath(full, ROOT)
+                tree = ast.parse(source, filename=full)
+                for node in ast.walk(tree):
+                    if isinstance(node, DOCUMENTED):
+                        doc = ast.get_docstring(node)
+                        if doc:
+                            yield where, getattr(node, "lineno", 1), node, doc
+
+
+BASELINE_FILE = os.path.join(ROOT, "tests", "docstring_budget_baseline.txt")
+
+
+def baselined():
+    with open(BASELINE_FILE, encoding="utf-8") as handle:
+        return set(line.strip() for line in handle if line.strip())
+
+
+def offenders():
+    found = {}
+    for where, line, node, doc in docstrings():
+        node_name = getattr(node, "name", "module")
+        budget = PRIVATE_BUDGET if node_name.startswith("_") else DOCSTRING_BUDGET[type(node)]
+        length = doc.count("\n") + 1
+        reasons = set()
+        if length > budget:
+            reasons.add("budget")
+        if any(marker in doc.lower() for marker in HISTORY_MARKERS):
+            reasons.add("marker")
+        if reasons:
+            found["%s::%s" % (where, node_name)] = reasons
+    return found
+
+
+def test_no_docstring_exceeds_its_budget():
+    baseline = baselined()
+    unlisted = sorted(key for key, reasons in offenders().items()
+                       if "budget" in reasons and key not in baseline)
+
+    assert not unlisted, (
+        "a docstring over budget is narrative or duplication that belongs "
+        "elsewhere, same as a banned comment, and is not in "
+        "docstring_budget_baseline.txt: %s -- a real constraint is never deleted for "
+        "budget, it is promoted to the module docstring it belongs to"
+        % ", ".join(unlisted))
+
+
+def test_no_docstring_carries_a_ticket_history_marker():
+    baseline = baselined()
+    unlisted = sorted(key for key, reasons in offenders().items()
+                       if "marker" in reasons and key not in baseline)
+
+    assert not unlisted, (
+        "a docstring narrating what used to happen is a commit message in "
+        "the source, one syntax layer over the banned comment, and is not "
+        "in docstring_budget_baseline.txt: %s" % ", ".join(unlisted))
+
+
+def test_docstring_baseline_only_shrinks():
+    current = offenders()
+    fixed = sorted(key for key in baselined() if key not in current)
+
+    assert not fixed, (
+        "a baselined docstring no longer offends — remove it from "
+        "docstring_budget_baseline.txt so the list can only shrink: %s"
+        % ", ".join(fixed))

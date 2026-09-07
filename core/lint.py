@@ -1,78 +1,20 @@
-"""
-The AST lint that runs before Preflight.
+"""The AST lint that runs before Preflight — rules about silent-wrong-answer failures a traceback
+can't teach a way out of.
 
-Seven rules, each about a failure a Preflight traceback cannot teach the way
-out of (ADR-0008):
+Constraints:
+No literal Edge12/Face3/Vertex7 (ADR-0005) — topological naming makes them silently wrong, not stable.
+No Gui.*/live selection (ADR-0002) — Preflight and Apply run headless; either forks the two processes.
+Nothing may be made active (ADR-0008) — no headless active-object API exists in any spelling.
+No raw .Shape/addProperty disguised as a PartDesign feature (ADR-0012).
+A computed selection (list/comprehension Base) must assert its own length (FCC-151).
+No bare except/pass swallows a Step's failure (ADR-0008).
+No literal-name lookup of an object this Step just allocated (FCC-302) — a collision renames it
+silently, so the fetch reaches a different object.
+Sketcher constraint names/arities check against a table read off FreeCAD 1.0's ConstraintPyImp.cpp
+(no introspection exists; this module runs without FreeCAD).
+Only Edge/Face/Vertex user selections pass through unchecked; Wire/Shell/Solid do not.
 
-- **No literal `Edge12` / `Face3` / `Vertex7`** (ADR-0005). FreeCAD 1.0's
-  topological naming mitigation made these less fragile, not stable. A
-  hardcoded element name does not crash — the fillet is applied to the wrong
-  edge and the model silently deforms. A silent wrong answer is worse than a
-  traceback, because Preflight cannot see it.
-- **No `Gui.*` and no live selection** (ADR-0002). Generated code must be a
-  pure function of the Document, or Preflight and Apply can disagree — the
-  worker has no GUI and no selection, so anything reading them means the two
-  processes are running different programs.
-- **Nothing may be made active** (ADR-0008). The active Body lives in the
-  GUI: `App.Document` has no active-object API in any spelling, so no spelling
-  of it works headless and the traceback has no right answer to point at.
-  Each attempt is a bare `AttributeError` the assistant answers by trying the
-  next spelling, and three of them spend the whole Step budget.
-- **No raw shape passed off as a PartDesign feature** (ADR-0012). Assigning
-  `.Shape` on a `PartDesign::*` object, or bolting fields onto one with
-  `addProperty`, builds a feature tree that is fiction: the sketch is
-  decorative, nothing rebuilds when a dimension changes, and no traceback
-  appears anywhere — Preflight recomputes clean and Review sees a correct
-  picture. `Part::Feature` is untouched; the rule is about the disguise. The
-  reason names the feature types rather than asking for "a real feature",
-  because every prohibition short of that is answered with the next spelling
-  of the same workaround.
-- **A computed selection says how many it expected** (FCC-151). A fillet whose
-  `Base` is a list the Step filtered out of the geometry applies to whatever
-  the filter found: eight of the twelve edges the Step describes is a rounded
-  model, an applied Step, and no traceback anywhere. Only a count stated in
-  the code can tell the two apart, so a `Base` built from a variable or a
-  comprehension is refused unless something raises on its length.
-- **No Step may swallow its own failure** (ADR-0008). A bare `except`, or a
-  handler that only passes, discards the traceback the correction path is
-  built on. Code that catches its own exception and says nothing disables the
-  mechanism the architecture rests on.
-- **No literal-name lookup of an object this Step just allocated** (FCC-302).
-  FreeCAD renames a new object on a name collision rather than raising, so a
-  Step that hands `addObject` a name and later fetches it back with
-  `doc.getObject` on that same literal string is not guaranteed to reach the
-  object it just made — no traceback, no warning, silently the wrong object.
-  A lookup of a name this Step's own code never allocated is the user's own
-  object and stays allowed.
-
-`Midplane=True` is not one of these rules: it still works on FreeCAD 1.1.3, so
-writing it costs two lines of warning into the Report view, not a traceback
-Preflight cannot teach a way out of. Rejecting the whole Step for it costs a
-full retry cycle for a one-keyword fix the model already gets right on the
-next attempt; `execute.md` tells it to write `SideType` instead, and that is
-where the correction belongs.
-
-A Sketcher constraint is checked against a hardcoded table of names and
-arities. `Sketcher.Constraint`'s C++ constructor segfaults on a name it does
-not know and on a known name at the wrong arity — no traceback, nothing to
-correct against. The arities are the argument counts *after* the name, read off
-the PyArg_ParseTuple ladder in FreeCAD 1.0's
-src/Mod/Sketcher/App/ConstraintPyImp.cpp; Sketcher exposes no introspection for
-signatures, and this module is tested without FreeCAD, so the table is
-hardcoded on purpose. `InternalAlignment` is matched by substring in the C++,
-and spelled "InternalAlignment:Foo". Every signature also takes an optional
-trailing `activated`, and a dimensional one an optional `driving` after it;
-whether an argument is a bool is not something the AST can tell, so the two
-extra positions are simply allowed.
-
-Element names the *user* selected are explicit input, not a guess, so they are
-allowed through when they match the live selection. Only Edge, Face and Vertex
-are matched: Wire, Shell and Solid belong to an earlier version of this pattern
-that rejected "Solid1" as an object Label.
-
-This module replaces the old validator's hand-maintained substring rules. It
-does not port them: a rule per surprise, forever, is what introspection and
-Preflight tracebacks are for.
+Rejected: Midplane=True is not a rule — still works on 1.1.3, costs a Report warning not a retry.
 """
 import ast
 import re
