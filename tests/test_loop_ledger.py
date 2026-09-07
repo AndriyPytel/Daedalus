@@ -24,10 +24,13 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import design, loop, part_file, sheet_reader
+from core import loop
+from core.design import design
+from core.design import part_file
+from core.sheets import sheet_reader
 from core.freecad.apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
-from core.design import (
+from core.design.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
@@ -1148,7 +1151,7 @@ def test_a_redundant_constraint_reaches_the_part_in_the_words_of_a_conflict(
             pass
 
         def reading(self, request, timeout=None):
-            from core.sketch_check import Trouble, Verdict, as_response
+            from core.sheets.sketch_check import Trouble, Verdict, as_response
 
             return dict(as_response(Verdict(
                 view=request["view"],

@@ -6,7 +6,7 @@ lines of a re-serialized YAML file: matched by stable identity — `id` on a
 feature, `name` on a datum — never by position or name text (ADR-0019's
 identity rule, reused here rather than reinvented).
 """
-from core.design import ADDED, CHANGED, REMOVED, diff
+from core.design.design import ADDED, CHANGED, REMOVED, diff
 
 
 def _read(value):

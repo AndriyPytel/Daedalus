@@ -43,7 +43,7 @@ from typing import List
 
 from core.arithmetic import wrong_sums
 from core.ledger import Ledger
-from core.design import (
+from core.design.design import (
     A_CHECK_HAZARD, A_CONFLICT, ROUND_IN, UNDER, corrected, decided_for_you, diff,
     distilled, each_disagreement_once, entries, entry_at, merge,
     nobody_carries_the_outside, read_off_the_wrong_view, render, said_at,
@@ -56,7 +56,10 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, STOPPED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream,
 )
-from core import kernel, part_file, sheet_reader, sketch_check
+from core import kernel
+from core.design import part_file
+from core.sheets import sheet_reader
+from core.sheets import sketch_check
 from core.freecad.apply import TRAPS
 from core.llm import REASONING, ProviderRefused, StreamCutOff, cache_control_supported
 from core.tools import ToolError

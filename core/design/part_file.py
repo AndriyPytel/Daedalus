@@ -43,7 +43,7 @@ try:
 except ImportError:  # pragma: no cover - the addon installs PyYAML
     yaml = None
 
-from core.design import SECTIONS, grouped_conflicts
+from core.design.design import SECTIONS, grouped_conflicts
 
 
 class MissingPyYAML(RuntimeError):

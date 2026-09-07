@@ -2609,7 +2609,7 @@ def test_the_gate_cards_the_document_rather_than_opening_it_in_the_chat(panel, t
     The panel is shared with the tests above, so it is the last of each that
     this one just put there.
     """
-    from core.design import render
+    from core.design.design import render
     from core.events import DESIGN, PART, PLAN, Event
 
     from ui.plan_widget import PlanWidget

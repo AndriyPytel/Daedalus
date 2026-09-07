@@ -45,7 +45,8 @@ import os
 
 import pytest
 
-from core import loop, sheet_reader
+from core import loop
+from core.sheets import sheet_reader
 from tests import modelmania_harness
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from core import part_file
+from core.design import part_file
 
 
 THE_CLAMP = {

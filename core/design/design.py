@@ -18,7 +18,7 @@ so identity across the merge is never a matter of matching prose.
 """
 import re
 
-from core.sheet_reader import A_DISTANCE, numbers_in
+from core.sheets.sheet_reader import A_DISTANCE, numbers_in
 
 SECTIONS = ("printed_on_the_sheet", "datums", "envelope", "features", "conflicts",
             "not_defined")

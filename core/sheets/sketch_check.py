@@ -14,7 +14,7 @@ Measured (tests/modelmania, 4 sheets, 142 outlines): movement 0.15-0.30mm median
 from dataclasses import dataclass, field
 from types import SimpleNamespace
 
-from core.sheet_reader import A_DISTANCE, spelt
+from core.sheets.sheet_reader import A_DISTANCE, spelt
 
 START, END = 1, 2
 

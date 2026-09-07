@@ -9,8 +9,8 @@ numbers are the ones from the run that named the defect
 import json
 import os
 
-from core import design
-from core.design import (
+from core.design import design
+from core.design.design import (
     UNDER, corrected, crosswise, decided_for_you, distilled, each_disagreement_once,
     entries, entry_at, grounded, merge, read_off_the_wrong_view, render, said_at,
     settled_by_the_tracing, where_the_direction_is,
@@ -945,7 +945,7 @@ def test_the_outside_being_nobody_s_is_answerable_rather_than_only_recorded():
     plans, so it needs the finding as a question rather than as a list entry —
     and it needs it to stop being true the moment a feature carries the contour.
     """
-    from core.design import nobody_carries_the_outside
+    from core.design.design import nobody_carries_the_outside
 
     said_in_passing = merge({}, THE_CAPSULE_SAID_IN_PASSING)
     assert "capsule" in nobody_carries_the_outside(said_in_passing)
@@ -964,7 +964,7 @@ def test_the_finding_quotes_the_description_rather_than_the_sheet():
     sheet, not the reading the user is being asked to settle. The description's
     own words are preferred; the sweep is what is left when it has none.
     """
-    from core.design import nobody_carries_the_outside
+    from core.design.design import nobody_carries_the_outside
 
     both = merge({}, dict(THE_CAPSULE_SAID_IN_PASSING,
                           printed_on_the_sheet=["R12.5 — plan view (rounded ends)"]))
@@ -1290,7 +1290,7 @@ def test_a_value_the_model_settled_is_read_off_the_model_with_its_reason():
     `you_asked_and_were_answered` again, and downstream would prefer the newer
     of the two. The section the Gate shows is walked off the part itself.
     """
-    from core.design import decided_for_you
+    from core.design.design import decided_for_you
 
     model = {"envelope": {"length": {"value": "150 mm", "flag": "read"}},
              "features": [{"id": "outer-profile",
@@ -1309,7 +1309,7 @@ def test_a_value_the_model_settled_is_read_off_the_model_with_its_reason():
 
 def test_a_correction_says_what_it_was_decided_against():
     """A displaced value is the other half of the line: this, and not that."""
-    from core.design import decided_for_you
+    from core.design.design import decided_for_you
 
     model = _a_bore("VIEW C-C, on page 2")
     corrected(model, "features → clamp-ring-bore → axis", "the height",
@@ -1325,7 +1325,7 @@ def test_a_correction_says_what_it_was_decided_against():
 
 def test_a_value_the_drawing_gave_is_nobodys_decision():
     """`read` and `derived` are the sheet's own; only what nobody supplied is here."""
-    from core.design import decided_for_you
+    from core.design.design import decided_for_you
 
     assert decided_for_you(DEPTH_OFF_THE_SECTION) == []
 
@@ -1395,7 +1395,7 @@ def test_a_value_that_passed_is_never_nobodys_at_the_gate():
     is the section AC5 of FCC-127 rests on. Nothing reaches that fallback once
     the check has let the model through.
     """
-    from core.design import _NOBODY_SAID, decided_for_you
+    from core.design.design import _NOBODY_SAID, decided_for_you
 
     grown = merge({}, {"envelope": {"height": {"value": "50 mm", "flag": "assumed",
                                               "because": "read off the silhouette"}}})
@@ -1508,7 +1508,7 @@ def test_the_tracing_written_in_is_the_models_own_choice_at_the_gate():
     reading it displaced stands beside it under `was`, and the conflict itself
     is untouched on the part.
     """
-    from core.design import decided_for_you
+    from core.design.design import decided_for_you
 
     model = json.loads(json.dumps(THE_POCKET_IN_CONFLICT))
     at = "features \u2192 front-central-pocket \u2192 profile"

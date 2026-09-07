@@ -78,8 +78,8 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
-from core import part_file
-from core.design import A_CONFLICT, _which_kind_it_is
+from core.design import part_file
+from core.design.design import A_CONFLICT, _which_kind_it_is
 
 SESSIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
                             "logs", "sessions")

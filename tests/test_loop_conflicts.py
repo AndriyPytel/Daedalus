@@ -24,10 +24,13 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import design, loop, part_file, sheet_reader
+from core import loop
+from core.design import design
+from core.design import part_file
+from core.sheets import sheet_reader
 from core.freecad.apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
-from core.design import (
+from core.design.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
@@ -132,7 +135,7 @@ def test_the_reading_is_never_built_in_the_addon_s_own_process(
             asked.append("killed")
 
         def reading(self, request, timeout=None):
-            from core.sketch_check import Trouble, Verdict, as_response
+            from core.sheets.sketch_check import Trouble, Verdict, as_response
 
             asked.append(request)
             return dict(as_response(Verdict(
@@ -588,7 +591,7 @@ def test_the_traced_profile_is_on_the_feature_before_the_plan_is_asked_for():
     the disagreement.
     """
     from tests.test_design import THE_POCKET_IN_CONFLICT, THE_TRACED_POCKET
-    from core.design import decided_for_you
+    from core.design.design import decided_for_you
 
     settled = loop._the_tracing_governs(json.loads(json.dumps(THE_POCKET_IN_CONFLICT)))
     at = "features \u2192 front-central-pocket \u2192 profile"

@@ -17,7 +17,7 @@ import json
 import os
 
 from core import loop
-from core.design import merge
+from core.design.design import merge
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

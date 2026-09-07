@@ -23,7 +23,7 @@ import threading
 import numpy
 import pytest
 
-from core import sheet_reader
+from core.sheets import sheet_reader
 from tests import modelmania_harness
 
 SHEET = str(modelmania_harness.MODELMANIA_DIR / "mm25-p1-1.pdf")
@@ -2013,7 +2013,7 @@ def test_a_read_failure_is_logged_once_and_then_cached_quiet(monkeypatch, caplog
 
     monkeypatch.setattr(sheet_reader, "_read", boom)
 
-    with caplog.at_level("WARNING", logger="core.sheet_reader"):
+    with caplog.at_level("WARNING", logger="core.sheets.sheet_reader"):
         first = sheet_reader.read(str(copy), into=None)
         second = sheet_reader.read(str(copy), into=None)
 

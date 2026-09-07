@@ -10,7 +10,8 @@ from dataclasses import replace
 
 import pytest
 
-from core import sheet_reader, sketch_check
+from core.sheets import sheet_reader
+from core.sheets import sketch_check
 from tests import modelmania_harness
 
 pytestmark = pytest.mark.freecad

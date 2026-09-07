@@ -9,7 +9,8 @@ silently, in a `%` format string (FCC-126).
 """
 import json
 
-from core import sheet_reader, sketch_check
+from core.sheets import sheet_reader
+from core.sheets import sketch_check
 
 
 def _a_plate(printed=None):

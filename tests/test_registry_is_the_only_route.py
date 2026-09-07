@@ -10,7 +10,7 @@ The Document is reached from exactly these places, and each has a reason:
     the Document to hand it to. This is the sanctioned route.
   - core/kernel/kernel_worker.py: Runs inside the kernel's own process, against its
     own checkpointed Document. It never touches the user's Document.
-  - core/sketch_check.py: Builds the reading as a sketch in a document of its
+  - core/sheets/sketch_check.py: Builds the reading as a sketch in a document of its
     own, to ask the solver whether what was read can be true at once, and
     closes it in a `finally`. It reads a drawing and never the user's Document.
 
@@ -28,7 +28,7 @@ PACKAGES = ("core", "ui", "utils", "Mod")
 ALLOWED = {
     "core/freecad/apply.py",
     "core/kernel/kernel_worker.py",
-    "core/sketch_check.py",
+    "core/sheets/sketch_check.py",
 }
 
 DOCUMENT_ACCESS = ("ActiveDocument", "openDocument", "newDocument", "listDocuments", "getDocument")
