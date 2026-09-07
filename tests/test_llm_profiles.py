@@ -69,17 +69,17 @@ def test_an_explicit_effort_reaches_the_cli_flag_per_client():
 
 
 def test_an_explicit_effort_wins_over_whatever_the_dial_is_set_to(monkeypatch):
-    from utils import settings_manager
+    from core import settings
 
-    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: "high")
+    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
 
     assert ClaudeCodeClient(MODEL, effort="low").timeout == llm._CEILING["low"]
 
 
 def test_no_explicit_effort_still_reads_the_global_dial(monkeypatch):
-    from utils import settings_manager
+    from core import settings
 
-    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: "high")
+    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
 
     assert ClaudeCodeClient(MODEL).timeout == llm._CEILING["high"]
 

@@ -214,6 +214,8 @@ def sheet_cache(tmp_path_factory):
     cache = {}
 
     def read(path):
+        if not os.path.exists(path):
+            pytest.skip("sheet not found: %s; set FCC_MODELMANIA_DIR" % path)
         key = os.path.abspath(path)
         if key not in cache:
             cache[key] = sheet_reader.read(path, into=str(tmp_path_factory.mktemp("sheet")))
@@ -366,13 +368,13 @@ def the_settings_never_reach_the_user_s_freecad():
     its run from a module-scoped fixture, which is built before any
     function-scoped patch could take effect.
     """
-    from utils import settings_manager
+    from core import settings
 
     scratch = ScratchParameters()
-    real = settings_manager._SettingsManager._grp
-    settings_manager._SettingsManager._grp = staticmethod(lambda: scratch)
+    real = settings.Settings._grp
+    settings.Settings._grp = staticmethod(lambda: scratch)
     yield scratch
-    settings_manager._SettingsManager._grp = real
+    settings.Settings._grp = real
 
 
 @pytest.fixture

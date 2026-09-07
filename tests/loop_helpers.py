@@ -434,8 +434,7 @@ def _turns_of(llm, phase):
             if call[0]["content"].startswith(system)]
 
 
-MODEL_MANIA = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "modelmania", "mm25-p1-1.pdf")
+MODEL_MANIA = str(modelmania_harness.MODELMANIA_DIR / "mm25-p1-1.pdf")
 
 
 THE_2023_CLAMP = modelmania_harness.the_2023_clamp_as_read()
@@ -676,8 +675,7 @@ THE_PIPE_CLAMP = str(modelmania_harness.SHEETS[
     "model-mania_-in-person-2023 copy.pdf"])
 
 
-THE_2023_SHEET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelmania",
-                              "model-mania_-in-person-2023 copy.pdf")
+THE_2023_SHEET = str(modelmania_harness.MODELMANIA_DIR / "model-mania_-in-person-2023 copy.pdf")
 
 
 A_READING_THAT_PROVOKES_EVERY_RE_READ = {

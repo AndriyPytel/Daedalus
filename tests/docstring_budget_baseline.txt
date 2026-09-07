@@ -245,6 +245,9 @@ core/sessions.py::_save
 core/sessions.py::begin
 core/sessions.py::module
 core/sessions.py::name_document
+core/settings.py::get_effort
+core/settings.py::get_llm_credentials
+core/settings.py::module
 core/sheet_reader.py::Between
 core/sheet_reader.py::Crop
 core/sheet_reader.py::Drawn
@@ -450,5 +453,3 @@ utils/provider_manager.py::_on_keys_changed
 utils/provider_manager.py::_remember
 utils/provider_manager.py::test_connection
 utils/settings_manager.py::_SettingsManager
-utils/settings_manager.py::get_effort
-utils/settings_manager.py::get_llm_credentials

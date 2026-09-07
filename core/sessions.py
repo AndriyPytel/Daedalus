@@ -21,6 +21,8 @@ import os
 import time
 import uuid
 
+from core import settings
+
 KEEP = 50
 
 
@@ -57,22 +59,13 @@ def _matches(record, session) -> bool:
 
 
 class SettingsIndex:
-    """
-    Where a Session's index and transcripts really live.
-
-    Imports are inside the methods on purpose: this module is Level 1, and
-    `settings_manager` reaches FreeCAD the moment it is imported.
-    """
+    """Where a Session's index and transcripts really live."""
 
     def read(self) -> list:
-        from utils import settings_manager
-
-        return settings_manager.instance().get_sessions()
+        return settings.instance().get_sessions()
 
     def write(self, records):
-        from utils import settings_manager
-
-        settings_manager.instance().set_sessions(records)
+        settings.instance().set_sessions(records)
 
     def new_log(self) -> str:
         import FreeCAD

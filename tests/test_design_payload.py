@@ -46,9 +46,10 @@ import os
 import pytest
 
 from core import loop, sheet_reader
+from tests import modelmania_harness
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODELMANIA = os.path.join(ROOT, "tests", "modelmania")
+MODELMANIA = str(modelmania_harness.MODELMANIA_DIR)
 REPORT_PATH = "/tmp/FreeCadCopilot/design_payload_report.json"
 
 ATTACHMENTS = {

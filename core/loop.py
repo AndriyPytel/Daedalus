@@ -4019,8 +4019,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     looks = _what_this_build_has(tools)
     last_pass = LastPass()
 
-    from utils import settings_manager
-    auto_approve = settings_manager.instance().get_auto_approve_plan()
+    from core import settings
+    auto_approve = settings.instance().get_auto_approve_plan()
 
     def rewrite(cause, refused, feedback, tried, reason=None):
         """

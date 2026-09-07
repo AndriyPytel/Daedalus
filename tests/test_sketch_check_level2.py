@@ -11,10 +11,11 @@ from dataclasses import replace
 import pytest
 
 from core import sheet_reader, sketch_check
+from tests import modelmania_harness
 
 pytestmark = pytest.mark.freecad
 
-SHEET = os.path.join(os.path.dirname(__file__), "modelmania", "mm25-p1-1.pdf")
+SHEET = str(modelmania_harness.MODELMANIA_DIR / "mm25-p1-1.pdf")
 
 
 @pytest.fixture(scope="module")

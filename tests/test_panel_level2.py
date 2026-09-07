@@ -285,13 +285,12 @@ def test_the_composer_carries_the_effort_in_force(panel):
 
 def test_picking_an_effort_stores_it_and_shows_it(panel, monkeypatch):
     """The pill says what the next run will be asked for, not what was stored."""
-    from core import llm
-    from utils import settings_manager
+    from core import llm, settings
 
     stored = []
-    monkeypatch.setattr(settings_manager.instance(), "set_profile_effort",
+    monkeypatch.setattr(settings.instance(), "set_profile_effort",
                         lambda profile, level: stored.append((profile, level)))
-    monkeypatch.setattr(settings_manager.instance(), "get_profile_effort",
+    monkeypatch.setattr(settings.instance(), "get_profile_effort",
                         lambda profile: stored[-1][1] if stored else "")
 
     panel._on_effort_selected("high")
@@ -317,11 +316,12 @@ def test_the_toggle_flips_between_the_two_profiles_and_back(panel):
 
 
 def test_the_effort_pill_follows_whichever_profile_the_toggle_is_on(panel, monkeypatch):
+    from core import settings as core_settings
     from utils import settings_manager
 
     settings = settings_manager.instance()
     monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-4o")
-    monkeypatch.setattr(settings, "get_profile_effort",
+    monkeypatch.setattr(core_settings.instance(), "get_profile_effort",
                         lambda profile: "high" if profile == "thinking" else "low")
 
     try:
