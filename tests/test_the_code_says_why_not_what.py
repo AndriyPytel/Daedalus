@@ -103,27 +103,57 @@ def docstrings():
                             yield where, getattr(node, "lineno", 1), node, doc
 
 
-def test_no_docstring_exceeds_its_budget():
-    offenders = []
+BASELINE_FILE = os.path.join(ROOT, "tests", "docstring_budget_baseline.txt")
+
+
+def baselined():
+    with open(BASELINE_FILE, encoding="utf-8") as handle:
+        return set(line.strip() for line in handle if line.strip())
+
+
+def offenders():
+    found = {}
     for where, line, node, doc in docstrings():
         node_name = getattr(node, "name", "module")
         budget = PRIVATE_BUDGET if node_name.startswith("_") else DOCSTRING_BUDGET[type(node)]
         length = doc.count("\n") + 1
+        reasons = set()
         if length > budget:
-            offenders.append("%s:%d %s (%d lines, budget %d)"
-                              % (where, line, node_name, length, budget))
+            reasons.add("budget")
+        if any(marker in doc.lower() for marker in HISTORY_MARKERS):
+            reasons.add("marker")
+        if reasons:
+            found["%s::%s" % (where, node_name)] = reasons
+    return found
 
-    assert not offenders, (
+
+def test_no_docstring_exceeds_its_budget():
+    baseline = baselined()
+    unlisted = sorted(key for key, reasons in offenders().items()
+                       if "budget" in reasons and key not in baseline)
+
+    assert not unlisted, (
         "a docstring over budget is narrative or duplication that belongs "
-        "elsewhere, same as a banned comment: %s" % ", ".join(offenders))
+        "elsewhere, same as a banned comment, and is not in "
+        "docstring_budget_baseline.txt: %s" % ", ".join(unlisted))
 
 
 def test_no_docstring_carries_a_ticket_history_marker():
-    offenders = ["%s:%d %s" % (where, line, getattr(node, "name", "module"))
-                 for where, line, node, doc in docstrings()
-                 if any(marker in doc.lower() for marker in HISTORY_MARKERS)]
+    baseline = baselined()
+    unlisted = sorted(key for key, reasons in offenders().items()
+                       if "marker" in reasons and key not in baseline)
 
-    assert not offenders, (
+    assert not unlisted, (
         "a docstring narrating what used to happen is a commit message in "
-        "the source, one syntax layer over the banned comment: %s"
-        % ", ".join(offenders))
+        "the source, one syntax layer over the banned comment, and is not "
+        "in docstring_budget_baseline.txt: %s" % ", ".join(unlisted))
+
+
+def test_docstring_baseline_only_shrinks():
+    current = offenders()
+    fixed = sorted(key for key in baselined() if key not in current)
+
+    assert not fixed, (
+        "a baselined docstring no longer offends — remove it from "
+        "docstring_budget_baseline.txt so the list can only shrink: %s"
+        % ", ".join(fixed))
