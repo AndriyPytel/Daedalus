@@ -670,9 +670,9 @@ def test_the_gate_event_carries_the_plan_that_was_actually_approved():
 
 
 def _auto_approve(monkeypatch, on=True):
-    from utils import settings_manager
+    from core import settings
 
-    monkeypatch.setattr(settings_manager.instance(), "get_auto_approve_plan", lambda: on)
+    monkeypatch.setattr(settings.instance(), "get_auto_approve_plan", lambda: on)
 
 
 def test_auto_mode_off_by_default_still_asks(clean_auto_approve):

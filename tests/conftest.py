@@ -364,13 +364,13 @@ def the_settings_never_reach_the_user_s_freecad():
     its run from a module-scoped fixture, which is built before any
     function-scoped patch could take effect.
     """
-    from utils import settings_manager
+    from core import settings
 
     scratch = ScratchParameters()
-    real = settings_manager._SettingsManager._grp
-    settings_manager._SettingsManager._grp = staticmethod(lambda: scratch)
+    real = settings.Settings._grp
+    settings.Settings._grp = staticmethod(lambda: scratch)
     yield scratch
-    settings_manager._SettingsManager._grp = real
+    settings.Settings._grp = real
 
 
 @pytest.fixture

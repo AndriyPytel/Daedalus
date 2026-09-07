@@ -4024,7 +4024,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     saying which one it is standing on. AMEND, and anything that is not an
     approval, replans: no Step runs on a decision the Gate does not recognise.
 
-    `settings_manager.get_auto_approve_plan` is the one exception to "asked
+    `core.settings.get_auto_approve_plan` is the one exception to "asked
     about, standing approval or not": on, it stands over every Gate from the
     first Plan on, including a Step with an assumption nobody has read, so an
     unattended run never stalls waiting on a human who is not there. `gate`
@@ -4150,8 +4150,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     looks = _what_this_build_has(tools)
     last_pass = LastPass()
 
-    from utils import settings_manager
-    auto_approve = settings_manager.instance().get_auto_approve_plan()
+    from core import settings
+    auto_approve = settings.instance().get_auto_approve_plan()
 
     def rewrite(cause, refused, feedback, tried, reason=None):
         """

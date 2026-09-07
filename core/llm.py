@@ -466,9 +466,9 @@ def effort() -> str:
     from some older build is a flag no route can spell, and the CLI answers a
     bad `--effort` by refusing the call.
     """
-    from utils import settings_manager
+    from core import settings
 
-    chosen = settings_manager.instance().get_effort()
+    chosen = settings.instance().get_effort()
     return chosen if chosen in EFFORTS else _SUBSCRIPTION_EFFORT
 
 
@@ -487,9 +487,9 @@ def effort_for_profile(profile: str) -> str:
     older build or an empty store both land on `_resolved_effort`'s own
     default the same way `effort()` already does for the single dial.
     """
-    from utils import settings_manager
+    from core import settings
 
-    return _resolved_effort(settings_manager.instance().get_profile_effort(profile))
+    return _resolved_effort(settings.instance().get_profile_effort(profile))
 
 
 def effort_is_honoured(model_id: str = None) -> bool:
@@ -506,11 +506,10 @@ def effort_is_honoured(model_id: str = None) -> bool:
     """
     import sys
 
-    from core import model_catalog
-    from utils import settings_manager
+    from core import model_catalog, settings
 
     try:
-        provider, mid, _ = settings_manager.instance().get_llm_credentials(model_id)
+        provider, mid, _ = settings.instance().get_llm_credentials(model_id)
     except Exception:
         return True
     if model_catalog.needs_no_key(provider) or provider == "Anthropic":
@@ -1158,9 +1157,9 @@ def unusable_attachments(paths, model: str) -> list:
 
 def selected_model_name(model_id: str = None) -> str:
     """The model the panel is set to, spelled the way LiteLLM spells it."""
-    from utils import settings_manager
+    from core import settings
 
-    provider, mid, _ = settings_manager.instance().get_llm_credentials(model_id)
+    provider, mid, _ = settings.instance().get_llm_credentials(model_id)
     return litellm_model_name(provider, mid)
 
 
@@ -1178,11 +1177,9 @@ def client_from_settings(model_id: str = None, effort: str = None):
     built at; left `None` the client falls back to the single dial in force
     the way it always has, which is what every caller outside a profile does.
     """
-    from utils import settings_manager
+    from core import model_catalog, settings
 
-    from core import model_catalog
-
-    sm = settings_manager.instance()
+    sm = settings.instance()
     provider, mid, secret = sm.get_llm_credentials(model_id)
 
     if model_catalog.needs_no_key(provider):
@@ -1206,9 +1203,9 @@ def client_from_profiles() -> ProfiledClient:
     the model and the effort that profile is set to, wired so `for_phase`
     answers every phase from the one that owns it.
     """
-    from utils import settings_manager
+    from core import settings
 
-    sm = settings_manager.instance()
+    sm = settings.instance()
     return ProfiledClient(
         thinking=client_from_settings(sm.get_profile_model("thinking"),
                                       effort_for_profile("thinking")),

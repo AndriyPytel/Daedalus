@@ -543,9 +543,9 @@ def test_the_reply_is_asked_for_as_it_forms_rather_than_when_it_is_finished():
 
 def test_the_call_is_made_at_the_effort_the_user_set(monkeypatch):
     """The dial in the composer is what reaches the CLI, per call."""
-    from utils import settings_manager
+    from core import settings
 
-    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: "high")
+    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
     client, spawn = client_replaying()
     collect(client.stream(a_turn()))
 
@@ -557,9 +557,9 @@ def test_an_effort_the_dial_no_longer_offers_falls_back(monkeypatch):
     A level stored by some older build is a flag no route can spell, and the
     CLI answers a bad `--effort` by refusing the call.
     """
-    from utils import settings_manager
+    from core import settings
 
-    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: "xhigh")
+    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "xhigh")
     client, spawn = client_replaying()
     collect(client.stream(a_turn()))
 
@@ -572,12 +572,12 @@ def test_the_wait_a_call_is_allowed_moves_with_the_dial(monkeypatch):
     than bounding it: one sheet through Design is 52 s at low and 668 s at
     high.
     """
-    from utils import settings_manager
+    from core import settings
 
-    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: "low")
+    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "low")
     assert ClaudeCodeClient(MODEL).timeout == llm._CEILING["low"]
 
-    monkeypatch.setattr(settings_manager.instance(), "get_effort", lambda: "high")
+    monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
     assert ClaudeCodeClient(MODEL).timeout == llm._CEILING["high"]
 
 
