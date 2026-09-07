@@ -35,7 +35,9 @@ zero.
 import argparse
 import json
 import os
+import signal
 import sys
+import threading
 import time
 
 TRANSIENT = ("ENOTFOUND", "EAI_AGAIN", "Can't reach the API server", "fetch failed",
@@ -99,6 +101,30 @@ def transient_reason(log_path):
     return None
 
 
+def watchdog(seconds, record):
+    """Kill this process if a single run outruns its own wall-clock ceiling.
+
+    core/llm.py's per-call timer already failed to hold once: a call given a
+    900s ceiling logged 1012.9s in the 2026-09-05 pilot run. This backstop
+    is timed independently, in the harness process rather than the LLM
+    layer, so a ceiling that fails silently there does not also strand a
+    lane overnight. `record()` writes this run's own status to disk from
+    this thread before either exit path fires, so a run killed here is
+    never lost the way `state.json` exists to prevent. `SIGTERM` is tried
+    first, its default disposition already terminates the process cleanly;
+    `os._exit` is a fallback a few seconds later only for a hang stubborn
+    enough that the plain signal does not end it.
+    """
+    def fire():
+        record()
+        os.kill(os.getpid(), signal.SIGTERM)
+        threading.Timer(10, lambda: os._exit(1)).start()
+    timer = threading.Timer(seconds, fire)
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
 def rotate(stem):
     """Move a previous attempt's log aside so this one starts on an empty file.
 
@@ -159,18 +185,34 @@ def main():
     parser.add_argument("--model", required=True)
     parser.add_argument("--effort", default="medium")
     parser.add_argument("--intent", required=True)
-    parser.add_argument("--task", action="append", required=True,
+    parser.add_argument("--task", action="append", default=[],
                         help="label=/path/to/sheet.pdf, repeatable, walked in order")
+    parser.add_argument("--baseline", action="store_true",
+                        help="Walk the 8 sheets pinned in "
+                             "tests/modelmania/baseline_sheets.json, so a baseline run "
+                             "and its comparison cannot drift onto different sets; "
+                             "adds to --task")
     parser.add_argument("--budget-usd", type=float, required=True,
                         help="Ceiling for ONE run, so `off` and `on` are bought the same room")
     parser.add_argument("--lane-cap-usd", type=float, default=None,
                         help="Ceiling for the whole lane, default budget-usd per task")
     parser.add_argument("--retries", type=int, default=3)
+    parser.add_argument("--run-timeout-seconds", type=float, default=12000.0,
+                        help="Wall-clock backstop per run, independent of core.llm's "
+                             "per-call ceiling; default clears the longest observed "
+                             "legitimate run (8332s) with margin")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
     tasks = [t.split("=", 1) for t in args.task]
+    if args.baseline:
+        with open("tests/modelmania/baseline_sheets.json", encoding="utf-8") as handle:
+            for sheet in json.load(handle)["sheets"]:
+                label = os.path.splitext(os.path.basename(sheet))[0]
+                tasks.append([label, sheet])
+    if not tasks:
+        raise SystemExit("no tasks: pass --task or --baseline")
     cap = args.lane_cap_usd if args.lane_cap_usd is not None else args.budget_usd * len(tasks)
     here = os.path.realpath(os.getcwd())
 
@@ -243,6 +285,16 @@ def main():
                 doc.UndoMode = 1
                 started = time.time()
 
+                def record_timeout(key=key, label=label, arm=arm, stem=stem,
+                                   attempt=attempt, spent=spent, started=started):
+                    state["runs"][key] = {
+                        "task": label, "arm": arm, "log": stem + ".jsonl",
+                        "status": "timed_out", "attempts": attempt,
+                        "usd": spent["usd"], "seconds": time.time() - started,
+                        "finished_at": time.time()}
+                    save_state(args.out, state, compare)
+
+                watch = watchdog(args.run_timeout_seconds, record_timeout)
                 with Kernel(timeout=180) as worker:
                     pipeline = ApplyPipeline(document=doc, worker=worker,
                                              dispatch=lambda func, timeout=None: func(),
@@ -253,6 +305,7 @@ def main():
                                  gate=lambda steps: Approval(APPROVE),
                                  cancelled=lambda: spent["usd"] >= args.budget_usd
                                  or (state["usd"] + spent["usd"]) >= cap)
+                watch.cancel()
 
                 seconds = time.time() - started
                 state["usd"] += spent["usd"]
