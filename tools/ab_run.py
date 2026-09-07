@@ -112,9 +112,8 @@ def main():
     pin_path(here)
     assert_path(here)
 
-    from core.freecad.apply import ApplyPipeline, _qt
+    from core.freecad.apply import ApplyPipeline, _qt, build_registry
     from core.events import COST, EventStream
-    from core.freecad.freecad_tools import build_registry
     from core.llm import ClaudeCodeClient, ProfiledClient
     from core.loop import APPROVE, Approval, run
     from core.measure import compare

@@ -619,8 +619,7 @@ class LoopWorker(QtCore.QObject):
         after that — a later focus change elsewhere must not redirect a Tool
         call or an Apply that belongs to this Session.
         """
-        from core.freecad.apply import ApplyPipeline
-        from core.freecad.freecad_tools import build_registry
+        from core.freecad.apply import ApplyPipeline, build_registry
 
         if self.pipeline is None:
             self.pipeline = ApplyPipeline(document=self.document,
@@ -946,7 +945,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         be the same Document (FCC-181). Every Intent after this one reuses the
         binding regardless of what the user brings to front meanwhile.
 
-        Goes through `core.freecad.freecad_tools.active_document` rather than
+        Goes through `core.freecad.apply.active_document` rather than
         `FreeCAD.ActiveDocument` directly — the panel reaching the Document on
         its own is exactly what `test_registry_is_the_only_route.py` exists to
         catch.

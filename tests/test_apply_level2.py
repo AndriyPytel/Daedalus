@@ -9,8 +9,7 @@ import os
 
 import pytest
 
-from core.freecad.apply import ApplyPipeline, run_in_transaction
-from core.freecad.freecad_tools import build_registry
+from core.freecad.apply import ApplyPipeline, build_registry, run_in_transaction
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad

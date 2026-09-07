@@ -242,7 +242,7 @@ def test_review_views_reads_the_pipelines_own_document(pipeline, monkeypatch):
     tab is in front — the same Document `apply` just landed the Step on.
     """
     seen = []
-    monkeypatch.setattr("core.freecad.freecad_tools.capture_review_views",
+    monkeypatch.setattr("core.freecad.apply.capture_review_views",
                         lambda paths, doc: seen.append(doc) or paths)
 
     pipeline.review_views()

@@ -10,7 +10,7 @@ confirmed. A `Trap` with no script cannot be reduced to a runnable check and
 is marked unverified rather than skipped, which is why `unverified` is a
 result and not the absence of one.
 
-The 15 seed traps in `core/freecad/freecad_tools.py:TRAPS` are prose, carried over
+The 15 seed traps in `core/freecad/apply.py:TRAPS` are prose, carried over
 rather than rewritten into scripts here (per this ticket's Solution Notes),
 so `verify_seed_traps` is their first exercise through this mechanism, not a
 claim that they reproduce -- each one comes back unverified until a script
@@ -59,6 +59,6 @@ def verify_trap(trap, kernel_factory=Kernel):
 
 
 def verify_seed_traps():
-    """Run verification against every seed trap in `core.freecad.freecad_tools.TRAPS`."""
-    from core.freecad.freecad_tools import TRAPS
+    """Run verification against every seed trap in `core.freecad.apply.TRAPS`."""
+    from core.freecad.apply import TRAPS
     return [verify_trap(Trap(claim=text)) for text in TRAPS]

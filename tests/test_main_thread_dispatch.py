@@ -183,8 +183,6 @@ def test_what_the_user_selected_is_read_on_the_main_thread(qt_app):
     import sys
     import types
 
-    from core.freecad import freecad_tools
-
     app, QtCore = qt_app
     read_on = []
     gui = types.ModuleType("FreeCADGui")
@@ -199,7 +197,7 @@ def test_what_the_user_selected_is_read_on_the_main_thread(qt_app):
     saved = sys.modules.get("FreeCADGui")
     sys.modules["FreeCADGui"] = gui
     try:
-        run_off_thread(freecad_tools._selection, qt_app)
+        run_off_thread(core.freecad.apply._selection, qt_app)
     finally:
         sys.modules.pop("FreeCADGui")
         if saved is not None:
@@ -216,8 +214,6 @@ def test_the_active_body_is_read_on_the_main_thread(qt_app):
     import sys
     import types
 
-    from core.freecad import freecad_tools
-
     app, QtCore = qt_app
     read_on = []
     gui = types.ModuleType("FreeCADGui")
@@ -232,7 +228,7 @@ def test_the_active_body_is_read_on_the_main_thread(qt_app):
     saved = sys.modules.get("FreeCADGui")
     sys.modules["FreeCADGui"] = gui
     try:
-        run_off_thread(lambda: freecad_tools._active_body(type("_D", (), {"Objects": []})),
+        run_off_thread(lambda: core.freecad.apply._active_body(type("_D", (), {"Objects": []})),
                        qt_app)
     finally:
         sys.modules.pop("FreeCADGui")
@@ -296,7 +292,7 @@ def _core_sources():
 MAKES_A_DOCUMENT = {
     "kernel_worker.py": "is the child",
     "sketch_check.py": "runs in the child",
-    "freecad_tools.py": "hidden=True, temp=True, and known — FCC-126",
+    "apply.py": "hidden=True, temp=True, and known — FCC-126",
 }
 
 

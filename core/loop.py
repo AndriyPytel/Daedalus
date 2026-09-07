@@ -57,7 +57,7 @@ from core.events import (
     TOOL_RESULT, UNBUILT, WRITING, EventStream,
 )
 from core import kernel, part_file, sheet_reader, sketch_check
-from core.freecad.freecad_tools import TRAPS
+from core.freecad.apply import TRAPS
 from core.llm import REASONING, ProviderRefused, StreamCutOff, cache_control_supported
 from core.tools import ToolError
 
@@ -1959,7 +1959,7 @@ def _repair_reference(attempts):
     nothing is added and the request is exactly what it is without this
     function: the traceback, and nothing else.
 
-    Two layers, on purpose, not one: `core/freecad_tools.py :: TRAPS` is
+    Two layers, on purpose, not one: `core/apply.py :: TRAPS` is
     prevention, read into every prompt before a Step is written, full and
     unconditional; this is repair, read only after a Step has already
     failed, and stays narrow — one entry for the symptom in hand, not the

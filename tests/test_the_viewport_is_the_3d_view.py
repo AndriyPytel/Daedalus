@@ -16,7 +16,7 @@ import types
 
 import pytest
 
-from core.freecad.freecad_tools import REVIEW_VIEWS, _OPPOSITE_ISOMETRIC, _SECTION_VIEW, capture_review_views, fit_view
+from core.freecad.apply import REVIEW_VIEWS, _OPPOSITE_ISOMETRIC, _SECTION_VIEW, capture_review_views, fit_view
 
 
 class SpreadsheetView:
@@ -108,7 +108,7 @@ def section(monkeypatch):
     import FreeCAD
 
     plane = FreeCAD.Placement()
-    monkeypatch.setattr("core.freecad.freecad_tools._section_plane", lambda document: plane)
+    monkeypatch.setattr("core.freecad.apply._section_plane", lambda document: plane)
     return plane
 
 

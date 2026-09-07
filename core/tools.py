@@ -9,7 +9,7 @@ runs a Step's code directly against FreeCAD, and a Tool function is a
 convenience callable from there rather than the sole entry point (FCC-299).
 
 This module never imports FreeCAD. The FreeCAD-backed Tools live in
-`core/freecad_tools.py`; a fake registry for Level 1 is just a few plain
+`core/freecad/apply.py`; a fake registry for Level 1 is just a few plain
 functions handed to `ToolRegistry`.
 """
 from dataclasses import dataclass, field

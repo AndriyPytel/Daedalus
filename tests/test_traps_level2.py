@@ -4,7 +4,7 @@ kernel, per FCC-314's own TESTING STRATEGY.
 """
 import pytest
 
-from core.freecad.freecad_tools import TRAPS
+from core.freecad.apply import TRAPS
 from core.kernel import find_freecadcmd
 from core.freecad.traps import Trap, verify_seed_traps, verify_trap
 

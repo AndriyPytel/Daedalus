@@ -1,11 +1,11 @@
 """
 The import boundary FCC-317 built stays shut (FCC-318).
 
-FCC-317 repointed the panel to the SDK but could not finish the job: four
+FCC-317 repointed the panel to the SDK but could not finish the job: three
 wiring imports inside `ui/copilot_panel.py`'s `LoopWorker` still reach into
 `core.*` on purpose, because the SDK does not yet offer live-document mode,
-injectable dispatch/confirm, no-forced-kernel, or outstanding passthrough
-(see FCC-317, FCC-315). Those four are named here, not silently allowed: each
+injectable dispatch/confirm, or outstanding passthrough
+(see FCC-317, FCC-315). Those three are named here, not silently allowed: each
 line names the ticket that owns removing it, so the exception list shrinks
 ticket by ticket instead of growing back invisibly. Any other `core` import
 anywhere under `ui/`, present or future, fails this test.
@@ -19,7 +19,6 @@ UI_DIR = os.path.join(ROOT, "ui")
 KNOWN_EXCEPTIONS = {
     ("ui/copilot_panel.py", "core.llm"): "FCC-317/FCC-315: SDK has no live-document mode",
     ("ui/copilot_panel.py", "core.freecad.apply"): "FCC-317/FCC-315: SDK has no injectable dispatch/confirm",
-    ("ui/copilot_panel.py", "core.freecad.freecad_tools"): "FCC-317/FCC-315: SDK has no no-forced-kernel mode",
     ("ui/copilot_panel.py", "core.loop"): "FCC-317/FCC-315: SDK has no outstanding passthrough",
 }
 
