@@ -1,65 +1,15 @@
-"""
-The reading, assembled, and what the solver makes of it.
+"""Builds a Sketch from the traced outline; the solver says whether the reading is self-consistent
+— geometry can be built, unlike a person-vs-person diff.
 
-Everything before this checks a reading against another reading. The sheet is
-measured, the model is asked what it sees, the two are compared, and where they
-disagree a person settles it — which is the right rule for a number nobody can
-recompute and no rule at all for geometry, because geometry can be built and a
-solver has an opinion of its own.
+Constraints:
+Verdict is movement distance, not solver return code — a bad solve moves geometry to satisfy it.
+A_SHIFT is the pass/fail line for how far a traced entity may move onto the sheet's own numbers.
+Runs only in the Preflight child (FCC-126) — Document mutation on the loop thread crashes FreeCAD,
+and Sketcher.Constraint itself can segfault (FCC-19).
+Wire fields cross as plain lists — JSON has no tuple, and the report format uses `%`.
 
-`sheet_reader` now hands over a closed walk: lines, arcs and circles in
-millimetres of the part, in the order the silhouette was walked round, and a
-hole a callout's leader reaches carries the size the draughtsman printed where
-the two agree closely enough to be one measurement made twice. That is a
-`Sketch` — `addGeometry` takes exactly those three — and once it is one, the
-solver answers a question nothing else in the pipeline can put: can what was
-read be true at once?
-
-The answer is not the solver's return code. Two numbers that cannot both be
-true rarely make a sketch *unsolvable* — the solver satisfies them by moving
-the geometry, and the geometry is the one thing here that was measured. So the
-verdict is how far it had to move: build the walk where the pixels put it,
-constrain it with what the sheet prints, solve, and measure the distance
-between the two.
-
-What the sheet prints is two things and the second one is most of a drawing. A
-diameter arrives where a callout's leader reached a traced hole and agreed with
-it, which happens on none of the four sheets — the tracing reads 0.49 to
-1.17 mm under, and the snap band is 0.15; a **distance** arrives wherever a
-dimension's two extension lines reach two faces of the outline, which is 11 of
-them across 10 outlines. `108` read as `100` is a distance, and until they were written there
-was nothing in the sketch for it to be wrong about.
-
-Measured evidence from all four sheets in `tests/modelmania` yields 142
-outlines. Their movement stays within 0.15 to 0.30 mm at the median, 0.50 to
-0.75 mm at nine in ten, and 1.0 to 1.5 mm at the worst. A bore traced in two
-arcs and snapped to two different callouts — 42 against 50, which is the shape
-of the reading this exists to catch — moves 9.88 mm.
-
-Disposable throughout. The document is made here, closed here, and never the
-user's; nothing here writes a Step, and nothing here reaches the feature tree.
-It is made under a name that says what it is, which is how a stray one is
-recognised. What comes back is a verdict about a *reading*.
-
-A traced entity that has to move further than `A_SHIFT` onto the sheet's own
-numbers is a fact about the reading rather than the slack in a fit. Two
-millimetres leaves the four sheets' worst movement under 1.5 mm, while the
-reading it has to catch moves 9.88 mm.
-
-What crosses the pipe is named field by field rather than dumped wholesale, so
-what crosses is what is used and a new field on `Entity` does not silently
-become part of the contract between the two processes. A point crosses as a
-list, because JSON has no tuple and the reporting formats a point with `%` —
-a list there is a TypeError, not a rounding difference.
-
-**And it is made in the Preflight child, never in the addon's own process.**
-`checked` runs where it is called; every caller upstream goes through
-`checked_by`, which sends the outline down the pipe and reads the verdict back.
-Two reasons, and either alone is enough (FCC-126): the phases that read a sheet
-run on the loop's worker thread, where a Document mutation is how FreeCAD gets
-taken down (`core/apply.py`); and `Sketcher.Constraint` is the call that
-segfaults (FCC-19), fed here with geometry measured off a drawing. A verdict is
-worth a child process. It is not worth the user's FreeCAD.
+Measured (tests/modelmania, 4 sheets, 142 outlines): movement 0.15-0.30mm median, 0.50-0.75mm p90,
+1.0-1.5mm worst; a wrong double-callout snap (42 vs 50) moves 9.88mm.
 """
 from dataclasses import dataclass, field
 from types import SimpleNamespace

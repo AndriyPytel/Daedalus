@@ -1,5 +1,4 @@
-"""
-The Design -> Plan -> Execute -> Assertion -> Review loop.
+"""The Design -> Plan -> Execute -> Assertion -> Review loop.
 
 Fixed order, deterministic routing (ADR-0003). No LLM-chosen speaker
 selection: Design says what the part is and has nothing to build with it
@@ -25,6 +24,10 @@ the Document is reached only through the Tool registry.
 Budgets, not round limits. On exhaustion the loop emits `blocked` with what was
 tried and waits for the user. Silent failure and unbounded looping are both
 defects, so both are bounded and both are reported.
+
+A re-plan may ask the drawing again or simply invent a value it still lacks (FCC-67); a
+question the drawing cannot settle instead goes to the read-only Tools, bounded by
+`budgets.looks_per_turn` (FCC-149).
 """
 import base64
 import copy
@@ -2483,64 +2486,14 @@ assert not failed, "these did not hold: " + "; ".join(failed)
 
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
               after_a_retry=()):
-    """
-    Write checks for the acceptance list and run them against the result.
+    """Writes and runs acceptance checks against the finished Document — read-only, once per run.
 
-    A fourth context, not Review and not Preflight. Review judges and is
-    deliberately not told how the result was produced (ADR-0003), so it cannot
-    also author the code that checks it; Preflight is a gate in front of the
-    Document on every Step, and this measures a finished one. Read-only, once
-    per run.
-
-    An `AssertionError` is the model failing its list. Any other traceback is
-    the *check* failing, and it goes back to the phase that wrote it on the
-    same budget a Step gets — read as a failed model it would send Plan to
-    rebuild a part that is already right.
-
-    `confirmed` is the check script's own `held` list where the worker
-    measured one, on the failing branch as much as the passing one — not
-    everything the model did not call `uncovered`, which is a claim about
-    what the model looked at rather than a measurement of what it found true.
-    An envelope failure and a check the phase never wrote both leave
-    `confirmed` empty by construction, having measured nothing to confirm.
-
-    The envelope is measured first and without asking anybody: three sizes
-    against three sizes is arithmetic, and a run that built the wrong part
-    should not have to wait for a provider to say so. Self-intersection is
-    measured next, also without asking anybody: `BOPAlgo_SelfIntersect` is too
-    expensive to run after every Step (FCC-253 Q4), so it runs once here,
-    against every solid the finished Document holds, the same way the
-    envelope does. Both run whether or not `acceptance` has anything in it —
-    an empty list only means there is nothing left for a provider to write a
-    check for, not that these two are skipped. The entries a retry touched go
-    with the request, because a Step that failed a check and passed on the
-    retry is a Step whose feature was changed to get past it — shortened,
-    moved, turned around — and passing the second time says the workaround
-    was legal, never that it is still the feature the drawing asked for;
-    those are the entries to measure rather than to take on trust.
-
-    Self-intersection moves each solid through a `.brep` file rather than in
-    memory: FreeCAD's own `Part.Shape` does not expose
-    `BOPAlgo_ArgumentAnalyzer`/`SetSelfInterMode` to Python, and FreeCAD's
-    shape object and pythonocc-core's `TopoDS_Shape` are two independent SWIG
-    bindings of the same OCCT types, so a file is the only bridge between
-    them. `Part.Shape.check(runBopCheck=True)` looks like a native
-    alternative but raises `ValueError: No error` on a solid this check is
-    meant to catch, so it is not a substitute. Measured on the warm worker
-    process Assertion already runs in: 1 solid ≈ 0.3 s (paid once per
-    process, for `OCC.Core`'s own import), 5 solids ≈ 0.005 s, 20 ≈ 0.015 s,
-    50 ≈ 0.036 s — about 0.7 ms marginal per solid once loaded, negligible
-    next to a single LLM round trip, and it runs once per run, not per Step.
-
-    If `acceptance` is empty and both deterministic checks hold, nothing asks
-    a provider to write anything: `None` comes back the same way it did
-    before either check existed, and Review is told there was nothing to
-    confirm.
-
-    `cancelled` is asked between attempts the way Execute's is: three provider
-    calls is long enough that Stop must not wait them out. Checks that could
-    not be written at all are neither a verdict on the part nor a reason to
-    lose a finished run — Review judges the whole list instead.
+    Constraints: a context of its own — Review is deliberately not told how the result was produced
+    (ADR-0003), so it cannot also author what checks it. Envelope and self-intersection run
+    unconditionally even on an empty acceptance list; self-intersection runs once here, not per
+    Step, since it is too expensive to repeat (FCC-253 Q4).
+    Rejected: Part.Shape.check(runBopCheck=True) raises "No error" on solids it should flag.
+    Measured (warm worker): ~0.3s first solid, then ~0.7ms/solid marginal (5→0.005s, 50→0.036s).
     """
     budgets = budgets or Budgets()
     request = {"acceptance": list(acceptance),
@@ -3836,65 +3789,11 @@ def _one_direction_per_step(mixed):
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
                                revising=(), ledger=None):
-    """
-    Plan, letting it ask for what the description did not carry (FCC-25).
-
-    "модельку шестерні" names no module, no tooth count, no thickness and no
-    bore. Planning anyway means inventing them, and an invented value is not
-    visible anywhere the user could correct it — it turns up in the geometry.
-    So Plan may answer with a question instead of Steps, and the run waits.
-
-    A question Plan raises goes to the drawing, and never to a person
-    (ADR-0022). Design decides whether the sheet answers it — a `read` value —
-    and where it does not, Plan is told to choose for itself and to write every
-    value it chose into the prose of the Step that uses it, which is where the
-    Gate shows it. FCC-90 was an interception for the drawing's sake; it is now
-    the whole route.
-
-    A question the drawing was never going to answer does not go to it. A
-    material card's uuid, what a type is called, which card carries a density
-    are facts about this FreeCAD, and a Tool holds them: Plan is handed the
-    read-only Tools and settles its own question with a look, bounded by
-    `budgets.looks_per_turn` and charged to nothing else. A recorded run put
-    "the UUID of an installed plain carbon steel material card" to the sheet
-    three times, spent every re-read it had on it and stopped (FCC-149).
-
-    Every question about the part reaches the sheet first, including one raised
-    after Plan was told to choose for itself. That question is a *new* obstacle
-    — the run that found the outer profile self-contradictory found it on the
-    third try — and the sheet very often settles it. Asking the drawing used to
-    be skipped there, because the run stopped one line above it (FCC-96).
-
-    A question is not an approval: the Plan Gate is still the single point of
-    approval, and it still sees every Step — and now the questions nobody
-    answered, beside the Steps that chose without them. `budgets.rereads` bounds
-    the drawing being asked and nothing else; how often Plan may be told to
-    choose is not bounded at all, because a run that reaches the Gate with
-    questions nobody answered is the case this route was written for.
-
-    Every Plan comes through here, first or revised: a re-plan is a new Plan and
-    may ask the same way, or it invents the value it was missing (FCC-67). What
-    has been asked is `asking`, and it belongs to the run rather than to this
-    call, so a re-plan does not start the questioning over.
-
-    Hands back the description as it now stands, because it grew on the way.
-
-    A Plan that disagrees with itself about which way a Step builds is neither
-    a question nor a block: the description already says which way each entry
-    goes, so what it needs is telling, not asking. Where the description grew
-    before the Plan was settled it is emitted again, because the Gate stands
-    over the description the Plan was made from.
-
-    No question ends the run. A value nobody supplied is settled by the model,
-    which says in `because` what it settled it off, and the Gate reads both; a
-    stop here would end a run for want of an answer, which is the one thing no
-    site may do (FCC-127, FCC-133). A question already outstanding is not
-    listed twice, so the Gate shows what was asked and not how often. A sheet
-    that answered nothing is said out loud, because the transcript could not
-    otherwise tell a re-read that found nothing from a re-read that never
-    happened, which is the first thing anybody reading a stalled run wants to
-    know. A run that cannot move is a different matter and is stopped where
-    progress is measured, not here (FCC-132).
+    """Plan, letting it ask for what the description did not carry, and the run waits (FCC-25).
+    A question goes to the drawing first (ADR-0022); unanswered, Plan chooses for itself and writes
+    the value into the Step's prose — not an approval, the Gate still sees every unanswered question.
+    No question ends the run (FCC-127, FCC-132, FCC-133); a re-plan's invent-or-ask and the Tool-look
+    budget it may spend instead are the module docstring's own rules (FCC-67, FCC-149).
     """
     grown, for_the_build = the_part, False
     while True:
@@ -3987,80 +3886,11 @@ class LastPass:
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
          decide=revise_by_default, outstanding=(), the_part_path=None):
-    """
-    The run itself: describe the part, plan it, gate it, build it, judge it.
-
-    What an earlier run left wrong is emitted before the drawing is even read.
-    It is a fact about the Document this one starts from, and it belongs at the
-    top of the transcript rather than nowhere. What the run was shown is
-    emitted next, before anything is done with it: the name rides beside the
-    path because a clipboard paste is a temp file the panel deletes when the
-    run ends, and a Session opened tomorrow must still be able to say what was
-    attached.
-
-    Design runs once per run, ahead of every Plan: a revision plans from the
-    description that already exists rather than paying a second call to look at
-    the same picture (ADR-0018), and it only ever grows from there (ADR-0019).
-    `the_part_path` is the one exception: a prior run's own reading, handed
-    back with no new attachment, is read off disk instead — Design is skipped
-    entirely rather than asked to look at nothing (FCC-210).
-
-    One loop, so every Plan reaches the Gate before any of its Steps runs — a
-    revised Plan is a new Plan. Two checks come before the Gate. A Plan that
-    leaves part of the description to nobody must not reach the user as a
-    finished Plan, and it spends the same ceiling as every other cause, so a
-    prompt that never learns to cite stops the run with a reason instead of
-    looping. A number the Plan worked out wrongly is correctable while it is
-    still a number: by the time Execute has multiplied it out the user has
-    approved it and a revision is gone. Only the sums a Step states about
-    itself — this decides nothing about geometry nobody wrote down.
-
-    Both ends of the wait at the Gate go on the stream, because the wait is the
-    longest silence in a run and a session read back has to tell a user
-    thinking for half an hour from a provider taking half an hour. A standing
-    approval stands over the path, never over a number nobody supplied: a Step
-    stating an assumption the user has not read is asked about, standing
-    approval or not, and a Gate that is skipped is on the stream as an approval
-    saying which one it is standing on. AMEND, and anything that is not an
-    approval, replans: no Step runs on a decision the Gate does not recognise.
-
-    `settings_manager.get_auto_approve_plan` is the one exception to "asked
-    about, standing approval or not": on, it stands over every Gate from the
-    first Plan on, including a Step with an assumption nobody has read, so an
-    unattended run never stalls waiting on a human who is not there. `gate`
-    itself is never called while it is on. What it accepted without asking
-    stays honest on the stream regardless: the `GATE` event carries
-    `auto: true` and, when it skipped an unread assumption, the Step text
-    that assumption was in, under `assumed` — the same evidence a human
-    approval leaves, for whoever reads the Session back. Off by default, so a
-    run only goes unattended once the user has turned it on.
-
-    A Step that comes back a second time with nothing applied in between is not
-    a Step Plan can write differently. What Execute refuses is the description
-    behind it, and rewriting the words leaves the run where it is: a recorded
-    run handed Step 1 of 8 back over an arm that could not both be 73 mm long
-    and reach the tangent plane the sheet gives, replanned, handed the same
-    Step back, and spent the budget with an empty Document. That stop sits
-    behind the ceiling, which is the harder stop and already says what went on
-    the budget. Otherwise both handbacks go back to Plan from a fresh Snapshot
-    and spend the same budget: the Step no longer makes sense, or it cannot be
-    built (ADR-0013).
-
-    Review looks at the finished Document twice, with Assertion run between
-    the two: once, `review_suspect`, to notice what a render alone cannot
-    confirm and hand it to Assertion as more of the acceptance list to
-    measure, and once more, gating, once Assertion has answered. Assertion's
-    own failure is a rejection there, before the gating Review ever runs. No
-    acceptance list means no phase at all, not a phase that checks nothing.
-    `review_suspect` never rejects a run by itself — it is diagnostic, not
-    authoritative (FCC-258) — so nothing it notices skips the acceptance
-    checks or is judged before they run. What the checks found is carried on
-    `progress.unmet` whatever happens next, and a pass clears it, including
-    the entries inherited from the run before. A user who takes a failed
-    result goes straight out: the gating Review has already passed the same
-    Document, so nothing is left unrun to save by skipping it. A rejection by
-    the gating Review is bounded by `review_cycles` and spends the shared
-    revision budget as well.
+    """The run itself: describe the part, plan it, gate it, build it, judge it.
+    Design runs once per run, growing what it read (ADR-0018, ADR-0019); `the_part_path` reads a
+    prior run's reading off disk instead (FCC-210). A handback with nothing applied since the last
+    one stops the run; any other handback replans on a fresh Snapshot (ADR-0013).
+    `review_suspect` is diagnostic only, never rejects alone — it hands findings to Assertion (FCC-258).
     """
     if cancelled():
         raise Stopped()
@@ -4456,76 +4286,12 @@ def _trailing_gap(written, number, total):
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
                   start=0, ops=()):
+    """One pass over the Plan: written in one call, applied one Step at a time (ADR-0021).
+    `budgets.attempts_per_step` bounds one Step; a spent Step hands back to Plan (ADR-0013). A
+    trailing gap (a reply that ran out of room) is free up to `budgets.trailing_gap_retries`.
+    A Step Execute refuses goes back on its stated reason at once. `ops[i]` rides onto `apply_step`
+    as `op` so `core/lint.py` checks the TypeId a Step builds (ADR-0026, FCC-233).
     """
-    One pass over the Plan: written in one call, applied one Step at a time.
-
-    The code for every Step arrives together and then lands the way it always
-    did — `apply_step` per Step, one Step one undoable unit, `step_started` and
-    `applied` per Step with what each one created. What changed is where the
-    code came from, not how it lands (ADR-0021).
-
-    An attempt is one writing of a Step, and a failure spends one: the first
-    call is every Step's first attempt, and each regeneration is another
-    attempt at the Step it starts from and a first attempt at every Step after
-    it. `budgets.attempts_per_step` still bounds one Step, the counter resets
-    when a Step lands, and a Step that runs out still hands back to Plan
-    (ADR-0013). The worst case — every Step failing every time — costs one call
-    more than the per-Step loop did, which is the shape this replaced.
-
-    One kind of failure is exempted from that count, up to
-    `budgets.trailing_gap_retries`: a reply that wrote code up to some Step and
-    nothing after it, with nothing coded past the gap either, is a reply that
-    ran out of room rather than one that judged the Step and refused it. That
-    continuation is free until the allowance is spent; the next one after that
-    counts against `attempts_per_step` exactly as any other failure does, so a
-    Step whose every reply runs dry still hands back rather than asking forever.
-
-    What the Steps that landed cite goes onto `progress.satisfied` as they
-    land, because that is what the coverage check subtracts from the description
-    when a handback sends the rest of the work back to Plan.
-
-    Which Steps only landed on a second or third try is carried back out. A
-    retry is where a feature gets talked into passing: the ring split of a
-    recorded run was shortened until the Body stayed in one piece, and the
-    shortened one is what the Document kept.
-
-    A Step Execute was told to leave out goes back the moment its reason
-    arrives rather than after the same reply three times over: asking for it
-    again is asking for the same omission, and the reason is what Plan has to
-    act on (ADR-0013). A Step that spends its attempts goes back the same way —
-    the Plan is a precise instruction while it is buildable and advisory the
-    moment it is not. Once a Step lands, anything read off the Document was
-    read off it as it was before that Step, so from there it is history rather
-    than knowledge.
-
-    A Step that changes no geometry is the exception: it is skipped rather than
-    handed back, and what it was to satisfy comes out on `unbuilt`. Nothing in
-    the part is waiting on it, and the one road out of a handback is Plan,
-    which has no Tools and so cannot write the Step Execute could not — a
-    recorded run spent three provider calls and 55 seconds arriving at a stop
-    that was decided the moment the last of eight Steps was the one that could
-    not be built.
-
-    `ledger` is the one thing here that is not reset when `attempts` is: every
-    failed attempt, at any Step, is classified into it (`core/ledger.py`)
-    before the retry that follows sees it, so a rake this pass already hit at
-    Step 4 is in the prompt for Step 5, and for whatever Plan writes if this
-    Plan is handed back.
-
-    `start` is where a revised Plan's own head is already standing in the
-    Document (`_carried_over`, called by `_run` before this): the Steps below
-    it are neither written nor applied again, only accounted for — `APPLIED`
-    on the stream and their citations onto `progress.satisfied`, exactly as
-    a Step that had just landed. The count this pass actually reached, carried
-    Steps included, comes back on `applied_here` so the next revision, if
-    there is one, has it to carry from in turn.
-
-    `ops` is `planned.ops`, index for index with `steps`: where an entry is
-    truthy it rides onto the `apply_step` call as `op`, which is what lets
-    `core/lint.py` check the TypeId that Step's code actually builds
-    (ADR-0026, FCC-233). A legacy, unmarked Plan's `ops` is all `None`, so
-    `apply_step` is called exactly as it always was — no `op` key at all.
-"""
     if cancelled():
         raise Stopped()
     described = {}

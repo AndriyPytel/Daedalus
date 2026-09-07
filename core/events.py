@@ -1,55 +1,18 @@
-"""
-The typed event stream.
+"""The typed event stream — the loop emits, the panel renders, and a run can be inspected from this
+stream alone without reproducing it.
 
-The loop emits; the panel renders. The panel never calls loop methods, so the
-loop has no idea a UI exists and the same stream doubles as the session log —
-a bad run can be inspected without reproducing it.
+Constraints:
+The loop has no idea a UI exists; the stream is an output, asserted on and never substituted.
+`intent` stands first, before anything is read, so a transcript can be judged against the request
+that opened it.
+`call_started` pairs with `cost`; one with no matching `cost` after it is a call that died without
+answering.
+`cost.usd` is present only when the client reported a price — a subscription route emits none.
+`stopped` is the user's own Stopped reaching the loop boundary, not a `blocked`: the run was told
+to stop rather than failing to finish, which is why `core/measure.py`'s blocked rate excludes it.
 
-The stream is an output. It is asserted on and never substituted.
-
-Two kinds say where a run came from rather than what it did: `part` carries the
-path the reading Design settled on was written to, so a run can be pointed at
-the file it was planned from, and `outstanding` carries what an earlier run's
-acceptance checks found wrong and nobody fixed, emitted once at the top of the
-run that inherits it.
-
-`unbuilt` is a Step that could not be built and that nothing in the geometry
-was waiting on, with the entries of the description it was the Step to satisfy:
-a run that finishes with one of those is not a blocked run, and the stream says
-so in a word of its own.
-
-`intent` is what the run was asked to produce. It stands first, before anything
-has been read, so a session says what was wanted before it says what was found
-and a transcript can be judged against the request that opened it.
-
-`call_started` marks when a provider call begins, carrying the phase, model,
-and timeout ceiling in seconds when one is set (subscription route only). It is
-emitted before the stream opens and pairs with the `cost` that follows: a
-`call_started` with no matching `cost` after it is a call that died without
-answering, which is the log-side answer to whether a silent call hung.
-
-`cost` is what one call to the provider spent — the wall-clock time and the
-amount, when a price is known. The `seconds` field is always present, measured
-from when the call opened to when it completed. The `usd` field is present only
-when the client reported a price: a provider that answers on a subscription is
-not billed by the token, so the number is what the same call would have cost
-through a key, and a scripted run emits no price at all. The panel accumulates
-the cost into one running total for the run rather than narrating each call: a
-hundred Design calls would otherwise be a hundred lines nobody reads
-(`ui/copilot_panel.py :: on_event`).
-
-`writing` is the reply forming, chunk by chunk, the way `thought` is the
-reasoning before it. It is a kind of its own because the two are read
-differently — reasoning is the model deciding and may be withheld by the
-route, the reply is what the phase will be held to — and because the wait it
-accounts for is the larger one: 22.4 minutes of a recorded run's 23.6 minutes
-of provider time fell after the last `thought` of every call.
-
-`stopped` is the user's own `Stopped` reaching the loop's boundary
-(`core/loop.py :: run`), not a `blocked`: the run did not fail to finish,
-it was told to stop. The two are separate kinds because
-`core/measure.py`'s blocked rate counts only the runs that ran out of
-road, and a person clicking Stop is not one of them.
+Measured: 22.4 of a recorded run's 23.6 minutes of provider time fell after the last `thought` of
+every call — most of the wait is the reply, not the reasoning.
 """
 import json
 import time

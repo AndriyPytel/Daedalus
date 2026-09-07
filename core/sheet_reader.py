@@ -1,95 +1,21 @@
-"""
-The sheet as evidence, before anybody reads it.
+"""The sheet as evidence, before anybody reads it — rendered, cropped, and its ink measured, never
+handed to the provider whole.
 
-`mm25-p1-1.pdf` is a 11 x 8.5 in sheet, dimension text set in 9.5 pt Century
-Gothic. Sent whole, it arrives at the provider's own cap — 1568 px on the long
-edge, 143 DPI — and a dimension digit lands 14 px tall, measured off the
-render. That misreads often enough to matter: "108 read as 100" (ADR-0019).
-`LEGIBLE_PX` (50) is the text-box size a callout must stand at in the crop it
-arrives in; a digit inks a little over half its box (`INK_OF_THE_BOX`, 0.55,
-measured off the same render), so 50 px of box is 28 px of ink against the 14
-px that was already misreading.
+Constraints:
+Rendered at a DPI chosen from the sheet's own text, not the provider's default — a misread digit
+("108" read as "100") is an 8mm contradiction on the record (ADR-0019).
+Cut into per-view crops under MAX_EDGE so no provider downscale halves a callout across a view.
+What is printed is extracted from the vector layer, never read back off a render.
+Regions are found on the sheet's own ink (CELL/REACH/FRAME/A_RULE/INK), not a fixed brightness
+threshold — a screenshot on a black background broke one.
+An outline with no vector content is traced from the raster instead, reported as `traced`, never
+as read.
 
-This phase runs before Design and changes what Design is looking at:
+Measured (four sheets): traced sizes run ~1mm under the drawn size; a 150x50mm plate came back as
+two edges 50.3mm apart from a picture with no vector outline at all.
 
-- the sheet is rendered here at a DPI chosen from its own text, not left to
-  the provider, which picks it against us.
-- the sheet is cut into crops, one per region the drawing itself lays out — a
-  sheet is five or six independent views stapled in a frame, and sending them
-  together costs the resolution of every one of them. A crop is held to
-  `MAX_EDGE` (1400 px) under the caps a provider downscales above — 1568 px
-  Anthropic, 768 px tiles Gemini. The cap that actually bites is the patch an
-  image is tokenised in: Anthropic costs `ceil(w/A_PATCH) * ceil(h/A_PATCH)`
-  visual tokens and resizes anything over `THE_BUDGET` (1568) of them — a 1400
-  x 1400 crop costs 2500 and arrives at 1092 x 1092. Neighbouring crops share
-  `OVERLAP` (0.15) of themselves so a dimension or leader crossing a cut is not
-  halved by both crops that touch it.
-- what is printed on it is extracted, not read. A vector PDF carries the
-  draughtsman's own strings with their coordinates; a model's own list of what
-  it noticed, checked against itself, cannot catch the callout it never saw.
-
-Regions are found on the sheet's own ink. The grid is `CELL` (4.0 pt) square,
-fine enough to keep two views apart, coarse enough that a dashed centreline is
-one object; two marks `REACH` (3) cells apart are the same region, about how
-far a dimension line stands off its view. A path whose box covers more than
-`FRAME` (0.85) of the sheet is the border, not a view; on a raster the same job
-is `A_RULE` (0.7), the share of a row/column that makes it a frame rule. Ink on
-a raster is `INK` (40) away from the paper, not a brightness — `mm2025-
-phase1.png` is a screenshot on a black background, and a "dark is ink"
-threshold returned the whole sheet as one crop.
-
-A region holding several views is cut on the blank paper between them: a strip
-`GUTTER` (2) cells wide is a gutter, not a gap inside one view — it cannot be
-wider given `REACH` (3), since the flood fill joins across at most two cells of
-blank paper. On the 2023 sheet the elevation's last dimension line (y=376) and
-the bottom view's first mark (y=388) are held together by the bottom view's own
-extension lines running out under the elevation. A cut piece is a view only if
-it measures `A_VIEW` (90.0 pt) — the smallest is the 2025 section at 167 x 95
-pt — because without a floor the cutting runs into the title block and returns
-four strips of one rule-gap each. A picture holding `HELD_BY_A_PICTURE` (0.4)
-of a region says the region belongs to that picture's view: on the 2023 sheet
-the top view's picture (79,27)-(410,137) holds 49% of a fragment the flood fill
-split off, the isometric's picture clips 35% of the same fragment, and the
-larger share wins. `IN_THE_REGION` (0.5) is the converse question — how much of
-a picture lies inside a region it may straddle — and the largest share takes
-it. Measured on the four sheets: a view body is at least 0.92 inside its own
-region, the one picture spanning two regions is 0.55 inside the smaller share,
-and a picture a region merely clips reaches at most 0.36 inside it.
-
-`Ø` is not in the text layer — it is drawn as geometry, so the layer yields `35
-THRU` where the sheet prints `Ø35 THRU`. Drawn at a known size, place and piece
-count, it is recovered from the line work and carried beside the string rather
-than inside it.
-
-A dimension line is drawn between the two faces it measures and broken where
-its number sits — the break `_chained` refuses to cross — so joining the two
-halves gives the span the draughtsman committed to, beside the number he
-printed. Voting `printed ÷ span` across a page recovers scale independently of
-the title block; on the 2023 sheet `108` is printed against a 306.1 pt span and
-108.00 mm of part, turning ADR-0019's "108 read as 100" into an 8 mm
-contradiction on the record.
-
-Every view on these sheets is a placed raster at exactly 186 DPI, so no render
-recovers an outline the file does not hold — it is traced instead. The
-silhouette is walked round in order and cut at its corners; each run is fitted
-as a line, or as a circle, or as an arc only where the run actually turns
-(a straight edge wanders a pixel or two and a circle will always fit that
-wander at a radius of half a metre). The 2025 top view comes back as two edges
-50.3 mm apart and two R25.1 ends 99.9 apart — a 150 x 50 plate off a picture
-whose vector content holds no outline at all. Holes are traced the same way and
-reported as diameters. Traced sizes run about a millimetre under the drawn size
-(an edge is measured to the inside of its line) and a shallow curve is given as
-a chord rather than a radius it may not have — both deliberately understate,
-because an understatement can be checked against the picture and an invented
-radius cannot. It is reported as `traced`, and traced is not read.
-
-Everything here degrades rather than fails. Without PyMuPDF there is no text
-layer or page render, and `read` returns None so the caller sends the
-attachment as before. Without NumPy nothing is traced. A raster attachment has
-no text layer by definition: it still gets regions and crops off its own ink,
-with an empty printed list.
-
-Nothing here imports FreeCAD, and nothing here reads a model's mind.
+Degrades rather than fails: no PyMuPDF means no text/render and `read` returns None; no NumPy
+means nothing is traced.
 """
 import atexit
 import collections

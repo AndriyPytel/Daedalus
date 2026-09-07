@@ -50,7 +50,6 @@ core/design.py::grounded
 core/design.py::grouped_conflicts
 core/design.py::measured_from_what_is_gone
 core/design.py::merge
-core/design.py::module
 core/design.py::nobody_carries_the_outside
 core/design.py::placed_by_nothing
 core/design.py::placement
@@ -63,7 +62,6 @@ core/design.py::twice_over
 core/design.py::twice_placed
 core/design.py::unsafe_supersession
 core/design.py::where_the_direction_is
-core/events.py::module
 core/freecad_tools.py::_active_view
 core/freecad_tools.py::_cavity_center
 core/freecad_tools.py::_constraints
@@ -86,8 +84,6 @@ core/lint.py::_counted_selections
 core/lint.py::_swallowed
 core/lint.py::_uncounted_selection
 core/lint.py::lint
-core/lint.py::module
-core/llm.py::ClaudeCodeClient
 core/llm.py::StreamCutOff
 core/llm.py::_answered
 core/llm.py::_blocks
@@ -144,12 +140,10 @@ core/loop.py::_not_english
 core/loop.py::_not_reached
 core/loop.py::_off_the_sheet
 core/loop.py::_one_call
-core/loop.py::_plan_once_it_knows_enough
 core/loop.py::_reconciled
 core/loop.py::_repair_reference
 core/loop.py::_review_content
 core/loop.py::_review_views
-core/loop.py::_run
 core/loop.py::_said
 core/loop.py::_split_to_budget
 core/loop.py::_steps_of
@@ -173,10 +167,8 @@ core/loop.py::_wanted_paths
 core/loop.py::_what_the_solver_said
 core/loop.py::_what_this_build_has
 core/loop.py::_words_only
-core/loop.py::_work_through
 core/loop.py::_written_down
 core/loop.py::_written_in
-core/loop.py::assertion
 core/loop.py::decided
 core/loop.py::design
 core/loop.py::execute
@@ -304,7 +296,6 @@ core/sheet_reader.py::_tiled
 core/sheet_reader.py::_traced
 core/sheet_reader.py::_where
 core/sheet_reader.py::invented
-core/sheet_reader.py::module
 core/sheet_reader.py::printed_on_the_sheet
 core/sheet_reader.py::read
 core/sheet_reader.py::round_evidence
@@ -320,7 +311,6 @@ core/sketch_check.py::_squarely
 core/sketch_check.py::_the_face_at
 core/sketch_check.py::_troubles
 core/sketch_check.py::checked
-core/sketch_check.py::module
 tools/extract_assertion_scheduling_fixture.py::module
 tools/extract_envelope_scheduling_replay.py::module
 tools/extract_evidence_kind_ratio.py::module

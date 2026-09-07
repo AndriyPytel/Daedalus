@@ -594,63 +594,14 @@ def signed_in(run: Callable = None) -> tuple:
 
 
 class ClaudeCodeClient:
-    """
-    Streams from a Claude Max subscription, through one `claude` process a call.
+    """Streams from a Claude Max subscription through one `claude` process a call.
 
-    Every flag it sends is a measurement rather than a taste. `--verbose`
-    because `--output-format stream-json` refuses to run under `-p` without it.
-    `--disallowed-tools` naming every tool the CLI reports is the whole of the
-    29,213-to-2,385 token cut in the preamble — `--allowed-tools ''` strips
-    nothing and the 21,623 arrive as a cache read instead. `--safe-mode` rather
-    than `--bare`, because `--bare` forces `ANTHROPIC_API_KEY` and so breaks
-    subscription auth outright; `--strict-mcp-config` and `--setting-sources ''`
-    so that a machine's MCP servers and a repository's `CLAUDE.md` cannot walk
-    into a Design prompt. `ANTHROPIC_API_KEY` is kept out of the child's
-    environment for the same reason the provider exists: a key in the shell
-    would put the run back on the meter under a label that says subscription.
-
-    `last_cost` is the one fact that crosses this seam and is not a `Chunk`.
-    `stream()` yields only Chunks and the client never sees the EventStream, so
-    `core/loop.py :: _streamed` — the one place every phase's stream is
-    consumed — reads it off the client and emits from there.
-    `ScriptedLLMClient` carries none. It is what *this* call spent and is
-    cleared as the call starts: held over, a call that ends without a `result`
-    event would be billed the last one's number.
-
-    What the provider withholds is not the same as what it did not do: `sonnet`
-    streams its thinking as `thinking_delta` carrying `""` and an
-    `estimated_tokens` count — 245 thinking tokens on one recorded call, and
-    not a word of them — where `haiku` streams the words. Only the words reach
-    the panel. The count answers "how much", and the one question the panel
-    asks reasoning is "why": a 45-minute session showed 1506 lines of
-    `thinking… ~N tokens`, none of which said anything about the part that was
-    built. Where the words are withheld the phase runs without narrating
-    itself, and the status line is what says the run is alive.
-
-    `_DISALLOWED_TOOLS` is the tool list one CLI build reported. Naming a tool
-    a build does not have costs nothing, and a tool a later build adds is a
-    tool this list does not yet name — the recording it was read off is kept
-    beside the tests for that comparison to stay possible.
-
-    Reasoning crosses this seam like any other provider's: `_said` maps
-    `thinking_delta` onto REASONING and `text_delta` onto TEXT, and the panel
-    renders them through the same path it renders LiteLLM's `reasoning_content`
-    with. Whether there is any is what `--effort` decides, which is this
-    module's own dial and not a property of the route — the same call answers
-    with 160 thinking tokens at `high` and none at `low`.
-
-    `timeout` is a ceiling and not a measurement. The CLI has none of its own
-    where the keyed route leans on LiteLLM's, and a subprocess that never
-    answers is the parent's problem. It is per call rather than per run, and it
-    follows the dial the user set, because the dial buys thinking and the
-    thinking is the wait: one sheet through Design is 52 s at `low`, 429 s at
-    `medium` and 668 s at `high`, nearly all of it spent before the first word
-    of the answer (`tests/recorded/claude-code-design-effort.jsonl`). A ceiling
-    that does not move with the dial cuts the answer off rather than bounding
-    it — `logs/sessions/1b6cd765da1e4304a6215035d1ec5a56.jsonl` is a flat ten
-    minutes killing 43,050 tokens of thinking 68 s before the reply would have
-    landed. `_CEILING` is twice each of those measurements, rounded up to five
-    minutes, and the doubling is the room a busier sheet gets.
+    Constraints: every CLI flag is a measurement, not a taste — `--disallowed-tools` naming every
+    reported tool cuts the preamble 29,213 to 2,385 tokens; `--safe-mode` (not `--bare`) keeps
+    subscription auth from being forced onto ANTHROPIC_API_KEY.
+    `last_cost` is the one fact besides Chunks that crosses this seam, cleared as each call starts.
+    Timeout follows `--effort`: 52s/429s/668s measured at low/medium/high; `_CEILING` is twice each,
+    rounded up to five minutes.
     """
 
     def __init__(self, model: str, spawn: Callable = None,
