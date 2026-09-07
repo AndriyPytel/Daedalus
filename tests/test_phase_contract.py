@@ -6,7 +6,7 @@ import stat
 
 import pytest
 
-from core import phase_contract as pc
+from core.agent import phase_contract as pc
 
 
 def test_table_covers_every_phase():

@@ -7,7 +7,7 @@ Step's replay. Everything injected, same as `test_apply_pipeline.py` --
 """
 import pytest
 
-from core.apply import ApplyPipeline
+from core.freecad.apply import ApplyPipeline
 from core.kernel import KernelResult
 
 

@@ -23,7 +23,7 @@ drives Preflight -- the first Step builds a Fillet on a Box, the second only
 edits the Box, so Fillet is never itself created or written by a Step and can
 only reach the recompute scope through its dependency on Box.
 """
-from core.kernel_worker import _recompute_scope
+from core.kernel.kernel_worker import _recompute_scope
 
 
 class _FakeTouched:

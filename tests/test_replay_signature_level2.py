@@ -7,9 +7,9 @@ next Step's replay of a real Document.
 """
 import pytest
 
-from core.apply import ApplyPipeline, SignatureMismatch, run_in_transaction
+from core.freecad.apply import ApplyPipeline, SignatureMismatch, run_in_transaction
 from core.kernel import Kernel, find_freecadcmd
-from core.kernel_worker import signature_of
+from core.kernel.kernel_worker import signature_of
 
 pytestmark = pytest.mark.freecad
 

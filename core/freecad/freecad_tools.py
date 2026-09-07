@@ -144,12 +144,12 @@ def _selection():
     Read on the main thread, like every other Gui touch: the `snapshot` tool
     asks for this at the start of a run and again on every Step, and the loop
     that asks is on the worker thread. The import is local because
-    `core.apply` imports this module.
+    `core.freecad.apply` imports this module.
     """
     try:
         import FreeCADGui
 
-        from core.apply import on_main_thread
+        from core.freecad.apply import on_main_thread
         selection = on_main_thread(FreeCADGui.Selection.getSelectionEx)
     except (ImportError, AttributeError):
         return []
@@ -459,7 +459,7 @@ def _active_body(doc):
     try:
         import FreeCADGui
 
-        from core.apply import on_main_thread
+        from core.freecad.apply import on_main_thread
         body = on_main_thread(
             lambda: FreeCADGui.ActiveDocument.ActiveView.getActiveObject("pdbody"))
     except (ImportError, AttributeError):

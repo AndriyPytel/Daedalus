@@ -9,8 +9,8 @@ import os
 
 import pytest
 
-from core.apply import ApplyPipeline, run_in_transaction
-from core.freecad_tools import build_registry
+from core.freecad.apply import ApplyPipeline, run_in_transaction
+from core.freecad.freecad_tools import build_registry
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -162,7 +162,7 @@ def test_a_step_that_throws_leaves_the_document_untouched(doc, worker, tmp_path)
 
 def test_run_in_transactions_own_exec_frame_is_cut_from_the_traceback(doc):
     """The frame that actually failed is the Step's, not `run_in_transaction`'s."""
-    from core.kernel_worker import trimmed_traceback
+    from core.kernel.kernel_worker import trimmed_traceback
 
     try:
         run_in_transaction(doc, "doc.addObject('Part::Box', 'B')\nraise RuntimeError('halfway')\n")

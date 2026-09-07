@@ -1,13 +1,13 @@
 """
 The child half of the kernel. Runs inside a headless FreeCAD started by
-`core/kernel.py`, as a bare script -- so it may import the standard library
+`core/kernel/kernel.py`, as a bare script -- so it may import the standard library
 and FreeCAD, and nothing of the addon's own.
 
-Two things are imported *out* of it, by name: `SENTINEL` by `core/kernel.py`,
-and `step_namespace` by `core/apply.py`, so that the kernel and the GUI's
+Two things are imported *out* of it, by name: `SENTINEL` by `core/kernel/kernel.py`,
+and `step_namespace` by `core/freecad/apply.py`, so that the kernel and the GUI's
 own transaction replay cannot build different namespaces for the same Step.
 `reading` imports `core.sketch_check`; `run_step` imports `render` off
-`core.preflight_render`. Both cost a `sys.path` entry and buy the one thing
+`core.kernel.preflight_render`. Both cost a `sys.path` entry and buy the one thing
 this process exists for -- the solver runs where its death is survivable
 (ADR-0002).
 
@@ -30,7 +30,7 @@ the entire point of the arrangement (ADR-0002). That is also why there is no
 shutdown message: the parent kills the process rather than asking it to go.
 
 `freecadcmd` runs a script with `__name__` set to its basename rather than
-"__main__", and importing this module as `core.kernel_worker` for its
+"__main__", and importing this module as `core.kernel.kernel_worker` for its
 `SENTINEL` must not start serving, so both names are named at the foot.
 """
 import difflib
@@ -55,7 +55,7 @@ def _ensure_on_path():
     child process can import `core.*` the way `run_step` and `reading` both
     need to, on demand rather than at module load.
     """
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if root not in sys.path:
         sys.path.insert(0, root)
 
@@ -171,7 +171,7 @@ def step_namespace(doc):
     """
     What a Step's code runs with.
 
-    The kernel and the GUI's own replay (`core/apply.py::run_in_transaction`)
+    The kernel and the GUI's own replay (`core/freecad/apply.py::run_in_transaction`)
     must build this identically or they are running different programs
     (ADR-0002), so both call this rather than each spelling it out.
 
@@ -855,7 +855,7 @@ def _run_step_body(doc, namespace, touched, request):
     render_path = request.get("render_path")
     if render_path:
         _ensure_on_path()
-        from core.preflight_render import render
+        from core.kernel.preflight_render import render
 
         result["render"] = render(doc, render_path)
     return result

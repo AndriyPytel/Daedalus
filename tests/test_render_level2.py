@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from core.preflight_render import _BACKGROUND, _EDGE, render
+from core.kernel.preflight_render import _BACKGROUND, _EDGE, render
 
 pytestmark = pytest.mark.freecad
 

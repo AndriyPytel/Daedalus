@@ -18,8 +18,8 @@ UI_DIR = os.path.join(ROOT, "ui")
 
 KNOWN_EXCEPTIONS = {
     ("ui/copilot_panel.py", "core.llm"): "FCC-317/FCC-315: SDK has no live-document mode",
-    ("ui/copilot_panel.py", "core.apply"): "FCC-317/FCC-315: SDK has no injectable dispatch/confirm",
-    ("ui/copilot_panel.py", "core.freecad_tools"): "FCC-317/FCC-315: SDK has no no-forced-kernel mode",
+    ("ui/copilot_panel.py", "core.freecad.apply"): "FCC-317/FCC-315: SDK has no injectable dispatch/confirm",
+    ("ui/copilot_panel.py", "core.freecad.freecad_tools"): "FCC-317/FCC-315: SDK has no no-forced-kernel mode",
     ("ui/copilot_panel.py", "core.loop"): "FCC-317/FCC-315: SDK has no outstanding passthrough",
 }
 

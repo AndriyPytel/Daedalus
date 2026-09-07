@@ -18,7 +18,7 @@ Three things this lane does that a plain script does not.
 `__init__.py`, so it is a namespace package whose `__path__` spans every
 `sys.path` entry that holds a `core` directory. FreeCAD puts the installed
 addon on `sys.path`, and that addon is a symlink to the main checkout, so
-`core.traps` came off the worktree while `core.events` came off the checkout
+`core.freecad.traps` came off the worktree while `core.events` came off the checkout
 and the lane died on an ImportError that appeared on one model and not the
 next. Every rival `core` is dropped, and the resolved file is asserted.
 
@@ -185,9 +185,9 @@ def main():
     pin_path()
     assert_path(here)
 
-    from core.apply import ApplyPipeline, _qt
+    from core.freecad.apply import ApplyPipeline, _qt
     from core.events import COST, EventStream
-    from core.freecad_tools import build_registry
+    from core.freecad.freecad_tools import build_registry
     from core.llm import ClaudeCodeClient, ProfiledClient
     from core.loop import APPROVE, Approval, run
     from core.measure import compare, measure

@@ -22,7 +22,7 @@ import math
 
 import pytest
 
-from core.apply import ApplyPipeline
+from core.freecad.apply import ApplyPipeline
 from core.loop import _the_model_failed
 from core.kernel import Kernel, find_freecadcmd
 

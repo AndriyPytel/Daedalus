@@ -4,7 +4,7 @@ turn/token/concurrency budgets it enforces (wall time stays telemetry).
 """
 import pytest
 
-from core import subagent as sa
+from core.agent import subagent as sa
 from core.llm import ScriptedLLMClient, Session
 
 

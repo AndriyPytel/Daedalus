@@ -59,9 +59,9 @@ def main():
 
     import FreeCAD
 
-    from core.apply import ApplyPipeline
+    from core.freecad.apply import ApplyPipeline
     from core.events import EventStream
-    from core.freecad_tools import build_registry
+    from core.freecad.freecad_tools import build_registry
     from core.llm import LiteLLMClient
     from core.loop import APPROVE, Approval, run
     from core.kernel import Kernel

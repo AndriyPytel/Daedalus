@@ -6,10 +6,10 @@ If this fails, either the new code took a shortcut around the Tool registry, or
 a module earned its place on ALLOWED and nobody said so.
 
 The Document is reached from exactly these places, and each has a reason:
-  - core/freecad_tools.py: The Tools themselves. This is the sanctioned route.
-  - core/kernel_worker.py: Runs inside the kernel's own process, against its
+  - core/freecad/freecad_tools.py: The Tools themselves. This is the sanctioned route.
+  - core/kernel/kernel_worker.py: Runs inside the kernel's own process, against its
     own checkpointed Document. It never touches the user's Document.
-  - core/apply.py: Resolves the Document to hand to the transaction; reached
+  - core/freecad/apply.py: Resolves the Document to hand to the transaction; reached
     only through the apply_step Tool.
   - core/sketch_check.py: Builds the reading as a sketch in a document of its
     own, to ask the solver whether what was read can be true at once, and
@@ -27,9 +27,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PACKAGES = ("core", "ui", "utils", "Mod")
 
 ALLOWED = {
-    "core/freecad_tools.py",
-    "core/kernel_worker.py",
-    "core/apply.py",
+    "core/freecad/freecad_tools.py",
+    "core/kernel/kernel_worker.py",
+    "core/freecad/apply.py",
     "core/sketch_check.py",
 }
 

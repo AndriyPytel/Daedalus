@@ -13,7 +13,7 @@ that, and neither needs FreeCAD to prove it: `exec(compile(code, "<step>",
 "exec"), {})` reproduces the exact shape a Step's failure takes without
 starting a worker.
 """
-from core.kernel_worker import register_step_source, trimmed_traceback
+from core.kernel.kernel_worker import register_step_source, trimmed_traceback
 
 STEP_CODE = (
     "def make():\n"
