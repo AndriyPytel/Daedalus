@@ -6,9 +6,9 @@ One interface, three implementations: LiteLLM against a keyed provider, the
 replays canned turns. Everything above this line is testable without a network
 or an API key.
 
-ADR-0004 — LiteLLM is the single unified client. `tools/spike_litellm.py`
-holds the evidence that it carries Anthropic thinking blocks through the
-stream and honours `cache_control` — on the `anthropic/` route, which is what
+ADR-0004 — LiteLLM is the single unified client. Its own spike is the
+evidence that it carries Anthropic thinking blocks through the stream and
+honours `cache_control` — on the `anthropic/` route, which is what
 `cache_control_supported` names, since the spike never exercised the others.
 
 ADR-0025 amends it in part. `ClaudeCodeClient` answers a phase on a
@@ -1130,8 +1130,8 @@ def cache_control_supported(model: str) -> bool:
     Whether a `cache_control` block on a message reaches the wire as a cache
     breakpoint rather than as a key the provider was never asked about.
 
-    `tools/spike_litellm.py` is the evidence, and it is narrower than ADR-0004's
-    own claim: LiteLLM carries `cache_control` through to
+    ADR-0004's own spike is the evidence, and it is narrower than that
+    ADR's own claim: LiteLLM carries `cache_control` through to
     `AnthropicConfig.transform_request` for a model routed through Anthropic's
     own API, which is `model.startswith("anthropic/")` and nothing else here —
     not the `openai/` gateway, not a bare `api_base` model LiteLLM has never

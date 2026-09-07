@@ -2,7 +2,7 @@
 Level 2 -- `copilot.sdk.Client` end to end, against a real headless kernel.
 
 No FreeCAD GUI, no Qt application: `Client` wires `ApplyPipeline`'s `dispatch`
-straight through (the same pattern `tools/ab_run.py` used), so a script can
+straight through (the same pattern `run.py` uses), so a script can
 create one, send a prompt, and watch Steps and events land exactly as
 `ui/copilot_panel.py`'s own worker thread does, minus the thread.
 """
@@ -212,4 +212,27 @@ def test_a_declared_auto_answer_policy_is_its_own_distinct_event(kernel):
     answers = [event for event in seen if event.kind == ANSWER]
     assert len(answers) == 1
     assert answers[0].data["by"] == "nobody"
+    client.close()
+
+
+def test_send_cancelled_stops_the_run_before_it_starts():
+    """
+    A caller's own `cancelled` reaches `core/loop.py :: run` unchanged, the
+    shape the per-run cost ceiling depends on: a `cancelled` that is already
+    `True` never lets Design plan anything (FCC-77), the same boundary
+    `test_loop_outcomes.py` proves for `run()` directly.
+    """
+    from copilot.sdk import Client
+    from core.events import STOPPED
+
+    llm = ScriptedLLMClient(["design"])
+    client = Client(kernel=_NoKernel(), llm=llm)
+    seen = []
+    client.watch(seen.append)
+
+    result = client.send("Add a box", cancelled=lambda: True)
+
+    assert not result.ok
+    assert result.blocked
+    assert STOPPED in [event.kind for event in seen]
     client.close()

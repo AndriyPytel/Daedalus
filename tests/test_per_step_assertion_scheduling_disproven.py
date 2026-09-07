@@ -1,9 +1,8 @@
 """
 FCC-247's own three questions, answered by measurement before any scheduling
-changed, from `tests/recorded/assertion_scheduling_cost.json` (built by
-`tools/extract_assertion_scheduling_fixture.py` from `logs/sessions/` and
-`logs/ab-rlm-agentic/`, gitignored, hence the tracked fixture -- FCC-231's
-established substitute).
+changed, from `tests/recorded/assertion_scheduling_cost.json` (built from `logs/sessions/`
+and `logs/ab-rlm-agentic/`, gitignored, hence the tracked fixture -- FCC-231's
+established substitute; the script that built it is gone).
 
 **Q1 -- what does an acceptance line cost to evaluate?** Session
 `480b9995421e443d97b439a4f55bc3fe`, the session FCC-247 itself is about:
