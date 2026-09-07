@@ -1,15 +1,17 @@
 """The distinct Model Mania drawings and recorded numbers used as evidence."""
 import json
+import os
 from pathlib import Path
 
 
 HERE = Path(__file__).parent
+MODELMANIA_DIR = Path(os.environ.get("FCC_MODELMANIA_DIR", HERE / "modelmania"))
 SHEETS = {
-    "mm25-p1-1.pdf": HERE / "modelmania/mm25-p1-1.pdf",
-    "mm25-p2.pdf": HERE / "modelmania/mm25-p2.pdf",
-    "model-mania-2024.pdf": HERE / "modelmania/model-mania-2024.pdf",
+    "mm25-p1-1.pdf": MODELMANIA_DIR / "mm25-p1-1.pdf",
+    "mm25-p2.pdf": MODELMANIA_DIR / "mm25-p2.pdf",
+    "model-mania-2024.pdf": MODELMANIA_DIR / "model-mania-2024.pdf",
     "model-mania_-in-person-2023 copy.pdf": (
-        HERE / "modelmania/model-mania_-in-person-2023 copy.pdf"),
+        MODELMANIA_DIR / "model-mania_-in-person-2023 copy.pdf"),
 }
 DESCRIBED = HERE / "recorded/described_numbers.json"
 READING_2023 = HERE / "recorded/reading_2023_clamp.json"
