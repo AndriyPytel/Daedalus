@@ -19,6 +19,7 @@ where `help()` will show it.
 
 Read with `tokenize` rather than `ast`: comments are not in the tree.
 """
+import ast
 import io
 import os
 import tokenize
@@ -72,4 +73,57 @@ def test_no_comment_carries_a_ticket_id():
 
     assert not offenders, (
         "a ticket id in a comment is a commit message in the source: %s"
+        % ", ".join(offenders))
+
+
+DOCSTRING_BUDGET = {ast.Module: 20, ast.ClassDef: 8, ast.FunctionDef: 8, ast.AsyncFunctionDef: 8}
+PRIVATE_BUDGET = 5
+HISTORY_MARKERS = ("used to", "now instead", "no longer", "replaces the old", "which is now")
+
+DOCUMENTED = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def docstrings():
+    for directory in SEARCHED:
+        for path, _, names in os.walk(os.path.join(ROOT, directory)):
+            if "__pycache__" in path:
+                continue
+            for name in sorted(names):
+                if not name.endswith(".py"):
+                    continue
+                full = os.path.join(path, name)
+                with open(full, encoding="utf-8") as handle:
+                    source = handle.read()
+                where = os.path.relpath(full, ROOT)
+                tree = ast.parse(source, filename=full)
+                for node in ast.walk(tree):
+                    if isinstance(node, DOCUMENTED):
+                        doc = ast.get_docstring(node)
+                        if doc:
+                            yield where, getattr(node, "lineno", 1), node, doc
+
+
+def test_no_docstring_exceeds_its_budget():
+    offenders = []
+    for where, line, node, doc in docstrings():
+        node_name = getattr(node, "name", "module")
+        budget = PRIVATE_BUDGET if node_name.startswith("_") else DOCSTRING_BUDGET[type(node)]
+        length = doc.count("\n") + 1
+        if length > budget:
+            offenders.append("%s:%d %s (%d lines, budget %d)"
+                              % (where, line, node_name, length, budget))
+
+    assert not offenders, (
+        "a docstring over budget is narrative or duplication that belongs "
+        "elsewhere, same as a banned comment: %s" % ", ".join(offenders))
+
+
+def test_no_docstring_carries_a_ticket_history_marker():
+    offenders = ["%s:%d %s" % (where, line, getattr(node, "name", "module"))
+                 for where, line, node, doc in docstrings()
+                 if any(marker in doc.lower() for marker in HISTORY_MARKERS)]
+
+    assert not offenders, (
+        "a docstring narrating what used to happen is a commit message in "
+        "the source, one syntax layer over the banned comment: %s"
         % ", ".join(offenders))
