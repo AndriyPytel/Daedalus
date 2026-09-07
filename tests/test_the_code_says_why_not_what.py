@@ -135,7 +135,9 @@ def test_no_docstring_exceeds_its_budget():
     assert not unlisted, (
         "a docstring over budget is narrative or duplication that belongs "
         "elsewhere, same as a banned comment, and is not in "
-        "docstring_budget_baseline.txt: %s" % ", ".join(unlisted))
+        "docstring_budget_baseline.txt: %s -- a real constraint is never deleted for "
+        "budget, it is promoted to the module docstring it belongs to"
+        % ", ".join(unlisted))
 
 
 def test_no_docstring_carries_a_ticket_history_marker():
