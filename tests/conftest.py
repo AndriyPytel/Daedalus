@@ -228,6 +228,8 @@ def modelmania_sheets(sheet_cache):
     from core import sheet_reader
     from tests import modelmania_harness
 
+    if not modelmania_harness.MODELMANIA_DIR.is_dir():
+        pytest.skip("modelmania sheets not found; set FCC_MODELMANIA_DIR")
     if not sheet_reader.available():
         pytest.skip("PyMuPDF is not installed")
     return modelmania_harness.read_sheets(sheet_cache)
