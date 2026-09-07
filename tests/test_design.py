@@ -2206,8 +2206,8 @@ def test_a_conflict_kind_entry_fires_on_most_real_sessions_not_a_rare_few():
     (`test_the_validators_fire_on_every_recorded_description`, `merge()` run
     in isolation, no attachment). Measured the other way -- over real
     sessions that reached Design and still have their evidence sidecar on
-    disk (`tools/extract_evidence_kind_ratio.py`, fixture below, captured
-    2026-08-28T03:42:24) -- 23 of 26 already hold a `conflict`-kind entry:
+    disk (fixture below, captured 2026-08-28T03:42:24, the script that built
+    it now gone) -- 23 of 26 already hold a `conflict`-kind entry:
     88%, not 4%.
 
     The fixture is a snapshot, not a corpus: `logs/sessions/` and

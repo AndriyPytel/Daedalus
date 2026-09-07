@@ -261,7 +261,7 @@ def test_a_step_that_deletes_nothing_of_theirs_asks_nothing_and_says_nothing():
 
 
 def test_the_pipeline_narrates_nothing_when_no_run_is_listening():
-    """`tools/run_slice.py` and the Level 2 harness build one with no stream."""
+    """`run.py` and the Level 2 harness build one with no stream."""
     built = pipeline(touching(deleted=["UserBox"]), confirm=Asked(True))
 
     assert built.apply("delete()").ok

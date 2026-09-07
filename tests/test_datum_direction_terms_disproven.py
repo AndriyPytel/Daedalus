@@ -15,10 +15,10 @@ prose and both of its claims held at Assertion; Step 8's did not.
 
 Three widths of "does the Step's own prose name the datum its citation
 names" were measured against `tests/recorded/datum_satisfies_steps.json`
-(built by `tools/extract_satisfies_fixture.py` from `logs/sessions/`, every
-session of which predates `language.md` — so none of these numbers can be
-read as the false-positive rate of a Plan actually held to the closed list,
-only as what the mechanism does to the corpus available):
+(built from `logs/sessions/`, every session of which predates `language.md`
+— so none of these numbers can be read as the false-positive rate of a Plan
+actually held to the closed list, only as what the mechanism does to the
+corpus available; the script that built it is gone):
 
 - whole-Step, one bag of terms per side: 10 of 231 comparable Steps raised,
   and it MISSES the evidence Step, because that Step's other, correct

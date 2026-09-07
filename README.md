@@ -266,7 +266,7 @@ prompt, so a phase never discovers it by failing.
 | `core/apply.py` | Lint → Preflight → Apply, as one undoable transaction |
 | `core/llm.py` | The provider seam — LiteLLM, plus a scripted client for tests |
 | `core/events.py` | The event stream every phase narrates into, and the per-Session log |
-| `core/narrate.py` | What an event says to a person — the panel and `run_slice` share it |
+| `core/narrate.py` | What an event says to a person — the panel and `run.py` share it |
 | `core/sessions.py` | The Sessions: the durable index, the naming, the bound. No Qt |
 | `core/session_title.py` | The short call that names a Session from its first Intent |
 | `ui/copilot_panel.py` | The dock: composer, transcript, question card, model picker |
@@ -274,7 +274,7 @@ prompt, so a phase never discovers it by failing.
 | `ui/history_popup.py` | The Session Picker |
 | `config/prompts/*.md` | The three phase prompts — copy to tune, kept out of the source |
 | `Mod/` | Workbench registration and the Preferences pages |
-| `tests/` | The suite; `tools/run_slice.py` drives a slice against a live provider |
+| `tests/` | The suite; `tools/run.py` drives a slice against a live provider |
 
 ---
 

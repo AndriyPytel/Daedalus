@@ -1,7 +1,7 @@
 """
 What an event says to a person.
 
-The stream is narrated in two places — the Qt panel and `tools/run_slice.py` —
+The stream is narrated in two places — the Qt panel and `run.py` —
 and they used to be two `if/elif` chains over the same sixteen kinds. The second
 one drifted: it still read the description off the `plan` event months after
 ADR-0018 gave it an event of its own, so the slice runner silently stopped

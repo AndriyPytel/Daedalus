@@ -10,9 +10,10 @@ FCC-317 repoints the panel onto this same object -- no Qt application, no
 plain callables here rather than the main-thread marshaller a GUI needs
 (`core/apply.py :: on_main_thread`).
 
-This replaces `tools/ab_run.py` and `tools/ab_lane.py`, deleted alongside it:
-both hand-assembled a second copy of this same wiring, one call behind the
-loop's own `run()` signature.
+This is what `run.py` and `lane.py`, the two surviving scripts in the
+harness directory, drive to start a run, replacing the hand-assembled
+scripts they took over from: both a second copy of this same wiring, one
+call behind the loop's own `run()` signature.
 """
 from core import events
 from core.freecad.apply import ApplyPipeline, active_document, build_registry, closing
@@ -40,9 +41,13 @@ class Client:
     asks reaches it if it is given. Without one, `send` pauses the run in a
     blocked, resumable `needs-answer` state -- `resume` picks it back up --
     rather than guessing or failing.
+
+    *confirm* answers the Owned Object prompt `ApplyPipeline` raises before
+    touching something this `Client` did not create; it defaults to refusing,
+    the same as every caller before this knob existed.
     """
 
-    def __init__(self, document=None, llm=None, kernel=None, answer=None):
+    def __init__(self, document=None, llm=None, kernel=None, answer=None, confirm=None):
         import FreeCAD
 
         self.document = FreeCAD.openDocument(document) if document else FreeCAD.newDocument()
@@ -52,7 +57,7 @@ class Client:
         self.session = Session()
         self.pipeline = ApplyPipeline(document=self.document, worker=self.kernel,
                                       dispatch=lambda func, timeout=None: func(),
-                                      confirm=lambda kinds: False, events=self.events)
+                                      confirm=confirm or (lambda kinds: False), events=self.events)
         self.answer = answer
         self._stop = False
         self._abort = False
@@ -63,7 +68,7 @@ class Client:
         self.events.subscribe(callback)
 
     def send(self, prompt, gate=auto_approve, ask=None, decide=revise_by_default,
-             attachments=()):
+             attachments=(), cancelled=None):
         """
         Route *prompt* through the orchestrator and run whichever agent it
         names. Blocks until that turn is over -- `watch`'s callbacks fire as
@@ -74,6 +79,10 @@ class Client:
         *ask* answers a Design question for this one call only; without it,
         this `Client`'s own `answer` callback is used, and without that the
         run pauses (`_pause`) rather than deciding for itself.
+
+        *cancelled* is a caller's own stop condition -- a per-run cost
+        ceiling, say -- asked alongside the `stop` a `control` message already
+        sets on this `Client`; either one ending the run reaches `run()`.
         """
         self._stop = False
         self._abort = False
@@ -88,7 +97,8 @@ class Client:
 
         def design(message, decision, context):
             return run(message, llm=self.llm, tools=tools, events=self.events,
-                       cancelled=lambda: self._stop, aborted=lambda: self._abort,
+                       cancelled=lambda: self._stop or bool(cancelled and cancelled()),
+                       aborted=lambda: self._abort,
                        attachments=list(attachments), gate=gate, ask=answered_by,
                        decide=decide)
 

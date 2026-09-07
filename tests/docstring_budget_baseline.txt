@@ -340,14 +340,6 @@ core/sheets/sketch_check.py::_the_face_at
 core/sheets/sketch_check.py::_troubles
 core/sheets/sketch_check.py::checked
 core/tools.py::module
-tools/ab_lane.py::module
-tools/ab_lane.py::watchdog
-tools/ab_repair.py::_kept_cost
-tools/extract_assertion_scheduling_fixture.py::module
-tools/extract_envelope_scheduling_replay.py::module
-tools/extract_evidence_kind_ratio.py::module
-tools/extract_satisfies_fixture.py::module
-tools/run_slice.py::_printer
 ui/accordion_widget.py::AccordionWidget
 ui/accordion_widget.py::_paint_chevron
 ui/accordion_widget.py::append_text

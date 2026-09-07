@@ -1,5 +1,6 @@
 """
-The import boundary FCC-317 built stays shut (FCC-318).
+The import boundary FCC-317 built stays shut (FCC-318), plus one more rule:
+nothing outside the harness directory may import from it.
 
 FCC-317 repointed the panel to the SDK but could not finish the job: three
 wiring imports inside `ui/copilot_panel.py`'s `LoopWorker` still reach into
@@ -9,6 +10,11 @@ injectable dispatch/confirm, or outstanding passthrough
 line names the ticket that owns removing it, so the exception list shrinks
 ticket by ticket instead of growing back invisibly. Any other `core` import
 anywhere under `ui/`, present or future, fails this test.
+
+The harness directory's two scripts drive `copilot.sdk.Client` the same way
+any other caller does, so nothing else in the repository has a reason to
+reach into it either; a stray import of that package is caught the same
+way a stray `core` import under `ui/` is.
 """
 import ast
 import os
@@ -54,3 +60,37 @@ def test_ui_does_not_import_core_except_known_wiring_gaps():
     assert not offenders, (
         "ui must not import core.* outside the named FCC-317 exceptions: %s"
         % ", ".join(offenders))
+
+
+HARNESS_CALLER_DIRS = ("core", "ui", "Mod", "utils", "tests", "copilot")
+
+
+def harness_imports():
+    for package in HARNESS_CALLER_DIRS:
+        package_dir = os.path.join(ROOT, package)
+        if not os.path.isdir(package_dir):
+            continue
+        for path, _, names in os.walk(package_dir):
+            if "__pycache__" in path:
+                continue
+            for name in sorted(names):
+                if not name.endswith(".py"):
+                    continue
+                full = os.path.join(path, name)
+                where = os.path.relpath(full, ROOT)
+                with open(full, encoding="utf-8") as handle:
+                    tree = ast.parse(handle.read(), filename=full)
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.ImportFrom) and node.module:
+                        if node.module == "tools" or node.module.startswith("tools."):
+                            yield where, node.module
+                    elif isinstance(node, ast.Import):
+                        for alias in node.names:
+                            if alias.name == "tools" or alias.name.startswith("tools."):
+                                yield where, alias.name
+
+
+def test_nothing_outside_the_harness_directory_imports_it():
+    offenders = ["%s imports %s" % (where, module) for where, module in harness_imports()]
+
+    assert not offenders, "only the harness scripts may import each other: %s" % ", ".join(offenders)
