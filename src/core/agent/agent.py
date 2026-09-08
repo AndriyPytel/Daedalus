@@ -147,8 +147,10 @@ def _feedback(result):
     """What the agent's next turn is told about the Step it just ran."""
     payload = {"ok": result.ok, "checkpoint": result.checkpoint}
     if result.ok:
+        touched = set(result.created) | set(result.modified)
+        geometry = {name: g for name, g in result.geometry.items() if name in touched}
         payload.update(created=result.created, modified=result.modified,
-                       deleted=result.deleted, geometry=result.geometry)
+                       deleted=result.deleted, geometry=geometry)
     else:
         payload["traceback"] = result.traceback
     return json.dumps(payload)
