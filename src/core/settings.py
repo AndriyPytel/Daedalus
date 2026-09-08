@@ -3,13 +3,14 @@ Settings -- Qt-free persistence for FreeCadCopilot's preferences.
 
 Everything here reads and writes through `FreeCAD.ParamGet` and nothing else:
 no `PySide` import, so any `core/` module can read or write a setting without
-the deferred-import dance `core/sessions.py`, `core/llm.py` and `core/loop.py`
-used to need to avoid pulling in Qt at load time. `utils/settings_manager.py`
-wraps this class in a `QObject` for the call sites that connect to a change
-signal; every plain read/write goes through here directly.
+pulling in Qt at load time. `utils/settings_manager.py` wraps this class in a
+`QObject` for the call sites that connect to a change signal; every plain
+read/write goes through here directly.
 """
 import json
 from functools import lru_cache
+
+from core.role_defaults import DEFAULT_ROLE_TABLE
 
 _PARAM_PATH = "User parameter:BaseApp/Preferences/FreeCadCopilot"
 
@@ -166,11 +167,9 @@ class Settings:
     def get_role_table(self) -> list:
         """
         One row per role -- `provider`, `model`, `effort` -- seeded with
-        `core.llm.DEFAULT_ROLE_TABLE` (FCC-293's values) the first time this
-        is read, editable from Preferences thereafter (FCC-312).
+        `core.llm.defaults.DEFAULT_ROLE_TABLE` (FCC-293's values) the first
+        time this is read, editable from Preferences thereafter (FCC-312).
         """
-        from core import llm
-
         raw = self._grp().GetString("RoleModelTable", "")
         if raw:
             try:
@@ -179,7 +178,7 @@ class Settings:
                 stored = None
             if isinstance(stored, list):
                 return stored
-        return [dict(row) for row in llm.DEFAULT_ROLE_TABLE]
+        return [dict(row) for row in DEFAULT_ROLE_TABLE]
 
     def set_role_table(self, table: list):
         self._grp().SetString("RoleModelTable", json.dumps(table))

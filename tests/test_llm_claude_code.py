@@ -29,7 +29,7 @@ import pytest
 
 from conftest import collect
 
-from core import llm, loop
+from core import loop
 from core.llm import (
     REASONING,
     TEXT,
@@ -40,7 +40,12 @@ from core.llm import (
     litellm_model_name,
     signed_in,
     unusable_attachments,
+    effort,
 )
+from core.llm import claude as llm_claude
+from core.llm.claude import _spawn_claude, _environment, _CLAUDE_CANDIDATES
+from core.llm.effort_policy import _CEILING, _SUBSCRIPTION_EFFORT
+from core.llm.attachments import _PREFIX
 
 RECORDED = os.path.join(os.path.dirname(__file__), "recorded")
 
@@ -411,7 +416,7 @@ def test_stderr_beyond_the_os_pipe_buffer_does_not_block_the_stream():
     handle.close()
 
     def spawn(argv, cwd):
-        return llm._spawn_claude([sys.executable, handle.name], cwd)
+        return _spawn_claude([sys.executable, handle.name], cwd)
 
     client = ClaudeCodeClient(model=MODEL, spawn=spawn, timeout=5.0)
 
@@ -455,7 +460,7 @@ def test_the_clis_plain_text_noise_survives_as_the_error_detail_once_merged():
 
 def test_the_ceiling_a_call_waits_under_is_the_one_its_own_effort_measured():
     """A call is made at one effort, and the wait it is allowed is that effort's."""
-    assert ClaudeCodeClient(MODEL).timeout == llm._CEILING[llm.effort()]
+    assert ClaudeCodeClient(MODEL).timeout == _CEILING[effort()]
 
 
 def test_every_effort_the_dial_offers_leaves_room_for_the_design_call_it_buys():
@@ -464,7 +469,7 @@ def test_every_effort_the_dial_offers_leaves_room_for_the_design_call_it_buys():
     at `medium`, 668 s at `high`, on the sheet the recording was taken from.
     Twice each is what a busier sheet than that one has to fit under.
     """
-    for effort, ceiling in llm._CEILING.items():
+    for effort, ceiling in _CEILING.items():
         assert ceiling >= 2 * _seconds(_design_at(effort)), effort
 
 
@@ -478,7 +483,7 @@ def test_an_effort_the_dial_reaches_outlasts_a_flat_ten_minutes():
     high = _design_at("high")
 
     assert _seconds(high) > 600
-    assert llm._CEILING["high"] > _seconds(high)
+    assert _CEILING["high"] > _seconds(high)
 
 
 def test_a_claude_that_exits_without_answering_is_a_refusal():
@@ -572,7 +577,7 @@ def test_an_effort_the_dial_no_longer_offers_falls_back(monkeypatch):
     client, spawn = client_replaying()
     collect(client.stream(a_turn()))
 
-    assert spawn.argv[spawn.argv.index("--effort") + 1] == llm._SUBSCRIPTION_EFFORT
+    assert spawn.argv[spawn.argv.index("--effort") + 1] == _SUBSCRIPTION_EFFORT
 
 
 def test_the_wait_a_call_is_allowed_moves_with_the_dial(monkeypatch):
@@ -584,10 +589,10 @@ def test_the_wait_a_call_is_allowed_moves_with_the_dial(monkeypatch):
     from core import settings
 
     monkeypatch.setattr(settings.instance(), "get_effort", lambda: "low")
-    assert ClaudeCodeClient(MODEL).timeout == llm._CEILING["low"]
+    assert ClaudeCodeClient(MODEL).timeout == _CEILING["low"]
 
     monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
-    assert ClaudeCodeClient(MODEL).timeout == llm._CEILING["high"]
+    assert ClaudeCodeClient(MODEL).timeout == _CEILING["high"]
 
 
 def test_the_subscription_is_the_credential_rather_than_a_key():
@@ -722,7 +727,7 @@ def test_an_alias_is_not_mapped_onto_another_providers_table():
     silence.
     """
     assert litellm_model_name(PROVIDER, MODEL) == MODEL
-    assert PROVIDER not in llm._PREFIX
+    assert PROVIDER not in _PREFIX
 
 
 def test_a_key_in_the_shell_does_not_put_the_run_back_on_the_meter(monkeypatch):
@@ -733,8 +738,8 @@ def test_a_key_in_the_shell_does_not_put_the_run_back_on_the_meter(monkeypatch):
     """
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-from-a-shell-profile")
 
-    assert "ANTHROPIC_API_KEY" not in llm._environment()
-    assert llm._environment().get("PATH") == os.environ.get("PATH")
+    assert "ANTHROPIC_API_KEY" not in _environment()
+    assert _environment().get("PATH") == os.environ.get("PATH")
 
 
 def test_the_binary_is_taken_from_the_environment_first(monkeypatch):
@@ -747,14 +752,14 @@ def test_a_known_path_answers_when_the_environment_says_nothing(monkeypatch, tmp
     installed = tmp_path / "claude"
     installed.write_text("")
     monkeypatch.delenv("CLAUDE_CMD", raising=False)
-    monkeypatch.setattr(llm, "_CLAUDE_CANDIDATES", (str(installed),))
+    monkeypatch.setattr(llm_claude, "_CLAUDE_CANDIDATES", (str(installed),))
 
     assert find_claude() == str(installed)
 
 
 def test_the_path_is_the_last_thing_asked(monkeypatch):
     monkeypatch.delenv("CLAUDE_CMD", raising=False)
-    monkeypatch.setattr(llm, "_CLAUDE_CANDIDATES", ())
+    monkeypatch.setattr(llm_claude, "_CLAUDE_CANDIDATES", ())
     monkeypatch.setattr(shutil, "which", lambda name: "/opt/homebrew/bin/" + name)
 
     assert find_claude() == "/opt/homebrew/bin/claude"
@@ -766,7 +771,7 @@ def test_a_machine_with_no_claude_on_it_says_what_to_point_where(monkeypatch):
     that is the PATH a Finder-launched FreeCAD inherits.
     """
     monkeypatch.delenv("CLAUDE_CMD", raising=False)
-    monkeypatch.setattr(llm, "_CLAUDE_CANDIDATES", ())
+    monkeypatch.setattr(llm_claude, "_CLAUDE_CANDIDATES", ())
     monkeypatch.setattr(shutil, "which", lambda _: None)
 
     with pytest.raises(RuntimeError) as complaint:
@@ -816,7 +821,7 @@ def test_a_cli_that_is_not_signed_in_says_how_to_sign_in(monkeypatch):
 
 def test_no_claude_at_all_is_reported_rather_than_raised(monkeypatch):
     monkeypatch.delenv("CLAUDE_CMD", raising=False)
-    monkeypatch.setattr(llm, "_CLAUDE_CANDIDATES", ())
+    monkeypatch.setattr(llm_claude, "_CLAUDE_CANDIDATES", ())
     monkeypatch.setattr(shutil, "which", lambda _: None)
 
     ok, said = signed_in(run=_auth(SIGNED_IN))

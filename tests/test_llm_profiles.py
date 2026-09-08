@@ -11,13 +11,14 @@ held the old single model and effort.
 """
 import pytest
 
-from core import llm
 from core.llm import (
     ClaudeCodeClient,
     ProfiledClient,
     ScriptedLLMClient,
     profile_of,
+    effort_for_profile,
 )
+from core.llm.effort_policy import _CEILING, _SUBSCRIPTION_EFFORT
 
 MODEL = "sonnet"
 
@@ -53,8 +54,8 @@ def test_the_ceiling_follows_each_profiles_own_effort_and_not_one_global_dial():
     thinking = ClaudeCodeClient(MODEL, effort="low")
     doing = ClaudeCodeClient(MODEL, effort="high")
 
-    assert thinking.timeout == llm._CEILING["low"]
-    assert doing.timeout == llm._CEILING["high"]
+    assert thinking.timeout == _CEILING["low"]
+    assert doing.timeout == _CEILING["high"]
     assert thinking.timeout != doing.timeout
 
 
@@ -73,7 +74,7 @@ def test_an_explicit_effort_wins_over_whatever_the_dial_is_set_to(monkeypatch):
 
     monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
 
-    assert ClaudeCodeClient(MODEL, effort="low").timeout == llm._CEILING["low"]
+    assert ClaudeCodeClient(MODEL, effort="low").timeout == _CEILING["low"]
 
 
 def test_no_explicit_effort_still_reads_the_global_dial(monkeypatch):
@@ -81,7 +82,7 @@ def test_no_explicit_effort_still_reads_the_global_dial(monkeypatch):
 
     monkeypatch.setattr(settings.instance(), "get_effort", lambda: "high")
 
-    assert ClaudeCodeClient(MODEL).timeout == llm._CEILING["high"]
+    assert ClaudeCodeClient(MODEL).timeout == _CEILING["high"]
 
 
 @pytest.fixture
@@ -113,8 +114,8 @@ def test_a_user_with_only_the_old_single_effort_gets_both_profiles_set_to_it(
         clean_settings):
     clean_settings.set_effort("high")
 
-    assert llm.effort_for_profile("thinking") == "high"
-    assert llm.effort_for_profile("doing") == "high"
+    assert effort_for_profile("thinking") == "high"
+    assert effort_for_profile("doing") == "high"
 
 
 def test_setting_one_profile_leaves_the_other_on_the_old_single_setting(
@@ -127,5 +128,5 @@ def test_setting_one_profile_leaves_the_other_on_the_old_single_setting(
 
 
 def test_a_user_with_neither_setting_still_gets_a_usable_effort(clean_settings):
-    assert llm.effort_for_profile("thinking") == llm._SUBSCRIPTION_EFFORT
-    assert llm.effort_for_profile("doing") == llm._SUBSCRIPTION_EFFORT
+    assert effort_for_profile("thinking") == _SUBSCRIPTION_EFFORT
+    assert effort_for_profile("doing") == _SUBSCRIPTION_EFFORT
