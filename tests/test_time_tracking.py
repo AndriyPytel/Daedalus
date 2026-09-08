@@ -6,7 +6,7 @@ def test_call_started_event_is_emitted_before_stream_opens():
     ceiling is absent for clients without a timeout.
     """
     from core.llm import ScriptedLLMClient
-    from core.loop import _streamed
+    from core.loop.prompt import _streamed
     from core.events import EventStream, CALL_STARTED, COST
 
     # Test with ScriptedLLMClient (no timeout)
@@ -30,7 +30,7 @@ def test_cost_event_always_has_seconds_field():
     The usd field is absent when the client reported no price.
     """
     from core.llm import ScriptedLLMClient
-    from core.loop import _streamed
+    from core.loop.prompt import _streamed
     from core.events import EventStream, COST
     import time
 
@@ -58,7 +58,7 @@ def test_cost_event_includes_usd_when_client_reports_price():
     """
     from litellm.llms.anthropic.chat.handler import ModelResponseIterator
     from core.llm import LiteLLMClient
-    from core.loop import _streamed
+    from core.loop.prompt import _streamed
     from core.events import EventStream, COST
     import json
     import os

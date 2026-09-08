@@ -26,6 +26,7 @@ import threading
 import time
 
 import pytest
+from core.loop.prompt import _as_image
 
 from conftest import collect
 
@@ -664,7 +665,7 @@ def _drawn(tmp_path, name):
     """What the loop hands the seam for an attachment, whatever its type."""
     path = tmp_path / name
     path.write_bytes(b"a file; whether it decodes is the provider's problem")
-    return loop._as_image(str(path))
+    return _as_image(str(path))
 
 
 def test_a_pdf_goes_out_as_an_anthropic_document_block(tmp_path):

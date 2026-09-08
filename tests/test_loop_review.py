@@ -13,6 +13,7 @@ import math
 import os
 import re
 import tempfile
+import time
 from dataclasses import replace
 from unittest.mock import Mock
 
@@ -24,7 +25,6 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, STOPPED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import loop
 from core.design import design
 from core.design import part_file
 from core.sheets import sheet_reader
@@ -35,10 +35,11 @@ from core.design.design import (
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, _streamed, prompt
+from core.loop.run import run
+import core.loop.prompt as loop_prompt_module
+from core.loop.prompt import PROMPTS
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
@@ -198,7 +199,7 @@ def test_view_names_names_every_review_view_including_the_section():
     mislabel the section capture rather than fail loudly.
     """
     from core.freecad.apply import REVIEW_VIEWS
-    from core.loop import _VIEW_NAMES
+    from core.loop.execute import _VIEW_NAMES
 
     assert len(_VIEW_NAMES) == len(REVIEW_VIEWS)
 
@@ -536,11 +537,11 @@ def test_a_cut_off_stream_backs_off_before_the_retry(monkeypatch):
     gateway a chance to clear before the next one goes out.
     """
     sleeps = []
-    monkeypatch.setattr(loop.time, "sleep", lambda seconds: sleeps.append(seconds))
-    monkeypatch.setattr(loop, "_one_call", Mock(side_effect=[
+    monkeypatch.setattr(time, "sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr(loop_prompt_module, "_one_call", Mock(side_effect=[
         StreamCutOff("cut once"), StreamCutOff("cut twice"), ("body text", "", "")]))
 
-    body, thought, reasoning = loop._streamed(None, EventStream(), "Plan", "system", "user")
+    body, thought, reasoning = _streamed(None, EventStream(), "Plan", "system", "user")
 
     assert body == "body text"
     assert sleeps == [1, 2], "a growing pause between the two failed attempts"
@@ -829,7 +830,7 @@ def test_a_keyed_provider_that_prices_writes_a_cost_event_through_the_unchanged_
     from litellm.llms.anthropic.chat.handler import ModelResponseIterator
 
     from core.llm import LiteLLMClient
-    from core.loop import _streamed
+    from core.loop.prompt import _streamed
 
     recorded_path = os.path.join(os.path.dirname(__file__), "recorded",
                                  "anthropic_thinking_stream.json")

@@ -329,14 +329,19 @@ def test_the_loop_never_builds_the_reading_itself():
     import ast
     import os
 
-    path = os.path.join(os.path.abspath(list(core.__path__)[0]), "loop.py")
-    with open(path, encoding="utf-8") as handle:
-        tree = ast.parse(handle.read(), path)
-
-    called = [node.func.attr for node in ast.walk(tree)
-              if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-              and isinstance(node.func.value, ast.Name)
-              and node.func.value.id == "sketch_check"]
+    loop_dir = os.path.join(os.path.abspath(list(core.__path__)[0]), "loop")
+    called = []
+    for filename in os.listdir(loop_dir):
+        if filename.endswith(".py"):
+            path = os.path.join(loop_dir, filename)
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read(), path)
+            called.extend(
+                node.func.attr for node in ast.walk(tree)
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "sketch_check"
+            )
 
     assert "checked" not in called, "the loop builds the reading in its own process"
 

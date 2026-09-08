@@ -645,7 +645,7 @@ class LoopWorker(QtCore.QObject):
         """
         from copilot.sdk import events as ev
         from copilot.sdk import EventStream
-        from core.loop import run
+        from core.loop.run import run
         from utils.logger import generate_crash_report, logger
 
         self._stop.clear()

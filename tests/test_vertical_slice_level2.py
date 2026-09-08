@@ -28,7 +28,8 @@ from core.events import (
 )
 from core.freecad.apply import build_registry
 from core.llm import ScriptedLLMClient
-from core.loop import APPROVE, Approval, run
+from core.loop.gate import APPROVE, Approval
+from core.loop.run import run
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad

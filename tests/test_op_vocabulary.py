@@ -63,7 +63,7 @@ def test_core_loop_op_verbs_matches_the_prompts_own_list():
     independent copies of a closed list is exactly the shape that drifts
     silently, so a test keeps them equal rather than a comment promising it.
     """
-    from core.loop import OP_VERBS
+    from core.loop.plan import OP_VERBS
 
     ops = _op_vocabulary(_op_section(_language_md()))
 
@@ -117,7 +117,7 @@ def test_every_op_typeid_lint_checks_is_named_in_execute_md():
 
 
 def test_every_op_verb_is_named_in_execute_md():
-    from core.loop import OP_VERBS
+    from core.loop.plan import OP_VERBS
 
     text = _execute_md()
     missing = [op for op in OP_VERBS if ("`%s`" % op) not in text]

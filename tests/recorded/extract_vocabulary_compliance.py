@@ -44,7 +44,7 @@ import sys
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO_ROOT, "src"))
 
-from core.loop import _object_of
+from core.loop.prompt import _object_of
 
 SESSIONS = {
     "afa0142baef847b0a9cd9139390af993": "before FCC-236",

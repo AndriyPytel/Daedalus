@@ -8,9 +8,8 @@ phase's own prompt file never repeats a term any section defines.
 """
 import os
 
-from core.loop import (ASSERTION_PHASE, DESIGN_PHASE, EXECUTE_PHASE,
-                        PLAN_PHASE, REVIEW_PHASE, _LANGUAGE_HEADINGS,
-                        _PHASE_VOCABULARY, _language_sections, prompt)
+from core.loop.prompt import ASSERTION_PHASE, DESIGN_PHASE, EXECUTE_PHASE, PLAN_PHASE, REVIEW_PHASE, _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.prompt import _LANGUAGE_HEADINGS
 
 PROMPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                            "config", "prompts")

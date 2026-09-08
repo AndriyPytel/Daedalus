@@ -24,7 +24,6 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import loop
 from core.design import design
 from core.design import part_file
 from core.sheets import sheet_reader
@@ -35,10 +34,10 @@ from core.design.design import (
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import PROMPTS, _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.run import run
+from core.loop.plan import _in_the_prose
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
@@ -233,10 +232,11 @@ def test_no_plan_without_steps_ever_reaches_execute(monkeypatch):
     raises. The guard is the cheap insurance that no future path sends Review
     over a Document nothing changed. FCC-67.
     """
-    from core import loop as loop_module
+    import core.loop.plan as loop_plan_module
+    from core.loop.plan import Plan
 
-    monkeypatch.setattr(loop_module, "plan",
-                        lambda *args, **kwargs: loop_module.Plan(steps=[]))
+    monkeypatch.setattr(loop_plan_module, "plan",
+                        lambda *args, **kwargs: Plan(steps=[]))
 
     result, _, _, tools = drive([plan_reply("never asked for")])
 
@@ -839,7 +839,7 @@ def test_a_suspected_citation_keeps_its_flag_through_the_trim():
     in a later Step loses the one thing that told the Gate it was never
     confirmed (FCC-258 AC3).
     """
-    assert loop._in_the_prose("thread \u2192 pitch: 1.25 mm (suspected)") == (
+    assert _in_the_prose("thread \u2192 pitch: 1.25 mm (suspected)") == (
         "thread \u2192 pitch (suspected)")
 
 

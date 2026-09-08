@@ -49,13 +49,18 @@ from unittest.mock import Mock
 
 import pytest
 
+import core.loop.describe as loop_describe
+
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import loop
+from core import kernel
+from core.loop import describe as loop_describe
+from core.loop.design import _the_groups
+from core.loop.describe import _round_evidence, _the_directions_are_the_drawings
 from core.design import design
 from core.design import part_file
 from core.sheets import sheet_reader
@@ -66,10 +71,9 @@ from core.design.design import (
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import PROMPTS, _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.run import run
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 
@@ -189,7 +193,7 @@ def design_reply(model=None, question="", thinking=None):
 def _first_pass_turns(model, attachments, question=""):
     """
     The scripted replies one `_first_pass` costs today: the same
-    `design_reply` repeated once per page-sized group `core.loop._the_groups`
+    `design_reply` repeated once per page-sized group `core._the_groups`
     cuts *attachments* into, plus one more for the reconciling call — or the
     single reply it always was where nothing groups (no attachment, or one
     `sheet_reader` cannot read).
@@ -200,7 +204,7 @@ def _first_pass_turns(model, attachments, question=""):
     change what the run ends up holding, and a test does not have to predict
     the race to script one.
     """
-    groups = loop._the_groups(list(attachments))
+    groups = _the_groups(list(attachments))
     calls = len(groups) + 1 if groups else 1
     return [design_reply(model, question=question)] * calls
 
@@ -945,7 +949,7 @@ NO_ENUM = ("Traceback (most recent call last):\n"
 
 def gate_that(*answers):
     """A Gate scripted turn by turn; anything past the script approves once."""
-    from core.loop import APPROVE, Approval
+    from core.loop.gate import APPROVE, Approval
 
     queued = list(answers)
     asked = []
@@ -1022,7 +1026,7 @@ def _a_sheet_of_many_outlines(tmp_path, how_many=4):
         between=sheet.between)
 
 
-class _AChildThatCannotComeBack(loop.kernel.Kernel):
+class _AChildThatCannotComeBack(kernel.Kernel):
     """
     A worker that came up once and can never be started again.
 
@@ -1072,7 +1076,7 @@ _THE_BORE_PUT_RIGHT = [
 
 def _traced(monkeypatch, round_here):
     """What the tracer saw curved, view by view, whatever the attachment is."""
-    monkeypatch.setattr(loop, "_round_evidence", lambda attachments: dict(round_here))
+    monkeypatch.setattr(loop_describe, "_round_evidence", lambda attachments: dict(round_here))
 
 
 THE_CLAMP_READ_OFF_THE_WRONG_VIEW = {
@@ -1121,16 +1125,16 @@ THE_VIEW_LOOKED_AT_AGAIN = {"features": [
 
 def _re_read_as(monkeypatch, fragment):
     """The re-read a provider would have replied with, without a provider."""
-    monkeypatch.setattr(loop, "design",
+    monkeypatch.setattr(loop_describe, "design",
                         lambda body, llm, events, attachments=(): (fragment, []))
 
 
 def _looked_at_the_view_again(monkeypatch, part, fragment):
     _traced(monkeypatch, TRACED_ROUND_IN_THE_UPPER_PLAN)
     _re_read_as(monkeypatch, fragment)
-    return loop._the_directions_are_the_drawings(
+    return _the_directions_are_the_drawings(
         json.loads(json.dumps(part)), "Make the clamp", [], None, EventStream(),
-        loop.Budgets(rereads=2), lambda: False)
+        Budgets(rereads=2), lambda: False)
 
 
 A_BRACKET_IN_STEEL = {"envelope": {"length": read("80 mm")},

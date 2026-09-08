@@ -17,9 +17,9 @@ from core.events import (
     QUESTION, STEP_STARTED, THOUGHT, WRITING, EventStream,
 )
 from core.llm import ScriptedLLMClient
-from core.loop import (
-    ACCEPT, AMEND, APPROVE, REJECT, REVISE, START_OVER, Approval, Budgets, run,
-)
+from core.loop.budgets import Budgets
+from core.loop.gate import ACCEPT, AMEND, APPROVE, Approval, REJECT, REVISE, START_OVER
+from core.loop.run import run
 from tests.loop_helpers import (
     RENDER_PNG, FakeTools, assertion_reply, code_reply, design_reply, failed,
     obsolete_reply, plan_reply, question_reply, scripted, suspect_reply, verdict_reply,
@@ -573,7 +573,7 @@ def test_a_headless_run_revises_by_default_and_never_wipes_the_model():
     what the loop did before this ticket, which is what every existing revision
     test asserts.
     """
-    from core.loop import revise_by_default
+    from core.loop.gate import revise_by_default
 
     assert revise_by_default({"why": "anything", "applied": 17}) == REVISE
 

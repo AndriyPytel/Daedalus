@@ -24,7 +24,6 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import loop
 from core.design import design
 from core.design import part_file
 from core.sheets import sheet_reader
@@ -35,10 +34,11 @@ from core.design.design import (
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.run import run
+from core.loop.prompt import PROMPTS
+from core.loop.plan import _acceptance_of
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
@@ -1028,7 +1028,7 @@ def test_the_file_the_user_opens_is_the_document_the_run_was_planned_from():
     document = part_file.read(events.last(PART).data["path"])
     assert document == distilled(merge({}, A_PART))
     assert render(document) == request["what_the_part_is"]
-    assert loop._acceptance_of(document) == request["what_the_plan_must_satisfy"]
+    assert _acceptance_of(document) == request["what_the_plan_must_satisfy"]
 
 
 def test_a_value_corrected_in_the_file_is_the_one_the_run_is_planned_from(monkeypatch):

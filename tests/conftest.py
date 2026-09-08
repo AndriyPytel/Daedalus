@@ -11,11 +11,12 @@ import sys
 from dataclasses import dataclass
 
 import pytest
-
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
 if SRC not in sys.path:
     sys.path.insert(0, SRC)
+
+from core.loop import execute as loop
 
 
 def _freecad_lib_dirs():
@@ -305,9 +306,9 @@ def the_type_cache_goes_to_a_temporary_directory(tmp_path, monkeypatch):
     to the user's data directory. Redirecting it to tmp_path means tests run
     isolated.
     """
-    from core import loop
+    import core.loop.execute as loop_execute_module
 
-    monkeypatch.setattr(loop, "TYPE_CACHE_PATH", str(tmp_path / "type_cache.json"))
+    monkeypatch.setattr(loop_execute_module, "TYPE_CACHE_PATH", str(tmp_path / "type_cache.json"))
 
 
 @dataclass
