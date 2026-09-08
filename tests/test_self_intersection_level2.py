@@ -17,7 +17,7 @@ reserves `BOPAlgo_SelfIntersect` for Assertion because it is not).
 """
 import pytest
 
-from core.loop import SELF_INTERSECTION_CHECK
+from core.loop.assertion import SELF_INTERSECTION_CHECK
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad

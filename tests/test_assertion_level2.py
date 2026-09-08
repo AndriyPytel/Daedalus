@@ -23,7 +23,7 @@ import math
 import pytest
 
 from core.freecad.apply import ApplyPipeline
-from core.loop import _the_model_failed
+from core.loop.assertion import _the_model_failed
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad

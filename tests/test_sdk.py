@@ -200,7 +200,7 @@ def test_an_answer_callback_receives_the_question_without_pausing(kernel):
 
 def test_a_declared_auto_answer_policy_is_its_own_distinct_event(kernel):
     from copilot.sdk import Client
-    from core.loop import nobody_to_ask
+    from core.loop.gate import nobody_to_ask
 
     llm = _a_question_then_a_box_run()
     client = Client(kernel=kernel, llm=llm, answer=nobody_to_ask)

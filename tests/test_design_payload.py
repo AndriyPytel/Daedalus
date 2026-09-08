@@ -1,10 +1,10 @@
 """
 Level 1 — what a Design first pass costs, as a number a test produces.
 
-`core.loop._first_pass` no longer sends one whole-sheet call: it cuts a sheet
-into page-sized groups (`core.loop._the_groups`), asks each in parallel, and
+`core._first_pass` no longer sends one whole-sheet call: it cuts a sheet
+into page-sized groups (`core._the_groups`), asks each in parallel, and
 finishes with one reconciling call that sees no pictures at all
-(`core.loop._reconciled`). This is the number that work against the fan-out
+(`core._reconciled`). This is the number that work against the fan-out
 has to move, measured off two distinct Model Mania sheets rather than
 asserted in a docstring or a commit message.
 
@@ -19,7 +19,7 @@ multi-view sheet no longer takes that call at all.
 that passes the current baselines. Raising it requires re-measurement and a
 stated reason. The current value (1.69) is what Design's own call is
 charged for the shared vocabulary it actually uses (ADR-0026, FCC-234):
-`core.loop.prompt` composes each phase from the sections of `config/prompts/
+`core.prompt` composes each phase from the sections of `config/prompts/
 language.md` that phase reads, not the whole file, so Design carries the
 closed-naming section and the English-only rule — it neither writes nor
 checks an `op`, so the 36-verb section and the Step-sentence-rules section
@@ -44,8 +44,9 @@ import json
 import os
 
 import pytest
+from core.loop.design import _first_pass, _group_tokens, _reconciled, _the_groups
+from core.loop.prompt import _the_evidence, prompt, DESIGN_PHASE
 
-from core import loop
 from core.sheets import sheet_reader
 from tests import modelmania_harness
 
@@ -100,11 +101,11 @@ def _design_prompt_tokens():
     pass that leaves `language.md` out of its own cost is undercounted
     against the calls it is really measuring.
     """
-    return len(loop.prompt(loop.DESIGN_PHASE)) // CHARS_PER_TOKEN
+    return len(prompt(DESIGN_PHASE)) // CHARS_PER_TOKEN
 
 
 def _tokens_of(evidence, prompt_tokens):
-    """One call's evidence, priced the same way `core.loop._group_tokens` prices
+    """One call's evidence, priced the same way `core._group_tokens` prices
     a candidate group before it is sent — the picture at its pixel count over
     750, the text at four characters to the token."""
     from PIL import Image
@@ -127,7 +128,7 @@ def _tokens_of(evidence, prompt_tokens):
 def _first_pass_report(path):
     """
     One first pass's payload for one attachment, read off the real code
-    path: `core.loop._the_groups` for the grouping, `core.loop._the_evidence`
+    path: `core._the_groups` for the grouping, `core._the_evidence`
     for what each group and the reconciling call actually send. Nothing here
     is cached across calls, so calling this twice for the same path is what
     a second first pass costs today.
@@ -137,13 +138,13 @@ def _first_pass_report(path):
         return None
 
     prompt_tokens = _design_prompt_tokens()
-    groups = loop._the_groups([path])
+    groups = _the_groups([path])
     reported_groups = []
     for label, views in groups:
-        evidence = loop._the_evidence([path], views=views, keep_printed=True)
+        evidence = _the_evidence([path], views=views, keep_printed=True)
         reported_groups.append(dict(label=label, **_tokens_of(evidence, prompt_tokens)))
 
-    reconcile_evidence = loop._the_evidence([path], pictures=False)
+    reconcile_evidence = _the_evidence([path], pictures=False)
     reconcile = _tokens_of(reconcile_evidence, prompt_tokens)
     assert reconcile["pictures"] == 0, "the reconciling call was shown a picture"
     del reconcile["pictures"]

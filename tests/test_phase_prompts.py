@@ -15,7 +15,7 @@ from core.agent import run_phase
 from core.events import SUB_AGENT_ANSWERED, SUB_AGENT_SPAWNED, EventStream
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
-from core.loop import ASSERTION_PHASE, DESIGN_PHASE, PLAN_PHASE, prompt
+from core.loop.prompt import ASSERTION_PHASE, DESIGN_PHASE, PLAN_PHASE, prompt
 from core.agent.subagent import SessionTreeSupervisor
 
 PROMPTS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "prompts")

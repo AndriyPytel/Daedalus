@@ -26,7 +26,7 @@ import re
 from collections import defaultdict
 
 from core.lint import OP_TYPEIDS
-from core.loop import OP_VERBS
+from core.loop.plan import OP_VERBS
 
 VOCABULARY_STEPS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "recorded", "vocabulary_steps.json")

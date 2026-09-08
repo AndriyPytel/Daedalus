@@ -16,8 +16,8 @@ than silently supersede one.
 import json
 import os
 
-from core import loop
 from core.design.design import merge
+from core.loop.prompt import prompt, DESIGN_PHASE
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -29,7 +29,7 @@ def _prompt():
     closed lists below moved there and are no longer written a second time
     in `design.md` itself.
     """
-    return loop.prompt(loop.DESIGN_PHASE)
+    return prompt(DESIGN_PHASE)
 
 
 FEATURE_KINDS = [

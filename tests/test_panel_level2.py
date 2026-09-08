@@ -2700,7 +2700,7 @@ def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(pane
     """
     from conftest import QtWidgets
 
-    from core.loop import START_OVER
+    from core.loop.gate import START_OVER
 
     answered = []
     monkeypatched = panel.ask.answer
@@ -2835,7 +2835,7 @@ def test_clicking_approve_reject_and_start_over_on_the_verdict_card_answer_in_ki
         panel, tmp_path):
     from conftest import QtWidgets
 
-    from core.loop import ACCEPT, REVISE, START_OVER
+    from core.loop.gate import ACCEPT, REVISE, START_OVER
 
     answered = []
     monkeypatched = panel.ask.answer
@@ -3033,7 +3033,7 @@ def test_the_plan_gate_offers_exactly_one_build_button(panel):
 def test_clicking_build_answers_with_the_plan_as_generated_when_nothing_was_edited(
         panel, monkeypatch):
     from core.events import Event, PLAN
-    from core.loop import APPROVE
+    from core.loop.gate import APPROVE
 
     answered = []
     monkeypatch.setattr(panel.ask, "answer", answered.append)
@@ -3054,7 +3054,7 @@ def test_clicking_build_answers_with_the_plan_as_generated_when_nothing_was_edit
 def test_clicking_build_answers_with_the_plan_as_edited(panel, monkeypatch):
     """Editing, adding, and reordering all reach the answer Build sends. FCC-177."""
     from core.events import Event, PLAN
-    from core.loop import APPROVE
+    from core.loop.gate import APPROVE
 
     answered = []
     monkeypatch.setattr(panel.ask, "answer", answered.append)
@@ -3101,7 +3101,7 @@ def test_stop_while_the_decision_is_open_releases_it_and_is_not_an_acceptance(pa
     """
     import threading
 
-    from core.loop import ACCEPT, REVISE
+    from core.loop.gate import ACCEPT, REVISE
 
     answers = []
 

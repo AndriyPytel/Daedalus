@@ -1,7 +1,7 @@
 """
 Level 1 — the Plan -> Execute -> Review loop: phase prompt wording, traps, build-order doctrine and step/gap mechanics.
 
-Split out of the single `test_loop.py` god-file so `--dist
+Split out of the single `test_py` god-file so `--dist
 loadfile` can spread these tests across xdist workers; the fixtures and
 scripted-LLM harness common to every split live in `loop_helpers.py`.
 """
@@ -24,7 +24,6 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import loop
 from core.design import design
 from core.design import part_file
 from core.sheets import sheet_reader
@@ -35,10 +34,11 @@ from core.design.design import (
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.run import run
+from core.loop.prompt import PROMPTS
+from core.loop.design import _the_groups
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
@@ -894,7 +894,7 @@ def test_a_step_that_never_writes_its_tail_still_terminates():
 def test_every_design_call_of_a_run_carries_a_page_and_not_the_whole_sheet():
     """
     The first pass is one call per page now, not one call over the whole
-    sheet (`core/loop.py :: _first_pass`) — the 2023 pipe clamp is two pages,
+    sheet (`core/py :: _first_pass`) — the 2023 pipe clamp is two pages,
     so it costs two page-sized calls and one reconciling call that sees no
     pictures at all, rather than the single 27-picture, 43,923 character call
     this used to be. `tests/test_design_payload.py` measures the same three
@@ -933,7 +933,7 @@ def test_a_re_read_of_the_two_page_2023_sheet_still_knows_what_was_asked():
 
     _, _, llm, _ = _a_run_that_reads_the_sheet_every_way(THE_2023_SHEET, intent)
 
-    groups = len(loop._the_groups([THE_2023_SHEET]))
+    groups = len(_the_groups([THE_2023_SHEET]))
     re_reads = _asked_of_design(llm)[groups:]
     assert re_reads, "the sheet provoked no re-read at all"
     assert [turn for turn in re_reads if turn.get("intent") == intent] == re_reads

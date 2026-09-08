@@ -10,7 +10,7 @@ from core.events import (
     ABORTED, BLOCKED, BUDGET_EXHAUSTED, COMPLETED, FAILED, STOPPED, EventStream,
 )
 from core.llm import ScriptedLLMClient
-from core.loop import run
+from core.loop.run import run
 from tests.loop_helpers import FakeTools, code_reply, drive, plan_reply, suspect_reply, verdict_reply
 
 
@@ -84,7 +84,7 @@ def test_a_budget_exhausted_run_is_told_apart_from_a_genuine_block():
     is the one path that reaches `BUDGET_EXHAUSTED`, and `_block` is the only
     path left that reaches `BLOCKED`.
     """
-    from core.loop import _block, _budget_exhausted
+    from core.loop.run import _block, _budget_exhausted
 
     events = EventStream()
     result = _budget_exhausted(events, "Out of revisions.", tried=[{"step": 1}], applied=2)

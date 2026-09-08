@@ -1,7 +1,7 @@
 """
 Level 1 — the Plan -> Execute -> Review loop: envelope/self-intersection checks, citation trims and reading of the sheet.
 
-Split out of the single `test_loop.py` god-file so `--dist
+Split out of the single `test_py` god-file so `--dist
 loadfile` can spread these tests across xdist workers; the fixtures and
 scripted-LLM harness common to every split live in `loop_helpers.py`.
 """
@@ -24,7 +24,6 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import loop
 from core.design import design
 from core.design import part_file
 from core.sheets import sheet_reader
@@ -35,10 +34,10 @@ from core.design.design import (
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.run import run
+from core.loop.prompt import PROMPTS
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
@@ -182,8 +181,14 @@ def test_nothing_past_the_reading_opens_the_evidence():
     distillation would be a rendering nobody is held to. Checked by reading the
     source, the way every other architectural claim in this project is.
     """
-    with open(loop.__file__, encoding="utf-8") as source:
-        written = ast.parse(source.read())
+    import core.loop.describe as loop_describe_module
+    loop_dir = os.path.dirname(loop_describe_module.__file__)
+    all_source = ""
+    for filename in os.listdir(loop_dir):
+        if filename.endswith(".py"):
+            with open(os.path.join(loop_dir, filename), encoding="utf-8") as f:
+                all_source += f.read() + "\n"
+    written = ast.parse(all_source)
 
     functions = [node for node in ast.walk(written)
                  if isinstance(node, ast.FunctionDef)]
@@ -223,7 +228,7 @@ def test_a_plan_citing_the_document_it_was_handed_leaves_nothing_unplanned():
 
 
 def test_the_three_overall_sizes_are_checked_before_anybody_writes_a_check():
-    from core.loop import the_envelope_measured
+    from core.loop.assertion import the_envelope_measured
 
     code = the_envelope_measured(A_CLAMP_ENVELOPE)
 
@@ -233,7 +238,7 @@ def test_the_three_overall_sizes_are_checked_before_anybody_writes_a_check():
 
 
 def test_an_envelope_of_anything_but_three_plain_sizes_is_not_measured_here():
-    from core.loop import the_envelope_measured
+    from core.loop.assertion import the_envelope_measured
 
     assert the_envelope_measured(A_CLAMP_ENVELOPE[:2]) == ""
     assert the_envelope_measured(
@@ -243,7 +248,7 @@ def test_an_envelope_of_anything_but_three_plain_sizes_is_not_measured_here():
 def test_self_intersection_check_removes_its_temp_file_even_when_export_fails():
     """
     FCC-256: the `.brep` round-trip opens one temp file per solid
-    (`core/loop.py:SELF_INTERSECTION_CHECK`); a solid whose export raises
+    (`core/py:SELF_INTERSECTION_CHECK`); a solid whose export raises
     must not leave it behind. Run once, over the whole Document, is proven
     behaviourally by `test_two_separately_valid_solids_that_overlap_each_other_still_hold`
     in `tests/test_self_intersection_level2.py` (real FreeCAD, two solids,
@@ -251,7 +256,7 @@ def test_self_intersection_check_removes_its_temp_file_even_when_export_fails():
     """
     import glob
 
-    from core.loop import SELF_INTERSECTION_CHECK
+    from core.loop.assertion import SELF_INTERSECTION_CHECK
 
     class ExplodingShape:
         Solids = [object()]
