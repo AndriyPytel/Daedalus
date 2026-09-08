@@ -63,34 +63,32 @@ def test_ui_does_not_import_core_except_known_wiring_gaps():
         % ", ".join(offenders))
 
 
-HARNESS_CALLER_DIRS = ("core", "ui", "Mod", "utils", "tests", "copilot")
-MOVED_UNDER_SRC = {"core", "ui", "Mod", "utils"}
+def _test_sources():
+    for path, _, names in os.walk(os.path.join(ROOT, "tests")):
+        if "__pycache__" in path:
+            continue
+        for name in sorted(names):
+            if not name.endswith(".py"):
+                continue
+            full = os.path.join(path, name)
+            with open(full, encoding="utf-8") as handle:
+                yield os.path.relpath(full, ROOT), handle.read()
 
 
 def harness_imports():
-    for package in HARNESS_CALLER_DIRS:
-        base = SRC if package in MOVED_UNDER_SRC else ROOT
-        package_dir = os.path.join(base, package)
-        if not os.path.isdir(package_dir):
-            continue
-        for path, _, names in os.walk(package_dir):
-            if "__pycache__" in path:
-                continue
-            for name in sorted(names):
-                if not name.endswith(".py"):
-                    continue
-                full = os.path.join(path, name)
-                where = os.path.relpath(full, ROOT)
-                with open(full, encoding="utf-8") as handle:
-                    tree = ast.parse(handle.read(), filename=full)
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.ImportFrom) and node.module:
-                        if node.module == "tools" or node.module.startswith("tools."):
-                            yield where, node.module
-                    elif isinstance(node, ast.Import):
-                        for alias in node.names:
-                            if alias.name == "tools" or alias.name.startswith("tools."):
-                                yield where, alias.name
+    from itertools import chain
+    from tests.source_tree import sources
+
+    for where, source in chain(sources(), _test_sources()):
+        tree = ast.parse(source, filename=where)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                if node.module == "tools" or node.module.startswith("tools."):
+                    yield where, node.module
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "tools" or alias.name.startswith("tools."):
+                        yield where, alias.name
 
 
 def test_nothing_outside_the_harness_directory_imports_it():

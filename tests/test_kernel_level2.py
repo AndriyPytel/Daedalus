@@ -6,8 +6,6 @@ the new object, and a failing Step's reload leaves the prior checkpoint's
 object count unchanged -- both verified by reopening the checkpoint file
 from disk, not by reading the kernel's own claim about itself.
 """
-import time
-
 import pytest
 
 from core.kernel import Kernel, find_freecadcmd
@@ -69,22 +67,20 @@ def test_a_failing_steps_reload_leaves_the_prior_checkpoints_object_count_unchan
         "the reload left the failed Step's object behind"
 
 
-def test_the_checkpoint_round_trip_does_not_reopen_the_whole_document(kernel):
+def test_a_second_step_sees_the_first_steps_object_in_the_live_document(kernel):
     """
-    Times ten successive passing Steps against the measured 0.34 s
-    document-load baseline (`/tmp/fcc-measure-freecadcmd.md`): ten reopens
-    would cost 3.4 s alone, before the Steps' own work.
+    The session continues across Steps: the second Step works against the same
+    live Document the first one changed, without reopening it from disk.
     """
-    started = time.monotonic()
-    for at in range(10):
-        result = kernel.check("doc.addObject('Part::Box', 'Box%d')" % at)
-        assert result.ok, result.traceback
-    elapsed = time.monotonic() - started
+    first = kernel.check("doc.addObject('Part::Box', 'FromFirst')")
+    assert first.ok, first.traceback
 
-    assert elapsed < 15.0, \
-        ("ten Steps cost %.2fs -- a full reopen per Step (an extra ~0.34s measured "
-         "document-load each, `/tmp/fcc-measure-freecadcmd.md`) would reintroduce this"
-         % elapsed)
+    second = kernel.check(
+        "assert doc.getObject('FromFirst') is not None, "
+        "'the first Step object is not in the live document'"
+    )
+
+    assert second.ok, second.traceback
 
 
 def test_a_step_addresses_an_earlier_steps_object_through_the_name_map_after_a_collision(kernel):

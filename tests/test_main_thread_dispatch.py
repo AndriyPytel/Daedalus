@@ -253,20 +253,15 @@ def test_there_is_no_addtodo_or_singleshot_path_left_anywhere():
     import ast
     import os
 
-    root = os.path.dirname(os.path.dirname(os.path.abspath(core.freecad.apply.__file__)))
+    from tests.source_tree import sources
+
     offenders = []
-    for package in ("core", "ui", "Mod", "utils"):
-        for dirpath, dirnames, filenames in os.walk(os.path.join(root, package)):
-            dirnames[:] = [d for d in dirnames if d != "__pycache__"]
-            for filename in filenames:
-                if not filename.endswith(".py"):
-                    continue
-                path = os.path.join(dirpath, filename)
-                with open(path, encoding="utf-8") as handle:
-                    tree = ast.parse(handle.read(), path)
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.Attribute) and node.attr in ("addTodo", "singleShot"):
-                        offenders.append("%s uses %s" % (filename, node.attr))
+    for where, source in sources():
+        filename = os.path.basename(where)
+        tree = ast.parse(source, where)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr in ("addTodo", "singleShot"):
+                offenders.append("%s uses %s" % (filename, node.attr))
 
     allowed = ("copilot_panel.py", "accordion_widget.py")
     assert [o for o in offenders if not o.startswith(allowed)] == []
