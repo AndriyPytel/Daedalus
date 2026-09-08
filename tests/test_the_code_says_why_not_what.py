@@ -24,8 +24,7 @@ import io
 import os
 import tokenize
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SEARCHED = ("core", "ui", "utils", "tools", "Mod")
+from tests.source_tree import ROOT, sources
 
 MACHINE_READABLE = ("# type:", "# noqa", "# pragma:", "# pylint:", "# flake8:",
                     "# fmt:", "# -*-", "#!")
@@ -34,20 +33,10 @@ TICKETS = ("FCC-", "ADR-")
 
 
 def comments():
-    for directory in SEARCHED:
-        for path, _, names in os.walk(os.path.join(ROOT, directory)):
-            if "__pycache__" in path:
-                continue
-            for name in sorted(names):
-                if not name.endswith(".py"):
-                    continue
-                full = os.path.join(path, name)
-                with open(full, encoding="utf-8") as handle:
-                    source = handle.read()
-                where = os.path.relpath(full, ROOT)
-                for token in tokenize.generate_tokens(io.StringIO(source).readline):
-                    if token.type == tokenize.COMMENT:
-                        yield where, token.start[0], token.string.strip()
+    for where, source in sources():
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT:
+                yield where, token.start[0], token.string.strip()
 
 
 def prose():
@@ -84,23 +73,12 @@ DOCUMENTED = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
 def docstrings():
-    for directory in SEARCHED:
-        for path, _, names in os.walk(os.path.join(ROOT, directory)):
-            if "__pycache__" in path:
-                continue
-            for name in sorted(names):
-                if not name.endswith(".py"):
-                    continue
-                full = os.path.join(path, name)
-                with open(full, encoding="utf-8") as handle:
-                    source = handle.read()
-                where = os.path.relpath(full, ROOT)
-                tree = ast.parse(source, filename=full)
-                for node in ast.walk(tree):
-                    if isinstance(node, DOCUMENTED):
-                        doc = ast.get_docstring(node)
-                        if doc:
-                            yield where, getattr(node, "lineno", 1), node, doc
+    for where, source in sources():
+        for node in ast.walk(ast.parse(source, filename=where)):
+            if isinstance(node, DOCUMENTED):
+                doc = ast.get_docstring(node)
+                if doc:
+                    yield where, getattr(node, "lineno", 1), node, doc
 
 
 BASELINE_FILE = os.path.join(ROOT, "tests", "docstring_budget_baseline.txt")

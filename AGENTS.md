@@ -49,6 +49,19 @@ A number in an Acceptance Criterion is produced by a test, from the sheets in
 a docstring or a commit message is a claim: the next change moves it and
 nothing says so.
 
+## Tests
+
+Before adding a test, read the tests that already cover what is being changed.
+A test that pins behaviour the change removes is rewritten or deleted in the
+same commit as the change, never left standing beside its replacement: what
+costs an architecture change is not the test that fails, it is the one that
+passes while measuring what the code no longer does.
+
+A test that scans the tree by a hardcoded list of packages, paths or names is
+a liability — it must derive that list, or another test must assert the list
+is complete. Three guards here held a package tuple written before `copilot/`
+existed and stayed green for the whole epic.
+
 ## RLM rewrite branch (FCC-291)
 
 This branch, `FCC-291-rlm-rewrite`, is a long-lived fork of `dev`, forked at

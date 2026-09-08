@@ -32,19 +32,12 @@ from core.sessions import Sessions
 
 class Client:
     """
-    *document* is a path to open, or `None` for a fresh empty Document --
-    the same convention `core.kernel.Kernel.check` already uses. *llm* and
-    *kernel* default to a real provider and a real headless kernel; a test
-    hands in a `ScriptedLLMClient` and a `Kernel` of its own instead.
-
-    *answer* is the caller's answer callback (FCC-316): a question the agent
-    asks reaches it if it is given. Without one, `send` pauses the run in a
-    blocked, resumable `needs-answer` state -- `resume` picks it back up --
-    rather than guessing or failing.
-
-    *confirm* answers the Owned Object prompt `ApplyPipeline` raises before
-    touching something this `Client` did not create; it defaults to refusing,
-    the same as every caller before this knob existed.
+    *document* is a path to open or `None` for a fresh one, the convention
+    `core.kernel.Kernel.check` uses; *llm* and *kernel* default to a real
+    provider and a real headless kernel, a test hands in its own. Without an
+    *answer* callback `send` pauses in a blocked, resumable `needs-answer`
+    state rather than guessing, and *confirm*, which answers the Owned Object
+    prompt, refuses by default as every caller did before it existed.
     """
 
     def __init__(self, document=None, llm=None, kernel=None, answer=None, confirm=None):
@@ -70,19 +63,12 @@ class Client:
     def send(self, prompt, gate=auto_approve, ask=None, decide=revise_by_default,
              attachments=(), cancelled=None):
         """
-        Route *prompt* through the orchestrator and run whichever agent it
-        names. Blocks until that turn is over -- `watch`'s callbacks fire as
-        the run progresses, not only once this returns -- and hands back
-        whichever handler ran: a `LoopResult` for `design`, text for
-        `run_question`, `None` for `control`.
-
-        *ask* answers a Design question for this one call only; without it,
-        this `Client`'s own `answer` callback is used, and without that the
-        run pauses (`_pause`) rather than deciding for itself.
-
-        *cancelled* is a caller's own stop condition -- a per-run cost
-        ceiling, say -- asked alongside the `stop` a `control` message already
-        sets on this `Client`; either one ending the run reaches `run()`.
+        Route *prompt* through the orchestrator and run the agent it names,
+        blocking until that turn is over -- `watch`'s callbacks fire as it
+        goes -- and handing back what ran: a `LoopResult`, text, or `None`.
+        *ask* answers a Design question for this call only, falling back to
+        this `Client`'s `answer` and then to a pause. *cancelled* is the
+        caller's own stop condition, asked alongside `control`'s `stop`.
         """
         self._stop = False
         self._abort = False
