@@ -32,8 +32,8 @@ def test_three_message_types_route_to_three_distinct_handlers():
     seen = {}
 
     def handler_for(name):
-        def handler(message, decision, context):
-            seen[name] = (message, decision, context)
+        def handler(message, decision):
+            seen[name] = (message, decision)
             return name
         return handler
 
@@ -52,7 +52,7 @@ def test_three_message_types_route_to_three_distinct_handlers():
         assert result == expected
 
     assert set(seen) == {"design", "run_question", "control"}
-    assert "design" not in seen["run_question"][0]  # run question never touched Design's handler
+    assert "design" not in seen["run_question"][0]
     assert seen["design"][1] == DESIGN
     assert seen["control"][1] == CONTROL
 
@@ -60,9 +60,9 @@ def test_three_message_types_route_to_three_distinct_handlers():
 def test_routing_decision_is_its_own_event_separate_from_the_message():
     llm = ScriptedLLMClient(["design"])
     events = EventStream()
-    handlers = {DESIGN: lambda message, decision, context: message,
-                RUN_QUESTION: lambda message, decision, context: message,
-                CONTROL: lambda message, decision, context: message}
+    handlers = {DESIGN: lambda message, decision: message,
+                RUN_QUESTION: lambda message, decision: message,
+                CONTROL: lambda message, decision: message}
     route("build a bracket", llm=llm, events=events, handlers=handlers)
 
     routed_events = events.of(ROUTED)
@@ -75,7 +75,7 @@ def test_verbatim_preservation_with_unusual_whitespace():
     odd = "make  a   cube\n\twith   weird\t\tspacing  "
     received = {}
 
-    def handler(message, decision, context):
+    def handler(message, decision):
         received["text"] = message
         return message
 
@@ -87,17 +87,3 @@ def test_verbatim_preservation_with_unusual_whitespace():
 
     assert result == odd
     assert received["text"] == odd
-
-
-def test_route_passes_known_context_to_the_handler_without_altering_it():
-    def handler(message, decision, context):
-        return context
-
-    llm = ScriptedLLMClient(["run_question"])
-    events = EventStream()
-    context = {"session_id": "abc123"}
-    result = route("what happened last run?", llm=llm, events=events,
-                    handlers={DESIGN: handler, RUN_QUESTION: handler, CONTROL: handler},
-                    context=context)
-
-    assert result is context

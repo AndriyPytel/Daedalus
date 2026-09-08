@@ -4,7 +4,6 @@ src/Mod/pages/providers_page.py::saveSettings
 src/core/agent/agent.py::run_phase
 src/core/agent/phase_contract.py::spawn
 src/core/agent/subagent.py::delegate
-src/core/agent/subagent.py::module
 src/core/arithmetic.py::module
 src/core/arithmetic.py::wrong_sums
 src/core/dependency_manager.py::install_package

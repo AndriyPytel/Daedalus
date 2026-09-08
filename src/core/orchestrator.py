@@ -46,13 +46,13 @@ def classify(message: str, llm, session: Session = None) -> str:
     return DESIGN
 
 
-def route(message: str, *, llm, events, handlers: dict, context=None, session: Session = None):
+def route(message: str, *, llm, events, handlers: dict, session: Session = None):
     """
     Classify *message*, log the decision on *events* as its own entry
     separate from the message it names, then hand *message* to whichever
     callable `handlers` names for that route -- unchanged, alongside
-    *context* and the decision itself, never paraphrased or reformatted.
+    the decision itself, never paraphrased or reformatted.
     """
     decision = classify(message, llm, session=session)
     events.emit(ROUTED, route=decision)
-    return handlers[decision](message, decision, context)
+    return handlers[decision](message, decision)

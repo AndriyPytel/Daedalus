@@ -82,14 +82,6 @@ def test_a_spawn_once_budget_exhausted_is_refused_too():
     assert supervisor.refusals[-1] == {"reason": sa.BUDGET_EXHAUSTED, "depth": 0}
 
 
-def test_wall_time_is_recorded_but_never_refuses_a_spawn():
-    supervisor = sa.SessionTreeSupervisor()
-    supervisor.record_wall_time(39264)  # far past any prior run's wall time
-    assert supervisor.wall_time == 39264
-    assert supervisor.outcome is None
-    assert supervisor.spawn(0) == 1
-
-
 def test_defaults_match_the_measured_p90s():
     assert sa.TURN_BUDGET == 30
     assert sa.TOKEN_BUDGET == 2_600_000

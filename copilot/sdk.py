@@ -81,19 +81,18 @@ class Client:
 
         answered_by = ask or self.answer or _pause
 
-        def design(message, decision, context):
+        def design(message, decision):
             return run(message, llm=self.llm, tools=tools, events=self.events,
                        cancelled=lambda: self._stop or bool(cancelled and cancelled()),
                        aborted=lambda: self._abort,
                        attachments=list(attachments), gate=gate, ask=answered_by,
                        decide=decide)
 
-        def run_question(message, decision, context):
+        def run_question(message, decision):
             return "".join(chunk.text for chunk in self.session.turn(self.llm, message)
                            if chunk.kind == TEXT)
 
-        def control(message, decision, context):
-            """A running Design turn asks `cancelled`/`aborted` between Steps (FCC-303)."""
+        def control(message, decision):
             if "abort" in message.lower():
                 self._abort = True
             self._stop = True

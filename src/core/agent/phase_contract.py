@@ -29,7 +29,6 @@ PLAN = "plan"
 EXECUTE = "execute"
 ASSERTION = "assertion"
 REVIEW = "review"
-ORCHESTRATOR = "orchestrator"
 
 RO = "ro"
 RW = "rw"
@@ -42,7 +41,6 @@ PHASE_CONTRACT = {
     EXECUTE: {"design": RO, "plan": RO, "document": RW},
     ASSERTION: {"design": RO, "document": RO},
     REVIEW: {"intent": RO, "outcome": RO},
-    ORCHESTRATOR: {artifact: RW for artifact in ARTIFACTS},
 }
 
 
