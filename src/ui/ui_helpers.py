@@ -9,7 +9,10 @@ except ImportError:
     from PySide import QtCore, QtGui, QtSvg
     QtWidgets = QtGui
 
-ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icons")
+ICON_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "Resources", "icons"
+)
 
 
 class UIHelpers:
@@ -19,8 +22,8 @@ class UIHelpers:
     @functools.lru_cache(maxsize=None)
     def _icon_svg(name):
         """
-        The named icon's raw markup, read from `ui/icons/<name>.svg`, or
-        `None` if that file does not exist.
+        The named icon's raw markup, read from `Resources/icons/<name>.svg`,
+        or `None` if that file does not exist.
 
         The set is Untitled UI Icons (untitleduico/icons, MIT), one file per
         name, 24x24 with a 2px stroke and round caps -- the whole directory is
