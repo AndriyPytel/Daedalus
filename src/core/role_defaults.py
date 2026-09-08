@@ -1,8 +1,8 @@
 """
-Role-table defaults for `core/settings.py`.
+Role-table defaults for settings persistence.
 
 This module exists so `settings.py` can seed an empty role table without
-importing the rest of `core/llm`, which breaks the cycle those two had.
+importing `core/llm` at all.
 """
 
 ROLES = ("orchestrator", "design", "plan", "execute", "assertion", "review",

@@ -60,7 +60,7 @@ one: drawings arrive as PDFs.
 from core.llm.types import REASONING, TEXT, Chunk
 from core.llm.exceptions import ProviderRefused, StreamCutOff
 from core.llm.effort_policy import EFFORTS, PROFILES, CALL_TIMEOUT, profile_of
-from core.llm.defaults import ROLES, DEFAULT_ROLE_TABLE
+from core.role_defaults import ROLES, DEFAULT_ROLE_TABLE
 from core.llm.session import Session
 from core.llm.client import LiteLLMClient
 from core.llm.claude import ClaudeCodeClient, find_claude, signed_in

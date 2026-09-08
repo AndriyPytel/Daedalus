@@ -10,7 +10,7 @@ read/write goes through here directly.
 import json
 from functools import lru_cache
 
-from core.llm.defaults import DEFAULT_ROLE_TABLE
+from core.role_defaults import DEFAULT_ROLE_TABLE
 
 _PARAM_PATH = "User parameter:BaseApp/Preferences/FreeCadCopilot"
 
