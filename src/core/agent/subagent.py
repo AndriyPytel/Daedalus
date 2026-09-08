@@ -1,10 +1,7 @@
 """
 One tree-wide supervisor bounding sub-agent delegation to depth 1, under
 turn, token and concurrency budgets tracked across the whole spawn tree --
-not per child. Wall time is recorded, never enforced: implied throughput
-across the recorded runs behind this ticket spans 485-2,877 tokens/second by
-model and load, so a clock limit binds the machine and the provider rather
-than the work (epic FCC-291 Problem Statement).
+not per child.
 
 A phase agent (Design, Plan, Execute, Assertion, Review, the orchestrator)
 is depth 0; a worker it spawns is depth 1; depth 1's own spawn attempt is
@@ -73,7 +70,6 @@ class SessionTreeSupervisor:
         self.concurrency = concurrency if concurrency is not None else default_concurrency()
         self.turns = 0
         self.tokens = 0
-        self.wall_time = 0.0
         self.active_kernels = 0
         self.refusals = []
 
@@ -105,10 +101,6 @@ class SessionTreeSupervisor:
 
     def record_tokens(self, count):
         self.tokens += count
-
-    def record_wall_time(self, seconds):
-        """Telemetry only -- accumulated, never checked by `outcome` or `spawn`."""
-        self.wall_time += seconds
 
 
 def delegate(supervisor, phase_session, phase_depth, llm, prompt, stream=None, phase=None):

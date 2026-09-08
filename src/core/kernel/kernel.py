@@ -150,7 +150,6 @@ class Kernel:
         self._reader = None
         self._stderr = None
         self._draining = None
-        self.restarts = 0
 
     @property
     def alive(self):
@@ -215,7 +214,6 @@ class Kernel:
         request tries again.
         """
         self.kill()
-        self.restarts += 1
         try:
             self.start()
         except Exception:

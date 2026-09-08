@@ -44,7 +44,6 @@ def test_a_single_subprocess_lifecycle_serves_two_steps(kernel):
 
     assert first.ok and second.ok
     assert kernel.pid == pid, "a Step cost a new subprocess instead of reusing the kernel"
-    assert kernel.restarts == 0
 
 
 def test_a_passing_steps_checkpoint_contains_the_new_object(kernel):

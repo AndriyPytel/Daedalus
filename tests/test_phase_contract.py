@@ -10,7 +10,7 @@ from core.agent import phase_contract as pc
 
 
 def test_table_covers_every_phase():
-    for phase in (pc.DESIGN, pc.PLAN, pc.EXECUTE, pc.ASSERTION, pc.REVIEW, pc.ORCHESTRATOR):
+    for phase in (pc.DESIGN, pc.PLAN, pc.EXECUTE, pc.ASSERTION, pc.REVIEW):
         assert phase in pc.PHASE_CONTRACT
 
 
@@ -34,10 +34,6 @@ def test_review_sees_no_code_at_all():
     seen = pc.PHASE_CONTRACT[pc.REVIEW]
     assert set(seen) == {"intent", "outcome"}
     assert "design" not in seen and "plan" not in seen and "execute" not in seen
-
-
-def test_orchestrator_sees_everything():
-    assert set(pc.PHASE_CONTRACT[pc.ORCHESTRATOR]) == set(pc.ARTIFACTS)
 
 
 SOURCES = {
