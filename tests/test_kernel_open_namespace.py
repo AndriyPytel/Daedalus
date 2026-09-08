@@ -3,7 +3,7 @@ Level 2 -- the kernel namespace is open (FCC-299).
 
 `ToolRegistry` stops being the only door to the Document: a Step's code runs
 directly against the live Document and FreeCAD's own modules, with a Tool
-function from `core/freecad_tools.py` still reachable as a convenience, not
+function from `core/freecad/apply.py` still reachable as a convenience, not
 as the sole entry point.
 """
 import pytest
@@ -34,7 +34,7 @@ def test_a_step_can_call_freecad_directly_with_no_tool_involved(kernel):
 def test_a_freecad_tools_helper_still_works_from_a_steps_code(kernel):
     """AC2: an existing convenience Tool function is not removed, only optional."""
     result = kernel.check(
-        "from core.freecad_tools import description\n"
+        "from core.freecad.apply import description\n"
         "doc.addObject('Part::Box', 'Box')\n"
         "doc.recompute()\n"
         "assert description(doc)['features'][0]['name'] == 'Box'"

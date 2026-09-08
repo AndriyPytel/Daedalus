@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+SRC = ROOT / "src"
 
 OLD_NAMES = ("core.apply", "core.freecad_tools")
 
@@ -38,20 +39,20 @@ def _in_function_imports_of_old_names(path):
 
 def test_no_import_of_the_old_flat_names_inside_a_function_anywhere_in_core():
     hits = []
-    for path in ROOT.joinpath("core").rglob("*.py"):
+    for path in SRC.joinpath("core").rglob("*.py"):
         hits.extend(_in_function_imports_of_old_names(path))
     assert hits == []
 
 
 def test_freecad_tools_is_not_a_compatibility_shim():
-    assert not (ROOT / "core" / "freecad" / "freecad_tools.py").exists()
-    assert not (ROOT / "core" / "freecad_tools.py").exists()
-    assert not (ROOT / "core" / "apply.py").exists()
+    assert not (SRC / "core" / "freecad" / "freecad_tools.py").exists()
+    assert not (SRC / "core" / "freecad_tools.py").exists()
+    assert not (SRC / "core" / "apply.py").exists()
 
 
 def test_apply_imports_cleanly_with_no_fallback():
     result = subprocess.run(
         [sys.executable, "-c", "import core.freecad.apply"],
-        cwd=ROOT, capture_output=True, text=True,
+        cwd=SRC, capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr

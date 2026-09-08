@@ -13,6 +13,7 @@ import os
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC = os.path.join(ROOT, "src")
 
 VENDOR_SDKS = {"openai", "anthropic", "google"}
 
@@ -22,7 +23,7 @@ VENDOR_SDKS = {"openai", "anthropic", "google"}
     os.path.join("core", "model_catalog.py"),
 ])
 def test_no_vendor_sdk_imports(module):
-    path = os.path.join(ROOT, module)
+    path = os.path.join(SRC, module)
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), path)
 
@@ -47,7 +48,7 @@ def test_no_model_list_is_bundled_with_the_addon():
     """
     assert not os.path.exists(os.path.join(ROOT, "config", "models.json"))
 
-    with open(os.path.join(ROOT, "utils", "provider_manager.py"), encoding="utf-8") as handle:
+    with open(os.path.join(SRC, "utils", "provider_manager.py"), encoding="utf-8") as handle:
         source = handle.read()
     assert "models.json" not in source
 

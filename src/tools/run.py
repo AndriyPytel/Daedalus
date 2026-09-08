@@ -9,14 +9,16 @@ as the same flag here, answering the Owned Object prompt yes -- safe only
 because a script pointed at a scratch Document is the only caller that
 should ever say so.
 
-    .venv/bin/python tools/run.py --intent "Build the Phase 1 model" \
+    .venv/bin/python src/tools/run.py --intent "Build the Phase 1 model" \
         --attach tests/modelmania/mm25-p1-1.pdf --budget-usd 20
 """
 import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _SRC)
+sys.path.insert(0, os.path.dirname(_SRC))
 
 
 def main():

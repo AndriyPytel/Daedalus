@@ -70,8 +70,9 @@ _EVIDENCE = "-evidence.yaml"
 
 _DIGEST = 8
 
-WHERE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                     "logs", "parts")
+WHERE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+    "logs", "parts")
 
 _PROVENANCE = "read_from"
 _SCHEMA_KEY = "schema"

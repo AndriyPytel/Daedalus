@@ -13,8 +13,9 @@ from dataclasses import dataclass
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+SRC = os.path.join(ROOT, "src")
+if SRC not in sys.path:
+    sys.path.insert(0, SRC)
 
 
 def _freecad_lib_dirs():
@@ -47,9 +48,10 @@ def _try_import_freecad():
 
 HAVE_FREECAD = _try_import_freecad()
 
-if sys.path[0] != ROOT:
-    sys.path.remove(ROOT)
-    sys.path.insert(0, ROOT)
+for entry in (ROOT, SRC):
+    if entry in sys.path:
+        sys.path.remove(entry)
+    sys.path.insert(0, entry)
 
 
 def _import_qt():

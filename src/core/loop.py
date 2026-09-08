@@ -76,7 +76,7 @@ _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 NOT_A_LOOK = ("apply_step", "review_views", "check_assertions")
 
 
-TYPE_CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+TYPE_CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                                "logs", "type_cache.json")
 
 
@@ -504,7 +504,7 @@ class LoopResult:
         return self.blocked
 
 
-PROMPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+PROMPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                        "config", "prompts")
 
 _LANGUAGE_PATH = os.path.join(PROMPTS, "language.md")

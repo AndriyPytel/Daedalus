@@ -20,12 +20,13 @@ import ast
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-UI_DIR = os.path.join(ROOT, "ui")
+SRC = os.path.join(ROOT, "src")
+UI_DIR = os.path.join(SRC, "ui")
 
 KNOWN_EXCEPTIONS = {
-    ("ui/copilot_panel.py", "core.llm"): "FCC-317/FCC-315: SDK has no live-document mode",
-    ("ui/copilot_panel.py", "core.freecad.apply"): "FCC-317/FCC-315: SDK has no injectable dispatch/confirm",
-    ("ui/copilot_panel.py", "core.loop"): "FCC-317/FCC-315: SDK has no outstanding passthrough",
+    ("src/ui/copilot_panel.py", "core.llm"): "FCC-317/FCC-315: SDK has no live-document mode",
+    ("src/ui/copilot_panel.py", "core.freecad.apply"): "FCC-317/FCC-315: SDK has no injectable dispatch/confirm",
+    ("src/ui/copilot_panel.py", "core.loop"): "FCC-317/FCC-315: SDK has no outstanding passthrough",
 }
 
 
@@ -63,11 +64,13 @@ def test_ui_does_not_import_core_except_known_wiring_gaps():
 
 
 HARNESS_CALLER_DIRS = ("core", "ui", "Mod", "utils", "tests", "copilot")
+MOVED_UNDER_SRC = {"core", "ui", "Mod", "utils"}
 
 
 def harness_imports():
     for package in HARNESS_CALLER_DIRS:
-        package_dir = os.path.join(ROOT, package)
+        base = SRC if package in MOVED_UNDER_SRC else ROOT
+        package_dir = os.path.join(base, package)
         if not os.path.isdir(package_dir):
             continue
         for path, _, names in os.walk(package_dir):

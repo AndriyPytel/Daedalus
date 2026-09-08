@@ -51,13 +51,20 @@ def respond(payload):
 
 def _ensure_on_path():
     """
-    Put the repo root on `sys.path` if it is not there already, so this
-    child process can import `core.*` the way `run_step` and `reading` both
-    need to, on demand rather than at module load.
+    The installed addon leaves `sys.path` and this checkout's `src/` goes on
+    it: `core` is a namespace package, so a second directory holding one
+    merges in rather than losing, and what is bound from it answers imports.
     """
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    if root not in sys.path:
-        sys.path.insert(0, root)
+    src = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    sys.path[:] = [entry for entry in sys.path
+                   if entry != src and not os.path.isdir(os.path.join(entry, "core"))]
+    sys.path.insert(0, src)
+    for name, module in list(sys.modules.items()):
+        if name != "core" and not name.startswith("core."):
+            continue
+        where = [getattr(module, "__file__", None) or ""] + list(getattr(module, "__path__", []))
+        if any(w and not os.path.abspath(w).startswith(src + os.sep) for w in where):
+            del sys.modules[name]
 
 
 def summarise(doc):
@@ -854,7 +861,6 @@ def _run_step_body(doc, namespace, touched, request):
         result["failed"] = failed
     render_path = request.get("render_path")
     if render_path:
-        _ensure_on_path()
         from core.kernel.preflight_render import render
 
         result["render"] = render(doc, render_path)
@@ -920,8 +926,7 @@ def reading(request):
     worker thread, and `Sketcher.Constraint` is the call that segfaults
     (FCC-19, FCC-126).
     """
-    _ensure_on_path()
-    from core import sketch_check
+    from core.sheets import sketch_check
 
     outline, view, between = sketch_check.from_request(request)
     answer = {"ok": True}
@@ -941,6 +946,7 @@ def serve(stdin=None, respond=respond):
     correction, and anything it cannot takes this process down instead of
     FreeCAD.
     """
+    _ensure_on_path()
     stdin = stdin or sys.stdin
     respond({"ready": True, "pid": os.getpid()})
 

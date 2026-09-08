@@ -15,7 +15,7 @@ from core.events import CHANGE_SET, DESIGN, KINDS
 WRITTEN_NOT_SHOWN = {DESIGN, CHANGE_SET}
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PANEL = os.path.join(ROOT, "ui", "copilot_panel.py")
+PANEL = os.path.join(ROOT, "src", "ui", "copilot_panel.py")
 
 
 def panel_tree():

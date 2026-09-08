@@ -7,7 +7,7 @@ import os
 
 from ui import copilot_dock
 
-logo_icon = os.path.join(os.path.dirname(__file__), '../Resources/icons/copilot.svg')
+logo_icon = os.path.join(os.path.dirname(__file__), '../../Resources/icons/copilot.svg')
 
 
 class CopilotWorkbench(Gui.Workbench):

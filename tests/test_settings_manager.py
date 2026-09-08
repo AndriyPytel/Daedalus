@@ -10,6 +10,7 @@ import sys
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SRC = os.path.join(ROOT, "src")
 
 
 def test_core_settings_imports_without_pyside_or_freecad():
@@ -22,7 +23,7 @@ def test_core_settings_imports_without_pyside_or_freecad():
     by the time a test runs.
     """
     result = subprocess.run(
-        [sys.executable, "-c", "import sys; sys.path.insert(0, %r); import core.settings" % ROOT],
+        [sys.executable, "-c", "import sys; sys.path.insert(0, %r); import core.settings" % SRC],
         capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 
