@@ -371,11 +371,11 @@ class ApplyPipeline:
         """
         doc = self._dispatch(self._active)
         if doc is None:
-            seeded = self.worker.check("pass", document=None)
+            seeded = self.worker.check("pass", document=None, ephemeral=True)
         else:
             copy = self._dispatch(lambda: copy_of(doc))
             try:
-                seeded = self.worker.check("pass", document=copy)
+                seeded = self.worker.check("pass", document=copy, ephemeral=True)
             finally:
                 _discard(copy)
         self._dispatch(lambda: self.main_window.setEnabled(False))
@@ -443,7 +443,8 @@ class ApplyPipeline:
 
         copy = self._dispatch(lambda: copy_of(doc))
         try:
-            preflighted = self.worker.check(code, document=copy, names=self._names)
+            preflighted = self.worker.check(code, document=copy, names=self._names,
+                                              ephemeral=True)
         finally:
             _discard(copy)
 
@@ -504,7 +505,7 @@ class ApplyPipeline:
 
         copy = self._dispatch(lambda: copy_of(doc))
         try:
-            checked = self.worker.check(code, document=copy)
+            checked = self.worker.check(code, document=copy, ephemeral=True)
         finally:
             _discard(copy)
         return {"ok": bool(checked.ok), "traceback": checked.traceback or "",
@@ -538,7 +539,8 @@ class ApplyPipeline:
         copy = self._dispatch(lambda: copy_of(doc))
         try:
             drawn = self.worker.check("pass", document=copy,
-                                      render_path=self._render_path())
+                                      render_path=self._render_path(),
+                                      ephemeral=True)
         finally:
             _discard(copy)
         return [drawn.render] if drawn.ok and drawn.render else []

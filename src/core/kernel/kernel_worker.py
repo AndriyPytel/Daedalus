@@ -879,15 +879,20 @@ def run_step(request):
     earlier Step allocated, even though every apply() call is its own fresh
     handoff. Anything else continues the running session.
 
+    `ephemeral=True` skips checkpoint writes entirely: the caller will
+    discard this session immediately and never reload the checkpoint.
+
     Pass: the live Document keeps running and a checkpoint is written -- one
     `saveCopy`, not a reopen. Fail: the live Document is thrown away and the
     last checkpoint reopened, so the Step never happened, and the name map
     reverts with it.
     """
+    ephemeral = request.get("ephemeral", False)
     if "document" in request or _SESSION["doc"] is None:
         _SESSION["doc"] = _open_document(request.get("document"))
         _SESSION["names"] = dict(request.get("names") or {})
-        _save_checkpoint(_SESSION["doc"])
+        if not ephemeral:
+            _save_checkpoint(_SESSION["doc"])
 
     doc = _SESSION["doc"]
     names = dict(_SESSION["names"])
@@ -908,10 +913,12 @@ def run_step(request):
         response = {"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)}
 
     if response.get("ok"):
-        _save_checkpoint(doc)
+        if not ephemeral:
+            _save_checkpoint(doc)
         _SESSION["names"] = names
     else:
-        _reload_checkpoint()
+        if not ephemeral:
+            _reload_checkpoint()
     response["checkpoint"] = _SESSION["checkpoint"]
     response["names"] = dict(_SESSION["names"])
     return response

@@ -226,7 +226,8 @@ class Kernel:
     def __exit__(self, *_):
         self.kill()
 
-    def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None):
+    def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None,
+              ephemeral=False):
         """
         Run *code* as one Step in the kernel.
 
@@ -241,6 +242,9 @@ class Kernel:
         takes a fresh handoff on every Step, but a later Step's code still
         needs what an earlier one's name collided into.
 
+        `ephemeral=True` skips checkpoint writes entirely: the caller will
+        discard this session immediately and never reload the checkpoint.
+
         Returns a KernelResult. Never raises for anything the code did -- a
         crash and a timeout are results, not exceptions.
         """
@@ -251,6 +255,8 @@ class Kernel:
             request["render_path"] = render_path
         if names:
             request["names"] = names
+        if ephemeral:
+            request["ephemeral"] = True
         response, why = self._ask(request, timeout or self.timeout, "the Step")
         if response is None:
             return KernelResult(ok=False, traceback=why)
