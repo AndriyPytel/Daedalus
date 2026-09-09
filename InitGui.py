@@ -19,7 +19,7 @@ def initialize():
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
         from core import dependency_manager
         addon_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(dependency_manager.__file__))))
-        icon_path = os.path.join(addon_path, "Resources", "icons")
+        icon_path = os.path.join(addon_path, "src", "resources", "icons")
         Gui.addIconPath(icon_path)
         App.Console.PrintMessage(f"[DEBUG] Registered icon path: {icon_path}\n")
 

@@ -8,8 +8,8 @@ import os
 from ui import copilot_dock
 
 logo_icon = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "Resources", "icons", "copilot.svg"
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "resources", "icons", "copilot.svg"
 )
 
 

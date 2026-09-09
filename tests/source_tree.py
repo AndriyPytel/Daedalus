@@ -18,7 +18,7 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
 
-NOT_THE_ADDON = {"tests", "manual", "logs", "docs", "config", "Resources", "src", ".git", ".venv"}
+NOT_THE_ADDON = {"tests", "manual", "logs", "docs", "config", "src", ".git", ".venv"}
 
 
 def package_dirs():
