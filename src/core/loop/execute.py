@@ -4,7 +4,7 @@ import os
 import tempfile
 from dataclasses import dataclass, field
 
-from core.design.design import entries
+from core.design.gaps import entries
 from core.events import TOOL_CALL, TOOL_RESULT
 from core.tools import ToolError
 

@@ -4,21 +4,27 @@ import time
 from dataclasses import dataclass, field
 
 from core.design import part_file
-from core.design.design import (
+from core.design.core import (
     A_CONFLICT,
-    ROUND_IN,
     UNDER,
-    corrected,
-    distilled,
-    each_disagreement_once,
     entry_at,
-    merge,
-    nobody_carries_the_outside,
-    read_off_the_wrong_view,
     said_at,
-    settled_by_the_tracing,
+)
+from core.design.merge import (
+    corrected,
+    merge,
+)
+from core.design.presence_checks import nobody_carries_the_outside
+from core.design.orientation_checks import (
+    ROUND_IN,
+    read_off_the_wrong_view,
     what_the_trace_says,
     where_the_direction_is,
+)
+from core.design.settlement_checks import settled_by_the_tracing
+from core.design.report import (
+    distilled,
+    each_disagreement_once,
 )
 from core.events import ANSWER, DESIGN, PART, QUESTION
 from core.sheets import sheet_reader

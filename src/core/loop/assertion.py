@@ -2,7 +2,7 @@
 import json
 from dataclasses import dataclass, field
 
-from core.design.design import UNDER
+from core.design.core import UNDER
 from core.events import ASSERTION, TOOL_CALL, TOOL_RESULT
 
 import tempfile

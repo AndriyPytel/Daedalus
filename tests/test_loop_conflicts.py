@@ -25,15 +25,31 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core.design import design
+from core.design import core
 from core.design import part_file
 from core.sheets import sheet_reader
 from core.freecad_apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
-from core.design.design import (
-    UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
-    entries, entry_at, measured_from_what_is_gone, merge, pointing,
-    read_off_the_wrong_view, render, said_at,
+from core.design.core import (
+    UNDER,
+    entry_at,
+    said_at,
+)
+from core.design.merge import merge
+from core.design.orientation_checks import (
+    pointing,
+    read_off_the_wrong_view,
+)
+from core.design.report import (
+    distilled,
+    each_disagreement_once,
+    render,
+)
+from core.design.gaps import (
+    carried_by_no_source,
+    decided_for_you,
+    entries,
+    measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
@@ -51,7 +67,7 @@ from core.loop.design import _the_groups, _split_to_budget, _A_GROUP_BUDGET
 from core.loop.describe import _round_evidence, _the_directions_are_the_drawings, _the_geometry_disagrees, _a_freecad_of_our_own, _every_number_is_the_sheets, _off_the_sheet, _the_sweep_is_the_sheets, _the_tracing_governs
 from core.loop.execute import Looks, TYPE_CACHE_PATH
 from core.loop.prompt import _pieces_of
-from core.design.design import A_CONFLICT
+from core.design.core import A_CONFLICT
 from tests.loop_helpers import (
     RENDER_PNG,
     read,
@@ -123,7 +139,7 @@ def test_without_a_freecad_to_build_in_the_description_is_untouched(
 
     assert [found["kind"] for found
             in _the_geometry_disagrees(["a.pdf"], EventStream())] == \
-        [design.A_CHECK_HAZARD]
+        [core.A_CHECK_HAZARD]
 
 
 def test_the_reading_is_never_built_in_the_addon_s_own_process(
@@ -196,7 +212,7 @@ def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
 
     assert [found["kind"] for found
             in _the_geometry_disagrees(["a.pdf"], events)] == \
-        [design.A_CHECK_HAZARD]
+        [core.A_CHECK_HAZARD]
     assert "the front view" in events.last(ERROR).data["message"], \
         "an unchecked reading is indistinguishable from a clean one"
 
@@ -221,7 +237,7 @@ def test_a_child_that_cannot_come_back_leaves_the_rest_unchecked_and_the_run_ali
 
     assert [found["kind"] for found
             in _the_geometry_disagrees(["a.pdf"], events)] == \
-        [design.A_CHECK_HAZARD]
+        [core.A_CHECK_HAZARD]
     assert "the front view" in events.last(ERROR).data["message"]
 
 
@@ -245,12 +261,12 @@ def test_an_outline_nobody_could_check_is_a_hazard_on_the_part(tmp_path, monkeyp
     found = _the_geometry_disagrees(["a.pdf"], events)
     reading = each_disagreement_once(merge({"features": []}, {"conflicts": found}))
 
-    assert [conflict["kind"] for conflict in found] == [design.A_CHECK_HAZARD]
+    assert [conflict["kind"] for conflict in found] == [core.A_CHECK_HAZARD]
     assert "the front view" in found[0]["about"]
     assert "the front view" in events.last(ERROR).data["message"]
     assert [conflict["about"] for conflict in reading["conflicts"]] == \
         [found[0]["about"]]
-    assert design.HEADED[design.A_CHECK_HAZARD] in render(reading)
+    assert core.HEADED[core.A_CHECK_HAZARD] in render(reading)
 
 
 def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypatch):
@@ -270,7 +286,7 @@ def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypat
 
     assert [found["kind"] for found
             in _the_geometry_disagrees(["a.pdf"], events)] == \
-        [design.A_CHECK_HAZARD]
+        [core.A_CHECK_HAZARD]
     assert "the front view" in events.last(ERROR).data["message"]
 
 
@@ -324,7 +340,7 @@ def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch)
 
     assert [found["kind"] for found
             in _the_geometry_disagrees(["a.pdf"], events, budget=60.0)] == \
-        [design.A_CHECK_HAZARD]
+        [core.A_CHECK_HAZARD]
 
     assert len(asked) < 4, "the budget bounded nothing"
     assert max(asked) <= 60.0, "one outline was given more than the whole budget"
@@ -603,7 +619,7 @@ def test_the_traced_profile_is_on_the_feature_before_the_plan_is_asked_for():
     the disagreement.
     """
     from tests.test_design import THE_POCKET_IN_CONFLICT, THE_TRACED_POCKET
-    from core.design.design import decided_for_you
+    from core.design.gaps import decided_for_you
 
     settled = _the_tracing_governs(json.loads(json.dumps(THE_POCKET_IN_CONFLICT)))
     at = "features \u2192 front-central-pocket \u2192 profile"

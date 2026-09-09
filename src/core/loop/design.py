@@ -4,7 +4,8 @@ import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-from core.design.design import A_CHECK_HAZARD, merge
+from core.design.core import A_CHECK_HAZARD
+from core.design.merge import merge
 from core.events import ERROR
 from core.llm import ProviderRefused, StreamCutOff, cache_control_supported
 from core.sheets import sheet_reader

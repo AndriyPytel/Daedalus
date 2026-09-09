@@ -9,11 +9,32 @@ numbers are the ones from the run that named the defect
 import json
 import os
 
-from core.design import design
-from core.design.design import (
-    UNDER, corrected, crosswise, decided_for_you, distilled, each_disagreement_once,
-    entries, entry_at, grounded, merge, read_off_the_wrong_view, render, said_at,
-    settled_by_the_tracing, where_the_direction_is,
+from core.design import core, orientation_checks, report
+from core.design import merge as merge_module
+from core.design.core import (
+    UNDER,
+    entry_at,
+    said_at,
+)
+from core.design.merge import (
+    corrected,
+    merge,
+)
+from core.design.orientation_checks import (
+    crosswise,
+    grounded,
+    read_off_the_wrong_view,
+    where_the_direction_is,
+)
+from core.design.settlement_checks import settled_by_the_tracing
+from core.design.report import (
+    distilled,
+    each_disagreement_once,
+    render,
+)
+from core.design.gaps import (
+    decided_for_you,
+    entries,
 )
 
 
@@ -680,10 +701,10 @@ A_PART_NOBODY_AGREES_ON = dict(
     conflicts=THE_PART["conflicts"] + [
         {"about": "features \u2192 the-slot \u2192 axis",
          "stands": "nothing records which way its axis points",
-         "kind": design.A_GAP},
+         "kind": core.A_GAP},
         {"about": "the line work traced in the front view",
          "stands": "the solver could not be asked about it",
-         "kind": design.A_CHECK_HAZARD}],
+         "kind": core.A_CHECK_HAZARD}],
 )
 
 
@@ -699,12 +720,12 @@ def test_the_gate_reads_the_conflicts_grouped_by_kind():
     written = render(A_PART_NOBODY_AGREES_ON)
     conflicts = written.split("In conflict")[1]
 
-    assert conflicts.index(design.HEADED[design.A_CONFLICT]) \
-        < conflicts.index(design.HEADED[design.A_GAP]) \
-        < conflicts.index(design.HEADED[design.A_CHECK_HAZARD])
+    assert conflicts.index(core.HEADED[core.A_CONFLICT]) \
+        < conflicts.index(core.HEADED[core.A_GAP]) \
+        < conflicts.index(core.HEADED[core.A_CHECK_HAZARD])
     assert "features \u2192 the-slot \u2192 axis" in \
-        conflicts.split(design.HEADED[design.A_GAP])[1] \
-        .split(design.HEADED[design.A_CHECK_HAZARD])[0]
+        conflicts.split(core.HEADED[core.A_GAP])[1] \
+        .split(core.HEADED[core.A_CHECK_HAZARD])[0]
     assert "kind:" not in conflicts, "the heading already says which kind it is"
 
 
@@ -719,12 +740,12 @@ def test_grouped_conflicts_orders_the_evidence_log_the_way_render_orders_text():
     one `_under_each_kind` already renders `render()`'s text in -- and leaves
     `kind` on each entry rather than dropping it the way rendered text does.
     """
-    grouped = design.grouped_conflicts(A_PART_NOBODY_AGREES_ON)["conflicts"]
+    grouped = report.grouped_conflicts(A_PART_NOBODY_AGREES_ON)["conflicts"]
 
-    kinds = [design._which_kind_it_is(conflict) for conflict in grouped]
-    assert kinds.index(design.A_CONFLICT) < kinds.index(design.A_GAP) \
-        < kinds.index(design.A_CHECK_HAZARD)
-    assert grouped[kinds.index(design.A_GAP)]["kind"] == design.A_GAP
+    kinds = [core._which_kind_it_is(conflict) for conflict in grouped]
+    assert kinds.index(core.A_CONFLICT) < kinds.index(core.A_GAP) \
+        < kinds.index(core.A_CHECK_HAZARD)
+    assert grouped[kinds.index(core.A_GAP)]["kind"] == core.A_GAP
 
 
 def test_a_gap_never_stands_among_the_disagreements_in_the_grouped_log():
@@ -735,10 +756,10 @@ def test_a_gap_never_stands_among_the_disagreements_in_the_grouped_log():
     a disagreement.
     """
     reading = each_disagreement_once(merge({}, A_CAVITY_NOTHING_PLACES_OR_POINTS))
-    grouped = design.grouped_conflicts(reading)["conflicts"]
+    grouped = report.grouped_conflicts(reading)["conflicts"]
 
-    assert [design._which_kind_it_is(conflict) for conflict in grouped] == \
-        [design.A_GAP] * len(grouped)
+    assert [core._which_kind_it_is(conflict) for conflict in grouped] == \
+        [core.A_GAP] * len(grouped)
 
 
 A_CAVITY_NOTHING_PLACES_OR_POINTS = {
@@ -757,7 +778,7 @@ def test_a_value_nothing_on_the_part_supplies_is_a_gap_and_not_a_disagreement():
     """
     reading = each_disagreement_once(merge({}, A_CAVITY_NOTHING_PLACES_OR_POINTS))
 
-    assert {conflict["kind"] for conflict in reading["conflicts"]} == {design.A_GAP}
+    assert {conflict["kind"] for conflict in reading["conflicts"]} == {core.A_GAP}
     assert len(reading["conflicts"]) == 3
 
 
@@ -945,7 +966,7 @@ def test_the_outside_being_nobody_s_is_answerable_rather_than_only_recorded():
     plans, so it needs the finding as a question rather than as a list entry —
     and it needs it to stop being true the moment a feature carries the contour.
     """
-    from core.design.design import nobody_carries_the_outside
+    from core.design.presence_checks import nobody_carries_the_outside
 
     said_in_passing = merge({}, THE_CAPSULE_SAID_IN_PASSING)
     assert "capsule" in nobody_carries_the_outside(said_in_passing)
@@ -964,7 +985,7 @@ def test_the_finding_quotes_the_description_rather_than_the_sheet():
     sheet, not the reading the user is being asked to settle. The description's
     own words are preferred; the sweep is what is left when it has none.
     """
-    from core.design.design import nobody_carries_the_outside
+    from core.design.presence_checks import nobody_carries_the_outside
 
     both = merge({}, dict(THE_CAPSULE_SAID_IN_PASSING,
                           printed_on_the_sheet=["R12.5 — plan view (rounded ends)"]))
@@ -1051,7 +1072,7 @@ def test_the_finding_arrives_through_the_merge_like_every_other():
 def test_crosswise_says_its_own_kind_rather_than_falling_into_the_default():
     """
     FCC-248: every entry `crosswise` returns left `kind` unset, so
-    `design._which_kind_it_is` fell through to its default -- A_CONFLICT --
+    `core._which_kind_it_is` fell through to its default -- A_CONFLICT --
     for both findings. That default exists for the model's own `conflicts`
     entries, which never carry a `kind` at all (`config/prompts/design.md`
     asks for `about`/`stands`/`was_also_said` and nothing else); a machine
@@ -1077,7 +1098,7 @@ def test_crosswise_says_its_own_kind_rather_than_falling_into_the_default():
         ]})
 
     assert found
-    assert all(entry.get("kind") == design.A_CONFLICT for entry in found)
+    assert all(entry.get("kind") == core.A_CONFLICT for entry in found)
 
 
 THE_SPLIT_AND_THE_CUTOUT = {
@@ -1107,7 +1128,7 @@ def test_a_saw_cut_and_a_cutout_are_round_in_nothing():
 
 def test_a_bore_named_in_the_topology_of_something_else_does_not_make_it_round():
     """`ring-split` says it continues from the Ø42 bore. That is the bore's."""
-    assert not design._is_round(THE_SPLIT_AND_THE_CUTOUT["features"][1])
+    assert not orientation_checks._is_round(THE_SPLIT_AND_THE_CUTOUT["features"][1])
 
 
 def test_two_holes_are_still_judged_against_each_other():
@@ -1206,7 +1227,7 @@ def test_a_correction_may_carry_the_whole_record_including_the_view():
               _round_in("the middle centre of the sheet, on page 1", "the height"),
               "the trace")
 
-    assert design.said_at(model, "features → clamp-ring-bore → axis") == "the height"
+    assert core.said_at(model, "features → clamp-ring-bore → axis") == "the height"
     assert grounded(model, A_TRACE) == []
 
 
@@ -1228,7 +1249,7 @@ def test_the_merge_still_refuses_everything_that_is_not_a_correction():
 
     grown = merge(_a_bore("VIEW C-C, on page 2"), second)
 
-    assert design.said_at(grown, "features → clamp-ring-bore → axis") == "the depth"
+    assert core.said_at(grown, "features → clamp-ring-bore → axis") == "the depth"
     assert any("the height" in str(entry) for entry in grown["conflicts"])
 
 
@@ -1290,7 +1311,7 @@ def test_a_value_the_model_settled_is_read_off_the_model_with_its_reason():
     `you_asked_and_were_answered` again, and downstream would prefer the newer
     of the two. The section the Gate shows is walked off the part itself.
     """
-    from core.design.design import decided_for_you
+    from core.design.gaps import decided_for_you
 
     model = {"envelope": {"length": {"value": "150 mm", "flag": "read"}},
              "features": [{"id": "outer-profile",
@@ -1309,7 +1330,7 @@ def test_a_value_the_model_settled_is_read_off_the_model_with_its_reason():
 
 def test_a_correction_says_what_it_was_decided_against():
     """A displaced value is the other half of the line: this, and not that."""
-    from core.design.design import decided_for_you
+    from core.design.gaps import decided_for_you
 
     model = _a_bore("VIEW C-C, on page 2")
     corrected(model, "features → clamp-ring-bore → axis", "the height",
@@ -1325,7 +1346,7 @@ def test_a_correction_says_what_it_was_decided_against():
 
 def test_a_value_the_drawing_gave_is_nobodys_decision():
     """`read` and `derived` are the sheet's own; only what nobody supplied is here."""
-    from core.design.design import decided_for_you
+    from core.design.gaps import decided_for_you
 
     assert decided_for_you(DEPTH_OFF_THE_SECTION) == []
 
@@ -1395,7 +1416,10 @@ def test_a_value_that_passed_is_never_nobodys_at_the_gate():
     is the section AC5 of FCC-127 rests on. Nothing reaches that fallback once
     the check has let the model through.
     """
-    from core.design.design import _NOBODY_SAID, decided_for_you
+    from core.design.gaps import (
+        _NOBODY_SAID,
+        decided_for_you,
+    )
 
     grown = merge({}, {"envelope": {"height": {"value": "50 mm", "flag": "assumed",
                                               "because": "read off the silhouette"}}})
@@ -1508,7 +1532,7 @@ def test_the_tracing_written_in_is_the_models_own_choice_at_the_gate():
     reading it displaced stands beside it under `was`, and the conflict itself
     is untouched on the part.
     """
-    from core.design.design import decided_for_you
+    from core.design.gaps import decided_for_you
 
     model = json.loads(json.dumps(THE_POCKET_IN_CONFLICT))
     at = "features \u2192 front-central-pocket \u2192 profile"
@@ -1773,7 +1797,7 @@ CLOSED = "closed"
 def test_a_kind_off_the_closed_list_is_refused_and_the_field_stays_empty():
     """
     ADR-0026/FCC-232: an `offered` fragment marking itself `"kind_vocabulary":
-    "closed"` has every feature's `kind` checked against `design.FEATURE_KIND`
+    "closed"` has every feature's `kind` checked against `core.FEATURE_KIND`
     (22 values). A value off that list is refused -- not written into the
     model -- so the field reads as not yet filled rather than as a value that
     was overruled, the same distinction FCC-94 already keeps for every other
@@ -1785,7 +1809,7 @@ def test_a_kind_off_the_closed_list_is_refused_and_the_field_stays_empty():
     assert grown["features"][0].get("kind") is None
     conflict = grown["conflicts"][0]
     assert conflict["about"] == "features → gizmo-1 → kind"
-    assert conflict["kind"] == design.A_CONFLICT
+    assert conflict["kind"] == core.A_CONFLICT
 
 
 def test_a_refused_kind_names_the_banned_synonym_it_maps_onto():
@@ -1882,7 +1906,7 @@ def test_slot_arm_and_cutout_web_are_caught_by_kind_and_overlapping_datums():
         ],
     }
     grown = merge({}, model)
-    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == design.A_GAP]
+    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == core.A_GAP]
 
     assert any("slot-arm" in a and "cutout-web" in a for a in about)
 
@@ -1909,7 +1933,7 @@ def test_slot_and_cutout_blend_are_caught_by_kind_and_overlapping_datums():
         ],
     }
     grown = merge({}, model)
-    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == design.A_GAP]
+    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == core.A_GAP]
 
     assert any("slot" in a and "cutout-blend" in a for a in about)
 
@@ -1939,7 +1963,7 @@ def test_bore_upper_and_hole_boss_are_caught_by_kind_and_overlapping_datums():
         ],
     }
     grown = merge({}, model)
-    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == design.A_GAP]
+    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == core.A_GAP]
 
     assert any("bore-upper" in a and "hole-boss" in a for a in about)
 
@@ -1970,7 +1994,7 @@ def test_left_mounting_hole_and_phase2_slot_are_caught_by_kind_and_overlapping_d
         ],
     }
     grown = merge({}, model)
-    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == design.A_GAP]
+    about = [c["about"] for c in grown.get("conflicts", []) if c["kind"] == core.A_GAP]
 
     assert any("left-mounting-hole" in a and "phase2-left-mounting-slot" in a for a in about)
 
@@ -2021,7 +2045,7 @@ def test_superseded_by_fires_once_a_duplicate_pair_is_reconciled():
     assert any("left-mounting-hole" in c["about"] and "phase2-left-mounting-slot" in c["about"]
                for c in unsafe)
 
-    twice_over_hits = [c for c in conflicts if c["kind"] == design.A_GAP
+    twice_over_hits = [c for c in conflicts if c["kind"] == core.A_GAP
                         and "left-mounting-hole" in c["about"]
                         and "phase2-left-mounting-slot" in c["about"]]
     assert twice_over_hits == []
@@ -2049,7 +2073,7 @@ def test_a_malformed_conflict_entry_is_refused_under_the_kind_vocabulary_marker(
                   "missing about, stands, was_also_said",
         "was_also_said": {"what": "the split's own width", "note": "ambiguous",
                           "resolution": "left as printed"},
-        "kind": design.A_CONFLICT,
+        "kind": core.A_CONFLICT,
         "machine_written": True,
     }]
 
@@ -2141,7 +2165,7 @@ def test_how_many_recorded_conflict_entries_satisfy_the_pinned_shape():
 
     assert len(entries) == 38
     matching = [entry for entry in entries
-               if all(field in entry for field in design.CONFLICT_ENTRY_FIELDS)]
+               if all(field in entry for field in merge_module.CONFLICT_ENTRY_FIELDS)]
     assert len(matching) == 32
 
 
@@ -2160,7 +2184,7 @@ def test_how_many_recorded_conflict_entries_are_machine_written_gaps():
     """
     entries = _every_conflict_entry()
 
-    gaps = [entry for entry in entries if design._which_kind_it_is(entry) == design.A_GAP]
+    gaps = [entry for entry in entries if core._which_kind_it_is(entry) == core.A_GAP]
     assert len(entries) == 38
     assert len(gaps) == 0
 
@@ -2295,8 +2319,8 @@ def test_no_new_kind_value_carries_authorship():
     `"machine"` to the list that already answers "what sort of finding" would
     rebuild the exact defect four tickets removed it for.
     """
-    assert design.KINDS == (design.A_CONFLICT, design.A_GAP, design.A_CHECK_HAZARD)
-    assert "machine" not in design.KINDS and "model" not in design.KINDS
+    assert core.KINDS == (core.A_CONFLICT, core.A_GAP, core.A_CHECK_HAZARD)
+    assert "machine" not in core.KINDS and "model" not in core.KINDS
 
 
 def test_grouped_conflicts_now_orders_by_authorship_not_by_kind():
@@ -2321,7 +2345,7 @@ def test_grouped_conflicts_now_orders_by_authorship_not_by_kind():
         dict(A_PART_NOBODY_AGREES_ON["conflicts"][-1], machine_written=True),
     ])
 
-    grouped = design.grouped_conflicts(reading)["conflicts"]
+    grouped = report.grouped_conflicts(reading)["conflicts"]
 
     assert [_machine_written(conflict) for conflict in grouped] == [False, True, True, True]
     assert grouped[0] == THE_PART["conflicts"][0]
@@ -2339,9 +2363,9 @@ def test_fcc_248s_condition_is_stated_but_not_wired():
     fires = dict(THE_PART)
     quiet = dict(THE_PART, conflicts=[dict(THE_PART["conflicts"][0], machine_written=True)])
 
-    assert design._worth_a_notice(fires) is True
-    assert design._worth_a_notice(quiet) is False
-    assert design._worth_a_notice({}) is False
+    assert report._worth_a_notice(fires) is True
+    assert report._worth_a_notice(quiet) is False
+    assert report._worth_a_notice({}) is False
 
 
 def test_the_machine_and_model_counts_read_off_the_field_disagree_with_38():
@@ -2467,17 +2491,17 @@ def test__conflict_builds_the_shared_finding_dict():
     so a new one lands here instead of in each of the eleven call sites that
     already spelled out `kind` by hand.
     """
-    assert design._conflict("about", "stands", "was_also_said") == {
+    assert core._conflict("about", "stands", "was_also_said") == {
         "about": "about",
         "stands": "stands",
         "was_also_said": "was_also_said",
-        "kind": design.A_CONFLICT,
+        "kind": core.A_CONFLICT,
         "machine_written": True,
     }
-    assert design._conflict("about", "stands", "was_also_said", kind=design.A_GAP) == {
+    assert core._conflict("about", "stands", "was_also_said", kind=core.A_GAP) == {
         "about": "about",
         "stands": "stands",
         "was_also_said": "was_also_said",
-        "kind": design.A_GAP,
+        "kind": core.A_GAP,
         "machine_written": True,
     }

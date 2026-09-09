@@ -3,13 +3,13 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from core.design.design import (
-    UNDER,
+from core.design.core import UNDER
+from core.design.merge import (
     diff,
-    entries,
     merge,
-    render,
 )
+from core.design.report import render
+from core.design.gaps import entries
 from core.events import ANSWER, CHANGE_SET, DESIGN, QUESTION
 
 from core.loop.budgets import PhaseError

@@ -291,7 +291,7 @@ def readings_go_to_a_temporary_directory(tmp_path, monkeypatch):
     Every run with an attachment writes one, and the default is the directory a
     user opens to find their own readings.
     """
-    from core import part_file
+    from core.design import part_file
 
     monkeypatch.setattr(part_file, "WHERE", str(tmp_path / "parts"))
 

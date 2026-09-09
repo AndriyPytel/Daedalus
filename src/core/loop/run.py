@@ -4,7 +4,11 @@ from dataclasses import dataclass, field
 
 from core.arithmetic import wrong_sums
 from core.design import part_file
-from core.design.design import decided_for_you, entries, render
+from core.design.report import render
+from core.design.gaps import (
+    decided_for_you,
+    entries,
+)
 from core.events import (
     ANSWER,
     APPLIED,

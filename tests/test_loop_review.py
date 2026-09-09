@@ -25,15 +25,31 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, STOPPED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core.design import design
+
 from core.design import part_file
 from core.sheets import sheet_reader
 from core.freecad_apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
-from core.design.design import (
-    UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
-    entries, entry_at, measured_from_what_is_gone, merge, pointing,
-    read_off_the_wrong_view, render, said_at,
+from core.design.core import (
+    UNDER,
+    entry_at,
+    said_at,
+)
+from core.design.merge import merge
+from core.design.orientation_checks import (
+    pointing,
+    read_off_the_wrong_view,
+)
+from core.design.report import (
+    distilled,
+    each_disagreement_once,
+    render,
+)
+from core.design.gaps import (
+    carried_by_no_source,
+    decided_for_you,
+    entries,
+    measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, _streamed, prompt

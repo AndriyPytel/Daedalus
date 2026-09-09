@@ -24,15 +24,31 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core.design import design
+from core.design import core
 from core.design import part_file
 from core.sheets import sheet_reader
 from core.freecad_apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
-from core.design.design import (
-    UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
-    entries, entry_at, measured_from_what_is_gone, merge, pointing,
-    read_off_the_wrong_view, render, said_at,
+from core.design.core import (
+    UNDER,
+    entry_at,
+    said_at,
+)
+from core.design.merge import merge
+from core.design.orientation_checks import (
+    pointing,
+    read_off_the_wrong_view,
+)
+from core.design.report import (
+    distilled,
+    each_disagreement_once,
+    render,
+)
+from core.design.gaps import (
+    carried_by_no_source,
+    decided_for_you,
+    entries,
+    measured_from_what_is_gone,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
@@ -810,7 +826,7 @@ def test_the_part_design_read_is_written_to_a_file_the_run_names():
     The reading used to exist only as prose in the Plan request and one line in
     the transcript, so it could be neither diffed nor corrected.
     """
-    from core import part_file
+    from core.design import part_file
 
     _, events, _, _ = drive([
         design_reply(A_CUBE),
@@ -849,7 +865,7 @@ def test_a_missing_pyyaml_ends_the_run_as_a_sentence_and_not_a_crash_report(monk
 
 
 def test_the_file_says_which_sheet_the_part_was_read_from():
-    from core import part_file
+    from core.design import part_file
 
     _, events, _, _ = drive([
         design_reply(A_CUBE),
@@ -869,7 +885,7 @@ def test_a_run_given_a_prior_part_skips_the_design_phase():
     read off the sheet, rather than asking Design to describe it again — the
     bug this fixes (FCC-210, ev160-178 of session 796bf66c).
     """
-    from core import part_file
+    from core.design import part_file
 
     _, first, _, _ = drive([
         design_reply(A_CUBE),
@@ -1116,7 +1132,7 @@ def test_two_entries_that_cannot_both_be_true_still_reach_the_gate():
     lost = [conflict for conflict in merge({}, THE_HOLE_THAT_CANNOT_BE_BOTH)["conflicts"]
             if conflict not in kept]
 
-    assert dict(flagged, kind=design.A_CONFLICT) in kept
+    assert dict(flagged, kind=core.A_CONFLICT) in kept
     assert flagged in events.last(DESIGN).data["model"]["conflicts"]
     assert [conflict for conflict in lost
             if conflict["about"] not in {standing["about"] for standing in kept}] == []
@@ -1236,11 +1252,11 @@ def test_every_entry_of_the_recorded_run_says_which_of_the_three_it_is():
     """
     _, logged, _ = _the_clamp_as_it_was_read()
     of_each_kind = {kind: [conflict for conflict in logged["conflicts"]
-                           if conflict["kind"] == kind] for kind in design.KINDS}
+                           if conflict["kind"] == kind] for kind in core.KINDS}
 
     assert sum(len(found) for found in of_each_kind.values()) == 26
-    assert [len(of_each_kind[kind]) for kind in design.KINDS] == [25, 1, 0]
-    assert of_each_kind[design.A_GAP][0]["about"] == \
+    assert [len(of_each_kind[kind]) for kind in core.KINDS] == [25, 1, 0]
+    assert of_each_kind[core.A_GAP][0]["about"] == \
         "features \u2192 ring-split \u2192 position \u2192 the width"
 
 
@@ -1270,10 +1286,10 @@ def test_the_four_that_named_what_ended_the_run_stand_under_conflict():
     typed = {conflict.get("about"): conflict["kind"]
              for conflict in logged["conflicts"]}
     shown = render(events.last(DESIGN).data["model"])
-    under_conflict = shown.split(design.HEADED[design.A_CONFLICT])[1] \
-        .split(design.HEADED[design.A_GAP])[0]
+    under_conflict = shown.split(core.HEADED[core.A_CONFLICT])[1] \
+        .split(core.HEADED[core.A_GAP])[0]
 
     assert [typed.get(at) for at in NAMED_WHAT_ENDED_THE_RUN] == \
-        [design.A_CONFLICT] * 4
+        [core.A_CONFLICT] * 4
     assert all(at in under_conflict for at in NAMED_WHAT_ENDED_THE_RUN)
     assert "In conflict" not in _turns_of(llm, "plan")[0]["what_the_part_is"]

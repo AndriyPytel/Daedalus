@@ -6,7 +6,7 @@ import statistics
 
 import pytest
 
-from core.design import design
+from core.design import gaps, report
 from core.sheets import sheet_reader
 from tests import modelmania_harness
 
@@ -99,7 +99,7 @@ def test_the_document_carries_nothing_off_the_title_block_and_no_dead_feature(
     in_the_title_block = [entry for entry, printed in zip(swept, sheet.printed)
                           if sheet_reader._in_the_title_block(printed, sheet)]
     reading = modelmania_harness.the_2023_clamp_as_read()
-    document = design.distilled(reading)
+    document = report.distilled(reading)
 
     assert (len(swept), len(in_the_title_block)) == (230, 121)
     assert reading["printed_on_the_sheet"] == swept, "the run read another sheet"
@@ -107,8 +107,8 @@ def test_the_document_carries_nothing_off_the_title_block_and_no_dead_feature(
     assert [feature["id"] for feature in document["features"]] == \
         [feature["id"] for feature in reading["features"]
          if not feature.get("superseded_by")]
-    assert "superseded" in design.render(reading), "the reading kept no dead feature"
-    assert "superseded" not in design.render(document)
+    assert "superseded" in report.render(reading), "the reading kept no dead feature"
+    assert "superseded" not in report.render(document)
 
 
 def test_nothing_the_document_needs_is_cut_out_of_what_design_is_shown(
@@ -149,12 +149,12 @@ def test_the_recorded_run_ends_in_the_document_it_ended_in_before_the_cut():
     to 11 features and 46 Acceptance entries, and the run read every one of them
     off the sheet this cut is measured on.
     """
-    document = design.distilled(modelmania_harness.the_2023_clamp_as_read())
+    document = report.distilled(modelmania_harness.the_2023_clamp_as_read())
 
     assert [feature["id"] for feature in document["features"]] == [
         "outer-profile", "ring-bore", "ring-outer-cylinder", "right-lug",
         "right-lug-hole", "right-lug-hex-recess", "arm-cutout", "ring-split",
         "edge-fillets", "angled-left-arm", "left-arm-slot"]
-    assert len([entry["says"] for entry in design.entries(document)]) == 46
+    assert len([entry["says"] for entry in gaps.entries(document)]) == 46
     assert "envelope \u2192 depth front to rear between the exterior faces: 30 mm " \
-           "(read)" in [entry["says"] for entry in design.entries(document)]
+           "(read)" in [entry["says"] for entry in gaps.entries(document)]

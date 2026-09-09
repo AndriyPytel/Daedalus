@@ -3,7 +3,7 @@ import re
 import time
 
 from core import kernel
-from core.design.design import A_CHECK_HAZARD
+from core.design.core import A_CHECK_HAZARD
 from core.events import ERROR
 from core.sheets import sheet_reader, sketch_check
 

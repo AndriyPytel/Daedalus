@@ -16,7 +16,7 @@ than silently supersede one.
 import json
 import os
 
-from core.design.design import merge
+from core.design.merge import merge
 from core.loop.prompt import prompt, DESIGN_PHASE
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
