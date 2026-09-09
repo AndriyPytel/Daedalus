@@ -57,6 +57,15 @@ from core.freecad_tools import TRAPS
 from core.llm import REASONING, ProviderRefused, StreamCutOff, cache_control_supported
 from core.tools import ToolError
 
+PROMPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                       "config", "prompts")
+
+
+def read_prompt(name):
+    with open(os.path.join(PROMPTS, name), encoding="utf-8") as handle:
+        return handle.read()
+
+
 DESIGN_PHASE = "design"
 PLAN_PHASE = "plan"
 EXECUTE_PHASE = "execute"
@@ -430,10 +439,7 @@ _ABOUT_THE_BUILD = ("material", "materials", "uuid", "uuids", "card", "cards", "
                     "type", "types", "property", "properties", "enumeration", "spelling",
                     "spellings", "installed")
 
-_LOOK_IT_UP = ("You asked for something no drawing prints — what this FreeCAD has, what a "
-               "type is called, what a card carries. Nobody is asked and the sheet is not "
-               "read: look it up with one of the Tools above and plan with what it says. "
-               "Reply with {\"look\": {\"tool\": \"...\", \"arguments\": {...}}}.")
+_LOOK_IT_UP = read_prompt("look_it_up.md")
 
 _LOOKED_AT_NOTHING = "no Tool here answers it."
 
@@ -497,9 +503,6 @@ class LoopResult:
         """Blocked means stopped and waiting, not failed and finished."""
         return self.blocked
 
-
-PROMPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "config", "prompts")
 
 _LANGUAGE_PATH = os.path.join(PROMPTS, "language.md")
 
@@ -736,13 +739,7 @@ def _one_call(llm, events, phase, system, user, prior=()):
     return "".join(text), thought, "".join(reasoning)
 
 
-_ASKED_AGAIN = (
-    "Answer again, and put the JSON object this phase takes in the reply. Whatever you "
-    "said above is either one of that object's own keys or it is not the answer: a phase "
-    "that needs to look something up first asks for the look *in* the JSON, and a phase "
-    "that wants to say why does it inside the object, not instead of it. Prose beside the "
-    "object is read; prose without one is not."
-)
+_ASKED_AGAIN = read_prompt("asked_again.md")
 
 
 def _asked_again(body, reasoning):
@@ -2723,12 +2720,7 @@ def _geometry_regressions(baseline, geometry, retried_names):
     return sorted(moved)
 
 
-_GEOMETRY_REGRESSION = (
-    "these features' geometry changed and nothing said they were touched: %s. "
-    "A feature not named in what this run built or retried moved anyway — the "
-    "failure config/prompts/assertion.md already documents as a slot "
-    "shortened until it passes, or a clamp that stops opening."
-)
+_GEOMETRY_REGRESSION = read_prompt("geometry_regression.md")
 
 
 def _review_content(request, views, attachments):
@@ -4351,13 +4343,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                           steps_applied=applied)
 
 
-_GOING_NOWHERE = (
-    "Execute handed a Step back for the second time and nothing has been applied in "
-    "between, so rewriting it again would leave the run where it is. What it says "
-    "cannot be built is the description it was planned from, not the words the Step "
-    "was written in:\n%s\nCorrect the description — the values it holds in conflict, "
-    "and the datums and overalls a superseded feature left behind — and run it again."
-)
+_GOING_NOWHERE = read_prompt("going_nowhere.md")
 
 
 _INVENTED = "assum"

@@ -1,0 +1,1 @@
+these features' geometry changed and nothing said they were touched: %s. A feature not named in what this run built or retried moved anyway — the failure config/prompts/assertion.md already documents as a slot shortened until it passes, or a clamp that stops opening.

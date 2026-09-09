@@ -72,6 +72,8 @@ import re
 from dataclasses import dataclass, field
 from typing import List
 
+from core.loop import read_prompt
+
 ELEMENT = re.compile(r"^(Edge|Face|Vertex)\d+$")
 
 GUI_NAMES = ("Gui", "FreeCADGui")
@@ -157,82 +159,20 @@ _CONSTRAINT_SIGNATURES = {
     for name, arities in _CONSTRAINT_ARITIES.items()
 }
 
-_UNKNOWN_CONSTRAINT_REASON = (
-    "%r is not a Sketcher constraint type. The C++ constructor does not raise "
-    "for a name it does not know — it takes FreeCAD down, so there is no "
-    "traceback to correct against. The types are: %s. Concentricity in "
-    "particular is not one of them: two circles are concentric because they "
-    "were given the same centre, and where it must genuinely be a driven "
-    "parameter it is Coincident between the two centres — "
-    "Constraint('Coincident', a, 3, b, 3), where 3 is the centre PosId."
-)
-
-_CONSTRAINT_ARITY_REASON = (
-    "Constraint(%r, ...) was given %d arguments after the name, which is not a "
-    "signature this constructor has — and a wrong arity crashes the core rather "
-    "than raising. %r takes %s arguments after the name. For concentricity "
-    "between two circles that is Constraint('Coincident', a, 3, b, 3), where 3 "
-    "is the centre PosId."
-)
-
-_ELEMENT_REASON = (
-    "%r is a literal element name. It points somewhere else as soon as a "
-    "parameter upstream in the history changes, and nothing downstream can "
-    "detect that the fillet landed on the wrong edge. Compute the reference at "
-    "execution time instead, or use an element the user has actually selected. "
-    "Better still, pick an operation that needs no element name at all — a "
-    "PartDesign::Hole rather than a bore you then have to go and find."
-)
-
-_RAW_SHAPE_REASON = (
-    "%s came from PartDesign and a PartDesign feature computes its own Shape "
-    "from its Profile — assigning it, or bolting fields on with addProperty, "
-    "produces a feature tree that is fiction. Nothing raises: the sketch is "
-    "decorative, Preflight recomputes clean, and the part stops rebuilding "
-    "when a dimension changes. Use the feature that performs the operation — "
-    "PartDesign::Pad, PartDesign::Pocket, PartDesign::Revolution, "
-    "PartDesign::Groove, PartDesign::AdditiveHelix, PartDesign::Hole, "
-    "PartDesign::Fillet, PartDesign::Chamfer — on a real sketch. If the shape "
-    "genuinely belongs outside a Body, build it as Part::Feature and say so."
-)
-
-_SWALLOWED_REASON = (
-    "This Step's error handling breaks the correction path: %s. A failed Step "
-    "answers itself (ADR-0008) — the traceback is what goes back and gets "
-    "corrected, so code that swallows its own exception disables the mechanism "
-    "the whole run rests on. Let it raise. A Step that applied none of the "
-    "twelve edges it meant to must fail, not record how many it managed."
-)
-
-_UNCOUNTED_SELECTION_REASON = (
-    "%s is given a selection this Step computed, and nothing says how many "
-    "elements it expected to find. A filter that finds eight of the twelve "
-    "edges the Step describes rounds those eight, and the Step reports itself "
-    "applied: from the outside it is indistinguishable from one that found "
-    "them all. State the count the Step's prose gives and let the Step fail "
-    "where the selection does not match it — `if len(edges) != 12: raise "
-    "RuntimeError(...)` — before the reference is assigned."
-)
-
-_GUI_REASON = (
-    "%s is not available during Preflight. The worker is a headless FreeCAD "
-    "with no GUI and no selection, so code that reads them runs differently "
-    "there than it will here, and Preflight stops meaning anything. Make the "
-    "Step a pure function of the Document."
-)
+_UNKNOWN_CONSTRAINT_REASON = read_prompt("lint_unknown_constraint.md")
+_CONSTRAINT_ARITY_REASON = read_prompt("lint_constraint_arity.md")
+_ELEMENT_REASON = read_prompt("lint_element.md")
+_RAW_SHAPE_REASON = read_prompt("lint_raw_shape.md")
+_SWALLOWED_REASON = read_prompt("lint_swallowed.md")
+_UNCOUNTED_SELECTION_REASON = read_prompt("lint_uncounted_selection.md")
+_GUI_REASON = read_prompt("lint_gui.md")
 
 _TYPEID_REASON = (
     "addObject(%r, ...) does not build %r. ADR-0026's verb-to-TypeId table says "
     "%r builds %s, and no other TypeId is this Step's operation."
 )
 
-
-_ACTIVATION_REASON = (
-    "%s makes an object active, which only the GUI can do. The Preflight "
-    "Document has no active object and no active view, so there is no spelling "
-    "of this that works. Nothing needs to be active: put a PartDesign feature "
-    "in its Body with Body.addObject(feature) instead."
-)
+_ACTIVATION_REASON = read_prompt("lint_activation.md")
 
 
 @dataclass

@@ -1,0 +1,1 @@
+%s makes an object active, which only the GUI can do. The Preflight Document has no active object and no active view, so there is no spelling of this that works. Nothing needs to be active: put a PartDesign feature in its Body with Body.addObject(feature) instead.

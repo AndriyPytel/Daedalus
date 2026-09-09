@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from core.events import ANSWER, QUESTION
 from core.freecad_tools import description, fit_view
 from core.lint import lint
+from core.loop import read_prompt
 from core.preflight import PreflightWorker, copy_of
 from core.preflight_worker import register_step_source, step_namespace, trimmed_traceback
 
@@ -164,13 +165,7 @@ def on_main_thread(func, timeout=DISPATCH_TIMEOUT):
     return _dispatcher.on_main_thread(func, timeout)
 
 
-_CHANGED_NOTHING = (
-    "The code ran without error but changed nothing: no object was created, "
-    "deleted or modified. A Step that leaves the Document as it found it has "
-    "not been done. Check that the code actually calls what it defines and "
-    "assigns to the Document's objects — or, if this Step genuinely has nothing "
-    "left to do, say so with {\"obsolete\": \"why\"} instead."
-)
+_CHANGED_NOTHING = read_prompt("changed_nothing.md")
 
 
 def run_in_transaction(doc, code, label="Copilot Step"):
