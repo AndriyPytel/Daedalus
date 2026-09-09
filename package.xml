@@ -6,5 +6,5 @@
   <maintainer email="pytelandriy@gmail.com">Maui</maintainer>
   <license file="LICENSE">AGPLv3.0</license>
   <url type="repository" branch="master">https://github.com/AndriyPytel/FreeCadCopilot</url>
-  <icon>src/resources/icons/сopilot.svg</icon> <!-- If you include your icon here, you don't have to submit it to the main FreeCAD repo -->
+  <icon>src/resources/icons/copilot.svg</icon> <!-- If you include your icon here, you don't have to submit it to the main FreeCAD repo -->
 </package>
