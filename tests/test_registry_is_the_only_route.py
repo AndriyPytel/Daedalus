@@ -6,7 +6,7 @@ If this fails, either the new code took a shortcut around the Tool registry, or
 a module earned its place on ALLOWED and nobody said so.
 
 The Document is reached from exactly these places, and each has a reason:
-  - core/freecad/apply.py: The Tools themselves, and where the transaction resolves
+  - core/freecad_apply.py: The Tools themselves, and where the transaction resolves
     the Document to hand it to. This is the sanctioned route.
   - core/kernel/kernel_worker.py: Runs inside the kernel's own process, against its
     own checkpointed Document. It never touches the user's Document.
@@ -28,7 +28,7 @@ import pytest
 from tests.source_tree import ROOT, sources
 
 ALLOWED = {
-    "src/core/freecad/apply.py",
+    "src/core/freecad_apply.py",
     "src/core/kernel/kernel_worker.py",
     "src/core/sheets/sketch_check.py",
     "copilot/sdk.py",

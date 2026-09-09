@@ -28,7 +28,7 @@ from core.events import (
 from core.design import design
 from core.design import part_file
 from core.sheets import sheet_reader
-from core.freecad.apply import TRAPS
+from core.freecad_apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
 from core.design.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
@@ -136,7 +136,7 @@ def test_the_named_parameters_mechanism_is_gone_from_the_code():
     with pytest.raises(ImportError):
         from core.kernel.kernel_worker import wrong_parameters    # noqa: F401
 
-    from core.freecad.apply import build_registry
+    from core.freecad_apply import build_registry
     described = {tool["name"]: tool for tool in build_registry(pipeline=object()).describe()}
     assert "parameters" not in described["apply_step"]["parameters"]["properties"]
 
@@ -198,7 +198,7 @@ def test_view_names_names_every_review_view_including_the_section():
     `REVIEW_VIEWS` that grew a fifth entry and left this short of it would
     mislabel the section capture rather than fail loudly.
     """
-    from core.freecad.apply import REVIEW_VIEWS
+    from core.freecad_apply import REVIEW_VIEWS
     from core.loop.execute import _VIEW_NAMES
 
     assert len(_VIEW_NAMES) == len(REVIEW_VIEWS)

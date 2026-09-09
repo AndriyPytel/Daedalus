@@ -7,7 +7,7 @@ import re
 import time
 
 from core.events import CALL_STARTED, COST, THOUGHT, WRITING
-from core.freecad.apply import TRAPS
+from core.freecad_apply import TRAPS
 from core.llm import REASONING, StreamCutOff
 from core.sheets import sheet_reader
 

@@ -64,7 +64,7 @@ from core.loop.describe import _round_evidence, _the_directions_are_the_drawings
 from core.design import design
 from core.design import part_file
 from core.sheets import sheet_reader
-from core.freecad.apply import TRAPS
+from core.freecad_apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
 from core.design.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,

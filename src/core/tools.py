@@ -8,7 +8,7 @@ only way to reach the Document -- `core/kernel_worker.py::step_namespace`
 runs a Step's code directly against FreeCAD.
 
 This module never imports FreeCAD. The FreeCAD-backed Tools live in
-`core/freecad/apply.py`; a fake registry for Level 1 is just a few plain
+`core/freecad_apply.py`; a fake registry for Level 1 is just a few plain
 functions handed to `ToolRegistry`.
 """
 from dataclasses import dataclass, field

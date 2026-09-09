@@ -21,12 +21,12 @@ import json
 
 import pytest
 
-from core.freecad.apply import ApplyPipeline
+from core.freecad_apply import ApplyPipeline
 from core.events import (
     APPLIED, BLOCKED, CALL_STARTED, COST, INTENT, PLAN, REVIEW_VERDICT,
     STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, WRITING, EventStream,
 )
-from core.freecad.apply import build_registry
+from core.freecad_apply import build_registry
 from core.llm import ScriptedLLMClient
 from core.loop.gate import APPROVE, Approval
 from core.loop.run import run

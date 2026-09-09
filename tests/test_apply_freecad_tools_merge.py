@@ -1,13 +1,13 @@
 """Guards the apply/freecad_tools merge — FCC-330.
 
 `core/freecad/freecad_tools.py` does not exist as a compatibility shim: every
-call site was rewritten to `core.freecad.apply` in the same commit. The former
+call site was rewritten to `core.freecad_apply` in the same commit. The former
 cycle was two in-function imports (`core/freecad/freecad_tools.py:152`, `:462`,
-both `from core.freecad.apply import on_main_thread`) that existed only to
+both `from core.freecad_apply import on_main_thread`) that existed only to
 dodge the load-time cycle a top-level import would have created; with one
 module, that workaround is impossible by construction, checked here rather
-than by eye. A deferred import of `core.freecad.apply` for an unrelated
-reason (e.g. `core/freecad/traps.py`, load-order) is not what this guards
+than by eye. A deferred import of `core.freecad_apply` for an unrelated
+reason (e.g. `core/freecad_traps.py`, load-order) is not what this guards
 against — only the old flat names the merge retired.
 """
 import ast
@@ -52,7 +52,7 @@ def test_freecad_tools_is_not_a_compatibility_shim():
 
 def test_apply_imports_cleanly_with_no_fallback():
     result = subprocess.run(
-        [sys.executable, "-c", "import core.freecad.apply"],
+        [sys.executable, "-c", "import core.freecad_apply"],
         cwd=SRC, capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr

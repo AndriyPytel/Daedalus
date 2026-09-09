@@ -4,7 +4,7 @@ The child half of the kernel. Runs inside a headless FreeCAD started by
 and FreeCAD, and nothing of the addon's own.
 
 Two things are imported *out* of it, by name: `SENTINEL` by `core/kernel/kernel.py`,
-and `step_namespace` by `core/freecad/apply.py`, so that the kernel and the GUI's
+and `step_namespace` by `core/freecad_apply.py`, so that the kernel and the GUI's
 own transaction replay cannot build different namespaces for the same Step.
 `reading` imports `core.sketch_check`; `run_step` imports `render` off
 `core.kernel.preflight_render`. Both cost a `sys.path` entry and buy the one thing
@@ -173,7 +173,7 @@ def step_namespace(doc):
     """
     What a Step's code runs with.
 
-    The kernel and the GUI's own replay (`core/freecad/apply.py::run_in_transaction`)
+    The kernel and the GUI's own replay (`core/freecad_apply.py::run_in_transaction`)
     must build this identically or they are running different programs
     (ADR-0002), so both call this rather than each spelling it out.
 

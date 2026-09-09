@@ -17,7 +17,7 @@ of the deletion is its own question.
 """
 import pytest
 
-from core.freecad.apply import ApplyPipeline, refuse_without_asking
+from core.freecad_apply import ApplyPipeline, refuse_without_asking
 from core.kernel import KernelResult
 from tests.test_apply_pipeline import FakeDocument, FakeObject, FakeWorker
 

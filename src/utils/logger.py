@@ -43,15 +43,15 @@ def _console(write, msg) -> None:
     Call a `FreeCAD.Console.Print*` method without ever running it off the
     Qt main thread — see the module docstring for what happens if it does.
 
-    `on_main_thread` (`core.freecad.apply`) raises `RuntimeError` when there is no
+    `on_main_thread` (`core.freecad_apply`) raises `RuntimeError` when there is no
     Qt application at all — Level 1, headless, `freecadcmd` — and there is no
     GUI there to corrupt, so *write* just runs directly.
 
-    Imported locally so a monkeypatched `core.freecad.apply.on_main_thread` (as
+    Imported locally so a monkeypatched `core.freecad_apply.on_main_thread` (as
     `tests/test_main_thread_dispatch.py` does) reaches this call: a
     module-level binding here would freeze the reference at import time.
 
-    LOG_DISPATCH_TIMEOUT is 5s, not the 60s `core.freecad.apply.DISPATCH_TIMEOUT`
+    LOG_DISPATCH_TIMEOUT is 5s, not the 60s `core.freecad_apply.DISPATCH_TIMEOUT`
     gives a Document mutation: a log line is one `PrintError` call, not a
     boolean operation, it fires far more often than a Step, and blocking it
     for a minute would make logging itself look like the hang it exists to
@@ -75,7 +75,7 @@ def _console(write, msg) -> None:
     handling a crash — so an escape there loses `finished`, and the panel
     never learns the run ended.
     """
-    from core.freecad.apply import on_main_thread
+    from core.freecad_apply import on_main_thread
 
     try:
         on_main_thread(lambda: write(msg), timeout=LOG_DISPATCH_TIMEOUT)

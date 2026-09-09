@@ -942,7 +942,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         be the same Document. Every Intent after this one reuses the
         binding regardless of what the user brings to front meanwhile.
 
-        Goes through `core.freecad.apply.active_document` rather than
+        Goes through `core.freecad_apply.active_document` rather than
         `FreeCAD.ActiveDocument` directly — the panel reaching the Document on
         its own is exactly what `test_registry_is_the_only_route.py` exists to
         catch.
@@ -2783,9 +2783,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         is this panel's child process and goes with it.
 
         A question is not the only thing a run parks on. A Step in flight is
-        inside `core.freecad.apply.on_main_thread`, waiting on a job only this thread's
+        inside `core.freecad_apply.on_main_thread`, waiting on a job only this thread's
         event loop can take — and this thread is here, not pumping it. Nothing
-        would take that job, so `core.freecad.apply.closing()` comes first: it releases
+        would take that job, so `core.freecad_apply.closing()` comes first: it releases
         every dispatch already waiting and refuses the ones the unwinding run
         makes on its way out. Without it the wait below expires and a thread in
         the middle of the Document is ended from outside.

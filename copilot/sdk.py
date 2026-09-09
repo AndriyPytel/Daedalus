@@ -16,7 +16,7 @@ scripts they took over from: both a second copy of this same wiring, one
 call behind the loop's own `run()` signature.
 """
 from core import events
-from core.freecad.apply import ApplyPipeline, active_document, build_registry, closing
+from core.freecad_apply import ApplyPipeline, active_document, build_registry, closing
 from core.events import EventStream, replay
 from core.kernel import Kernel
 from core.llm import (EFFORTS, PROFILES, TEXT, Session, client_from_roles,

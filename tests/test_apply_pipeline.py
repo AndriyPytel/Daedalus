@@ -7,7 +7,7 @@ that is visible from outside — the caller gets "applied" or "failed".
 """
 import pytest
 
-from core.freecad.apply import ApplyPipeline, Closing
+from core.freecad_apply import ApplyPipeline, Closing
 from core.kernel import KernelResult
 
 
@@ -90,7 +90,7 @@ def test_a_step_that_lands_puts_the_part_back_in_the_viewport(pipeline, monkeypa
     are being asked to approve.
     """
     fitted = []
-    monkeypatch.setattr("core.freecad.apply.fit_view", lambda doc: fitted.append(doc))
+    monkeypatch.setattr("core.freecad_apply.fit_view", lambda doc: fitted.append(doc))
 
     assert pipeline.apply("doc.recompute()").ok
     assert fitted == [pipeline.document]
@@ -98,7 +98,7 @@ def test_a_step_that_lands_puts_the_part_back_in_the_viewport(pipeline, monkeypa
 
 def test_a_step_that_never_reached_the_document_leaves_the_camera_alone(pipeline, monkeypatch):
     fitted = []
-    monkeypatch.setattr("core.freecad.apply.fit_view", lambda doc: fitted.append(doc))
+    monkeypatch.setattr("core.freecad_apply.fit_view", lambda doc: fitted.append(doc))
     pipeline.fake_worker.result = KernelResult(ok=False, traceback="boom")
 
     assert not pipeline.apply("doc.recompute()").ok
@@ -243,7 +243,7 @@ def test_review_views_reads_the_pipelines_own_document(pipeline, monkeypatch):
     tab is in front — the same Document `apply` just landed the Step on.
     """
     seen = []
-    monkeypatch.setattr("core.freecad.apply.capture_review_views",
+    monkeypatch.setattr("core.freecad_apply.capture_review_views",
                         lambda paths, doc: seen.append(doc) or paths)
 
     pipeline.review_views()
