@@ -87,7 +87,7 @@ def test_no_explicit_effort_still_reads_the_global_dial(monkeypatch):
 
 @pytest.fixture
 def clean_settings():
-    from utils import settings_manager
+    from bridge import settings_manager
 
     sm = settings_manager.instance()
     grp = sm._grp()

@@ -4,7 +4,7 @@ installs — `google.generativeai` is not a dependency, so "Test" on a Google ke
 died with a ModuleNotFoundError and Google looked broken. OpenAI and Anthropic
 only worked by accident, off packages litellm happens to pull in.
 
-Checked by parsing, because `utils.provider_manager` imports PySide and so is
+Checked by parsing, because `bridge.provider_manager` imports PySide and so is
 not importable outside FreeCAD.
 """
 import ast
@@ -19,7 +19,7 @@ VENDOR_SDKS = {"openai", "anthropic", "google"}
 
 
 @pytest.mark.parametrize("module", [
-    os.path.join("utils", "provider_manager.py"),
+    os.path.join("bridge", "provider_manager.py"),
     os.path.join("core", "model_catalog.py"),
 ])
 def test_no_vendor_sdk_imports(module):
@@ -48,7 +48,7 @@ def test_no_model_list_is_bundled_with_the_addon():
     """
     assert not os.path.exists(os.path.join(ROOT, "config", "models.json"))
 
-    with open(os.path.join(SRC, "utils", "provider_manager.py"), encoding="utf-8") as handle:
+    with open(os.path.join(SRC, "bridge", "provider_manager.py"), encoding="utf-8") as handle:
         source = handle.read()
     assert "models.json" not in source
 
@@ -60,7 +60,7 @@ def manager():
     subscribes to, so this is Level 2 — the module imports neither without it.
     """
     pytest.importorskip("FreeCAD")
-    from utils.provider_manager import _ProviderManager
+    from bridge.provider_manager import _ProviderManager
 
     built = _ProviderManager()
     built._providers = ["openai", "anthropic"]
@@ -145,7 +145,7 @@ def test_a_failed_fetch_lets_the_next_ensure_fetched_retry(manager, monkeypatch)
         failed = type("Signal", (), {"connect": lambda self, slot: None})()
 
     monkeypatch.setattr(
-        "utils.provider_manager._FetchThread", _FakeThread)
+        "bridge.provider_manager._FetchThread", _FakeThread)
 
     manager._ensure_fetched("openai")
     assert len(starts) == 1

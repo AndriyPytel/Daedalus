@@ -75,7 +75,7 @@ class _ProviderManager(QObject):
         self._fetched_with: dict = {}
         self._resolved: dict = {}
 
-        from utils import settings_manager
+        from bridge import settings_manager
         settings_manager.instance().api_keys_changed.connect(self._on_keys_changed)
         settings_manager.instance().base_urls_changed.connect(self._on_keys_changed)
 
@@ -90,7 +90,7 @@ class _ProviderManager(QObject):
         usable here, and its Test button is what says whether it really is.
         """
         from core import model_catalog
-        from utils import settings_manager
+        from bridge import settings_manager
 
         sm = settings_manager.instance()
         key = sm.get_api_key_for_provider(provider)
@@ -153,7 +153,7 @@ class _ProviderManager(QObject):
         "Connection refused" without it says nothing they can act on.
         """
         import FreeCAD
-        from utils import settings_manager
+        from bridge import settings_manager
 
         self._threads.pop(provider, None)
         where = settings_manager.instance().get_base_url_for_provider(provider)

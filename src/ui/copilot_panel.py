@@ -47,8 +47,8 @@ from ui.design_tokens     import (CONTROL, CONTROL_DENSE, HAIRLINE, ICON, ICON_D
                                   RADIUS_SURFACE, RUNNING, SPACE_COMPOSER, SPACE_MD,
                                   SPACE_SM, SPACE_XS, WASH)
 from ui.typography        import BODY, BODY_STRONG, CAPTION, LABEL, css
-from utils import settings_manager
-from utils import provider_manager
+from bridge import settings_manager
+from bridge import provider_manager
 from ui.ui_helpers import UIHelpers
 
 
@@ -491,7 +491,7 @@ class AskTheUser(QtCore.QObject):
         `wait()` never returns and the process deadlocks with no traceback and
         no CPU to show for it. Refusing to wait names the fault instead.
 
-        *notify* reaches FreeCAD's own Notification Area (`utils.logger ::
+        *notify* reaches FreeCAD's own Notification Area (`bridge.logger ::
         notify_user`) once it is clear the wait is real -- an answer already
         sitting in `_answered` (the same-thread case above, and a test's
         direct connection) is not a person walking away from a two-hour run,
@@ -506,7 +506,7 @@ class AskTheUser(QtCore.QObject):
                 "no event loop can deliver the answer." % signal
             )
         if not self._answered.is_set():
-            from utils.logger import notify_user
+            from bridge.logger import notify_user
             notify_user(notify)
         self._answered.wait()
         return self._answer
@@ -642,7 +642,7 @@ class LoopWorker(QtCore.QObject):
         means run as today, describing the part from `attachments` alone.
         """
         from copilot.sdk import events as ev, EventStream, build_registry
-        from utils.logger import generate_crash_report, logger
+        from bridge.logger import generate_crash_report, logger
 
         self._stop.clear()
         self._abort.clear()

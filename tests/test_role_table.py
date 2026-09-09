@@ -8,7 +8,7 @@ import pytest
 @pytest.fixture
 def clean_role_table(the_settings_never_reach_the_user_s_freecad):
     """The manager with `RoleModelTable` unset, for a test that writes one."""
-    from utils import settings_manager
+    from bridge import settings_manager
 
     the_settings_never_reach_the_user_s_freecad.SetString("RoleModelTable", "")
     return settings_manager.instance()

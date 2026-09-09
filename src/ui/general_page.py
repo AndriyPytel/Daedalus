@@ -2,7 +2,7 @@
 GeneralPage – "General" preference sub-page.
 
 One setting so far: whether a run goes unattended, stored under
-`utils.settings_manager.get_auto_approve_plan`. The checkbox gates two
+`bridge.settings_manager.get_auto_approve_plan`. The checkbox gates two
 things -- the Plan Gate, and the decision after a failed acceptance check --
 under the one name, because the key is invisible to the user and a
 migration buys nothing a label change does not already buy. More belongs
@@ -54,11 +54,11 @@ class GeneralPage(QtWidgets.QWidget):
         return self
 
     def loadSettings(self):
-        from utils import settings_manager
+        from bridge import settings_manager
         self.auto_approve_check.setChecked(
             settings_manager.instance().get_auto_approve_plan())
 
     def saveSettings(self):
-        from utils import settings_manager
+        from bridge import settings_manager
         settings_manager.instance().set_auto_approve_plan(
             self.auto_approve_check.isChecked())

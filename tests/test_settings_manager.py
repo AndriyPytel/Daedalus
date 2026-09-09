@@ -16,7 +16,7 @@ SRC = os.path.join(ROOT, "src")
 def test_core_settings_imports_without_pyside_or_freecad():
     """
     `core/settings.py` is the persistence half FCC-329 split out of
-    `utils/settings_manager.py`, so any `core/` module can read or write a
+    `bridge/settings_manager.py`, so any `core/` module can read or write a
     setting without needing `PySide` importable. A subprocess with a bare
     `sys.path` (no FreeCAD lib dir, no conftest fixtures) is what actually
     proves it: within this suite's own process FreeCAD is already imported

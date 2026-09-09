@@ -31,7 +31,7 @@ class CopilotWorkbench(Gui.Workbench):
         """
         panel = copilot_dock.install(Gui.getMainWindow())
         if panel is None:
-            from utils.logger import logger
+            from bridge.logger import logger
             logger.error("Cannot get main window")
             return
         panel.show()

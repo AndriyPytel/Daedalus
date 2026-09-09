@@ -37,7 +37,7 @@ class _TestWorker(QtCore.QObject):
         self._base_url = base_url
 
     def run(self):
-        from utils import provider_manager
+        from bridge import provider_manager
         ok, msg = provider_manager.instance().test_connection(
             self._provider, self._api_key, self._base_url)
         self.result.emit(ok, msg)
@@ -63,7 +63,7 @@ class ProvidersPage(QtWidgets.QWidget):
         self._tinted = False
         self._build_ui()
 
-        from utils import provider_manager
+        from bridge import provider_manager
         provider_manager.instance().models_changed.connect(self._on_models_changed)
 
     def getWidget(self):
@@ -291,7 +291,7 @@ class ProvidersPage(QtWidgets.QWidget):
         self._current_provider = provider
         self.title_lbl.setText(provider)
 
-        from utils import settings_manager
+        from bridge import settings_manager
         sm = settings_manager.instance()
 
         if provider in self._edits:
@@ -322,8 +322,8 @@ class ProvidersPage(QtWidgets.QWidget):
         if not self._current_provider:
             return
         
-        from utils import provider_manager
-        from utils import settings_manager
+        from bridge import provider_manager
+        from bridge import settings_manager
         
         self.default_model_combo.clear()
         models = provider_manager.instance().get_models_for_provider(self._current_provider)
@@ -395,8 +395,8 @@ class ProvidersPage(QtWidgets.QWidget):
             self.provider_list.setCurrentItem(item)
 
     def _populate_list(self):
-        from utils import provider_manager
-        from utils import settings_manager
+        from bridge import provider_manager
+        from bridge import settings_manager
         
         self.provider_list.clear()
         
@@ -439,7 +439,7 @@ class ProvidersPage(QtWidgets.QWidget):
         afterwards would be the old stored value, and the user's pick would be
         destroyed by the save meant to persist it.
         """
-        from utils import settings_manager
+        from bridge import settings_manager
         sm = settings_manager.instance()
         
         self._remember_edits()

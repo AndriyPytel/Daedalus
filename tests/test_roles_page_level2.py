@@ -3,7 +3,7 @@ Level 2 -- the "Role -> Model" preference sub-page, rendered for real
 (FCC-312).
 
 Seeded from `core.llm.DEFAULT_ROLE_TABLE`; editing a row and saving is what
-`utils.settings_manager.set_role_table` reads back.
+`bridge.settings_manager.set_role_table` reads back.
 """
 import pytest
 
@@ -20,7 +20,7 @@ def _page():
 
 @pytest.fixture
 def clean_role_table(the_settings_never_reach_the_user_s_freecad):
-    from utils import settings_manager
+    from bridge import settings_manager
 
     the_settings_never_reach_the_user_s_freecad.SetString("RoleModelTable", "")
     return settings_manager.instance()

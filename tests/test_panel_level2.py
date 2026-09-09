@@ -47,7 +47,7 @@ def sessions_are_the_tests_own():
     """
     if QT_APP is None:
         pytest.skip(NO_QT)
-    from utils import settings_manager
+    from bridge import settings_manager
 
     settings = settings_manager.instance()
     theirs = settings.get_sessions()
@@ -261,7 +261,7 @@ def _mock_no_stored_model(monkeypatch):
     setters are stubbed for the same reason, and the list of what the panel
     stored is handed back to whoever wants to assert on it.
     """
-    from utils import settings_manager
+    from bridge import settings_manager
 
     settings = settings_manager.instance()
     written = []
@@ -317,7 +317,7 @@ def test_the_toggle_flips_between_the_two_profiles_and_back(panel):
 
 def test_the_effort_pill_follows_whichever_profile_the_toggle_is_on(panel, monkeypatch):
     from core import settings as core_settings
-    from utils import settings_manager
+    from bridge import settings_manager
 
     settings = settings_manager.instance()
     monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-4o")
@@ -338,7 +338,7 @@ def test_the_effort_pill_follows_whichever_profile_the_toggle_is_on(panel, monke
 
 
 def test_picking_a_model_on_one_profile_leaves_the_other_alone(panel, monkeypatch):
-    from utils import settings_manager
+    from bridge import settings_manager
 
     _mock_no_stored_model(monkeypatch)
     written = []
@@ -376,7 +376,7 @@ def test_the_profile_never_edited_still_has_the_model_the_other_was_given(panel,
     fallback `get_profile_model` reads is written too, which is what makes
     one pick answer both profiles.
     """
-    from utils import settings_manager
+    from bridge import settings_manager
 
     _mock_no_stored_model(monkeypatch)
     shared = []
@@ -494,7 +494,7 @@ def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkey
     Reopening after a model is picked shows providers again, not the
     last-selected provider's models (FCC-175's Acceptance Criteria).
     """
-    from utils import settings_manager
+    from bridge import settings_manager
     from ui.model_selector import PROVIDER_STEP
 
     _mock_no_stored_model(monkeypatch)
@@ -675,7 +675,7 @@ def test_the_button_shows_a_stored_model_no_static_list_knows(panel, monkeypatch
     landed when the panel is built. Falling through to the first available
     model — GPT-4o — is FCC-41.
     """
-    from utils import provider_manager, settings_manager
+    from bridge import provider_manager, settings_manager
 
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: True)
     monkeypatch.setattr(settings_manager.instance(), "get_profile_model",
@@ -691,7 +691,7 @@ def test_a_failed_fetch_leaves_its_provider_still_awaited(monkeypatch):
     A provider that could not be reached has not said the stored model is gone.
     Treating a failure as an answer drops the user's model on a flaky network.
     """
-    from utils import provider_manager, settings_manager
+    from bridge import provider_manager, settings_manager
 
     manager = provider_manager.instance()
     monkeypatch.setattr(settings_manager.instance(), "get_api_key_for_provider",
@@ -708,7 +708,7 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
     Only a real list that has arrived can retire a model — and when it does the
     user is told, because the model they picked is not the one they get.
     """
-    from utils import provider_manager, settings_manager
+    from bridge import provider_manager, settings_manager
 
     settings = settings_manager.instance()
     written = []
@@ -729,7 +729,7 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
 
 def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, monkeypatch):
     """The default model is a preference, and it may never have been set."""
-    from utils import provider_manager, settings_manager
+    from bridge import provider_manager, settings_manager
 
     settings = settings_manager.instance()
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
@@ -1249,7 +1249,7 @@ def test_a_blocked_question_pages_freecads_notification_area(
     from ui.copilot_panel import CopilotPanel
 
     calls = []
-    monkeypatch.setattr("utils.logger.notify_user", lambda msg: calls.append(msg))
+    monkeypatch.setattr("bridge.logger.notify_user", lambda msg: calls.append(msg))
 
     built = CopilotPanel()
     parked = threading.Event()
@@ -1461,7 +1461,7 @@ def test_a_session_with_no_intent_is_not_in_the_history_index(panel):
     Fifty promptless launches would otherwise evict fifty real Sessions:
     load() keeps the newest KEEP and deletes the log of everything past it.
     """
-    from utils import settings_manager
+    from bridge import settings_manager
 
     before = settings_manager.instance().get_sessions()
 
@@ -1532,7 +1532,7 @@ def test_a_picker_row_names_the_session_it_shows_not_its_own_position(panel):
 
 
 def test_the_first_intent_puts_the_session_in_history_under_a_name(panel):
-    from utils import settings_manager
+    from bridge import settings_manager
 
     index, _ = panel.chat_sessions.add_new_chat("New Chat")
 
@@ -1545,7 +1545,7 @@ def test_the_first_intent_puts_the_session_in_history_under_a_name(panel):
 
 def test_a_session_only_enters_history_once(panel):
     """The second Intent must not add a second row for the same Session."""
-    from utils import settings_manager
+    from bridge import settings_manager
 
     index, _ = panel.chat_sessions.add_new_chat("New Chat")
     panel.chat_sessions.begin(index, "first")
@@ -1624,7 +1624,7 @@ def test_a_launch_opens_an_empty_session_and_keeps_the_earlier_ones(sessions_are
     The panel used to reopen the last Session with its transcript. FCC-42.
     """
     from ui.copilot_panel import CopilotPanel
-    from utils import settings_manager
+    from bridge import settings_manager
 
     first = CopilotPanel()
     try:
@@ -2037,7 +2037,7 @@ def test_a_rename_persists_and_reaches_the_header(panel):
     Only a Session that has had an Intent is in the index at all, and the
     index no longer lines up positionally with the open Sessions.
     """
-    from utils import settings_manager
+    from bridge import settings_manager
 
     index, _ = panel.chat_sessions.add_new_chat("New Chat")
     panel.chat_sessions.switch_to(index)
@@ -2053,7 +2053,7 @@ def test_a_rename_persists_and_reaches_the_header(panel):
 
 
 def test_deleting_a_session_takes_its_transcript_with_it(panel, tmp_path):
-    from utils import settings_manager
+    from bridge import settings_manager
 
     log = str(tmp_path / "doomed.jsonl")
     _a_transcript(log)

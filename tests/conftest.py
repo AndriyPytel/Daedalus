@@ -389,7 +389,7 @@ def clean_auto_approve(the_settings_never_reach_the_user_s_freecad):
     back on the way out as well: a test that leaves it on makes every later
     test in the same process take the auto-approved branch of the Gate.
     """
-    from utils import settings_manager
+    from bridge import settings_manager
 
     the_settings_never_reach_the_user_s_freecad.SetBool("AutoApprovePlan", False)
     yield settings_manager.instance()

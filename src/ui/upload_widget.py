@@ -238,7 +238,7 @@ class UploadWidget(QtWidgets.QWidget):
         )
         for f in files:
             self.file_attached.emit(f)
-            from utils.logger import logger
+            from bridge.logger import logger
             logger.info(f"[Copilot] Attached file: {f}")
 
     def handle_clipboard_paste(self) -> bool:
@@ -256,7 +256,7 @@ class UploadWidget(QtWidgets.QWidget):
         if mime.hasImage():
             pix = QtGui.QPixmap.fromImage(clipboard.image())
             if pix.isNull():
-                from utils.logger import logger
+                from bridge.logger import logger
                 logger.warning("[Copilot] The clipboard offered an image that did not convert")
                 return False
             tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
@@ -264,7 +264,7 @@ class UploadWidget(QtWidgets.QWidget):
             tmp.close()
             self.temporary.append(tmp.name)
             self.file_attached.emit(tmp.name)
-            from utils.logger import logger
+            from bridge.logger import logger
             logger.info(f"[Copilot] Clipboard image saved to: {tmp.name}")
             return True
         return False

@@ -3,7 +3,7 @@ Settings -- Qt-free persistence for FreeCadCopilot's preferences.
 
 Everything here reads and writes through `FreeCAD.ParamGet` and nothing else:
 no `PySide` import, so any `core/` module can read or write a setting without
-pulling in Qt at load time. `utils/settings_manager.py` wraps this class in a
+pulling in Qt at load time. `bridge/settings_manager.py` wraps this class in a
 `QObject` for the call sites that connect to a change signal; every plain
 read/write goes through here directly.
 """
@@ -199,7 +199,7 @@ class Settings:
         this would demand is one nothing reads.
         """
         from core import model_catalog
-        from utils import provider_manager
+        from bridge import provider_manager
         mid = model_id or self.get_last_model()
         if not mid:
             raise ValueError("No model selected. Configure API keys in Preferences.")

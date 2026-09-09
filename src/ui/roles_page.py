@@ -5,7 +5,7 @@ One row per role `core.llm.ROLES` names, seeded with
 `core.llm.DEFAULT_ROLE_TABLE` (FCC-293's values) and editable here. A role's
 Provider and Effort are picked from a fixed list; its Model is free text,
 because the live model list a provider actually offers is fetched over the
-network per API key (`utils.provider_manager`), and a role's model is set
+network per API key (`bridge.provider_manager`), and a role's model is set
 once and rarely, not chosen from whatever happens to be configured this
 session.
 """
@@ -60,7 +60,7 @@ class RolesPage(QtWidgets.QWidget):
         return list(providers())
 
     def loadSettings(self):
-        from utils import settings_manager
+        from bridge import settings_manager
         from copilot.sdk import EFFORTS
 
         table = settings_manager.instance().get_role_table()
@@ -92,7 +92,7 @@ class RolesPage(QtWidgets.QWidget):
         self.table.resizeColumnsToContents()
 
     def saveSettings(self):
-        from utils import settings_manager
+        from bridge import settings_manager
 
         table = []
         for row_index in range(self.table.rowCount()):

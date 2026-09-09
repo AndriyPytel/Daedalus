@@ -344,7 +344,7 @@ def test_the_loop_never_builds_the_reading_itself():
 def _install_fake_freecad_console(tmp_path):
     """
     Swap in a `FreeCAD` whose `Console` records the calling thread, and force
-    `utils.logger` to configure itself against it from scratch.
+    `bridge.logger` to configure itself against it from scratch.
 
     `logging.getLogger("FreeCadCopilot")` is a process-wide singleton and
     `get_logger` only attaches handlers once, so a bare re-import after the
@@ -378,19 +378,19 @@ def _install_fake_freecad_console(tmp_path):
     fake_freecad.getUserAppDataDir = lambda: str(tmp_path) + "/"
 
     saved_freecad = sys.modules.get("FreeCAD")
-    saved_logger_module = sys.modules.pop("utils.logger", None)
+    saved_logger_module = sys.modules.pop("bridge.logger", None)
     logging.getLogger("FreeCadCopilot").handlers.clear()
     sys.modules["FreeCAD"] = fake_freecad
 
     def restore():
-        sys.modules.pop("utils.logger", None)
+        sys.modules.pop("bridge.logger", None)
         logging.getLogger("FreeCadCopilot").handlers.clear()
         if saved_freecad is not None:
             sys.modules["FreeCAD"] = saved_freecad
         else:
             sys.modules.pop("FreeCAD", None)
         if saved_logger_module is not None:
-            sys.modules["utils.logger"] = saved_logger_module
+            sys.modules["bridge.logger"] = saved_logger_module
 
     return calls, restore
 
@@ -409,7 +409,7 @@ def test_a_log_line_from_a_worker_thread_reaches_freecad_console_on_the_main_thr
     main = QtCore.QThread.currentThread()
     calls, restore = _install_fake_freecad_console(tmp_path)
     try:
-        import utils.logger as ul
+        import bridge.logger as ul
         run_off_thread(lambda: ul.logger.error("boom"), qt_app)
     finally:
         restore()
@@ -435,7 +435,7 @@ def test_notify_user_reaches_freecad_s_own_notification_area_from_a_worker_threa
     main = QtCore.QThread.currentThread()
     calls, restore = _install_fake_freecad_console(tmp_path)
     try:
-        import utils.logger as ul
+        import bridge.logger as ul
         run_off_thread(lambda: ul.notify_user("attention needed"), qt_app)
     finally:
         restore()
@@ -464,7 +464,7 @@ def test_logging_with_no_qt_application_prints_directly_instead_of_raising(tmp_p
     saved_dispatch = core.freecad_apply.on_main_thread
     core.freecad_apply.on_main_thread = _no_qt_application
     try:
-        import utils.logger as ul
+        import bridge.logger as ul
         ul.logger.error("boom")
     finally:
         core.freecad_apply.on_main_thread = saved_dispatch
@@ -496,7 +496,7 @@ def test_a_line_the_main_thread_never_takes_is_dropped(tmp_path):
     core.freecad_apply.on_main_thread = _never_comes_back
     written = []
     try:
-        import utils.logger as ul
+        import bridge.logger as ul
         ul._console(written.append, "boom")
     finally:
         core.freecad_apply.on_main_thread = saved_dispatch
@@ -526,7 +526,7 @@ def test_a_line_written_while_freecad_closes_is_dropped_rather_than_written_here
     core.freecad_apply.on_main_thread = _freecad_is_closing
     written = []
     try:
-        import utils.logger as ul
+        import bridge.logger as ul
         ul._console(written.append, "boom")
     finally:
         core.freecad_apply.on_main_thread = saved_dispatch
@@ -556,7 +556,7 @@ def test_a_dispatch_that_fails_some_other_way_does_not_escape_the_log_call(tmp_p
     saved_dispatch = core.freecad_apply.on_main_thread
     core.freecad_apply.on_main_thread = _fails_some_other_way
     try:
-        import utils.logger as ul
+        import bridge.logger as ul
         ul.logger.error("boom")
     finally:
         core.freecad_apply.on_main_thread = saved_dispatch

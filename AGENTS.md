@@ -40,7 +40,19 @@ Machine-readable pragmas â€” `# type:`, `# noqa:`, a shebang, an encoding line â
 are not prose and are exempt.
 
 `tests/test_the_code_says_why_not_what.py` enforces this over `core`, `ui`,
-`utils`, `tools` and `Mod`.
+`bridge`, `tools` and `Mod`.
+
+## Module layout
+
+Qt-free business logic goes in `core/`, named for the concern it owns --
+`settings.py`, `model_catalog.py`, `sessions.py`. `ui/`'s widgets reach it only
+through `copilot.sdk`, never `core` directly (`tests/test_ui_import_boundary.py`).
+
+A module that must emit a Qt signal or marshal onto the Qt main thread over one
+of those concerns -- `settings_manager.py`, `provider_manager.py`, `logger.py`
+-- goes in `bridge/` instead, the one place `ui/` may import directly, and the
+only reason a concern ever has two files: one Qt-free in `core/`, one
+Qt-touching in `bridge/`, never two of either.
 
 ## Measurements
 

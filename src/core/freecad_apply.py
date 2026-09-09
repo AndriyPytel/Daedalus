@@ -44,7 +44,7 @@ class Closing(Exception):
     """
     The Document operation was abandoned: FreeCAD is closing.
 
-    Not a `RuntimeError`: `utils.logger._console` reads that one as "there is
+    Not a `RuntimeError`: `bridge.logger._console` reads that one as "there is
     no Qt application at all" and writes the line straight to
     `FreeCAD.Console` from whatever thread it is on, which is the cross-thread
     call that segfaults. A line lost while FreeCAD closes is already in the

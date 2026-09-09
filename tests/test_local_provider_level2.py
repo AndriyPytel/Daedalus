@@ -26,7 +26,7 @@ def settings_are_the_tests_own():
     """The developer's own keys and addresses are not the suite's to spend."""
     if QT_APP is None:
         pytest.skip(NO_QT)
-    from utils import settings_manager
+    from bridge import settings_manager
 
     sm = settings_manager.instance()
     their_keys, their_urls = sm.get_api_keys(), sm.get_base_urls()
@@ -169,7 +169,7 @@ def _provider_manager_threads_join_before_the_next_test():
     yield
     if QT_APP is None:
         return
-    from utils import provider_manager
+    from bridge import provider_manager
 
     manager = provider_manager.instance()
     _drain(manager)
@@ -183,7 +183,7 @@ def test_no_address_means_no_fetch_and_nothing_said(settings_are_the_tests_own, 
     "Request URL is missing an 'http://' or 'https://' protocol".
     """
     import FreeCAD
-    from utils import provider_manager
+    from bridge import provider_manager
 
     manager = provider_manager.instance()
     _drain(manager)
@@ -211,7 +211,7 @@ def test_an_unreachable_address_names_itself_and_leaves_the_rest_working(
     The panel keeps working after the failure: asking again is still answerable.
     """
     import FreeCAD
-    from utils import provider_manager
+    from bridge import provider_manager
 
     manager = provider_manager.instance()
     _drain(manager)
