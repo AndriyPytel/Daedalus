@@ -5,7 +5,7 @@ import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
-STYLED = [os.path.join(SRC, "ui"), os.path.join(SRC, "Mod", "pages")]
+STYLED = [os.path.join(SRC, "ui")]
 
 ALLOWED_ROLES = {"palette(highlight)", "palette(highlighted-text)"}
 

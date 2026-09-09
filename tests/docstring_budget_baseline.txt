@@ -1,6 +1,6 @@
-src/Mod/pages/providers_page.py::_build_ui
-src/Mod/pages/providers_page.py::_save_models
-src/Mod/pages/providers_page.py::saveSettings
+src/ui/providers_page.py::_build_ui
+src/ui/providers_page.py::_save_models
+src/ui/providers_page.py::saveSettings
 src/core/agent/phase_contract.py::spawn
 src/core/agent/subagent.py::delegate
 src/core/arithmetic.py::wrong_sums

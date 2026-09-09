@@ -56,12 +56,12 @@ class RolesPage(QtWidgets.QWidget):
         return self
 
     def _providers(self):
-        from core import model_catalog
-        return list(model_catalog.providers())
+        from copilot.sdk import providers
+        return list(providers())
 
     def loadSettings(self):
         from utils import settings_manager
-        from core import llm
+        from copilot.sdk import EFFORTS
 
         table = settings_manager.instance().get_role_table()
         self.table.setRowCount(len(table))
@@ -83,7 +83,7 @@ class RolesPage(QtWidgets.QWidget):
             self.table.setItem(row_index, 2, QtWidgets.QTableWidgetItem(row.get("model", "")))
 
             effort_combo = QtWidgets.QComboBox()
-            effort_combo.addItems(list(llm.EFFORTS))
+            effort_combo.addItems(list(EFFORTS))
             current_effort = row.get("effort", "")
             if current_effort and effort_combo.findText(current_effort) >= 0:
                 effort_combo.setCurrentText(current_effort)

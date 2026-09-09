@@ -15,7 +15,7 @@ harness directory, drive to start a run, replacing the hand-assembled
 scripts they took over from: both a second copy of this same wiring, one
 call behind the loop's own `run()` signature.
 """
-from core import events
+from core import events, model_catalog
 from core.freecad_apply import ApplyPipeline, active_document, build_registry, closing
 from core.events import EventStream, replay
 from core.kernel import Kernel
@@ -28,6 +28,21 @@ from core.narrate import narrate
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
 from core.session_title import fallback, generate
 from core.sessions import Sessions
+
+
+def providers():
+    """Every provider name a role or the Providers page can offer."""
+    return model_catalog.providers()
+
+
+def needs_base_url(provider):
+    """Whether *provider* takes a base URL (a local server, not a hosted one)."""
+    return model_catalog.needs_base_url(provider)
+
+
+def needs_no_key(provider):
+    """Whether *provider* signs itself in, so the Providers page stores no key for it."""
+    return model_catalog.needs_no_key(provider)
 
 
 class _NoKernel:

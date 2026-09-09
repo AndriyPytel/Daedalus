@@ -39,7 +39,7 @@ def settings_are_the_tests_own():
 
 @pytest.fixture
 def providers_page(settings_are_the_tests_own):
-    from Mod.pages.providers_page import ProvidersPage
+    from ui.providers_page import ProvidersPage
 
     page = ProvidersPage()
     page.show()

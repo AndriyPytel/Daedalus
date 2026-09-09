@@ -14,7 +14,7 @@ pytestmark = pytest.mark.freecad
 
 def _page():
     assert QT_APP is not None, NO_QT
-    from Mod.pages.roles_page import RolesPage
+    from ui.roles_page import RolesPage
     return RolesPage()
 
 

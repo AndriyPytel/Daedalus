@@ -12,9 +12,9 @@ The phase prompts are not settings — they are `config/prompts/*.md`, edited as
 files.
 """
 import FreeCADGui
-from Mod.pages.general_page import GeneralPage
-from Mod.pages.providers_page import ProvidersPage
-from Mod.pages.roles_page import RolesPage
+from ui.general_page import GeneralPage
+from ui.providers_page import ProvidersPage
+from ui.roles_page import RolesPage
 
 FreeCADGui.addPreferencePage(GeneralPage, "FreeCadCopilot")
 FreeCADGui.addPreferencePage(ProvidersPage, "FreeCadCopilot")

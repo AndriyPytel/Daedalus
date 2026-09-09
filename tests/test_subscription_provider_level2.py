@@ -81,7 +81,7 @@ def manager(settings_are_the_tests_own):
 @pytest.fixture
 def providers_page(settings_are_the_tests_own, monkeypatch):
     from core import llm
-    from Mod.pages.providers_page import ProvidersPage
+    from ui.providers_page import ProvidersPage
 
     monkeypatch.setattr(llm, "signed_in", lambda: SIGNED_IN)
     page = ProvidersPage()

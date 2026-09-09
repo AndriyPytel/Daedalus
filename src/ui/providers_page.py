@@ -262,16 +262,16 @@ class ProvidersPage(QtWidgets.QWidget):
 
     @staticmethod
     def _wants_base_url(provider):
-        from core import model_catalog
+        from copilot.sdk import needs_base_url
 
-        return model_catalog.needs_base_url(provider)
+        return needs_base_url(provider)
 
     @staticmethod
     def _signs_itself_in(provider):
         """A provider whose credential is the CLI's, so this page stores none."""
-        from core import model_catalog
+        from copilot.sdk import needs_no_key
 
-        return model_catalog.needs_no_key(provider)
+        return needs_no_key(provider)
 
     def _on_selection_changed(self, current, _prev):
         """
