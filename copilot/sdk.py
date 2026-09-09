@@ -30,46 +30,83 @@ from core.session_title import fallback, generate
 from core.sessions import Sessions
 
 
+class _NoKernel:
+    """Sentinel for Client(kernel=NO_KERNEL) to run in-process without a subprocess."""
+    pass
+
+
+NO_KERNEL = _NoKernel()
+
+
 class Client:
     """
-    *document* is a path to open or `None` for a fresh one, the convention
-    `core.kernel.Kernel.check` uses; *llm* and *kernel* default to a real
-    provider and a real headless kernel, a test hands in its own. Without an
-    *answer* callback `send` pauses in a blocked, resumable `needs-answer`
-    state rather than guessing, and *confirm*, which answers the Owned Object
-    prompt, refuses by default as every caller did before it existed.
+    *document* is a path to open, `None` for a fresh one, or an already-open
+    FreeCAD Document object (live-document mode, so the panel binds to the
+    Document it already has). *llm* and *kernel* default to a real provider
+    and a real headless kernel; a test hands in its own. Pass *kernel* as
+    `NO_KERNEL` to run in-process without a subprocess (the panel does this
+    against the live GUI Document). Without an *answer* callback `send` pauses
+    in a blocked, resumable `needs-answer` state rather than guessing, and
+    *confirm* and *dispatch* set the corresponding `ApplyPipeline` callables.
     """
 
-    def __init__(self, document=None, llm=None, kernel=None, answer=None, confirm=None):
+    def __init__(self, document=None, llm=None, kernel=None, answer=None,
+                 confirm=None, dispatch=None):
         import FreeCAD
 
-        self.document = FreeCAD.openDocument(document) if document else FreeCAD.newDocument()
-        self.llm = llm or client_from_roles()
-        self.kernel = kernel or Kernel()
+        if document is None:
+            self.document = FreeCAD.newDocument()
+        elif isinstance(document, str):
+            self.document = FreeCAD.openDocument(document)
+        else:
+            self.document = document
+
+        if isinstance(kernel, _NoKernel):
+            self.kernel = None
+        elif kernel is None:
+            self.kernel = Kernel()
+        else:
+            self.kernel = kernel
+
+        self._llm = llm
         self.events = EventStream()
         self.session = Session()
-        self.pipeline = ApplyPipeline(document=self.document, worker=self.kernel,
-                                      dispatch=lambda func, timeout=None: func(),
-                                      confirm=confirm or (lambda kinds: False), events=self.events)
+        self.pipeline = ApplyPipeline(
+            document=self.document,
+            worker=self.kernel,
+            dispatch=dispatch or (lambda func, timeout=None: func()),
+            confirm=confirm or (lambda kinds: False),
+            events=self.events)
         self.answer = answer
         self._stop = False
         self._abort = False
         self._pending = None
+
+    @property
+    def llm(self):
+        if self._llm is None:
+            self._llm = client_from_roles()
+        return self._llm
+
+    @llm.setter
+    def llm(self, value):
+        self._llm = value
 
     def watch(self, callback):
         """Subscribe *callback* to every event a `send` emits, as it happens."""
         self.events.subscribe(callback)
 
     def send(self, prompt, gate=auto_approve, ask=None, decide=revise_by_default,
-             attachments=(), cancelled=None):
+             attachments=(), cancelled=None, outstanding=(), the_part_path=None,
+             route_first=True, events=None):
         """
-        Route *prompt* through the orchestrator and run the agent it names,
-        blocking until that turn is over -- `watch`'s callbacks fire as it
-        goes -- and handing back what ran: a `LoopResult`, text, or `None`.
-        *ask* answers a Design question for this call only, falling back to
-        this `Client`'s `answer` and then to a pause. *cancelled* is the
-        caller's own stop condition, asked alongside `control`'s `stop`.
+        Run *prompt* through the loop, blocking until done. *route_first*
+        classifies via the orchestrator first (default); `False` skips straight
+        to design. *events* overrides this Client's stream for this run only.
         """
+        stream = events if events is not None else self.events
+        self.pipeline.events = stream
+
         self._stop = False
         self._abort = False
         tools = build_registry(document=self.document, pipeline=self.pipeline)
@@ -81,12 +118,17 @@ class Client:
 
         answered_by = ask or self.answer or _pause
 
-        def design(message, decision):
-            return run(message, llm=self.llm, tools=tools, events=self.events,
-                       cancelled=lambda: self._stop or bool(cancelled and cancelled()),
+        def is_cancelled():
+            return self._stop or bool(cancelled and cancelled())
+
+        def design(message, decision=None):
+            return run(message, llm=self.llm, tools=tools, events=stream,
+                       cancelled=is_cancelled,
                        aborted=lambda: self._abort,
                        attachments=list(attachments), gate=gate, ask=answered_by,
-                       decide=decide)
+                       decide=decide,
+                       outstanding=list(outstanding),
+                       the_part_path=the_part_path)
 
         def run_question(message, decision):
             return "".join(chunk.text for chunk in self.session.turn(self.llm, message)
@@ -97,15 +139,18 @@ class Client:
                 self._abort = True
             self._stop = True
 
-        return route(prompt, llm=self.llm, events=self.events,
-                     handlers={DESIGN: design, RUN_QUESTION: run_question, CONTROL: control},
-                     session=self.session)
+        if route_first:
+            return route(prompt, llm=self.llm, events=stream,
+                         handlers={DESIGN: design, RUN_QUESTION: run_question, CONTROL: control},
+                         session=self.session)
+        else:
+            return design(prompt)
 
     def resume(self, answer):
         """
         Answer the question a paused run is waiting on, and pick that same
-        run back up (FCC-316) -- *answer* reaches only the question that
-        paused it, then the run carries on as `send` normally would.
+        run back up -- *answer* reaches only the question that paused it,
+        then the run carries on as `send` normally would.
         """
         pending, self._pending = self._pending, None
         if pending is None:
@@ -120,7 +165,8 @@ class Client:
 
     def close(self):
         """Let the kernel go and close the Document. A Client is not reused after this."""
-        self.kernel.kill()
+        if self.kernel is not None:
+            self.kernel.kill()
         import FreeCAD
 
         FreeCAD.closeDocument(self.document.Name)

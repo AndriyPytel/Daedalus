@@ -2092,10 +2092,9 @@ def test_a_restored_session_owns_nothing(panel, tmp_path):
     it is not reset on every switch any more, because the pipeline switching
     away from is no longer the pipeline switching in.
     """
-    from core.freecad.apply import ApplyPipeline
-
     live = panel.chat_sessions.stack.currentIndex()
-    panel.worker.pipeline = ApplyPipeline(owned={"BoxFromTheLiveSession"})
+    panel.worker._get_sdk_client()
+    panel.worker.pipeline.owned = {"BoxFromTheLiveSession"}
 
     log = str(tmp_path / "old.jsonl")
     _a_transcript(log)
@@ -2103,7 +2102,7 @@ def test_a_restored_session_owns_nothing(panel, tmp_path):
     panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
 
     panel.switch_session(index)
-    panel.worker._get_tools()
+    panel.worker._get_sdk_client()
     assert panel.worker.pipeline.owned == set(), \
         "the next Step would apply against another Session's Owned Objects"
 
@@ -2113,13 +2112,12 @@ def test_a_restored_session_owns_nothing(panel, tmp_path):
 
 
 def test_a_new_session_owns_nothing(panel):
-    from core.freecad.apply import ApplyPipeline
-
-    panel.worker.pipeline = ApplyPipeline(owned={"BoxFromAnotherSession"})
+    panel.worker._get_sdk_client()
+    panel.worker.pipeline.owned = {"BoxFromAnotherSession"}
 
     panel.new_chat()
 
-    panel.worker._get_tools()
+    panel.worker._get_sdk_client()
     assert panel.worker.pipeline.owned == set()
 
 
@@ -2455,12 +2453,10 @@ def test_aborting_kills_the_kernel_and_releases_a_waiting_question(panel):
     is what tells the two apart at the panel's own boundary.
     """
     killed = []
+    panel.worker._get_sdk_client()
+    original_shutdown = panel.worker.pipeline.shutdown
+    panel.worker.pipeline.shutdown = lambda: (killed.append(True), original_shutdown())
 
-    class FakePipeline:
-        def shutdown(self):
-            killed.append(True)
-
-    panel.worker.pipeline = FakePipeline()
     panel.on_missing_values("How many teeth?")
     QT_APP.processEvents()
     card = panel._question_card
@@ -2473,7 +2469,6 @@ def test_aborting_kills_the_kernel_and_releases_a_waiting_question(panel):
     assert panel.worker._stop.is_set()
     assert panel._question_card is None
     assert not card.isEnabled(), "the card is still answerable after Abort"
-    panel.worker.pipeline = None
 
 
 def test_the_acceptance_list_is_on_the_plan_card_before_the_gate(panel):
