@@ -1,10 +1,9 @@
 """
 Level 1 — model-facing prose lives in config/prompts/, not in code.
 
-Every lint refusal, the look-it-up nudge, retry prompts, and failure messages
-lived as module-level string constants in core/. Correcting what the Copilot is
-told was a Python edit and a release. Now each is a file under config/prompts/
-read at runtime: correcting the wording is editing text.
+Text the provider receives — lint refusals, retry prompts, failure messages —
+lives in config/prompts/ so correcting what the Copilot is told is a text edit
+rather than a Python edit and a release.
 
 _ENVELOPE_CHECK and SELF_INTERSECTION_CHECK are code templates executed in the
 worker, not prose the provider receives, so they are excluded.
