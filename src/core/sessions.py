@@ -44,14 +44,8 @@ def _wants_a_title(session) -> bool:
 
 def _matches(record, session) -> bool:
     """
-    *session* is the typed identity FCC-309's `core.llm.Session` carries
-    (`.id`), not the record's own log path — a log renamed or moved out from
-    under a record must not silently drop a call already holding this object.
-
-    A bare log-path string is still accepted, matched against the record's
-    own `log`: the worker thread that reports a Document's name back
-    (`ui/copilot_panel.py :: LoopWorker.do_work`) only ever had that string to
-    give, crossing a `QThread` boundary a plain path already crosses safely.
+    *session* is the typed identity `.id`, not the record's own log path.
+    A bare log-path string is still accepted, matched against `log`.
     """
     if isinstance(session, str):
         return record["log"] == session
@@ -92,10 +86,7 @@ class Sessions:
         """
         Write the index.
 
-        A Session that has had no Intent is not in it. It has nothing to show
-        in the picker and nothing to be named after, and every launch would
-        otherwise add one — fifty promptless launches would push out fifty real
-        Sessions and delete their logs (FCC-42).
+        A Session that has had no Intent is not in it.
         """
         self._index.write([
             {key: session[key]
@@ -167,14 +158,7 @@ class Sessions:
         return True, dropped
 
     def _prune(self, keep: int) -> list:
-        """
-        Drop the oldest indexed Sessions past the bound, transcripts included.
-
-        Both the count and the removal are of indexed Sessions only. The bound
-        is on the durable index, and a Session with no Intent is not in it —
-        counting one would evict a real Session, transcript included, on every
-        launch where nobody typed anything (FCC-17 against FCC-42).
-        """
+        """Drop the oldest indexed Sessions past the bound, transcripts included."""
         dropped = []
         indexed = [s for s in self._sessions if s.get("indexed")]
         while len(indexed) > keep:
@@ -258,14 +242,7 @@ class Sessions:
         return len(self._sessions)
 
     def indexed(self) -> list:
-        """
-        `(position, session)` for every Session that has had an Intent.
-
-        The same filter `_save` applies, so the picker shows what survives a
-        restart. The position is carried rather than recounted because it is
-        what names the Session to the caller — a filtered list numbered from
-        zero would open its neighbour (FCC-42).
-        """
+        """`(position, session)` for every Session that has had an Intent."""
         return [(position, session)
                 for position, session in enumerate(self._sessions)
                 if session.get("indexed")]

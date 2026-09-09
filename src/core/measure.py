@@ -1,52 +1,10 @@
 """
 Measure one Session log by the definitions the QA rounds used.
 
-FCC-23/45/55/56 judged a run by whether it reached a Review verdict or was
-blocked, how many Steps it started and how many it got applied, how many
-times Preflight turned a Step back, how many times Plan was revised, what the
-provider calls cost, and how long the run took wall clock. Every one of those
-reads straight off the event stream `core/events.py :: replay` already
-parses, so this module has no FreeCAD import and runs anywhere the Python is.
-
-A run can carry more than one `review_verdict` (Review fails a Step, Plan
-revises, Review runs again) or more than one `blocked` in principle, so both
-read the last of their kind — the one that stands once the run stopped
-emitting. A log with neither is a run still in the pipeline when the log
-ends, not a failure of either kind: `verdict` and `blocked_reason` are both
-`None`, read independently, since one run can have a `blocked` on an earlier
-cycle and a `verdict` on a later one.
-
-`cost_usd` only sums the `cost` events that carried a price: `core/events.py`
-documents that a subscription route emits `cost` with no `usd` at all, so a
-run entirely on a subscription costs 0.0 here, not "unknown".
-
-FCC-191 also answers the two questions a baseline-against-experiment
-comparison is actually asked for: how often the Assertion failed and how
-often Review failed. Both read events `core/loop.py` already emits -
-`assertion` (whose `ok` is `True`, `False`, or `None` when the phase gave up
-without writing a check that ran, and whose `confirmed`/`unmet` name the
-individual checks that phase wrote) and `review_verdict` (whose `verdict` is
-always `"pass"` or `"fail"`).
-
-`review_fail_rate` stays a fraction of that one run's own Review attempts,
-not of the run set: a run whose first Review failed and whose second, after
-a revision, passed carries `review_fail_rate` `0.5`, the same run
-`plan_revisions` already counts as one hand-back.
-
+`review_fail_rate` stays a fraction of that one run's own Review attempts.
 `assertion_fail_rate` is a fraction of named checks, not of Assertion
-attempts (FCC-191 review, `logs/review/ab-lane-outcomes.md` §5c): an
-attempt's own `ok` is one boolean for the whole batch of checks it ran, and
-a run with 12 of 110 named checks unmet came back with the identical
-`ok: false` as one with 110 of 110 unmet, reading as the same `100%` either
-way. Counting `confirmed` against `unmet` instead reads the first as ~11%
-and the second as 100% - the difference the whole-batch boolean cannot
-show, and the one number this metric now exists to tell apart.
-
-A run with neither kind - blocked before Assertion ran, or before Review
-did - reads both rates as `0.0`, the same way `hand-back rate` reads a run
-with no `plan_revised` as not having handed back: nothing having happened is
-not a failure, and counting it as one would make a short, clean run look
-worse than a long one that failed once and then passed.
+attempts: a run with 12 of 110 named checks unmet reads as ~11%, and one
+with 110 of 110 unmet reads as 100%.
 """
 from dataclasses import dataclass
 from typing import List, Optional
@@ -108,22 +66,10 @@ def _gate_wait_seconds(events) -> float:
 def _checks_fail_rate(assertions) -> float:
     """
     The fraction of individually named checks that did not hold, across
-    every `assertion` event in the run — not the fraction of Assertion
-    *attempts* that came back with one unmet entry among many.
+    every `assertion` event in the run.
 
-    `opus/mm23-off` (FCC-191 review) is the run this replaced the old
-    reading for: one `assertion` event, `ok: false`, 98 `confirmed` entries
-    and 12 `unmet` ones. Read as one attempt out of one failed, that is
-    100% — the same number a run with 0 of 110 checks passing reports. Read
-    as checks, it is 12/110, about 11%: 89% of what the drawing asked for
-    held, which the whole-batch `ok` boolean cannot say.
-
-    `confirmed` and `unmet` are absent on the `ok: None` event a phase emits
-    when it gave up without writing a check that ran (nothing measured,
-    nothing to count either way) and on the envelope's own early failure
-    (`unmet` only, `confirmed` always `[]` there because nothing but the
-    envelope was checked) — `.get(..., ()) or ()` reads both as no checks
-    rather than a crash.
+    One run: 98 `confirmed` and 12 `unmet`. Read as checks, it is 12/110,
+    about 11%: 89% held, which the whole-batch `ok` boolean cannot say.
     """
     unmet = sum(len(event.data.get("unmet") or ()) for event in assertions)
     confirmed = sum(len(event.data.get("confirmed") or ()) for event in assertions)
@@ -165,11 +111,7 @@ def _pass_rate(measurements: List[Measurement]) -> float:
     """
     The fraction of runs Review passed, of the runs Review actually reached.
 
-    `verdict is None` is Review never running - blocked before it, or the log
-    cut off first - not Review saying no. Folding it into the same denominator
-    as an explicit `verdict == False` reads "we never asked" as a fail
-    alongside "we asked and it said no", which is the count that made
-    `RLM_AGENTIC=on` look worse than a run that was never judged (FCC-292).
+    `verdict is None` is Review never running, not Review saying no.
     """
     reviewed = [m for m in measurements if m.verdict is not None]
     if not reviewed:
@@ -200,14 +142,7 @@ _ROWS = (
 
 def compare(baseline: List[str], experiment: List[str],
            baseline_label: str = "baseline", experiment_label: str = "experiment") -> str:
-    """
-    A plain Markdown table, one row per FCC-23/45/55/56 metric, readable in a
-    ticket comment.
-
-    Takes Session log paths rather than `Measurement`s so a caller never has
-    to import `measure` separately, and reports `n` runs per side because a
-    rate over zero runs would otherwise read as a false 0%.
-    """
+    """A plain Markdown table, one row per metric, readable in a ticket comment."""
     baseline_runs = [measure(path) for path in baseline]
     experiment_runs = [measure(path) for path in experiment]
 
