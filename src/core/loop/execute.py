@@ -19,6 +19,7 @@ from core.lint import OP_TYPEIDS
 from core.loop.prompt import EXECUTE_PHASE, prompt
 from core.prompts import read_prompt
 from core.loop.looks import Looks
+from core.logs_root import LOGS
 
 
 
@@ -26,8 +27,7 @@ from core.loop.looks import Looks
 NOT_A_LOOK = ("apply_step", "review_views", "check_assertions")
 
 
-TYPE_CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
-                               "logs", "type_cache.json")
+TYPE_CACHE_PATH = os.path.join(LOGS, "type_cache.json")
 
 
 def _freecad_version():

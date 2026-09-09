@@ -45,6 +45,7 @@ except ImportError:  # pragma: no cover - the addon installs PyYAML
 
 from core.design.core import SECTIONS
 from core.design.report import grouped_conflicts
+from core.logs_root import LOGS
 
 
 class MissingPyYAML(RuntimeError):
@@ -71,9 +72,7 @@ _EVIDENCE = "-evidence.yaml"
 
 _DIGEST = 8
 
-WHERE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
-    "logs", "parts")
+WHERE = os.path.join(LOGS, "parts")
 
 _PROVENANCE = "read_from"
 _SCHEMA_KEY = "schema"
