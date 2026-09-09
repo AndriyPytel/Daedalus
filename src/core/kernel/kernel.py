@@ -47,28 +47,7 @@ _CANDIDATES = (
 
 @dataclass
 class KernelResult:
-    """
-    What a caller sees for one Step: it landed, or here is why not.
-
-    `created`, `deleted` and `modified` are what the Step actually did,
-    observed rather than inferred from the code.
-
-    `held` and `failed` are an Assertion check's own measured lists
-    (`core/kernel/kernel_worker.py :: _measured`) -- `None` where nothing measured
-    them, an ordinary Step included, rather than `[]`, which would read as
-    "measured, and nothing held or failed".
-
-    `geometry` is every feature's Volume and BoundBox (FCC-260), always
-    present on a successful Step and empty where the kernel never reached a
-    finished Document to measure at all.
-
-    `checkpoint` is the path of the file the kernel's Document was just saved
-    to (on success) or reloaded from (on failure) -- the on-disk state a
-    caller can reopen and compare against, per this ticket's own TESTING
-    STRATEGY.
-
-    `names` is the requested-name -> allocated-name map after this Step, what a later Step's `doc.getObject(names[...])` addresses instead of a literal string a name collision may have moved (FCC-302). `signature` is what a replay of this Step's own code must reproduce exactly -- object count, names, total volume, and every `App::Link`/`App::LinkGroup`/`ExternalGeometry` reference's resolved target -- so a Step that ran over the wrong object is caught even where the first three agree.
-    """
+    """What a caller sees for one Step: it landed, or here is why not."""
 
     ok: bool
     traceback: str = ""
@@ -231,22 +210,9 @@ class Kernel:
         """
         Run *code* as one Step in the kernel.
 
-        `document` not given at all is the one call this class ever treats
-        specially: it continues the kernel's own running session rather than
-        reloading it, which is the whole point of this class over the worker
-        it replaces. Passing `document` -- an explicit path, or explicit
-        `None` for an empty Document -- is a fresh handoff: the session
-        (Document and checkpoint) starts over from it -- the name map does
-        not, when *names* hands back what an earlier Step already allocated
-        (FCC-302): a caller replaying against the Document's own true state
-        takes a fresh handoff on every Step, but a later Step's code still
-        needs what an earlier one's name collided into.
-
-        `ephemeral=True` skips checkpoint writes entirely: the caller will
-        discard this session immediately and never reload the checkpoint.
-
-        Returns a KernelResult. Never raises for anything the code did -- a
-        crash and a timeout are results, not exceptions.
+        `document` not given: continues the kernel's own session.
+        `document` given: fresh handoff from that path.
+        Returns a KernelResult. Never raises for anything the code did.
         """
         request = {"code": code}
         if document is not _CONTINUE:
@@ -263,17 +229,7 @@ class Kernel:
         return KernelResult.from_response(response)
 
     def reading(self, request, timeout=None):
-        """
-        Put one traced outline to the solver in the kernel, and hand back its
-        reply.
-
-        None where the kernel could not answer -- it died on this reading, or
-        it hung -- because a reading nobody could check and a reading with
-        nothing wrong come to the same thing upstream: no conflict on the
-        description. The dying is the point. `Sketcher.Constraint` is what
-        segfaults (FCC-19), and here it is fed geometry measured off a
-        drawing rather than code the model wrote (FCC-126).
-        """
+        """Put one traced outline to the solver in the kernel, and hand back its reply."""
         response, _ = self._ask(request, timeout or self.timeout, "the reading")
         return response if response and response.get("ok") else None
 
