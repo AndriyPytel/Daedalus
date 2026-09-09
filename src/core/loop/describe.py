@@ -3,10 +3,8 @@ import re
 import time
 from dataclasses import dataclass, field
 
-from core import kernel
 from core.design import part_file
 from core.design.design import (
-    A_CHECK_HAZARD,
     A_CONFLICT,
     ROUND_IN,
     UNDER,
@@ -22,14 +20,8 @@ from core.design.design import (
     what_the_trace_says,
     where_the_direction_is,
 )
-from core.events import (
-    ANSWER,
-    DESIGN,
-    ERROR,
-    PART,
-    QUESTION,
-)
-from core.sheets import sheet_reader, sketch_check
+from core.events import ANSWER, DESIGN, PART, QUESTION
+from core.sheets import sheet_reader
 
 from core.loop.design import _first_pass, _reconciled, design
 from core.loop.gate import ACCEPT, DECIDE_FOR_ME, REVISE, START_OVER

@@ -15,7 +15,7 @@ from core.agent import phase_contract as pc
 from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import Budgets
 from core.loop.describe import _RAN_OUT_OF_ROOM
-from core.loop.prompt import EXECUTE_PHASE, _ask, prompt
+from core.loop.prompt import EXECUTE_PHASE, prompt
 from core.prompts import read_prompt
 from core.loop.looks import Looks
 

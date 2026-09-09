@@ -13,7 +13,7 @@ from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import Budgets
 from core.loop.describe import _A_SIZE, _TRUE_TO
 from core.loop.execute import _DID_NOT_HOLD, _MODEL_IS_INVALID, _addressed
-from core.loop.prompt import ASSERTION_PHASE, _ask, prompt
+from core.loop.prompt import ASSERTION_PHASE, prompt
 from core.prompts import read_prompt
 from core.loop.results import Stopped
 

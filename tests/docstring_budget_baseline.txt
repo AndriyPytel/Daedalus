@@ -326,7 +326,6 @@ src/ui/queue_widget.py::now
 src/ui/queue_widget.py::step_failed
 src/ui/ui_helpers.py::_icon_svg
 src/ui/ui_helpers.py::get_icon
-src/ui/ui_helpers.py::ink_colour
 src/ui/ui_helpers.py::surface_colour
 src/ui/upload_widget.py::FileChip
 src/ui/upload_widget.py::UploadWidget

@@ -125,21 +125,6 @@ class UIHelpers:
         return colour.name(QtGui.QColor.HexRgb)
 
     @staticmethod
-    def ink_colour(on):
-        """
-        The colour *on* writes its own text in, as a literal.
-
-        For the one thing a stylesheet cannot reach: the `<a>` inside a rich
-        text QLabel. Qt paints a link with `QPalette.Link`, which is the OS's
-        blue and belongs to no theme this addon wears -- a bright blue,
-        underlined path is the loudest thing in the transcript and says the
-        wrong thing about a file the user opens once (ADR-0011). Written in
-        the same ink as the sentence around it, the link is marked by being
-        clickable and by the sentence saying so.
-        """
-        return on.palette().color(on.foregroundRole()).name(QtGui.QColor.HexRgb)
-
-    @staticmethod
     def get_header_style():
         """A section heading: weight and spacing, no colour of its own (ADR-0011)."""
         return (

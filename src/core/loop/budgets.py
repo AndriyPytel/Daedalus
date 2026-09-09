@@ -1,5 +1,5 @@
 """Budget management for the loop: ceilings and revision tracking."""
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 

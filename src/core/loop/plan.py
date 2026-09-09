@@ -25,7 +25,7 @@ from core.loop.execute import (
     _lookable,
 )
 from core.loop.gate import _DECIDE, _a_question_for_the_build
-from core.loop.prompt import PLAN_PHASE, _ask, _pictures, prompt
+from core.loop.prompt import PLAN_PHASE, _pictures, prompt
 
 import tempfile
 from core.agent.agent import run_phase

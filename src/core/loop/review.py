@@ -7,13 +7,7 @@ from core.agent import phase_contract as pc
 from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import PhaseError
 from core.loop.execute import _VIEW_NAMES
-from core.loop.prompt import (
-    REVIEW_PHASE,
-    REVIEW_SUSPECT_PHASE,
-    _as_image,
-    _ask,
-    prompt,
-)
+from core.loop.prompt import REVIEW_PHASE, REVIEW_SUSPECT_PHASE, _as_image, prompt
 
 
 def _review_content(request, views, attachments):

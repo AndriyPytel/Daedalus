@@ -1,5 +1,5 @@
 """Helper functions for the run loop - revision tracking and termination."""
-from core.events import ABORTED, BLOCKED, BUDGET_EXHAUSTED, OUTSTANDING, STOPPED
+from core.events import ABORTED, BLOCKED, BUDGET_EXHAUSTED, STOPPED
 from core.loop.describe import _INVENTED
 from core.loop.results import LoopResult
 

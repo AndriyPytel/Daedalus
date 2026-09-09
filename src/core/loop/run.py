@@ -6,13 +6,10 @@ from core.arithmetic import wrong_sums
 from core.design import part_file
 from core.design.design import decided_for_you, entries, render
 from core.events import (
-    ABORTED,
     ANSWER,
     APPLIED,
     ASSERTION,
     ATTACHED,
-    BLOCKED,
-    BUDGET_EXHAUSTED,
     COMPLETED,
     ERROR,
     EventStream,
@@ -28,7 +25,6 @@ from core.events import (
     REVIEW_SUSPECTED,
     REVIEW_VERDICT,
     STEP_STARTED,
-    STOPPED,
     TOOL_CALL,
     TOOL_RESULT,
     UNBUILT,
@@ -44,7 +40,7 @@ from core.loop.assertion import (
     assertion,
 )
 from core.loop.budgets import Budgets, PhaseError, _Revisions, revisions_ceiling
-from core.loop.describe import _DECIDED, _INVENTED, _RAN_OUT_OF_ROOM, _describe_the_part
+from core.loop.describe import _DECIDED, _RAN_OUT_OF_ROOM, _describe_the_part
 from core.loop.execute import (
     Attempt,
     Looks,
