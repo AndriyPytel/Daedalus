@@ -7,7 +7,7 @@ the colours ADR-0011 (FCC-A-16) carves out as exceptions to "the panel has no
 colours of its own".
 """
 from ui import design_tokens as tokens
-from tests.test_the_panel_wears_the_users_theme import ALLOWED_ROLES, SEMANTIC
+from tests.mod.ui.test_the_panel_wears_the_users_theme import ALLOWED_ROLES, SEMANTIC
 
 
 def test_the_spacing_scale_doubles_from_four():

@@ -2783,9 +2783,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         is this panel's child process and goes with it.
 
         A question is not the only thing a run parks on. A Step in flight is
-        inside `core.freecad_apply.on_main_thread`, waiting on a job only this thread's
+        inside `bridge.main_thread.on_main_thread`, waiting on a job only this thread's
         event loop can take — and this thread is here, not pumping it. Nothing
-        would take that job, so `core.freecad_apply.closing()` comes first: it releases
+        would take that job, so `bridge.main_thread.closing()` comes first: it releases
         every dispatch already waiting and refuses the ones the unwinding run
         makes on its way out. Without it the wait below expires and a thread in
         the middle of the Document is ended from outside.
@@ -2803,7 +2803,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         the grace period here is the only chance it gets to finish on its
         own before this panel stops tracking it.
         """
-        from copilot.sdk import closing
+        from bridge.main_thread import closing
 
         closing()
         FreeCAD.removeDocumentObserver(self)

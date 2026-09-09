@@ -32,23 +32,17 @@ from core.lint import lint
 from core.prompts import read_prompt
 from core.tools import NO_PARAMETERS, ToolError, ToolRegistry
 
-DISPATCH_TIMEOUT = 60.0
-
-_dispatcher = None
-_dispatcher_lock = threading.Lock()
-_closing = threading.Event()
-_waiting = set()
-
 
 class Closing(Exception):
     """
     The Document operation was abandoned: FreeCAD is closing.
 
-    Not a `RuntimeError`: `bridge.logger._console` reads that one as "there is
-    no Qt application at all" and writes the line straight to
-    `FreeCAD.Console` from whatever thread it is on, which is the cross-thread
-    call that segfaults. A line lost while FreeCAD closes is already in the
-    file.
+    Raised by `Mod.bridge.main_thread.on_main_thread`, the marshaller
+    the engine's own Qt-free `apply()` shares this exception type with.
+
+    Not a `RuntimeError`: `bridge.logger._console` treats that one as "no Qt
+    application" and writes straight to `FreeCAD.Console` off the main
+    thread, which is the cross-thread call that segfaults.
     """
 
 
@@ -68,21 +62,6 @@ class SignatureMismatch(Exception):
             "verified -- expected %r, landed %r. It was rolled back rather "
             "than silently accepted." % (expected, landed)
         )
-
-
-def closing():
-    """
-    Release every caller waiting on the main thread, and refuse new ones.
-
-    The main thread takes these jobs from its event loop, and the panel's own
-    shutdown runs on that thread without pumping it — so a worker parked here
-    when FreeCAD is closing waits out `DISPATCH_TIMEOUT` for a job nobody will
-    ever take, and is force-ended mid-mutation of the Document instead. That
-    is FreeCAD hanging on exit.
-    """
-    _closing.set()
-    for done in list(_waiting):
-        done.set()
 
 
 @dataclass
@@ -109,93 +88,12 @@ class ApplyResult:
         return {"status": "failed", "traceback": self.traceback}
 
 
-def _qt():
-    try:
-        from PySide2 import QtCore, QtWidgets
-    except ImportError:
-        from PySide import QtCore, QtGui as QtWidgets
-    return QtCore, QtWidgets
-
-
-class _Dispatcher:
-    """
-    Runs a callable on the Qt main thread and blocks until it returns.
-
-    A queued signal to an object living in the main thread is the mechanism.
-    `QTimer.singleShot(0, func)` — what the old core fell back to — creates the
-    timer in the *calling* thread, so on a worker thread with its own event
-    loop it fires there instead. That is a Document mutation off the main
-    thread, which is how FreeCAD gets taken down.
-    """
-
-    def __init__(self):
-        QtCore, QtWidgets = _qt()
-        app = QtWidgets.QApplication.instance() or QtCore.QCoreApplication.instance()
-        if app is None:
-            raise RuntimeError("No Qt application; nothing to marshal onto.")
-
-        class Relay(QtCore.QObject):
-            job = QtCore.Signal(object)
-
-            def __init__(self):
-                super().__init__()
-                self.moveToThread(app.thread())
-                self.job.connect(self._run)
-
-            @QtCore.Slot(object)
-            def _run(self, run_it):
-                run_it()
-
-        self._app = app
-        self._qtcore = QtCore
-        self._relay = Relay()
-
-    def on_main_thread(self, func, timeout=DISPATCH_TIMEOUT):
-        QtCore = self._qtcore
-        if QtCore.QThread.currentThread() == self._app.thread():
-            return func()
-
-        if _closing.is_set():
-            raise Closing("The Document operation was abandoned: FreeCAD is closing.")
-
-        outcome = {}
-        done = threading.Event()
-
-        def run():
-            try:
-                outcome["value"] = func()
-            except BaseException as exc:
-                outcome["error"] = exc
-            finally:
-                done.set()
-
-        _waiting.add(done)
-        try:
-            self._relay.job.emit(run)
-            if not done.wait(timeout):
-                raise TimeoutError(
-                    "The Document operation did not return within %ss on the main thread."
-                    % timeout
-                )
-        finally:
-            _waiting.discard(done)
-        if not outcome:
-            raise Closing("The Document operation was abandoned: FreeCAD is closing.")
-        if "error" in outcome:
-            raise outcome["error"]
-        return outcome["value"]
-
-
-def on_main_thread(func, timeout=DISPATCH_TIMEOUT):
-    """Marshal *func* onto the Qt main thread; run it here if we are already there."""
-    global _dispatcher
-    with _dispatcher_lock:
-        if _dispatcher is None:
-            _dispatcher = _Dispatcher()
-    return _dispatcher.on_main_thread(func, timeout)
-
-
 _CHANGED_NOTHING = read_prompt("changed_nothing.md")
+
+
+def _direct(func, timeout=None):
+    """The identity dispatch: run *func* right here, no Qt, no marshalling."""
+    return func()
 
 
 def run_in_transaction(doc, code, label="Copilot Step", names=None, expected_signature=None):
@@ -284,12 +182,12 @@ class ApplyPipeline:
     same-named object already in the Document.
     """
 
-    def __init__(self, document=None, worker=None, dispatch=on_main_thread,
+    def __init__(self, document=None, worker=None, dispatch=None,
                  transaction=None, render_dir=None, confirm=None, owned=None,
                  events=None, main_window=None):
         self._document = document
         self._worker = worker
-        self._dispatch = dispatch
+        self._dispatch = dispatch or _direct
         self._transaction = transaction or run_in_transaction
         self._render_dir = render_dir
         self._renders = 0
@@ -702,7 +600,7 @@ def _load_geometry_modules():
             pass
 
 
-def _selection():
+def _selection(dispatch=_direct):
     """
     What the user has selected right now, sub-element names included.
 
@@ -710,14 +608,16 @@ def _selection():
     one sanctioned source of an `Edge12` (ADR-0005). Headless has no GUI and
     therefore no selection.
 
-    Read on the main thread, like every other Gui touch: the `snapshot` tool
+    Read through *dispatch*, like every other Gui touch: the `snapshot` tool
     asks for this at the start of a run and again on every Step, and the loop
-    that asks is on the worker thread.
+    that asks is on the worker thread. The engine carries no Qt of its own,
+    so a live GUI passes its own main-thread marshaller in through
+    `build_registry`; headless callers keep the identity dispatch.
     """
     try:
         import FreeCADGui
 
-        selection = on_main_thread(FreeCADGui.Selection.getSelectionEx)
+        selection = dispatch(FreeCADGui.Selection.getSelectionEx)
     except (ImportError, AttributeError):
         return []
 
@@ -920,17 +820,17 @@ def capture_review_views(paths, document=None, size=(800, 600)):
     return written
 
 
-def _active_body(doc):
+def _active_body(doc, dispatch=_direct):
     """
     The Body the user is working in, or the only one there is.
 
-    `ActiveDocument.ActiveView` is the Gui's state and is read on the main
-    thread for the reason `_selection` is.
+    `ActiveDocument.ActiveView` is the Gui's state and is read through
+    *dispatch* for the reason `_selection` is.
     """
     try:
         import FreeCADGui
 
-        body = on_main_thread(
+        body = dispatch(
             lambda: FreeCADGui.ActiveDocument.ActiveView.getActiveObject("pdbody"))
     except (ImportError, AttributeError):
         body = None
@@ -1234,16 +1134,16 @@ def _described_type(type_id):
             FreeCAD.setActiveDocument(was_active.Name)
 
 
-def build_registry(document=None, pipeline=None) -> ToolRegistry:
+def build_registry(document=None, pipeline=None, dispatch=_direct) -> ToolRegistry:
     """
     Build the registry against a Document.
 
     `document` may be a Document or a callable returning one; leaving it None
     resolves `FreeCAD.ActiveDocument` at call time, which is what the addon
-    wants — the user may close and open files under us.
-
-    `pipeline` is the apply pipeline. Passing None registers the read-only
-    Tools alone, which is what Level 2 introspection tests want.
+    wants — the user may close and open files under us. `pipeline` is the
+    apply pipeline, `None` for the read-only Tools Level 2 introspection
+    tests want, and `dispatch` reads a Gui touch (the live selection, the
+    active Body) -- identity headless, a live GUI's marshaller otherwise.
     """
     def active():
         import FreeCAD
@@ -1257,17 +1157,17 @@ def build_registry(document=None, pipeline=None) -> ToolRegistry:
 
     registry = ToolRegistry()
 
-    _register_document(registry, active)
+    _register_document(registry, active, dispatch)
     _register_introspection(registry, active)
     _register_material(registry)
 
     if pipeline is not None:
-        _register_apply(registry, pipeline, _selection)
+        _register_apply(registry, pipeline, lambda: _selection(dispatch))
 
     return registry
 
 
-def _register_document(registry, active):
+def _register_document(registry, active, dispatch=_direct):
     @registry.tool(
         "snapshot",
         "The cheap summary of Document state: what objects exist, what is active, "
@@ -1284,8 +1184,8 @@ def _register_document(registry, active):
             "document": doc.Name,
             "objects": objects,
             "object_count": len(doc.Objects),
-            "active_body": _active_body(doc),
-            "selection": _selection(),
+            "active_body": _active_body(doc, dispatch),
+            "selection": _selection(dispatch),
         }
         if len(doc.Objects) > _SNAPSHOT_LIMIT:
             result["truncated"] = "showing %d of %d objects" % (_SNAPSHOT_LIMIT, len(doc.Objects))

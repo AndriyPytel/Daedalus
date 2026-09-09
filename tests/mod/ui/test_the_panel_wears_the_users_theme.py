@@ -3,9 +3,9 @@ import ast
 import os
 import re
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "src")
-STYLED = [os.path.join(SRC, "ui")]
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+MOD = os.path.join(ROOT, "Mod")
+STYLED = [os.path.join(MOD, "ui")]
 
 ALLOWED_ROLES = {"palette(highlight)", "palette(highlighted-text)"}
 
@@ -81,7 +81,7 @@ def test_only_the_icon_tint_still_reads_a_palette():
         if roles:
             offenders[path] = sorted(set(roles))
 
-    assert set(offenders) <= {os.path.join("src", "ui", "ui_helpers.py")}, \
+    assert set(offenders) <= {os.path.join("Mod", "ui", "ui_helpers.py")}, \
         "colours resolved from QPalette in Python: %s" % offenders
 
 

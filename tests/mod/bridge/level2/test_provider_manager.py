@@ -12,18 +12,18 @@ import os
 
 import pytest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 SRC = os.path.join(ROOT, "src")
+MOD = os.path.join(ROOT, "Mod")
 
 VENDOR_SDKS = {"openai", "anthropic", "google"}
 
 
-@pytest.mark.parametrize("module", [
-    os.path.join("bridge", "provider_manager.py"),
-    os.path.join("core", "model_catalog.py"),
-])
-def test_no_vendor_sdk_imports(module):
-    path = os.path.join(SRC, module)
+@pytest.mark.parametrize("path", [
+    os.path.join(MOD, "bridge", "provider_manager.py"),
+    os.path.join(SRC, "core", "model_catalog.py"),
+], ids=["bridge/provider_manager.py", "core/model_catalog.py"])
+def test_no_vendor_sdk_imports(path):
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), path)
 
@@ -48,7 +48,7 @@ def test_no_model_list_is_bundled_with_the_addon():
     """
     assert not os.path.exists(os.path.join(ROOT, "config", "models.json"))
 
-    with open(os.path.join(SRC, "bridge", "provider_manager.py"), encoding="utf-8") as handle:
+    with open(os.path.join(MOD, "bridge", "provider_manager.py"), encoding="utf-8") as handle:
         source = handle.read()
     assert "models.json" not in source
 

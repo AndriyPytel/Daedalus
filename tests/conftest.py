@@ -13,8 +13,10 @@ from dataclasses import dataclass
 import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
-if SRC not in sys.path:
-    sys.path.insert(0, SRC)
+MOD = os.path.join(ROOT, "Mod")
+for entry in (SRC, MOD):
+    if entry not in sys.path:
+        sys.path.insert(0, entry)
 
 from core.loop import execute as loop
 
@@ -49,7 +51,7 @@ def _try_import_freecad():
 
 HAVE_FREECAD = _try_import_freecad()
 
-for entry in (ROOT, SRC):
+for entry in (ROOT, SRC, MOD):
     if entry in sys.path:
         sys.path.remove(entry)
     sys.path.insert(0, entry)

@@ -16,10 +16,12 @@ def initialize():
     
     try:
         # 1. Register icon path
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+        addon_path = os.path.dirname(os.path.abspath(__file__))
+        sys.path.insert(0, os.path.join(addon_path, "src"))
+        sys.path.insert(0, os.path.join(addon_path, "Mod"))
+        sys.path.insert(0, addon_path)
         from core import dependency_manager
-        addon_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(dependency_manager.__file__))))
-        icon_path = os.path.join(addon_path, "src", "resources", "icons")
+        icon_path = os.path.join(addon_path, "Mod", "resources", "icons")
         Gui.addIconPath(icon_path)
         App.Console.PrintMessage(f"[DEBUG] Registered icon path: {icon_path}\n")
 

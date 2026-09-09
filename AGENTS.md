@@ -44,15 +44,18 @@ are not prose and are exempt.
 
 ## Module layout
 
-Qt-free business logic goes in `core/`, named for the concern it owns --
-`settings.py`, `model_catalog.py`, `sessions.py`. `ui/`'s widgets reach it only
-through `copilot.sdk`, never `core` directly (`tests/test_ui_import_boundary.py`).
+`Mod/` is FreeCAD and Qt: the workbench (`CopilotWorkbench.py`,
+`CopilotPreferences.py`) and `Mod/ui/`. `src/` is the engine and carries no
+Qt at all, not even a deferred import (`tests/test_tree_boundary.py`).
+`Mod/ui/`'s widgets reach the engine only through `copilot.sdk`, never
+`core` directly.
 
-A module that must emit a Qt signal or marshal onto the Qt main thread over one
-of those concerns -- `settings_manager.py`, `provider_manager.py`, `logger.py`
--- goes in `bridge/` instead, the one place `ui/` may import directly, and the
-only reason a concern ever has two files: one Qt-free in `core/`, one
-Qt-touching in `bridge/`, never two of either.
+A module that must emit a Qt signal or marshal onto the Qt main thread over a
+`core/` concern -- `settings_manager.py`, `provider_manager.py`, `logger.py`,
+`main_thread.py` -- goes in `Mod/bridge/` instead, the one place `Mod/ui/`
+may import directly, and the only reason a concern ever has two files: one
+Qt-free in `src/core/`, one Qt-touching in `Mod/bridge/`, never two of
+either.
 
 ## Measurements
 

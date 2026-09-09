@@ -8,7 +8,7 @@ A script drives it exactly as `ui/copilot_panel.py`'s Qt panel will once
 FCC-317 repoints the panel onto this same object -- no Qt application, no
 `FreeCADGui`, because `ApplyPipeline`'s own `dispatch` and `confirm` are
 plain callables here rather than the main-thread marshaller a GUI needs
-(`core/apply.py :: on_main_thread`).
+(`Mod/bridge/main_thread.py :: on_main_thread`).
 
 This is what `run.py` and `lane.py`, the two surviving scripts in the
 harness directory, drive to start a run, replacing the hand-assembled
@@ -17,7 +17,7 @@ call behind the loop's own `run()` signature.
 """
 from core import events, model_catalog
 from core import settings as _settings
-from core.freecad_apply import ApplyPipeline, active_document, build_registry, closing
+from core.freecad_apply import ApplyPipeline, active_document, build_registry
 from core.events import EventStream, replay
 from core.kernel import Kernel
 from core.llm import (EFFORTS, PROFILES, TEXT, Session, client_from_roles,

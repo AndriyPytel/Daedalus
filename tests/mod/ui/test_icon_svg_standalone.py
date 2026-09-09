@@ -25,9 +25,9 @@ def _icon_names():
 
 def test_exactly_one_icon_directory_exists():
     """The addon has one icon directory; the old ui/icons/ no longer exists."""
-    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    ui_icons = os.path.join(repo, "src", "ui", "icons")
-    assert not os.path.isdir(ui_icons), "src/ui/icons/ should be deleted"
+    repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    ui_icons = os.path.join(repo, "Mod", "ui", "icons")
+    assert not os.path.isdir(ui_icons), "Mod/ui/icons/ should be deleted"
     assert os.path.isdir(ICON_DIR), f"{ICON_DIR} must exist"
 
 

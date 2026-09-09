@@ -1145,7 +1145,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
     The second way a worker blocks, and the one that hung FreeCAD again after
     the Plan Gate below was released.
 
-    A Step in flight parks its thread inside `core.freecad_apply.on_main_thread`,
+    A Step in flight parks its thread inside `bridge.main_thread.on_main_thread`,
     waiting on a job only the GUI event loop can take. `_cleanup_thread` runs
     on that thread and waits on the worker instead of pumping it, so the job
     is never taken: the worker sits out `DISPATCH_TIMEOUT`, and what
@@ -1158,7 +1158,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
     """
     import threading
 
-    import core.freecad_apply
+    import bridge.main_thread
     from conftest import QtCore
     from ui.copilot_panel import CopilotPanel
 
@@ -1168,7 +1168,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
     def _dispatch_and_block():
         parked.set()
         try:
-            core.freecad_apply.on_main_thread(lambda: "the Document")
+            bridge.main_thread.on_main_thread(lambda: "the Document")
         except Exception:
             pass
 
@@ -1188,7 +1188,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
         assert done.wait(5), "shutdown is still waiting on a Document operation in flight"
         assert not built.thread.isRunning(), "the worker thread outlived the panel"
     finally:
-        core.freecad_apply._closing.clear()
+        bridge.main_thread._closing.clear()
 
 
 def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_the_tests_own):
@@ -1312,7 +1312,7 @@ def test_leaving_the_copilot_workbench_does_not_take_the_chat_away():
     from ui import copilot_dock
 
     path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(copilot_dock.__file__))),
-                        "Mod", "CopilotWorkbench.py")
+                        "CopilotWorkbench.py")
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), path)
     deactivated = [node for node in ast.walk(tree)
