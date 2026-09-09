@@ -10,7 +10,7 @@ from typing import Callable, Iterator
 
 from core.llm.types import Chunk
 from core.llm.exceptions import ProviderRefused
-from core.llm.effort_policy import _OUTPUT_BUDGET, EFFORTS, _SUBSCRIPTION_EFFORT
+from core.llm.effort_policy import _OUTPUT_BUDGET, _resolved_effort
 from core.llm.stream import _deltas, _finished, _stopped_for_length, _cut_off, _truncated, _translate, _billed
 
 
@@ -141,11 +141,3 @@ def _output_cap(model, wanted) -> int:
     except Exception:
         known = None
     return min(wanted, known) if known else wanted
-
-
-def _resolved_effort(explicit: str = None) -> str:
-    """*explicit* when it is one `EFFORTS` offers; the stored dial otherwise."""
-    if explicit in EFFORTS:
-        return explicit
-    from core.llm.factory import effort
-    return effort()

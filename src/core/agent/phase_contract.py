@@ -24,12 +24,10 @@ import os
 import shutil
 import stat
 
-DESIGN = "design"
-PLAN = "plan"
-EXECUTE = "execute"
-ASSERTION = "assertion"
-REVIEW_SUSPECT = "review_suspect"
-REVIEW = "review"
+from core.loop.prompt import (ASSERTION_PHASE as ASSERTION, DESIGN_PHASE as DESIGN,
+                              EXECUTE_PHASE as EXECUTE, PLAN_PHASE as PLAN,
+                              REVIEW_PHASE as REVIEW,
+                              REVIEW_SUSPECT_PHASE as REVIEW_SUSPECT)
 
 RO = "ro"
 RW = "rw"

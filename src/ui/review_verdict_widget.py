@@ -25,10 +25,7 @@ except ImportError:
 
 from ui.design_tokens import SPACE_SM, SPACE_XS
 from ui.typography import BODY, CAPTION, css
-
-APPROVE = "approve"
-REJECT = "reject"
-START_OVER = "start_over"
+from copilot.sdk import APPROVE, REJECT, START_OVER
 
 _THUMBNAIL = (320 - 3 * SPACE_SM) // 4
 

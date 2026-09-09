@@ -1,7 +1,6 @@
 """The multi-turn phase agent: a phase's conversation with its own kernel."""
 import json
 import os
-import re
 import shutil
 import time
 
@@ -11,12 +10,8 @@ from core.llm import REASONING, TEXT, Session
 from core.llm.exceptions import StreamCutOff
 from core.agent.phase_contract import spawn
 from core.agent.subagent import delegate
-from core.loop.prompt import prompt
+from core.loop.prompt import _CUT_OFF_ATTEMPTS, _FENCE, prompt
 from core.prompts import read_prompt
-
-_CUT_OFF_ATTEMPTS = 3
-
-_FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 
 class AgentGaveUp(Exception):

@@ -3,10 +3,10 @@ The Queue: the run's five macro-phases, Execute's foreseen Steps nested
 beneath it (FCC-169, FCC-172).
 
 Purely a renderer, in `PlanWidget`'s shape: told what happened and never asks
-the loop anything. The five phase keys mirror `core.loop`'s DESIGN_PHASE /
-PLAN_PHASE / EXECUTE_PHASE / ASSERTION_PHASE / REVIEW_PHASE by value, kept
-local rather than imported so this widget stays as free of `core` as
-`plan_widget.py` is.
+the loop anything. The five phase keys are `core.loop`'s own DESIGN_PHASE /
+PLAN_PHASE / EXECUTE_PHASE / ASSERTION_PHASE / REVIEW_PHASE, reached through
+`copilot.sdk` the way every other `core` value this widget's neighbours need
+is -- never `core` directly.
 
 No `phase_started`/`phase_ended` event reaches the wire (`core/events.py`), so
 every transition here is read off a structural event that already carries the
@@ -28,12 +28,9 @@ from ui.design_tokens import (FAIL, ICON, ICON_DENSE, RUNNING as RUNNING_COLOUR,
                               SPACE_MD, SPACE_SM, SPACE_XS)
 from ui.typography import BODY, BODY_STRONG, CAPTION, css
 from ui.ui_helpers import UIHelpers
-
-DESIGN = "design"
-PLAN = "plan"
-EXECUTE = "execute"
-ASSERTION = "assertion"
-REVIEW = "review"
+from copilot.sdk import (ASSERTION_PHASE as ASSERTION, DESIGN_PHASE as DESIGN,
+                         EXECUTE_PHASE as EXECUTE, PLAN_PHASE as PLAN,
+                         REVIEW_PHASE as REVIEW)
 
 PHASES = (DESIGN, PLAN, EXECUTE, ASSERTION, REVIEW)
 

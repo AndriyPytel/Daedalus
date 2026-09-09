@@ -21,7 +21,7 @@ from typing import Callable, Iterator
 
 from core.llm.types import REASONING, TEXT, Chunk
 from core.llm.exceptions import ProviderRefused
-from core.llm.effort_policy import EFFORTS, _CEILING, _SUBSCRIPTION_EFFORT
+from core.llm.effort_policy import _CEILING, _resolved_effort
 
 
 _CLAUDE_CANDIDATES = (
@@ -221,14 +221,6 @@ class ClaudeCodeClient:
         finally:
             ceiling.cancel()
             process.kill()
-
-
-def _resolved_effort(explicit: str = None) -> str:
-    """*explicit* when it is one `EFFORTS` offers; the stored dial otherwise."""
-    if explicit in EFFORTS:
-        return explicit
-    from core.llm.factory import effort
-    return effort()
 
 
 def _spawn_claude(argv: list, cwd: str):

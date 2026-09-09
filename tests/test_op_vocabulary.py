@@ -113,3 +113,10 @@ def test_every_op_verb_is_named_in_execute_md():
     missing = [op for op in OP_VERBS if ("`%s`" % op) not in text]
 
     assert not missing, missing
+
+
+def test_op_verbs_is_the_typeid_table_not_a_second_list():
+    from core.lint import OP_TYPEIDS
+    from core.loop.plan import OP_VERBS
+
+    assert OP_VERBS == tuple(OP_TYPEIDS)

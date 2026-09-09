@@ -22,8 +22,10 @@ from core.kernel import Kernel
 from core.llm import (EFFORTS, PROFILES, TEXT, Session, client_from_roles,
                       effort_for_profile, effort_is_honoured, selected_model_name,
                       unusable_attachments)
-from core.loop import (ACCEPT, APPROVE, DECISIONS, REJECT, REVISE, START_OVER,
-                       Approval, NeedsAnswer, auto_approve, revise_by_default, run)
+from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE,
+                       EXECUTE_PHASE, PLAN_PHASE, REJECT, REVIEW_PHASE, REVISE,
+                       START_OVER, Approval, NeedsAnswer, auto_approve,
+                       revise_by_default, run)
 from core.narrate import narrate
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
 from core.session_title import fallback, generate

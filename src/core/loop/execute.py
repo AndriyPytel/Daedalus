@@ -15,6 +15,7 @@ from core.agent import phase_contract as pc
 from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import Budgets
 from core.loop.describe import _RAN_OUT_OF_ROOM
+from core.lint import OP_TYPEIDS
 from core.loop.prompt import EXECUTE_PHASE, prompt
 from core.prompts import read_prompt
 from core.loop.looks import Looks
@@ -47,18 +48,7 @@ def _freecad_version():
 _VIEW_NAMES = ("isometric", "the opposite isometric", "above", "the front", "the section")
 
 
-OP_VERBS = (
-    "pad", "revolve", "additive-loft", "additive-sweep", "additive-helix",
-    "additive-primitive",
-    "pocket", "hole", "groove", "subtractive-loft", "subtractive-sweep",
-    "subtractive-helix", "subtractive-primitive",
-    "fillet", "chamfer", "draft", "thickness",
-    "mirror", "linear-pattern", "polar-pattern", "multi-transform", "scale",
-    "sketch", "datum-plane", "datum-line", "datum-point",
-    "local-coordinate-system", "sub-shape-binder", "body",
-    "fuse", "cut", "common",
-    "thread", "extend", "trim", "offset",
-)
+OP_VERBS = tuple(OP_TYPEIDS)
 
 
 OP_VOCABULARY = "closed"
