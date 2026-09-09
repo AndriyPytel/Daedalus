@@ -139,15 +139,10 @@ def _changed_properties(before, after):
 class _Touched:
     """
     What the Step did, observed off the Document rather than recorded through
-    a call this process hooked (FCC-300) -- the open kernel namespace (FCC-299)
-    means a Step's code no longer has to route through anything here at all.
+    a call this process hooked.
 
-    A `PropertiesList` snapshot is taken at construction, before the Step's
-    code runs; `diff()` takes a second one and compares by value. It runs
-    before recompute, not after: a computed property like `Shape` changes for
-    every object downstream of a legitimate edit the moment recompute runs,
-    which is exactly the false positive `DERIVED` already existed to guard
-    against under the signal-based mechanism this replaces.
+    Diff runs before recompute, not after: a computed property like `Shape`
+    changes for every object downstream the moment recompute runs.
     """
 
     def __init__(self, doc):
@@ -282,15 +277,10 @@ def introspect(exc):
 
 def _bodies_in_pieces(doc):
     """
-    Every PartDesign Body whose result is more than one solid (FCC-27).
+    Every PartDesign Body whose result is more than one solid.
 
-    A sketch of disjoint profiles pads into separate lumps, and nothing raises:
-    the feature reports itself up-to-date and valid, so a check that only
-    watched status would pass it unnoticed.
-
-    Only Bodies. A Part::Compound or a Document holding several unrelated
-    objects is many solids on purpose; a Body is single-solid by design, which
-    is what makes the count mean something here.
+    A sketch of disjoint profiles pads into separate lumps, and nothing
+    raises. Only Bodies — a Part::Compound is many solids on purpose.
     """
     scattered = []
     for obj in doc.Objects:
@@ -307,12 +297,10 @@ def _bodies_in_pieces(doc):
 
 def _bodies_with_invalid_shape(doc):
     """
-    Every PartDesign Body whose Shape fails OCC's own `isValid()` (FCC-255).
+    Every PartDesign Body whose Shape fails OCC's own `isValid()`.
 
-    A self-touching wire -- two lobes pinched at one vertex -- pads into a
-    single solid that recomputes Up-to-date, and nothing about that state
-    says the geometry is broken: `isValid()` is the one question worth asking
-    on every Step, cheap enough to afford (FCC-253 Q4).
+    A self-touching wire pads into a solid that recomputes Up-to-date, and
+    nothing about that state says the geometry is broken.
     """
     invalid = []
     for obj in doc.Objects:
@@ -328,13 +316,10 @@ def _bodies_with_invalid_shape(doc):
 
 def _bodies_with_inverted_solid(doc):
     """
-    Every PartDesign Body whose Shape carries a negative signed volume
-    (FCC-255).
+    Every PartDesign Body whose Shape carries a negative signed volume.
 
-    A boss cut instead of added, a profile wound the wrong way -- the
-    Solution Notes' own examples of a feature that comes out inverted. The
-    Body still recomputes Up-to-date; only the sign of `Shape.Volume` says
-    it came out inside-out.
+    A boss cut instead of added, a profile wound the wrong way. The Body
+    recomputes Up-to-date; only the sign says it came out inside-out.
     """
     inverted = []
     for obj in doc.Objects:
@@ -361,14 +346,7 @@ def _why_it_failed(obj):
 
 
 def _objects_left_in_error(doc):
-    """
-    Every object a recompute left `Invalid` (FCC-11), one line each.
-
-    Named like its siblings (`_bodies_in_pieces`, `_bodies_with_invalid_shape`,
-    `_bodies_with_inverted_solid`) so the post-Step checklist is a set of
-    functions a completeness test can enumerate by name, this one included --
-    it used to be the one check still written inline.
-    """
+    """Every object a recompute left `Invalid`, one line each."""
     return ["%s (%s): %s" % (o.Name, o.TypeId, _why_it_failed(o))
             for o in doc.Objects if o.State and "Invalid" in o.State]
 
@@ -491,14 +469,9 @@ def _geometry_snapshot(doc):
 
 def _resolved_targets(obj):
     """
-    What *obj* actually points at, for the one property this checks: an
-    `App::Link`/`App::LinkGroup`'s `LinkedObject`/`ElementList`, or a
-    Sketch's `ExternalGeometry` -- the reference `copyObject` cannot be
-    trusted to reproduce and `addExternal` re-resolves by name (FCC-302).
-
-    Read by `TypeId` rather than `getattr` alone: `LinkedObject` is `None`
-    on an unset `App::Link`, which is a legitimate signature (nothing
-    resolved yet) rather than "this object has no such property".
+    What *obj* actually points at: an `App::Link`'s `LinkedObject` or a
+    Sketch's `ExternalGeometry` — the reference `copyObject` cannot be
+    trusted to reproduce and `addExternal` re-resolves by name.
     """
     type_id = getattr(obj, "TypeId", "") or ""
     if type_id == "App::Link":
@@ -539,11 +512,8 @@ def _volume_of(obj):
     """
     A feature's own material, zero for anything that is not a closed solid.
 
-    A datum plane's `Shape` is not null but has no `Solids` -- OCC's own
-    volume calculation on an unbounded planar Face is numerically unstable
-    rather than a clean zero, and it differs between two separate processes
-    computing the same Document (FCC-302's own signature check caught this:
-    count, names and every other feature's volume matched exactly).
+    A datum plane's `Shape` has no `Solids` — OCC's volume on an unbounded
+    Face is numerically unstable rather than a clean zero.
     """
     shape = getattr(obj, "Shape", None)
     if shape is None or shape.isNull() or not shape.Solids:
@@ -553,28 +523,11 @@ def _volume_of(obj):
 
 def _features_that_moved_no_material(doc, created):
     """
-    Features this Step created that came out the same volume they went in
-    (FCC-96).
+    Features this Step created that came out the same volume they went in.
 
-    The silent failure this exists for: a Pocket sketched on the face at YMin
-    with its normal pointing into the part cuts along -Y, away from the solid,
-    intersects nothing, and hands back its base shape untouched. FreeCAD calls
-    it 'Up-to-date' and 'Valid', and a check that only watched status would
-    pass it on that -- and five bores in a row went missing from a part every
-    phase reported as applied.
-
-    Read off `BaseFeature` rather than off the Body, because that is the one
-    comparison that names the feature at fault: a feature's base is exactly the
-    solid it was handed, so the difference is exactly what it did, whatever
-    else the same Step built around it.
-
-    A feature is a step the user would recognise as cutting or adding metal; a
-    Sketch, a datum or a Body itself is not, and neither is anything outside
-    PartDesign.
-
-    Returns the idle features themselves, not formatted text (FCC-246): the
-    caller diagnoses each one before it has anything to print, and this
-    function's own comparison stays exactly what it was.
+    A Pocket sketched on the face at YMin with its normal pointing into the
+    part cuts along -Y, away from the solid, and hands back its base shape
+    untouched. FreeCAD calls it 'Up-to-date' and 'Valid'.
     """
     idle = []
     for name in sorted(created):
@@ -591,14 +544,9 @@ def _features_that_moved_no_material(doc, created):
 
 def _idle_feature_cause(before, after_reversed_flip):
     """
-    FCC-245's own replay, as a decision rule: 3 of the 12 recorded
-    volume-neutral failures moved volume when `Reversed` was flipped (a
-    profile on the right face pointing the wrong way), the other 9 did not
-    (a profile that overlaps the solid at neither sign of `Reversed`). Scored
-    against `tests/recorded/preflight_volume_neutral_failures.json`, this
-    rule reproduces the recorded cause in all 12 -- it is the same comparison
-    FCC-245 made, against the same tolerance `_features_that_moved_no_material`
-    already uses to call a feature idle in the first place.
+    3 of 12 recorded volume-neutral failures moved volume when `Reversed`
+    was flipped (profile on the right face pointing the wrong way), the
+    other 9 did not (profile that overlaps the solid at neither sign).
     """
     if abs(after_reversed_flip - before) > _VOLUME_TOLERANCE * max(1.0, abs(before)):
         return "direction"
@@ -608,13 +556,7 @@ def _idle_feature_cause(before, after_reversed_flip):
 def _diagnose_idle_feature(obj, before, now):
     """
     Tell a wrong-direction Pocket from one whose profile never touches the
-    solid, by flipping `Reversed` and recomputing -- FCC-245's own method,
-    replayed live at the moment the check fires instead of offline afterward.
-
-    Only features that carry `Reversed` (Pad, Pocket, Groove and their
-    Additive/Subtractive siblings) are candidates: a Fillet or a Hole has no
-    direction to flip, and `None` tells the caller to say it cannot tell
-    rather than naming a cause it never measured.
+    solid, by flipping `Reversed` and recomputing.
     """
     if not hasattr(obj, "Reversed"):
         return None
@@ -866,20 +808,9 @@ def run_step(request):
     Run one Step against the kernel's live Document.
 
     A `document` in *request* is a fresh handoff: the session starts over
-    from that path (or an empty Document, for no path at all), with a
-    baseline checkpoint and a name map seeded from *request*'s own `names`
-    (empty where not given) rather than always reset -- a caller replaying
-    against the Document's true current state (FCC-302) still needs what an
-    earlier Step allocated, even though every apply() call is its own fresh
-    handoff. Anything else continues the running session.
-
-    `ephemeral=True` skips checkpoint writes entirely: the caller will
-    discard this session immediately and never reload the checkpoint.
-
-    Pass: the live Document keeps running and a checkpoint is written -- one
-    `saveCopy`, not a reopen. Fail: the live Document is thrown away and the
-    last checkpoint reopened, so the Step never happened, and the name map
-    reverts with it.
+    from that path, with a name map seeded from *request*'s own `names`.
+    `ephemeral=True` skips checkpoint writes. Pass: checkpoint is written.
+    Fail: the last checkpoint is reopened, so the Step never happened.
     """
     ephemeral = request.get("ephemeral", False)
     if "document" in request or _SESSION["doc"] is None:
@@ -923,9 +854,7 @@ def reading(request):
     One outline off a drawing, built as a sketch and put to the solver.
 
     Here rather than in the addon's process because this is the process whose
-    death is a normal outcome: the phases that read a sheet run on the loop's
-    worker thread, and `Sketcher.Constraint` is the call that segfaults
-    (FCC-19, FCC-126).
+    death is a normal outcome: `Sketcher.Constraint` is the call that segfaults.
     """
     from core.sheets import sketch_check
 

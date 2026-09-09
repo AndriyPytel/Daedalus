@@ -212,11 +212,7 @@ def run_in_transaction(doc, code, label="Copilot Step", names=None, expected_sig
     recorded exactly where the kernel would have recorded it.
 
     *expected_signature* is what Preflight already verified this code
-    produces (`core/kernel/kernel_worker.py::signature_of`); `None` skips the
-    check entirely, since a caller with nothing to compare against has
-    nothing to verify (FCC-302). A mismatch aborts the transaction instead
-    of committing it — caught by `ApplyPipeline.apply` the same way any
-    other failure inside the transaction is.
+    produces; `None` skips the check. A mismatch aborts the transaction.
     """
     names = {} if names is None else names
     doc.openTransaction(label)
@@ -279,29 +275,13 @@ class ApplyPipeline:
     Hand it code; it lands as one undoable unit or comes back with a reason.
 
     Also the keeper of the Session's Owned Objects: it is the only thing that
-    knows what the assistant created, because it is the only thing that applies
-    anything. A Step that would delete an object outside that set needs the
-    user's say-so; modifying one does not, because the Plan Gate already
-    approved the Step that said so.
-
-    `dispatch`, `worker`, `transaction` and `confirm` are injected so Level 1
-    can drive the whole pipeline without Qt or a headless FreeCAD.
-
-    `events` is the running Session's stream, set per run because the pipeline
-    outlives one. It is here for one reason: the Owned Object question is the
-    only thing the user is ever asked that does not go through the loop, so
-    without it a Session that authorised a deletion could not say so when it
-    was replayed.
+    knows what the assistant created. A Step that would delete an object
+    outside that set needs the user's say-so.
 
     `_names` is the requested-name -> allocated-name map, accumulated across
-    every Step of the run and reset by `start_run` (FCC-302): each `apply()`
-    call is its own fresh handoff to Preflight, against a copy of the
-    Document's own true current state, so the map an earlier Step's name
-    collision produced does not survive in the kernel's own session the way
-    a continuing one would -- it has to be carried here instead, and handed
-    both to Preflight and to the replay so a later Step's code reaches the
-    object an earlier Step actually created rather than a same-named object
-    already in the Document.
+    every Step of the run and reset by `start_run`: a later Step's code
+    reaches the object an earlier Step actually created rather than a
+    same-named object already in the Document.
     """
 
     def __init__(self, document=None, worker=None, dispatch=on_main_thread,
@@ -346,23 +326,10 @@ class ApplyPipeline:
 
     def start_run(self) -> KernelResult:
         """
-        Snapshot the GUI's current Document into the kernel and lock the GUI
-        for the run's duration (FCC-301).
+        Snapshot the GUI's current Document into the kernel and lock the GUI.
 
-        This is the one moment a run's Steps are not yet the sole writer: the
-        GUI's Document as it stands right now becomes the kernel's starting
-        state, before any Step executes, so a kernel-side object count taken
-        here is directly comparable to the GUI Document's own. Locking the
-        main window is what makes that hold for the rest of the run — Qt
-        itself then refuses input to every Document-editing surface, rather
-        than this code trying to intercept edits it cannot see coming.
-
-        No open Document is not a reason to leave the GUI unlocked: the
-        kernel starts an empty session instead, the same handoff `Kernel.check`
-        already gives an explicit `None`.
-
-        Returns the kernel's own `KernelResult` for the snapshot, so a caller
-        can compare its `objects` against the GUI Document it was taken from.
+        Locking the main window keeps the GUI's state comparable to the
+        kernel's for the rest of the run.
         """
         doc = self._dispatch(self._active)
         if doc is None:
@@ -402,29 +369,9 @@ class ApplyPipeline:
         """
         Lint *code*, Preflight it, and land it on the live Document.
 
-        Preflight is not asked for a render: that is a rasterisation per Step,
-        in a headless process, for a picture whose only reader has the real 3D
-        view open beside it.
-
-        A Step that raises is a failure the assistant corrects against, but a
-        Step that quietly does nothing was scored as a success and the Plan
-        moved on assuming an object that was never created — code that defined
-        a function to build the sketch and never called it is the shape of it.
-        So a Step that created, deleted and modified nothing is a failure here.
-
-        A Step that lands is fitted into the viewport, which is the one place
-        anything moves the user's camera without being asked to — `fit_view`
-        holds why.
-
-        `op` is this Step's declared operation (ADR-0026, FCC-233), `None` for
-        a legacy Plan or one Execute wrote without the closed vocabulary in
-        force — lint only checks the TypeId a Step's code builds where it has
-        one to check against.
-
-        The replay is never re-linted or re-Preflighted (FCC-302): it runs
-        the same code Preflight already verified, with the same allocated-
-        name map (`self._names`), and is checked against Preflight's own
-        `signature` before it commits rather than after.
+        A Step that created, deleted and modified nothing is a failure here.
+        A Step that lands is fitted into the viewport. `op` is this Step's
+        declared operation (ADR-0026), `None` for a legacy Plan.
         """
         checked = lint(code, selection, op=op)
         if not checked.ok:
@@ -476,23 +423,10 @@ class ApplyPipeline:
 
     def check_assertions(self, code):
         """
-        Run read-only checks against a copy of the finished Document (FCC-76).
+        Run read-only checks against a copy of the finished Document.
 
-        Deliberately past `apply`: that refuses code which changed nothing and
-        wraps it in a transaction on the live Document, and both are wrong for
-        a check whose whole point is to change nothing. The copy is what makes
-        it read-only — this process never touches the live Document at all, so
-        even a check that tried to write could not.
-
-        `held` and `failed` carry the check script's own measured lists
-        (`KernelResult`) up as they are — `None` where nothing measured
-        them, a list otherwise — and it is the caller's to decide what that
-        means, the same way it already decides what `ok` and `traceback` mean.
-
-        `geometry` carries the same per-feature Volume/BoundBox `apply_step`
-        already measures on every Step (`KernelResult.geometry`, FCC-260) —
-        this is Assertion's only reach into it, since the geometry-diff check
-        the phase repairs against runs once per run rather than once per Step.
+        The copy is what makes it read-only — this process never touches the
+        live Document, so even a check that tried to write could not.
         """
         doc = self._dispatch(self._active)
         if doc is None:
@@ -509,11 +443,7 @@ class ApplyPipeline:
 
     def review_views(self):
         """
-        The views Review judges, captured once at the end of a run.
-
-        Four viewport views where there is a GUI. Where there is not, the
-        Worker's rasteriser instead — one isometry, called once, so FCC-46's
-        per-pixel depth test and edges are not thrown away (ADR-0015).
+        The views Review judges, captured once at the end of a run (ADR-0015).
         """
         doc = self._dispatch(self._active)
         paths = [self._render_path() for _ in REVIEW_VIEWS]
@@ -549,12 +479,8 @@ class ApplyPipeline:
         """
         The reason this Step may not be applied, or None.
 
-        Two questions, in the order the user would ask them. Is it deleting
-        something that is theirs, and is it deleting the model? They are
-        separate because ownership does not cover the second one: everything
-        the assistant built earlier in the same Session is its own by the
-        Owned Object rule, so wiping a finished part it had built itself was
-        the one deletion nothing asked about (FCC-97).
+        Is it deleting something that is theirs, and is it deleting the model?
+        They are separate because ownership does not cover the second one.
         """
         return self._not_ours(preflighted) or self._a_rebuild(preflighted, doc)
 
@@ -841,15 +767,7 @@ _A_3D_VIEW = "Gui::View3DInventor"
 
 
 def active_document():
-    """
-    Whichever Document is in focus right now, or None with nothing open.
-
-    The sanctioned route this module already is for the Document is what a
-    Session's worker binds through, too: its first Intent asks this once, to
-    settle which Document that Session is about (FCC-181), rather than the
-    panel reaching `FreeCAD.ActiveDocument` on its own and being caught by
-    `test_registry_is_the_only_route.py`.
-    """
+    """Whichever Document is in focus right now, or None with nothing open."""
     import FreeCAD
     return FreeCAD.ActiveDocument
 
@@ -858,22 +776,8 @@ def _active_view(document=None):
     """
     The Document's 3D view — the one with a camera, not the tab in front.
 
-    `document=None` reads `FreeCADGui.ActiveDocument`, whichever MDI tab is
-    active in the whole GUI. A Session bound to its own Document (FCC-181)
-    passes it explicitly and reaches that Document's view through
-    `FreeCADGui.getDocument(name)` instead, so a Step landing in a Document
-    the user is not currently looking at still moves the right camera.
-
-    `ActiveDocument.ActiveView` is whichever MDI tab is active, and a
-    Spreadsheet or a TechDraw page of the same Document is one of them. Neither
-    has a camera, so with one of those in front `fitAll` raised AttributeError
-    out of a Step whose geometry was already in the Document, and out of the
-    Review capture at the end of a run.
-
-    Asking the view for a camera and falling back to `mdiViewsOfType` is how
-    FreeCAD's own Show module finds the viewport, in
-    `Mod/Show/SceneDetails/Camera.py`. That one indexes the list blindly; a
-    Document showing no 3D view at all is the case that returns None here.
+    A Spreadsheet or TechDraw page of the same Document has no camera, so
+    falls back to `mdiViewsOfType`.
     """
     try:
         import FreeCADGui
@@ -974,19 +878,11 @@ def _cavity_center(box, material):
 def _section_plane(document):
     """
     A placement that cuts through the part's real interior, not one of its
-    faces — the one thing a shell, a bore or a blind pocket needs to become
-    visible that the existing four views cannot give it (FCC-261).
+    faces — the one thing a shell, bore or blind pocket needs to become
+    visible that the existing four views cannot give it.
 
     The plane sits at the centre of the largest actual void the modelled
-    geometry has (`_cavity_center`), not a guess at where a cavity usually
-    sits — a bore or pocket well off from the part's own bounding-box
-    centre still gets cut through it rather than past it. A solid part with
-    nothing hollow, or a void `_cavity_center` cannot resolve, falls back to
-    the bounding box's own centre, so a section view is still produced.
-
-    `document` is the Session's own bound Document (FCC-181); the `None`
-    default reads `FreeCAD.ActiveDocument`, matching every other reader in
-    this module. None with nothing modelled to cut through yet.
+    geometry has, not a guess at where a cavity usually sits.
     """
     import FreeCAD
 
@@ -1012,33 +908,8 @@ def capture_review_views(paths, document=None, size=(800, 600)):
     """
     The five views Review judges, captured once, camera put back afterwards.
 
-    Two isometrics from opposite corners of the part's box, plus top, front
-    and a section. Front-right-top and the corner diagonally across from it
-    between them show every one of a cube's six faces by construction, which
-    the old isometric/front/top/right never did — three of the six were
-    outside all four of those, the same blind spot `FCC-63` closed for a
-    single mirrored isometry, one level deeper. The spellings were checked
-    against libFreeCADGui rather than recalled.
-
-    The section is a fifth capture, not a replacement (FCC-261): a shell, a
-    bore or a blind pocket is invisible to all four of the others because
-    none of them cuts into the part. `_section_plane` finds where to cut;
-    `toggleClippingPlane` is the same call FreeCAD's own View > Cross-sections
-    makes, so the cutaway a user could open by hand is the one Review is
-    handed. A part with nothing modelled yet has no plane to cut with, and
-    that capture is skipped rather than saved as a plain front view wearing
-    the section's name.
-
-    `document` is the Session's own bound Document (FCC-181), read through
-    `FreeCADGui.getDocument(name)` rather than whichever tab is in front.
-
-    Returns the paths actually written — empty with no GUI, which is what
-    leaves the headless fallback to the Preflight Worker's rasteriser.
-
-    The camera is restored whatever happens, and so is the clipping plane:
-    the user did not ask for their view to be moved or left mid-cutaway, and
-    a run that ends with the part face-on or sectioned because Review looked
-    at it last has damaged something that belongs to them.
+    Two isometrics from opposite corners, plus top, front and a section. The
+    section makes a shell, bore or blind pocket visible that the others miss.
     """
     import FreeCAD
 
@@ -1366,20 +1237,8 @@ def _enumerations(obj, prop):
 
 def _described_type(type_id):
     """
-    What a type has, asked of a throwaway Document and never of the user's.
-
-    Before the first object of a type exists its properties are unreachable:
-    `describe_object` needs the Name of an object that is already there and
-    `supported_types` reports type names and nothing else. So the type is
-    instantiated where nobody can see it, read, and the Document destroyed
-    (FCC-95). Still ADR-0006 — this is the running build answering about
-    itself, not a documentation corpus mixed across versions.
-
-    The active Document is put back by hand. `newDocument` makes its Document
-    the active one and `closeDocument` leaves none active, so a Tool that only
-    asked a question would have left the addon with nowhere to write. The
-    scratch Document is closed by the name FreeCAD gave it, not by the one it
-    was asked for, since FreeCAD uniquifies a name that is already taken.
+    What a type has, asked of a throwaway Document and never of the user's
+    (ADR-0006).
     """
     import FreeCAD
 

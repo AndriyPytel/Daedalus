@@ -651,20 +651,11 @@ def _is_one_of(feature, closed_members, prose_words):
     22, read whole where `kind` is one of them, or a substring of
     *prose_words* where it is not.
 
-    `config/prompts/design.md`'s `kind_vocabulary: closed` marker is sent on
-    roughly a third of Design replies (`_refused_kinds`, session
-    `afa0142baef847b0a9cd9139390af993`: 3 of 9), so most `kind` fields are
-    still the prose grammar this reads as a fallback rather than stops
-    reading — only `id` and `topology` are dropped (FCC-243).
-
-    *prose_words* may say a word *closed_members* does not: `bore` reads a
-    prose `kind` (a legacy "Ø42 bore" is still a hole) but is never checked
-    as one of the 22, because it is not one — FCC-232 folded it into `hole`
-    and a compliant reply is refused before `kind` can be `"bore"`
-    (`_refused_kinds`). `_BANNED_KIND_SYNONYM` and this are therefore not two
-    places disagreeing about whether `bore` is a word; one is the gate on
-    what a closed `kind` may say, the other is a fallback read of what a kind
-    that never passed the gate said anyway.
+    The closed marker is sent on roughly a third of Design replies (3 of 9),
+    so most `kind` fields are still the prose grammar this reads as a
+    fallback. `bore` reads a prose `kind` but is never checked as one of the
+    22, because it is not one — a compliant reply is refused before `kind`
+    can be `"bore"`.
     """
     kind = _what_it_is(feature)
     if kind in FEATURE_KIND:
@@ -1324,8 +1315,7 @@ def _drawn_in_common(one, other):
 def _features(model):
     """
     The features the part has, which is not the features the description holds:
-    a feature the later page replaced is judged by nothing, the way it is
-    measured by nothing (FCC-127).
+    a feature the later page replaced is judged by nothing.
     """
     return [feature for feature in (model or {}).get("features") or ()
             if isinstance(feature, dict) and not _superseded(feature)]
@@ -1379,22 +1369,11 @@ def render(model) -> str:
 
 def _under_each_kind(conflicts):
     """
-    What nobody agrees on, one to an address, under a heading for each kind
-    there is any of.
+    What nobody agrees on, one to an address, under a heading for each kind.
 
-    A user does three different things with the three — choose between two
-    readings, supply a value nothing on the part carries, look at the sheet a
-    check never reached — and read as one column they are thirty-three
-    paragraphs to sort by hand. The recorded run's four entries that named what
-    ended it stood among twenty-nine that did not.
-
-    One to an address, because this is where a person reads the list and the
-    same disagreement written twice in two words is one disagreement to settle
-    (`each_disagreement_once`). The merge holds both and goes on holding them.
-
-    The kind is not written on the entry as well, because the heading it stands
-    under has just said it. `machine_written` (FCC-249) is dropped the same
-    way: who found it is not what the Gate reads a finding to settle.
+    The recorded run's four entries that named what ended it stood among
+    twenty-nine that did not. `machine_written` is dropped the same way:
+    who found it is not what the Gate reads.
     """
     written = []
     grouped = _grouped_by_kind(_one_to_an_address(conflicts))
@@ -1454,23 +1433,7 @@ def each_disagreement_once(model) -> dict:
     The reading with what nobody agrees on said once, each entry saying which
     of `KINDS` it is.
 
-    The other half of what distillation leaves, and the half that is no part of
-    the document: Plan is handed the part and nothing that argues about it
-    (FCC-156), so the list stands in the log beside it and the user settles it
-    at the Gate off the reading they are shown.
-
-    That sentence names the Gate because FCC-156 does, but no code path opens
-    the log for a person to read: the Plan Gate is shown the distilled document
-    alone, and nothing in `ui/` links, narrates or opens the file this list is
-    written to (FCC-244). "The user settles it" is FCC-156's aspiration for
-    that log, not a description of a screen; the log itself is still the
-    intended surface, so `grouped_conflicts` orders what is written to it
-    rather than inventing a second one.
-
-    Said once here and not in the merge, because the merge only ever grows: a
-    pass writes down what it found in the words it found it in, and which of
-    those entries is one disagreement is decided where the list is written down
-    and read out (ADR-0019, FCC-153).
+    Plan is handed the part and nothing that argues about it (ADR-0019).
     """
     standing = _one_to_an_address((model or {}).get("conflicts") or ())
     return dict(model, conflicts=standing) if standing else model
@@ -1482,10 +1445,8 @@ def _grouped_by_kind(conflicts):
     disagreements, then gaps, then check hazards — each list keeping the
     order its entries arrived in.
 
-    `_under_each_kind` and `grouped_conflicts` both need this grouping, one to
-    render it as headed text and the other to write it back out as structured
-    entries a heading cannot carry, so the grouping is pulled out once rather
-    than kept as `_under_each_kind`'s private loop (FCC-244).
+    `_under_each_kind` and `grouped_conflicts` both need this grouping, so it
+    is pulled out once.
     """
     return {kind: [conflict for conflict in conflicts if _which_kind_it_is(conflict) == kind]
             for kind in KINDS}
@@ -1496,23 +1457,8 @@ def grouped_conflicts(model) -> dict:
     *model*, with `conflicts` reordered so every model-written entry stands
     before every machine-written one.
 
-    Ordered by `kind` before FCC-249 — disagreement, then gap, then check
-    hazard — which still buried the one thing that mattered: `crosswise` and
-    `_every_number_is_the_sheets` read as `A_CONFLICT` too
-    (`_which_kind_it_is`'s default, FCC-248), the same kind the model's own
-    disagreement reads as, so a real reading of the sheet stood wherever the
-    merge happened to append it among however many machine-detected
-    disagreements shared its kind. `machine_written` (FCC-249) is the field
-    that actually knows; ordering by it is what `kind` was always asked to do
-    and could not (FCC-248: at least one `A_CONFLICT` entry stands in 88% of
-    recorded sessions, 73% even with the two worst-offending machine checks
-    excluded — no kind-based order clears that bar).
-
-    `_under_each_kind` orders `render()`'s Plan Gate text by `kind` still —
-    the three-kind grouping FCC-244 built is a different question, choose
-    between two readings against supply a value against read the sheet again,
-    and this ticket does not reopen it. Only the evidence sidecar
-    `part_file.logged` writes through this function moves.
+    At least one machine-written `A_CONFLICT` entry stands in 88% of recorded
+    sessions — no kind-based order clears that bar.
     """
     conflicts = (model or {}).get("conflicts")
     if not conflicts:
@@ -1523,33 +1469,15 @@ def grouped_conflicts(model) -> dict:
 
 
 def _is_machine_written(conflict):
-    """
-    Whether *conflict* was appended by a validator, read off the field it
-    signs itself with at the moment it appends (FCC-249) — never off `kind`
-    (`A_CONFLICT` is the correct tag for a validator's own finding as much as
-    for the model's, FCC-248 measured that at 88% of sessions) and never off
-    shape (a model reply can land on the exact field set a validator writes,
-    FCC-237: 44 of 46 entries in one session missing `what` entirely).
-    """
+    """Whether *conflict* was appended by a validator, read off `machine_written`."""
     return bool(isinstance(conflict, dict) and conflict.get("machine_written"))
 
 
 def _worth_a_notice(model) -> bool:
-    """
-    FCC-248's condition, decidable now that authorship is signed rather than
-    guessed: whether *model*'s conflicts hold at least one entry the model
-    itself wrote.
+    """Whether *model*'s conflicts hold at least one entry the model itself wrote.
 
-    Stated, not wired — called from nowhere in this file or in `ui/`. Not
-    settled by a rate measured here, either: `tests/recorded/vocabulary_
-    kinds.json`'s 47 descriptions carry no `conflicts` entry at all before
-    `merge()` runs, so nothing computed from them can say how often this
-    predicate holds. The two recorded corpora that do carry conflicts put it
-    near one model-written entry per description (session `480b9995421e44
-    3d97b439a4f55bc3fe`: 1 of 29; `reading_2023_clamp.json`: 1 of 33) — not
-    the rare case a naive reading of the empty corpus would suggest. Whether
-    the notice ships, and against which real rate, is FCC-248's question,
-    reopened once signed entries accumulate from runs made after this ships.
+    Recorded corpora put it near one model-written entry per description
+    (1 of 29; 1 of 33) — not the rare case a naive reading would suggest.
     """
     return any(not _is_machine_written(conflict)
               for conflict in (model or {}).get("conflicts") or ())
@@ -1645,18 +1573,8 @@ def measured_from_what_is_gone(document, evidence) -> list:
 
     The invariant a discarded feature leaves behind: once something has
     discarded a feature, that feature can no longer be what another value is
-    measured from (FCC-153). Left standing, the datum is a face the drawing
-    deleted and every value keyed by it is a criterion the finished part is
-    checked against and cannot meet.
-
-    Read against the reading and not against the document alone: a document
-    carries no `superseded_by`, because the features that carried it are what
-    it dropped, so nothing in it can say which datums died. It is the same two
-    arguments `carried_by_no_source` is held with, for the same reason.
-
-    `tests/test_loop.py` runs it over the recorded reading of the 2023 pipe
-    clamp, over the document distilled out of it, and over the same reading
-    taken under an Intent that asks for the earlier revision.
+    measured from. Left standing, the datum is a face the drawing deleted and
+    every value keyed by it is a criterion the finished part cannot meet.
     """
     taken_over = _which_datum_takes_over(evidence)
     found = []
@@ -1877,17 +1795,10 @@ def _each_value(node, path):
     """
     Every value on the model, with the address it sits under.
 
-    Nothing of a feature a later page replaced. It stays on the description,
-    because what the sheet said is what the user checks the reading against at
-    the Gate, but it is not the part any more: the Model Mania run kept the
-    Phase 1 mounting ear beside the Phase 2 arm that deletes it, every entry of
-    it `read`, and so it was measured on the finished part and had to be cited
-    by a Step — a bore the drawing had deleted, planned, and a revision spent
-    being told it had been dropped (FCC-127).
-
-    An entry of a list is addressed by its identity where it has one, so that an
-    address survives a feature being added ahead of another — the same rule the
-    merge matches by.
+    Nothing of a feature a later page replaced: the Model Mania run kept the
+    Phase 1 mounting ear beside the Phase 2 arm that deletes it, and so a
+    bore the drawing had deleted was planned and a revision spent being told
+    it had been dropped.
     """
     if _a_value(node):
         return [(path, node)]
@@ -1912,10 +1823,8 @@ def _written(held, offered, path, conflicts):
     A value and its flag are one thing: there is no half-filling a value, and
     20 mm read disagreeing with 20 mm assumed is a disagreement worth showing.
 
-    `not_defined` -> a value is the one exception to the field growing only
-    once: `not_defined` records that nothing supplied a value, not a value
-    itself, so a later pass supplying one closes the gap instead of disagreeing
-    with it (FCC-235). A field already carrying a value is unmoved either way.
+    `not_defined` -> a value is the one exception: `not_defined` records that
+    nothing supplied a value, so a later pass supplying one closes the gap.
     """
     if isinstance(held, dict) and isinstance(offered, dict) \
             and not (_a_value(held) or _a_value(offered)):
