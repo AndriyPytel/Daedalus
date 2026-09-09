@@ -303,7 +303,7 @@ def test_a_self_intersecting_document_is_caught_before_a_provider_writes_checks(
         ["Twist self-intersects (BOPAlgo_SelfIntersect)"]
     assert events.first(ASSERTION).data["confirmed"] == [], \
         "the self-intersection check measures nothing to confirm"
-    assert not any(call[0]["content"] == prompt("assertion") for call in llm.calls), \
+    assert not any(call[0]["content"].startswith(prompt("assertion")) for call in llm.calls), \
         "a provider was asked to write checks for a Document already known to self-intersect"
 
 
@@ -330,7 +330,7 @@ def test_the_envelope_check_runs_against_the_document_and_can_fail_it():
     assert events.first(ASSERTION).data["unmet"], "nothing was reported unmet"
     assert events.first(ASSERTION).data["confirmed"] == [], \
         "the envelope check measures nothing to confirm"
-    assert not any(call[0]["content"] == prompt("assertion") for call in llm.calls), \
+    assert not any(call[0]["content"].startswith(prompt("assertion")) for call in llm.calls), \
         "a provider was asked to write checks for a part already known to be wrong"
 
 
@@ -591,7 +591,7 @@ def test_a_re_read_over_a_named_callout_is_shown_only_the_views_it_is_printed_in
         suspect_reply(), verdict_reply("pass"),
     ], attachments=[THE_PIPE_CLAMP])
 
-    calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    calls = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     re_read = calls[-1][-1]["content"][:-1]
     characters = sum(len(block["text"]) for block in re_read if block.get("type") == "text")
     pictures = [block for block in re_read if block.get("type") == "image_url"]
@@ -616,7 +616,7 @@ def test_a_callout_the_description_never_used_goes_back_to_design_naming_it():
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
-    design_calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    design_calls = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     asked = json.loads(design_calls[-1][-1]["content"][-1]["text"])
     assert "the_question" in asked, "Design was not sent back to the sheet at all"
     assert "40" in asked["the_question"]
@@ -635,7 +635,7 @@ def test_looking_again_stops_when_it_stops_finding_anything():
                               attachments=[MODEL_MANIA])
 
     assert result.ok, "the run did not finish: the re-look kept going"
-    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     assert len(design_turns) == 3, \
         "the sheet was asked again after it had already answered with nothing"
 
@@ -655,7 +655,7 @@ def test_the_second_look_is_bounded_by_the_re_read_ceiling():
     run("Build this", llm=llm, tools=FakeTools().registry,
         budgets=Budgets(rereads=2), attachments=[MODEL_MANIA])
 
-    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     assert len(design_turns) <= 4, "the re-look ran past its ceiling"
 
 

@@ -171,7 +171,7 @@ def test_a_question_alongside_steps_is_still_a_plan():
     asked = []
 
     result, events, _, _ = drive(
-        [json.dumps({"question": "how big?", "steps": ["Sketch it"]}),
+        [json.dumps({"declare": {"question": "how big?", "steps": ["Sketch it"]}}),
          code_reply("a()"), suspect_reply(), verdict_reply("pass")],
         intent=GEAR, ask=lambda q: asked.append(q) or "")
 
@@ -423,7 +423,7 @@ def test_a_self_intersecting_document_is_caught_even_with_no_acceptance_list():
         "the failure must reach the caller, not be swallowed as None"
     assert "acceptance checks did not pass" in result.reason, \
         "the failure must have gone through the decided()/replan() gate, not a bare pass"
-    assert not any(call[0]["content"] == prompt("assertion") for call in llm.calls), \
+    assert not any(call[0]["content"].startswith(prompt("assertion")) for call in llm.calls), \
         "an empty acceptance list must still never reach a provider for assertion"
 
 
@@ -961,9 +961,9 @@ def test_an_entry_no_step_ever_landed_for_is_still_unplanned():
         plan_reply(*[{"do": "Pad part %d" % (number + 1), "satisfies": [entry]}
                      for number, entry in enumerate(BUILT)],
                    {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
-        json.dumps({"steps": [{"step": number, "code": "part%d()" % number,
+        json.dumps({"declare": {"steps": [{"step": number, "code": "part%d()" % number,
                                "label": "Part %d" % number} for number in range(1, 4)],
-                    "unbuildable": "the fourth pad has nothing to stand on"}),
+                    "unbuildable": "the fourth pad has nothing to stand on"}}),
         plan_reply({"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
         plan_reply({"do": "Pad part 4", "satisfies": [BUILT[3]]},
                    {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),

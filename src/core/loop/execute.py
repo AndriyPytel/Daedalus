@@ -8,6 +8,11 @@ from core.design.design import entries
 from core.events import TOOL_CALL, TOOL_RESULT
 from core.tools import ToolError
 
+import tempfile
+
+from core.agent.agent import run_phase
+from core.agent import phase_contract as pc
+from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import Budgets
 from core.loop.describe import _RAN_OUT_OF_ROOM
 from core.loop.prompt import EXECUTE_PHASE, _ask, prompt
@@ -140,7 +145,7 @@ class Written:
 
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
-            looks=None, entries=(), ledger=None):
+            looks=None, entries=(), ledger=None, supervisor=None, kernel=None):
     """
     Write the code for every Step from `start` to the end of the Plan, in one turn.
 
@@ -221,9 +226,19 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     if looked:
         request["what_you_looked_at"] = looked
 
-    reply = _ask(llm, events, EXECUTE_PHASE,
-                 prompt(EXECUTE_PHASE, ledger.render() if ledger else ""),
-                 json.dumps(request, indent=2, default=str))
+    supervisor = supervisor or SessionTreeSupervisor()
+    task = json.dumps(request, indent=2, default=str)
+    
+    with tempfile.TemporaryDirectory() as working_dir:
+        declared, session, checkpoints = run_phase(
+            pc.EXECUTE, working_dir,
+            {"plan": steps, "design": as_described},
+            llm, task,
+            kernel=kernel, supervisor=supervisor, stream=events,
+            system=prompt(EXECUTE_PHASE, ledger=ledger.render() if ledger else "")
+        )
+    
+    reply = declared if isinstance(declared, dict) else {}
 
     written = _written(reply.get("steps"), start)
     if written:

@@ -87,7 +87,7 @@ def test_a_trailing_gaps_free_continuation_does_not_count_against_attempts_per_s
     the Step is tried twice before that single-attempt budget is actually spent.
     """
     result, events, _, _ = drive(
-        [plan_reply("Only")] + [json.dumps({"note": "not sure what to build here"})] * 2,
+        [plan_reply("Only")] + [json.dumps({"declare": {"note": "not sure what to build here"}})] * 2,
         budgets=Budgets(attempts_per_step=1, revisions=0),
     )
 
@@ -107,8 +107,8 @@ def test_an_interior_gap_gets_no_free_continuation():
     result, events, _, _ = drive(
         [
             plan_reply("First", "Second", "Third"),
-            json.dumps({"steps": [{"step": 1, "code": "first()"},
-                                  {"step": 3, "code": "third()"}]}),
+            json.dumps({"declare": {"steps": [{"step": 1, "code": "first()"},
+                                  {"step": 3, "code": "third()"}]}}),
         ],
         budgets=Budgets(attempts_per_step=1, revisions=0),
     )
@@ -148,7 +148,7 @@ def test_execute_leaving_no_code_does_not_apply_anything_and_a_regeneration_does
     """
     result, _, _, tools = drive([
         plan_reply("Add a box"),
-        json.dumps({"note": "what does this build have?"}),
+        json.dumps({"declare": {"note": "what does this build have?"}}),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ])
@@ -360,8 +360,8 @@ def test_an_interior_gap_says_a_step_was_skipped_not_that_room_ran_out():
     result, events, _, _ = drive(
         [
             plan_reply("First", "Second", "Third"),
-            json.dumps({"steps": [{"step": 1, "code": "first()"},
-                                  {"step": 3, "code": "third()"}]}),
+            json.dumps({"declare": {"steps": [{"step": 1, "code": "first()"},
+                                  {"step": 3, "code": "third()"}]}}),
             code_reply("second()", "third()", first=2),
             suspect_reply(), verdict_reply("pass"),
         ],
@@ -406,7 +406,7 @@ def test_a_reply_with_nothing_usable_says_so_in_the_traceback():
     result, events, _, _ = drive(
         [
             plan_reply("Only"),
-            json.dumps({"note": "not sure what to build here"}),
+            json.dumps({"declare": {"note": "not sure what to build here"}}),
             code_reply("built()"),
             suspect_reply(), verdict_reply("pass"),
         ],
@@ -430,7 +430,7 @@ def test_the_rendering_of_what_was_said_is_capped_not_the_reply():
     result, events, _, _ = drive(
         [
             plan_reply("First", "Second"),
-            json.dumps({"steps": [{"step": 1, "code": "x" * 5000, "label": "Step"}]}),
+            json.dumps({"declare": {"steps": [{"step": 1, "code": "x" * 5000, "label": "Step"}]}}),
             code_reply("second()", first=2),
             suspect_reply(), verdict_reply("pass"),
         ],
@@ -532,9 +532,9 @@ def test_a_revised_plan_does_not_reapply_steps_that_already_landed():
     result, events, llm, tools = drive([
         plan_reply("Pad the outline", "Fillet the marked edges",
                    "Drill the hole", "Chamfer the edge"),
-        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"},
+        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"},
                               {"step": 2, "code": "fillet()", "label": "Fillet"}],
-                    "unbuildable": "Step 3 needs a hole diameter nobody supplied."}),
+                    "unbuildable": "Step 3 needs a hole diameter nobody supplied."}}),
         plan_reply("Pad the outline", "Fillet the marked edges",
                    "Drill a 6mm hole", "Chamfer the edge"),
         code_reply("drill()", "chamfer()", first=3),
@@ -565,8 +565,8 @@ def test_a_revised_plan_whose_first_step_differs_reexecutes_everything():
     """
     result, events, llm, tools = drive([
         plan_reply("Pad the outline", "Fillet the marked edges"),
-        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
-                    "unbuildable": "Step 2 needs edges nobody named."}),
+        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": "Step 2 needs edges nobody named."}}),
         plan_reply("Pad a wider outline", "Fillet the named edges"),
         code_reply("pad_wider()", "fillet_named()"),
         suspect_reply(), verdict_reply("pass"),
@@ -630,8 +630,8 @@ def test_obsolete_beside_code_does_not_throw_that_code_away():
     """
     result, events, _, tools = drive([
         plan_reply("Pad the outline", "Fillet the marked edges"),
-        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
-                    "obsolete": "Step 2 does not say which edges are marked."}),
+        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "obsolete": "Step 2 does not say which edges are marked."}}),
         plan_reply("Fillet the four corner edges"),
         code_reply("fillet()"),
         suspect_reply(), verdict_reply("pass"),
@@ -653,9 +653,9 @@ def test_a_step_left_out_with_a_reason_hands_back_without_spending_attempts():
     """
     result, events, llm, tools = drive([
         plan_reply("Pad the outline", "Pocket the hex recess"),
-        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
                     "unbuildable": "Step 2 cuts a hex inside a bore of the same "
-                                   "diameter, so it moves no material."}),
+                                   "diameter, so it moves no material."}}),
         plan_reply("Pocket a wider hex recess"),
         code_reply("hex()"),
         suspect_reply(), verdict_reply("pass"),
@@ -685,8 +685,8 @@ def test_an_unbuildable_reply_on_a_retry_hands_back_instead_of_being_asked_again
     result, events, llm, tools = drive([
         plan_reply("Fillet the root edges of the lug"),
         code_reply("fillet_root()"),
-        json.dumps({"unbuildable": "the fillet radius exceeds the material at "
-                                   "the root edge; there is nothing left to round."}),
+        json.dumps({"declare": {"unbuildable": "the fillet radius exceeds the material at "
+                                   "the root edge; there is nothing left to round."}}),
         plan_reply("Fillet the root edges at a smaller radius"),
         code_reply("fillet_root_smaller()"),
         suspect_reply(), verdict_reply("pass"),

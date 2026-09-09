@@ -22,14 +22,14 @@ def _a_box_run():
     """design -> plan -> execute -> review, the smallest Plan that lands."""
     return ScriptedLLMClient([
         "design",
-        json.dumps({"design": {}, "question": ""}),
-        json.dumps({"steps": ["Add a 10mm cube"]}),
-        json.dumps({"steps": [
+        json.dumps({"declare": {"design": {}, "question": ""}}),
+        json.dumps({"declare": {"steps": ["Add a 10mm cube"]}}),
+        json.dumps({"declare": {"steps": [
             {"step": 1, "code": "doc.addObject('Part::Box', 'Box')",
              "label": "Add the box"},
-        ]}),
-        json.dumps({"suspected": []}),
-        json.dumps({"verdict": "pass", "reason": "A 10mm cube."}),
+        ]}}),
+        json.dumps({"declare": {"suspected": []}}),
+        json.dumps({"declare": {"verdict": "pass", "reason": "A 10mm cube."}}),
     ])
 
 
@@ -128,22 +128,22 @@ def _a_question_then_a_box_run():
     """design asks once, then plan -> execute -> review, once it is answered."""
     return ScriptedLLMClient([
         "design",
-        json.dumps({"design": {}, "question": "solid or hollow?"}),
-        json.dumps({"design": {"solid": True}, "question": ""}),
-        json.dumps({"steps": ["Add a 10mm cube"]}),
-        json.dumps({"steps": [
+        json.dumps({"declare": {"design": {}, "question": "solid or hollow?"}}),
+        json.dumps({"declare": {"design": {"solid": True}, "question": ""}}),
+        json.dumps({"declare": {"steps": ["Add a 10mm cube"]}}),
+        json.dumps({"declare": {"steps": [
             {"step": 1, "code": "doc.addObject('Part::Box', 'Box')",
              "label": "Add the box"},
-        ]}),
-        json.dumps({"suspected": []}),
-        json.dumps({"verdict": "pass", "reason": "A 10mm cube."}),
+        ]}}),
+        json.dumps({"declare": {"suspected": []}}),
+        json.dumps({"declare": {"verdict": "pass", "reason": "A 10mm cube."}}),
     ])
 
 
 def test_no_answer_callback_pauses_in_a_resumable_needs_answer_state(kernel):
     from copilot.sdk import Client
 
-    llm = ScriptedLLMClient(["design", json.dumps({"design": {}, "question": "solid or hollow?"})])
+    llm = ScriptedLLMClient(["design", json.dumps({"declare": {"design": {}, "question": "solid or hollow?"}})])
     client = Client(kernel=kernel, llm=llm)
     seen = []
     client.watch(seen.append)
@@ -157,15 +157,15 @@ def test_no_answer_callback_pauses_in_a_resumable_needs_answer_state(kernel):
 
     llm.turns.extend([
         "design",
-        json.dumps({"design": {}, "question": "solid or hollow?"}),
-        json.dumps({"design": {"solid": True}, "question": ""}),
-        json.dumps({"steps": ["Add a 10mm cube"]}),
-        json.dumps({"steps": [
+        json.dumps({"declare": {"design": {}, "question": "solid or hollow?"}}),
+        json.dumps({"declare": {"design": {"solid": True}, "question": ""}}),
+        json.dumps({"declare": {"steps": ["Add a 10mm cube"]}}),
+        json.dumps({"declare": {"steps": [
             {"step": 1, "code": "doc.addObject('Part::Box', 'Box')",
              "label": "Add the box"},
-        ]}),
-        json.dumps({"suspected": []}),
-        json.dumps({"verdict": "pass", "reason": "A 10mm cube."}),
+        ]}}),
+        json.dumps({"declare": {"suspected": []}}),
+        json.dumps({"declare": {"verdict": "pass", "reason": "A 10mm cube."}}),
     ])
     result = client.resume("solid")
 

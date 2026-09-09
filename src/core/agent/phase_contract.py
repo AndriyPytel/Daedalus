@@ -28,6 +28,7 @@ DESIGN = "design"
 PLAN = "plan"
 EXECUTE = "execute"
 ASSERTION = "assertion"
+REVIEW_SUSPECT = "review_suspect"
 REVIEW = "review"
 
 RO = "ro"
@@ -40,6 +41,7 @@ PHASE_CONTRACT = {
     PLAN: {"design": RO},
     EXECUTE: {"design": RO, "plan": RO, "document": RW},
     ASSERTION: {"design": RO, "document": RO},
+    REVIEW_SUSPECT: {"intent": RO, "outcome": RO},
     REVIEW: {"intent": RO, "outcome": RO},
 }
 

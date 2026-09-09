@@ -26,6 +26,11 @@ from core.loop.execute import (
 )
 from core.loop.gate import _DECIDE, _a_question_for_the_build
 from core.loop.prompt import PLAN_PHASE, _ask, _pictures, prompt
+
+import tempfile
+from core.agent.agent import run_phase
+from core.agent import phase_contract as pc
+from core.agent.subagent import SessionTreeSupervisor
 from core.loop.results import Stopped
 
 
@@ -76,7 +81,8 @@ class Plan:
 
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set=None,
-         unanswered=(), revising=(), looking=(), looked=(), tried=""):
+         unanswered=(), revising=(), looking=(), looked=(), tried="",
+         supervisor=None, kernel=None):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
 
@@ -156,8 +162,19 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     if looked:
         request["what_the_tools_say"] = list(looked)
 
-    reply = _ask(llm, events, PLAN_PHASE, prompt(PLAN_PHASE),
-                 json.dumps(request, indent=2, default=str))
+    supervisor = supervisor or SessionTreeSupervisor()
+    task = json.dumps(request, indent=2, default=str)
+    
+    with tempfile.TemporaryDirectory() as working_dir:
+        declared, session, checkpoints = run_phase(
+            pc.PLAN, working_dir,
+            {"design": the_part or {}},
+            llm, task,
+            kernel=kernel, supervisor=supervisor, stream=events,
+            system=prompt(PLAN_PHASE)
+        )
+    
+    reply = declared if isinstance(declared, dict) else {}
     steps, satisfies, cites, ops, unbuildable = _steps_of(
         reply.get("steps", []), reply.get("op_vocabulary"))
 

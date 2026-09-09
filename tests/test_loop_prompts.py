@@ -92,10 +92,12 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
         phase_body = handle.read().strip()
     sections = _language_sections()
     vocabulary = "\n\n".join(sections[heading] for heading in _PHASE_VOCABULARY[phase])
-    expected = ("%s\n\n%s" % (phase_body, vocabulary)).replace(
+    phase_prompt = ("%s\n\n%s" % (phase_body, vocabulary)).replace(
         "{{traps}}", "\n".join("- " + trap for trap in TRAPS))
 
-    assert _system_messages(llm)[turn] == expected
+    system = _system_messages(llm)[turn]
+    assert phase_prompt in system, "phase prompt not found in system message"
+    assert "## Protocol" in system, "agent protocol not found in system message"
 
 
 def test_the_traps_land_in_the_prompts_that_ask_for_them():
@@ -853,7 +855,7 @@ def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run()
     """
     result, events, _, _ = drive(
         [plan_reply("Add a sketch")]
-        + [json.dumps({"note": "not sure what to build here"})] * 4,
+        + [json.dumps({"declare": {"note": "not sure what to build here"}})] * 4,
         budgets=Budgets(attempts_per_step=3, revisions=0),
     )
 
@@ -877,7 +879,7 @@ def test_a_step_that_never_writes_its_tail_still_terminates():
     raises if the loop reaches for one.
     """
     result, events, _, _ = drive(
-        [plan_reply("Only")] + [json.dumps({"note": "not sure what to build here"})] * 4,
+        [plan_reply("Only")] + [json.dumps({"declare": {"note": "not sure what to build here"}})] * 4,
         budgets=Budgets(attempts_per_step=1, revisions=0,
                         trailing_gap_retries=3),
     )
@@ -907,7 +909,7 @@ def test_every_design_call_of_a_run_carries_a_page_and_not_the_whole_sheet():
         suspect_reply(), verdict_reply("pass"),
     ], attachments=[THE_PIPE_CLAMP])
 
-    calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    calls = [call for call in llm.calls if prompt("design") in call[0]["content"]]
     assert len(calls) == 4, "first pass (2 pages + reconcile) plus the re-read A_DATUM provokes"
 
     page_calls, reconciling = calls[:2], calls[2]

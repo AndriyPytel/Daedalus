@@ -20,9 +20,14 @@ from core.loop.prompt import (
 )
 from core.loop.results import Stopped
 
+import tempfile
+from core.agent.agent import run_phase
+from core.agent import phase_contract as pc
+from core.agent.subagent import SessionTreeSupervisor
+
 
 def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
-          keep_printed=False, pictures=True):
+          keep_printed=False, pictures=True, supervisor=None, kernel=None):
     """
     One Design turn: what it adds to the part, and what it needs a person for.
 
@@ -63,6 +68,10 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
     every other route the block carries an extra key the provider was never
     asked about and nothing here relies on it doing anything with it.
 
+    The model receives evidence and body in the task prompt, and replies with
+    {"code": "..."}, {"delegate": "..."}, or {"declare": {...}} through
+    run_phase. The declared value holds "design" and "question".
+
     Hands back what to merge and what Design wants asked. A reply that is not a
     model grows the part by nothing, which is the same case as a sheet that does
     not answer: the run carries on with what it already had rather than losing
@@ -71,8 +80,23 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
     evidence = _the_evidence(attachments, views, keep_printed, pictures)
     if evidence and cache_control_supported(getattr(llm, "model", None)):
         evidence = evidence[:-1] + [dict(evidence[-1], cache_control={"type": "ephemeral"})]
-    reply = _ask(llm, events, phase, prompt(DESIGN_PHASE),
-                 evidence + [{"type": "text", "text": json.dumps(body, indent=2, default=str)}])
+
+    task = evidence + [{"type": "text", "text": json.dumps(body, indent=2, default=str)}]
+
+    supervisor = supervisor or SessionTreeSupervisor()
+
+    with tempfile.TemporaryDirectory() as working_dir:
+        intent_data = body.get("intent", body)
+
+        declared, session, checkpoints = run_phase(
+            pc.DESIGN, working_dir,
+            {"intent": intent_data},
+            llm, task,
+            kernel=kernel, supervisor=supervisor, stream=events,
+            system=prompt(DESIGN_PHASE)
+        )
+
+    reply = declared if isinstance(declared, dict) else {}
     the_part = reply.get("design")
     return (the_part if isinstance(the_part, dict) else {},
             str(reply.get("question") or "").strip())
