@@ -265,30 +265,9 @@ def _measured_across(sketch, outline, view, between):
     """
     Every printed distance that reaches two faces of this outline, written.
 
-    This is the drawing arriving in the sketch. Until it does, the only number
-    the check holds the tracing against is a diameter a leader happened to
-    reach — one of them on four sheets — and every other thing a drawing says
-    is a distance.
-
-    Written between two *faces* and never between two corners. A face is drawn
-    with a chamfer at each end, so which corner a foot is nearest is a lottery:
-    measured on SECTION A-A of `mm25-p1-1.pdf`, corner matching turns a 50 mm
-    dimension into 47.01 mm of traced geometry and reports 2.07 mm of movement
-    the sheet never asked for, and matching along the dimension alone lets a
-    foot reach a face on the far side of the part and reports 34 mm. So the
-    foot names the line it stands on, and the constraint holds those two lines
-    apart in the one direction the dimension is measured in.
-
-    Which is why only a dimension drawn square to the sheet is written: a
-    diagonal one measures between two points and this cannot tell which.
-
-    The value written is the printed one, always. The two faces are the
-    tracing's; how far apart they have to be is the sheet's. A constraint the
-    sketch already says is dropped rather than written twice.
-
-    `A_DISTANCE` is the tracing's own slack, and `sheet_reader` is where it is
-    measured and where it is written down: how far the pixels may be from what
-    the sheet prints between two faces, before that is a fact about the reading.
+    Written between two *faces*, not corners. Measured on SECTION A-A of
+    `mm25-p1-1.pdf`: corner matching turns 50 mm into 47.01 mm traced and
+    reports 2.07 mm of spurious movement. Only dimensions square to the sheet.
     """
     import Sketcher
 

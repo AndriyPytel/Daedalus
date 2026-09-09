@@ -86,7 +86,6 @@ src/core/kernel/preflight_render.py::render
 src/core/lint.py::_counted_selections
 src/core/lint.py::_swallowed
 src/core/lint.py::_uncounted_selection
-src/core/llm/__init__.py::module
 src/core/llm/attachments.py::accepts_pdf
 src/core/llm/attachments.py::cache_control_supported
 src/core/llm/claude.py::_answered
@@ -235,7 +234,6 @@ src/core/sheets/sketch_check.py::Trouble
 src/core/sheets/sketch_check.py::Verdict
 src/core/sheets/sketch_check.py::_how_far_it_moved
 src/core/sheets/sketch_check.py::_joined
-src/core/sheets/sketch_check.py::_measured_across
 src/core/sheets/sketch_check.py::_squarely
 src/core/sheets/sketch_check.py::_the_face_at
 src/core/sheets/sketch_check.py::_troubles

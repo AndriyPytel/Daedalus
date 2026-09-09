@@ -1,60 +1,12 @@
-"""
-The LLM client seam.
+"""The LLM client seam.
 
-One interface, three implementations: LiteLLM against a keyed provider, the
-`claude` CLI against a Claude Max subscription, and a scripted client that
-replays canned turns. Everything above this line is testable without a network
-or an API key.
+Three implementations: LiteLLM (ADR-0004), `claude` CLI (ADR-0025), and a
+scripted client. Everything above this line is testable without a network.
 
-ADR-0004 — LiteLLM is the single unified client. Its own spike is the
-evidence that it carries Anthropic thinking blocks through the stream and
-honours `cache_control` — on the `anthropic/` route, which is what
-`cache_control_supported` names, since the spike never exercised the others.
-
-ADR-0025 amends it in part. `ClaudeCodeClient` answers a phase on a
-subscription the user already pays for, as a subprocess and not a package —
-nothing is added to FreeCAD's shared interpreter, where the Agent SDK would add
-one that wraps the same CLI. It shows no reasoning, and that silence is scoped
-to the runs a user chooses to spend a subscription on rather than imposed on
-every provider: Anthropic through a key keeps its thinking stream.
-
-This module must stay importable without FreeCAD; the settings lookup that
-needs it is deferred into `client_from_settings`.
-
-A reasoning model left on the provider's default cap spends it all on thought
-and answers with nothing, so `_OUTPUT_BUDGET` sets one; read it like the
-Anthropic thinking budget, because the request may cost four times it. Told
-nothing about effort, kimi-k3 circled one drawing for ten minutes and never
-left its own reasoning, and "medium" bought no less of it — the cap turns that
-into an error, and the effort dial is the only thing there is against reaching
-it. `EFFORTS` is that dial, offered in the composer and stored in settings, and
-both routes are told what it says: `--effort` on the subscription route, and
-`reasoning_effort` or an Anthropic thinking budget on a key. Its default is
-`medium`: on one sheet through Design `high` spent 41,704 tokens of thinking
-against `medium`'s 26,117 and four minutes more of the wait, and Design is one
-phase of a run that has several.
-
-The CLI takes two levels past `high`, and neither is offered. Nothing here has
-measured them, and `_CEILING` — the timeout that has to move with the dial or
-it cuts the answer off — is derived from measurements of the three that are.
-An unmeasured level would be a ceiling made up, which is the failure that
-ceiling exists to prevent.
-
-One dial over five phases is one compromise: Design reading a drawing and
-Execute writing the code for a Step it has already been given are not the
-same demand, and raising the dial for the first pays for it on every call of
-the second. `profile_of` is the two-way split — `thinking` for Design and
-Plan, `doing` for Execute, Assertion and Review — and `ProfiledClient` is what
-`for_phase` answers with: two clients, each already built on its own model
-and its own effort, so `_CEILING` follows each profile's own dial rather than
-the one dial shared by both. `client_from_profiles` builds it from settings;
-`client_from_settings` still answers a single model on request, which is what
-a session's own name and a Level 2 test that names one model both still ask
-for.
-
-`IMAGE_SUFFIXES` and `PDF_SUFFIXES` are what the providers take, and what the
-attach dialog offers. A PDF is a full attachment rather than a second-class
-one: drawings arrive as PDFs.
+`EFFORTS` default is `medium`: on one sheet through Design `high` spent
+41,704 tokens of thinking against `medium`'s 26,117 and four minutes more.
+`profile_of` is the two-way split: `thinking` for Design/Plan, `doing` for
+Execute/Assertion/Review.
 """
 
 from core.llm.types import REASONING, TEXT, Chunk
