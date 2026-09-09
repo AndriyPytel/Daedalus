@@ -16,14 +16,12 @@ handing it a `document` -- a path, or explicit `None` for an empty Document
 Nothing here imports FreeCAD. The parent is the addon's process; the only
 FreeCAD in play is the child's.
 
-Run as a script it is a smoke check:
-`python -m core.kernel "doc.addObject('Part::Box','Box')"`.
+Smoke check: `src/tools/kernel_smoke.py`.
 """
 import json
 import os
 import queue
 import subprocess
-import sys
 import tempfile
 import threading
 from dataclasses import dataclass, field
@@ -343,14 +341,3 @@ def copy_of(document):
     os.close(handle)
     document.saveCopy(path)
     return path
-
-
-if __name__ == "__main__":
-    code = sys.argv[1] if len(sys.argv) > 1 else "doc.addObject('Part::Box', 'Box')"
-    with Kernel() as kernel:
-        result = kernel.check(code, render_path="/tmp/kernel_smoke.png")
-        print("ok        :", result.ok)
-        print("objects   :", [o["name"] for o in result.objects])
-        print("render    :", result.render)
-        if result.traceback:
-            print(result.traceback)
