@@ -35,7 +35,7 @@ from core.design.design import (
     read_off_the_wrong_view, render, said_at,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
-from core.loop.prompt import PROMPTS, _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
 from core.loop.run import run
 from core.loop.plan import _in_the_prose
 from core.tools import ToolError, ToolRegistry

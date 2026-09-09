@@ -13,17 +13,14 @@ import json
 import os
 import re
 
-DESIGN_MD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                          "config", "prompts", "design.md")
-PROMPTS_DIR = os.path.dirname(DESIGN_MD)
-LANGUAGE_MD = os.path.join(PROMPTS_DIR, "language.md")
+from core.prompts import ROOT, read_prompt
+
 VOCABULARY_KINDS = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                  "recorded", "vocabulary_kinds.json")
 
 
 def _vocabulary_md():
-    with open(LANGUAGE_MD, encoding="utf-8") as f:
-        return f.read()
+    return read_prompt("language.md")
 
 
 def _naming_section(text):
@@ -146,13 +143,14 @@ def test_no_prompt_licenses_a_value_outside_a_closed_list():
     (arm, ear, web) when it names one"` — is the fixture: it let any word a
     draughtsman wrote become a legal `kind`/`place` value."""
     offenders = []
-    for name in sorted(os.listdir(PROMPTS_DIR)):
-        if not name.endswith(".md"):
-            continue
-        with open(os.path.join(PROMPTS_DIR, name), encoding="utf-8") as f:
-            text = f.read()
-        if "the drawing's region name" in text:
-            offenders.append(name)
+    for dirpath, _dirs, names in sorted(os.walk(ROOT)):
+        for name in sorted(names):
+            if not name.endswith(".md"):
+                continue
+            with open(os.path.join(dirpath, name), encoding="utf-8") as f:
+                text = f.read()
+            if "the drawing's region name" in text:
+                offenders.append(name)
 
     assert not offenders, offenders
 

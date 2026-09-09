@@ -1,10 +1,26 @@
-"""Read prompt files from config/prompts/."""
+"""
+Read prompt files from config/prompts/, grouped by reader in subdirectories:
+`system/` (the phase and agent system prompts), `lint/` (lint refusals) and
+`messages/` (everything else). Callers ask for a bare filename; this is the
+one place that knows which subdirectory holds it.
+"""
 import os
 
-PROMPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                       "config", "prompts")
+ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                     "config", "prompts")
+
+
+def _paths():
+    found = {}
+    for dirpath, _dirs, names in os.walk(ROOT):
+        for name in names:
+            found[name] = os.path.join(dirpath, name)
+    return found
 
 
 def read_prompt(name):
-    with open(os.path.join(PROMPTS, name), encoding="utf-8") as handle:
+    paths = _paths()
+    if name not in paths:
+        raise FileNotFoundError(name)
+    with open(paths[name], encoding="utf-8") as handle:
         return handle.read()

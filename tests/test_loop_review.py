@@ -39,7 +39,6 @@ from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, _streamed, prompt
 from core.loop.run import run
 import core.loop.prompt as loop_prompt_module
-from core.loop.prompt import PROMPTS
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (

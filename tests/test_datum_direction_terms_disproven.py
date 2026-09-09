@@ -72,10 +72,10 @@ import json
 import os
 import re
 
+from core.prompts import read_prompt
+
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recorded",
                        "datum_satisfies_steps.json")
-LANGUAGE_MD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                          "config", "prompts", "language.md")
 
 SATISFIES = re.compile(r"^(?P<do>.*?)\s*\(satisfies:\s*(?P<sat>.*)\)\s*$", re.DOTALL)
 FLAG = re.compile(r"\s*\((?:read|derived|assumed)\)$")
@@ -84,7 +84,7 @@ FROM_TO = re.compile(r"from (the [a-z ]+?) to (the [a-z ]+?)(?:[.,;]|$)")
 
 def _datum_vocabulary():
     """The eleven datum names, read off `language.md` rather than copied."""
-    text = open(LANGUAGE_MD, encoding="utf-8").read()
+    text = read_prompt("language.md")
     listed = re.search(r"Datum `name`: one of \(([^)]*)\)", text).group(1)
     return [term.strip() for term in listed.split(",")]
 

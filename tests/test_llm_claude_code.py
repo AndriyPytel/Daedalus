@@ -607,9 +607,8 @@ def test_the_subscription_is_the_credential_rather_than_a_key():
 
 
 def _design_prompt():
-    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           "config", "prompts", "design.md"), encoding="utf-8") as handle:
-        return handle.read()
+    from core.prompts import read_prompt
+    return read_prompt("design.md")
 
 
 def test_the_system_prompt_reaches_the_process_as_a_file():

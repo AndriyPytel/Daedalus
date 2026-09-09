@@ -37,7 +37,6 @@ from core.design.design import (
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
 from core.loop.run import run
-from core.loop.prompt import PROMPTS
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (

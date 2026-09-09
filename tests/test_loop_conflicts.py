@@ -44,7 +44,6 @@ import core.loop.prompt as loop_prompt
 import core.loop.execute as loop_execute
 from core.loop.results import Progress
 from core.loop.run import Standing, Part, LastPass
-from core.loop.prompt import PROMPTS
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from core import kernel

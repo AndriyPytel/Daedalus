@@ -17,8 +17,7 @@ from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
 from core.loop.prompt import ASSERTION_PHASE, DESIGN_PHASE, PLAN_PHASE, prompt
 from core.agent.subagent import SessionTreeSupervisor
-
-PROMPTS = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config", "prompts")
+from core.prompts import read_prompt
 
 pytestmark = pytest.mark.freecad
 
@@ -34,8 +33,7 @@ def kernel():
 
 
 def _text(name):
-    with open(os.path.join(PROMPTS, name), encoding="utf-8") as handle:
-        return handle.read()
+    return read_prompt(name)
 
 
 def test_design_prompt_runs_code_before_declaring(kernel, tmp_path):

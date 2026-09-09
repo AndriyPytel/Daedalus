@@ -35,7 +35,7 @@ REVIEW_PHASE = "review"
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 
-from core.prompts import PROMPTS, read_prompt
+from core.prompts import read_prompt
 
 
 _LANGUAGE_HEADINGS = (

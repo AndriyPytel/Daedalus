@@ -35,7 +35,7 @@ from core.design.design import (
     read_off_the_wrong_view, render, said_at,
 )
 from core.loop.budgets import Budgets, revisions_ceiling
-from core.loop.prompt import PROMPTS, _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
 from core.loop.run import run
 from core.loop.design import design as loop_design, _the_groups
 from core.loop.describe import _the_geometry_disagrees

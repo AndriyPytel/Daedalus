@@ -8,22 +8,17 @@ into this file — the same rule `test_vocabulary_closure.py` applies to
 own copy of the closed list passes even while the prompt says something
 else.
 """
-import os
 import re
 
-PLAN_MD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                       "config", "prompts", "plan.md")
-LANGUAGE_MD = os.path.join(os.path.dirname(PLAN_MD), "language.md")
+from core.prompts import read_prompt
 
 
 def _plan_md():
-    with open(PLAN_MD, encoding="utf-8") as f:
-        return f.read()
+    return read_prompt("plan.md")
 
 
 def _language_md():
-    with open(LANGUAGE_MD, encoding="utf-8") as f:
-        return f.read()
+    return read_prompt("language.md")
 
 
 def _op_section(text):
@@ -70,13 +65,8 @@ def test_core_loop_op_verbs_matches_the_prompts_own_list():
     assert tuple(ops) == OP_VERBS
 
 
-EXECUTE_MD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                          "config", "prompts", "execute.md")
-
-
 def _execute_md():
-    with open(EXECUTE_MD, encoding="utf-8") as f:
-        return f.read()
+    return read_prompt("execute.md")
 
 
 def test_every_op_typeid_lint_checks_is_named_in_execute_md():

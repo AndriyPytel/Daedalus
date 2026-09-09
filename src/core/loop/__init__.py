@@ -20,7 +20,7 @@ from core.loop.gate import (
 )
 from core.loop.prompt import (
     DESIGN_PHASE, PLAN_PHASE, EXECUTE_PHASE, ASSERTION_PHASE,
-    REVIEW_PHASE, REVIEW_SUSPECT_PHASE, PROMPTS,
+    REVIEW_PHASE, REVIEW_SUSPECT_PHASE,
 )
 from core.loop.plan import Plan
 from core.loop.execute import Written, ExecuteOutcome, Looks

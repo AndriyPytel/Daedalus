@@ -10,7 +10,6 @@ import ast
 import base64
 import json
 import math
-import os
 import re
 import tempfile
 from dataclasses import replace
@@ -37,7 +36,7 @@ from core.design.design import (
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
 from core.loop.run import run
-from core.loop.prompt import PROMPTS
+from core.prompts import read_prompt
 from core.loop.design import _the_groups
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
@@ -88,8 +87,7 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
-        phase_body = handle.read().strip()
+    phase_body = read_prompt(phase + ".md").strip()
     sections = _language_sections()
     vocabulary = "\n\n".join(sections[heading] for heading in _PHASE_VOCABULARY[phase])
     phase_prompt = ("%s\n\n%s" % (phase_body, vocabulary)).replace(
@@ -739,9 +737,8 @@ def test_the_curve_and_thread_types_are_traps_not_prompt_copy():
     assert len(curves) == 1, "the curve types are not a single trap"
     assert "involute" in curves[0]
     for phase in ("plan", "execute"):
-        with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
-            assert "AdditiveHelix" not in handle.read(), \
-                "a build-specific type was written into %s.md" % phase
+        assert "AdditiveHelix" not in read_prompt(phase + ".md"), \
+            "a build-specific type was written into %s.md" % phase
 
 
 def test_the_tessellated_bound_box_is_a_trap_not_a_number_in_the_prompt():
@@ -760,8 +757,7 @@ def test_the_tessellated_bound_box_is_a_trap_not_a_number_in_the_prompt():
     assert "triangulation" in boxes[0]
     assert "Surface.Center" in boxes[0]
 
-    with open(os.path.join(PROMPTS, "execute.md"), encoding="utf-8") as handle:
-        execute = " ".join(handle.read().split())
+    execute = " ".join(read_prompt("execute.md").split())
     assert "not off `Shape.BoundBox`" in execute, \
         "Execute no longer says where a coordinate comes from"
 
@@ -776,9 +772,8 @@ def test_the_constraint_spellings_are_a_trap_not_prompt_copy():
     assert len(spellings) == 1, "the constraint spellings are not a single trap"
     assert "Coincident', a, 3, b, 3" in spellings[0]
     for phase in ("plan", "execute"):
-        with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
-            assert "Concentric" not in handle.read(), \
-                "a build-specific spelling was written into %s.md" % phase
+        assert "Concentric" not in read_prompt(phase + ".md"), \
+            "a build-specific spelling was written into %s.md" % phase
 
 
 def test_the_in_place_vector_methods_are_a_trap_and_reach_the_checks():

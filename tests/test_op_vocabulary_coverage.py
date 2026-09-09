@@ -45,13 +45,10 @@ op alone (`PartDesign::Pocket` under `pocket`, `PartDesign::Hole` under
 only `OP_TYPEIDS`'s lint-acceptance table widens, in these two named
 places.
 """
-import os
 import re
 
 from core.lint import OP_TYPEIDS, lint
-
-LANGUAGE_MD = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           "config", "prompts", "language.md")
+from core.prompts import read_prompt
 
 SHARED_TYPEID_EXCEPTIONS = {
     "PartDesign::Pocket": ("pocket", "hole"),
@@ -71,8 +68,7 @@ rather than a longer list.
 
 
 def _language_md():
-    with open(LANGUAGE_MD, encoding="utf-8") as f:
-        return f.read()
+    return read_prompt("language.md")
 
 
 def _op_vocabulary():

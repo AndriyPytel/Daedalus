@@ -12,6 +12,7 @@ from core.llm.exceptions import StreamCutOff
 from core.agent.phase_contract import spawn
 from core.agent.subagent import delegate
 from core.loop.prompt import prompt
+from core.prompts import read_prompt
 
 _CUT_OFF_ATTEMPTS = 3
 
@@ -108,9 +109,7 @@ def _composed_system(phase_prompt, working_dir):
 
 
 def _protocol():
-    path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "config", "prompts", "agent_protocol.md")
-    with open(path) as f:
-        return f.read()
+    return read_prompt("agent_protocol.md")
 
 
 def _say(session, llm, content, phase=None, stream=None):

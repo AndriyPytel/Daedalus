@@ -6,21 +6,15 @@ English, one heading per closed list. `core.loop.prompt` composes each
 phase from `_PHASE_VOCABULARY`'s sections for it, not the whole file — a
 phase's own prompt file never repeats a term any section defines.
 """
-import os
-
 from core.loop.prompt import ASSERTION_PHASE, DESIGN_PHASE, EXECUTE_PHASE, PLAN_PHASE, REVIEW_PHASE, _PHASE_VOCABULARY, _language_sections, prompt
 from core.loop.prompt import _LANGUAGE_HEADINGS
-
-PROMPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                           "config", "prompts")
-LANGUAGE_MD = os.path.join(PROMPTS_DIR, "language.md")
+from core.prompts import read_prompt
 
 PHASES = (DESIGN_PHASE, PLAN_PHASE, EXECUTE_PHASE, ASSERTION_PHASE, REVIEW_PHASE)
 
 
 def _language_md():
-    with open(LANGUAGE_MD, encoding="utf-8") as f:
-        return f.read().strip()
+    return read_prompt("language.md").strip()
 
 
 def test_every_phase_prompt_is_composed_from_the_sections_it_uses():
@@ -61,8 +55,7 @@ def test_no_phase_prompt_defines_a_term_language_md_defines():
                if line.startswith("## ")]
 
     for phase in PHASES:
-        with open(os.path.join(PROMPTS_DIR, phase + ".md"), encoding="utf-8") as f:
-            text = f.read()
+        text = read_prompt(phase + ".md")
         for heading in headings:
             assert heading not in text, (phase, heading)
 
@@ -79,8 +72,7 @@ def test_design_never_names_its_own_artefact_a_model():
     1", which is the physical part the Intent names, not the artefact
     Design writes about it.
     """
-    with open(os.path.join(PROMPTS_DIR, "design.md"), encoding="utf-8") as f:
-        text = f.read()
+    text = read_prompt("design.md")
 
     import re
     found = [line for line in text.splitlines() if re.search(r"\bmodel\b", line, re.IGNORECASE)]
@@ -102,8 +94,7 @@ def _reply_skeleton(phase):
     the whole section -- every `declare` example a phase shows, not only the
     last -- is what gets checked for the phase's own marker.
     """
-    with open(os.path.join(PROMPTS_DIR, phase + ".md"), encoding="utf-8") as f:
-        text = f.read()
+    text = read_prompt(phase + ".md")
     return text[text.rfind("## How you work"):]
 
 
@@ -155,7 +146,6 @@ def test_no_prompt_shows_a_kind_off_the_closed_list():
     kinds = {word.strip() for word in closed.group(1).replace("\n", " ").split(",")}
 
     for phase in PHASES:
-        with open(os.path.join(PROMPTS_DIR, phase + ".md"), encoding="utf-8") as f:
-            text = f.read()
+        text = read_prompt(phase + ".md")
         for shown in re.findall(r'"kind":\s*"([^"]*)"', text):
             assert shown in kinds, (phase, shown)
