@@ -54,7 +54,7 @@ class Closing(Exception):
 
 class SignatureMismatch(Exception):
     """
-    A Step's replay did not land what the kernel verified (FCC-302).
+    A Step's replay did not land what the kernel verified.
 
     Raised inside the transaction, before `commitTransaction` -- a Step that
     fails this check never lands, the same as one whose code raised.

@@ -3,18 +3,13 @@ place a value, once filled, is trusted again.
 
 Constraints:
 A filled field never changes; a later source may fill an empty one or add a conflict, never
-replace a value (FCC-59) — two incompatible dimensions stay recorded as a conflict for the user
+replace a value — two incompatible dimensions stay recorded as a conflict for the user
 to settle at the Plan Gate, not reconciled by the machine.
-Declarative and unordered — no build order, no Cut/Join, no sketch planes — because an ordered
-list is where FCC-59's failure mode wrote an operation the drawing never showed (ADR-0019).
+Declarative and unordered — no build order, no Cut/Join, no sketch planes (ADR-0019).
 The merge is generic over the shape (filled stays, empty fills, different conflicts) rather than
 field-by-field, keyed by `id` on a feature and `name` on a datum.
 `entries` addresses every value by path; that enumeration is both the Acceptance list and what a
 Plan's citations are checked against (ADR-0020).
-A conflict's `kind` is written by whoever found it — a finding is known only where it is made.
-
-`UNDER` is the one path-joining notation, for a conflict's address and an entry's citation alike,
-so identity across the merge is never a matter of matching prose.
 """
 import re
 
@@ -49,13 +44,7 @@ HEADED = {A_CONFLICT: "Two readings that cannot both be true",
 
 
 def _conflict(about, stands, was_also_said, kind=A_CONFLICT):
-    """
-    FCC-269: the shared conflict-finding dict, in place of eighteen hand-typed
-    copies. `silhouette`, `pointing` and `grounded` write the same four fields
-    without `kind`, on purpose: `_which_kind_it_is`'s default (FCC-248) already
-    reads an absent `kind` as `A_CONFLICT`, so those call sites stay a plain
-    literal rather than call this with a kind the dict would carry either way.
-    """
+    """The shared conflict-finding dict."""
     return {"about": about, "stands": stands, "was_also_said": was_also_said,
             "kind": kind, "machine_written": True}
 
@@ -153,23 +142,12 @@ def merge(held, offered):
 def _refused_kinds(offered):
     """
     Features in *offered* naming a `kind` off `FEATURE_KIND`, checked only
-    when *offered* itself carries `"kind_vocabulary": "closed"` — the marker
-    `config/prompts/design.md` asks a Design turn to send on every reply once
-    it is written under ADR-0026's closed kind list.
+    when *offered* carries `"kind_vocabulary": "closed"` (ADR-0026).
 
-    A recorded model with no marker took the prose grammar this ticket
-    replaces, and is not checked here at all: enforcing the closed list
-    against every recorded reading is the alternative ADR-0026 rejects by
-    name — "a closed list added to the prompts and nothing else", already
-    measured at 14.9% compliance — so the gate is the marker the model
-    itself sends, not a guess made from the shape of what it sent.
-
-    The reason named is actionable rather than a bare refusal, so a re-ask
-    costs one turn and not a loop that spends the revision budget: a value
-    one of FCC-231's banned prose synonyms maps onto (`round` onto `fillet`,
-    `recess` onto `counterbore`) names that kind, a region word (`arm`,
-    `ring`, `web`, ...) names `pad` and the new `region` field it belongs in
-    instead, and anything else names only the count of the closed list.
+    Enforcing the closed list against every recorded reading is the
+    alternative ADR-0026 rejects — measured at 14.9% compliance. The reason
+    named is actionable: a banned prose synonym (`round` onto `fillet`,
+    `recess` onto `counterbore`) names that kind.
     """
     if not isinstance(offered, dict) or offered.get("kind_vocabulary") != CLOSED_KIND_VOCABULARY:
         return []
@@ -245,26 +223,16 @@ def _without_refused_conflicts(offered):
 
 def corrected(model, address, value, because):
     """
-    The one write that overrules what is already on the model, and its receipt.
+    The one write that overrules what is already on the model.
 
-    Everything above this line rests on the merge only ever filling what is
-    empty, and that rule is right: it is what keeps a second opinion from
-    quietly replacing a reading, and it is the whole of FCC-59. But it is also
-    why a check that finds something wrong has exactly two moves — say nothing,
-    or stop the run. Nothing can be *repaired*, because repair is a write over
-    something written. The recorded run
-    (`logs/sessions/daa17fb149474317840ef98439cfef6f.jsonl`) stopped before the
-    Plan Gate for four findings, of which four were wrong, and the loop had no
-    third move to make.
+    A check that finds something wrong has exactly two moves — say nothing,
+    or stop the run. The run stopped for four findings, of which four were
+    wrong, and the loop had no third move to make.
 
-    So there is one, and it is narrow on purpose. A correction lands at one
-    address, which a check has to have named; it carries *because*, which is
-    the evidence off the drawing that earns the overrule; and it leaves the
-    value it displaced behind it under `was`, in the reading, which is a file.
-    A value is therefore never lost — it is superseded, in writing, by
-    something the sheet was measured for. What may not do this is a phase
-    changing its mind: prose is not evidence, and a caller with nothing
-    measured to cite has nothing to pass here.
+    So there is one, and it is narrow. A correction lands at one address
+    which a check has named; it carries *because*, which is the evidence off
+    the drawing; and it leaves the displaced value behind under `was`. A
+    caller with nothing measured to cite has nothing to pass here.
     """
     if not address or not _filled(value):
         return model
@@ -671,12 +639,8 @@ def _what_it_is(feature):
 
     `id` is a label the model chooses and is never checked against anything,
     and `topology` says what a feature runs into, not what it is: a fillet
-    whose edge-selection prose runs "...the outer edges of the arms and band,
-    the ring's two end rims, the cutout and the slot" is still a fillet
-    (FCC-243, session `480b9995421e443d97b439a4f55bc3fe` —
-    `fillet-outer`, `kind: "fillet"`, was asked which way its axis points, and
-    flagged as an unplaced cavity, because "slot" and "cutout" sat in its
-    `topology`, off the same sentence, through this one field).
+    whose edge-selection prose mentions "cutout and slot" was flagged as an
+    unplaced cavity, because those words sat in its `topology`.
     """
     return str(feature.get("kind") or "").strip().lower()
 

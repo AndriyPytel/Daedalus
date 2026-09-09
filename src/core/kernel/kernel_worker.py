@@ -472,14 +472,11 @@ _VOLUME_TOLERANCE = 1e-9
 
 def _geometry_of(obj):
     """
-    Volume plus the BoundBox corners for one feature (FCC-260).
+    Volume plus the BoundBox corners for one feature.
 
-    Not `Shape.hashCode()`: measured directly, it is stable for one live
-    Shape but changes across a checkpoint save/reload on identical geometry --
-    `check_assertions` reopens a copy of the Document -- so a hash that moves
-    on reload would report every feature as regressed on every single
-    Assertion pass. Volume and BoundBox were measured the same way and are
-    exactly reproduced after a save/reload/recompute of unchanged geometry.
+    Not `Shape.hashCode()`: it is stable for one live Shape but changes
+    across a checkpoint save/reload on identical geometry. Volume and
+    BoundBox are exactly reproduced after a save/reload/recompute.
     """
     shape = getattr(obj, "Shape", None)
     if shape is None or shape.isNull():
@@ -518,15 +515,12 @@ def _resolved_targets(obj):
 
 def signature_of(doc):
     """
-    A landed Step reduced to what a replay must reproduce exactly (FCC-302).
+    A landed Step reduced to what a replay must reproduce exactly.
 
-    Object count, names and total volume are not enough on their own: a
-    Step whose code runs over the wrong, same-named object matches all
-    three while addressing something the kernel never verified
-    (`fcc-openq-replay.md`). `links` closes that gap with the resolved
-    target of every `App::Link`, `App::LinkGroup` and Sketch
-    `ExternalGeometry` reference, keyed by the referring object's own Name
-    and left out entirely where an object has none of those to resolve.
+    Object count, names and total volume are not enough: a Step whose code
+    runs over the wrong, same-named object matches all three. `links`
+    closes that gap with the resolved target of every `App::Link` and Sketch
+    `ExternalGeometry` reference.
     """
     links = {}
     for obj in doc.Objects:

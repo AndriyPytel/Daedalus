@@ -895,14 +895,8 @@ def _tiled(rect, dpi, max_edge):
     """
     One region as however many crops keep it both whole and legible.
 
-    A region wider than the cap is not sent smaller — that trade is refused.
-    It is sent in overlapping pieces, because resolution is the point and the
-    frame is not.
-
-    Cut first by the long edge, then by what the provider will pay for,
-    whichever cap bites first: a piece inside the edge limit but over the
-    patch budget is a piece resized at the far end, and the whole point of
-    cutting is not to be.
+    A region wider than the cap is sent in overlapping pieces, because
+    resolution is the point and the frame is not.
     """
     scale = dpi / 72.0
     across = max(1, int(math.ceil(rect.width * scale / max_edge)))

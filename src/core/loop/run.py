@@ -224,10 +224,7 @@ class Standing:
     """
     The Plan Gate's standing approval within one run: whether the user has
     said "yes to future Steps like these" already, and which assumed values
-    they have been shown and read. Local to `_run` — a new run starts over.
-
-    Named fields catch a typo'd read or write as `AttributeError` at the call
-    site instead of a dict silently growing a new, never-read key (FCC-276).
+    they have been shown and read.
     """
     approval: bool = False
     read: set = field(default_factory=set)
@@ -237,11 +234,7 @@ class Standing:
 class Part:
     """
     The description Plan and the Gate read, mutated in place by `replan` so
-    every closure inside `_run` that reads it sees the latest description
-    without needing `nonlocal` — only the field is written, never the name.
-
-    Named field catches a typo'd read or write as `AttributeError` at the call
-    site instead of a dict silently growing a new, never-read key (FCC-276).
+    every closure inside `_run` that reads it sees the latest description.
     """
     the_part: object = None
 
@@ -250,11 +243,7 @@ class Part:
 class LastPass:
     """
     What the previous pass over the Plan's Steps applied, so a revised Plan
-    knows how much of its own head is already standing in the Document
-    (`_carried_over`) and does not write or apply those Steps again.
-
-    Named fields catch a typo'd read or write as `AttributeError` at the call
-    site instead of a dict silently growing a new, never-read key (FCC-276).
+    knows how much of its own head is already standing in the Document.
     """
     steps: object = None
     applied: int = 0
@@ -263,10 +252,9 @@ class LastPass:
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
          decide=revise_by_default, outstanding=(), the_part_path=None):
     """The run itself: describe the part, plan it, gate it, build it, judge it.
-    Design runs once per run, growing what it read (ADR-0018, ADR-0019); `the_part_path` reads a
-    prior run's reading off disk instead (FCC-210). A handback with nothing applied since the last
-    one stops the run; any other handback replans on a fresh Snapshot (ADR-0013).
-    `review_suspect` is diagnostic only, never rejects alone — it hands findings to Assertion (FCC-258).
+    Design runs once per run, growing what it read (ADR-0018, ADR-0019). A handback
+    with nothing applied since the last one stops the run; any other handback
+    replans on a fresh Snapshot (ADR-0013).
     """
     if cancelled():
         raise Stopped()
@@ -741,11 +729,9 @@ def _always_the_same_way(attempts):
     """
     What Plan is told when every attempt at a Step failed for the same reason.
 
-    Rewriting the same Step in other words sends Execute back at the same wall,
-    which is what a recorded run did: three identical failures, a replan, and
-    then the same three again (FCC-100). Where the failure never varied, the
-    Step itself is what has to change — a different operation, a different
-    order, or the Step split so the part that cannot be built is on its own.
+    A recorded run did three identical failures, a replan, and then the same
+    three again. Where the failure never varied, the Step itself is what has
+    to change.
     """
     if len(attempts) < 2:
         return ""

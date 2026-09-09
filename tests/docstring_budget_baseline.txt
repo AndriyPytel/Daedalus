@@ -100,7 +100,6 @@ src/core/kernel/kernel_worker.py::_bodies_with_inverted_solid
 src/core/kernel/kernel_worker.py::_comparable
 src/core/kernel/kernel_worker.py::_diagnose_idle_feature
 src/core/kernel/kernel_worker.py::_features_that_moved_no_material
-src/core/kernel/kernel_worker.py::_geometry_of
 src/core/kernel/kernel_worker.py::_idle_feature_cause
 src/core/kernel/kernel_worker.py::_measured
 src/core/kernel/kernel_worker.py::_objects_left_in_error
@@ -111,7 +110,6 @@ src/core/kernel/kernel_worker.py::_why_a_dressup_failed
 src/core/kernel/kernel_worker.py::introspect
 src/core/kernel/kernel_worker.py::module
 src/core/kernel/kernel_worker.py::run_step
-src/core/kernel/kernel_worker.py::signature_of
 src/core/kernel/kernel_worker.py::step_namespace
 src/core/kernel/preflight_render.py::_draw_edge
 src/core/kernel/preflight_render.py::_fill_triangle
@@ -213,7 +211,6 @@ src/core/loop/review.py::_review_content
 src/core/loop/review.py::review
 src/core/loop/review.py::review_suspect
 src/core/loop/run.py::_Asking
-src/core/loop/run.py::_always_the_same_way
 src/core/loop/run.py::_changes_the_shape
 src/core/loop/run.py::_not_reached
 src/core/loop/run.py::decided
@@ -295,7 +292,6 @@ src/core/sheets/sheet_reader.py::_the_scale_the_lines_vote_for
 src/core/sheets/sheet_reader.py::_the_span_measuring
 src/core/sheets/sheet_reader.py::_the_span_of
 src/core/sheets/sheet_reader.py::_the_view_of
-src/core/sheets/sheet_reader.py::_tiled
 src/core/sheets/sheet_reader.py::_traced
 src/core/sheets/sheet_reader.py::_where
 src/core/sheets/sheet_reader.py::printed_on_the_sheet
