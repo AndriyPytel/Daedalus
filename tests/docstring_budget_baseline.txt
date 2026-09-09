@@ -364,7 +364,6 @@ src/ui/copilot_panel.py::_fit_composer_to_text
 src/ui/copilot_panel.py::_fit_the_model_pill
 src/ui/copilot_panel.py::_format_cost
 src/ui/copilot_panel.py::_from_composer
-src/ui/copilot_panel.py::_get_tools
 src/ui/copilot_panel.py::_name_session
 src/ui/copilot_panel.py::_one_row_per_turn
 src/ui/copilot_panel.py::_put_the_question

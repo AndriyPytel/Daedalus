@@ -80,7 +80,7 @@ def test_an_empty_document_gets_a_client_and_ends_with_a_saved_fcstd(tmp_path, k
 class _NoKernel:
     """A worker never asked to run anything, for a route that never reaches Design."""
 
-    def check(self, code, document=None, render_path=None, timeout=None, names=None):
+    def check(self, code, document=None, render_path=None, timeout=None, names=None, ephemeral=None):
         raise AssertionError("a route that isn't design must never reach the kernel")
 
     def kill(self):
