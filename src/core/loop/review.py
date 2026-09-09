@@ -82,28 +82,8 @@ def review(intent, views, described, llm, events, attachments=(), checked=None,
     """
     Judge the outcome against the Intent.
 
-    Given the Intent, the views, the Description of the finished Document, and
-    whatever the user showed with the Intent. Deliberately not given the Plan,
-    the code, or Execute's reasoning — an independent judgement of how it
-    turned out, not of how it was produced.
-
-    One view is not enough — a mirrored tooth flank reads only from above, and
-    in isometry it is foreshortened, which is why Review passed one. Neither is
-    the picture enough on its own: a hole is a dimension, not a pixel, and the
-    Description is where it can be read.
-
-    Without the attachments this compared a render against a sentence, so "does
-    this resemble what I was shown" was not a question it could ask.
-
-    The views arrive in the order `capture_review_views` writes them, which is
-    what `_VIEW_NAMES` names them by for Review's own prose — the same views
-    `review_suspect` was shown, captured once for both (a render does not
-    change between them; Assertion does not draw). What the checks confirmed
-    and what they could not cover go with them, so the verdict is about what
-    the checks did not cover rather than a second opinion on what they did
-    (ADR-0015). This is the run's one gating verdict: `review_suspect` never
-    supplies one, so `measure.py`'s review_fail_rate stays a measure of this
-    call alone.
+    Not given the Plan, the code, or Execute's reasoning — an independent
+    judgement (ADR-0015). This is the run's one gating verdict.
     """
     request = {"intent": intent, "the_document_as_it_now_stands": described}
     if checked is not None:

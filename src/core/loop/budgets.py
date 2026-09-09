@@ -12,50 +12,14 @@ class Budgets:
     """
     What a run may spend, and the ceilings that make it terminate.
 
-    `revisions` is the floor under `revisions_ceiling`, which scales the
-    allowance with the Plan's length. Without it, Execute declaring Step after
-    Step obsolete never terminates.
+    Two separate ceilings: mechanical causes (UNCOVERED, MISCOUNTED) spend their
+    own budget; execution causes (OBSOLETE, UNBUILDABLE, ASSERTED, REJECTED,
+    AMENDED) spend `revisions_ceiling`. Measured: 456 sessions, 43 blocked on
+    revisions, UNCOVERED appeared 1-3 times (ADR-0022).
 
-    There are two separate ceilings over the seven causes of a replan. Mechanical
-    causes (UNCOVERED, MISCOUNTED) are visible without running Execute and spend
-    their own budget; execution causes (OBSOLETE, UNBUILDABLE, ASSERTED, REJECTED,
-    AMENDED) spend `revisions_ceiling`. This keeps mechanical failures from consuming
-    the budget for failures only a real attempt can surface. The worst-case number
-    of Plan calls is additive — mechanical_revisions + revisions_ceiling — because
-    the mechanical ceiling never resets: a Plan that fails coverage twice has spent
-    those attempts for the whole run, and a third UNCOVERED blocks immediately even
-    if UNBUILDABLE triggered a replan between them (logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl).
-
-    `mechanical_revisions` is that ceiling, and it is a constant rather than scaling
-    with Plan length: a coverage failure is a failure of the whole Plan at once, not
-    of one Step among many. It is two because that is where the corpus sits. Of 456 sessions in `logs/sessions/`,
-    43 blocked on revisions, and UNCOVERED appeared in the breakdown 1 time in 2 runs,
-    2 times in 1 run, and 3 times in 1 run — typical is one, observed maximum is three.
-    A ceiling of two cuts that one tail run on the mechanical budget instead of letting
-    it consume execution revisions, which is the whole point of the split, and it does
-    not touch the runs that spent one (logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl
-    is the 2-time case that named the defect).
-
-    `rereads` is how many times a question may be put back to the drawing, and
-    nothing else. A re-read is still a provider call, and without a ceiling a
-    Plan that keeps asking and a drawing that keeps answering never terminates.
-    How often Plan may be told to choose for itself is not bounded here: no run
-    ends for want of an answer, so the count of questions nobody answered is
-    not a ceiling on anything (ADR-0022).
-
-    `trailing_gap_retries` is the bounded, free continuation a Step gets when
-    Execute's reply simply stops — code for every Step up to some point, then
-    nothing, with nothing coded after it either — rather than being told
-    anything is wrong with the code it did write (`logs/analysis-preflight-rakes.md`
-    section 5): 23 such replies across 13 sessions, 57% within the last two
-    Steps of the Plan, call durations up to 266 seconds, none of them a model
-    choosing to skip a Step it could write. It is one, not `attempts_per_step`'s
-    three: 12 of those 23 recurred once after a plain re-ask under the old
-    accounting, so a single free continuation already catches about half the
-    corpus without granting a model that runs dry on every call of a Step the
-    same headroom a real Preflight failure gets. Once it is spent, the next
-    trailing gap at that Step counts against `attempts_per_step` exactly as
-    before, so a Step that never writes its tail still terminates.
+    `trailing_gap_retries` is the bounded free continuation for a reply that
+    simply stops (`logs/analysis-preflight-rakes.md` section 5): 23 such replies
+    across 13 sessions, 57% within the last two Steps, up to 266s call duration.
     """
 
     attempts_per_step: int = 3

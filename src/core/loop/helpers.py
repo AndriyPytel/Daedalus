@@ -5,19 +5,7 @@ from core.loop.results import LoopResult
 
 
 def _assumed(steps):
-    """
-    The prose of every Step that states a value nobody supplied.
-
-    Compared as text and whole, rather than by the number inside it: what the
-    Gate shows the user is the sentence, and a sentence they have not read is
-    one they cannot correct — whether it changed the radius, the shape it is a
-    radius of, or the datum it is measured from.
-
-    Found by the word `_INVENTED` names, because Plan is told to write every
-    value it chose into the prose that uses it — "assumed module 2" — so the
-    word is where an invented number is visible, and it is the only place it is
-    visible before the geometry.
-    """
+    """The prose of every Step that states a value nobody supplied."""
     return {" ".join(str(step).split()) for step in steps
             if _INVENTED in str(step).lower()}
 

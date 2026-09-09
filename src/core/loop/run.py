@@ -595,17 +595,8 @@ def _changes_the_shape(step):
     """
     Whether the part depends on *step* — read off the words the Step is in.
 
-    Conservative in one direction on purpose. A Step is geometry unless it
-    plainly names a property of the Document that no geometry depends on and
-    names no shape operation at all, so the words nothing here recognises leave
-    the run exactly where it was: handed back to Plan. Reading it the other way
-    round would let an unrecognised operation be skipped, and a Step of the part
-    skipped silently is the failure this must not add.
-
-    The prose is what there is. Execute leaves a Step out before any code for it
-    exists, so nothing has been written, nothing has run, and the Document
-    cannot be asked — a Step that assigns a material and a Step that pads a
-    profile differ, at that moment, only in what they say.
+    Conservative: a Step is geometry unless it plainly names a property of the
+    Document that no geometry depends on. Unrecognised operations stay geometry.
     """
     said = str(step).lower()
     return not (any(word in said for word in _A_PROPERTY_OF_THE_DOCUMENT)

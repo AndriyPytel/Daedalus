@@ -359,42 +359,11 @@ def _the_face_at(outline, foot, way):
     """
     The traced line a dimension's foot stands on, or None.
 
-    The face has to be square to the dimension — a line the dimension measures
-    *to* is a line it measures *across* — and the foot has to be on it, which
-    is a point-to-segment distance and not a distance to the infinite line the
-    segment lies on. Measured to the line, a face's own extent along its own
-    direction is never asked about, and a collinear face anywhere else in the
-    view — the far side of a C, the other flange of a bracket — stands at the
-    same distance as the face the foot is actually on and can win the match.
-
-    So the projection along the face is clamped to the face, and how far the
-    clamp had to move it — how far past the face's own ends the foot stands —
-    is asked before anything else. The two directions are two bands because
-    they are two quantities: across the dimension is the tracing against the
-    sheet, and along the face is a draughtsman's gap.
-
-    None is the usual answer and the honest one: a foot on a view whose body is
-    not traced, or on a face the tracer only got part of, names nothing here.
-
-    `A_FOOT` is how far the foot may be from the face it names across the
-    dimension, in millimetres. It cannot be wider than the movement that counts
-    as a finding, or a match at the edge of the band is indistinguishable from
-    the thing this exists to report — and measured, that is exactly what
-    happens: at 2.6 mm four more dimensions find a face, all four then cost the
-    tracing 3.6 mm, and one of them contradicts another dimension outright.
-
-    `A_GAP` is the other direction and a different quantity: how far past the
-    end of a face a foot may stand, in millimetres, because an extension line
-    is drawn with a gap between it and the part it is drawn off, so a foot
-    stands short of the face it names by that gap. Measured on the four sheets,
-    the feet that stand on the face they name are 0 to 2.63 mm past its end and
-    the next one is 3.17, so 3.0 is the empty ground between them — and the
-    answer does not turn on it: anything from 2.7 to 8 mm writes the same 11
-    distances, and 12 lets in two feet 11 mm past the end of the face they are
-    then measured to.
-
-    At 2.0 across and 3.0 along, the four sheets write 11 distances across 10
-    outlines, and the measured worst movement stays under 1.5 mm.
+    `A_FOOT` (2.0 mm): how far across the dimension. At 2.6 mm four more
+    dimensions find a face, and one contradicts another outright.
+    `A_GAP` (3.0 mm): how far past the face's end. Measured: 0-2.63 mm on
+    known feet, next is 3.17 mm. At 2.0 x 3.0, four sheets write 11 distances
+    across 10 outlines, worst movement under 1.5 mm.
     """
     best, best_gap = None, A_FOOT
     for at, entity in enumerate(outline.entities):
@@ -524,13 +493,7 @@ def _joined(sketch, outline):
 
 
 def _sized(sketch, outline):
-    """
-    A size for every round thing, printed where the sheet printed one.
-
-    The one direction the arithmetic runs: the trace found the feature and the
-    text layer says how big it is. Where no callout reached it the traced
-    measurement is written instead, and the verdict says how many of each.
-    """
+    """A size for every round thing, printed where the sheet printed one."""
     import Sketcher
 
     written = {}

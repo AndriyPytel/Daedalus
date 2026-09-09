@@ -39,21 +39,7 @@ class LoopResult:
 
 
 class Stopped(Exception):
-    """
-    The user stopped or aborted the run. Not a failure — a decision.
-
-    One exception for both: every `cancelled()` check in this module already
-    raises it the instant the user's flag reads true, wherever that happens to
-    be — mid-attempt, mid-Step, mid-revision. What tells stop and abort apart
-    is not where this was raised but how the in-flight Step got here. A Stop
-    lets the kernel finish the Step it was already running and checkpoint it,
-    so `cancelled()` only turns true between attempts; an Abort kills the
-    kernel while a Step is still running, so the same check() call that would
-    have returned success instead comes back a crash and unwinds here anyway.
-    `run`'s own boundary is where the two are told apart and where the event
-    is stamped `stopped` or `aborted` — the `aborted` callable it is handed
-    answers only that one question.
-    """
+    """The user stopped or aborted the run. Not a failure — a decision."""
 
 
 class _OutOfRevisions(Exception):

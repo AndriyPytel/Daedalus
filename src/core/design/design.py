@@ -1724,24 +1724,8 @@ def entries(model) -> list:
     """
     Every value the part carries, addressed by where it sits and said in words.
 
-    One enumeration doing two jobs, and deliberately not two functions. The
-    Acceptance the finished part is checked against *is* this list — the
-    description's own entries, with their datums and their flags, instead of
-    Plan's paraphrase of them — and the coverage the loop checks over a Plan is
-    this same list with the Plan's citations taken away. Two enumerations would
-    be two things to drift apart, and the drift would be silent: a Plan could
-    cover every address of one and leave an entry of the other unmeasured
-    (ADR-0020).
-
-    The address is the merge's own path, so an entry is cited by exactly the
-    words it is recorded under, and an envelope entry is as citable as a
-    feature's. That is not a detail: the value the recorded run lost between the
-    description and the Plan was the 100 mm front to rear, which is an envelope
-    entry and not a feature.
-
-    Each entry is `{"about": …, "flag": …, "says": …}` — where it sits, whether
-    it was read or assumed, and the whole of it on one line for a person and for
-    the assert message that has to name it.
+    One enumeration doing two jobs (ADR-0020): Acceptance checks this list, and
+    Plan coverage is this list with citations taken away.
     """
     return _addressed(model, "")
 

@@ -578,20 +578,7 @@ def _review_views(tools, events):
 
 
 def _look(tools, look, events, looks=None):
-    """
-    Run one read-only Tool for Execute and hand back what it said.
-
-    A look this run has already taken and still holds is answered from what it
-    said then, without calling the Tool again. It is still narrated, because a
-    transcript that showed the question and not the answer would read as a look
-    that went nowhere.
-
-    `NOT_A_LOOK` is refused here rather than run: one of those Tools writes to
-    the Document, one moves the user's camera and one belongs to a phase of its
-    own, so none of them is a look. A Tool that raises is answered with its
-    error, because a bad look is a thing to correct, not a reason to lose the
-    Step.
-    """
+    """Run one read-only Tool for Execute and hand back what it said."""
     name = str(look.get("tool") or "")
     arguments = look.get("arguments") or {}
 
