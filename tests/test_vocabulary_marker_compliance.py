@@ -28,7 +28,7 @@ import json
 import os
 import re
 
-from core.loop import DESIGN_PHASE, PLAN_PHASE, _PHASE_VOCABULARY, _language_sections
+from core.loop.prompt import DESIGN_PHASE, PLAN_PHASE, _PHASE_VOCABULARY, _language_sections
 
 FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "recorded", "vocabulary_marker_compliance.json")

@@ -7,8 +7,8 @@ that is visible from outside — the caller gets "applied" or "failed".
 """
 import pytest
 
-from core.apply import ApplyPipeline, Closing
-from core.preflight import PreflightResult
+from core.freecad.apply import ApplyPipeline, Closing
+from core.kernel import KernelResult
 
 
 class FakeDocument:
@@ -37,11 +37,12 @@ class FakeWorker:
         A real worker reports what the Step touched, and a Step that touched
         nothing is not a success, so the default here has to say it made one.
         """
-        self.result = result or PreflightResult(ok=True, render="/tmp/step.png",
+        self.result = result or KernelResult(ok=True, render="/tmp/step.png",
                                                 created=["Box"])
         self.checked = []
 
-    def check(self, code, document=None, render_path=None, timeout=None):
+    def check(self, code, document=None, render_path=None, timeout=None, names=None,
+              ephemeral=False):
         self.checked.append({"code": code, "document": document,
                              "render_path": render_path})
         return self.result
@@ -57,7 +58,7 @@ def pipeline(trace):
     doc = FakeDocument()
     worker = FakeWorker()
 
-    def transaction(document, code, label):
+    def transaction(document, code, label, **_):
         trace.append(("transaction", label))
         document.Objects.append(FakeObject("Box"))
 
@@ -89,7 +90,7 @@ def test_a_step_that_lands_puts_the_part_back_in_the_viewport(pipeline, monkeypa
     are being asked to approve.
     """
     fitted = []
-    monkeypatch.setattr("core.apply.fit_view", lambda doc: fitted.append(doc))
+    monkeypatch.setattr("core.freecad.apply.fit_view", lambda doc: fitted.append(doc))
 
     assert pipeline.apply("doc.recompute()").ok
     assert fitted == [pipeline.document]
@@ -97,8 +98,8 @@ def test_a_step_that_lands_puts_the_part_back_in_the_viewport(pipeline, monkeypa
 
 def test_a_step_that_never_reached_the_document_leaves_the_camera_alone(pipeline, monkeypatch):
     fitted = []
-    monkeypatch.setattr("core.apply.fit_view", lambda doc: fitted.append(doc))
-    pipeline.fake_worker.result = PreflightResult(ok=False, traceback="boom")
+    monkeypatch.setattr("core.freecad.apply.fit_view", lambda doc: fitted.append(doc))
+    pipeline.fake_worker.result = KernelResult(ok=False, traceback="boom")
 
     assert not pipeline.apply("doc.recompute()").ok
     assert fitted == []
@@ -119,7 +120,7 @@ def test_a_step_that_changes_nothing_is_not_a_success(pipeline):
     never called it. It raised nothing, so it scored as applied, and the Plan
     moved on to a sketch that did not exist.
     """
-    pipeline.fake_worker.result = PreflightResult(ok=True, render="/tmp/step.png")
+    pipeline.fake_worker.result = KernelResult(ok=True, render="/tmp/step.png")
 
     result = pipeline.apply("def build(doc):\n    doc.addObject('Part::Box', 'Box')\n")
 
@@ -129,7 +130,7 @@ def test_a_step_that_changes_nothing_is_not_a_success(pipeline):
 
 
 def test_preflight_runs_before_the_document_sees_anything(pipeline):
-    pipeline.fake_worker.result = PreflightResult(ok=False, traceback="ValueError: no such property")
+    pipeline.fake_worker.result = KernelResult(ok=False, traceback="ValueError: no such property")
 
     result = pipeline.apply("box.Nonsense = 1")
 
@@ -157,7 +158,7 @@ def test_the_throwaway_copy_is_deleted_afterwards(pipeline):
 
 def test_the_caller_sees_applied_or_failed_and_nothing_else(pipeline):
     applied = pipeline.apply("doc.recompute()").as_tool_result()
-    pipeline.fake_worker.result = PreflightResult(ok=False, traceback="boom")
+    pipeline.fake_worker.result = KernelResult(ok=False, traceback="boom")
     failed = pipeline.apply("doc.recompute()").as_tool_result()
 
     assert applied["status"] == "applied"
@@ -167,7 +168,7 @@ def test_the_caller_sees_applied_or_failed_and_nothing_else(pipeline):
 
 
 def test_a_worker_that_died_reads_as_a_failed_step_not_an_incident(pipeline):
-    pipeline.fake_worker.result = PreflightResult(
+    pipeline.fake_worker.result = KernelResult(
         ok=False, traceback="The Preflight Worker died while running the Step, ...")
 
     result = pipeline.apply("import ctypes; ctypes.string_at(0)")
@@ -177,7 +178,7 @@ def test_a_worker_that_died_reads_as_a_failed_step_not_an_incident(pipeline):
 
 
 def test_a_step_that_passes_preflight_but_fails_for_real_is_reported_as_such(trace):
-    def transaction(document, code, label):
+    def transaction(document, code, label, **_):
         raise RuntimeError("the live Document disagreed")
 
     pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
@@ -191,7 +192,7 @@ def test_a_step_that_passes_preflight_but_fails_for_real_is_reported_as_such(tra
 
 
 def test_closing_during_the_transaction_is_a_clean_stop_not_a_failed_step(trace):
-    def transaction(document, code, label):
+    def transaction(document, code, label, **_):
         raise Closing("shutting down")
 
     pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
@@ -242,7 +243,7 @@ def test_review_views_reads_the_pipelines_own_document(pipeline, monkeypatch):
     tab is in front — the same Document `apply` just landed the Step on.
     """
     seen = []
-    monkeypatch.setattr("core.freecad_tools.capture_review_views",
+    monkeypatch.setattr("core.freecad.apply.capture_review_views",
                         lambda paths, doc: seen.append(doc) or paths)
 
     pipeline.review_views()
@@ -267,7 +268,7 @@ def test_every_document_touch_goes_through_the_dispatcher():
 
     doc = FakeDocument()
     pipeline = ApplyPipeline(document=doc, worker=FakeWorker(), dispatch=dispatch,
-                             transaction=lambda *a: None)
+                             transaction=lambda *a, **kw: None)
 
     pipeline.apply("doc.recompute()")
 
@@ -291,3 +292,64 @@ def test_an_op_none_never_blocks_a_step_the_old_pipeline_would_have_applied(pipe
     result = pipeline.apply("doc.addObject('PartDesign::Pad', 'Pad')")
 
     assert result.ok
+
+
+class FakeMainWindow:
+    """Stands in for `Gui.getMainWindow()`: the only thing a run's lock touches."""
+
+    def __init__(self):
+        self.enabled = True
+
+    def setEnabled(self, value):
+        self.enabled = value
+
+
+def test_start_run_snapshots_the_document_into_the_kernel(pipeline):
+    """
+    AC1: the kernel-side object count matches the GUI Document at run start.
+    """
+    pipeline.document.Objects = [FakeObject("Box"), FakeObject("Cylinder")]
+    pipeline.fake_worker.result = KernelResult(ok=True, objects=[{"name": "Box"},
+                                                                   {"name": "Cylinder"}])
+    window = FakeMainWindow()
+    pipeline._main_window = window
+
+    seeded = pipeline.start_run()
+
+    assert len(seeded.objects) == len(pipeline.document.Objects)
+    assert pipeline.fake_worker.checked[-1]["document"] is not None
+
+
+def test_a_run_in_flight_locks_the_gui(pipeline):
+    """AC2: the GUI is locked, not silently left open, while a run is in flight."""
+    window = FakeMainWindow()
+    pipeline._main_window = window
+
+    pipeline.start_run()
+
+    assert pipeline.locked is True
+    assert window.enabled is False
+
+
+def test_a_run_that_ends_unlocks_the_gui(pipeline):
+    """AC3: after the run ends, the GUI is free again."""
+    window = FakeMainWindow()
+    pipeline._main_window = window
+    pipeline.start_run()
+
+    pipeline.end_run()
+
+    assert pipeline.locked is False
+    assert window.enabled is True
+
+
+def test_start_run_with_no_open_document_still_locks(pipeline):
+    """No Document open is not a reason to leave the GUI unlocked or crash."""
+    pipeline._document = lambda: None
+    window = FakeMainWindow()
+    pipeline._main_window = window
+
+    seeded = pipeline.start_run()
+
+    assert pipeline.locked is True
+    assert seeded.objects == []

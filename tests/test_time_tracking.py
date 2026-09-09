@@ -6,7 +6,7 @@ def test_call_started_event_is_emitted_before_stream_opens():
     ceiling is absent for clients without a timeout.
     """
     from core.llm import ScriptedLLMClient
-    from core.loop import _streamed
+    from core.loop.prompt import _streamed
     from core.events import EventStream, CALL_STARTED, COST
 
     # Test with ScriptedLLMClient (no timeout)
@@ -30,7 +30,7 @@ def test_cost_event_always_has_seconds_field():
     The usd field is absent when the client reported no price.
     """
     from core.llm import ScriptedLLMClient
-    from core.loop import _streamed
+    from core.loop.prompt import _streamed
     from core.events import EventStream, COST
     import time
 
@@ -49,6 +49,7 @@ def test_cost_event_always_has_seconds_field():
     assert abs(cost_data["seconds"] - elapsed) < 0.2
     # ScriptedLLMClient has no last_cost, so usd should be absent
     assert "usd" not in cost_data
+    assert "prompt_tokens" not in cost_data
 
 
 def test_cost_event_includes_usd_when_client_reports_price():
@@ -57,7 +58,7 @@ def test_cost_event_includes_usd_when_client_reports_price():
     """
     from litellm.llms.anthropic.chat.handler import ModelResponseIterator
     from core.llm import LiteLLMClient
-    from core.loop import _streamed
+    from core.loop.prompt import _streamed
     from core.events import EventStream, COST
     import json
     import os
@@ -85,6 +86,8 @@ def test_cost_event_includes_usd_when_client_reports_price():
     assert cost_data["usd"] == 0.004521
     assert cost_data["model"] == "claude-3-7-sonnet-20250219"
     assert cost_data["phase"] == "design"
+    assert cost_data["prompt_tokens"] == 1066
+    assert cost_data["completion_tokens"] == 37
 
 def test_format_elapsed_under_one_hour():
     """M:SS format when under an hour."""

@@ -11,10 +11,12 @@ import sys
 from dataclasses import dataclass
 
 import pytest
-
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+SRC = os.path.join(ROOT, "src")
+if SRC not in sys.path:
+    sys.path.insert(0, SRC)
+
+from core.loop import execute as loop
 
 
 def _freecad_lib_dirs():
@@ -47,9 +49,10 @@ def _try_import_freecad():
 
 HAVE_FREECAD = _try_import_freecad()
 
-if sys.path[0] != ROOT:
-    sys.path.remove(ROOT)
-    sys.path.insert(0, ROOT)
+for entry in (ROOT, SRC):
+    if entry in sys.path:
+        sys.path.remove(entry)
+    sys.path.insert(0, entry)
 
 
 def _import_qt():
@@ -214,6 +217,8 @@ def sheet_cache(tmp_path_factory):
     cache = {}
 
     def read(path):
+        if not os.path.exists(path):
+            pytest.skip("sheet not found: %s; set FCC_MODELMANIA_DIR" % path)
         key = os.path.abspath(path)
         if key not in cache:
             cache[key] = sheet_reader.read(path, into=str(tmp_path_factory.mktemp("sheet")))
@@ -228,6 +233,8 @@ def modelmania_sheets(sheet_cache):
     from core import sheet_reader
     from tests import modelmania_harness
 
+    if not modelmania_harness.MODELMANIA_DIR.is_dir():
+        pytest.skip("modelmania sheets not found; set FCC_MODELMANIA_DIR")
     if not sheet_reader.available():
         pytest.skip("PyMuPDF is not installed")
     return modelmania_harness.read_sheets(sheet_cache)
@@ -299,9 +306,9 @@ def the_type_cache_goes_to_a_temporary_directory(tmp_path, monkeypatch):
     to the user's data directory. Redirecting it to tmp_path means tests run
     isolated.
     """
-    from core import loop
+    import core.loop.execute as loop_execute_module
 
-    monkeypatch.setattr(loop, "TYPE_CACHE_PATH", str(tmp_path / "type_cache.json"))
+    monkeypatch.setattr(loop_execute_module, "TYPE_CACHE_PATH", str(tmp_path / "type_cache.json"))
 
 
 @dataclass
@@ -364,19 +371,26 @@ def the_settings_never_reach_the_user_s_freecad():
     its run from a module-scoped fixture, which is built before any
     function-scoped patch could take effect.
     """
-    from utils import settings_manager
+    from core import settings
 
     scratch = ScratchParameters()
-    real = settings_manager._SettingsManager._grp
-    settings_manager._SettingsManager._grp = staticmethod(lambda: scratch)
+    real = settings.Settings._grp
+    settings.Settings._grp = staticmethod(lambda: scratch)
     yield scratch
-    settings_manager._SettingsManager._grp = real
+    settings.Settings._grp = real
 
 
 @pytest.fixture
 def clean_auto_approve(the_settings_never_reach_the_user_s_freecad):
-    """The manager with `AutoApprovePlan` off, for a test that turns it on."""
+    """
+    The manager with `AutoApprovePlan` off, for a test that turns it on.
+
+    The store it writes to lives for the whole session, so the flag is put
+    back on the way out as well: a test that leaves it on makes every later
+    test in the same process take the auto-approved branch of the Gate.
+    """
     from utils import settings_manager
 
     the_settings_never_reach_the_user_s_freecad.SetBool("AutoApprovePlan", False)
-    return settings_manager.instance()
+    yield settings_manager.instance()
+    the_settings_never_reach_the_user_s_freecad.SetBool("AutoApprovePlan", False)

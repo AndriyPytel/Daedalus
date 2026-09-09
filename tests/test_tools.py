@@ -70,14 +70,6 @@ def test_descriptions_carry_no_transport_of_their_own(fake):
         assert set(entry) == {"name", "description", "parameters"}
 
 
-def test_an_adapter_is_built_on_the_descriptions_not_instead_of_them(fake):
-    """The OpenAI shape is one adapter; MCP would be another, over the same data."""
-    adapted = fake.as_openai_tools()
-
-    assert [a["type"] for a in adapted] == ["function", "function"]
-    assert [a["function"] for a in adapted] == fake.describe()
-
-
 def test_calling_a_tool_runs_the_function(fake):
     assert fake.call("snapshot")["objects"] == ["Box", "Pad"]
     assert fake.state["calls"] == ["snapshot"]

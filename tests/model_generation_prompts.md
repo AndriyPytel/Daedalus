@@ -14,9 +14,9 @@ blocker, not this file's creation.
 A rung is run **by hand, in the GUI**, against a live provider. That is the
 whole point of the ladder: it measures the product a user gets.
 
-**No viewport criterion may be closed through `tools/run_slice.py`.**
-`run_slice.py` is headless, so it keeps the Preflight Worker's rasteriser
+**No viewport criterion may be closed through `tools/run.py`.**
+`run.py` is headless, so it keeps the Preflight Worker's rasteriser
 fallback — one isometry, not the four viewport views Review is given in the
 GUI (ADR-0015). The only scriptable live lane therefore stops reproducing the
 product at exactly the point the picture is made. A rung that passes under
-`run_slice.py` has not been shown to pass for a user.
+`run.py` has not been shown to pass for a user.

@@ -21,15 +21,16 @@ import json
 
 import pytest
 
-from core.apply import ApplyPipeline
+from core.freecad.apply import ApplyPipeline
 from core.events import (
     APPLIED, BLOCKED, CALL_STARTED, COST, INTENT, PLAN, REVIEW_VERDICT,
     STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, WRITING, EventStream,
 )
-from core.freecad_tools import build_registry
+from core.freecad.apply import build_registry
 from core.llm import ScriptedLLMClient
-from core.loop import APPROVE, Approval, run
-from core.preflight import PreflightWorker, find_freecadcmd
+from core.loop.gate import APPROVE, Approval
+from core.loop.run import run
+from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
@@ -126,26 +127,26 @@ def scripted_model():
     Step still lands on its own, through its own apply.
     """
     return ScriptedLLMClient([
-        json.dumps({"design": {}, "question": ""}),
-        json.dumps({"steps": [
+        json.dumps({"declare": {"design": {}, "question": ""}}),
+        json.dumps({"declare": {"steps": [
             "Sketch a %gmm square on the XY plane inside a new Body" % SQUARE,
             "Pad the sketch by %gmm" % PAD,
             "Change the pad length to %gmm" % PAD_CHANGED,
             "Fillet the %d top edges with a %gmm radius, finding them from the geometry"
             % (TOP_EDGES, RADIUS),
             "Drill a %gmm hole through it on the centreline" % BORE,
-        ]}),
-        json.dumps({"steps": [
+        ]}}),
+        json.dumps({"declare": {"steps": [
             {"step": 1, "code": STEP_SKETCH, "label": "Sketch the square"},
             {"step": 2, "code": STEP_PAD, "label": "Pad the sketch"},
             {"step": 3, "code": STEP_PARAMETER, "label": "Change the pad length"},
             {"step": 4, "code": STEP_FILLET, "label": "Fillet the top edges"},
             {"step": 5, "code": STEP_HOLE, "label": "Drill the hole"},
-        ]}),
-        json.dumps({"suspected": []}),
-        json.dumps({"verdict": "pass",
+        ]}}),
+        json.dumps({"declare": {"suspected": []}}),
+        json.dumps({"declare": {"verdict": "pass",
                     "reason": "A %gmm square padded to %gmm, top edges filleted, "
-                              "drilled Ø%g." % (SQUARE, PAD_CHANGED, BORE)}),
+                              "drilled Ø%g." % (SQUARE, PAD_CHANGED, BORE)}}),
     ])
 
 
@@ -155,7 +156,7 @@ def worker():
         find_freecadcmd()
     except RuntimeError as exc:
         pytest.skip(str(exc))
-    with PreflightWorker(timeout=120) as running:
+    with Kernel(timeout=120) as running:
         yield running
 
 

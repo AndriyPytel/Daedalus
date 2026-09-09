@@ -23,7 +23,7 @@ drives Preflight -- the first Step builds a Fillet on a Box, the second only
 edits the Box, so Fillet is never itself created or written by a Step and can
 only reach the recompute scope through its dependency on Box.
 """
-from core.preflight_worker import _recompute_scope
+from core.kernel.kernel_worker import _recompute_scope
 
 
 class _FakeTouched:
@@ -96,7 +96,7 @@ def test_a_dependency_cycle_does_not_loop_forever():
 
 import pytest
 
-from core.preflight import PreflightWorker, copy_of, find_freecadcmd
+from core.kernel import Kernel, copy_of, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
@@ -107,7 +107,7 @@ def worker():
         find_freecadcmd()
     except RuntimeError as exc:
         pytest.skip(str(exc))
-    with PreflightWorker() as running:
+    with Kernel() as running:
         yield running
 
 

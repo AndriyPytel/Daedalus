@@ -19,23 +19,25 @@ from unittest.mock import Mock
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
-    GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, CHANGE_SET, COST,
+    ERROR, GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import design, loop, part_file, sheet_reader
-from core.freecad_tools import TRAPS
+from core.design import design
+from core.design import part_file
+from core.sheets import sheet_reader
+from core.freecad.apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
-from core.design import (
+from core.design.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import PROMPTS, _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.run import run
+from core.loop.plan import _in_the_prose
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
@@ -121,6 +123,31 @@ def test_a_replan_does_not_refill_the_re_read_ceiling():
         "the re-plan refilled the re-read ceiling"
 
 
+def test_a_replan_after_a_reread_is_handed_the_change_set_not_the_whole_part():
+    """
+    FCC-311: the sheet answering Plan's own question grows the description
+    between two calls to Plan within the same re-plan — the one place that
+    happens — so the second call is handed what changed, named by id, rather
+    than the whole re-serialized part beside the one it already saw.
+    """
+    _, events, llm, _ = drive([
+        design_reply(A_PART),
+        question_reply("q1"),
+        design_reply({"datums": [{"name": "d1", "is": "20 mm from the left end"}]}),
+        plan_reply("Impossible", satisfies=everything(A_PART)), code_reply("nope()"),
+        question_reply("q2"),
+        plan_reply("Possible", satisfies=everything(A_PART)), code_reply("yes()"),
+        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+    ], applies=[failed("one")], attachments=[RENDER_PNG],
+        budgets=Budgets(rereads=1, attempts_per_step=1))
+
+    reread_plan = json.loads(llm.calls[3][-1]["content"])
+    assert reread_plan["what_the_part_is"] == [
+        {"section": "datums", "kind": "added", "id": "d1",
+         "now": {"name": "d1", "is": "20 mm from the left end"}}]
+    assert events.last(CHANGE_SET).data["changes"] == reread_plan["what_the_part_is"]
+
+
 def test_with_no_attachment_a_question_is_settled_by_plan_itself():
     """
     No sheet to ask and nobody to ask either, so no turn is spent on either:
@@ -144,7 +171,7 @@ def test_a_question_alongside_steps_is_still_a_plan():
     asked = []
 
     result, events, _, _ = drive(
-        [json.dumps({"question": "how big?", "steps": ["Sketch it"]}),
+        [json.dumps({"declare": {"question": "how big?", "steps": ["Sketch it"]}}),
          code_reply("a()"), suspect_reply(), verdict_reply("pass")],
         intent=GEAR, ask=lambda q: asked.append(q) or "")
 
@@ -205,10 +232,11 @@ def test_no_plan_without_steps_ever_reaches_execute(monkeypatch):
     raises. The guard is the cheap insurance that no future path sends Review
     over a Document nothing changed. FCC-67.
     """
-    from core import loop as loop_module
+    import core.loop.plan as loop_plan_module
+    from core.loop.plan import Plan
 
-    monkeypatch.setattr(loop_module, "plan",
-                        lambda *args, **kwargs: loop_module.Plan(steps=[]))
+    monkeypatch.setattr(loop_plan_module, "plan",
+                        lambda *args, **kwargs: Plan(steps=[]))
 
     result, _, _, tools = drive([plan_reply("never asked for")])
 
@@ -395,7 +423,7 @@ def test_a_self_intersecting_document_is_caught_even_with_no_acceptance_list():
         "the failure must reach the caller, not be swallowed as None"
     assert "acceptance checks did not pass" in result.reason, \
         "the failure must have gone through the decided()/replan() gate, not a bare pass"
-    assert not any(call[0]["content"] == prompt("assertion") for call in llm.calls), \
+    assert not any(call[0]["content"].startswith(prompt("assertion")) for call in llm.calls), \
         "an empty acceptance list must still never reach a provider for assertion"
 
 
@@ -811,7 +839,7 @@ def test_a_suspected_citation_keeps_its_flag_through_the_trim():
     in a later Step loses the one thing that told the Gate it was never
     confirmed (FCC-258 AC3).
     """
-    assert loop._in_the_prose("thread \u2192 pitch: 1.25 mm (suspected)") == (
+    assert _in_the_prose("thread \u2192 pitch: 1.25 mm (suspected)") == (
         "thread \u2192 pitch (suspected)")
 
 
@@ -933,9 +961,9 @@ def test_an_entry_no_step_ever_landed_for_is_still_unplanned():
         plan_reply(*[{"do": "Pad part %d" % (number + 1), "satisfies": [entry]}
                      for number, entry in enumerate(BUILT)],
                    {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
-        json.dumps({"steps": [{"step": number, "code": "part%d()" % number,
+        json.dumps({"declare": {"steps": [{"step": number, "code": "part%d()" % number,
                                "label": "Part %d" % number} for number in range(1, 4)],
-                    "unbuildable": "the fourth pad has nothing to stand on"}),
+                    "unbuildable": "the fourth pad has nothing to stand on"}}),
         plan_reply({"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
         plan_reply({"do": "Pad part 4", "satisfies": [BUILT[3]]},
                    {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
@@ -1293,41 +1321,6 @@ def test_a_run_that_inherits_nothing_says_nothing_about_it():
 
     assert events.first(OUTSTANDING) is None
     assert "acceptance checks did not pass" not in json.dumps(llm.calls[1])
-
-
-def test_execute_is_handed_what_the_run_already_looked_at():
-    """The turn after the look already carries it, which is the turn it was asked in. What matters is the next Execute call after that."""
-    _, _, llm, _ = drive([
-        plan_reply("Sketch it", "Pad it"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        code_reply("sketch()", "pad()"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    asked_with = json.loads(llm.calls[3][-1]["content"])
-
-    assert [look["tool"] for look in asked_with["what_you_looked_at"]] \
-        == ["materials", "describe_type"]
-
-
-def test_a_regeneration_does_not_have_to_look_again():
-    """
-    The Step failed, so Execute is asked again — and asked with everything the
-    turn before it was told. That is the turn the eight repeats came out of.
-    """
-    _, _, llm, _ = drive([
-        plan_reply("Pad it"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        code_reply("pad_wrong()"),
-        code_reply("pad_right()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed("Reversed")])
-
-    regenerated = json.loads(llm.calls[3][-1]["content"])
-
-    assert [look["tool"] for look in regenerated["what_you_looked_at"]] \
-        == ["materials", "describe_type"]
-    assert regenerated["what_you_looked_at"][-1]["arguments"] == {"type_id": "PartDesign::Pad"}
 
 
 

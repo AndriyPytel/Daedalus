@@ -1,7 +1,7 @@
 """
 Level 1 — the camera fit does not zoom out to an Origin plane's bounding box.
 
-`core/freecad_tools.py :: _overall_size` already refuses anything past
+`core/apply.py :: _overall_size` already refuses anything past
 `_SCAFFOLDING` (1e6 mm) because a Body's Origin carries three planes and
 three axes, each 1e100 mm across, and a literal union of every bounding box
 makes any part 2e+100 mm wide. `fit_view` calls the raw `view.fitAll()`,
@@ -18,7 +18,7 @@ import types
 
 import pytest
 
-from core.freecad_tools import _SCAFFOLDING, fit_view
+from core.freecad.apply import _SCAFFOLDING, fit_view
 
 
 class FakeBoundBox:

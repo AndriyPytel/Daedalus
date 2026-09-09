@@ -5,11 +5,12 @@ The two claims a fake cannot make: one undo takes a whole Step back, and code
 that crashes the C++ core leaves this process — standing in for the user's
 FreeCAD — alive.
 """
+import os
+
 import pytest
 
-from core.apply import ApplyPipeline, run_in_transaction
-from core.freecad_tools import build_registry
-from core.preflight import PreflightWorker, find_freecadcmd
+from core.freecad.apply import ApplyPipeline, build_registry, run_in_transaction
+from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
@@ -24,7 +25,7 @@ def worker():
         find_freecadcmd()
     except RuntimeError as exc:
         pytest.skip(str(exc))
-    with PreflightWorker() as running:
+    with Kernel() as running:
         yield running
 
 
@@ -160,7 +161,7 @@ def test_a_step_that_throws_leaves_the_document_untouched(doc, worker, tmp_path)
 
 def test_run_in_transactions_own_exec_frame_is_cut_from_the_traceback(doc):
     """The frame that actually failed is the Step's, not `run_in_transaction`'s."""
-    from core.preflight_worker import trimmed_traceback
+    from core.kernel.kernel_worker import trimmed_traceback
 
     try:
         run_in_transaction(doc, "doc.addObject('Part::Box', 'B')\nraise RuntimeError('halfway')\n")
@@ -180,7 +181,7 @@ def test_code_that_crashes_the_core_never_reaches_the_document(doc, tmp_path):
     (which is standing in for the user's FreeCAD) is still here to make the
     assertion.
     """
-    with PreflightWorker() as own:
+    with Kernel() as own:
         pipeline = ApplyPipeline(document=doc, worker=own,
                                  dispatch=lambda func, timeout=None: func(),
                                  render_dir=str(tmp_path))
@@ -199,7 +200,7 @@ def test_an_unbounded_loop_never_reaches_the_document(doc, tmp_path):
     A real hang, killed by a real timeout — only the timeout itself is
     scaffolding, short enough that the wait is not the point of the test.
     """
-    with PreflightWorker(timeout=0.5) as own:
+    with Kernel(timeout=0.5) as own:
         pipeline = ApplyPipeline(document=doc, worker=own,
                                  dispatch=lambda func, timeout=None: func(),
                                  render_dir=str(tmp_path))
@@ -240,6 +241,23 @@ def test_apply_step_returns_the_traceback_for_the_assistant_to_correct_against(d
 
 def test_the_read_only_registry_has_no_apply_step(doc):
     assert "apply_step" not in build_registry(doc)
+
+
+def test_a_lint_rejected_step_never_reaches_the_kernels_checkpoint(pipeline, worker):
+    """
+    FCC-298 AC1: a Step that fails one of lint's rules never spends a
+    checkpoint -- it never reaches the kernel at all. Established against a
+    real checkpoint file's mtime, not the kernel's own claim about itself.
+    """
+    baseline = worker.check("doc.addObject('Part::Box', 'Baseline')")
+    assert baseline.ok, baseline.traceback
+    before = os.path.getmtime(baseline.checkpoint)
+
+    result = pipeline.apply("import Gui\nGui.Selection")
+
+    assert not result.ok
+    assert os.path.getmtime(baseline.checkpoint) == before, \
+        "a lint-rejected Step still wrote a new checkpoint"
 
 
 def test_preflight_reports_what_the_step_actually_created(worker):
@@ -286,7 +304,7 @@ def test_a_dependent_recompute_is_not_reported_as_a_modification(worker, documen
 def saved_document(tmp_path):
     import FreeCAD
 
-    from core.preflight import copy_of
+    from core.kernel import copy_of
 
     document = FreeCAD.newDocument("OwnedFixture")
     box = document.addObject("Part::Box", "ExistingBox")
@@ -303,7 +321,7 @@ def document_with_a_cut(tmp_path):
     """ExistingBox with something downstream of it that recomputes cleanly."""
     import FreeCAD
 
-    from core.preflight import copy_of
+    from core.kernel import copy_of
 
     document = FreeCAD.newDocument("CutFixture")
     box = document.addObject("Part::Box", "ExistingBox")

@@ -1,7 +1,7 @@
 """
 Level 1 — the Plan -> Execute -> Review loop: envelope/self-intersection checks, citation trims and reading of the sheet.
 
-Split out of the single `test_loop.py` god-file so `--dist
+Split out of the single `test_py` god-file so `--dist
 loadfile` can spread these tests across xdist workers; the fixtures and
 scripted-LLM harness common to every split live in `loop_helpers.py`.
 """
@@ -19,23 +19,25 @@ from unittest.mock import Mock
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import design, loop, part_file, sheet_reader
-from core.freecad_tools import TRAPS
+from core.design import design
+from core.design import part_file
+from core.sheets import sheet_reader
+from core.freecad.apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
-from core.design import (
+from core.design.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.run import run
+from core.loop.prompt import PROMPTS
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
@@ -179,8 +181,14 @@ def test_nothing_past_the_reading_opens_the_evidence():
     distillation would be a rendering nobody is held to. Checked by reading the
     source, the way every other architectural claim in this project is.
     """
-    with open(loop.__file__, encoding="utf-8") as source:
-        written = ast.parse(source.read())
+    import core.loop.describe as loop_describe_module
+    loop_dir = os.path.dirname(loop_describe_module.__file__)
+    all_source = ""
+    for filename in os.listdir(loop_dir):
+        if filename.endswith(".py"):
+            with open(os.path.join(loop_dir, filename), encoding="utf-8") as f:
+                all_source += f.read() + "\n"
+    written = ast.parse(all_source)
 
     functions = [node for node in ast.walk(written)
                  if isinstance(node, ast.FunctionDef)]
@@ -220,7 +228,7 @@ def test_a_plan_citing_the_document_it_was_handed_leaves_nothing_unplanned():
 
 
 def test_the_three_overall_sizes_are_checked_before_anybody_writes_a_check():
-    from core.loop import the_envelope_measured
+    from core.loop.assertion import the_envelope_measured
 
     code = the_envelope_measured(A_CLAMP_ENVELOPE)
 
@@ -230,7 +238,7 @@ def test_the_three_overall_sizes_are_checked_before_anybody_writes_a_check():
 
 
 def test_an_envelope_of_anything_but_three_plain_sizes_is_not_measured_here():
-    from core.loop import the_envelope_measured
+    from core.loop.assertion import the_envelope_measured
 
     assert the_envelope_measured(A_CLAMP_ENVELOPE[:2]) == ""
     assert the_envelope_measured(
@@ -240,7 +248,7 @@ def test_an_envelope_of_anything_but_three_plain_sizes_is_not_measured_here():
 def test_self_intersection_check_removes_its_temp_file_even_when_export_fails():
     """
     FCC-256: the `.brep` round-trip opens one temp file per solid
-    (`core/loop.py:SELF_INTERSECTION_CHECK`); a solid whose export raises
+    (`core/py:SELF_INTERSECTION_CHECK`); a solid whose export raises
     must not leave it behind. Run once, over the whole Document, is proven
     behaviourally by `test_two_separately_valid_solids_that_overlap_each_other_still_hold`
     in `tests/test_self_intersection_level2.py` (real FreeCAD, two solids,
@@ -248,7 +256,7 @@ def test_self_intersection_check_removes_its_temp_file_even_when_export_fails():
     """
     import glob
 
-    from core.loop import SELF_INTERSECTION_CHECK
+    from core.loop.assertion import SELF_INTERSECTION_CHECK
 
     class ExplodingShape:
         Solids = [object()]
@@ -295,7 +303,7 @@ def test_a_self_intersecting_document_is_caught_before_a_provider_writes_checks(
         ["Twist self-intersects (BOPAlgo_SelfIntersect)"]
     assert events.first(ASSERTION).data["confirmed"] == [], \
         "the self-intersection check measures nothing to confirm"
-    assert not any(call[0]["content"] == prompt("assertion") for call in llm.calls), \
+    assert not any(call[0]["content"].startswith(prompt("assertion")) for call in llm.calls), \
         "a provider was asked to write checks for a Document already known to self-intersect"
 
 
@@ -322,7 +330,7 @@ def test_the_envelope_check_runs_against_the_document_and_can_fail_it():
     assert events.first(ASSERTION).data["unmet"], "nothing was reported unmet"
     assert events.first(ASSERTION).data["confirmed"] == [], \
         "the envelope check measures nothing to confirm"
-    assert not any(call[0]["content"] == prompt("assertion") for call in llm.calls), \
+    assert not any(call[0]["content"].startswith(prompt("assertion")) for call in llm.calls), \
         "a provider was asked to write checks for a part already known to be wrong"
 
 
@@ -583,7 +591,7 @@ def test_a_re_read_over_a_named_callout_is_shown_only_the_views_it_is_printed_in
         suspect_reply(), verdict_reply("pass"),
     ], attachments=[THE_PIPE_CLAMP])
 
-    calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    calls = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     re_read = calls[-1][-1]["content"][:-1]
     characters = sum(len(block["text"]) for block in re_read if block.get("type") == "text")
     pictures = [block for block in re_read if block.get("type") == "image_url"]
@@ -608,7 +616,7 @@ def test_a_callout_the_description_never_used_goes_back_to_design_naming_it():
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
-    design_calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    design_calls = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     asked = json.loads(design_calls[-1][-1]["content"][-1]["text"])
     assert "the_question" in asked, "Design was not sent back to the sheet at all"
     assert "40" in asked["the_question"]
@@ -627,7 +635,7 @@ def test_looking_again_stops_when_it_stops_finding_anything():
                               attachments=[MODEL_MANIA])
 
     assert result.ok, "the run did not finish: the re-look kept going"
-    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     assert len(design_turns) == 3, \
         "the sheet was asked again after it had already answered with nothing"
 
@@ -647,7 +655,7 @@ def test_the_second_look_is_bounded_by_the_re_read_ceiling():
     run("Build this", llm=llm, tools=FakeTools().registry,
         budgets=Budgets(rereads=2), attachments=[MODEL_MANIA])
 
-    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     assert len(design_turns) <= 4, "the re-look ran past its ceiling"
 
 
@@ -1144,7 +1152,7 @@ def test_three_attempts_per_step_then_blocked_with_what_was_tried():
 
     assert not result.ok
     assert tools.applied_codes() == ["try1()", "try2()", "try3()"]
-    blocked = events.first(BLOCKED)
+    blocked = events.first(BUDGET_EXHAUSTED)
     assert blocked is not None
     assert len(blocked.data["tried"]) == 3
     assert [t["traceback"] for t in blocked.data["tried"]] == ["one", "two", "three"]

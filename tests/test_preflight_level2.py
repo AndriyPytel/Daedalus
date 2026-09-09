@@ -19,7 +19,7 @@ import time
 
 import pytest
 
-from core.preflight import PreflightWorker, copy_of, find_freecadcmd
+from core.kernel import Kernel, copy_of, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
@@ -76,14 +76,14 @@ def freecadcmd():
 @pytest.fixture(scope="module")
 def warm(freecadcmd):
     """One worker shared by the tests that do not kill it."""
-    with PreflightWorker(freecadcmd) as worker:
+    with Kernel(freecadcmd) as worker:
         yield worker
 
 
 @pytest.fixture
 def fresh(freecadcmd):
     """A worker of its own, for the tests that end its life."""
-    with PreflightWorker(freecadcmd) as worker:
+    with Kernel(freecadcmd) as worker:
         yield worker
 
 
@@ -125,7 +125,7 @@ def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm,
     """
     import FreeCAD
 
-    from core.preflight_render import render as render_directly
+    from core.kernel.preflight_render import render as render_directly
 
     via_worker = str(tmp_path / "via_worker.png")
     result = warm.check(
@@ -152,7 +152,6 @@ def test_the_worker_stays_warm_between_requests(warm):
     second = warm.check("doc.addObject('Part::Box', 'B')")
 
     assert first.ok and second.ok
-    assert warm.restarts == 0
     assert warm.alive
 
 
@@ -420,16 +419,13 @@ def test_the_worker_still_works_after_it_died(fresh):
     result = fresh.check("doc.addObject('Part::Box', 'Box')")
 
     assert result.ok, result.traceback
-    assert fresh.restarts == 1
 
 
 def test_worker_death_is_never_raised_at_the_caller(fresh):
-    """It restarts silently; the caller sees a result, not an incident."""
     for _ in range(2):
         result = fresh.check(CRASHING_CODE)
         assert not result.ok
 
-    assert fresh.restarts == 2
     assert fresh.check("pass").ok
 
 

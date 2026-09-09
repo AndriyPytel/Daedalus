@@ -6,7 +6,8 @@ import statistics
 
 import pytest
 
-from core import design, sheet_reader
+from core.design import design
+from core.sheets import sheet_reader
 from tests import modelmania_harness
 
 

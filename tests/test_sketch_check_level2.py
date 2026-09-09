@@ -10,11 +10,13 @@ from dataclasses import replace
 
 import pytest
 
-from core import sheet_reader, sketch_check
+from core.sheets import sheet_reader
+from core.sheets import sketch_check
+from tests import modelmania_harness
 
 pytestmark = pytest.mark.freecad
 
-SHEET = os.path.join(os.path.dirname(__file__), "modelmania", "mm25-p1-1.pdf")
+SHEET = str(modelmania_harness.MODELMANIA_DIR / "mm25-p1-1.pdf")
 
 
 @pytest.fixture(scope="module")
@@ -371,10 +373,10 @@ def test_the_child_answers_the_same_thing_this_process_does(modelmania_sheets):
     is invisible to every field a chosen tuple does compare, and `conflicts` and
     `redundant` are what the description is written from.
     """
-    from core.preflight import PreflightWorker
+    from core.kernel import Kernel
 
     compared = 0
-    with PreflightWorker() as worker:
+    with Kernel() as worker:
         for sheet in modelmania_sheets.values():
             for view, outline in _outlines(sheet):
                 here = sketch_check.checked(outline, view, sheet.between)
@@ -401,7 +403,7 @@ def test_a_conflict_and_a_redundancy_reach_the_caller_from_the_child():
     number it was written from, and the verdict crossing the pipe is the verdict
     this process builds.
     """
-    from core.preflight import PreflightWorker
+    from core.kernel import Kernel
 
     plate = _a_plate(50.0, 30.0)
     contradicting = [
@@ -411,7 +413,7 @@ def test_a_conflict_and_a_redundancy_reach_the_caller_from_the_child():
                              first=(0.0, 25.0), second=(50.0, 25.0))]
     bore = _a_bore_in_two_pieces(42.0, 42.0)
 
-    with PreflightWorker() as worker:
+    with Kernel() as worker:
         conflicted = sketch_check.checked_by(worker, plate, "a view", contradicting)
         repeated = sketch_check.checked_by(worker, bore, "a view")
 
@@ -431,9 +433,9 @@ def test_a_reading_the_solver_cannot_take_does_not_take_the_caller_with_it():
     different sizes, and whatever the solver makes of it, this process is still
     here to read the verdict.
     """
-    from core.preflight import PreflightWorker
+    from core.kernel import Kernel
 
-    with PreflightWorker() as worker:
+    with Kernel() as worker:
         verdict = sketch_check.checked_by(
             worker, _a_bore_in_two_pieces(42.0, 50.0), "middle centre view")
 

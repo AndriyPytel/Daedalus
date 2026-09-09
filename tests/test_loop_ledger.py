@@ -24,18 +24,23 @@ from core.events import (
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import design, loop, part_file, sheet_reader
-from core.freecad_tools import TRAPS
+from core.design import design
+from core.design import part_file
+from core.sheets import sheet_reader
+from core.freecad.apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
-from core.design import (
+from core.design.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import PROMPTS, _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.run import run
+from core.loop.design import design as loop_design, _the_groups
+from core.loop.describe import _the_geometry_disagrees
+from core.loop import execute as loop_execute_module
+from core import kernel
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
@@ -80,87 +85,28 @@ from tests.loop_helpers import (
 )
 
 
-def test_asking_twice_for_the_same_thing_calls_the_tool_once():
-    """Both are still narrated: a transcript showing the question and not the answer would read as a look that went nowhere."""
-    _, events, _, tools = drive([
-        plan_reply("Pad it"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        code_reply("pad()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], budgets=Budgets(looks_per_turn=2))
-
-    assert len([c for c in tools.calls if c[0] == "describe_type"]) == 1
-    told = [e for e in events.of(TOOL_RESULT) if e.data["name"] == "describe_type"]
-    assert len(told) == 2
-    assert [e.data["already_known"] for e in told] == [False, True]
-
-
-def test_a_different_argument_is_a_different_look():
-    _, _, _, tools = drive([
-        plan_reply("Pad it"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        look_reply("describe_type", type_id="PartDesign::Pocket"),
-        code_reply("pad()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], budgets=Budgets(looks_per_turn=2))
-
-    assert len([c for c in tools.calls if c[0] == "describe_type"]) == 2
-
-
-def test_what_an_object_has_is_forgotten_once_a_step_lands():
+def test_looks_per_turn_and_its_bounded_loop_are_gone():
     """
-    A property list read off the Document is a fact about the Document as it
-    was. Every applied Step is a chance for it to have moved, so it is not
-    carried across one and not answered from memory after one.
+    FCC-304: the Look budget goes away because reading the Document is
+    ordinary code inside a Step now that the kernel namespace is open
+    (FCC-299) — `looks_per_turn` and the turn loop that spent it must not
+    come back under this or any other name.
     """
-    _, _, llm, tools = drive([
-        plan_reply("Sketch it", "Pad it"),
-        look_reply("describe_object", name="Box"),
-        code_reply("sketch()", "pad_wrong()"),
-        look_reply("describe_object", name="Box"),
-        code_reply("pad_right()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[FakeTools.APPLIED, failed("Reversed")])
-
-    assert len([c for c in tools.calls if c[0] == "describe_object"]) == 2, \
-        "an object read before a Step landed was reported as though it still held"
-    regenerated = json.loads(llm.calls[4][-1]["content"])
-    assert "describe_object" not in [look["tool"] for look in
-                                     regenerated["what_you_looked_at"]]
-
-
-def test_what_a_type_has_survives_a_step_because_the_build_does_not_change():
-    _, _, llm, tools = drive([
-        plan_reply("Sketch it", "Pad it"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        code_reply("sketch()", "pad_wrong()"),
-        code_reply("pad_right()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[FakeTools.APPLIED, failed("Reversed")])
-
-    regenerated = json.loads(llm.calls[3][-1]["content"])
-
-    assert [look["tool"] for look in regenerated["what_you_looked_at"]] \
-        == ["materials", "describe_type"]
-
-
-def test_a_look_that_failed_is_not_remembered_as_an_answer():
-    """A ToolError is a thing to correct, and correcting it means asking again."""
-    _, _, _, tools = drive([
-        plan_reply("Pad it"),
-        look_reply("describe_object", name="NoSuchThing"),
-        look_reply("describe_object", name="NoSuchThing"),
-        code_reply("pad()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], budgets=Budgets(looks_per_turn=2))
-
-    assert len([c for c in tools.calls if c[0] == "describe_object"]) == 2
+    assert not hasattr(Budgets(), "looks_per_turn")
+    loop_dir = os.path.dirname(loop_execute_module.__file__)
+    source = ""
+    for filename in os.listdir(loop_dir):
+        if filename.endswith(".py"):
+            with open(os.path.join(loop_dir, filename), encoding="utf-8") as f:
+                source += f.read()
+    assert "looks_per_turn:" not in source, "the field is back on Budgets"
+    assert "your looks are spent" not in source.lower(), \
+        "the bounded look loop's last-turn message is back"
 
 
 def test_the_carried_looks_are_bounded():
     """An unbounded list would grow the request for the whole length of a run."""
-    from core.loop import Looks
+    from core.loop.execute import Looks
 
     looks = Looks()
     for number in range(Looks.CARRIED + 4):
@@ -193,32 +139,6 @@ def test_execute_is_handed_the_material_cards_without_asking():
     assert cards[0]["result"]["materials"][0]["uuid"] == "b9b3a6ff-1c8e"
 
 
-def test_a_turn_may_take_six_looks():
-    """
-    Six is what the recorded run wanted: `supported_types`, the types of the
-    three features it built, the Body it built them on, and the cards.
-    """
-    assert Budgets().looks_per_turn == 6
-
-    result, _, llm, tools = drive([
-        plan_reply("Pad it"),
-        look_reply("describe_type", type_id="T1"),
-        look_reply("describe_type", type_id="T2"),
-        look_reply("describe_type", type_id="T3"),
-        look_reply("describe_type", type_id="T4"),
-        look_reply("describe_type", type_id="T5"),
-        look_reply("describe_type", type_id="T6"),
-        code_reply("pad()"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert result.ok, result.reason
-    assert len([c for c in tools.calls if c[0] == "describe_type"]) == 6
-    assert tools.applied_codes() == ["pad()"]
-    assert _turns_of(llm, "execute")[5]["tools_you_may_look_with"] != [], \
-        "the sixth look was refused"
-
-
 def test_a_plan_that_ends_in_a_material_assignment_uses_a_uuid_from_this_build():
     result, _, llm, tools = drive([
         plan_reply("Pad the profile", "Assign the material"),
@@ -234,35 +154,6 @@ def test_a_plan_that_ends_in_a_material_assignment_uses_a_uuid_from_this_build()
 
     assert any(uuid in assigned for uuid in known), \
         "the material Step was applied with a uuid this build does not have"
-
-
-def test_the_recorded_run_reaches_step_eight_and_assigns_a_card():
-    """
-    The looks the recorded run took, then code for all eight Steps: the four
-    looks no longer spend the budget the eighth Step needed, because the cards
-    were never on that budget.
-    """
-    steps = ["Sketch the base", "Pad it", "Sketch the pocket", "Pocket it",
-             "Sketch the boss", "Pad the boss", "Fillet the edges",
-             "Assign plain carbon steel"]
-
-    result, _, llm, tools = drive([
-        plan_reply(*steps),
-        look_reply("supported_types", prefix="PartDesign::"),
-        look_reply("describe_type", type_id="PartDesign::Pad"),
-        look_reply("describe_type", type_id="PartDesign::Pocket"),
-        look_reply("describe_type", type_id="PartDesign::Fillet"),
-        code_reply(*(["step%d()" % number for number in range(1, 8)]
-                     + ["obj.ShapeMaterial = uuid('b9b3a6ff-1c8e')"])),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert result.ok, result.reason
-    assert len(tools.applied_codes()) == 8, "the run did not reach Step 8"
-    assert "b9b3a6ff-1c8e" in tools.applied_codes()[7]
-    assert all("this_is_your_last_turn" not in turn
-               for turn in _turns_of(llm, "execute")), \
-        "Execute was told its looks were spent before it wrote the code"
 
 
 
@@ -456,7 +347,7 @@ def test_a_step_that_failed_variously_does_not_tell_plan_to_change_the_step():
 
 def test_ledger_dedupes_the_same_classified_failure():
     from core.ledger import Ledger
-    from core.loop import _FAILED_THIS_WAY
+    from core.loop.execute import _FAILED_THIS_WAY
 
     ledger = Ledger(_FAILED_THIS_WAY)
     ledger.record("Cut the hooks", NO_MATERIAL)
@@ -474,7 +365,7 @@ def test_ledger_keeps_a_trailing_gap_and_an_interior_gap_as_two_lines():
     `_UNCLASSIFIED_LABEL` line this table had no entry for before them.
     """
     from core.ledger import Ledger
-    from core.loop import _FAILED_THIS_WAY
+    from core.loop.execute import _FAILED_THIS_WAY
 
     ledger = Ledger(_FAILED_THIS_WAY)
     ledger.record("Cut the hooks", "You replied with no code for Step 4, and nothing "
@@ -525,7 +416,7 @@ def test_ledger_caps_by_characters_dropping_the_oldest():
     entry the run is *still* hitting stays legible.
     """
     from core.ledger import Ledger
-    from core.loop import _FAILED_THIS_WAY
+    from core.loop.execute import _FAILED_THIS_WAY
 
     ledger = Ledger(_FAILED_THIS_WAY)
     long_step = "A" * 60
@@ -545,7 +436,7 @@ def test_ledger_caps_by_characters_dropping_the_oldest():
 
 def test_ledger_caps_are_derived_from_the_phrase_table_not_invented():
     from core.ledger import Ledger, _UNCLASSIFIED_LABEL
-    from core.loop import _FAILED_THIS_WAY
+    from core.loop.execute import _FAILED_THIS_WAY
 
     ledger = Ledger(_FAILED_THIS_WAY)
 
@@ -561,7 +452,7 @@ def test_ledger_caps_are_derived_from_the_phrase_table_not_invented():
 
 def test_ledger_lines_never_contain_code_or_a_traceback():
     from core.ledger import Ledger
-    from core.loop import _FAILED_THIS_WAY
+    from core.loop.execute import _FAILED_THIS_WAY
 
     ledger = Ledger(_FAILED_THIS_WAY)
     ledger.record("Pocket the boss", NO_MATERIAL)
@@ -574,7 +465,7 @@ def test_ledger_lines_never_contain_code_or_a_traceback():
 
 def test_an_unclassified_failure_is_still_represented_not_dropped():
     from core.ledger import Ledger, _UNCLASSIFIED_LABEL
-    from core.loop import _FAILED_THIS_WAY
+    from core.loop.execute import _FAILED_THIS_WAY
 
     ledger = Ledger(_FAILED_THIS_WAY)
     ledger.record("Do something odd", "ZeroDivisionError: division by zero")
@@ -633,7 +524,7 @@ def test_a_lint_rejection_fires_the_same_way_twice():
 
 
 def test_changed_nothing_fires_the_same_way_twice():
-    from core.apply import _CHANGED_NOTHING
+    from core.freecad.apply import _CHANGED_NOTHING
 
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
@@ -650,7 +541,7 @@ def test_changed_nothing_fires_the_same_way_twice():
 
 
 def test_a_standing_approval_is_not_asked_again_when_the_plan_is_revised():
-    from core.loop import APPROVE, Approval
+    from core.loop.gate import APPROVE, Approval
 
     gate = gate_that(Approval(APPROVE, standing=True))
 
@@ -683,7 +574,7 @@ def test_without_a_standing_approval_every_plan_still_reaches_the_gate():
 
 
 def test_a_standing_approval_is_on_the_stream_as_an_approval_not_as_a_silence():
-    from core.loop import APPROVE, Approval
+    from core.loop.gate import APPROVE, Approval
 
     gate = gate_that(Approval(APPROVE, standing=True))
 
@@ -706,7 +597,7 @@ def test_a_standing_approval_is_on_the_stream_as_an_approval_not_as_a_silence():
 
 
 def test_an_ordinary_approval_does_not_stand():
-    from core.loop import APPROVE, Approval
+    from core.loop.gate import APPROVE, Approval
 
     gate = gate_that(Approval(APPROVE), Approval(APPROVE))
 
@@ -726,7 +617,7 @@ def test_a_standing_amendment_is_not_a_standing_approval():
     Only an approval can stand. An amendment is the user changing the Plan, and
     the Plan they get back is one they have not read.
     """
-    from core.loop import AMEND, APPROVE, Approval
+    from core.loop.gate import AMEND, APPROVE, Approval
 
     gate = gate_that(Approval(AMEND, "make it 20mm", standing=True))
 
@@ -746,7 +637,7 @@ def test_a_standing_approval_still_lets_the_user_be_asked_about_the_result():
     It covers the Plan. What to do about a result that did not pass is not the
     Plan, and neither is deleting the user's own work.
     """
-    from core.loop import ACCEPT, APPROVE, Approval
+    from core.loop.gate import ACCEPT, APPROVE, Approval
 
     gate = gate_that(Approval(APPROVE, standing=True))
     decided = []
@@ -774,7 +665,7 @@ def test_a_standing_approval_does_not_cover_an_assumption_the_user_has_not_read(
     back as a semicircular R15 and then as a circular R30 that swallowed the
     ring the clamp exists to close, with the user shown only the rectangle.
     """
-    from core.loop import APPROVE, Approval
+    from core.loop.gate import APPROVE, Approval
 
     gate = gate_that(Approval(APPROVE, standing=True))
 
@@ -797,7 +688,7 @@ def test_a_standing_approval_still_covers_a_revision_that_assumes_nothing_new():
     What stands is approval of the path, and FCC-101 is the whole reason it
     stands: a revision that only rewrites how the part is built asks nobody.
     """
-    from core.loop import APPROVE, Approval
+    from core.loop.gate import APPROVE, Approval
 
     gate = gate_that(Approval(APPROVE, standing=True))
 
@@ -815,7 +706,7 @@ def test_a_standing_approval_still_covers_a_revision_that_assumes_nothing_new():
 
 def test_a_plan_that_assumes_nothing_is_covered_by_a_standing_approval():
     """The ordinary revision — no invented value in it at all — is untouched."""
-    from core.loop import APPROVE, Approval
+    from core.loop.gate import APPROVE, Approval
 
     gate = gate_that(Approval(APPROVE, standing=True))
 
@@ -833,7 +724,7 @@ def test_a_plan_that_assumes_nothing_is_covered_by_a_standing_approval():
 
 def test_a_standing_approval_does_not_survive_into_another_run():
     """It is one run's patience, not a setting."""
-    from core.loop import APPROVE, Approval
+    from core.loop.gate import APPROVE, Approval
 
     driven_through(gate_that(Approval(APPROVE, standing=True)), [
         plan_reply("Build it"), code_reply("build()"), suspect_reply(), verdict_reply("pass"),
@@ -848,7 +739,7 @@ def test_a_standing_approval_does_not_survive_into_another_run():
 
 
 def test_a_rejection_still_stops_a_run_that_had_a_standing_approval_before_it():
-    from core.loop import APPROVE, REJECT, Approval
+    from core.loop.gate import APPROVE, REJECT, Approval
 
     gate = gate_that(Approval(REJECT))
 
@@ -962,7 +853,7 @@ def test_design_is_given_the_line_work_of_the_views_in_millimetres():
 
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
-    groups = len(loop._the_groups([MODEL_MANIA]))
+    groups = len(_the_groups([MODEL_MANIA]))
     said = _said_to_design(llm, at=groups)
     assert "line work" in said, "the views' own geometry never reached Design"
     assert "arc R" in said or "line (" in said, "the line work arrived with no entities"
@@ -979,7 +870,7 @@ def test_a_phase_that_answered_and_then_explained_itself_is_still_an_answer():
     none of it did, so the object that was right there was thrown away and the
     run ended with an error the user could do nothing about.
     """
-    from core.loop import _as_json
+    from core.loop.prompt import _as_json
 
     said = ('{"design": {}, "question": ""}\n\nThe two unaccounted strings, `3.` and '
             '`4.`, are the item numbers of the NOTES list on page 2.')
@@ -993,7 +884,8 @@ def test_a_reply_with_no_json_in_it_is_still_a_phase_that_did_not_answer():
     phase that never replied with JSON is a phase that did not do its job, and
     the error quotes what it said instead.
     """
-    from core.loop import PhaseError, _as_json
+    from core.loop.budgets import PhaseError
+    from core.loop.prompt import _as_json
 
     with pytest.raises(PhaseError) as raised:
         _as_json("I would rather describe this in words.", "design")
@@ -1040,7 +932,7 @@ def test_the_re_ask_quotes_what_the_phase_said_and_names_the_shape():
     assert retry[-2]["role"] == "assistant"
     assert "I need to check the Hole feature's properties first." in retry[-2]["content"]
     assert retry[-1]["role"] == "user"
-    assert "asks for the look *in* the JSON" in retry[-1]["content"]
+    assert "Reply with exactly one JSON object" in retry[-1]["content"]
 
 
 def test_the_evidence_is_cache_marked_only_on_the_route_that_honours_it():
@@ -1054,14 +946,14 @@ def test_the_evidence_is_cache_marked_only_on_the_route_that_honours_it():
 
     anthropic = ScriptedLLMClient([design_reply(A_CUBE)])
     anthropic.model = "anthropic/claude-3-7-sonnet-20250219"
-    loop.design({"intent": "Build this"}, anthropic, EventStream(), attachments=[RENDER_PNG])
+    loop_design({"intent": "Build this"}, anthropic, EventStream(), attachments=[RENDER_PNG])
 
     evidence = anthropic.calls[0][-1]["content"][:-1]
     assert evidence and evidence[-1].get("cache_control") == {"type": "ephemeral"}
     assert all("cache_control" not in block for block in evidence[:-1])
 
     scripted_client = ScriptedLLMClient([design_reply(A_CUBE)])
-    loop.design({"intent": "Build this"}, scripted_client, EventStream(), attachments=[RENDER_PNG])
+    loop_design({"intent": "Build this"}, scripted_client, EventStream(), attachments=[RENDER_PNG])
 
     other_evidence = scripted_client.calls[0][-1]["content"][:-1]
     assert other_evidence and all("cache_control" not in block for block in other_evidence)
@@ -1077,8 +969,8 @@ def test_the_evidence_goes_out_before_the_changing_body():
     from core.events import EventStream
 
     llm = ScriptedLLMClient([design_reply(A_CUBE), design_reply(A_CUBE)])
-    loop.design({"intent": "Build this"}, llm, EventStream(), attachments=[RENDER_PNG])
-    loop.design({"intent": "Build this, revised"}, llm, EventStream(), attachments=[RENDER_PNG])
+    loop_design({"intent": "Build this"}, llm, EventStream(), attachments=[RENDER_PNG])
+    loop_design({"intent": "Build this, revised"}, llm, EventStream(), attachments=[RENDER_PNG])
 
     for call in llm.calls:
         assert call[-1]["content"][0].get("type") == "image_url"
@@ -1220,9 +1112,9 @@ def test_a_sheet_that_contradicts_its_own_tracing_says_so_on_the_part(
     exactly what this cannot know.
     """
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
 
-    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
+    found = _the_geometry_disagrees(["a.pdf"], EventStream())
 
     assert len(found) == 1
     said = str(found[0])
@@ -1240,9 +1132,9 @@ def test_a_geometric_conflict_names_both_points_it_is_about(tmp_path, monkeypatc
     the only thing here that identifies it.
     """
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
 
-    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
+    found = _the_geometry_disagrees(["a.pdf"], EventStream())
 
     assert found[0]["about"] == (
         "the sheet prints 100 between (0.00, 15.00) and (100.00, 15.00) and the "
@@ -1266,7 +1158,7 @@ def test_a_redundant_constraint_reaches_the_part_in_the_words_of_a_conflict(
             pass
 
         def reading(self, request, timeout=None):
-            from core.sketch_check import Trouble, Verdict, as_response
+            from core.sheets.sketch_check import Trouble, Verdict, as_response
 
             return dict(as_response(Verdict(
                 view=request["view"],
@@ -1279,11 +1171,11 @@ def test_a_redundant_constraint_reaches_the_part_in_the_words_of_a_conflict(
                     said="the arc the sheet prints \u00d842 against")])), ok=True)
 
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=100.0)
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(kernel, "Kernel",
                         lambda *_, **__: _AChildThatFoundBoth())
 
-    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
+    found = _the_geometry_disagrees(["a.pdf"], EventStream())
 
     assert found == [
         {"about": "the 50 the sheet prints between (0.00, 5.00) and (50.00, 5.00),"
@@ -1314,6 +1206,6 @@ def test_a_reading_too_far_out_is_past_what_this_check_can_see(
     (`Printed.measures`), and a number nobody printed (`uncited`).
     """
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=108.0)
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
 
-    assert loop._the_geometry_disagrees(["a.pdf"], EventStream()) == []
+    assert _the_geometry_disagrees(["a.pdf"], EventStream()) == []

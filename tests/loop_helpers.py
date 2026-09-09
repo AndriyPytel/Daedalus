@@ -49,24 +49,31 @@ from unittest.mock import Mock
 
 import pytest
 
+import core.loop.describe as loop_describe
+
 from core.events import (
     ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import design, loop, part_file, sheet_reader
-from core.freecad_tools import TRAPS
+from core import kernel
+from core.loop import describe as loop_describe
+from core.loop.design import _the_groups
+from core.loop.describe import _round_evidence, _the_directions_are_the_drawings
+from core.design import design
+from core.design import part_file
+from core.sheets import sheet_reader
+from core.freecad.apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
-from core.design import (
+from core.design.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import PROMPTS, _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.run import run
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 
@@ -143,7 +150,7 @@ def plan_reply(*steps, thinking=None, satisfies=None):
         written[0] = (dict(written[0], satisfies=list(satisfies))
                       if isinstance(written[0], dict)
                       else {"do": written[0], "satisfies": list(satisfies)})
-    body = json.dumps({"steps": written})
+    body = json.dumps({"declare": {"steps": written}})
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
@@ -179,14 +186,14 @@ def design_reply(model=None, question="", thinking=None):
     question put back to it, a person's answer being written in — because every
     one of them ends in a merge into the same model (FCC-93).
     """
-    body = json.dumps({"design": model or {}, "question": question})
+    body = json.dumps({"declare": {"design": model or {}, "question": question}})
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
 def _first_pass_turns(model, attachments, question=""):
     """
     The scripted replies one `_first_pass` costs today: the same
-    `design_reply` repeated once per page-sized group `core.loop._the_groups`
+    `design_reply` repeated once per page-sized group `core._the_groups`
     cuts *attachments* into, plus one more for the reconciling call — or the
     single reply it always was where nothing groups (no attachment, or one
     `sheet_reader` cannot read).
@@ -197,7 +204,7 @@ def _first_pass_turns(model, attachments, question=""):
     change what the run ends up holding, and a test does not have to predict
     the race to script one.
     """
-    groups = loop._the_groups(list(attachments))
+    groups = _the_groups(list(attachments))
     calls = len(groups) + 1 if groups else 1
     return [design_reply(model, question=question)] * calls
 
@@ -209,8 +216,9 @@ def code_reply(*codes, label="Step", thinking=None, first=1):
     `first` is the number of the Step the first code belongs to, which is 1 for
     the whole Plan and N for a regeneration of Step N and the tail after it.
     """
-    body = json.dumps({"steps": [{"step": first + offset, "code": code, "label": label}
-                                 for offset, code in enumerate(codes)]})
+    inner = {"steps": [{"step": first + offset, "code": code, "label": label}
+                       for offset, code in enumerate(codes)]}
+    body = json.dumps({"declare": inner})
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
@@ -219,30 +227,30 @@ def assertion_reply(code, uncovered=None):
     reply = {"code": code}
     if uncovered is not None:
         reply["uncovered"] = list(uncovered)
-    return json.dumps(reply)
+    return json.dumps({"declare": reply})
 
 
 def obsolete_reply(reason):
-    return json.dumps({"obsolete": reason})
+    return json.dumps({"declare": {"obsolete": reason}})
 
 
 def question_reply(question):
     """Plan answering that it cannot plan yet, and why (FCC-25)."""
-    return json.dumps({"question": question})
+    return json.dumps({"declare": {"question": question}})
 
 
 def look_reply(tool, **arguments):
-    return json.dumps({"look": {"tool": tool, "arguments": arguments}})
+    return json.dumps({"declare": {"look": {"tool": tool, "arguments": arguments}}})
 
 
 def verdict_reply(verdict, reason="", thinking=None):
-    body = json.dumps({"verdict": verdict, "reason": reason})
+    body = json.dumps({"declare": {"verdict": verdict, "reason": reason}})
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
 def suspect_reply(*suspected, thinking=None):
     """`review_suspect`'s turn: zero or more addresses it wants Assertion to measure."""
-    body = json.dumps({"suspected": list(suspected)})
+    body = json.dumps({"declare": {"suspected": list(suspected)}})
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
@@ -371,7 +379,13 @@ def _describes_a_part(turn):
     """Whether a scripted turn is a Design turn — the phase every run opens with."""
     body = turn.get("text") if isinstance(turn, dict) else turn
     try:
-        return "design" in json.loads(body)
+        parsed = json.loads(body)
+        if isinstance(parsed, dict):
+            if "design" in parsed:
+                return True
+            if "declare" in parsed and isinstance(parsed["declare"], dict):
+                return "design" in parsed["declare"]
+        return False
     except (TypeError, ValueError):
         return False
 
@@ -434,8 +448,7 @@ def _turns_of(llm, phase):
             if call[0]["content"].startswith(system)]
 
 
-MODEL_MANIA = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "modelmania", "mm25-p1-1.pdf")
+MODEL_MANIA = str(modelmania_harness.MODELMANIA_DIR / "mm25-p1-1.pdf")
 
 
 THE_2023_CLAMP = modelmania_harness.the_2023_clamp_as_read()
@@ -606,12 +619,12 @@ def _both_planes_in_one_step():
 
 
 def _one_plane_each():
-    return json.dumps({"steps": [
+    return json.dumps({"declare": {"steps": [
         {"do": "Pad the outer profile in the plane of the length and the height",
          "satisfies": ["envelope → length", "features → outer-profile → plane"]},
         {"do": "Pad the lug in the plane of the length and the depth",
          "satisfies": ["features → right-mounting-lug → plane"]},
-    ]})
+    ]}})
 
 
 THE_CLAMP_READ_OFF_ONE_VIEW = {
@@ -669,15 +682,14 @@ def _asked_of_design(llm):
     stable prefix a repeated Design turn can cache (`core/loop.py :: design`).
     """
     return [json.loads(call[-1]["content"][-1]["text"]) for call in llm.calls
-            if call[0]["content"] == prompt("design")]
+            if call[0]["content"].startswith(prompt("design"))]
 
 
 THE_PIPE_CLAMP = str(modelmania_harness.SHEETS[
     "model-mania_-in-person-2023 copy.pdf"])
 
 
-THE_2023_SHEET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modelmania",
-                              "model-mania_-in-person-2023 copy.pdf")
+THE_2023_SHEET = str(modelmania_harness.MODELMANIA_DIR / "model-mania_-in-person-2023 copy.pdf")
 
 
 A_READING_THAT_PROVOKES_EVERY_RE_READ = {
@@ -886,9 +898,9 @@ def _four_steps_applied_then_a_handback():
         plan_reply(*[{"do": "Pad part %d" % (number + 1), "satisfies": [entry]}
                      for number, entry in enumerate(BUILT)],
                    {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
-        json.dumps({"steps": [{"step": number, "code": "part%d()" % number,
+        json.dumps({"declare": {"steps": [{"step": number, "code": "part%d()" % number,
                                "label": "Part %d" % number} for number in range(1, 5)],
-                    "unbuildable": "the bore misses the web as planned"}),
+                    "unbuildable": "the bore misses the web as planned"}}),
         plan_reply({"do": "Bore the central hole from the top face",
                     "satisfies": list(LEFT_TO_BUILD)}),
         code_reply("bore()"),
@@ -944,7 +956,7 @@ NO_ENUM = ("Traceback (most recent call last):\n"
 
 def gate_that(*answers):
     """A Gate scripted turn by turn; anything past the script approves once."""
-    from core.loop import APPROVE, Approval
+    from core.loop.gate import APPROVE, Approval
 
     queued = list(answers)
     asked = []
@@ -1021,7 +1033,7 @@ def _a_sheet_of_many_outlines(tmp_path, how_many=4):
         between=sheet.between)
 
 
-class _AChildThatCannotComeBack(loop.preflight.PreflightWorker):
+class _AChildThatCannotComeBack(kernel.Kernel):
     """
     A worker that came up once and can never be started again.
 
@@ -1071,7 +1083,7 @@ _THE_BORE_PUT_RIGHT = [
 
 def _traced(monkeypatch, round_here):
     """What the tracer saw curved, view by view, whatever the attachment is."""
-    monkeypatch.setattr(loop, "_round_evidence", lambda attachments: dict(round_here))
+    monkeypatch.setattr(loop_describe, "_round_evidence", lambda attachments: dict(round_here))
 
 
 THE_CLAMP_READ_OFF_THE_WRONG_VIEW = {
@@ -1120,16 +1132,16 @@ THE_VIEW_LOOKED_AT_AGAIN = {"features": [
 
 def _re_read_as(monkeypatch, fragment):
     """The re-read a provider would have replied with, without a provider."""
-    monkeypatch.setattr(loop, "design",
+    monkeypatch.setattr(loop_describe, "design",
                         lambda body, llm, events, attachments=(): (fragment, []))
 
 
 def _looked_at_the_view_again(monkeypatch, part, fragment):
     _traced(monkeypatch, TRACED_ROUND_IN_THE_UPPER_PLAN)
     _re_read_as(monkeypatch, fragment)
-    return loop._the_directions_are_the_drawings(
+    return _the_directions_are_the_drawings(
         json.loads(json.dumps(part)), "Make the clamp", [], None, EventStream(),
-        loop.Budgets(rereads=2), lambda: False)
+        Budgets(rereads=2), lambda: False)
 
 
 A_BRACKET_IN_STEEL = {"envelope": {"length": read("80 mm")},
@@ -1152,8 +1164,8 @@ def a_run_that_cannot_assign_the_material(**kwargs):
         plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
                    {"do": "Assign plain carbon steel to the Body",
                     "satisfies": [THE_MATERIAL]}),
-        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
-                    "unbuildable": NO_CARD}),
+        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": NO_CARD}}),
         suspect_reply(),
         assertion_reply(CHECKS),
         verdict_reply("pass"),

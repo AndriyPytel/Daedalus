@@ -1,7 +1,7 @@
 """
 Level 1 — the Plan -> Execute -> Review loop: phase prompt wording, traps, build-order doctrine and step/gap mechanics.
 
-Split out of the single `test_loop.py` god-file so `--dist
+Split out of the single `test_py` god-file so `--dist
 loadfile` can spread these tests across xdist workers; the fixtures and
 scripted-LLM harness common to every split live in `loop_helpers.py`.
 """
@@ -19,23 +19,26 @@ from unittest.mock import Mock
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import design, loop, part_file, sheet_reader
-from core.freecad_tools import TRAPS
+from core.design import design
+from core.design import part_file
+from core.sheets import sheet_reader
+from core.freecad.apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
-from core.design import (
+from core.design.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.run import run
+from core.loop.prompt import PROMPTS
+from core.loop.design import _the_groups
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
@@ -89,10 +92,12 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
         phase_body = handle.read().strip()
     sections = _language_sections()
     vocabulary = "\n\n".join(sections[heading] for heading in _PHASE_VOCABULARY[phase])
-    expected = ("%s\n\n%s" % (phase_body, vocabulary)).replace(
+    phase_prompt = ("%s\n\n%s" % (phase_body, vocabulary)).replace(
         "{{traps}}", "\n".join("- " + trap for trap in TRAPS))
 
-    assert _system_messages(llm)[turn] == expected
+    system = _system_messages(llm)[turn]
+    assert phase_prompt in system, "phase prompt not found in system message"
+    assert "## Protocol" in system, "agent protocol not found in system message"
 
 
 def test_the_traps_land_in_the_prompts_that_ask_for_them():
@@ -836,71 +841,10 @@ def test_the_steps_run_in_the_order_the_plan_gave_them():
     assert [e.data["description"] for e in events.of(STEP_STARTED)] == ["First", "Second", "Third"]
 
 
-def test_execute_can_ask_the_document_before_committing_to_code():
-    """
-    The phase that hallucinates API was the one phase that could not ask:
-    `supported_types` had no caller anywhere outside the tests (ADR-0009).
-    """
-    result, events, llm, tools = drive([
-        plan_reply("Add a sketch"),
-        look_reply("supported_types", prefix="Sketcher::"),
-        code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert result.ok
-    assert ("supported_types", {"prefix": "Sketcher::"}) in tools.calls
-
-    asked_with = json.loads(llm.calls[3][-1]["content"])
-    looked = [look for look in asked_with["what_you_looked_at"]
-              if look["tool"] == "supported_types"]
-    assert looked[0]["result"]["types"] == ["Sketcher::SketchObject"]
-
-
-def test_a_look_is_visible_on_the_event_stream():
-    _, events, _, _ = drive([
-        plan_reply("Add a sketch"),
-        look_reply("supported_types", prefix="Sketcher::"),
-        code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert "supported_types" in [e.data["name"] for e in events.of(TOOL_CALL)]
-    assert "supported_types" in [e.data["name"] for e in events.of(TOOL_RESULT)]
-
-
-def test_looking_is_budgeted_and_the_last_turn_offers_nothing_to_look_with():
-    """
-    Looks are for answering a question, not for stalling instead of coding.
-
-    Scoped, not just mentioned: an empty Tool list and an open invitation to
-    declare the Plan obsolete is how one value nobody could look up threw away
-    every Step that was buildable without it.
-    """
-    result, _, llm, tools = drive([
-        plan_reply("Add a sketch"),
-        look_reply("supported_types"),
-        look_reply("supported_types"),
-        code_reply("doc.addObject('Sketcher::SketchObject', 'Sketch')"),
-        suspect_reply(), verdict_reply("pass"),
-    ], budgets=Budgets(looks_per_turn=2))
-
-    assert result.ok
-    assert len([c for c in tools.calls if c[0] == "supported_types"]) == 1
-
-    final = json.loads(llm.calls[4][-1]["content"])
-    assert final["tools_you_may_look_with"] == [], "the last turn still invited a look"
-    assert "code" in final["this_is_your_last_turn"]
-    assert "obsolete" in final["this_is_your_last_turn"]
-    assert "Document" in final["this_is_your_last_turn"]
-    assert "still exists" in final["this_is_your_last_turn"]
-    assert "this_is_your_last_turn" not in json.loads(llm.calls[2][-1]["content"])
-
-
 def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run():
     """
-    A model that spends its looks and then asks for another has failed an
-    attempt, not broken the loop. FCC-8.
+    A reply with no code, no `obsolete` and no `unbuildable` fails the
+    attempt, not the run. FCC-8.
 
     `revisions=0` keeps this on the terminal path: since FCC-61 a Step that
     cannot be built hands back to Plan, and this test is about the attempt, not
@@ -910,13 +854,14 @@ def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run()
     attempts, not three, and every one of them is scripted for.
     """
     result, events, _, _ = drive(
-        [plan_reply("Add a sketch")] + [look_reply("supported_types")] * 12,
-        budgets=Budgets(looks_per_turn=2, attempts_per_step=3, revisions=0),
+        [plan_reply("Add a sketch")]
+        + [json.dumps({"declare": {"note": "not sure what to build here"}})] * 4,
+        budgets=Budgets(attempts_per_step=3, revisions=0),
     )
 
     assert not result.ok
     assert events.first(ERROR) is None
-    blocked = events.first(BLOCKED)
+    blocked = events.first(BUDGET_EXHAUSTED)
     assert blocked is not None
     assert "Step 1 of 1" in blocked.data["reason"]
     assert len(blocked.data["tried"]) == 4
@@ -928,19 +873,19 @@ def test_a_step_that_never_writes_its_tail_still_terminates():
     """
     A trailing gap that recurs on every single call of a Step still bounds:
     `trailing_gap_retries` free continuations, then `attempts_per_step`
-    charged ones, then a handback — never an unbounded re-ask. `looks_per_turn=0`
-    keeps each attempt to one provider call so the arithmetic is exact: 3 free
-    plus 1 charged is 4 tried, from exactly 4 scripted replies and not a 5th —
-    `ScriptedLLMClient` raises if the loop reaches for one.
+    charged ones, then a handback — never an unbounded re-ask. Each attempt is
+    one provider call, so the arithmetic is exact: 3 free plus 1 charged is 4
+    tried, from exactly 4 scripted replies and not a 5th — `ScriptedLLMClient`
+    raises if the loop reaches for one.
     """
     result, events, _, _ = drive(
-        [plan_reply("Only")] + [json.dumps({"note": "not sure what to build here"})] * 4,
-        budgets=Budgets(looks_per_turn=0, attempts_per_step=1, revisions=0,
+        [plan_reply("Only")] + [json.dumps({"declare": {"note": "not sure what to build here"}})] * 4,
+        budgets=Budgets(attempts_per_step=1, revisions=0,
                         trailing_gap_retries=3),
     )
 
     assert not result.ok
-    blocked = events.first(BLOCKED)
+    blocked = events.first(BUDGET_EXHAUSTED)
     assert blocked is not None
     assert len(blocked.data["tried"]) == 4
 
@@ -951,7 +896,7 @@ def test_a_step_that_never_writes_its_tail_still_terminates():
 def test_every_design_call_of_a_run_carries_a_page_and_not_the_whole_sheet():
     """
     The first pass is one call per page now, not one call over the whole
-    sheet (`core/loop.py :: _first_pass`) — the 2023 pipe clamp is two pages,
+    sheet (`core/py :: _first_pass`) — the 2023 pipe clamp is two pages,
     so it costs two page-sized calls and one reconciling call that sees no
     pictures at all, rather than the single 27-picture, 43,923 character call
     this used to be. `tests/test_design_payload.py` measures the same three
@@ -964,7 +909,7 @@ def test_every_design_call_of_a_run_carries_a_page_and_not_the_whole_sheet():
         suspect_reply(), verdict_reply("pass"),
     ], attachments=[THE_PIPE_CLAMP])
 
-    calls = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    calls = [call for call in llm.calls if prompt("design") in call[0]["content"]]
     assert len(calls) == 4, "first pass (2 pages + reconcile) plus the re-read A_DATUM provokes"
 
     page_calls, reconciling = calls[:2], calls[2]
@@ -990,7 +935,7 @@ def test_a_re_read_of_the_two_page_2023_sheet_still_knows_what_was_asked():
 
     _, _, llm, _ = _a_run_that_reads_the_sheet_every_way(THE_2023_SHEET, intent)
 
-    groups = len(loop._the_groups([THE_2023_SHEET]))
+    groups = len(_the_groups([THE_2023_SHEET]))
     re_reads = _asked_of_design(llm)[groups:]
     assert re_reads, "the sheet provoked no re-read at all"
     assert [turn for turn in re_reads if turn.get("intent") == intent] == re_reads

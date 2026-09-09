@@ -17,8 +17,8 @@ of the deletion is its own question.
 """
 import pytest
 
-from core.apply import ApplyPipeline, refuse_without_asking
-from core.preflight import PreflightResult
+from core.freecad.apply import ApplyPipeline, refuse_without_asking
+from core.kernel import KernelResult
 from tests.test_apply_pipeline import FakeDocument, FakeObject, FakeWorker
 
 
@@ -37,7 +37,7 @@ class Asked:
 def pipeline(worker, confirm=None, owned=None, created=("Box",), events=None):
     doc = FakeDocument()
 
-    def transaction(document, code, label):
+    def transaction(document, code, label, **_):
         for name in created:
             document.Objects.append(FakeObject(name))
 
@@ -50,7 +50,7 @@ def pipeline(worker, confirm=None, owned=None, created=("Box",), events=None):
 
 
 def touching(modified=(), deleted=(), created=()):
-    return FakeWorker(PreflightResult(ok=True, render="/tmp/r.png",
+    return FakeWorker(KernelResult(ok=True, render="/tmp/r.png",
                                       modified=list(modified), deleted=list(deleted),
                                       created=list(created)))
 
@@ -196,7 +196,7 @@ def test_preflight_still_runs_before_the_question_is_asked():
 
 def test_a_failed_preflight_never_reaches_the_question():
     asked = Asked(answer=True)
-    worker = FakeWorker(PreflightResult(ok=False, traceback="boom"))
+    worker = FakeWorker(KernelResult(ok=False, traceback="boom"))
 
     result = pipeline(worker, confirm=asked).apply("x()")
 
@@ -261,7 +261,7 @@ def test_a_step_that_deletes_nothing_of_theirs_asks_nothing_and_says_nothing():
 
 
 def test_the_pipeline_narrates_nothing_when_no_run_is_listening():
-    """`tools/run_slice.py` and the Level 2 harness build one with no stream."""
+    """`run.py` and the Level 2 harness build one with no stream."""
     built = pipeline(touching(deleted=["UserBox"]), confirm=Asked(True))
 
     assert built.apply("delete()").ok
@@ -310,7 +310,7 @@ class Tree(FakeDocument):
 def modelled(worker, objects, confirm=None, owned=None, events=None):
     doc = Tree(objects)
 
-    def transaction(document, code, label):
+    def transaction(document, code, label, **_):
         pass
 
     return ApplyPipeline(document=doc, worker=worker,

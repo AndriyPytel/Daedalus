@@ -125,6 +125,15 @@ def test_send_and_stop_share_one_slot(panel):
     assert (panel.stop_button.isVisible(), panel.send_button.isVisible()) == (False, True)
 
 
+def test_abort_shows_alongside_stop_while_a_run_is_going(panel):
+    """Abort is a second way to end the run in flight, not a replacement for Stop."""
+    panel._set_running(True)
+    assert (panel.stop_button.isVisible(), panel.abort_button.isVisible()) == (True, True)
+
+    panel._set_running(False)
+    assert (panel.stop_button.isVisible(), panel.abort_button.isVisible()) == (False, False)
+
+
 def test_the_composer_shows_the_figma_placeholder(panel):
     assert panel.user_input.placeholderText() == "Describe what you want to build\u2026"
 
@@ -276,13 +285,12 @@ def test_the_composer_carries_the_effort_in_force(panel):
 
 def test_picking_an_effort_stores_it_and_shows_it(panel, monkeypatch):
     """The pill says what the next run will be asked for, not what was stored."""
-    from core import llm
-    from utils import settings_manager
+    from core import llm, settings
 
     stored = []
-    monkeypatch.setattr(settings_manager.instance(), "set_profile_effort",
+    monkeypatch.setattr(settings.instance(), "set_profile_effort",
                         lambda profile, level: stored.append((profile, level)))
-    monkeypatch.setattr(settings_manager.instance(), "get_profile_effort",
+    monkeypatch.setattr(settings.instance(), "get_profile_effort",
                         lambda profile: stored[-1][1] if stored else "")
 
     panel._on_effort_selected("high")
@@ -308,11 +316,12 @@ def test_the_toggle_flips_between_the_two_profiles_and_back(panel):
 
 
 def test_the_effort_pill_follows_whichever_profile_the_toggle_is_on(panel, monkeypatch):
+    from core import settings as core_settings
     from utils import settings_manager
 
     settings = settings_manager.instance()
     monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-4o")
-    monkeypatch.setattr(settings, "get_profile_effort",
+    monkeypatch.setattr(core_settings.instance(), "get_profile_effort",
                         lambda profile: "high" if profile == "thinking" else "low")
 
     try:
@@ -382,7 +391,7 @@ def test_a_model_that_cannot_reason_is_not_offered_the_choice(panel, monkeypatch
     """A picker that changes nothing is a picker that lies."""
     from ui import copilot_panel
 
-    monkeypatch.setattr("core.llm.effort_is_honoured", lambda model_id=None: False)
+    monkeypatch.setattr("copilot.sdk.effort_is_honoured", lambda model_id=None: False)
     panel._show_effort()
     panel._open_effort_selector()
 
@@ -887,9 +896,9 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     on the bar, so the offending one can be taken off and the Intent sent
     again. FCC-14.
     """
-    from core import llm
+    from copilot import sdk
 
-    monkeypatch.setattr(llm, "selected_model_name", lambda _=None: "openai/gpt-3.5-turbo")
+    monkeypatch.setattr(sdk, "selected_model_name", lambda _=None: "openai/gpt-3.5-turbo")
     drawing = tmp_path / "bracket.step"
     drawing.write_text("ISO-10303-21;")
     panel.chip_bar.add_file(str(drawing))
@@ -1136,7 +1145,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
     The second way a worker blocks, and the one that hung FreeCAD again after
     the Plan Gate below was released.
 
-    A Step in flight parks its thread inside `core.apply.on_main_thread`,
+    A Step in flight parks its thread inside `core.freecad.apply.on_main_thread`,
     waiting on a job only the GUI event loop can take. `_cleanup_thread` runs
     on that thread and waits on the worker instead of pumping it, so the job
     is never taken: the worker sits out `DISPATCH_TIMEOUT`, and what
@@ -1149,7 +1158,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
     """
     import threading
 
-    import core.apply
+    import core.freecad.apply
     from conftest import QtCore
     from ui.copilot_panel import CopilotPanel
 
@@ -1159,7 +1168,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
     def _dispatch_and_block():
         parked.set()
         try:
-            core.apply.on_main_thread(lambda: "the Document")
+            core.freecad.apply.on_main_thread(lambda: "the Document")
         except Exception:
             pass
 
@@ -1179,7 +1188,7 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
         assert done.wait(5), "shutdown is still waiting on a Document operation in flight"
         assert not built.thread.isRunning(), "the worker thread outlived the panel"
     finally:
-        core.apply._closing.clear()
+        core.freecad.apply._closing.clear()
 
 
 def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_the_tests_own):
@@ -2083,7 +2092,7 @@ def test_a_restored_session_owns_nothing(panel, tmp_path):
     it is not reset on every switch any more, because the pipeline switching
     away from is no longer the pipeline switching in.
     """
-    from core.apply import ApplyPipeline
+    from core.freecad.apply import ApplyPipeline
 
     live = panel.chat_sessions.stack.currentIndex()
     panel.worker.pipeline = ApplyPipeline(owned={"BoxFromTheLiveSession"})
@@ -2104,7 +2113,7 @@ def test_a_restored_session_owns_nothing(panel, tmp_path):
 
 
 def test_a_new_session_owns_nothing(panel):
-    from core.apply import ApplyPipeline
+    from core.freecad.apply import ApplyPipeline
 
     panel.worker.pipeline = ApplyPipeline(owned={"BoxFromAnotherSession"})
 
@@ -2439,6 +2448,34 @@ def test_stopping_releases_a_waiting_question(panel):
     assert not card.isEnabled(), "the card is still answerable after Stop"
 
 
+def test_aborting_kills_the_kernel_and_releases_a_waiting_question(panel):
+    """
+    Abort is Stop plus one more thing (FCC-303): the kernel dies now rather
+    than once the in-flight Step finishes on its own, so `pipeline.shutdown`
+    is what tells the two apart at the panel's own boundary.
+    """
+    killed = []
+
+    class FakePipeline:
+        def shutdown(self):
+            killed.append(True)
+
+    panel.worker.pipeline = FakePipeline()
+    panel.on_missing_values("How many teeth?")
+    QT_APP.processEvents()
+    card = panel._question_card
+
+    panel.on_abort()
+    QT_APP.processEvents()
+
+    assert killed == [True]
+    assert panel.worker._abort.is_set()
+    assert panel.worker._stop.is_set()
+    assert panel._question_card is None
+    assert not card.isEnabled(), "the card is still answerable after Abort"
+    panel.worker.pipeline = None
+
+
 def test_the_acceptance_list_is_on_the_plan_card_before_the_gate(panel):
     """
     A criterion the user cannot see is a criterion they cannot correct, and the
@@ -2572,7 +2609,7 @@ def test_the_gate_cards_the_document_rather_than_opening_it_in_the_chat(panel, t
     The panel is shared with the tests above, so it is the last of each that
     this one just put there.
     """
-    from core.design import render
+    from core.design.design import render
     from core.events import DESIGN, PART, PLAN, Event
 
     from ui.plan_widget import PlanWidget
@@ -2663,7 +2700,7 @@ def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(pane
     """
     from conftest import QtWidgets
 
-    from core.loop import START_OVER
+    from core.loop.gate import START_OVER
 
     answered = []
     monkeypatched = panel.ask.answer
@@ -2798,7 +2835,7 @@ def test_clicking_approve_reject_and_start_over_on_the_verdict_card_answer_in_ki
         panel, tmp_path):
     from conftest import QtWidgets
 
-    from core.loop import ACCEPT, REVISE, START_OVER
+    from core.loop.gate import ACCEPT, REVISE, START_OVER
 
     answered = []
     monkeypatched = panel.ask.answer
@@ -2996,7 +3033,7 @@ def test_the_plan_gate_offers_exactly_one_build_button(panel):
 def test_clicking_build_answers_with_the_plan_as_generated_when_nothing_was_edited(
         panel, monkeypatch):
     from core.events import Event, PLAN
-    from core.loop import APPROVE
+    from core.loop.gate import APPROVE
 
     answered = []
     monkeypatch.setattr(panel.ask, "answer", answered.append)
@@ -3017,7 +3054,7 @@ def test_clicking_build_answers_with_the_plan_as_generated_when_nothing_was_edit
 def test_clicking_build_answers_with_the_plan_as_edited(panel, monkeypatch):
     """Editing, adding, and reordering all reach the answer Build sends. FCC-177."""
     from core.events import Event, PLAN
-    from core.loop import APPROVE
+    from core.loop.gate import APPROVE
 
     answered = []
     monkeypatch.setattr(panel.ask, "answer", answered.append)
@@ -3064,7 +3101,7 @@ def test_stop_while_the_decision_is_open_releases_it_and_is_not_an_acceptance(pa
     """
     import threading
 
-    from core.loop import ACCEPT, REVISE
+    from core.loop.gate import ACCEPT, REVISE
 
     answers = []
 
@@ -3576,6 +3613,63 @@ def test_a_tool_call_row_carries_how_long_the_call_took(panel):
     assert any("(3.2s)" in title for title in titles), titles
 
 
+def test_a_sub_agent_spawn_shows_a_live_row_before_it_answers(panel):
+    """AC6: the row appears while the worker is still running, not only after."""
+    from core.events import Event, SUB_AGENT_SPAWNED
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("spawn-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(SUB_AGENT_SPAWNED, {"phase": "design", "prompt": "read page 2"}))
+    QT_APP.processEvents()
+
+    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+    assert "Sub-agent (design)" in row.toggle_button.text()
+    assert row._clock is not None, "the row should be pulsing while the worker runs"
+
+
+def test_a_sub_agent_answer_fills_the_spawned_row_with_its_transcript(panel):
+    """Expanding the row shows the worker's full transcript, not only its answer."""
+    from core.events import Event, SUB_AGENT_ANSWERED, SUB_AGENT_SPAWNED
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("answer-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(SUB_AGENT_SPAWNED, {"phase": "design", "prompt": "read page 2"}))
+    panel.on_event(Event(SUB_AGENT_ANSWERED, {
+        "phase": "design", "answer": "13.0 mm",
+        "transcript": [{"role": "user", "content": "read page 2"},
+                       {"role": "assistant", "content": "13.0 mm"}]}))
+    QT_APP.processEvents()
+
+    rows = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)]
+    assert len(rows) == 1, "the answer should fill the spawned row, not add a second one"
+    row = rows[0]
+    assert row._clock is None, "an answered worker is done, not still pulsing"
+    row.toggle_content()
+    assert "read page 2" in row.content_area.text()
+    assert "13.0 mm" in row.content_area.text()
+
+
+def test_a_refused_spawn_renders_its_own_distinct_row(panel):
+    """AC6: a refusal is its own entry, not silently absent from the panel."""
+    from core.events import Event, SUB_AGENT_REFUSED
+    from ui.accordion_widget import AccordionWidget
+
+    index, _ = panel.chat_sessions.add_new_chat("refused-run")
+    panel.switch_session(index)
+
+    panel.on_event(Event(SUB_AGENT_REFUSED, {"phase": "worker", "reason": "depth"}))
+    QT_APP.processEvents()
+
+    row = [w for w in _widgets_in(panel) if isinstance(w, AccordionWidget)][-1]
+    assert "refused" in row.toggle_button.text().lower()
+    row.toggle_content()
+    assert "depth" in row.content_area.text()
+
+
 def test_the_end_of_a_run_reaches_the_panel_on_the_gui_thread(panel):
     """
     The crash this addon shipped with: `LoopWorker` is moved onto a QThread,
@@ -3656,7 +3750,7 @@ def _unhandled_kinds(all_kinds, method_sources, allowlist):
 
 
 PANEL_DISPATCH_ALLOWLIST = {
-    "QUESTION", "ANSWER", "DESIGN", "OUTSTANDING", "REVIEW_SUSPECTED",
+    "QUESTION", "ANSWER", "DESIGN", "OUTSTANDING", "REVIEW_SUSPECTED", "ROUTED",
 }
 
 
@@ -3672,8 +3766,8 @@ def test_every_event_kind_is_handled_by_a_panel_dispatcher_or_allowlisted():
     `PANEL_DISPATCH_ALLOWLIST` is the kinds none of the three chains branch
     on by name: `QUESTION`/`ANSWER` never reach the panel as events (they are
     the loop asking and the user answering), and `DESIGN`/`OUTSTANDING`/
-    `REVIEW_SUSPECTED` are narrated generically by `_say(narrate(event))`
-    at the tail of `on_event` rather than singled out.
+    `REVIEW_SUSPECTED`/`ROUTED` are narrated generically by
+    `_say(narrate(event))` at the tail of `on_event` rather than singled out.
     """
     import inspect
 

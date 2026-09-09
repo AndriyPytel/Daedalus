@@ -19,6 +19,11 @@ In the YouTrack knowledge base, not in the repo — `FCC-A-3` Project Overview, 
 Work for this repo lives in YouTrack, not GitHub Issues. Project config: `myga.yml`.
 The `myga-*` skills drive it.
 
+`package.xml`'s `<version>` is the version of truth; `Init.py` parses it back, never a literal
+of its own. Closing an Epic bumps the minor version to that epic's ticket number and resets
+patch to 0 (`0.<epic-number>.0`); closing any other ticket inside that epic bumps patch
+(`0.<epic-number>.<patch+1>`).
+
 ## Comments
 
 No comments. A measurement, a constraint, a rejected alternative — anything a
@@ -43,3 +48,28 @@ A number in an Acceptance Criterion is produced by a test, from the sheets in
 `tests/modelmania` or the sessions in `logs/`. A measurement that lives only in
 a docstring or a commit message is a claim: the next change moves it and
 nothing says so.
+
+## Tests
+
+Before adding a test, read the tests that already cover what is being changed.
+A test that pins behaviour the change removes is rewritten or deleted in the
+same commit as the change, never left standing beside its replacement: what
+costs an architecture change is not the test that fails, it is the one that
+passes while measuring what the code no longer does.
+
+A test that scans the tree by a hardcoded list of packages, paths or names is
+a liability — it must derive that list, or another test must assert the list
+is complete. Three guards here held a package tuple written before `copilot/`
+existed and stayed green for the whole epic.
+
+## RLM rewrite branch (FCC-291)
+
+This branch, `FCC-291-rlm-rewrite`, is a long-lived fork of `dev`, forked at
+the tag `pre-rlm-rewrite-dev-baseline` (commit `030d214`). Every ticket from
+FCC-296 onward lands its commits here, not on `dev`. Nothing else lands on
+`dev` for the rewrite's whole lifetime — no freeze rule and no reproduce-list
+ticket, because the remaining fix work on the current architecture finished
+before this epic started (FCC-292/293/294). The rewrite becomes `dev` by
+tag-and-replace at cutover (FCC-320), gated on the comparison harness's pass
+rate — not by merging this branch into `dev`. See `FCC-291`'s Solution Notes
+for the full decision.

@@ -8,9 +8,8 @@ phase's own prompt file never repeats a term any section defines.
 """
 import os
 
-from core.loop import (ASSERTION_PHASE, DESIGN_PHASE, EXECUTE_PHASE,
-                        PLAN_PHASE, REVIEW_PHASE, _LANGUAGE_HEADINGS,
-                        _PHASE_VOCABULARY, _language_sections, prompt)
+from core.loop.prompt import ASSERTION_PHASE, DESIGN_PHASE, EXECUTE_PHASE, PLAN_PHASE, REVIEW_PHASE, _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.prompt import _LANGUAGE_HEADINGS
 
 PROMPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                            "config", "prompts")
@@ -94,9 +93,18 @@ def test_design_never_names_its_own_artefact_a_model():
 
 
 def _reply_skeleton(phase):
+    """
+    The tail of the prompt showing what a `{"declare": ...}` turn carries
+    (FCC-322 rewrote the reply format from a single JSON reply to this
+    multi-turn agent's `declare` shape, but the marker check below is the
+    same: what the skeleton shows is what a real reply must carry). `## How
+    you work` is that section's own heading in every rewritten prompt, so
+    the whole section -- every `declare` example a phase shows, not only the
+    last -- is what gets checked for the phase's own marker.
+    """
     with open(os.path.join(PROMPTS_DIR, phase + ".md"), encoding="utf-8") as f:
         text = f.read()
-    return text[text.rfind("Reply with JSON only"):]
+    return text[text.rfind("## How you work"):]
 
 
 def test_a_reply_shows_the_marker_language_md_declares_for_its_own_phase():

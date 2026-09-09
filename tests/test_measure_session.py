@@ -23,6 +23,32 @@ def _fixture(name):
     return os.path.join(FIXTURES, name)
 
 
+def test_steps_started_and_applied_come_from_the_declaration_event(tmp_path):
+    """
+    FCC-304: a Step's declaration is `STEP_STARTED`, one event per Step, and
+    `steps_started`/`steps_applied` are a plain count of it and of `APPLIED` —
+    a hand count of a driven multi-Step run's own log must match what
+    `measure` reports for it.
+    """
+    from tests.loop_helpers import code_reply, drive, plan_reply, suspect_reply, verdict_reply
+    from core.events import STEP_STARTED, APPLIED
+
+    _, events, _, _ = drive([
+        plan_reply("First", "Second", "Third"),
+        code_reply("first()", "second()", "third()"),
+        suspect_reply(), verdict_reply("pass"),
+    ])
+
+    path = str(tmp_path / "session.jsonl")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(events.as_log())
+
+    result = measure(path)
+
+    assert result.steps_started == len(events.of(STEP_STARTED)) == 3
+    assert result.steps_applied == len(events.of(APPLIED)) == 3
+
+
 def test_a_run_that_reached_a_verdict():
     result = measure(_fixture("reached_verdict.jsonl"))
 
@@ -313,3 +339,167 @@ def test_a_run_cut_off_mid_wait_does_not_crash_or_go_negative(tmp_path):
     assert result.gate_wait_seconds == pytest.approx(30.0)
     assert result.gate_wait_seconds >= 0
     assert result.working_seconds >= 0
+
+
+def _write(tmp_path, name, events):
+    log_path = str(tmp_path / name)
+    with open(log_path, "w", encoding="utf-8") as handle:
+        handle.write(events.as_log())
+    return log_path
+
+
+def test_pass_rate_excludes_a_session_where_review_never_ran(tmp_path):
+    """
+    A block before Review ever gets a turn leaves `verdict` at `None` — a
+    fact about what happened to the run, not the same fact as Review
+    weighing in and saying no. Folding it into the denominator the same way
+    an explicit fail is folded in is the FCC-292 defect: one genuine pass
+    and one never-reviewed block used to read as a 50% pass rate; it must
+    read as 100%, over the one run Review actually judged.
+    """
+    from core.events import BLOCKED, EventStream, INTENT, REVIEW_VERDICT
+
+    reviewed = EventStream()
+    reviewed.emit(INTENT, text="a nut")
+    reviewed.emit(REVIEW_VERDICT, verdict="pass", reason="matches the Intent")
+
+    never_reviewed = EventStream()
+    never_reviewed.emit(INTENT, text="a bracket")
+    never_reviewed.emit(BLOCKED, reason="Out of revisions.", tried=[], provider_said="")
+
+    table = compare(
+        [_write(tmp_path, "reviewed.jsonl", reviewed)],
+        [_write(tmp_path, "reviewed.jsonl", reviewed),
+         _write(tmp_path, "never_reviewed.jsonl", never_reviewed)],
+        baseline_label="one pass", experiment_label="pass plus never-reviewed",
+    )
+
+    assert _cells(table, "pass rate") == ["100.0%", "100.0%"]
+
+
+def test_pass_rate_still_counts_a_session_review_explicitly_failed(tmp_path):
+    """The other half of the same seam: a `verdict == "fail"` is not excluded."""
+    from core.events import EventStream, INTENT, REVIEW_VERDICT
+
+    passed = EventStream()
+    passed.emit(INTENT, text="a nut")
+    passed.emit(REVIEW_VERDICT, verdict="pass", reason="matches the Intent")
+
+    failed = EventStream()
+    failed.emit(INTENT, text="a bracket")
+    failed.emit(REVIEW_VERDICT, verdict="fail", reason="hole off by 2 mm")
+
+    table = compare(
+        [_write(tmp_path, "passed.jsonl", passed)],
+        [_write(tmp_path, "passed.jsonl", passed), _write(tmp_path, "failed.jsonl", failed)],
+        baseline_label="one pass", experiment_label="pass plus fail",
+    )
+
+    assert _cells(table, "pass rate") == ["100.0%", "50.0%"]
+
+
+def test_blocked_rate_does_not_count_a_session_the_user_stopped(tmp_path):
+    """
+    A `Stopped` exception (`core/loop.py :: run`) now emits `stopped`, not
+    `blocked` (FCC-292) - the run was told to stop, it did not run out of
+    road - so a user cancel alongside a genuine block must read a 50%
+    blocked rate, not 100%.
+    """
+    from core.events import BLOCKED, EventStream, INTENT, STOPPED
+
+    genuinely_blocked = EventStream()
+    genuinely_blocked.emit(INTENT, text="a bracket")
+    genuinely_blocked.emit(BLOCKED, reason="Out of revisions.", tried=[], provider_said="")
+
+    user_stopped = EventStream()
+    user_stopped.emit(INTENT, text="a nut")
+    user_stopped.emit(STOPPED, reason="Stopped by you. Everything applied so far is still "
+                                      "in the Document; undo it Step by Step if you want it "
+                                      "gone.")
+
+    table = compare(
+        [], [_write(tmp_path, "blocked.jsonl", genuinely_blocked),
+             _write(tmp_path, "stopped.jsonl", user_stopped)],
+        experiment_label="one block, one stop",
+    )
+
+    assert _cells(table, "blocked rate") == ["0.0%", "50.0%"]
+
+
+def test_measure_reads_a_user_stop_as_neither_verdict_nor_blocked(tmp_path):
+    """The per-run reading a stopped session gets, not just the aggregate rate."""
+    from core.events import EventStream, INTENT, STOPPED
+
+    events = EventStream()
+    events.emit(INTENT, text="a nut")
+    events.emit(STOPPED, reason="Stopped by you.")
+
+    result = measure(_write(tmp_path, "stopped.jsonl", events))
+
+    assert result.verdict is None
+    assert result.blocked_reason is None
+
+
+def test_a_session_log_tells_a_user_stop_and_a_genuine_block_apart(tmp_path):
+    """The event kind itself, not just what `measure` does with it (AC2)."""
+    from core.events import BLOCKED, EventStream, INTENT, STOPPED, replay
+
+    events = EventStream()
+    events.emit(INTENT, text="a nut")
+    events.emit(STOPPED, reason="Stopped by you.")
+
+    stream, _ = replay(_write(tmp_path, "stopped.jsonl", events))
+
+    assert any(event.kind == STOPPED for event in stream)
+    assert not any(event.kind == BLOCKED for event in stream)
+
+
+def test_blocked_rate_does_not_count_a_budget_exhausted_or_an_aborted_session(tmp_path):
+    """
+    FCC-303 extends FCC-292's split to the rest of the six kinds: a run that
+    spent its own revision ceiling (`budget_exhausted`) and a run the user
+    killed the kernel on (`aborted`) are neither of them the `blocked` a
+    genuine impasse is, so a blocked rate over one of each and one real block
+    must read a third, not a full house.
+    """
+    from core.events import ABORTED, BLOCKED, BUDGET_EXHAUSTED, EventStream, INTENT
+
+    genuinely_blocked = EventStream()
+    genuinely_blocked.emit(INTENT, text="a bracket")
+    genuinely_blocked.emit(BLOCKED, reason="Out of revisions.", tried=[], provider_said="")
+
+    budget_exhausted = EventStream()
+    budget_exhausted.emit(INTENT, text="a nut")
+    budget_exhausted.emit(BUDGET_EXHAUSTED, reason="Out of revisions.", tried=[])
+
+    aborted = EventStream()
+    aborted.emit(INTENT, text="a nut")
+    aborted.emit(ABORTED, reason="Aborted. The Step in flight was discarded.")
+
+    table = compare(
+        [], [_write(tmp_path, "blocked.jsonl", genuinely_blocked),
+             _write(tmp_path, "budget.jsonl", budget_exhausted),
+             _write(tmp_path, "aborted.jsonl", aborted)],
+        experiment_label="one block, one budget-exhausted, one abort",
+    )
+
+    assert _cells(table, "blocked rate") == ["0.0%", "33.3%"]
+
+
+def test_a_session_log_tells_all_six_outcome_kinds_apart(tmp_path):
+    """The event kind itself, one per outcome, extending AC2 to AC3's six."""
+    from core.events import (
+        ABORTED, BLOCKED, BUDGET_EXHAUSTED, COMPLETED, FAILED, INTENT, STOPPED,
+        EventStream, replay,
+    )
+
+    kinds = (COMPLETED, STOPPED, ABORTED, FAILED, BLOCKED, BUDGET_EXHAUSTED)
+    seen = set()
+    for i, kind in enumerate(kinds):
+        events = EventStream()
+        events.emit(INTENT, text="a nut")
+        events.emit(kind)
+        stream, _ = replay(_write(tmp_path, "run-%d.jsonl" % i, events))
+        seen.update(event.kind for event in stream)
+
+    assert seen - {INTENT} == set(kinds)

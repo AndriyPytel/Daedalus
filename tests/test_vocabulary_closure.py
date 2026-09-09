@@ -164,7 +164,7 @@ def test_core_design_feature_kind_matches_the_prompts_own_list():
     Two independent copies of a closed list is exactly the shape that drifts
     silently, so a test keeps them equal rather than a comment promising it.
     """
-    from core.design import FEATURE_KIND
+    from core.design.design import FEATURE_KIND
 
     kinds, _ = _kind_vocabulary(_naming_section(_vocabulary_md()))
 

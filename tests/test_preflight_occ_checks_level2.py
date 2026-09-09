@@ -28,7 +28,7 @@ relying on Pad or Pocket to refuse it first.
 """
 import pytest
 
-from core.preflight import PreflightWorker, find_freecadcmd
+from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
 
@@ -39,7 +39,7 @@ def worker():
         find_freecadcmd()
     except RuntimeError as exc:
         pytest.skip(str(exc))
-    with PreflightWorker() as running:
+    with Kernel() as running:
         yield running
 
 

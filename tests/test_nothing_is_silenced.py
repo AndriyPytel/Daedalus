@@ -10,28 +10,14 @@ Checked by parsing, so a filter written in a module that needs FreeCAD to
 import is caught just the same.
 """
 import ast
-import os
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SEARCHED = ("core", "ui", "utils", "Mod", "tools")
+from tests.source_tree import sources
 
 SILENCERS = {
     ("warnings", "filterwarnings"),
     ("warnings", "simplefilter"),
     ("warnings", "catch_warnings"),
 }
-
-
-def sources():
-    for directory in SEARCHED:
-        for path, _, names in os.walk(os.path.join(ROOT, directory)):
-            if "__pycache__" in path:
-                continue
-            for name in sorted(names):
-                if name.endswith(".py"):
-                    full = os.path.join(path, name)
-                    with open(full, encoding="utf-8") as handle:
-                        yield os.path.relpath(full, ROOT), handle.read()
 
 
 def test_no_module_silences_a_warning():

@@ -6,14 +6,16 @@ If this fails, either the new code took a shortcut around the Tool registry, or
 a module earned its place on ALLOWED and nobody said so.
 
 The Document is reached from exactly these places, and each has a reason:
-  - core/freecad_tools.py: The Tools themselves. This is the sanctioned route.
-  - core/preflight_worker.py: Runs inside the Preflight Worker's own process,
-    against a throwaway copy. It never touches the user's Document.
-  - core/apply.py: Resolves the Document to hand to the transaction; reached
-    only through the apply_step Tool.
-  - core/sketch_check.py: Builds the reading as a sketch in a document of its
+  - core/freecad/apply.py: The Tools themselves, and where the transaction resolves
+    the Document to hand it to. This is the sanctioned route.
+  - core/kernel/kernel_worker.py: Runs inside the kernel's own process, against its
+    own checkpointed Document. It never touches the user's Document.
+  - core/sheets/sketch_check.py: Builds the reading as a sketch in a document of its
     own, to ask the solver whether what was read can be true at once, and
     closes it in a `finally`. It reads a drawing and never the user's Document.
+  - copilot/sdk.py: `Client` owns the Document a caller hands it, opening the
+    path or making the empty one the whole run is then applied to. It is the
+    assembly point, above the registry rather than around it.
 
 Reaching the live Document means one of these: ActiveDocument, openDocument,
 newDocument, listDocuments, getDocument.
@@ -23,43 +25,30 @@ import os
 
 import pytest
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PACKAGES = ("core", "ui", "utils", "Mod")
+from tests.source_tree import ROOT, sources
 
 ALLOWED = {
-    "core/freecad_tools.py",
-    "core/preflight_worker.py",
-    "core/apply.py",
-    "core/sketch_check.py",
+    "src/core/freecad/apply.py",
+    "src/core/kernel/kernel_worker.py",
+    "src/core/sheets/sketch_check.py",
+    "copilot/sdk.py",
 }
 
 DOCUMENT_ACCESS = ("ActiveDocument", "openDocument", "newDocument", "listDocuments", "getDocument")
 
 
-def python_files():
-    for package in PACKAGES:
-        for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, package)):
-            dirnames[:] = [d for d in dirnames if d != "__pycache__"]
-            for filename in filenames:
-                if filename.endswith(".py"):
-                    path = os.path.join(dirpath, filename)
-                    yield os.path.relpath(path, ROOT).replace(os.sep, "/"), path
-
-
-def document_access_in(path):
-    with open(path, encoding="utf-8") as handle:
-        tree = ast.parse(handle.read(), path)
+def document_access_in(source, path):
     return sorted({
-        node.attr for node in ast.walk(tree)
+        node.attr for node in ast.walk(ast.parse(source, path))
         if isinstance(node, ast.Attribute) and node.attr in DOCUMENT_ACCESS
     })
 
 
-@pytest.mark.parametrize("relative,path", list(python_files()), ids=lambda v: v if isinstance(v, str) else "")
-def test_only_sanctioned_modules_reach_the_document(relative, path):
+@pytest.mark.parametrize("relative,source", list(sources()), ids=lambda v: v if v.endswith(".py") else "")
+def test_only_sanctioned_modules_reach_the_document(relative, source):
     if relative in ALLOWED:
         return
-    found = document_access_in(path)
+    found = document_access_in(source, relative)
     assert not found, (
         "%s reaches the Document (%s). Go through the Tool registry, or add it "
         "to ALLOWED with a reason." % (relative, ", ".join(found))

@@ -13,31 +13,46 @@ import math
 import os
 import re
 import tempfile
+import time
 from dataclasses import replace
 from unittest.mock import Mock
 
 import pytest
 
 from core.events import (
-    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, CALL_STARTED, COST, ERROR,
+    ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED, CALL_STARTED, COST, ERROR,
     GATE, INTENT, PART, PLAN, PLAN_REVISED, DESIGN, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, STEP_STARTED, THOUGHT, TOOL_CALL,
     TOOL_RESULT, UNBUILT, WRITING, EventStream, replay,
 )
-from core import design, loop, part_file, sheet_reader
-from core.freecad_tools import TRAPS
+from core.design import design
+from core.design import part_file
+from core.sheets import sheet_reader
+from core.freecad.apply import TRAPS
 from core.llm import REASONING, TEXT, Chunk, ProviderRefused, ScriptedLLMClient, StreamCutOff
-from core.design import (
+from core.design.design import (
     UNDER, carried_by_no_source, decided_for_you, distilled, each_disagreement_once,
     entries, entry_at, measured_from_what_is_gone, merge, pointing,
     read_off_the_wrong_view, render, said_at,
 )
-from core.loop import (
-    PROMPTS, Budgets, _PHASE_VOCABULARY, _language_sections, prompt,
-    revisions_ceiling, run,
-)
+from core.loop.budgets import Budgets, revisions_ceiling
+from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
+from core.loop.run import run
+import core.loop.describe as loop_describe
+import core.loop.design as loop_design
+import core.loop.prompt as loop_prompt
+import core.loop.execute as loop_execute
+from core.loop.results import Progress
+from core.loop.run import Standing, Part, LastPass
+from core.loop.prompt import PROMPTS
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
+from core import kernel
+from core.loop.design import _the_groups, _split_to_budget, _A_GROUP_BUDGET
+from core.loop.describe import _round_evidence, _the_directions_are_the_drawings, _the_geometry_disagrees, _a_freecad_of_our_own, _every_number_is_the_sheets, _off_the_sheet, _the_sweep_is_the_sheets, _the_tracing_governs
+from core.loop.execute import Looks, TYPE_CACHE_PATH
+from core.loop.prompt import _pieces_of
+from core.design.design import A_CONFLICT
 from tests.loop_helpers import (
     RENDER_PNG,
     read,
@@ -88,9 +103,9 @@ def test_a_sheet_that_agrees_with_itself_adds_nothing(tmp_path, monkeypatch):
     without depending on a PDF.
     """
     sheet = _a_sheet_that_contradicts_itself(tmp_path, wide=100.0, printed=100.0)
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
 
-    assert loop._the_geometry_disagrees(["a.pdf"], EventStream()) == []
+    assert _the_geometry_disagrees(["a.pdf"], EventStream()) == []
 
 
 def test_without_a_freecad_to_build_in_the_description_is_untouched(
@@ -104,11 +119,11 @@ def test_without_a_freecad_to_build_in_the_description_is_untouched(
         raise RuntimeError("No headless FreeCAD found.")
 
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(kernel, "Kernel", no_headless_freecad)
 
     assert [found["kind"] for found
-            in loop._the_geometry_disagrees(["a.pdf"], EventStream())] == \
+            in _the_geometry_disagrees(["a.pdf"], EventStream())] == \
         [design.A_CHECK_HAZARD]
 
 
@@ -122,6 +137,7 @@ def test_the_reading_is_never_built_in_the_addon_s_own_process(
 
     So the outline goes down the pipe, and what comes back is the child's.
     """
+    from core.sheets import sketch_check
     asked = []
 
     class _AChildThatAnswered:
@@ -132,7 +148,7 @@ def test_the_reading_is_never_built_in_the_addon_s_own_process(
             asked.append("killed")
 
         def reading(self, request, timeout=None):
-            from core.sketch_check import Trouble, Verdict, as_response
+            from core.sheets.sketch_check import Trouble, Verdict, as_response
 
             asked.append(request)
             return dict(as_response(Verdict(
@@ -143,12 +159,12 @@ def test_the_reading_is_never_built_in_the_addon_s_own_process(
                          "pixels put 98.20 mm between them")])), ok=True)
 
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.sketch_check, "checked", _never_called)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(sketch_check, "checked", _never_called)
+    monkeypatch.setattr(kernel, "Kernel",
                         lambda *_, **__: _AChildThatAnswered())
 
-    found = loop._the_geometry_disagrees(["a.pdf"], EventStream())
+    found = _the_geometry_disagrees(["a.pdf"], EventStream())
 
     assert [entry["do"] for entry in asked if isinstance(entry, dict)] == ["reading"]
     assert asked[-1] == "killed", "the child outlived the sweep"
@@ -175,12 +191,12 @@ def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
 
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     events = EventStream()
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(kernel, "Kernel",
                         lambda *_, **__: _AChildThatDied())
 
     assert [found["kind"] for found
-            in loop._the_geometry_disagrees(["a.pdf"], events)] == \
+            in _the_geometry_disagrees(["a.pdf"], events)] == \
         [design.A_CHECK_HAZARD]
     assert "the front view" in events.last(ERROR).data["message"], \
         "an unchecked reading is indistinguishable from a clean one"
@@ -200,12 +216,12 @@ def test_a_child_that_cannot_come_back_leaves_the_rest_unchecked_and_the_run_ali
     """
     sheet = _a_sheet_of_many_outlines(tmp_path)
     events = EventStream()
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(kernel, "Kernel",
                         lambda *_, **__: _AChildThatCannotComeBack())
 
     assert [found["kind"] for found
-            in loop._the_geometry_disagrees(["a.pdf"], events)] == \
+            in _the_geometry_disagrees(["a.pdf"], events)] == \
         [design.A_CHECK_HAZARD]
     assert "the front view" in events.last(ERROR).data["message"]
 
@@ -224,10 +240,10 @@ def test_an_outline_nobody_could_check_is_a_hazard_on_the_part(tmp_path, monkeyp
 
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     events = EventStream()
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(kernel, "Kernel", no_headless_freecad)
 
-    found = loop._the_geometry_disagrees(["a.pdf"], events)
+    found = _the_geometry_disagrees(["a.pdf"], events)
     reading = each_disagreement_once(merge({"features": []}, {"conflicts": found}))
 
     assert [conflict["kind"] for conflict in found] == [design.A_CHECK_HAZARD]
@@ -250,11 +266,11 @@ def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypat
 
     sheet = _a_sheet_that_contradicts_itself(tmp_path)
     events = EventStream()
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(kernel, "Kernel", no_headless_freecad)
 
     assert [found["kind"] for found
-            in loop._the_geometry_disagrees(["a.pdf"], events)] == \
+            in _the_geometry_disagrees(["a.pdf"], events)] == \
         [design.A_CHECK_HAZARD]
     assert "the front view" in events.last(ERROR).data["message"]
 
@@ -263,17 +279,17 @@ def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypat
 def test_a_worker_that_could_not_start_names_why_on_the_transcript(monkeypatch):
     """
     `None` from `_a_freecad_of_our_own` is "nothing to start", said the same
-    way whether headless FreeCAD is absent (expected) or `PreflightWorker`
+    way whether headless FreeCAD is absent (expected) or `Kernel`
     regressed (a real bug) — `except Exception: return None` used to make
     those indistinguishable even on the transcript.
     """
     def broken_worker(*_, **__):
         raise RuntimeError("no headless binary")
 
-    monkeypatch.setattr(loop.preflight, "PreflightWorker", broken_worker)
+    monkeypatch.setattr(kernel, "Kernel", broken_worker)
     events = EventStream()
 
-    assert loop._a_freecad_of_our_own(events) is None
+    assert _a_freecad_of_our_own(events) is None
     errors = events.of(ERROR)
     assert len(errors) == 1
     assert "RuntimeError" in errors[0].data["message"]
@@ -302,13 +318,13 @@ def test_the_whole_reading_check_is_bounded_by_one_budget(tmp_path, monkeypatch)
     clock = iter([0.0] + [40.0 * step for step in range(1, 40)])
     sheet = _a_sheet_of_many_outlines(tmp_path)
     events = EventStream()
-    monkeypatch.setattr(loop.time, "monotonic", lambda: next(clock))
-    monkeypatch.setattr(loop.sheet_reader, "read", lambda path, **kw: sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker",
+    monkeypatch.setattr(time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(sheet_reader, "read", lambda path, **kw: sheet)
+    monkeypatch.setattr(kernel, "Kernel",
                         lambda *_, **__: _AChildThatHangs())
 
     assert [found["kind"] for found
-            in loop._the_geometry_disagrees(["a.pdf"], events, budget=60.0)] == \
+            in _the_geometry_disagrees(["a.pdf"], events, budget=60.0)] == \
         [design.A_CHECK_HAZARD]
 
     assert len(asked) < 4, "the budget bounded nothing"
@@ -339,14 +355,14 @@ def test_a_sheet_is_read_once_however_many_phases_ask_for_it(tmp_path, monkeypat
     def no_headless_freecad(*_, **__):
         raise RuntimeError("No headless FreeCAD found.")
 
-    loop.sheet_reader._READ_CACHE.clear()
-    monkeypatch.setattr(loop.sheet_reader, "_read",
+    sheet_reader._READ_CACHE.clear()
+    monkeypatch.setattr(sheet_reader, "_read",
                         lambda where, *_, **__: read.append(where) or sheet)
-    monkeypatch.setattr(loop.preflight, "PreflightWorker", no_headless_freecad)
+    monkeypatch.setattr(kernel, "Kernel", no_headless_freecad)
 
-    loop._the_sweep_is_the_sheets({"features": []}, [str(path)])
-    loop._round_evidence([str(path)])
-    loop._the_geometry_disagrees([str(path)], EventStream())
+    _the_sweep_is_the_sheets({"features": []}, [str(path)])
+    _round_evidence([str(path)])
+    _the_geometry_disagrees([str(path)], EventStream())
 
     assert read == [str(path)]
 
@@ -358,17 +374,17 @@ def test_a_number_on_no_sheet_is_put_to_the_drawing_and_then_left_as_a_conflict(
     once, and then recorded — the number may be right and derived from
     something this cannot see, so the Gate is where a person says so.
     """
-    monkeypatch.setattr(loop, "_off_the_sheet", lambda attachments, part: [1234.0])
+    monkeypatch.setattr(loop_describe, "_off_the_sheet", lambda attachments, part: [1234.0])
     asked = []
 
     def design(payload, llm, events, attachments):
         asked.append(payload["the_question"])
         return {}, None
 
-    monkeypatch.setattr(loop, "design", design)
+    monkeypatch.setattr(loop_describe, "design", design)
 
-    grown = loop._every_number_is_the_sheets(
-        {"features": []}, "Make the clamp", ["a.pdf"], None, None, loop.Budgets(),
+    grown = _every_number_is_the_sheets(
+        {"features": []}, "Make the clamp", ["a.pdf"], None, None, Budgets(),
         lambda: False)
 
     assert asked and "1234" in asked[0]
@@ -384,38 +400,38 @@ def test_a_number_off_the_sheet_is_signed_as_machine_written(monkeypatch):
     `crosswise`, whose entries fell through to that default; both are signed
     here the same way.
     """
-    monkeypatch.setattr(loop, "_off_the_sheet", lambda attachments, part: [1234.0])
-    monkeypatch.setattr(loop, "design", lambda payload, llm, events, attachments: ({}, None))
+    monkeypatch.setattr(loop_describe, "_off_the_sheet", lambda attachments, part: [1234.0])
+    monkeypatch.setattr(loop_describe, "design", lambda payload, llm, events, attachments: ({}, None))
 
-    grown = loop._every_number_is_the_sheets(
-        {"features": []}, "Make the clamp", ["a.pdf"], None, None, loop.Budgets(),
+    grown = _every_number_is_the_sheets(
+        {"features": []}, "Make the clamp", ["a.pdf"], None, None, Budgets(),
         lambda: False)
 
-    assert grown["conflicts"][0]["kind"] == loop.A_CONFLICT
+    assert grown["conflicts"][0]["kind"] == A_CONFLICT
     assert grown["conflicts"][0]["machine_written"] is True
 
 
 def test_a_number_the_look_accounted_for_is_not_a_conflict(monkeypatch):
     """Where the re-read points at where it came from, there is nothing to record."""
     answers = iter([[1234.0], []])
-    monkeypatch.setattr(loop, "_off_the_sheet",
+    monkeypatch.setattr(loop_describe, "_off_the_sheet",
                         lambda attachments, part: next(answers))
-    monkeypatch.setattr(loop, "design",
+    monkeypatch.setattr(loop_describe, "design",
                         lambda payload, llm, events, attachments: ({}, None))
 
-    grown = loop._every_number_is_the_sheets(
-        {"features": []}, "Make the clamp", ["a.pdf"], None, None, loop.Budgets(),
+    grown = _every_number_is_the_sheets(
+        {"features": []}, "Make the clamp", ["a.pdf"], None, None, Budgets(),
         lambda: False)
 
     assert "conflicts" not in grown
 
 
 def test_a_description_whose_numbers_are_all_the_sheets_is_left_alone(monkeypatch):
-    monkeypatch.setattr(loop, "_off_the_sheet", lambda attachments, part: [])
-    monkeypatch.setattr(loop, "design", lambda *a, **kw: 1 / 0)
+    monkeypatch.setattr(loop_describe, "_off_the_sheet", lambda attachments, part: [])
+    monkeypatch.setattr(loop_describe, "design", lambda *a, **kw: 1 / 0)
 
-    assert loop._every_number_is_the_sheets(
-        {"features": []}, "Make the clamp", ["a.pdf"], None, None, loop.Budgets(),
+    assert _every_number_is_the_sheets(
+        {"features": []}, "Make the clamp", ["a.pdf"], None, None, Budgets(),
         lambda: False) == {"features": []}
 
 
@@ -426,19 +442,19 @@ def test_a_number_printed_on_one_sheet_of_two_is_not_off_the_sheet(monkeypatch):
     and the sheet that does says nothing. Unioned, every number printed on one
     of two sheets is on no sheet at all.
     """
-    monkeypatch.setattr(loop, "_sheets", lambda attachments: ["the first", "the second"])
-    monkeypatch.setattr(loop.sheet_reader, "invented",
+    monkeypatch.setattr(loop_describe, "_sheets", lambda attachments: ["the first", "the second"])
+    monkeypatch.setattr(sheet_reader, "invented",
                         lambda sheet, part: {"the first": [50.0, 1234.0],
                                              "the second": [1234.0]}[sheet])
 
-    assert loop._off_the_sheet(["one.pdf", "two.pdf"], {"features": []}) == [1234.0]
+    assert _off_the_sheet(["one.pdf", "two.pdf"], {"features": []}) == [1234.0]
 
 
 def test_with_no_sheet_to_ask_nothing_is_off_the_sheet(monkeypatch):
     """An intersection over no sheets is every number, and no sheet said so."""
-    monkeypatch.setattr(loop, "_sheets", lambda attachments: [])
+    monkeypatch.setattr(loop_describe, "_sheets", lambda attachments: [])
 
-    assert loop._off_the_sheet(["one.pdf"], {"envelope": {"the length": "50 mm"}}) == []
+    assert _off_the_sheet(["one.pdf"], {"envelope": {"the length": "50 mm"}}) == []
 
 
 
@@ -588,9 +604,9 @@ def test_the_traced_profile_is_on_the_feature_before_the_plan_is_asked_for():
     the disagreement.
     """
     from tests.test_design import THE_POCKET_IN_CONFLICT, THE_TRACED_POCKET
-    from core.design import decided_for_you
+    from core.design.design import decided_for_you
 
-    settled = loop._the_tracing_governs(json.loads(json.dumps(THE_POCKET_IN_CONFLICT)))
+    settled = _the_tracing_governs(json.loads(json.dumps(THE_POCKET_IN_CONFLICT)))
     at = "features \u2192 front-central-pocket \u2192 profile"
 
     assert said_at(settled, at) == THE_TRACED_POCKET
@@ -607,7 +623,7 @@ def test_a_description_with_nothing_traced_in_conflict_is_left_alone():
                            "stands": "the front view prints 40 mm",
                            "was_also_said": "SECTION A-A prints 45 mm"}]}
 
-    assert loop._the_tracing_governs(json.loads(json.dumps(part))) == part
+    assert _the_tracing_governs(json.loads(json.dumps(part))) == part
 
 
 
@@ -665,8 +681,8 @@ def test_a_rejected_review_carries_the_unbuilt_step_s_entry_on_the_auto_answer(c
         plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
                    {"do": "Assign plain carbon steel to the Body",
                     "satisfies": [THE_MATERIAL]}),
-        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
-                    "unbuildable": NO_CARD}),
+        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": NO_CARD}}),
         suspect_reply(),
         assertion_reply(CHECKS),
         verdict_reply("fail", reason="the pad reads shallow"),
@@ -689,8 +705,8 @@ def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
         plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
                    {"do": "Pocket a recess in the steel face",
                     "satisfies": [THE_MATERIAL]}),
-        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
-                    "unbuildable": "the recess cuts nothing"}),
+        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": "the recess cuts nothing"}}),
         plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
                    {"do": "Pocket a wider recess", "satisfies": [THE_MATERIAL]}),
         code_reply("pad()", "recess()"),
@@ -726,9 +742,9 @@ def test_a_conflict_a_photo_cannot_settle_is_flagged_assumed_rather_than_kept_as
 
     _traced(monkeypatch, {})
     _re_read_as(monkeypatch, THE_SAME_PICTURE_LOOKED_AT_AGAIN)
-    settled = loop._the_directions_are_the_drawings(
+    settled = _the_directions_are_the_drawings(
         json.loads(json.dumps(THE_LUG_FROM_A_PHOTO)), "Make it from the photo", [],
-        None, EventStream(), loop.Budgets(rereads=2), lambda: False)
+        None, EventStream(), Budgets(rereads=2), lambda: False)
 
     axis = entry_at(settled, "features → boss-front → axis")
     assert axis["flag"] == "assumed"
@@ -770,7 +786,7 @@ def test_mechanical_revisions_do_not_consume_execution_budget():
         plan_reply("Step 1"),
         plan_reply("Step 1 revised", satisfies=everything(A_PART)),
         code_reply("step1()"),
-        json.dumps({"unbuildable": "the sketch is overconstrained"}),
+        json.dumps({"declare": {"unbuildable": "the sketch is overconstrained"}}),
         plan_reply("Step 1 without overconstraint", satisfies=everything(A_PART)),
         code_reply("step1_fixed()"),
         suspect_reply(),
@@ -799,7 +815,7 @@ def test_block_reason_names_mechanical_ceiling_when_hit():
     ], attachments=[RENDER_PNG], budgets=Budgets(revisions=5, mechanical_revisions=2))
 
     assert result.blocked
-    blocked = events.first(BLOCKED)
+    blocked = events.first(BUDGET_EXHAUSTED)
     reason = blocked.data["reason"]
     assert "mechanical ceiling" in reason,         "block_reason distinguishes mechanical ceiling from execution ceiling"
 
@@ -810,7 +826,7 @@ def test_describe_type_is_cached_to_disk_between_runs(tmp_path, monkeypatch):
     the Tool again. The answer cost 23 seconds in a recorded run, for a fact
     about the build that never changes (logs/sessions/247c2aae...).
     """
-    from core.loop import Looks
+    from core.loop.execute import Looks
 
     cache_path = str(tmp_path / "type_cache.json")
 
@@ -830,7 +846,7 @@ def test_describe_object_is_not_cached_to_disk_between_runs(tmp_path):
     The boundary holds: describe_object describes an object in the user's
     Document, which changes with every Step. It stays a per-run cache only.
     """
-    from core.loop import Looks
+    from core.loop.execute import Looks
 
     cache_path = str(tmp_path / "type_cache.json")
 
@@ -850,7 +866,7 @@ def test_different_freecad_version_does_not_reuse_type_cache(tmp_path):
     A different FreeCAD build may have different properties on the same type,
     so the cache key includes the version.
     """
-    from core.loop import Looks
+    from core.loop.execute import Looks
 
     cache_path = str(tmp_path / "type_cache.json")
 
@@ -870,7 +886,7 @@ def test_corrupted_cache_file_does_not_crash_the_run(tmp_path):
     A cache file that cannot be read is treated as absent. The run continues
     and the Tool is called.
     """
-    from core.loop import Looks
+    from core.loop.execute import Looks
 
     cache_path = tmp_path / "type_cache.json"
     cache_path.write_text("{ this is not valid json")
@@ -892,7 +908,7 @@ def test_two_sessions_writing_the_disk_cache_do_not_erase_each_other(tmp_path):
     first session's write used to overwrite the file with only its own
     entries, losing the first session's on `os.replace`.
     """
-    from core.loop import Looks
+    from core.loop.execute import Looks
 
     cache_path = str(tmp_path / "type_cache.json")
 
@@ -916,7 +932,7 @@ def test_disk_cached_type_is_reported_as_already_known(tmp_path):
     TOOL_RESULT events for describe_type from disk carry already_known=True,
     so the transcript does not lie.
     """
-    from core.loop import Looks, _look
+    from core.loop.execute import Looks, _look
     from core.events import TOOL_RESULT, EventStream
 
     cache_path = str(tmp_path / "type_cache.json")
@@ -944,11 +960,10 @@ def test_type_cache_path_is_repo_relative(tmp_path, monkeypatch):
     Under FreeCAD it resolves through the Mod/ symlink to user data; under
     pytest the fixture redirects it to tmp_path.
     """
-    from core import loop
+    
+    monkeypatch.setattr(loop_execute, "TYPE_CACHE_PATH", str(tmp_path / "cache.json"))
 
-    monkeypatch.setattr(loop, "TYPE_CACHE_PATH", str(tmp_path / "cache.json"))
-
-    looks = loop.Looks(cache_path=loop.TYPE_CACHE_PATH, freecad_version="0.21.0")
+    looks = Looks(cache_path=loop_execute.TYPE_CACHE_PATH, freecad_version="0.21.0")
     looks.remember("describe_type", {"type_id": "Test"}, {"ok": True})
 
     assert (tmp_path / "cache.json").exists(), \
@@ -961,10 +976,9 @@ def test_type_cache_fixture_redirects_to_tmp_path(tmp_path):
     The autouse fixture redirects TYPE_CACHE_PATH to tmp_path, so type cache
     writes go there instead of repo/logs.
     """
-    from core import loop
-
-    assert str(tmp_path) in loop.TYPE_CACHE_PATH, \
-        "TYPE_CACHE_PATH %s not under tmp_path %s" % (loop.TYPE_CACHE_PATH, tmp_path)
+    
+    assert str(tmp_path) in loop_execute.TYPE_CACHE_PATH, \
+        "TYPE_CACHE_PATH %s not under tmp_path %s" % (loop_execute.TYPE_CACHE_PATH, tmp_path)
 
 
 
@@ -979,7 +993,7 @@ def test_a_closed_step_op_off_the_36_list_is_refused_and_names_the_verb():
     entry it was meant to satisfy back through the ordinary coverage check
     instead of a code path invented for the purpose.
     """
-    from core.loop import _steps_of
+    from core.loop.plan import _steps_of
 
     steps, satisfies, cites, ops, unbuildable = _steps_of(
         [{"do": "Squish the tab flat", "op": "squish",
@@ -994,7 +1008,7 @@ def test_a_closed_step_op_off_the_36_list_is_refused_and_names_the_verb():
 
 
 def test_a_closed_step_op_on_the_36_list_is_kept_with_its_op():
-    from core.loop import _steps_of
+    from core.loop.plan import _steps_of
 
     steps, satisfies, cites, ops, unbuildable = _steps_of(
         [{"do": "Pad the base profile 6 mm", "op": "pad"}], CLOSED_OPS)
@@ -1010,7 +1024,7 @@ def test_an_unmarked_reply_takes_the_legacy_path_op_or_not():
     and every bare-string Step already has — is never checked, whatever `op`
     (if any) rides along with it.
     """
-    from core.loop import _steps_of
+    from core.loop.plan import _steps_of
 
     steps, satisfies, cites, ops, unbuildable = _steps_of(
         [{"do": "Squish the tab flat", "op": "squish"}], None)
@@ -1020,7 +1034,7 @@ def test_an_unmarked_reply_takes_the_legacy_path_op_or_not():
 
 
 def test_a_bare_string_step_is_unaffected_by_the_op_check():
-    from core.loop import _steps_of
+    from core.loop.plan import _steps_of
 
     steps, satisfies, cites, ops, unbuildable = _steps_of(["Pad the base profile 6 mm"],
                                                           CLOSED_OPS)
@@ -1036,7 +1050,7 @@ def test_a_closed_step_written_in_ukrainian_is_refused():
     `"op_vocabulary": "closed"` marker `_steps_of` already gates the 36-op
     check with.
     """
-    from core.loop import _steps_of
+    from core.loop.plan import _steps_of
 
     steps, satisfies, cites, ops, unbuildable = _steps_of(
         [{"do": "Виконати паз шириною 6 мм", "op": "pocket",
@@ -1051,7 +1065,7 @@ def test_a_closed_step_written_in_ukrainian_is_refused():
 
 
 def test_a_closed_step_written_in_english_is_unaffected_by_the_language_check():
-    from core.loop import _steps_of
+    from core.loop.plan import _steps_of
 
     steps, satisfies, cites, ops, unbuildable = _steps_of(
         [{"do": "Pocket a 6 mm slot", "op": "pocket"}], CLOSED_OPS)
@@ -1065,7 +1079,7 @@ def test_a_closed_step_with_domain_symbols_is_not_mistaken_for_ukrainian():
     None of Ø, an em dash or a degree sign is Cyrillic — `Ø40 bore` is
     ordinary English in this domain and must never be refused for language.
     """
-    from core.loop import _steps_of
+    from core.loop.plan import _steps_of
 
     steps, satisfies, cites, ops, unbuildable = _steps_of(
         [{"do": "Drill a Ø40 bore — 30° chamfer both ends", "op": "hole"}],
@@ -1082,7 +1096,7 @@ def test_a_closed_step_with_one_cyrillic_label_is_not_refused():
     single Cyrillic character — a label or a part name copied from the
     Intent in the user's own words.
     """
-    from core.loop import _steps_of
+    from core.loop.plan import _steps_of
 
     steps, satisfies, cites, ops, unbuildable = _steps_of(
         [{"do": "Pad the profile 6.5 mm, label it Профіль",
@@ -1097,7 +1111,7 @@ def test_an_unmarked_reply_takes_the_legacy_path_for_language_too():
     """The same legacy escape the op check gets (FCC-233) applies here: a
     Plan predating the closed vocabulary marker is never refused for
     language, whatever it is written in."""
-    from core.loop import _steps_of
+    from core.loop.plan import _steps_of
 
     steps, satisfies, cites, ops, unbuildable = _steps_of(
         [{"do": "Виконати паз шириною 6 мм", "op": "pocket"}], None)
@@ -1108,7 +1122,7 @@ def test_an_unmarked_reply_takes_the_legacy_path_for_language_too():
 
 
 def test_the_op_vocabulary_is_36_verbs_the_32_reachable_plus_four():
-    from core.loop import OP_VERBS
+    from core.loop.plan import OP_VERBS
 
     assert len(OP_VERBS) == 36
     for verb in ("thread", "extend", "trim", "offset"):
@@ -1124,14 +1138,14 @@ def test_an_off_list_op_sends_plan_back_naming_the_verb_and_the_36_allowed():
     the 36 it may choose from instead.
     """
     _, events, llm, _ = drive([
-        json.dumps({"steps": [
+        json.dumps({"declare": {"steps": [
             {"do": "Add a box", "op": "pad"},
             {"do": "Machine a lattice into it", "op": "lattice-mill"},
-        ], "op_vocabulary": CLOSED_OPS}),
-        json.dumps({"steps": [
+        ], "op_vocabulary": CLOSED_OPS}}),
+        json.dumps({"declare": {"steps": [
             {"do": "Add a box", "op": "pad"},
             {"do": "Emboss a lattice texture", "op": "additive-primitive"},
-        ], "op_vocabulary": CLOSED_OPS}),
+        ], "op_vocabulary": CLOSED_OPS}}),
         code_reply("doc.addObject('Part::Box', 'Box')",
                    "doc.addObject('Part::Feature', 'Lattice')"),
         suspect_reply(), verdict_reply("pass"),
@@ -1152,14 +1166,14 @@ def test_a_run_never_asks_execute_about_a_step_whose_op_was_refused():
     op never reaches Execute, so no code is ever asked for it.
     """
     _, _, llm, _ = drive([
-        json.dumps({"steps": [
+        json.dumps({"declare": {"steps": [
             {"do": "Add a box", "op": "pad"},
             {"do": "Machine a lattice into it", "op": "lattice-mill"},
-        ], "op_vocabulary": CLOSED_OPS}),
-        json.dumps({"steps": [
+        ], "op_vocabulary": CLOSED_OPS}}),
+        json.dumps({"declare": {"steps": [
             {"do": "Add a box", "op": "pad"},
             {"do": "Emboss a lattice texture", "op": "additive-primitive"},
-        ], "op_vocabulary": CLOSED_OPS}),
+        ], "op_vocabulary": CLOSED_OPS}}),
         code_reply("doc.addObject('Part::Box', 'Box')",
                    "doc.addObject('Part::Feature', 'Lattice')"),
         suspect_reply(), verdict_reply("pass"),
@@ -1179,8 +1193,8 @@ def test_a_closed_marked_steps_op_reaches_the_apply_step_tool_call():
     at all — so the lint check it feeds stays off for every recorded fixture.
     """
     _, events, _, tools = drive([
-        json.dumps({"steps": [{"do": "Add a box", "op": "pad"}],
-                    "op_vocabulary": CLOSED_OPS}),
+        json.dumps({"declare": {"steps": [{"do": "Add a box", "op": "pad"}],
+                    "op_vocabulary": CLOSED_OPS}}),
         code_reply("doc.addObject('Part::Box', 'Box')", label="Add the box"),
         suspect_reply(), verdict_reply("pass"),
     ])
@@ -1228,22 +1242,22 @@ def test_split_to_budget_opens_each_shared_image_at_most_once():
         opened.append(path)
         return FakeImage(path)
 
-    original_pieces_of = loop._pieces_of
+    original_pieces_of = loop_design._pieces_of
     original_isfile = os.path.isfile
     original_open = PILImage.open
-    original_budget = loop._A_GROUP_BUDGET
-    loop._pieces_of = fake_pieces_of
+    original_budget = loop_design._A_GROUP_BUDGET
+    loop_design._pieces_of = fake_pieces_of
     os.path.isfile = lambda path: True
     PILImage.open = counting_open
-    loop._A_GROUP_BUDGET = 1
+    loop_design._A_GROUP_BUDGET = 1
     try:
         sheet = types.SimpleNamespace(printed=False)
-        loop._split_to_budget(sheet, views, 0)
+        _split_to_budget(sheet, views, 0)
     finally:
-        loop._pieces_of = original_pieces_of
+        loop_design._pieces_of = original_pieces_of
         os.path.isfile = original_isfile
         PILImage.open = original_open
-        loop._A_GROUP_BUDGET = original_budget
+        loop_design._A_GROUP_BUDGET = original_budget
 
     assert sorted(set(opened)) == sorted(opened), (
         "a shared image was reopened across recursion levels: %r" % opened)
@@ -1255,9 +1269,8 @@ def test_run_state_namespaces_are_dataclasses_that_reject_a_typo():
     `@dataclass` instances, so a typo'd field name is an immediate
     `AttributeError` rather than a silently created dict key.
     """
-    for name, typo in (("Progress", "aplied"), ("Standing", "aproval"),
-                       ("Part", "teh_part"), ("LastPass", "stepz")):
-        cls = getattr(loop, name)
+    for cls, typo in ((Progress, "aplied"), (Standing, "aproval"),
+                       (Part, "teh_part"), (LastPass, "stepz")):
         instance = cls()
         with pytest.raises(AttributeError):
             getattr(instance, typo)

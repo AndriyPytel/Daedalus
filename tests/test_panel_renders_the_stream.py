@@ -10,12 +10,12 @@ and the only thing the panel asks of the loop is to start.
 import ast
 import os
 
-from core.events import DESIGN, KINDS
+from core.events import CHANGE_SET, DESIGN, KINDS
 
-WRITTEN_NOT_SHOWN = {DESIGN}
+WRITTEN_NOT_SHOWN = {DESIGN, CHANGE_SET}
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PANEL = os.path.join(ROOT, "ui", "copilot_panel.py")
+PANEL = os.path.join(ROOT, "src", "ui", "copilot_panel.py")
 
 
 def panel_tree():
@@ -38,11 +38,13 @@ def test_every_event_kind_is_shown():
     checked by running it, or rendered structurally by the panel because it is
     not a sentence — which is still a switch, and still parsed.
 
-    `WRITTEN_NOT_SHOWN` is the third way and has one member: the description is
-    a document of its own, said by the path the `part` event carries rather
-    than by the paragraph itself. Naming it here is what keeps the rule for
-    every other kind. `cost` is in the structural set instead: `on_event`
-    accumulates it into one running total rather than narrating each call.
+    `WRITTEN_NOT_SHOWN` is the third way: the description is a document of its
+    own, said by the path the `part` event carries rather than by the
+    paragraph itself, and the change-set beside it is the same kind of
+    artefact — read from the log, not narrated live. Naming them here is what
+    keeps the rule for every other kind. `cost` is in the structural set
+    instead: `on_event` accumulates it into one running total rather than
+    narrating each call.
     """
     from core.narrate import Narration, narrate
 
@@ -93,7 +95,7 @@ def test_the_panel_only_ever_asks_the_loop_to_start():
 def test_the_panel_never_touches_the_document_or_the_worker_directly():
     tree = panel_tree()
     forbidden = ("ActiveDocument", "openTransaction", "commitTransaction",
-                 "PreflightWorker", "check")
+                 "Kernel", "check")
     found = {
         node.attr for node in ast.walk(tree)
         if isinstance(node, ast.Attribute) and node.attr in forbidden

@@ -1,14 +1,10 @@
 """
 Level 1 — model-facing prose lives in config/prompts/, not in code.
 
-Measured before this test: 15 module-level prose constants of 200 characters or
-more, spread across core/lint.py, core/loop.py, and core/apply.py. Each is text
-the provider receives, tuned on a different rhythm than the AST rules or phase
-logic around it.
-
-The rule is that model-facing prose edits are prompt file edits, not Python
-code edits: correcting what the Copilot is told is editing text, not shipping a
-release.
+Every lint refusal, the look-it-up nudge, retry prompts, and failure messages
+lived as module-level string constants in core/. Correcting what the Copilot is
+told was a Python edit and a release. Now each is a file under config/prompts/
+read at runtime: correcting the wording is editing text.
 
 _ENVELOPE_CHECK and SELF_INTERSECTION_CHECK are code templates executed in the
 worker, not prose the provider receives, so they are excluded.
@@ -16,7 +12,7 @@ worker, not prose the provider receives, so they are excluded.
 import ast
 import os
 
-from tests.source_tree import ROOT
+from tests.source_tree import ROOT, package_dirs
 
 THRESHOLD = 200
 
@@ -48,17 +44,17 @@ def _module_level_string_constants(path):
 
 def test_no_oversized_prose_in_core():
     offenders = []
-    core_path = os.path.join(ROOT, "core")
-    for dirpath, _, names in os.walk(core_path):
-        if "__pycache__" in dirpath:
-            continue
-        for name in sorted(names):
-            if not name.endswith(".py"):
+    for package_path in package_dirs():
+        for dirpath, _, names in os.walk(package_path):
+            if "__pycache__" in dirpath:
                 continue
-            full = os.path.join(dirpath, name)
-            where = os.path.relpath(full, ROOT)
-            for var, length, line in _module_level_string_constants(full):
-                offenders.append("%s:%d %s (%d chars)" % (where, line, var, length))
+            for name in sorted(names):
+                if not name.endswith(".py"):
+                    continue
+                full = os.path.join(dirpath, name)
+                where = os.path.relpath(full, ROOT)
+                for var, length, line in _module_level_string_constants(full):
+                    offenders.append("%s:%d %s (%d chars)" % (where, line, var, length))
 
     assert not offenders, (
         "model-facing prose belongs in config/prompts/, not in code: %s"
