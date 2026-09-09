@@ -3,7 +3,6 @@ src/Mod/pages/providers_page.py::_save_models
 src/Mod/pages/providers_page.py::saveSettings
 src/core/agent/phase_contract.py::spawn
 src/core/agent/subagent.py::delegate
-src/core/arithmetic.py::module
 src/core/arithmetic.py::wrong_sums
 src/core/dependency_manager.py::install_package
 src/core/dependency_manager.py::prune_superseded
@@ -51,8 +50,6 @@ src/core/design/part_file.py::saved
 src/core/events.py::module
 src/core/freecad/apply.py::ApplyPipeline
 src/core/freecad/apply.py::_Dispatcher
-src/core/freecad/apply.py::_a_rebuild
-src/core/freecad/apply.py::_cavity_center
 src/core/freecad/apply.py::_constraints
 src/core/freecad/apply.py::_inventoried
 src/core/freecad/apply.py::_inventory

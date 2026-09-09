@@ -488,24 +488,8 @@ class ApplyPipeline:
         """
         Ask before deleting the feature tree, whoever built it.
 
-        A run asked to *amend* an existing part deleted every Sketch and every
-        PartDesign feature in the Body and started again from an empty one —
-        having first copied seven numbers off the sketches it was about to
-        destroy into a scratch object, which is the shape of a rebuild that
-        knows it is losing something. Nothing stopped it: the assistant had
-        created those features earlier in the same Session, so the Owned Object
-        rule read the Document as its own to clear.
-
-        So ownership is not the question here; how much of the model goes is.
-        Deleting one feature is a correction — the assistant replacing
-        something it just got wrong, which the Plan Gate approved the prose of.
-        Deleting several is a rebuild, and a rebuild is the user's decision to
-        make, because what it throws away is a part they have been watching get
-        built.
-
-        The types come off the live Document rather than off Preflight, which
-        reports names. The objects are still there to ask: this runs before the
-        Step is applied, which is the whole point of it.
+        Ownership is not the question; how much of the model goes is.
+        Deleting one feature is a correction; deleting several is a rebuild.
         """
         modelling = self._modelling(doc, preflighted.deleted)
         if len(modelling) <= _A_CORRECTION:
@@ -847,19 +831,9 @@ def fit_view(document=None):
 
 def _cavity_center(box, material):
     """
-    The centre of mass of the largest void inside `box`, or None with
-    nothing hollow to find.
+    The centre of mass of the largest void inside `box`, or None.
 
-    `material` is the fused Shape of the tip features only — "only what
-    nothing else uses", the same `obj.InList` reading `_inventory` already
-    takes, so a Box consumed by a Shell or a Cut does not paper over the
-    cavity its own result carves. Cutting that material from a solid built
-    on `box` itself leaves exactly the voids a shell, bore or blind pocket
-    opens up; the biggest by volume is the one worth a plane through it.
-
-    Costs one boolean `cut`: measured at ~0.11s for a 200x200x30 plate cut
-    by forty 8mm bores (`tests/test_freecad_tools_level2.py`), and the same
-    single call, void or not, on anything smaller.
+    Measured: ~0.11s for a 200x200x30 plate cut by forty 8mm bores.
     """
     import FreeCAD
     import Part
