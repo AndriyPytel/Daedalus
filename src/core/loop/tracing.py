@@ -117,16 +117,8 @@ def _a_freecad_of_our_own(events):
     """
     A headless FreeCAD to build the reading in, or nothing.
 
-    Never the live one, and never this thread. `sketch_check` makes a Document,
-    writes Sketcher constraints into it and solves — and `_describe_the_part`
-    runs on the loop's worker thread, where a Document mutation takes FreeCAD
-    down with it (`core/apply.py`, FCC-126). One warm child for the whole
-    sweep: four sheets are 142 outlines, and a process each is a process each.
-
-    Nothing to start is not an error, and the caller says so on the transcript:
-    a machine with no headless FreeCAD reads its drawing exactly as it does
-    today, but a check that ran on no outline at all is not allowed to look
-    like a check that found nothing.
+    Never the live one, and never this thread: `_describe_the_part` runs on the
+    loop's worker thread, where a Document mutation takes FreeCAD down with it.
     """
     try:
         worker = kernel.Kernel()

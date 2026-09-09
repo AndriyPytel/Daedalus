@@ -112,7 +112,6 @@ src/core/llm/client.py::stream
 src/core/llm/exceptions.py::StreamCutOff
 src/core/llm/factory.py::client_from_settings
 src/core/llm/factory.py::effort_is_honoured
-src/core/llm/roles.py::RoleClient
 src/core/llm/stream.py::_billed
 src/core/llm/stream.py::_translate
 src/core/loop/assertion.py::Checked
@@ -156,7 +155,6 @@ src/core/loop/helpers.py::_also_check
 src/core/loop/helpers.py::_assumed
 src/core/loop/helpers.py::_carried_over
 src/core/loop/helpers.py::_trailing_gap
-src/core/loop/looks.py::Looks
 src/core/loop/plan.py::_steps_of
 src/core/loop/plan.py::_two_directions_in_one_step
 src/core/loop/plan.py::_unconsumed
@@ -185,7 +183,6 @@ src/core/loop/run.py::decided
 src/core/loop/run.py::outcome
 src/core/loop/run.py::rewrite
 src/core/loop/run.py::run
-src/core/loop/tracing.py::_a_freecad_of_our_own
 src/core/loop/tracing.py::_every_outline_traced
 src/core/loop/tracing.py::_the_geometry_disagrees
 src/core/loop/tracing.py::_what_the_solver_said

@@ -116,12 +116,7 @@ def client_from_profiles():
 
 
 def client_from_roles():
-    """
-    Build `RoleClient` from the settings table (FCC-312): one client per row,
-    keyed by that row's role, and `caller` -- the fallback a role absent from
-    the table answers from -- built on the same model/effort a caller with no
-    per-role split would already be running under.
-    """
+    """Build `RoleClient` from the settings table: one client per row, keyed by role."""
     from utils import settings_manager
     from core.llm.roles import RoleClient
 

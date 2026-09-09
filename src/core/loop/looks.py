@@ -6,35 +6,10 @@ import tempfile
 
 class Looks:
     """
-    Every look this run has taken, so none of them is paid for twice (FCC-99).
+    Every look this run has taken, so none of them is paid for twice.
 
-    A look is not expensive because the Tool is slow — the Tool answers in
-    milliseconds. It is expensive because it costs a whole turn: Execute
-    replies with a question instead of code, the loop answers it, and Execute
-    is asked again. A recorded run asked what the same scratch object had eight
-    times and what `PartDesign::Pocket` has five, across the regenerations of
-    one Plan, and each of those thirteen answers had already been given. At two
-    minutes a turn that is most of half an hour spent re-reading a property
-    list that had not changed.
-
-    So the answers are kept and handed to Execute *before* it asks. Which of
-    them are still true is the only real question here, and it has two answers.
-    What a *type* has is a fact about this build: it cannot change while
-    FreeCAD is running, so it is true for the whole run. What an *object* has
-    is a fact about the Document, and every applied Step is a chance for it to
-    have changed — so those are kept only until the next Step lands, and after
-    that they are dropped rather than repeated as though they still held.
-
-    `ABOUT_THE_BUILD` names the looks whose answer is a property of the build
-    and not of the Document. `CARRIED` is how many looks Execute is handed
-    unasked: beyond it the oldest go, because what was looked at most recently
-    is what the Steps being written now are about, and an unbounded list would
-    grow a request the whole run long.
-
-    `describe_type` is cached to disk between runs, keyed by FreeCAD version.
     A recorded run spent 26 minutes and $4.24 of $19.46 on six describe_type
-    calls — facts about the build that never change
-    (logs/sessions/247c2aae...).
+    calls — facts about the build that never change.
     """
 
     ABOUT_THE_BUILD = ("describe_type", "supported_types", "materials")
