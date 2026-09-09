@@ -1,15 +1,5 @@
-"""
-The routing orchestrator: the one call every user message passes through
-before Design, a run question, or the run controller ever sees it. It names
-what the message is; it never touches the words themselves, because FCC-154's
-rule that Intent is exactly what the user asked for has to survive the trip
-through this module too (epic FCC-291 Problem Statement).
-
-It is one model call the user waits on directly, so it stays a single
-question-and-answer turn -- classify, then hand off -- rather than a
-conversation of its own; `Session` (FCC-309) is still what carries that one
-turn, because a caller wiring the orchestrator into a run of several messages
-gets the same persistent-history seam every other agent does.
+"""The routing orchestrator: the one call every user message passes through
+before Design, a run question, or the run controller ever sees it.
 """
 from core.events import ROUTED
 from core.llm import TEXT, Session

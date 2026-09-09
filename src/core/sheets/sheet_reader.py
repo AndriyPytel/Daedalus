@@ -324,7 +324,7 @@ class _PageAccumulator:
 
     Nine positional `list` arguments to `_a_page` let two adjacent ones of
     the same type (`printed` and `callouts`) swap at the call site and still
-    compile and pass static analysis (FCC-266); a mutation by field name
+    compile and pass static analysis; a mutation by field name
     (`page_state.printed.extend(...)`) cannot be silently mistaken for a
     mutation of `page_state.callouts`.
     """
@@ -3006,7 +3006,7 @@ def round_in(sheet):
     is round in the view its axis points at and in no other. Two features
     round in two views therefore have crossing axes regardless of what the
     picture looks like, which holds without knowing which view is the plan
-    and which the elevation (FCC-109) — the reader names a view by where it
+    and which the elevation — the reader names a view by where it
     sits on the sheet, the description by what it shows.
     """
     if sheet is None:
@@ -3072,8 +3072,7 @@ def printed_on_the_sheet(sheet):
     number, so a paraphrase of it is a loss. In the run that named this
     (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`) 230 entries came
     back as 22 sentences — "Page 1: (6), (6), 30, (25) — SECTION A-A" — and
-    `off_by`, the arithmetic that catches 108 read as 100, went with them
-    (FCC-112).
+    `off_by`, the arithmetic that catches 108 read as 100, went with them.
     """
     if sheet is None:
         return []

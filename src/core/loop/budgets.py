@@ -68,7 +68,7 @@ class Budgets:
 
 def revisions_ceiling(budgets, steps) -> int:
     """
-    How many replans this Plan is allowed, from how long it is (FCC-61).
+    How many replans this Plan is allowed, from how long it is.
 
     A four-Step Plan and a forty-Step Plan cannot have the same allowance: a
     long Plan has more places to hand back from, and every Execute -> Plan
@@ -79,26 +79,7 @@ def revisions_ceiling(budgets, steps) -> int:
 
 
 class _Revisions:
-    """
-    How many times the Plan has been rewritten, and why (FCC-22).
-
-    Eight unrelated things replan: the Plan leaves part of the description
-    unplanned, a sum it states does not come out, a Step names an operation
-    off the closed list, the user amends at the Plan Gate, Execute finds a
-    Step out of date, Execute cannot build one, the acceptance checks fail,
-    and Review rejects the result. Mechanical causes (UNCOVERED, MISCOUNTED,
-    OP_REFUSED) spend their own ceiling; execution causes (OBSOLETE,
-    UNBUILDABLE, ASSERTED, REJECTED, AMENDED) spend revisions_ceiling. They used
-    to share one *counter* too, so whichever branch spent the last unit was
-    reported as the cause of all of them, and a run stopped by two amendments
-    told the user Execute kept finding the Plan out of date.
-
-    OP_REFUSED sits with UNCOVERED and MISCOUNTED rather than with
-    UNBUILDABLE: the closed-vocabulary check that raises it runs over the
-    Plan reply itself, before Execute is ever asked for code, the same way
-    UNCOVERED and MISCOUNTED are read straight off the Plan and never touch a
-    Document (ADR-0026, FCC-233).
-    """
+    """How many times the Plan has been rewritten, and why (ADR-0026)."""
 
     UNCOVERED = "uncovered"
     MISCOUNTED = "miscounted"

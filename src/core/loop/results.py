@@ -19,8 +19,7 @@ class LoopResult:
     other ending already reads.
 
     `the_part_path` is the Part reading this run planned from: the one it
-    wrote, or the one it was handed and skipped Design to read instead
-    (FCC-210). Empty where neither happened. A run that inherits it and gets
+    wrote, or the one it was handed and skipped Design to read instead. Empty where neither happened. A run that inherits it and gets
     no new attachment reads the same Part rather than describing it again.
     """
 
@@ -80,7 +79,7 @@ class Progress:
     down rather than kept as several locals.
 
     Named fields catch a typo'd read or write as `AttributeError` at the call
-    site instead of a dict silently growing a new, never-read key (FCC-276).
+    site instead of a dict silently growing a new, never-read key.
     """
     applied: int = 0
     tried: list = field(default_factory=list)

@@ -4,8 +4,8 @@
 Constraints:
 Verdict is movement distance, not solver return code — a bad solve moves geometry to satisfy it.
 A_SHIFT is the pass/fail line for how far a traced entity may move onto the sheet's own numbers.
-Runs only in the Preflight child (FCC-126) — Document mutation on the loop thread crashes FreeCAD,
-and Sketcher.Constraint itself can segfault (FCC-19).
+Runs only in the Preflight child — Document mutation on the loop thread crashes FreeCAD,
+and Sketcher.Constraint itself can segfault.
 Wire fields cross as plain lists — JSON has no tuple, and the report format uses `%`.
 
 Measured (tests/modelmania, 4 sheets, 142 outlines): movement 0.15-0.30mm median, 0.50-0.75mm p90,

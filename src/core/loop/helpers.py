@@ -74,7 +74,7 @@ def _also_check(acceptance, outstanding):
     the run before it got wrong, so its acceptance list cannot see the six
     entries that were already failing. Adding them is what makes the checks at
     the end of this run an answer about the whole Document rather than about
-    the changes it happened to make (FCC-98).
+    the changes it happened to make.
     """
     listed = list(acceptance)
     known = set(listed)
@@ -107,7 +107,7 @@ def _block(events, reason, tried, applied, said=""):
 
 def _stopped(events, reason, applied):
     """
-    A user `Stopped` this run, not a `blocked` one (FCC-292): the loop's own
+    A user `Stopped` this run, not a `blocked` one: the loop's own
     `blocked`/`awaiting_user` fields still hold — a stopped run is stopped
     and waiting, not failed and finished — but the event stream says which
     of the two happened, so `core/measure.py`'s blocked rate counts only
@@ -119,7 +119,7 @@ def _stopped(events, reason, applied):
 
 def _aborted(events, reason, applied):
     """
-    A user `Aborted` this run (FCC-303) -- the same `Stopped` exception as a
+    A user `Aborted` this run -- the same `Stopped` exception as a
     plain Stop, told apart at `run`'s own boundary by the `aborted` callable
     it was handed.
 
@@ -134,7 +134,7 @@ def _aborted(events, reason, applied):
 
 def _budget_exhausted(events, reason, tried, applied):
     """
-    `_OutOfRevisions` specifically (FCC-303) -- the run did not hit a genuine
+    `_OutOfRevisions` specifically -- the run did not hit a genuine
     impasse, it spent its own ceiling of attempts and revisions. Kept off
     `blocked` so `core/measure.py`'s blocked rate reads only the runs that ran
     out of road for a reason that was not the budget itself.

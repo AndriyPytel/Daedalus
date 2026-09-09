@@ -1,7 +1,6 @@
 src/Mod/pages/providers_page.py::_build_ui
 src/Mod/pages/providers_page.py::_save_models
 src/Mod/pages/providers_page.py::saveSettings
-src/core/agent/agent.py::run_phase
 src/core/agent/phase_contract.py::spawn
 src/core/agent/subagent.py::delegate
 src/core/arithmetic.py::module
@@ -48,7 +47,6 @@ src/core/design/design.py::twice_over
 src/core/design/design.py::twice_placed
 src/core/design/design.py::unsafe_supersession
 src/core/design/design.py::where_the_direction_is
-src/core/design/part_file.py::logged
 src/core/design/part_file.py::module
 src/core/design/part_file.py::saved
 src/core/events.py::module
@@ -115,7 +113,6 @@ src/core/loop/assertion.py::_the_model_failed
 src/core/loop/assertion.py::_unmet_in
 src/core/loop/assertion.py::the_envelope_measured
 src/core/loop/budgets.py::Budgets
-src/core/loop/budgets.py::_Revisions
 src/core/loop/describe.py::_corrected_by
 src/core/loop/describe.py::_describe_the_part
 src/core/loop/describe.py::_every_callout_accounted_for
@@ -165,12 +162,10 @@ src/core/loop/prompt.py::_the_evidence
 src/core/loop/prompt.py::_the_object_in
 src/core/loop/prompt.py::_wanted_paths
 src/core/loop/prompt.py::_words_only
-src/core/loop/prompt.py::prompt
 src/core/loop/results.py::LoopResult
 src/core/loop/results.py::Stopped
 src/core/loop/review.py::_review_content
 src/core/loop/review.py::review
-src/core/loop/review.py::review_suspect
 src/core/loop/run.py::_changes_the_shape
 src/core/loop/run.py::_not_reached
 src/core/loop/run.py::outcome

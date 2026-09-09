@@ -85,7 +85,7 @@ def _fill_triangle(colour, zbuffer, xy, z, rgb):
 
     The depth test is what the mean-depth sort could not do: a triangle that
     interpenetrates another is in front over part of itself and behind over the
-    rest, and only a per-pixel comparison can say which part is which (FCC-46).
+    rest, and only a per-pixel comparison can say which part is which.
 
     A triangle of no area is edge-on and has no pixels of its own.
     """
@@ -164,7 +164,7 @@ def render(doc, path, size=(800, 600)):
 
     A per-pixel depth buffer and the shapes' own edges, because Review judges
     by this file and the painter's-algorithm version did not resemble the
-    viewport it is compared against (FCC-46). Anti-aliasing, per-object colour
+    viewport it is compared against. Anti-aliasing, per-object colour
     and perspective are deliberately still absent: Review does not judge by
     those, and the render is not trying to be a screenshot.
     """

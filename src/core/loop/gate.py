@@ -26,7 +26,7 @@ class Approval:
     of the description nothing planned — and each revision stopped at the Gate
     for an approval the user had, in substance, already given. In a recorded
     session that came to sixty-nine minutes of a hundred and thirty-five spent
-    waiting at a Gate, against six seconds of FreeCAD (FCC-101). A standing
+    waiting at a Gate, against six seconds of FreeCAD. A standing
     approval says "get on with it": the run stops asking about revisions of
     this Plan, and every other question it can put to the user — the user's own
     objects, a rebuild of the model, what to do about a result that did not
@@ -47,7 +47,7 @@ class Approval:
 
     `steps` is the Plan the Gate is actually approving, if it differs from
     the one it was shown: the panel's Plan Gate is edited directly now, not
-    amended through the model (FCC-177), and Build hands back whatever it
+    amended through the model, and Build hands back whatever it
     holds at the moment it is pressed. Empty means unedited -- run continues
     with the Steps `plan()` produced.
     """
@@ -112,7 +112,7 @@ def _a_question_for_the_build(question):
     can settle. A material card's uuid, a type's name, a property's spelling is
     not: no sheet prints one, and a recorded run spent every re-read it had
     putting "the UUID of an installed plain carbon steel material card" to the
-    drawing before ending for want of an answer (FCC-149).
+    drawing before ending for want of an answer.
     """
     words = re.findall(r"[a-z]+", str(question).lower())
     return any(word in _ABOUT_THE_BUILD for word in words)
@@ -131,7 +131,7 @@ def nobody_to_ask(question):
 
 class NeedsAnswer(Exception):
     """
-    Raised by an `ask` callback that has nobody to ask (FCC-316).
+    Raised by an `ask` callback that has nobody to ask.
 
     `copilot.sdk.Client` raises this instead of guessing when its caller
     supplied no answer callback; `run` turns it into a blocked, resumable

@@ -1,22 +1,8 @@
-"""
-One tree-wide supervisor bounding sub-agent delegation to depth 1, under
-turn, token and concurrency budgets tracked across the whole spawn tree --
-not per child.
+"""One tree-wide supervisor bounding sub-agent delegation to depth 1, under
+turn, token and concurrency budgets tracked across the whole spawn tree.
 
-A phase agent (Design, Plan, Execute, Assertion, Review, the orchestrator)
-is depth 0; a worker it spawns is depth 1; depth 1's own spawn attempt is
-refused outright, never retried -- the fixed phase chain handing off between
-phases is not a spawn and never touches this tree at all. A refusal is
-appended to `refusals` rather than silently dropped or looped on, so a
-caller (FCC-308's event wiring) can turn it into a `SUB_AGENT_REFUSED`
-event; the `KINDS` themselves are FCC-308's to add, not this module's.
-
-TURN_BUDGET (30) is the p90 of provider calls observed over 72 real runs (46
-of this repo's own session logs plus 26 ab-rlm-agentic benchmark runs).
-TOKEN_BUDGET (2_600_000) is the p90 of 54 priced runs' `cost` events,
-inverted against litellm's own price table under an assumed 50/50
-input/output split -- provisional per the ticket's own OPEN QUESTIONS, to be
-re-derived once FCC-309 records real token counts.
+TURN_BUDGET (30) is the p90 of provider calls over 72 real runs.
+TOKEN_BUDGET (2_600_000) is the p90 of 54 priced runs' `cost` events.
 """
 import math
 import os
@@ -117,7 +103,7 @@ def delegate(supervisor, phase_session, phase_depth, llm, prompt, stream=None, p
     *stream* is the run's `EventStream` and *phase* the spawning phase's
     name; when given, `SUB_AGENT_SPAWNED` fires before the worker's own turn
     runs -- so a delegating phase renders as a live row while the worker is
-    still going, not only once it answers (FCC-308) -- and either
+    still going, not only once it answers -- and either
     `SUB_AGENT_ANSWERED` (carrying the worker's full transcript, since only
     `answer` reaches *phase_session*) or `SUB_AGENT_REFUSED` follows.
     """

@@ -118,7 +118,7 @@ class Written:
     Keyed by the Step's number in the Plan rather than by position in the
     reply. A regeneration is asked about a tail, and a reply that leaves a Step
     out has to leave a hole at that Step — shifting every Step after it onto
-    the wrong code is the silent failure this ticket exists to remove (FCC-95).
+    the wrong code is the silent failure this ticket exists to remove.
 
     `unbuildable` is why a Step was left out, from a reply that wrote code for
     the others. A complaint that arrives beside working code is about that Step
@@ -391,7 +391,7 @@ _REPAIR_REFERENCE = (
 
 def _repair_reference(attempts):
     """
-    The repair layer's own addition to a retry request (FCC-203): a
+    The repair layer's own addition to a retry request: a
     reference entry for a *known* symptom, keyed on a phrase read off the
     latest attempt's own traceback the way `_FAILED_THIS_WAY` and
     `_the_same_way_twice` already are — but consulted on the *first*
@@ -539,7 +539,7 @@ def _emit_plan(events, kind, planned, reason=None, unanswered=(), decided=(),
 
     `unanswered` rides with it because a Plan that chose its own values is the
     only place those choices are correctable, and the Gate cannot show what it
-    was never handed (FCC-96). `decided` is the same argument for the values the
+    was never handed. `decided` is the same argument for the values the
     model settled before Plan ever saw them: nothing is asked between the
     attachment and the Gate, so the Gate is where they are read (ADR-0022).
 
@@ -624,7 +624,7 @@ def _what_this_build_has(tools):
     them from the same allowance as a question about the Document is what left
     a recorded run with its looks spent at the Step that assigns a material,
     being told a look now was a failed attempt — so it declared the Step
-    unbuildable and said the Tool was unavailable (FCC-146).
+    unbuildable and said the Tool was unavailable.
 
     Unfiltered, because a page of cards is what the request wants to carry: a
     name to match against was the question in the first place. A budget the

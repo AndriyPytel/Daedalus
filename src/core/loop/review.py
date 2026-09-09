@@ -54,18 +54,7 @@ def review_suspect(intent, views, described, llm, events, attachments=(),
                    supervisor=None, kernel=None):
     """
     Look at the finished Document before Assertion measures it, and name what
-    a render alone can only suspect.
-
-    Runs first, on the same views and the same Description Review #2 judges
-    later, so what it notices still has Assertion ahead of it to confirm or
-    refute — never a verdict of its own (FCC-204: a suspicion that could pass
-    or fail the run on its own is the flaw ADR-0015 already ruled out).
-
-    What it returns is zero or more Acceptance entries, each written the way
-    every other entry already is — `address: value` — and flagged `suspected`
-    here rather than trusted from the reply, the way a view-read entry is
-    flagged `derived` by the loop and not by the phase that read it. Assertion
-    reads them exactly as it reads the rest of the list (FCC-258).
+    a render alone can only suspect. Never a verdict of its own (ADR-0015).
     """
     request = {"intent": intent, "the_document_as_it_now_stands": described}
     content = _review_content(request, views, attachments)
@@ -101,10 +90,10 @@ def review(intent, views, described, llm, events, attachments=(), checked=None,
     One view is not enough — a mirrored tooth flank reads only from above, and
     in isometry it is foreshortened, which is why Review passed one. Neither is
     the picture enough on its own: a hole is a dimension, not a pixel, and the
-    Description is where it can be read (FCC-81).
+    Description is where it can be read.
 
     Without the attachments this compared a render against a sentence, so "does
-    this resemble what I was shown" was not a question it could ask (FCC-47).
+    this resemble what I was shown" was not a question it could ask.
 
     The views arrive in the order `capture_review_views` writes them, which is
     what `_VIEW_NAMES` names them by for Review's own prose — the same views

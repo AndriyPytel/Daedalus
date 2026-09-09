@@ -86,36 +86,7 @@ def _language_sections():
 def prompt(phase, ledger=""):
     """
     A phase's system prompt, read from `config/prompts/<phase>.md` and
-    composed with the sections of the shared vocabulary, `config/prompts/
-    language.md` (ADR-0026, FCC-234), that phase actually uses —
-    `_PHASE_VOCABULARY` names which: Design invents `kind`/datum/envelope
-    names and writes English prose, so it gets naming and the English rule;
-    Plan and Execute write and check an `op`, so they get the 36-verb
-    section, and Plan also gets the sentence rules since it is the phase
-    that writes the Steps those rules and the English-only check bind;
-    Assertion and both Review phases write English and nothing else language.md
-    defines, so English is all any of the three needs. The vocabulary lives once, in
-    one file, one heading per closed list — a phase composing only some of
-    those headings is still reading its one source of truth, not a copy of
-    it. Appended after the phase's own body rather than before it, so a
-    phrase such as design.md's "the closed vocabulary below" still points at
-    something below it in the composed prompt.
-
-    Read per turn rather than at import: the addon installs as a plain source
-    tree, so editing a prompt file takes effect on the next run. A missing file
-    raises — a silently empty system prompt is the worse failure.
-
-    The traps are the one thing not in either file. They are knowledge about a
-    specific FreeCAD build, not copy to tune, so they stay in code and land at
-    the placeholder the phase file chooses.
-
-    `ledger` is this *run's* traps rather than this build's: `Ledger.render()`
-    (`core/ledger.py`), appended after the file rather than placed at a
-    placeholder inside it, under its own heading — a reader has to be able to
-    tell "known about this FreeCAD build, always here" from "happened in this
-    run, gone the moment the next one starts" without reading either list
-    first. Empty for every phase but Execute today, and for Execute itself
-    until this run has a failure to carry.
+    composed with the sections of the shared vocabulary (ADR-0026).
     """
     body = read_prompt(phase + ".md").strip()
     sections = _language_sections()
@@ -189,7 +160,7 @@ def _one_call(llm, events, phase, system, user, prior=()):
 
     `cost` carries whatever the client reported spending: `usd` when a price
     is known, and `prompt_tokens`/`completion_tokens`/`cached_tokens` when the
-    provider counted them, both routes do (FCC-309). A client that answers
+    provider counted them, both routes do. A client that answers
     with neither — `ScriptedLLMClient` — still gets a `cost` with `seconds`
     alone, because the wait is a real one.
     """
@@ -257,7 +228,7 @@ def _as_image(path):
     there is nothing to show, which a sketch-only Step produces.
 
     The mime comes off the file rather than being stamped `image/png` on
-    everything, which is how a JPEG went out labelled as a PNG (FCC-89). A PDF
+    everything, which is how a JPEG went out labelled as a PNG. A PDF
     is a `file` block rather than an `image_url` one — the same path with a
     different envelope, and no page rendering on our side. The renders we write
     ourselves are PNGs, so that path is unchanged.
