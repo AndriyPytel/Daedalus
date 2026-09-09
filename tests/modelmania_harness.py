@@ -5,7 +5,9 @@ from pathlib import Path
 
 
 HERE = Path(__file__).parent
-MODELMANIA_DIR = Path(os.environ.get("FCC_MODELMANIA_DIR", HERE / "modelmania"))
+MANUAL_DIR = HERE.parent / "manual"
+MODELMANIA_DIR = Path(os.environ.get("FCC_MODELMANIA_DIR", MANUAL_DIR / "modelmania"))
+RECORDED_DIR = MANUAL_DIR / "recorded"
 SHEETS = {
     "mm25-p1-1.pdf": MODELMANIA_DIR / "mm25-p1-1.pdf",
     "mm25-p2.pdf": MODELMANIA_DIR / "mm25-p2.pdf",
@@ -13,8 +15,8 @@ SHEETS = {
     "model-mania_-in-person-2023 copy.pdf": (
         MODELMANIA_DIR / "model-mania_-in-person-2023 copy.pdf"),
 }
-DESCRIBED = HERE / "recorded/described_numbers.json"
-READING_2023 = HERE / "recorded/reading_2023_clamp.json"
+DESCRIBED = RECORDED_DIR / "described_numbers.json"
+READING_2023 = RECORDED_DIR / "reading_2023_clamp.json"
 
 
 def read_sheets(read_sheet):

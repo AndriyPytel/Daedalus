@@ -10,4 +10,4 @@ __pycache__/
 # Claude Code local settings
 .claude/
 tests/models/
-tests/modelmania/
+manual/modelmania/

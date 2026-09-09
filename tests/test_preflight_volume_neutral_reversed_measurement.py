@@ -44,10 +44,10 @@ ticket to decide it at the point the check fires and give each shape its
 own message is the actual fix this ticket's investigation surfaced.
 """
 import json
-import os
 
-FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "recorded", "preflight_volume_neutral_failures.json")
+from tests import modelmania_harness
+
+FIXTURE = modelmania_harness.RECORDED_DIR / "preflight_volume_neutral_failures.json"
 
 
 def _fixture():

@@ -16,7 +16,7 @@ from tests.source_tree import ROOT, sources
 
 NOT_IN_A_PACKAGE = {"Init.py", "InitGui.py"}
 
-OFF_THE_ADDON = {"tests", "logs", "docs", ".git", ".venv", "__pycache__"}
+OFF_THE_ADDON = {"tests", "manual", "logs", "docs", ".git", ".venv", "__pycache__"}
 
 
 def every_python_file():

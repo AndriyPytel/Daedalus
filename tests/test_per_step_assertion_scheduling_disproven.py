@@ -43,10 +43,10 @@ FCC-247 was raised for is real and already caught, exactly, by the
 end-of-run `assertion()` phase this ticket leaves unmoved (AC 3).
 """
 import json
-import os
 
-FIXTURE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "recorded", "assertion_scheduling_cost.json")
+from tests import modelmania_harness
+
+FIXTURE = modelmania_harness.RECORDED_DIR / "assertion_scheduling_cost.json"
 
 
 def _fixture():
