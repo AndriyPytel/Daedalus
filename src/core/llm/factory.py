@@ -117,10 +117,9 @@ def client_from_profiles():
 
 def client_from_roles():
     """Build `RoleClient` from the settings table: one client per row, keyed by role."""
-    from bridge import settings_manager
     from core.llm.roles import RoleClient
 
-    sm = settings_manager.instance()
+    sm = settings.instance()
     roles = {
         row["role"]: client_from_settings(row["model"], row.get("effort"))
         for row in sm.get_role_table()

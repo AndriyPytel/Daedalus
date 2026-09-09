@@ -24,7 +24,40 @@ def initialize():
         App.Console.PrintMessage(f"[DEBUG] Registered icon path: {icon_path}\n")
 
         # 3. Run the dependency check
-        dependency_manager.run_dependency_check()
+        try:
+            from PySide2.QtWidgets import QMessageBox
+        except ImportError:
+            from PySide.QtGui import QMessageBox
+
+        def _confirm(missing):
+            msg_box = QMessageBox()
+            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setText("FreeCadCopilot - Additional Dependencies Required")
+            msg_box.setInformativeText(
+                "The following Python packages are missing and need to be installed:\n\n"
+                f"  - {', '.join(missing)}\n\n"
+                "Do you want to install them now? This may take a few moments.\n"
+                "The installation progress will be shown in the FreeCAD Report view."
+            )
+            msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            msg_box.setDefaultButton(QMessageBox.Yes)
+            return msg_box.exec_() == QMessageBox.Yes
+
+        def _on_install_error(package, error_msg):
+            QMessageBox.critical(None, "Installation Error",
+                f"Failed to install '{package}':\n\n{error_msg}\n\nPlease check the Report view for details.")
+
+        def _on_finished(all_successful):
+            if all_successful:
+                QMessageBox.information(None, "Restart Recommended",
+                    "Packages installed successfully.\n\nA restart of FreeCAD is recommended to ensure "
+                    "all components of the addon are loaded correctly.")
+            else:
+                QMessageBox.warning(None, "Installation Incomplete",
+                    "Some packages could not be installed. The addon may not work as expected.")
+
+        dependency_manager.run_dependency_check(
+            confirm=_confirm, on_install_error=_on_install_error, on_finished=_on_finished)
         App.Console.PrintMessage("[DEBUG] Dependency check process completed.\n")
 
         # 4. Register the Preference Page

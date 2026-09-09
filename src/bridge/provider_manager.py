@@ -141,9 +141,15 @@ class _ProviderManager(QObject):
         run against it fails at the provider rather than here. Dropping it
         would need the fetch that has not landed yet, which is the whole
         problem — and the provider's own error is the honest one anyway.
+
+        Also recorded on `core.model_registry`, which `core.settings` reads
+        instead of reaching back into this Qt-touching cache (FCC-359).
         """
+        from core import model_registry
+
         for model in models:
             self._resolved[model["id"]] = (provider, model["display"])
+            model_registry.remember(model["id"], provider, model["display"])
 
     def _on_fetch_failed(self, provider: str, error: str):
         """

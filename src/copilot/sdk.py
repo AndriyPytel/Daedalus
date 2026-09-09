@@ -16,6 +16,7 @@ scripts they took over from: both a second copy of this same wiring, one
 call behind the loop's own `run()` signature.
 """
 from core import events, model_catalog
+from core import settings as _settings
 from core.freecad_apply import ApplyPipeline, active_document, build_registry, closing
 from core.events import EventStream, replay
 from core.kernel import Kernel
@@ -45,6 +46,123 @@ def needs_base_url(provider):
 def needs_no_key(provider):
     """Whether *provider* signs itself in, so the Providers page stores no key for it."""
     return model_catalog.needs_no_key(provider)
+
+
+def get_api_keys():
+    """Every stored ``{provider, api_key}``."""
+    return _settings.instance().get_api_keys()
+
+
+def set_api_keys(keys):
+    """Replace the stored key list."""
+    _settings.instance().set_api_keys(keys)
+
+
+def get_api_key_for_provider(provider):
+    """The stored key for *provider*, or ``''`` if there is none."""
+    return _settings.instance().get_api_key_for_provider(provider)
+
+
+def get_base_urls():
+    """``{provider: base_url}`` for every provider that has an address."""
+    return _settings.instance().get_base_urls()
+
+
+def set_base_urls(urls):
+    """Replace the stored address map."""
+    _settings.instance().set_base_urls(urls)
+
+
+def get_base_url_for_provider(provider):
+    """The stored server address for *provider*, or ``''`` if unset."""
+    return _settings.instance().get_base_url_for_provider(provider)
+
+
+def get_default_model():
+    return _settings.instance().get_default_model()
+
+
+def set_default_model(model_id):
+    _settings.instance().set_default_model(model_id)
+
+
+def get_naming_model():
+    return _settings.instance().get_naming_model()
+
+
+def set_naming_model(model_id):
+    _settings.instance().set_naming_model(model_id)
+
+
+def get_last_model():
+    return _settings.instance().get_last_model()
+
+
+def set_last_model(model_id):
+    _settings.instance().set_last_model(model_id)
+
+
+def get_auto_approve_plan():
+    return _settings.instance().get_auto_approve_plan()
+
+
+def set_auto_approve_plan(enabled):
+    _settings.instance().set_auto_approve_plan(enabled)
+
+
+def get_effort():
+    return _settings.instance().get_effort()
+
+
+def set_effort(level):
+    _settings.instance().set_effort(level)
+
+
+def get_profile_model(profile):
+    return _settings.instance().get_profile_model(profile)
+
+
+def set_profile_model(profile, model_id):
+    _settings.instance().set_profile_model(profile, model_id)
+
+
+def get_profile_effort(profile):
+    return _settings.instance().get_profile_effort(profile)
+
+
+def set_profile_effort(profile, level):
+    _settings.instance().set_profile_effort(profile, level)
+
+
+def get_role_table():
+    """One row per role -- ``provider``, ``model``, ``effort``."""
+    return _settings.instance().get_role_table()
+
+
+def set_role_table(table):
+    _settings.instance().set_role_table(table)
+
+
+def get_role_model(role):
+    """The stored row for *role*, or ``None`` if it has none."""
+    return _settings.instance().get_role_model(role)
+
+
+def get_llm_credentials(model_id=None):
+    """``(provider, model_id, api_key)`` for *model_id*, or the last-used one."""
+    return _settings.instance().get_llm_credentials(model_id)
+
+
+def fetch_models(provider, api_key, base_url=None):
+    """``[{id, display}]`` *provider* actually reports for *api_key*."""
+    return model_catalog.fetch(provider, api_key, base_url=base_url)
+
+
+def get_model_entry(model_id):
+    """The last-known ``{id, display, provider}`` for *model_id*, or ``None``."""
+    from core import model_registry
+
+    return model_registry.get_model_entry(model_id)
 
 
 class _NoKernel:

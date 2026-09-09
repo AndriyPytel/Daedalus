@@ -27,7 +27,6 @@ import shutil
 import sys
 import subprocess
 import importlib.util
-from PySide.QtGui import QMessageBox
 
 _DIST_INFO = re.compile(r"^(?P<name>.+?)-(?P<version>\d[^-]*)\.dist-info$")
 
@@ -184,7 +183,7 @@ def install_package(package_name, target_directory):
     except (OSError, subprocess.TimeoutExpired) as e:
         return False, f"Could not run '{python_exe}': {e}"
 
-def run_dependency_check():
+def run_dependency_check(confirm=None, on_install_error=None, on_finished=None):
     """
     The main function to check for and install missing dependencies.
     It identifies missing packages, asks the user for permission to install,
@@ -195,7 +194,22 @@ def run_dependency_check():
     layered install left behind, and returning early would never repair it.
     Caches are invalidated after each install, or the import system does not
     see the package that was just put there.
+
+    *confirm* asks whether to install the *missing* packages and returns a
+    bool; a GUI wraps this in a Yes/No dialog (`InitGui.py`), and the default
+    declines since there is nothing here to ask through (FCC-359: this module
+    has no Qt import, so `core` can run with no Qt at all). *on_install_error*
+    takes ``(package, error_message)`` for a package that failed to install,
+    and *on_finished* takes ``all_successful``; both default to a no-op, and a
+    GUI supplies the dialogs they used to be.
     """
+    if confirm is None:
+        confirm = lambda missing: False
+    if on_install_error is None:
+        on_install_error = lambda package, error_msg: None
+    if on_finished is None:
+        on_finished = lambda all_successful: None
+
     target_dir = get_target_directory()
     if target_dir not in sys.path:
         sys.path.insert(0, target_dir)
@@ -212,20 +226,9 @@ def run_dependency_check():
         FreeCAD.Console.PrintMessage("[FreeCadCopilot] All required packages are installed.\n")
         return
 
-    msg_box = QMessageBox()
-    msg_box.setIcon(QMessageBox.Information)
-    msg_box.setText("FreeCadCopilot - Additional Dependencies Required")
-    msg_box.setInformativeText(
-        "The following Python packages are missing and need to be installed:\n\n"
-        f"  - {', '.join(missing)}\n\n"
-        "Do you want to install them now? This may take a few moments.\n"
-        "The installation progress will be shown in the FreeCAD Report view."
-    )
-    msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-    msg_box.setDefaultButton(QMessageBox.Yes)
-    
-    if msg_box.exec_() != QMessageBox.Yes:
-        QMessageBox.warning(None, "Dependencies Missing", "Required packages were not installed. The FreeCadCopilot addon may not function correctly.")
+    if not confirm(missing):
+        FreeCAD.Console.PrintMessage(
+            "[FreeCadCopilot] Required packages were not installed: %s\n" % ", ".join(missing))
         return
 
     FreeCAD.Console.PrintMessage("--- [FreeCadCopilot] Starting dependency installation ---\n")
@@ -237,12 +240,8 @@ def run_dependency_check():
             FreeCAD.Console.PrintMessage(f"'{package}' installed successfully.\n")
             importlib.invalidate_caches()
         else:
-            QMessageBox.critical(None, "Installation Error", f"Failed to install '{package}':\n\n{error_msg}\n\nPlease check the Report view for details.")
+            on_install_error(package, error_msg)
             all_successful = False
-    
-    FreeCAD.Console.PrintMessage("--- [FreeCadCopilot] Dependency installation finished ---\n")
 
-    if all_successful:
-        QMessageBox.information(None, "Restart Recommended", "Packages installed successfully.\n\nA restart of FreeCAD is recommended to ensure all components of the addon are loaded correctly.")
-    else:
-        QMessageBox.warning(None, "Installation Incomplete", "Some packages could not be installed. The addon may not work as expected.")
+    FreeCAD.Console.PrintMessage("--- [FreeCadCopilot] Dependency installation finished ---\n")
+    on_finished(all_successful)

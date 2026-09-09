@@ -1,8 +1,10 @@
 """
 Level 2 — the dependency list against the imports the addon actually makes.
 
-`core.dependency_manager` imports FreeCAD and PySide at module scope, so it
-cannot be read outside a real FreeCAD the way `lint.py` can.
+`core.dependency_manager` imports FreeCAD at module scope, so it cannot be
+read outside a real FreeCAD the way `lint.py` can. FCC-359 took the Qt import
+out: the dialogs it used to show through `QMessageBox` are callbacks a GUI
+supplies (`InitGui.py`) instead, so `run_dependency_check` needs no PySide.
 """
 import pytest
 
@@ -215,15 +217,49 @@ def test_a_failed_install_does_not_stop_the_rest_from_being_tried(dependency_man
     monkeypatch.setattr(dependency_manager, "install_package", fake_install)
     monkeypatch.setattr(dependency_manager, "importlib", dependency_manager.importlib)
     monkeypatch.setattr(dependency_manager.importlib, "invalidate_caches", lambda: None)
-    monkeypatch.setattr(dependency_manager.QMessageBox, "exec_",
-                        lambda self: dependency_manager.QMessageBox.Yes)
-    monkeypatch.setattr(dependency_manager.QMessageBox, "critical",
-                        staticmethod(lambda *a, **k: None))
-    monkeypatch.setattr(dependency_manager.QMessageBox, "warning",
-                        staticmethod(lambda *a, **k: None))
-    monkeypatch.setattr(dependency_manager.QMessageBox, "information",
-                        staticmethod(lambda *a, **k: None))
+
+    dependency_manager.run_dependency_check(confirm=lambda missing: True)
+
+    assert attempted == ["a", "b", "c"], "the install loop stopped at the first failure"
+
+
+def test_declining_the_confirm_installs_nothing(dependency_manager, monkeypatch):
+    monkeypatch.setattr(dependency_manager, "missing_packages", lambda: ["a"])
+    monkeypatch.setattr(dependency_manager, "get_target_directory", lambda: "/tmp/x")
+    monkeypatch.setattr(dependency_manager, "prune_superseded", lambda target_directory: [])
+
+    attempted = []
+    monkeypatch.setattr(dependency_manager, "install_package",
+                        lambda package, target_directory: attempted.append(package))
+
+    dependency_manager.run_dependency_check(confirm=lambda missing: False)
+
+    assert attempted == []
+
+
+def test_a_missing_confirm_callback_declines_by_default(dependency_manager, monkeypatch):
+    monkeypatch.setattr(dependency_manager, "missing_packages", lambda: ["a"])
+    monkeypatch.setattr(dependency_manager, "get_target_directory", lambda: "/tmp/x")
+    monkeypatch.setattr(dependency_manager, "prune_superseded", lambda target_directory: [])
+
+    attempted = []
+    monkeypatch.setattr(dependency_manager, "install_package",
+                        lambda package, target_directory: attempted.append(package))
 
     dependency_manager.run_dependency_check()
 
-    assert attempted == ["a", "b", "c"], "the install loop stopped at the first failure"
+    assert attempted == []
+
+
+def test_an_install_error_reaches_the_on_install_error_callback(dependency_manager, monkeypatch):
+    monkeypatch.setattr(dependency_manager, "missing_packages", lambda: ["a"])
+    monkeypatch.setattr(dependency_manager, "get_target_directory", lambda: "/tmp/x")
+    monkeypatch.setattr(dependency_manager, "prune_superseded", lambda target_directory: [])
+    monkeypatch.setattr(dependency_manager, "install_package",
+                        lambda package, target_directory: (False, "boom"))
+
+    errors = []
+    dependency_manager.run_dependency_check(
+        confirm=lambda missing: True, on_install_error=lambda package, msg: errors.append((package, msg)))
+
+    assert errors == [("a", "boom")]

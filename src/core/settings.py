@@ -199,12 +199,12 @@ class Settings:
         this would demand is one nothing reads.
         """
         from core import model_catalog
-        from bridge import provider_manager
+        from core import model_registry
         mid = model_id or self.get_last_model()
         if not mid:
             raise ValueError("No model selected. Configure API keys in Preferences.")
 
-        entry = provider_manager.instance().get_model_entry(mid)
+        entry = model_registry.get_model_entry(mid)
         if not entry:
             raise ValueError(
                 f"'{mid}' is not a model any configured provider reports. Pick one from "
