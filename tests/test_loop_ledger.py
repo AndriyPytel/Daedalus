@@ -932,7 +932,7 @@ def test_the_re_ask_quotes_what_the_phase_said_and_names_the_shape():
     assert retry[-2]["role"] == "assistant"
     assert "I need to check the Hole feature's properties first." in retry[-2]["content"]
     assert retry[-1]["role"] == "user"
-    assert "asks for the look *in* the JSON" in retry[-1]["content"]
+    assert "Reply with exactly one JSON object" in retry[-1]["content"]
 
 
 def test_the_evidence_is_cache_marked_only_on_the_route_that_honours_it():

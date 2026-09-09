@@ -1,6 +1,10 @@
 """The Review phase: judge outcomes and decide next action."""
 import json
+import tempfile
 
+from core.agent.agent import run_phase
+from core.agent import phase_contract as pc
+from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import PhaseError
 from core.loop.execute import _VIEW_NAMES
 from core.loop.prompt import (
@@ -46,7 +50,8 @@ def _review_content(request, views, attachments):
     return content
 
 
-def review_suspect(intent, views, described, llm, events, attachments=()):
+def review_suspect(intent, views, described, llm, events, attachments=(),
+                   supervisor=None, kernel=None):
     """
     Look at the finished Document before Assertion measures it, and name what
     a render alone can only suspect.
@@ -64,15 +69,27 @@ def review_suspect(intent, views, described, llm, events, attachments=()):
     """
     request = {"intent": intent, "the_document_as_it_now_stands": described}
     content = _review_content(request, views, attachments)
-
-    reply = _ask(llm, events, REVIEW_SUSPECT_PHASE, prompt(REVIEW_SUSPECT_PHASE), content)
-
+    
+    supervisor = supervisor or SessionTreeSupervisor()
+    task = content
+    
+    with tempfile.TemporaryDirectory() as working_dir:
+        declared, session, checkpoints = run_phase(
+            pc.REVIEW_SUSPECT, working_dir,
+            {"description": described},
+            llm, task,
+            kernel=kernel, supervisor=supervisor, stream=events,
+            system=prompt(REVIEW_SUSPECT_PHASE)
+        )
+    
+    reply = declared if isinstance(declared, dict) else {}
     suspected = [str(entry).strip() for entry in (reply.get("suspected") or ())
                 if str(entry).strip()]
     return [entry + " (suspected)" for entry in suspected]
 
 
-def review(intent, views, described, llm, events, attachments=(), checked=None):
+def review(intent, views, described, llm, events, attachments=(), checked=None,
+           supervisor=None, kernel=None):
     """
     Judge the outcome against the Intent.
 
@@ -104,9 +121,20 @@ def review(intent, views, described, llm, events, attachments=(), checked=None):
         request["facts_the_checks_confirmed"] = list(checked.confirmed)
         request["what_the_checks_could_not_cover"] = list(checked.uncovered)
     content = _review_content(request, views, attachments)
-
-    reply = _ask(llm, events, REVIEW_PHASE, prompt(REVIEW_PHASE), content)
-
+    
+    supervisor = supervisor or SessionTreeSupervisor()
+    task = content
+    
+    with tempfile.TemporaryDirectory() as working_dir:
+        declared, session, checkpoints = run_phase(
+            pc.REVIEW, working_dir,
+            {"description": described},
+            llm, task,
+            kernel=kernel, supervisor=supervisor, stream=events,
+            system=prompt(REVIEW_PHASE)
+        )
+    
+    reply = declared if isinstance(declared, dict) else {}
     verdict = str(reply.get("verdict", "")).lower()
     if verdict not in ("pass", "fail"):
         raise PhaseError("Review replied with an unusable verdict: %r" % reply.get("verdict"))

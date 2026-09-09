@@ -24,11 +24,17 @@ import json
 import os
 import re
 import shutil
+import time
 
+from core.events import CALL_STARTED, COST, THOUGHT, WRITING
 from core.kernel import Kernel
-from core.llm import TEXT, Session
+from core.llm import REASONING, TEXT, Session
+from core.llm.exceptions import StreamCutOff
 from core.agent.phase_contract import spawn
 from core.agent.subagent import delegate
+from core.loop.prompt import prompt
+
+_CUT_OFF_ATTEMPTS = 3
 
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
@@ -38,7 +44,7 @@ class AgentGaveUp(Exception):
 
 
 def run_phase(phase, working_dir, sources, llm, task, document=None,
-              kernel=None, supervisor=None, stream=None):
+              kernel=None, supervisor=None, stream=None, system=None):
     """
     Run *phase* as a multi-turn agent against its own kernel.
 
@@ -49,13 +55,18 @@ def run_phase(phase, working_dir, sources, llm, task, document=None,
     the same running session.
 
     *kernel* lets a caller reuse an already-running `Kernel` (or a test
-    double with the same `check` contract); one is started and killed here
-    when no caller supplies it. *supervisor* is the tree-wide
-    `SessionTreeSupervisor` a turn is charged against, when the caller has
-    one -- delegating (`{"delegate": "..."}`) raises `AgentGaveUp` outright
-    with no *supervisor*, because there is nothing to charge it against or
-    to bound its depth. *stream* is the run's `EventStream`, handed straight
-    to `subagent.delegate` so a delegation renders live (FCC-308).
+    double with the same `check` contract); one is started here only when a
+    turn replies with `{"code": ...}` and *kernel* is None. Phases that only
+    declare (Design, Plan, Review) never touch the Kernel and never import
+    FreeCAD. *supervisor* is the tree-wide `SessionTreeSupervisor` a turn is
+    charged against, when the caller has one -- delegating (`{"delegate":
+    "..."}`) raises `AgentGaveUp` outright with no *supervisor*, because
+    there is nothing to charge it against or to bound its depth. *stream* is
+    the run's `EventStream`, handed straight to `subagent.delegate` so a
+    delegation renders live (FCC-308).
+
+    *system* is the phase's own prompt (from `config/prompts/<phase>.md`),
+    composed with the agent protocol to form the full system message.
 
     Returns `(declared, session, checkpoints)`: what the model declared, its
     whole conversation (FCC-309's `Session`), and every Step's checkpoint
@@ -66,12 +77,12 @@ def run_phase(phase, working_dir, sources, llm, task, document=None,
     budget is spent first.
     """
     working = spawn(phase, working_dir, **sources)
-    session = Session(system=_system(phase, working))
-    working_kernel = kernel if kernel is not None else Kernel()
+    session = Session(system=_composed_system(system, working))
+    working_kernel = kernel
     checkpoints = []
     first_step = True
     try:
-        text = _say(session, llm, task)
+        text = _say(session, llm, task, phase=phase, stream=stream)
         while True:
             message = _parsed(text)
             if "declare" in message:
@@ -83,25 +94,44 @@ def run_phase(phase, working_dir, sources, llm, task, document=None,
                                   stream=stream, phase=phase)
                 feedback = ({"delegate_answered": answer} if answer is not None
                             else {"delegate_refused": supervisor.refusals[-1]["reason"]})
-                text = _say(session, llm, json.dumps(feedback))
+                text = _say(session, llm, json.dumps(feedback), phase=phase, stream=stream)
                 continue
-            if "code" not in message:
-                raise AgentGaveUp(
-                    "%s replied with neither code, a delegation nor a declaration: %r"
-                    % (phase, text))
+            if "code" in message:
+                if supervisor is not None:
+                    supervisor.record_turn()
+                    if supervisor.outcome:
+                        raise AgentGaveUp("%s ran out of budget before declaring" % phase)
+                if working_kernel is None:
+                    working_kernel = Kernel()
+                step_document = document if first_step else _NO_DOCUMENT
+                result = working_kernel.check(message["code"], **(
+                    {} if step_document is _NO_DOCUMENT else {"document": step_document}))
+                first_step = False
+                if result.ok and result.checkpoint:
+                    checkpoints.append(_kept(working, result.checkpoint, len(checkpoints)))
+                text = _say(session, llm, _feedback(result), phase=phase, stream=stream)
+                continue
             if supervisor is not None:
                 supervisor.record_turn()
                 if supervisor.outcome:
-                    raise AgentGaveUp("%s ran out of budget before declaring" % phase)
-            step_document = document if first_step else _NO_DOCUMENT
-            result = working_kernel.check(message["code"], **(
-                {} if step_document is _NO_DOCUMENT else {"document": step_document}))
-            first_step = False
-            if result.ok and result.checkpoint:
-                checkpoints.append(_kept(working, result.checkpoint, len(checkpoints)))
-            text = _say(session, llm, _feedback(result))
+                    if "_malformed" in message:
+                        raise AgentGaveUp(
+                            "%s did not reply with JSON. It said: %r"
+                            % (phase, message["_malformed"]))
+                    elif "_not_object" in message:
+                        raise AgentGaveUp(
+                            "%s replied with JSON but not an object: %r"
+                            % (phase, message["_not_object"]))
+                    elif message.get("_empty"):
+                        raise AgentGaveUp(
+                            "%s spent the turn on reasoning and wrote no answer" % phase)
+                    else:
+                        raise AgentGaveUp(
+                            "%s replied with neither code, delegation nor declaration"
+                            % phase)
+            text = _say(session, llm, prompt("contract_correction"), phase=phase, stream=stream)
     finally:
-        if kernel is None:
+        if kernel is None and working_kernel is not None:
             working_kernel.kill()
 
 
@@ -116,30 +146,76 @@ def _kept(working_dir, checkpoint, index):
     return kept
 
 
-def _system(phase, working_dir):
-    return (
-        "You are the %s agent. Your working directory is %s, holding exactly "
-        "the artefacts your phase is allowed to see. Reply with one JSON "
-        "object per turn: {\"code\": \"...\"} to run Python against your "
-        "kernel's Document and see what happened, {\"delegate\": \"...\"} to "
-        "hand a bounded question to a depth-1 sub-agent and see its answer, or "
-        "{\"declare\": ...} once you are done." % (phase, working_dir)
-    )
+def _composed_system(phase_prompt, working_dir):
+    protocol = _protocol().replace("{{working_dir}}", working_dir)
+    if phase_prompt:
+        return phase_prompt + "\n\n" + protocol
+    return protocol
 
 
-def _say(session, llm, content):
-    return "".join(chunk.text for chunk in session.turn(llm, content) if chunk.kind == TEXT)
+def _protocol():
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "..", "config", "prompts", "agent_protocol.md")
+    with open(path) as f:
+        return f.read()
+
+
+def _say(session, llm, content, phase=None, stream=None):
+    for attempt in range(_CUT_OFF_ATTEMPTS):
+        try:
+            return _one_turn(session, llm, content, phase, stream)
+        except StreamCutOff:
+            if attempt == _CUT_OFF_ATTEMPTS - 1:
+                raise
+            session.messages.pop()
+            time.sleep(2 ** attempt)
+
+
+def _one_turn(session, llm, content, phase=None, stream=None):
+    llm = llm.for_phase(phase) if hasattr(llm, "for_phase") else llm
+    model = getattr(llm, "model", None)
+    ceiling = getattr(llm, "timeout", None)
+    
+    if stream is not None:
+        started = {"phase": phase, "model": model}
+        if ceiling is not None:
+            started["ceiling"] = ceiling
+        stream.emit(CALL_STARTED, **started)
+    
+    start = time.time()
+    text = []
+    try:
+        for chunk in session.turn(llm, content):
+            if chunk.kind == REASONING:
+                if stream is not None:
+                    stream.emit(THOUGHT, phase=phase, text=chunk.text)
+            elif chunk.kind == TEXT:
+                text.append(chunk.text)
+                if stream is not None:
+                    stream.emit(WRITING, phase=phase, text=chunk.text)
+    finally:
+        if stream is not None:
+            spent = getattr(llm, "last_cost", None) or {}
+            paid = {"phase": phase, "seconds": time.time() - start,
+                    "model": spent.get("model", model)}
+            for key in ("usd", "prompt_tokens", "completion_tokens", "cached_tokens"):
+                if key in spent:
+                    paid[key] = spent[key]
+            stream.emit(COST, **paid)
+    
+    return "".join(text)
 
 
 def _parsed(text):
     fenced = _FENCE.search(text or "")
     candidate = (fenced.group(1) if fenced else (text or "")).strip()
+    if not candidate:
+        return {"_empty": True}
     try:
         parsed = json.loads(candidate)
     except ValueError:
-        raise AgentGaveUp("could not parse a JSON reply from: %r" % (text or "")[:400])
+        return {"_malformed": text[:400] if text else ""}
     if not isinstance(parsed, dict):
-        raise AgentGaveUp("reply was JSON but not an object: %r" % parsed)
+        return {"_not_object": parsed}
     return parsed
 
 

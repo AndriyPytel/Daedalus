@@ -681,8 +681,8 @@ def test_a_rejected_review_carries_the_unbuilt_step_s_entry_on_the_auto_answer(c
         plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
                    {"do": "Assign plain carbon steel to the Body",
                     "satisfies": [THE_MATERIAL]}),
-        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
-                    "unbuildable": NO_CARD}),
+        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": NO_CARD}}),
         suspect_reply(),
         assertion_reply(CHECKS),
         verdict_reply("fail", reason="the pad reads shallow"),
@@ -705,8 +705,8 @@ def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
         plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
                    {"do": "Pocket a recess in the steel face",
                     "satisfies": [THE_MATERIAL]}),
-        json.dumps({"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
-                    "unbuildable": "the recess cuts nothing"}),
+        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+                    "unbuildable": "the recess cuts nothing"}}),
         plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
                    {"do": "Pocket a wider recess", "satisfies": [THE_MATERIAL]}),
         code_reply("pad()", "recess()"),
@@ -786,7 +786,7 @@ def test_mechanical_revisions_do_not_consume_execution_budget():
         plan_reply("Step 1"),
         plan_reply("Step 1 revised", satisfies=everything(A_PART)),
         code_reply("step1()"),
-        json.dumps({"unbuildable": "the sketch is overconstrained"}),
+        json.dumps({"declare": {"unbuildable": "the sketch is overconstrained"}}),
         plan_reply("Step 1 without overconstraint", satisfies=everything(A_PART)),
         code_reply("step1_fixed()"),
         suspect_reply(),
@@ -1138,14 +1138,14 @@ def test_an_off_list_op_sends_plan_back_naming_the_verb_and_the_36_allowed():
     the 36 it may choose from instead.
     """
     _, events, llm, _ = drive([
-        json.dumps({"steps": [
+        json.dumps({"declare": {"steps": [
             {"do": "Add a box", "op": "pad"},
             {"do": "Machine a lattice into it", "op": "lattice-mill"},
-        ], "op_vocabulary": CLOSED_OPS}),
-        json.dumps({"steps": [
+        ], "op_vocabulary": CLOSED_OPS}}),
+        json.dumps({"declare": {"steps": [
             {"do": "Add a box", "op": "pad"},
             {"do": "Emboss a lattice texture", "op": "additive-primitive"},
-        ], "op_vocabulary": CLOSED_OPS}),
+        ], "op_vocabulary": CLOSED_OPS}}),
         code_reply("doc.addObject('Part::Box', 'Box')",
                    "doc.addObject('Part::Feature', 'Lattice')"),
         suspect_reply(), verdict_reply("pass"),
@@ -1166,14 +1166,14 @@ def test_a_run_never_asks_execute_about_a_step_whose_op_was_refused():
     op never reaches Execute, so no code is ever asked for it.
     """
     _, _, llm, _ = drive([
-        json.dumps({"steps": [
+        json.dumps({"declare": {"steps": [
             {"do": "Add a box", "op": "pad"},
             {"do": "Machine a lattice into it", "op": "lattice-mill"},
-        ], "op_vocabulary": CLOSED_OPS}),
-        json.dumps({"steps": [
+        ], "op_vocabulary": CLOSED_OPS}}),
+        json.dumps({"declare": {"steps": [
             {"do": "Add a box", "op": "pad"},
             {"do": "Emboss a lattice texture", "op": "additive-primitive"},
-        ], "op_vocabulary": CLOSED_OPS}),
+        ], "op_vocabulary": CLOSED_OPS}}),
         code_reply("doc.addObject('Part::Box', 'Box')",
                    "doc.addObject('Part::Feature', 'Lattice')"),
         suspect_reply(), verdict_reply("pass"),
@@ -1193,8 +1193,8 @@ def test_a_closed_marked_steps_op_reaches_the_apply_step_tool_call():
     at all — so the lint check it feeds stays off for every recorded fixture.
     """
     _, events, _, tools = drive([
-        json.dumps({"steps": [{"do": "Add a box", "op": "pad"}],
-                    "op_vocabulary": CLOSED_OPS}),
+        json.dumps({"declare": {"steps": [{"do": "Add a box", "op": "pad"}],
+                    "op_vocabulary": CLOSED_OPS}}),
         code_reply("doc.addObject('Part::Box', 'Box')", label="Add the box"),
         suspect_reply(), verdict_reply("pass"),
     ])

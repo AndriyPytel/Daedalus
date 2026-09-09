@@ -5,6 +5,11 @@ from dataclasses import dataclass, field
 from core.design.design import UNDER
 from core.events import ASSERTION, TOOL_CALL, TOOL_RESULT
 
+import tempfile
+
+from core.agent.agent import run_phase
+from core.agent import phase_contract as pc
+from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import Budgets
 from core.loop.describe import _A_SIZE, _TRUE_TO
 from core.loop.execute import _DID_NOT_HOLD, _MODEL_IS_INVALID, _addressed
@@ -143,7 +148,7 @@ assert not failed, "these did not hold: " + "; ".join(failed)
 
 
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
-              after_a_retry=()):
+              after_a_retry=(), supervisor=None, kernel=None):
     """Writes and runs acceptance checks against the finished Document — read-only, once per run.
 
     Constraints: a context of its own — Review is deliberately not told how the result was produced
@@ -186,8 +191,19 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         if attempts:
             request["your_failed_attempts_at_the_checks"] = list(attempts)
 
-        reply = _ask(llm, events, ASSERTION_PHASE, prompt(ASSERTION_PHASE),
-                     json.dumps(request, indent=2, default=str))
+        supervisor = supervisor or SessionTreeSupervisor()
+        task = json.dumps(request, indent=2, default=str)
+        
+        with tempfile.TemporaryDirectory() as working_dir:
+            declared, session, checkpoints = run_phase(
+                pc.ASSERTION, working_dir,
+                {"design": described},
+                llm, task,
+                kernel=kernel, supervisor=supervisor, stream=events,
+                system=prompt(ASSERTION_PHASE)
+            )
+        
+        reply = declared if isinstance(declared, dict) else {}
         code = str(reply.get("code") or "").strip()
         uncovered = [str(entry) for entry in (reply.get("uncovered") or ())]
         if not code:

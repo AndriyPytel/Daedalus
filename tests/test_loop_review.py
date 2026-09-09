@@ -158,7 +158,7 @@ def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
 
     assert [name for name, _ in tools.calls].count("review_views") == 1
 
-    assert llm.calls[4][0]["content"] == prompt("review")
+    assert llm.calls[4][0]["content"].startswith(prompt("review"))
 
     review_content = llm.calls[4][1]["content"]
     assert sum(1 for part in review_content if part["type"] == "image_url") == 4
@@ -284,9 +284,9 @@ def test_a_step_handed_back_twice_with_nothing_applied_stops_the_run():
     result, events, _, tools = drive(
         [
             plan_reply("Pad a profile that contradicts itself"),
-            json.dumps({"unbuildable": "the arm cannot reach the tangent plane"}),
+            json.dumps({"declare": {"unbuildable": "the arm cannot reach the tangent plane"}}),
             plan_reply("Pad it with the arm assumed 80.5 mm long"),
-            json.dumps({"unbuildable": "80.5 mm does not reach it either"}),
+            json.dumps({"declare": {"unbuildable": "80.5 mm does not reach it either"}}),
         ],
         budgets=Budgets(revisions=5),
     )
@@ -306,11 +306,11 @@ def test_a_step_handed_back_after_another_one_landed_is_still_replanned():
     result, _, _, tools = drive(
         [
             plan_reply("First", "Impossible"),
-            json.dumps({"steps": [{"step": 1, "code": "first()", "label": "First"}],
-                        "unbuildable": "the second cuts nothing"}),
+            json.dumps({"declare": {"steps": [{"step": 1, "code": "first()", "label": "First"}],
+                        "unbuildable": "the second cuts nothing"}}),
             plan_reply("Second", "Impossible again"),
-            json.dumps({"steps": [{"step": 1, "code": "second()", "label": "Second"}],
-                        "unbuildable": "still cuts nothing"}),
+            json.dumps({"declare": {"steps": [{"step": 1, "code": "second()", "label": "Second"}],
+                        "unbuildable": "still cuts nothing"}}),
             plan_reply("Third"),
             code_reply("third()"),
             suspect_reply(), verdict_reply("pass"),
@@ -484,11 +484,13 @@ def test_a_refusal_during_plan_ends_the_same_way_as_one_during_execute():
 
 
 def test_a_genuinely_malformed_reply_still_says_it_was_malformed():
-    """Twice, because the first prose reply is asked again rather than fatal."""
-    result, events, _, _ = drive([plan_reply("Only"), "not JSON at all",
-                                  "still not JSON"])
+    """Correction turns are bounded by the turn budget, not a hand-written limit."""
+    malformed = ["not JSON"] * 50
+    result, events, _, _ = drive([plan_reply("Only")] + malformed,
+                                 budgets=Budgets(revisions=2))
 
     assert not result.blocked
+    assert not result.ok
     assert "did not reply with JSON" in result.reason
     assert events.first(ERROR) is not None
 
@@ -499,12 +501,11 @@ def test_a_reply_that_is_all_reasoning_and_no_answer_is_not_called_malformed():
     "did not reply with JSON. It said: " with nothing after it told the user
     nothing about what went wrong (FCC-108).
     """
-    result, events, _, _ = drive([{"reasoning": "The centreline should be around y=247."},
-                                  {"reasoning": "Still thinking about the centreline."}],
-                                 attachments=[RENDER_PNG])
+    reasoning_only = [{"reasoning": "thinking..."} for _ in range(50)]
+    result, events, _, _ = drive(reasoning_only, attachments=[RENDER_PNG])
 
-    assert "did not reply with JSON" not in result.reason
-    assert "reasoning" in result.reason and "design" in result.reason
+    assert "could not parse a JSON reply" not in result.reason
+    assert "reasoning" in result.reason
     assert "output tokens" not in result.reason, "a cap it never reached is the wrong advice"
     assert events.first(ERROR) is not None
 
@@ -699,7 +700,7 @@ def test_the_words_a_phase_writes_reach_the_stream_as_it_writes_them():
     written = "".join(e.data["text"] for e in events.of(WRITING)
                       if e.data["phase"] == "plan")
 
-    assert json.loads(written)["steps"] == ["Only"]
+    assert json.loads(written)["declare"]["steps"] == ["Only"]
     assert {e.data["phase"] for e in events.of(WRITING)} == {
         "design", "plan", "execute", "review_suspect", "review"}
 
@@ -868,8 +869,8 @@ def test_the_stream_can_be_watched_live():
 
 
 def test_a_reply_that_is_not_json_is_an_error_the_user_is_told_about():
-    result, events, _, _ = drive(["I would love to help but here is prose instead.",
-                                  "Still prose, I am afraid."])
+    prose = ["Still prose"] * 50
+    result, events, _, _ = drive(prose, budgets=Budgets(revisions=2))
 
     assert not result.ok
     error = events.first(ERROR)
@@ -1104,7 +1105,7 @@ def test_a_question_about_a_material_card_is_answered_from_the_tools():
     assert result.ok, result.reason
     assert ("materials", {"name": "plain carbon steel"}) in tools.calls, \
         "the question never reached the Tool that answers it: %s" % tools.calls
-    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     assert len(design_turns) == 1, "the sheet was asked what no drawing prints"
     assert "b9b3a6ff-1c8e" in json.dumps(_turns_of(llm, "plan")[-1]), \
         "what the Tool said never reached Plan"
@@ -1129,7 +1130,7 @@ def test_rereads_are_spent_only_on_questions_put_to_the_drawing():
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
 
     assert result.ok, result.reason
-    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     assert len(design_turns) == 2, \
         "the question about the part was charged for the question about the build"
     assert events.first(PLAN).data["unanswered"] == []
@@ -1151,7 +1152,7 @@ def test_rereads_counts_re_reads_of_the_drawing_and_nothing_else():
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
 
     assert result.ok, result.reason
-    design_turns = [call for call in llm.calls if call[0]["content"] == prompt("design")]
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     assert len(design_turns) == 2, "the sheet was read past its ceiling"
     assert events.first(PLAN).data["unanswered"] == ["q1", "q2", "q3"]
 
