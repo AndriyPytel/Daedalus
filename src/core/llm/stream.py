@@ -136,24 +136,7 @@ def _retry_hint(said):
 def _billed(model, chunks, messages):
     """
     What the raw stream *chunks* would have cost against *model*'s price
-    table, and the prompt/completion/cached-prompt token counts the provider
-    reported, or (None, None).
-
-    Mid-stream, LiteLLM writes cost onto `CustomStreamWrapper`'s own
-    `logging_obj` — an object `stream()` never holds — so this is the
-    documented manual route instead: `stream_chunk_builder` needs the full
-    *messages* list to reassemble the chunks into a normal `ModelResponse`,
-    which carries both the price and the `Usage` LiteLLM already parsed off
-    the wire. Checked against the installed litellm (1.95.0, an
-    `AdditionalPythonPackage` to the FreeCAD interpreter and not the repo's
-    `.venv`).
-
-    A model LiteLLM has no price table entry for raises out of
-    `completion_cost` rather than pricing at zero — a gateway's, the same kind
-    `_may_reason` and `_output_cap` already give the benefit of the doubt to —
-    and that is caught here, narrowly around the price alone, so a call still
-    reports the tokens it spent even where the price table has never heard of
-    the model.
+    table, and the prompt/completion/cached-prompt token counts, or (None, None).
     """
     import litellm
 

@@ -1,15 +1,7 @@
 """
 The one short call that turns a Session's first Intent into its name.
 
-Separate from the run on purpose: `plan()` runs again on every revision
-(`core/loop.py`), so a title asked for alongside the Steps would be regenerated
-mid-run or need bookkeeping of its own (FCC-44).
-
-Importable without FreeCAD — the settings lookup is deferred into `generate`.
-
-A title longer than the ceiling is thrown away: a title long enough to be a
-sentence is a model that ignored the instruction, and a sentence in the picker
-is the thing this module exists to remove.
+Separate from the run on purpose: `plan()` runs again on every revision.
 """
 from core.llm import TEXT
 

@@ -39,7 +39,7 @@ class Checked:
     survives the end of the run.
 
     `geometry` is the per-feature fingerprint `check_assertions` measured
-    alongside whatever it was asked to check (FCC-260) — Volume and BoundBox,
+    alongside whatever it was asked to check — Volume and BoundBox,
     read back off `KernelResult` the same way `confirmed` reads `held`.
     Empty wherever no `check_assertions` call ran, which the fingerprint
     comparison at the call site reads as "nothing to compare yet" rather than
@@ -153,11 +153,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     """Writes and runs acceptance checks against the finished Document — read-only, once per run.
 
     Constraints: a context of its own — Review is deliberately not told how the result was produced
-    (ADR-0003), so it cannot also author what checks it. Envelope and self-intersection run
-    unconditionally even on an empty acceptance list; self-intersection runs once here, not per
-    Step, since it is too expensive to repeat (FCC-253 Q4).
-    Rejected: Part.Shape.check(runBopCheck=True) raises "No error" on solids it should flag.
-    Measured (warm worker): ~0.3s first solid, then ~0.7ms/solid marginal (5→0.005s, 50→0.036s).
+    (ADR-0003). Measured (warm worker): ~0.3s first solid, then ~0.7ms/solid marginal.
     """
     budgets = budgets or Budgets()
     request = {"acceptance": list(acceptance),

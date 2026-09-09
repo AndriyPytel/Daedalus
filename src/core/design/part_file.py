@@ -5,7 +5,7 @@ Design produces the one thing every later phase depends on — what the part is 
 and until this module it left nothing behind: the description went out as prose
 in the Plan request and into the transcript as one event, and neither can be
 opened, diffed or corrected. The reading is the part of the pipeline that is
-wrong most often and it was the only part with no record of its own (FCC-108).
+wrong most often and it was the only part with no record of its own.
 
 One reading is two files: the document Design distilled, which is the reading,
 and beside it the whole of what Design gathered to arrive at it. Downstream
@@ -111,21 +111,7 @@ def saved(model, source, into=None, read_from=None, asked_for=None) -> str:
 
 
 def logged(model, reading) -> None:
-    """
-    The whole of what was read, as a log beside the reading distilled from it.
-
-    Once the document is distilled the proof of a number is worth nothing to the
-    run — it is planned, checked and built out of the reading — and it is worth
-    something to whoever asks afterwards where a number came from. So it is kept
-    where they are already looking, under the name of the reading it belongs to,
-    and nothing downstream opens it.
-
-    `conflicts` is written grouped by authorship (`grouped_conflicts`), every
-    entry the model itself wrote ahead of every one a validator appended,
-    rather than in the order the merge appended it (FCC-249; `kind` grouped
-    it before this, and could not: `A_CONFLICT` is correct for a validator's
-    own finding as much as for the model's, FCC-248).
-    """
+    """The whole of what was read, as a log beside the reading distilled from it."""
     if not model or not reading:
         return
     if yaml is None:

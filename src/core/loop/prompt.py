@@ -86,36 +86,7 @@ def _language_sections():
 def prompt(phase, ledger=""):
     """
     A phase's system prompt, read from `config/prompts/<phase>.md` and
-    composed with the sections of the shared vocabulary, `config/prompts/
-    language.md` (ADR-0026, FCC-234), that phase actually uses —
-    `_PHASE_VOCABULARY` names which: Design invents `kind`/datum/envelope
-    names and writes English prose, so it gets naming and the English rule;
-    Plan and Execute write and check an `op`, so they get the 36-verb
-    section, and Plan also gets the sentence rules since it is the phase
-    that writes the Steps those rules and the English-only check bind;
-    Assertion and both Review phases write English and nothing else language.md
-    defines, so English is all any of the three needs. The vocabulary lives once, in
-    one file, one heading per closed list — a phase composing only some of
-    those headings is still reading its one source of truth, not a copy of
-    it. Appended after the phase's own body rather than before it, so a
-    phrase such as design.md's "the closed vocabulary below" still points at
-    something below it in the composed prompt.
-
-    Read per turn rather than at import: the addon installs as a plain source
-    tree, so editing a prompt file takes effect on the next run. A missing file
-    raises — a silently empty system prompt is the worse failure.
-
-    The traps are the one thing not in either file. They are knowledge about a
-    specific FreeCAD build, not copy to tune, so they stay in code and land at
-    the placeholder the phase file chooses.
-
-    `ledger` is this *run's* traps rather than this build's: `Ledger.render()`
-    (`core/ledger.py`), appended after the file rather than placed at a
-    placeholder inside it, under its own heading — a reader has to be able to
-    tell "known about this FreeCAD build, always here" from "happened in this
-    run, gone the moment the next one starts" without reading either list
-    first. Empty for every phase but Execute today, and for Execute itself
-    until this run has a failure to carry.
+    composed with the sections of the shared vocabulary (ADR-0026).
     """
     body = read_prompt(phase + ".md").strip()
     sections = _language_sections()
@@ -131,38 +102,13 @@ def _ask(llm, events, phase, system, user):
     """
     One phase's turn: stream it, surface the reasoning as it forms, parse the reply.
 
-    Reasoning is emitted chunk by chunk rather than aggregated at the end, so the
-    user can tell early whether the assistant has understood them.
+    A reply carrying no object is asked once more as a second turn: kimi-k3
+    replied to Execute with prose that was a *look*, which is a key of the
+    object — the model had the answer and wrote it as a sentence. One re-ask
+    costs a turn; the alternative cost the run, ten approved Steps into it.
 
-    A reply carrying no object is asked once more, as a second turn of the same
-    conversation rather than a second copy of the first (`_asked_again`): the
-    original `user` — Design's evidence among it, tens of thousands of tokens —
-    goes out once, whatever the phase answers on. Every phase here answers in
-    JSON and some models will not, or will not consistently: measured on the
-    gateway, kimi-k3 replied to Execute with "I need to check the Hole
-    feature's properties before writing the counterbore steps" — which is a
-    *look*, and a look is a key of the object Execute replies with, so the
-    model had the answer and wrote it as a sentence
-    (`logs/sessions/ea390959745a453488138fddcc879635.jsonl`). One re-ask costs a
-    turn; the alternative cost the run, ten approved Steps into it.
-
-    Exactly one, and the second refusal is the phase failing as it did before.
-    A model that will not answer in the shape twice is not going to on the
-    third, and a loop of re-asks would spend the run proving it.
-
-    Reasoning and then no answer is a third case, and it is asked again the
-    same way rather than left to fail outright: there is no reply text to hand
-    back as the assistant's turn, so the reasoning stream stands in for it
-    (`_asked_again`). Of the last 20 sessions, 11 touched Design and 8 of those
-    died exactly here, 70-640 s in — one more turn, built from thought rather
-    than an answer, is worth trying before the phase is told it did not
-    answer.
-
-    On an OpenAI-compatible route reasoning with no terminal chunk at all is
-    the provider closing the connection and is named as that instead
-    (`core/llm.py :: StreamCutOff`), measured with raw HTTP and no client in
-    the call at all. Running out of room is the other cause of an empty reply
-    and arrives as a refusal, not as this.
+    Of the last 20 sessions, 11 touched Design and 8 of those died here,
+    70-640 s in — one more turn is worth trying before the phase fails.
     """
     body, thought, reasoning = _streamed(llm, events, phase, system, user)
     if not isinstance(_object_of(body), dict):
@@ -179,42 +125,12 @@ def _ask(llm, events, phase, system, user):
 
 def _streamed(llm, events, phase, system, user, prior=()):
     """
-    One turn, as the text it wrote, whether it reasoned before writing it, and
-    the reasoning itself.
+    One turn, as the text it wrote, whether it reasoned, and the reasoning.
 
-    Two facts about a call are not a `Chunk` and cross the seam here, which is
-    the one place every phase's stream is consumed and the one that already
-    holds `events`: what the call spent, and how long the user waited for it.
-    Both are recorded for every call, whatever the client is — a client that
-    reports no price still costs the wait, and the wait is the number the
-    panel has to show while nothing else is happening.
-
-    The pair is what makes a silent call legible: `call_started` with no `cost`
-    after it, in a session log, is a call that never came back. That is why
-    the start is on the wire at all rather than inferred from the event before
-    it, which would count the loop's own work between two calls as part of the
-    second one.
-
-    `ceiling` is the wall-clock the call is killed at, and only the
-    subscription route has one (`core/llm.py :: ClaudeCodeClient`); a keyed
-    call runs to whatever the provider does, so the field is absent rather
-    than invented.
-
-    A stream the provider closed mid-reply is sent again rather than carried
-    on with (`core/llm.py :: StreamCutOff`). It is a dropped connection, not
-    an answer, and it is random: of seven long streams measured against the
-    opencode gateway four were cut and three finished, so the second attempt
-    usually lands. Three attempts, because a gateway that cuts all three is
-    down rather than unlucky, and each one costs the whole phase again.
-
-    Every attempt is a `call_started` and a `cost` of its own, the abandoned
-    ones included: a phase that took four minutes over three connections is
-    four minutes the panel has to account for.
-
-    `prior` is `_asked_again`'s two messages — the model's own last reply as
-    an assistant turn, then the nudge — appended after the first user turn
-    rather than sent as a fresh call, so a retry pays for `system` and `user`
-    once, on the wire, whatever the client does with its own context.
+    A stream the provider closed mid-reply is sent again. Of seven long
+    streams measured against the opencode gateway four were cut and three
+    finished, so the second attempt usually lands. Three attempts, because a
+    gateway that cuts all three is down rather than unlucky.
     """
     for attempt in range(_CUT_OFF_ATTEMPTS):
         try:
@@ -244,7 +160,7 @@ def _one_call(llm, events, phase, system, user, prior=()):
 
     `cost` carries whatever the client reported spending: `usd` when a price
     is known, and `prompt_tokens`/`completion_tokens`/`cached_tokens` when the
-    provider counted them, both routes do (FCC-309). A client that answers
+    provider counted them, both routes do. A client that answers
     with neither — `ScriptedLLMClient` — still gets a `cost` with `seconds`
     alone, because the wait is a real one.
     """
@@ -312,7 +228,7 @@ def _as_image(path):
     there is nothing to show, which a sketch-only Step produces.
 
     The mime comes off the file rather than being stamped `image/png` on
-    everything, which is how a JPEG went out labelled as a PNG (FCC-89). A PDF
+    everything, which is how a JPEG went out labelled as a PNG. A PDF
     is a `file` block rather than an `image_url` one — the same path with a
     different envelope, and no page rendering on our side. The renders we write
     ourselves are PNGs, so that path is unchanged.
@@ -413,37 +329,10 @@ def _the_evidence(attachments, views=None, keep_printed=False, pictures=True):
     """
     What Design is shown: the sheet cut up and its text layer extracted.
 
-    A drawing used to go out whole and at whatever resolution the provider chose
-    to keep — 143 DPI for an 11 x 8.5 in sheet, which puts 14 px of ink in a
-    dimension digit and misreads it occasionally rather than reliably. It now
-    goes out as the sheet for the layout plus one picture per view at the DPI
-    its own callouts ask for, with what is printed on it extracted from the file
-    rather than read off the picture (FCC-102).
-
-    An attachment `sheet_reader` cannot open is sent exactly as it was before.
-    That is the whole fallback: no PyMuPDF, no Pillow, a format neither of them
-    knows, and the phase is back to what it did yesterday.
-
-    `views` narrows a turn that is not the first pass to the overview plus the
-    named views, rather than the whole sheet: a re-read Design is sent back to
-    the sheet for one thing already knows which view that thing is printed in
-    (`_every_callout_accounted_for`), and resending every other view's crops
-    with it pays for pictures the question never mentions. `None`, the first
-    pass's default, keeps everything — a run that has not looked at the sheet
-    yet has nothing to narrow to.
-
-    `keep_printed` puts the sheet's own printed-callout list back on a narrowed
-    turn even though `views` dropped it: a page-sized turn in `_first_pass`
-    still has to see a callout printed in one view that explains a feature
-    drawn in another, and that list is a few thousand characters against the
-    tens of thousands a whole extra view's crops would cost. A re-read
-    (`_every_callout_accounted_for` and the like) leaves this False — the
-    question it sends already names the callout it wants.
-
-    `pictures=False` is `_reconciled`'s own turn: every named list `shown()`
-    would otherwise draw pictures for, as text and nothing else, so the turn
-    that settles what only the whole sheet can settle reads the same words a
-    picture would have shown without paying for the picture again.
+    A drawing used to go out whole at 143 DPI for an 11 x 8.5 in sheet, which
+    puts 14 px of ink in a dimension digit and misreads it occasionally
+    rather than reliably. It now goes out as one picture per view at the DPI
+    its own callouts ask for.
     """
     shown = []
     for path in attachments:

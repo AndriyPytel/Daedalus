@@ -2,19 +2,13 @@
 can't teach a way out of.
 
 Constraints:
-No literal Edge12/Face3/Vertex7 (ADR-0005) — topological naming makes them silently wrong, not stable.
-No Gui.*/live selection (ADR-0002) — Preflight and Apply run headless; either forks the two processes.
-Nothing may be made active (ADR-0008) — no headless active-object API exists in any spelling.
+No literal Edge12/Face3/Vertex7 (ADR-0005) — topological naming makes them silently wrong.
+No Gui.*/live selection (ADR-0002) — Preflight and Apply run headless.
+Nothing may be made active (ADR-0008) — no headless active-object API exists.
 No raw .Shape/addProperty disguised as a PartDesign feature (ADR-0012).
-A computed selection (list/comprehension Base) must assert its own length (FCC-151).
+A computed selection (list/comprehension Base) must assert its own length.
 No bare except/pass swallows a Step's failure (ADR-0008).
-No literal-name lookup of an object this Step just allocated (FCC-302) — a collision renames it
-silently, so the fetch reaches a different object.
-Sketcher constraint names/arities check against a table read off FreeCAD 1.0's ConstraintPyImp.cpp
-(no introspection exists; this module runs without FreeCAD).
-Only Edge/Face/Vertex user selections pass through unchecked; Wire/Shell/Solid do not.
-
-Rejected: Midplane=True is not a rule — still works on 1.1.3, costs a Report warning not a retry.
+No literal-name lookup of an object this Step just allocated — a collision renames it silently.
 """
 import ast
 import re
@@ -161,21 +155,9 @@ def lint(code: str, selection=None, op=None) -> LintResult:
     """
     Check *code* before it costs a Preflight.
 
-    `selection` is the Snapshot's selection; element names in it are treated as
-    explicit user input and allowed.
-
-    `op` is the Step's own declared operation (ADR-0026, FCC-233), one of the
-    36 in `core.loop.OP_VERBS`. Given one, every `addObject`/`newObject` call
-    building a `PartDesign::` or `Part::` type is checked against `OP_TYPEIDS`:
-    a `pad` Step writing `Part::Extrusion` is caught here the same way a `Gui`
-    import already is. Scaffolding common to every operation — a Body, a
-    Sketcher profile, a datum — is accepted regardless of `op`. `None`, or an
-    `op` off the 36-verb list, skips the check entirely: every recorded run
-    before this ticket applied code with no declared operation at all.
-
-    The GUI is caught as an attribute as well as a name, so that
-    `App.Gui.Selection`, `FreeCAD.Gui` and `doc.Gui` are caught too: reaching
-    the GUI through something else is the same problem by a longer route.
+    `selection` is the Snapshot's selection; element names in it are allowed.
+    `op` is the Step's declared operation (ADR-0026); given one, every `addObject`
+    building a `PartDesign::`/`Part::` type is checked against `OP_TYPEIDS`.
     """
     try:
         tree = ast.parse(code)
@@ -300,14 +282,7 @@ def _partdesign_features(tree) -> set:
 
 
 def _names_allocated_here(tree) -> set:
-    """
-    Literal names this Step's own code handed to addObject/newObject.
-
-    Any TypeId, not only PartDesign's — the map FCC-296 built exists because
-    FreeCAD renames on a name collision regardless of what kind of object it
-    is, and a Step re-fetching by that same literal string is the failure
-    FCC-302 reproduced end to end.
-    """
+    """Literal names this Step's own code handed to addObject/newObject."""
     allocated = set()
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)

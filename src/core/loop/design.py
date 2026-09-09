@@ -31,51 +31,13 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
     """
     One Design turn: what it adds to the part, and what it needs a person for.
 
-    Every turn of the phase comes through here — the first pass at the sheet, a
-    question put back to it, a person's answer being written in — because every
-    one of them ends in the same place, a merge into the same model. Merge is
-    the only way the description grows, so there is never an answer standing
-    beside it to be adjudicated (ADR-0019). What differs between the turns is
-    the body, and that is all that differs.
+    Merge is the only way the description grows, so there is never an answer
+    standing beside it to be adjudicated (ADR-0019).
 
-    A context of its own, with nothing to build (ADR-0018, kept): Design and
-    Plan used to be one call, and the second pressure spoilt the first — a value
-    was invented not because the model saw badly but because it needed something
-    to plan with. The sheet rides along whenever there is one, because the phase
-    that owns the description is the only phase that ever sees the picture.
-
-    The Intent is in the body of every turn, beside whatever else that turn is
-    asking about. It is the scope of the run rather than one source among them,
-    so a turn without it reads the sheet for nothing in particular; it never
-    narrows what is described, because what the drawing prints is on the part
-    whether the run was asked about it or not.
-
-    `views`, `keep_printed` and `pictures` are `_the_evidence`'s own, passed
-    through rather than applied here: this is where the evidence and the body
-    meet, not where either is decided.
-
-    `phase` labels the call on the event stream and the session log — plain
-    `"design"` for every turn except the page-sized ones `_first_pass` fans
-    out, which are told apart as `"design: <label>"` so N calls in flight are
-    N legible rows and not one stream with N reasonings braided into it.
-
-    The evidence goes out first and the body — the one part of the request
-    that changes turn to turn — last, so the evidence is a stable prefix
-    rather than the tail of a message that starts differently every time. On
-    the one route measured to honour it (`core/llm.py :: cache_control_supported`)
-    its last block carries `cache_control`, so a run's second and later Design
-    turns read the prefix from cache instead of paying to send it again; on
-    every other route the block carries an extra key the provider was never
-    asked about and nothing here relies on it doing anything with it.
-
-    The model receives evidence and body in the task prompt, and replies with
-    {"code": "..."}, {"delegate": "..."}, or {"declare": {...}} through
-    run_phase. The declared value holds "design" and "question".
-
-    Hands back what to merge and what Design wants asked. A reply that is not a
-    model grows the part by nothing, which is the same case as a sheet that does
-    not answer: the run carries on with what it already had rather than losing
-    it, the way an acceptance list nobody wrote is not fatal either.
+    A context of its own, with nothing to build (ADR-0018): Design and Plan
+    used to be one call, and the second pressure spoilt the first — a value
+    was invented not because the model saw badly but because it needed
+    something to plan with.
     """
     evidence = _the_evidence(attachments, views, keep_printed, pictures)
     if evidence and cache_control_supported(getattr(llm, "model", None)):
@@ -214,36 +176,12 @@ def _asked_about_a_group(label, views, intent, llm, events, attachments):
 def _first_pass(intent, llm, events, attachments, cancelled):
     """
     The Design phase's opening move: one call per page-sized group of views,
-    run in parallel, each merged into the same part as it lands
-    (ADR-0019 — grow-only and order-independent is what makes concurrent
-    merges legitimate rather than a race). Falls back to today's single
-    whole-attachment call when `_the_groups` finds nothing to page.
+    run in parallel, each merged into the same part as it lands (ADR-0019 —
+    grow-only and order-independent is what makes concurrent merges legitimate).
 
-    `copy.copy(llm)` gives every concurrent call its own `last_cost`: both
-    `LiteLLMClient` and `ClaudeCodeClient` clear that attribute at the top of
-    `stream()` and set it at the end, as instance state, and two calls
-    sharing one `llm` object under real concurrency would clear and set each
-    other's price mid-flight. The copy is shallow and cheap — model, key and
-    the spawn/completion callable are read-only, so nothing about the
-    provider route changes, only which object holds this one call's price.
-
-    `cancelled()` is read once, before the batch is submitted, exactly where
-    every other call site in this phase reads it: a provider call has no
-    cancel hook to give a thread mid-flight, so a run stopped while the batch
-    is in flight still lets every submitted call finish, the same as a run
-    stopped mid-call does today.
-
-    A group's own failure — no JSON, a refusal, a stream that would not stay
-    up — costs that group and not the phase: it lands on the part as a
-    `conflicts` entry naming the group, with `kind=A_CHECK_HAZARD`, the same
-    shape `_the_geometry_disagrees` gives an outline the solver never reached,
-    and it is said once more on the `ERROR` stream so a session log shows
-    which page went unread and why.
-
-    At most one question crosses the fan-out, the first a group asked in page
-    order: the phase still asks once here (ADR-0022), and a page-sized call
-    asking on its own for its own reasons is not license for the run to wait
-    on several at once.
+    A group's failure lands on the part as a `conflicts` entry with
+    `kind=A_CHECK_HAZARD`. At most one question crosses the fan-out, the
+    first a group asked in page order: the phase still asks once (ADR-0022).
     """
     groups = _the_groups(attachments)
     if not groups:

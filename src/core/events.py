@@ -11,14 +11,14 @@ checks found wrong and nobody fixed, emitted once at the top of the run that inh
 `call_started` pairs with `cost`; one with no matching `cost` after it is a call that died without
 answering.
 `cost.usd` is present only when the client reported a price — a subscription route emits none.
-`change_set` is what a new Design version changed since the one Plan last saw (FCC-311), so a
+`change_set` is what a new Design version changed since the one Plan last saw, so a
 re-plan's reason is on the stream without a reader re-deriving it from two `design` events.
 `routed` is the orchestrator's own decision, separate from the text it was handed alongside.
-`sub_agent_spawned`/`_answered`/`_refused` are a worker's whole visible life (FCC-308): only the
+`sub_agent_spawned`/`_answered`/`_refused` are a worker's whole visible life: only the
 answer reaches the phase agent's conversation, the transcript stays inspectable.
 `stopped` is the user's own Stopped reaching the loop boundary, not a `blocked` — which is why
 `core/measure.py`'s blocked rate excludes it. A run ends one of six ways and those rates may never
-merge two (FCC-303): `completed` a genuine ok, `blocked` a real impasse, `budget_exhausted` the
+merge two: `completed` a genuine ok, `blocked` a real impasse, `budget_exhausted` the
 run's own ceiling of revisions,
 `stopped` the user's Stop with the in-flight Step left to checkpoint, `aborted` the user's Abort
 with that Step discarded, `failed` everything that ended without a decision behind it.

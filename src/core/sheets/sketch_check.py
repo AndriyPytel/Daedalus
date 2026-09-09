@@ -4,8 +4,8 @@
 Constraints:
 Verdict is movement distance, not solver return code — a bad solve moves geometry to satisfy it.
 A_SHIFT is the pass/fail line for how far a traced entity may move onto the sheet's own numbers.
-Runs only in the Preflight child (FCC-126) — Document mutation on the loop thread crashes FreeCAD,
-and Sketcher.Constraint itself can segfault (FCC-19).
+Runs only in the Preflight child — Document mutation on the loop thread crashes FreeCAD,
+and Sketcher.Constraint itself can segfault.
 Wire fields cross as plain lists — JSON has no tuple, and the report format uses `%`.
 
 Measured (tests/modelmania, 4 sheets, 142 outlines): movement 0.15-0.30mm median, 0.50-0.75mm p90,
@@ -265,30 +265,9 @@ def _measured_across(sketch, outline, view, between):
     """
     Every printed distance that reaches two faces of this outline, written.
 
-    This is the drawing arriving in the sketch. Until it does, the only number
-    the check holds the tracing against is a diameter a leader happened to
-    reach — one of them on four sheets — and every other thing a drawing says
-    is a distance.
-
-    Written between two *faces* and never between two corners. A face is drawn
-    with a chamfer at each end, so which corner a foot is nearest is a lottery:
-    measured on SECTION A-A of `mm25-p1-1.pdf`, corner matching turns a 50 mm
-    dimension into 47.01 mm of traced geometry and reports 2.07 mm of movement
-    the sheet never asked for, and matching along the dimension alone lets a
-    foot reach a face on the far side of the part and reports 34 mm. So the
-    foot names the line it stands on, and the constraint holds those two lines
-    apart in the one direction the dimension is measured in.
-
-    Which is why only a dimension drawn square to the sheet is written: a
-    diagonal one measures between two points and this cannot tell which.
-
-    The value written is the printed one, always. The two faces are the
-    tracing's; how far apart they have to be is the sheet's. A constraint the
-    sketch already says is dropped rather than written twice.
-
-    `A_DISTANCE` is the tracing's own slack, and `sheet_reader` is where it is
-    measured and where it is written down: how far the pixels may be from what
-    the sheet prints between two faces, before that is a fact about the reading.
+    Written between two *faces*, not corners. Measured on SECTION A-A of
+    `mm25-p1-1.pdf`: corner matching turns 50 mm into 47.01 mm traced and
+    reports 2.07 mm of spurious movement. Only dimensions square to the sheet.
     """
     import Sketcher
 
@@ -359,42 +338,11 @@ def _the_face_at(outline, foot, way):
     """
     The traced line a dimension's foot stands on, or None.
 
-    The face has to be square to the dimension — a line the dimension measures
-    *to* is a line it measures *across* — and the foot has to be on it, which
-    is a point-to-segment distance and not a distance to the infinite line the
-    segment lies on. Measured to the line, a face's own extent along its own
-    direction is never asked about, and a collinear face anywhere else in the
-    view — the far side of a C, the other flange of a bracket — stands at the
-    same distance as the face the foot is actually on and can win the match.
-
-    So the projection along the face is clamped to the face, and how far the
-    clamp had to move it — how far past the face's own ends the foot stands —
-    is asked before anything else. The two directions are two bands because
-    they are two quantities: across the dimension is the tracing against the
-    sheet, and along the face is a draughtsman's gap.
-
-    None is the usual answer and the honest one: a foot on a view whose body is
-    not traced, or on a face the tracer only got part of, names nothing here.
-
-    `A_FOOT` is how far the foot may be from the face it names across the
-    dimension, in millimetres. It cannot be wider than the movement that counts
-    as a finding, or a match at the edge of the band is indistinguishable from
-    the thing this exists to report — and measured, that is exactly what
-    happens: at 2.6 mm four more dimensions find a face, all four then cost the
-    tracing 3.6 mm, and one of them contradicts another dimension outright.
-
-    `A_GAP` is the other direction and a different quantity: how far past the
-    end of a face a foot may stand, in millimetres, because an extension line
-    is drawn with a gap between it and the part it is drawn off, so a foot
-    stands short of the face it names by that gap. Measured on the four sheets,
-    the feet that stand on the face they name are 0 to 2.63 mm past its end and
-    the next one is 3.17, so 3.0 is the empty ground between them — and the
-    answer does not turn on it: anything from 2.7 to 8 mm writes the same 11
-    distances, and 12 lets in two feet 11 mm past the end of the face they are
-    then measured to.
-
-    At 2.0 across and 3.0 along, the four sheets write 11 distances across 10
-    outlines, and the measured worst movement stays under 1.5 mm.
+    `A_FOOT` (2.0 mm): how far across the dimension. At 2.6 mm four more
+    dimensions find a face, and one contradicts another outright.
+    `A_GAP` (3.0 mm): how far past the face's end. Measured: 0-2.63 mm on
+    known feet, next is 3.17 mm. At 2.0 x 3.0, four sheets write 11 distances
+    across 10 outlines, worst movement under 1.5 mm.
     """
     best, best_gap = None, A_FOOT
     for at, entity in enumerate(outline.entities):
@@ -524,13 +472,7 @@ def _joined(sketch, outline):
 
 
 def _sized(sketch, outline):
-    """
-    A size for every round thing, printed where the sheet printed one.
-
-    The one direction the arithmetic runs: the trace found the feature and the
-    text layer says how big it is. Where no callout reached it the traced
-    measurement is written instead, and the verdict says how many of each.
-    """
+    """A size for every round thing, printed where the sheet printed one."""
     import Sketcher
 
     written = {}

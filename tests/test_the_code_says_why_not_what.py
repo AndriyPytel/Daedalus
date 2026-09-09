@@ -137,3 +137,17 @@ def test_docstring_baseline_only_shrinks():
         "a baselined docstring no longer offends — remove it from "
         "docstring_budget_baseline.txt so the list can only shrink: %s"
         % ", ".join(fixed))
+
+
+def test_the_baseline_did_not_grow():
+    """
+    A baseline regenerated wholesale contains at least as many entries as
+    there are current offenders. The test fails on a baseline that grew,
+    catching a regenerate-and-commit that the shrink test alone would miss.
+    """
+    baseline = baselined()
+    current = offenders()
+    added = sorted(key for key in current if key not in baseline)
+    assert not added, (
+        "a docstring was added to the baseline rather than shortened: %s"
+        % ", ".join(added))

@@ -23,14 +23,7 @@ class ProfiledClient:
 class RoleClient:
     """
     The client a run is actually made with: one built per role the table
-    names, wired so `for_phase` answers a phase from the row that names it
-    (FCC-312), replacing the two-profile split `client_from_profiles` drew.
-
-    A role the table has never heard of -- no phase, the orchestrator or a
-    sub-agent worker call this module has no site for yet, since the table
-    itself carries every role the epic named -- answers from `caller`, the
-    client the caller of `for_phase`/`for_role` was already running under,
-    not a cheaper default: the epic's settled fallback rule.
+    names. A role the table has never heard of answers from `caller`.
     """
 
     def __init__(self, roles: dict, caller):

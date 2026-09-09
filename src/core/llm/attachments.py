@@ -79,12 +79,6 @@ def unusable_attachments(paths, model: str) -> list:
     """
     One sentence per attachment this run would not be able to use, before it
     starts. Empty means send it.
-
-    The provider's own complaint arrives after the phase has already been
-    called, which is too late to be told the picture was ignored (FCC-14).
-
-    A PDF is not an image, so a run carrying nothing but PDFs is not refused
-    for a model that cannot see — the PDF check is the one that decides it.
     """
     reasons = []
     pdfs, pictures = [], []

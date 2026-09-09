@@ -118,7 +118,7 @@ class Written:
     Keyed by the Step's number in the Plan rather than by position in the
     reply. A regeneration is asked about a tail, and a reply that leaves a Step
     out has to leave a hole at that Step — shifting every Step after it onto
-    the wrong code is the silent failure this ticket exists to remove (FCC-95).
+    the wrong code is the silent failure this ticket exists to remove.
 
     `unbuildable` is why a Step was left out, from a reply that wrote code for
     the others. A complaint that arrives beside working code is about that Step
@@ -147,53 +147,26 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     """
     Write the code for every Step from `start` to the end of the Plan, in one turn.
 
-    Execute used to be called once per Step, and that is where the run's cost
-    was: 22 of roughly 29 provider calls for six applied Steps, and all fifteen
+    22 of roughly 29 provider calls for six applied Steps, and all fifteen
     looks were API discovery rather than geometry — not one returned a
     coordinate the code then used. Every coordinate was derived at runtime
-    inside the Step's own code, off `Shape.BoundBox`, off `Shape.Faces`, off
-    `base.Length.Value`. That is what makes one call possible: a Step does not
-    need the Document its predecessor will leave behind, because it reads it
-    when it runs (ADR-0021, superseding ADR-0009 in part).
+    inside the Step's own code. That is what makes one call possible: a Step
+    does not need the Document its predecessor will leave behind, because it
+    reads it when it runs (ADR-0021).
 
     A regeneration is the same call with `start` at the Step that failed. Step
     N and every Step after it are written again, because the code for N+1 was
     written assuming objects Step N was going to create — regenerating N alone
-    breaks at the *next* Step's Preflight, silently and one Step late. The
-    Snapshot is read here, so the new code is written against the Document as
-    it actually stands: the Steps before the failure applied, that one did not.
+    breaks at the *next* Step's Preflight, silently and one Step late.
 
-    `attempts` are the failures at the Step `start` names, and only that Step's.
-    A Step that landed carries none of its history forward. `ledger` is the
-    opposite of that on purpose: it is this whole run's, survives every land
-    and every replan (`core/ledger.py`), and lands in the system prompt rather
-    than the request — the same placement `TRAPS` already has, under its own
-    heading so the two stay distinguishable.
+    `entries` is the description addressed. In the run that named this the
+    lookup was missing and the values were invented from the geometry to hand:
+    `arm_z = sum((g.StartPoint.y + g.EndPoint.y) * 0.5 for g in arm_lines) /
+    len(arm_lines)` for a hole the description places on the centre plane.
 
-    `as_described` is the part Design holds, rendered. Execute stays on text
-    deliberately — the whole drawing is noise against code that is written from
-    the Steps and read back off the geometry.
-
-    `entries` is that same description addressed — the address a Step cites
-    against the value it resolves to. A Step names what it satisfies and the
-    value it needs is then a lookup rather than a reading of prose. In the run
-    that named this the lookup was missing and the values were invented from
-    the geometry to hand: `arm_z = sum((g.StartPoint.y + g.EndPoint.y) * 0.5
-    for g in arm_lines) / len(arm_lines)` for a hole the description places on
-    the longitudinal centre plane (FCC-115).
-
-    What the run already knows — the material cards, and any type facts an
-    earlier regeneration's Steps already read — is handed over unasked
-    (`Looks.still_true`, FCC-99): asking is no longer possible here at all,
-    since `budgets.looks_per_turn` and the turn loop that spent it are gone
-    (FCC-304) — reading the Document freely is ordinary code inside a Step
-    now, bounded only by the tree-wide budget (FCC-307).
-
-    A reply that wrote code is not a verdict on the Plan: whatever it objects
-    to, it objects to about the Steps it left out, and those go back to Plan
-    one at a time. Voiding the whole Plan there is how a recorded run threw
-    away Steps nobody had attempted and replanned three times over with nothing
-    applied.
+    A reply that wrote code is not a verdict on the Plan: voiding the whole
+    Plan is how a recorded run threw away Steps nobody had attempted and
+    replanned three times over with nothing applied.
     """
     budgets = budgets or Budgets()
     request = {"steps": [{"step": number, "do": prose}
@@ -418,7 +391,7 @@ _REPAIR_REFERENCE = (
 
 def _repair_reference(attempts):
     """
-    The repair layer's own addition to a retry request (FCC-203): a
+    The repair layer's own addition to a retry request: a
     reference entry for a *known* symptom, keyed on a phrase read off the
     latest attempt's own traceback the way `_FAILED_THIS_WAY` and
     `_the_same_way_twice` already are — but consulted on the *first*
@@ -566,7 +539,7 @@ def _emit_plan(events, kind, planned, reason=None, unanswered=(), decided=(),
 
     `unanswered` rides with it because a Plan that chose its own values is the
     only place those choices are correctable, and the Gate cannot show what it
-    was never handed (FCC-96). `decided` is the same argument for the values the
+    was never handed. `decided` is the same argument for the values the
     model settled before Plan ever saw them: nothing is asked between the
     attachment and the Gate, so the Gate is where they are read (ADR-0022).
 
@@ -605,20 +578,7 @@ def _review_views(tools, events):
 
 
 def _look(tools, look, events, looks=None):
-    """
-    Run one read-only Tool for Execute and hand back what it said.
-
-    A look this run has already taken and still holds is answered from what it
-    said then, without calling the Tool again. It is still narrated, because a
-    transcript that showed the question and not the answer would read as a look
-    that went nowhere.
-
-    `NOT_A_LOOK` is refused here rather than run: one of those Tools writes to
-    the Document, one moves the user's camera and one belongs to a phase of its
-    own, so none of them is a look. A Tool that raises is answered with its
-    error, because a bad look is a thing to correct, not a reason to lose the
-    Step.
-    """
+    """Run one read-only Tool for Execute and hand back what it said."""
     name = str(look.get("tool") or "")
     arguments = look.get("arguments") or {}
 
@@ -651,7 +611,7 @@ def _what_this_build_has(tools):
     them from the same allowance as a question about the Document is what left
     a recorded run with its looks spent at the Step that assigns a material,
     being told a look now was a failed attempt — so it declared the Step
-    unbuildable and said the Tool was unavailable (FCC-146).
+    unbuildable and said the Tool was unavailable.
 
     Unfiltered, because a page of cards is what the request wants to carry: a
     name to match against was the question in the first place. A budget the

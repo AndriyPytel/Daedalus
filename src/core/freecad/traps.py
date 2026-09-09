@@ -1,20 +1,6 @@
 """
 Trap verification: a throwaway kernel proves or disproves what a proposed
-Trap claims, before it ever reaches the user (FCC-314).
-
-A `Trap` with a `script` is run once in a fresh `core.kernel.Kernel`: the
-script's own assertion decides pass or fail, and either way the kernel's
-`KernelResult` is the evidence attached to the proposal -- a failed
-reproduction is shown as a failed reproduction, never dropped or shown as
-confirmed. A `Trap` with no script cannot be reduced to a runnable check and
-is marked unverified rather than skipped, which is why `unverified` is a
-result and not the absence of one.
-
-The 15 seed traps in `core/freecad/apply.py:TRAPS` are prose, carried over
-rather than rewritten into scripts here (per this ticket's Solution Notes),
-so `verify_seed_traps` is their first exercise through this mechanism, not a
-claim that they reproduce -- each one comes back unverified until a script
-is written for it.
+Trap claims, before it ever reaches the user.
 """
 from dataclasses import dataclass
 

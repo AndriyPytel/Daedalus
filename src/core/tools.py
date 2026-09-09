@@ -5,8 +5,7 @@ Tools are plain functions carrying a JSON Schema. Nothing here knows how a
 Tool is called: `describe()` hands out transport-independent descriptions for
 a caller to adapt to whatever wire format it needs. A Tool is no longer the
 only way to reach the Document -- `core/kernel_worker.py::step_namespace`
-runs a Step's code directly against FreeCAD, and a Tool function is a
-convenience callable from there rather than the sole entry point (FCC-299).
+runs a Step's code directly against FreeCAD.
 
 This module never imports FreeCAD. The FreeCAD-backed Tools live in
 `core/freecad/apply.py`; a fake registry for Level 1 is just a few plain

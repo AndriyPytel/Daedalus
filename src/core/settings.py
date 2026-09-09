@@ -165,11 +165,7 @@ class Settings:
         self._grp().SetString("ProfileEffort:%s" % profile, level)
 
     def get_role_table(self) -> list:
-        """
-        One row per role -- `provider`, `model`, `effort` -- seeded with
-        `core.llm.defaults.DEFAULT_ROLE_TABLE` (FCC-293's values) the first
-        time this is read, editable from Preferences thereafter (FCC-312).
-        """
+        """One row per role -- `provider`, `model`, `effort` -- seeded with defaults."""
         raw = self._grp().GetString("RoleModelTable", "")
         if raw:
             try:

@@ -92,28 +92,7 @@ from core.loop.review import review, review_suspect
 
 
 class _Asking:
-    """
-    What has been asked in this run, and of whom.
-
-    Run-wide rather than per Plan. Every counter here used to be a local of
-    `_plan_once_it_knows_enough`, so a re-plan — which is a new Plan but not a
-    new run — reset the lot: the same question went to the user twice, the
-    re-read ceiling refilled, and "asked again after being told to choose"
-    meant one thing on the first Plan and something else on the fourth
-    (FCC-96).
-
-    `unanswered` is the questions nobody answered, in the order they were
-    raised. Plan is handed all of them every time, and the Plan Gate is shown
-    them beside the Steps that chose without them. `re_aimed` is how many times
-    a Plan has been sent back for building two directions in one Step: run-wide
-    like the rest, because a Plan that keeps mixing them would otherwise be
-    sent back for ever.
-
-    `looked_up` is what the Tools said to the questions the drawing could not
-    answer, and `looks` is how many of them were taken. Both are run-wide for
-    the same reason as the rest: an answer already looked up is handed to every
-    later Plan rather than looked up again.
-    """
+    """What has been asked in this run, and of whom. Run-wide rather than per Plan."""
 
     def __init__(self):
         self.unanswered = []
@@ -126,42 +105,7 @@ class _Asking:
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, aborted=None,
         attachments=(), gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
         outstanding=(), the_part_path=None) -> LoopResult:
-    """
-    Turn an Intent into changes to the Document.
-
-    Everything it needs is an argument: the LLM client, the Tool registry, the
-    event stream to narrate into, the budgets, `cancelled` — a callable the loop
-    asks between Steps and attempts so the user is never a passenger — `gate`,
-    the Plan Gate, which must approve before any Step runs, and `decide`, which
-    is asked what to do about a result that did not pass before a revision may
-    wipe it. Nothing is global, so two runs cannot see each other and a
-    sub-agent is a narrower Intent.
-
-    `aborted` is read only once `cancelled()` has already ended the run
-    (FCC-303): it says whether this was Abort rather than Stop, so the event
-    stamped at the boundary is `aborted`, not `stopped`. Defaulted to "never",
-    the same as `cancelled`, so a caller with no Abort action just never asks.
-
-    `attachments` are files the user showed with the Intent; the Design phase
-    sees them, and Review sees them again at the end.
-
-    `outstanding` is what the acceptance checks of an earlier run on this same
-    Document said did not hold and nobody fixed. A run that inherits it is told
-    so before it plans anything, and carries it in its own acceptance list, so
-    a second drawing is not built on top of a part that already failed its
-    first (FCC-98). It comes back out on the result, still outstanding or not,
-    for whoever drives the next run.
-
-    `the_part_path` is a prior run's Part reading, written by `part_file.saved`.
-    Given one and no `attachments`, `_run` reads it back instead of asking
-    Design to describe the part again — the second half of one conversation
-    plans from what the first half already read off the sheet, rather than
-    asking for the sheet a second time. An attachment arriving alongside it
-    means a new drawing, which replaces rather than resumes: Design runs on
-    it as it would on a first prompt. The path a run reads or writes comes
-    back out on the result the same way `unmet` does, for whoever drives the
-    next run.
-    """
+    """Turn an Intent into changes to the Document."""
     events = events if events is not None else EventStream()
     events.emit(INTENT, text=intent)
     budgets = budgets or Budgets()
@@ -224,10 +168,7 @@ class Standing:
     """
     The Plan Gate's standing approval within one run: whether the user has
     said "yes to future Steps like these" already, and which assumed values
-    they have been shown and read. Local to `_run` — a new run starts over.
-
-    Named fields catch a typo'd read or write as `AttributeError` at the call
-    site instead of a dict silently growing a new, never-read key (FCC-276).
+    they have been shown and read.
     """
     approval: bool = False
     read: set = field(default_factory=set)
@@ -237,11 +178,7 @@ class Standing:
 class Part:
     """
     The description Plan and the Gate read, mutated in place by `replan` so
-    every closure inside `_run` that reads it sees the latest description
-    without needing `nonlocal` — only the field is written, never the name.
-
-    Named field catches a typo'd read or write as `AttributeError` at the call
-    site instead of a dict silently growing a new, never-read key (FCC-276).
+    every closure inside `_run` that reads it sees the latest description.
     """
     the_part: object = None
 
@@ -250,11 +187,7 @@ class Part:
 class LastPass:
     """
     What the previous pass over the Plan's Steps applied, so a revised Plan
-    knows how much of its own head is already standing in the Document
-    (`_carried_over`) and does not write or apply those Steps again.
-
-    Named fields catch a typo'd read or write as `AttributeError` at the call
-    site instead of a dict silently growing a new, never-read key (FCC-276).
+    knows how much of its own head is already standing in the Document.
     """
     steps: object = None
     applied: int = 0
@@ -263,10 +196,9 @@ class LastPass:
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
          decide=revise_by_default, outstanding=(), the_part_path=None):
     """The run itself: describe the part, plan it, gate it, build it, judge it.
-    Design runs once per run, growing what it read (ADR-0018, ADR-0019); `the_part_path` reads a
-    prior run's reading off disk instead (FCC-210). A handback with nothing applied since the last
-    one stops the run; any other handback replans on a fresh Snapshot (ADR-0013).
-    `review_suspect` is diagnostic only, never rejects alone — it hands findings to Assertion (FCC-258).
+    Design runs once per run, growing what it read (ADR-0018, ADR-0019). A handback
+    with nothing applied since the last one stops the run; any other handback
+    replans on a fresh Snapshot (ADR-0013).
     """
     if cancelled():
         raise Stopped()
@@ -295,42 +227,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         return planned
 
     def decided(why, applied, unmet=()):
-        """
-        What the user wants done about a result that did not pass.
-
-        Three answers, for a moment where a revision may wipe what has already
-        been built. `ACCEPT` stops here and what was built stays; `REVISE` is
-        feedback, a new Plan and a new Plan Gate; `START_OVER` is a revision
-        that may also delete what was built. The last is the one the Plan Gate
-        has no word for, since REJECT stops a run but does not licence a
-        restart. Accepting and stopping without accepting are one answer rather
-        than two: both end the run and both keep what was built, and which of
-        them happened is already on the stream — the `assertion` and
-        `review_verdict` events say whether anything passed.
-
-        Only where there is something to lose: the right to delete a model four
-        minutes and seventeen Steps in is not the agent's, but with nothing
-        applied there is nothing to decide about. Anything unrecognised is the
-        default — the panel is what turns "nobody answered" into a stop.
-
-        Asked and answered on the stream. It is the last thing that happens in
-        a run that did not pass and it used to happen entirely inside the
-        panel, so a Session read back showed a red `assertion` event and then
-        nothing: no record that the user had been offered the choice, none of
-        which one they took, and a Document carried into the next run with six
-        entries still wrong and nothing anywhere saying so (FCC-98).
-
-        `auto_approve` reaches this question the same way it already reaches
-        the Plan Gate, past the exact point the Plan Gate stops waiting: an
-        unattended run does not block on a bare `Event().wait()` nobody is
-        left to set. `revise_by_default` — the answer a headless caller with
-        no `decide` of its own already gets — is reused rather than a second
-        auto policy invented beside it, so `decide` itself is never called in
-        auto mode. `unmet` is the checks that did not hold, carried on the
-        answer the way the Plan Gate carries what an auto-approval overruled,
-        so the stream says what was decided without asking rather than
-        leaving the next reader of it to infer a human was ever there.
-        """
+        """What the user wants done about a result that did not pass."""
         if not applied:
             return REVISE
         if auto_approve:
@@ -561,10 +458,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
                   start=0, ops=()):
     """One pass over the Plan: written in one call, applied one Step at a time (ADR-0021).
-    `budgets.attempts_per_step` bounds one Step; a spent Step hands back to Plan (ADR-0013). A
-    trailing gap (a reply that ran out of room) is free up to `budgets.trailing_gap_retries`.
-    A Step Execute refuses goes back on its stated reason at once. `ops[i]` rides onto `apply_step`
-    as `op` so `core/lint.py` checks the TypeId a Step builds (ADR-0026, FCC-233).
+    `budgets.attempts_per_step` bounds one Step; a spent Step hands back to Plan (ADR-0013).
+    `ops[i]` rides onto `apply_step` as `op` so `core/lint.py` checks the TypeId (ADR-0026).
     """
     if cancelled():
         raise Stopped()
@@ -700,17 +595,8 @@ def _changes_the_shape(step):
     """
     Whether the part depends on *step* — read off the words the Step is in.
 
-    Conservative in one direction on purpose. A Step is geometry unless it
-    plainly names a property of the Document that no geometry depends on and
-    names no shape operation at all, so the words nothing here recognises leave
-    the run exactly where it was: handed back to Plan. Reading it the other way
-    round would let an unrecognised operation be skipped, and a Step of the part
-    skipped silently is the failure this must not add.
-
-    The prose is what there is. Execute leaves a Step out before any code for it
-    exists, so nothing has been written, nothing has run, and the Document
-    cannot be asked — a Step that assigns a material and a Step that pads a
-    profile differ, at that moment, only in what they say.
+    Conservative: a Step is geometry unless it plainly names a property of the
+    Document that no geometry depends on. Unrecognised operations stay geometry.
     """
     said = str(step).lower()
     return not (any(word in said for word in _A_PROPERTY_OF_THE_DOCUMENT)
@@ -741,11 +627,9 @@ def _always_the_same_way(attempts):
     """
     What Plan is told when every attempt at a Step failed for the same reason.
 
-    Rewriting the same Step in other words sends Execute back at the same wall,
-    which is what a recorded run did: three identical failures, a replan, and
-    then the same three again (FCC-100). Where the failure never varied, the
-    Step itself is what has to change — a different operation, a different
-    order, or the Step split so the part that cannot be built is on its own.
+    A recorded run did three identical failures, a replan, and then the same
+    three again. Where the failure never varied, the Step itself is what has
+    to change.
     """
     if len(attempts) < 2:
         return ""

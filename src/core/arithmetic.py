@@ -1,51 +1,10 @@
-"""
-The sums a Step states about itself, worked out.
+"""The sums a Step states about itself, worked out.
 
-A Step is prose, and prose can assert arithmetic nobody does. In the recorded
-run (`logs/sessions/4fca495a8076439a9967a584abd05227.jsonl`) the description
-gave a 45° arm 73 mm long from the ring axis and an overall length that puts
-the left tangent plane 65.5 mm from that axis, which cannot both be true —
-73 * cos(45°) is 51.6, not 65.5. Plan answered Execute's refusal by assuming an
-80.5 mm station "to place the left extreme at 0 mm"; 80.5 * cos(45°) is 56.9,
-so the extreme landed at 8.58 and Execute refused again, in the same words. Two
-of the run's three revisions went on a multiplication nobody performed, and the
-Document stayed empty.
+Counter-example (`logs/sessions/4fca495a...`): 73 mm arm at 45°, 65.5 mm
+extreme — 73 * cos(45°) is 51.6, not 65.5. Two of three revisions went on a
+multiplication nobody performed, Document stayed empty.
 
-So Plan is told to write the sum down, and what it writes down is worked out
-here — before the Plan Gate, where a wrong number is still cheap. Only what is
-written as a sum is checked: this is not a geometry engine and it has no
-opinion about a Step that states no arithmetic at all. A claim is
-`<sum> = <number>`, where the left side is arithmetic and nothing else — no
-words, so `Set Type = ThroughAll` and `the Length = 30` are not claims — and it
-has to contain an operation, because `30 = 30` is a label rather than a sum
-somebody had to do. Written as a chain, `<sum> = <sum> = <number>`, it is still
-one claim: the number at the end is the answer and everything before it is the
-working.
-
-The number at the end has to be the end. Three shapes read like an answer and
-are not one, all three measured against real Plan prose
-(`logs/sessions/5d9249424bce45d2b25485002ba1c630.jsonl`): a fraction written
-as the answer, `15/45 = 1/3`, is not a claim of `1` — `1` is immediately
-followed by `/3` — and was read that way regardless, `15/45 = 1, and it is
-0.33`, over a slope that was right. A chain whose last stretch is a sum
-rather than a number, `18 + 2 = 20 mm = 5 + 15 mm`, is not
-`<sum> = <sum> = <number>` — it ends in `5 + 15`, another sum, not a
-number — and reading `5` off it as the answer, `18 + 2 = 5, and it is 20`,
-cost a second revision in the same run over an addition nobody got wrong.
-Either way, a number immediately followed by an operator and a digit is
-working, not an answer, and is not read as one. A square-root sign is
-arithmetic: `√(3025 + 336) = 57.97` is a claim, `√` read as `sqrt` before it
-is worked out, and a wrong one is still caught — `√(16) = 5` is reported.
-`²` (superscript two) is not read: `55²` fails to parse as Python and that
-stretch is silently skipped, the same as `w / 2` or `10 / 0` are skipped, and
-the recorded false positive never needed it read, because the stretch it
-depended on, `√(3025 + 336) = 57.97`, came out correct on its own.
-
-Trigonometry is in degrees, because a drawing is in degrees. `cos(45)` read the
-way Python reads it is 0.5253, which is not a number on any sheet. The inverses
-answer in degrees for the same reason, and they are read whole: `atan(` is not
-the `tan(` its name ends with, and a slope written as `atan(15/45) = 18.43°`
-comes out where the same digits read as `tan` are 0.01.
+A claim is `<sum> = <number>`. Trigonometry is in degrees.
 """
 import ast
 import math
