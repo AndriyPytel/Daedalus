@@ -1,0 +1,1 @@
+Answer again, and put the JSON object this phase takes in the reply. Whatever you said above is either one of that object's own keys or it is not the answer: a phase that needs to look something up first asks for the look *in* the JSON, and a phase that wants to say why does it inside the object, not instead of it. Prose beside the object is read; prose without one is not.

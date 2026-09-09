@@ -14,6 +14,7 @@ from core.loop.budgets import Budgets
 from core.loop.describe import _A_SIZE, _TRUE_TO
 from core.loop.execute import _DID_NOT_HOLD, _MODEL_IS_INVALID, _addressed
 from core.loop.prompt import ASSERTION_PHASE, _ask, prompt
+from core.prompts import read_prompt
 from core.loop.results import Stopped
 
 
@@ -345,9 +346,4 @@ def _geometry_regressions(baseline, geometry, retried_names):
     return sorted(moved)
 
 
-_GEOMETRY_REGRESSION = (
-    "these features' geometry changed and nothing said they were touched: %s. "
-    "A feature not named in what this run built or retried moved anyway — the "
-    "failure config/prompts/assertion.md already documents as a slot "
-    "shortened until it passes, or a clamp that stops opening."
-)
+_GEOMETRY_REGRESSION = read_prompt("geometry_regression.md")

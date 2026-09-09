@@ -1,0 +1,1 @@
+You asked for something no drawing prints — what this FreeCAD has, what a type is called, what a card carries. Nobody is asked and the sheet is not read: look it up with one of the Tools above and plan with what it says. Reply with {"look": {"tool": "...", "arguments": {...}}}.

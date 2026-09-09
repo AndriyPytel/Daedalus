@@ -1,0 +1,1 @@
+This Step's error handling breaks the correction path: %s. A failed Step answers itself (ADR-0008) — the traceback is what goes back and gets corrected, so code that swallows its own exception disables the mechanism the whole run rests on. Let it raise. A Step that applied none of the twelve edges it meant to must fail, not record how many it managed.

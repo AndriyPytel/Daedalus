@@ -1,0 +1,1 @@
+Constraint(%r, ...) was given %d arguments after the name, which is not a signature this constructor has — and a wrong arity crashes the core rather than raising. %r takes %s arguments after the name. For concentricity between two circles that is Constraint('Coincident', a, 3, b, 3), where 3 is the centre PosId.

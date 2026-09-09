@@ -35,11 +35,7 @@ REVIEW_PHASE = "review"
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 
-PROMPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
-                       "config", "prompts")
-
-
-_LANGUAGE_PATH = os.path.join(PROMPTS, "language.md")
+from core.prompts import PROMPTS, read_prompt
 
 
 _LANGUAGE_HEADINGS = (
@@ -77,8 +73,7 @@ def _language_sections():
     section keyed by heading text — the unit `_PHASE_VOCABULARY` composes
     from, so a phase gets the sections it uses and nothing it does not.
     """
-    with open(_LANGUAGE_PATH, encoding="utf-8") as handle:
-        text = handle.read()
+    text = read_prompt("language.md")
     marks = sorted((text.index("## " + heading), heading)
                    for heading in _LANGUAGE_HEADINGS)
     sections = {}
@@ -122,8 +117,7 @@ def prompt(phase, ledger=""):
     first. Empty for every phase but Execute today, and for Execute itself
     until this run has a failure to carry.
     """
-    with open(os.path.join(PROMPTS, phase + ".md"), encoding="utf-8") as handle:
-        body = handle.read().strip()
+    body = read_prompt(phase + ".md").strip()
     sections = _language_sections()
     vocabulary = "\n\n".join(sections[heading] for heading in _PHASE_VOCABULARY[phase])
     body = "%s\n\n%s" % (body, vocabulary)
@@ -286,13 +280,7 @@ def _one_call(llm, events, phase, system, user, prior=()):
     return "".join(text), thought, "".join(reasoning)
 
 
-_ASKED_AGAIN = (
-    "Answer again, and put the JSON object this phase takes in the reply. Whatever you "
-    "said above is either one of that object's own keys or it is not the answer: a phase "
-    "that needs to look something up first asks for the look *in* the JSON, and a phase "
-    "that wants to say why does it inside the object, not instead of it. Prose beside the "
-    "object is read; prose without one is not."
-)
+_ASKED_AGAIN = read_prompt("asked_again.md")
 
 
 def _asked_again(body, reasoning):

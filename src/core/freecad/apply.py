@@ -29,6 +29,7 @@ from core.kernel import Kernel, KernelResult, copy_of
 from core.kernel.kernel_worker import (_NamedDoc, register_step_source, signature_of,
                                 step_namespace, trimmed_traceback)
 from core.lint import lint
+from core.prompts import read_prompt
 from core.tools import NO_PARAMETERS, ToolError, ToolRegistry
 
 DISPATCH_TIMEOUT = 60.0
@@ -194,13 +195,7 @@ def on_main_thread(func, timeout=DISPATCH_TIMEOUT):
     return _dispatcher.on_main_thread(func, timeout)
 
 
-_CHANGED_NOTHING = (
-    "The code ran without error but changed nothing: no object was created, "
-    "deleted or modified. A Step that leaves the Document as it found it has "
-    "not been done. Check that the code actually calls what it defines and "
-    "assigns to the Document's objects — or, if this Step genuinely has nothing "
-    "left to do, say so with {\"obsolete\": \"why\"} instead."
-)
+_CHANGED_NOTHING = read_prompt("changed_nothing.md")
 
 
 def run_in_transaction(doc, code, label="Copilot Step", names=None, expected_signature=None):

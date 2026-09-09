@@ -1,0 +1,1 @@
+%s is not available during Preflight. The worker is a headless FreeCAD with no GUI and no selection, so code that reads them runs differently there than it will here, and Preflight stops meaning anything. Make the Step a pure function of the Document.

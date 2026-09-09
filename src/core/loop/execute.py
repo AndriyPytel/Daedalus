@@ -16,6 +16,7 @@ from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import Budgets
 from core.loop.describe import _RAN_OUT_OF_ROOM
 from core.loop.prompt import EXECUTE_PHASE, _ask, prompt
+from core.prompts import read_prompt
 from core.loop.looks import Looks
 
 
@@ -76,10 +77,7 @@ _MAY_START_AGAIN = (
 _SAID_NOTHING = "nothing in the views answers it."
 
 
-_LOOK_IT_UP = ("You asked for something no drawing prints — what this FreeCAD has, what a "
-               "type is called, what a card carries. Nobody is asked and the sheet is not "
-               "read: look it up with one of the Tools above and plan with what it says. "
-               "Reply with {\"look\": {\"tool\": \"...\", \"arguments\": {...}}}.")
+_LOOK_IT_UP = read_prompt("look_it_up.md")
 
 
 def _addressed(acceptance):
@@ -680,13 +678,7 @@ _MODEL_IS_INVALID = "recompute left these objects in error"
 _DID_NOT_HOLD = "these did not hold: "
 
 
-_GOING_NOWHERE = (
-    "Execute handed a Step back for the second time and nothing has been applied in "
-    "between, so rewriting it again would leave the run where it is. What it says "
-    "cannot be built is the description it was planned from, not the words the Step "
-    "was written in:\n%s\nCorrect the description — the values it holds in conflict, "
-    "and the datums and overalls a superseded feature left behind — and run it again."
-)
+_GOING_NOWHERE = read_prompt("going_nowhere.md")
 
 
 _A_PROPERTY_OF_THE_DOCUMENT = ("material", "appearance", "colour", "color",
