@@ -144,6 +144,24 @@ def test_delegate_emits_nothing_without_a_stream():
     assert answer == "the answer"
 
 
+def test_delegate_records_the_tokens_a_turn_spent_and_a_run_over_budget_is_refused():
+    class _PricedLLM(ScriptedLLMClient):
+        def __init__(self, turns, prompt_tokens, completion_tokens):
+            super().__init__(turns)
+            self.last_cost = {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}
+
+    phase = Session()
+    worker_llm = _PricedLLM(["the answer"], prompt_tokens=61, completion_tokens=40)
+    supervisor = sa.SessionTreeSupervisor(token_budget=100)
+
+    sa.delegate(supervisor, phase, phase_depth=0, llm=worker_llm, prompt="delegate this")
+
+    assert supervisor.tokens == 101
+    assert supervisor.outcome == sa.BUDGET_EXHAUSTED
+    assert supervisor.spawn(0) is None
+    assert supervisor.refusals[-1] == {"reason": sa.BUDGET_EXHAUSTED, "depth": 0}
+
+
 def test_a_refused_delegate_emits_sub_agent_refused_and_calls_the_worker_never():
     from core.events import EventStream, SUB_AGENT_REFUSED
 

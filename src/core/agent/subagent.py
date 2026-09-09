@@ -119,6 +119,8 @@ def delegate(supervisor, phase_session, phase_depth, llm, prompt, stream=None, p
         supervisor.record_turn()
         answer = "".join(
             chunk.text for chunk in worker_session.turn(llm, prompt) if chunk.kind == TEXT)
+        spent = getattr(llm, "last_cost", None) or {}
+        supervisor.record_tokens(spent.get("prompt_tokens", 0) + spent.get("completion_tokens", 0))
     finally:
         supervisor.release()
     phase_session.messages.append({"role": "assistant", "content": answer})
