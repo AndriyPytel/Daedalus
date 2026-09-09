@@ -161,8 +161,7 @@ def _build_qss() -> str:
            what marks it out. */
         QFrame#GateCard {{ border: none; }}
 
-        /* The Plan, editable until Build locks it (FCC-177): the one thing
-           on screen at the Gate that is read as an object, so a surface. */
+        /* The Plan, editable until Build locks it: a surface. */
         QFrame#PlanCard {{
             background-color: {WASH};
             border: 1px solid {HAIRLINE};
@@ -219,8 +218,7 @@ def _build_qss() -> str:
 
         QPushButton#PickerButton:hover {{ background-color: {WASH}; }}
 
-        /* The Review verdict card (FCC-178) and the acceptance checks
-           (FCC-179): both are results, and a result is a surface. */
+        /* The Review verdict card and acceptance checks: surfaces. */
         QFrame#ReviewVerdictCard, QFrame#AssertionResultsCard {{
             background-color: {WASH};
             border: 1px solid {HAIRLINE};
@@ -275,20 +273,7 @@ def _build_qss() -> str:
 
 
 def _format_cost(usd: float) -> str:
-    """
-    The running total, in dollars.
-
-    `core.events.COST` carries `usd` and `model` -- what the call actually
-    cost, already converted -- and nothing that counts tokens; the CLI route
-    reads `total_cost_usd` straight off the provider (`core/llm.py`) and the
-    keyed route emits no `cost` event at all (`core/loop.py :: _streamed`
-    reads `last_cost`, which `LiteLLMClient` never sets). A token count beside
-    the dollar figure would be invented rather than shown, so the total is
-    dollars alone (FCC-176).
-
-    Two decimal places round every call under a cent to `$0.00`; four is
-    enough of a call like that to still read as spent rather than free.
-    """
+    """The running total, in dollars. Four decimal places for calls under a cent."""
     if usd and usd < 0.01:
         return "$%.4f" % usd
     return "$%.2f" % usd
@@ -478,7 +463,7 @@ class AskTheUser(QtCore.QObject):
         not one of these three answers, so Stop falls to the default. That is
         deliberately not "accept": the loop asks `cancelled()` before it plans
         anything, so a stopped run is recorded as stopped rather than as a
-        result the user took (FCC-77).
+        result the user took.
         """
         from copilot.sdk import DECISIONS, REVISE
 
@@ -579,7 +564,7 @@ class LoopWorker(QtCore.QObject):
 
     def abort(self):
         """
-        Kills the kernel now, discarding whatever Step is in flight (FCC-303).
+        Kills the kernel now, discarding whatever Step is in flight.
 
         Where `stop` only raises the flag and leaves the running Step to
         finish and checkpoint on its own, this also calls `pipeline.shutdown`
@@ -598,7 +583,7 @@ class LoopWorker(QtCore.QObject):
     def _get_client(self):
         """
         One client per run, built per role: `for_phase` is what picks a
-        phase's own row from the role table (FCC-312), on `core.llm.RoleClient`
+        phase's own row from the role table, on `core.llm.RoleClient`
         the seam already reads.
         """
         if self.client is None:
@@ -614,7 +599,7 @@ class LoopWorker(QtCore.QObject):
         the stream it narrates the Owned Object question into is set per run
         rather than at construction.
 
-        `self.document` is this Session's own bound Document (FCC-181), set by
+        `self.document` is this Session's own bound Document, set by
         the panel before the first Intent is sent and reused for every Intent
         after that — a later focus change elsewhere must not redirect a Tool
         call or an Apply that belongs to this Session.
@@ -640,7 +625,7 @@ class LoopWorker(QtCore.QObject):
         the user cannot act on.
 
         `the_part_path` is what the Session's last run read or wrote, forwarded
-        here unless a new attachment arrived to replace it (FCC-210); empty
+        here unless a new attachment arrived to replace it; empty
         means run as today, describing the part from `attachments` alone.
         """
         from copilot.sdk import events as ev
@@ -723,7 +708,7 @@ PICKER_SHARE = 0.35
 
 class _SessionWorker(QtCore.QObject):
     """
-    One Session's own `LoopWorker`, on its own `QThread` (FCC-181).
+    One Session's own `LoopWorker`, on its own `QThread`.
 
     Standing up one of these per Session — instead of the single global worker
     this panel used to hold — is what makes two open Documents genuinely
@@ -740,7 +725,7 @@ class _SessionWorker(QtCore.QObject):
     one the panel happens to be looking at. `the_part_path` is the same idea
     for the Part a run last read or wrote: forwarded into the next Intent so a
     follow-up plans from it instead of asking Design to describe the drawing
-    again, unless a new attachment arrives to replace it (FCC-210). `dirty` is
+    again, unless a new attachment arrives to replace it. `dirty` is
     set when an event lands for this Session while it is not the one on
     screen, so the panel knows to resync from the transcript rather than trust
     stale widgets the next time it is shown. `pending_question` is the one
@@ -796,7 +781,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
     or wrapping off entirely — widens the dock, and Qt does not give the width
     back when the text goes short again.
 
-    One `_SessionWorker` per Session (FCC-181), in `self._workers`, keyed by
+    One `_SessionWorker` per Session, in `self._workers`, keyed by
     the Session's own log path — the same stable identity `name_document` and
     `title_arrived` already key by, since a position shifts under pruning and a
     log does not. `worker`, `thread`, `bridge` and `ask` stay as properties
@@ -942,7 +927,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         Read here rather than left for `build_registry`'s own fallback: this is
         the one moment — the Session's first Intent — that "whichever Document
         is in focus" and "the Document this Session is about" are guaranteed to
-        be the same Document (FCC-181). Every Intent after this one reuses the
+        be the same Document. Every Intent after this one reuses the
         binding regardless of what the user brings to front meanwhile.
 
         Goes through `core.freecad.apply.active_document` rather than
@@ -1216,12 +1201,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _refresh_models(self, models=None):
         """
-        Recompute which model the button shows (FCC-175).
+        Recompute which model the button shows.
 
         The stored id when the provider that owns it has confirmed it; the
         stored id held bare while its provider's fetch is still in flight,
         because showing anything else there is the flash of a model the user
-        never picked (FCC-41); the fallback `_retire_model` names once every
+        never picked; the fallback `_retire_model` names once every
         provider has answered and none offers it any more; or, with nothing
         stored at all, the first model on offer.
 
@@ -1496,7 +1481,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         Let go of the render state of the Session being left.
 
-        Owned Objects no longer need clearing here (FCC-181): each Session
+        Owned Objects no longer need clearing here: each Session
         keeps its own `_SessionWorker`, so one Session's Owned Objects were
         never reachable from another's to begin with.
 
@@ -1524,8 +1509,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         Open a Session, resyncing what is shown to what actually happened.
 
-        A run no longer holds the panel to the Session it started from
-        (FCC-181): each Session runs on its own `_SessionWorker`, so switching
+        A run no longer holds the panel to the Session it started from: each Session runs on its own `_SessionWorker`, so switching
         away from one that is still going leaves it running rather than
         blocking or losing it. What was missed while away is on that Session's
         own transcript, and `restore_session` reads it back in — the same
@@ -1554,7 +1538,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         `resync` bypasses "already restored" and re-reads the whole transcript
         regardless — for a Session whose worker kept running while it was not
         on screen, so what were stale widgets are rebuilt from what the
-        transcript now actually holds (FCC-181). `clear_page` first, or the
+        transcript now actually holds. `clear_page` first, or the
         replay would land its widgets after whatever this Session showed the
         last time it was open, doubling everything that had already rendered.
         """
@@ -1682,7 +1666,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         The Session's last Part path travels with it automatically, unless this
         Intent brings its own attachment — a new drawing replaces what was
-        carried rather than adding to it (FCC-210).
+        carried rather than adding to it.
         """
         if self._answers_to_enter is not None:
             self._answer_with(self._answers_to_enter)
@@ -1733,11 +1717,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         The truncated Intent goes up immediately so nothing is ever called
         "Untitled"; the generated title replaces it when it arrives, and is
-        asked for again on the next Intent if this one produced none (FCC-44).
+        asked for again on the next Intent if this one produced none.
 
         `begin` bounds the index and may have dropped Sessions before this one,
         so the position it had is not the position it has. `session_id` is the
-        Session's own typed identity (FCC-309/FCC-310), carried through the
+        Session's own typed identity, carried through the
         title callback instead of the log path it named the Session by until
         now, so a renamed or moved log cannot orphan the title in flight.
         """
@@ -1788,7 +1772,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
     def on_abort(self):
         """
         Kills the kernel now, discarding whatever Step is in flight — where
-        Stop lets it finish (FCC-303).
+        Stop lets it finish.
         """
         if self._question_card is not None:
             self._question_card.setEnabled(False)
@@ -1845,7 +1829,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         once and cached on the class the first time an event arrives, mapping
         every `core.events.KINDS` member to a `_oe_*` method that returns True
         to end the method here or False to fall through to the narrated line
-        below (FCC-285) -- the same shape `_update_queue` and
+        below -- the same shape `_update_queue` and
         `_update_review_evidence` share. A kind the table does not name is not
         silently skipped: `_report_unknown_kind` puts it on the transcript
         instead, because `tests/test_panel_level2.py`'s completeness test is
@@ -2010,13 +1994,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         return False
 
     def _report_unknown_kind(self, event, dispatcher):
-        """
-        An `event.kind` none of the three dispatch tables names, put on the
-        transcript instead of the silent no-op FCC-285 found: with the
-        completeness test in `tests/test_panel_level2.py` holding every table
-        to `core.events.KINDS`, the one way to reach this is a session log
-        that names a kind no code in this file ever emitted.
-        """
+        """An `event.kind` none of the three dispatch tables names."""
         self.add_chat_widget(AssistantMessageWidget(
             "\u26a0 %s: unrecognized event kind %r" % (dispatcher, event.kind)))
 
@@ -2044,7 +2022,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         durations the live run showed. CALL_STARTED starts the live call clock;
         COST ends it.
 
-        `_QUEUE_DISPATCH` (FCC-285) is `on_event`'s table shape reused here:
+        `_QUEUE_DISPATCH` is `on_event`'s table shape reused here:
         built once, cached on the class, one `_uq_*` method per
         `core.events.KINDS` member so a kind missing here is a fact
         `tests/test_panel_level2.py`'s completeness test can see.
@@ -2134,23 +2112,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._queue_widget.fail_current(at=event.at)
 
     def _update_review_evidence(self, event):
-        """
-        What the Review verdict card shows, tracked off the stream as it
-        passes (FCC-178) -- kept beside the narration rather than inside it,
-        the same reason `_update_queue` is: a screenshot path and a raw
-        Assertion/Review event are not words `narrate()` returns.
-
-        Reset on `ASSERTION` rather than only at the top of a run: the
-        acceptance checks are the one event guaranteed to land, in the same
-        cycle, before `decided()` ever asks anything -- whether Review runs
-        after them or the cycle stops there -- so a verdict left over from an
-        earlier revision of this same run cannot be mistaken for the one
-        belonging to this cycle.
-
-        `_EVIDENCE_DISPATCH` is the third of the FCC-285 tables -- see
-        `_update_queue` for why every kind gets an entry rather than a
-        default.
-        """
+        """What the Review verdict card shows, tracked off the stream as it passes."""
         data = event.data
 
         from copilot.sdk import events as ev
@@ -2261,7 +2223,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         Only the chat scroll renders it: the Queue never carries a reasoning
         chunk, so a long chain of thought is read whole rather than clipped to
-        whatever fit in ninety characters (FCC-173).
+        whatever fit in ninety characters.
 
         A wordless chunk is the subscription route saying the model is
         reasoning and that the words are withheld (`core/llm.py`). The row
@@ -2313,24 +2275,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
             row.append_text(text)
 
     def _render_sub_agent_spawned(self, phase, prompt):
-        """
-        A worker's own row, opened the moment it is spawned rather than
-        once it answers -- otherwise the phase that delegated just takes
-        longer with nothing on the panel to say why (FCC-308, AC6). Closed
-        onto nothing until `_render_sub_agent_answered` gives it a
-        transcript to open onto.
-        """
+        """A worker's own row, opened the moment it is spawned."""
         row = self._subagent_rows[phase] = AccordionWidget("Sub-agent (%s)…" % phase)
         row.opens_onto_nothing()
         self.add_chat_widget(row)
         row.start_pulsing()
 
     def _render_sub_agent_answered(self, phase, answer, transcript):
-        """
-        The row `_render_sub_agent_spawned` opened, filled with the worker's
-        full transcript -- inspectable even though *phase_session* itself
-        only ever received *answer* (FCC-307's return contract).
-        """
+        """The row `_render_sub_agent_spawned` opened, filled with the worker's transcript."""
         row = self._subagent_rows.pop(phase, None)
         if row is None:
             row = AccordionWidget("Sub-agent (%s)" % phase)
@@ -2343,17 +2295,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
             for message in transcript) or answer)
 
     def _render_sub_agent_refused(self, phase, reason):
-        """
-        A refused spawn (`SessionTreeSupervisor.spawn`), its own row rather
-        than a delegation silently missing from the panel (FCC-308, AC6).
-        """
+        """A refused spawn (`SessionTreeSupervisor.spawn`)."""
         row = AccordionWidget("Sub-agent refused (%s)" % phase)
         self.add_chat_widget(row)
         row.append_text(reason)
 
     def _render_attachments(self, files):
         """
-        What the run was shown, in the chat beside the Intent (FCC-88).
+        What the run was shown, in the chat beside the Intent.
 
         The picture itself, not a filename — the chips come off the bar on Send
         and nothing replaced them. A restored Session is the case that decides
@@ -2377,21 +2326,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self.add_chat_widget(_beside_the_intent(label))
 
     def _render_part(self, line, path):
-        """
-        Above the Plan, on a card: the Gate is the Steps and the document they
-        were built from, and a document is opened rather than poured into the
-        chat (FCC-47 argued the other way over a description that had not been
-        distilled yet, and a run's worth of one is read nowhere).
-
-        The card carries the path the event carries, so what the user opens is
-        the file the run is planned, checked and built from, and a correction
-        made in it is a correction to the run (FCC-108). It is the `FileChip`
-        the user's own attachments wear: a file is one shape in the design
-        whichever side of the transcript wrote it, and an underlined path
-        wrapped across three lines was the loudest thing in the chat. It stands
-        at the left margin the run answers from rather than under the user's
-        bubble, because the run is what wrote it.
-        """
+        """Above the Plan, on a card: the Gate is the Steps and the document they were built from."""
         self._the_thinking_stops()
         self.add_chat_widget(AssistantMessageWidget(
             line.replace(path, "").strip().rstrip(":").strip()))
@@ -2499,9 +2434,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         The Plan Gate. One approval covers every Step; there is no per-Step
         approval, so this appears once per Plan and the run waits on it. A
-        revised Plan is a new Plan and gets its own card (FCC-68).
+        revised Plan is a new Plan and gets its own card.
 
-        One answer now, not four (FCC-177): the Plan is edited directly on
+        One answer now, not four: the Plan is edited directly on
         `self._plan_widget` -- a Step's text, an add, a delete, a drag to
         reorder -- and Build reads whatever it holds at the moment it is
         pressed, edited or as-generated, and locks the widget in the same
@@ -2532,10 +2467,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         What to do about a result that did not pass, before a revision may wipe
         it. Three answers, and the Gate's three are not them: REJECT stops a
         run and does not licence a restart, so "start over" needs a word of its
-        own (FCC-77).
+        own.
 
         Whether Review ever ran is what tells the two askers behind this one
-        signal apart (FCC-178): the acceptance checks can fail and stop the
+        signal apart: the acceptance checks can fail and stop the
         run before Review is asked anything, and `_last_review_verdict_event`
         is `None` for exactly that case, since `_update_review_evidence`
         clears it at the acceptance checks' own event. Review having run puts
@@ -2569,17 +2504,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
              ("Start over", lambda: START_OVER)))
 
     def _put_the_review_verdict(self, accept, revise, start_over):
-        """
-        The Confirmation card FCC-178 asks for: `ReviewVerdictWidget`, fed
-        from what `_update_review_evidence` already read off the stream, its
-        `decided` signal answering the same waiting worker thread every other
-        card here answers through `_answer_with`.
-
-        `assertion_line` is `summary_line`'s "N passed, M failed" (FCC-179)
-        where there is a pass/fail count to give -- the plain narration line
-        stays the fallback for the one case that is not a count at all, the
-        checks that could not be written.
-        """
+        """The Confirmation card: `ReviewVerdictWidget`, fed from `_update_review_evidence`."""
         from copilot.sdk import narrate
 
         self._queue_widget.now("Waiting for you to review the result\u2026")
@@ -2603,7 +2528,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
     @QtCore.Slot(object)
     def on_missing_values(self, question):
         """
-        The values Plan has not been given (FCC-25).
+        The values Plan has not been given.
 
         The question itself is already in the transcript \u2014 it arrived as an
         event. This is only the card that takes the answer, and it takes it
@@ -2631,7 +2556,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         The same card as every other question rather than a modal box: this one
         used to be the exception, and being the exception is how it ended up
-        outside the transcript as well (FCC-88). What is said about it, before
+        outside the transcript as well. What is said about it, before
         and after, is on the stream from `ApplyPipeline`.
         """
         deletes = list(kinds.get("delete") or ())
@@ -2776,8 +2701,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         forward, whatever the run ended as, including a result the user took as
         it is: the entries are wrong in the Document either way, and the next
         Intent inherits them. A run that passed clears the acceptance list; the
-        Part path is what the run read or wrote, empty where neither happened
-        (FCC-210).
+        Part path is what the run read or wrote, empty where neither happened.
 
         `ok=True` covers two different endings: Review passed, or the user
         took a build its own checks had already failed — the blank a saved
@@ -2786,7 +2710,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         two apart, so only a genuinely clean pass gets the blank status line.
 
         *log* names which Session finished — this Session's own worker keeps
-        running whether or not it is the one on screen (FCC-181), so the
+        running whether or not it is the one on screen, so the
         bookkeeping happens here regardless, and only the widgets are guarded
         behind "is this the Session being looked at right now".
         """
@@ -2854,8 +2778,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         makes on its way out. Without it the wait below expires and a thread in
         the middle of the Document is ended from outside.
 
-        Every worker is told to stop before any thread is waited on
-        (FCC-181): a Session parked on a question blocks its own thread until
+        Every worker is told to stop before any thread is waited on: a Session parked on a question blocks its own thread until
         released, and waiting on one before releasing the next would serialise
         what should be a handful of independent, already-blocked threads.
 
@@ -2890,7 +2813,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def slotDeletedDocument(self, document):
         """
-        A Document closing ends whichever Session was bound to it (FCC-181).
+        A Document closing ends whichever Session was bound to it.
 
         FreeCAD calls every registered observer's `slotDeletedDocument` by
         this exact name — no base class to inherit, just the method present.
