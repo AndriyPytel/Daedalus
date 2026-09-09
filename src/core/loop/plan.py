@@ -39,35 +39,10 @@ class Plan:
     """
     The Steps, and what the finished part has to satisfy.
 
-    `question` is what Plan must know before it can plan at all. It is set
-    *instead of* steps, never beside them — a question is not a Plan with a
-    caveat.
-
-    `acceptance` is what has to be true of the finished part, once for the
-    whole Plan rather than per Step: the checks run when the run is over,
-    against the Document that was asked for, not against an intermediate state.
-    It is derived from the description rather than written here (ADR-0020).
-
-    `satisfies` is every entry of the description the Plan's Steps cite between
-    them, flat: the check is whether an entry is accounted for by *any* Step,
-    so which Step accounted for it is a thing the Gate shows and the loop does
-    not need. `cites` is the same citations kept Step by Step, which one check
-    does need: a Step builds in one plane, so the entries it cites have to
-    agree about which one that is.
-
-    `look` is a read-only Tool Plan wants run, and like `question` it comes
-    instead of Steps. It is offered only once Plan has asked something the
-    drawing cannot answer, so it is how a question about the build is settled
-    rather than a second route to the Document.
-
-    `ops` is the operation each Step of `steps` declared, position for
-    position, `None` where none was declared or the closed vocabulary was
-    not in force (ADR-0026, FCC-233) — Execute is told it, and `core/lint.py`
-    checks the TypeId a Step's code builds against it. `unbuildable` is every
-    Step `_steps_of` refused outright because its `op` was not one of the 36:
-    it never reaches Execute, so no code is ever asked for it, and the entry
-    it would have satisfied is left to the ordinary coverage check to send
-    back through Plan again.
+    `question` is what Plan must know before it can plan at all — set
+    *instead of* steps, never beside them. `acceptance` is what has to be
+    true of the finished part (ADR-0020). `ops` is the operation each Step
+    declared (ADR-0026).
     """
 
     steps: list
@@ -211,17 +186,8 @@ def _in_the_prose(entry):
     """
     A citation as the Gate reads it: the address, and the flag if it carried one.
 
-    Plan may cite the whole line it was handed, value and all, and the values on
-    that list run to paragraphs — a tangency described in prose, an edge
-    selection described by colour. Pasted into a Step they are the description
-    printed twice: once as the Acceptance the Gate shows beneath the Plan, and
-    once inside every Step that cites it. Step 1 of the recorded run reached the
-    user at 3553 characters for a Step of a thousand, and Execute is handed the
-    same values addressed in `what_each_entry_says` regardless (FCC-127).
-
-    The flag survives the trim. It is what tells the Gate a Step builds a value
-    nobody supplied, and an assumption the user has not read is the one thing a
-    standing approval may not stand over.
+    The flag survives the trim — it is what tells the Gate a Step builds a
+    value nobody supplied.
     """
     address, _, value = _as_written(entry).partition(": ")
     flag = re.search(r"\((?:read|derived|assumed|suspected)\)$", value)
@@ -230,24 +196,8 @@ def _in_the_prose(entry):
 
 def _acceptance_of(the_part):
     """
-    What the finished part has to satisfy: the description's own entries.
-
-    Plan used to write this list, and between the sheet and the assert there
-    were two rewrites. In the run that named the defect both lied — every entry
-    said `(read)` although the values came out of a re-read answering questions
-    the first pass had marked not defined, and the depth entry carried 50 mm, so
-    Assertion would have measured 50 mm on the built part and reported a pass on
-    a part the drawing never showed. Derived, there is nothing left to rewrite:
-    each entry *is* a value of the model, with the datum it sits under and the
-    flag it was recorded with (ADR-0020).
-
-    Empty is not an error and never was. A description holding nothing means no
-    Assertion phase at all, which is exactly what a Plan that wrote no list
-    produced (FCC-75), and it is what a run with no drawing and no answers gets.
-
-    An assumed value is a criterion too, and marked assumed. Leaving it out
-    would hide from the checks the kind of value most likely to be wrong, and
-    from the user at the Gate the fact that it is theirs to correct.
+    What the finished part has to satisfy: the description's own entries
+    (ADR-0020). An assumed value is a criterion too, and marked assumed.
     """
     return [entry["says"] for entry in entries(the_part)]
 
@@ -277,10 +227,7 @@ def _unconsumed(the_part, satisfies, standing=()):
 def _op_off_the_list(unbuildable) -> str:
     """
     What Plan is told when one of its own Steps named an operation off the
-    closed 36-verb list (ADR-0026, FCC-233) — the same actionability rule
-    FCC-232's refused `kind` applied: name the Step, name why, and hand back
-    the list it has to pick from, so the next Plan has a reason to choose a
-    different verb instead of restating the one just refused.
+    closed 36-verb list (ADR-0026).
     """
     named = "\n".join("- %r %s" % (item["step"], item["why"]) for item in unbuildable)
     return (named
@@ -380,15 +327,8 @@ def _one_direction_per_step(mixed):
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
                                revising=(), ledger=None):
-    """Plan, letting it ask for what the description did not carry, and the run waits (FCC-25).
-    A question goes to the drawing first (ADR-0022); unanswered, Plan chooses for itself and writes
-    the value into the Step's prose — not an approval, the Gate still sees every unanswered question.
-    A question about this FreeCAD, not about the part, is settled by a look at the read-only Tools,
-    unbounded since `budgets.looks_per_turn` went (FCC-304, FCC-149).
-    A re-read that grew the description hands Plan `core.design.diff`'s change-set, not the whole
-    document again (FCC-311).
-    No question ends the run (FCC-127, FCC-132, FCC-133); a re-plan invents or asks the same way
-    (FCC-67).
+    """Plan, letting it ask for what the description did not carry, and the run waits.
+    A question goes to the drawing first (ADR-0022); unanswered, Plan chooses for itself.
     """
     grown, for_the_build, change_set = the_part, False, None
     while True:

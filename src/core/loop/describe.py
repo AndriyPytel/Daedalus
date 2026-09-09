@@ -94,18 +94,7 @@ def _written_in(the_part, intent, question, answer, llm, events, attachments):
     A person's answer, back through Design rather than on to Plan.
 
     The drawing answering writes `read` and the person answering writes
-    `assumed` (FCC-87 preserved), and both land in the same model by the same
-    merge — which is what makes a value already on it impossible to replace.
-    An answer carried alongside the description instead would be a second source
-    for Plan to prefer, and preferring the newer is exactly how the depth off
-    SECTION B-B was lost.
-
-    Nobody answering is a turn too. The question is Design's own, so what it
-    asks about is a value the part cannot be described without, and left
-    unsettled it is a gap where a criterion belongs — nothing plans it, nothing
-    measures it, and the Gate has nothing to show the user. Design settles it
-    instead, and the instruction rides in the question because that is where the
-    phase reads what to do with one (ADR-0022).
+    `assumed` (ADR-0022).
     """
     body = {"intent": intent, "the_part_as_you_described_it": the_part,
             "the_question": question if answer else _settle_it(question)}
@@ -188,27 +177,11 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
 def _every_number_is_the_sheets(the_part, intent, attachments, llm, events, budgets,
                                 cancelled):
     """
-    A number on the description that is on no sheet, put back to the drawing.
+    A number on the description that is on no sheet, put back to the drawing
+    (ADR-0019).
 
-    `_every_callout_accounted_for` asks which of the sheet's numbers the
-    description never used. This asks the other direction, which is the one
-    ADR-0019 is named after: the run that read a depth of 100 off a section
-    planned 150 x 50 x 50 two turns later, and the 50 was on nothing.
-
-    Measured over the 32 descriptions recorded in `logs/sessions`, each against
-    the sheet its own run was given: 4 to 8 numbers fire. Held against each of
-    the other three drawings, they invent 150 to 180 in total, which is why
-    `_off_the_sheet` intersects. `tests/test_modelmania_evidence.py` produces
-    both bands.
-
-    Put to the drawing once and then left on the part as a conflict. Nothing is
-    settled and no run stops: the number may be right and derived from
-    something this cannot see, and the Gate is where a person says so.
-
-    Signs `kind: A_CONFLICT` and `machine_written: True` on what it appends
-    (FCC-249) — previously neither was set, so `_which_kind_it_is`'s default
-    covered the kind and nothing at all covered authorship. FCC-248 found
-    this and could not fix it, the file being another lane's.
+    Measured over 32 descriptions: 4 to 8 numbers fire per sheet; held against
+    the other three drawings, they invent 150 to 180 in total.
     """
     found = _off_the_sheet(attachments, the_part)
     if not found:
@@ -381,27 +354,10 @@ def _look_at_the_view_again(found):
 def _every_direction_settled(the_part, round_here):
     """
     A direction read off the wrong view, settled off the view the circle is
-    actually in.
+    actually in (ADR-0022).
 
-    It was detected all along and acted on by nobody. In the recorded run
-    (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`, the 2023 pipe
-    clamp) `pointing` fired eight times — both M6 holes, the bore and the ring
-    split, every one of them "either the axis or this position was read off the
-    wrong view" — the Gate was approved, and all of them were built along the
-    ring axis. The screw that exists to pinch the split came out parallel to it.
-    Then it became a stop, and a run that read the sheet correctly died for it,
-    telling the user to edit `logs/parts/*.yaml` and start again (FCC-108,
-    FCC-110).
-
-    It is neither now. This was never a question for a person: the module
-    holding the answer is the module asking it, which is FCC-111's telling
-    rather than asking. Where the tracer found the circle — one width, one view,
-    measured — that view is what the direction is written from, through
-    `corrected`, with the direction it displaced kept beside it under `was`
-    (ADR-0022). It is a measurement, so it is `derived`, and what fixes it is
-    the `because` the correction carries — the same line `from` would hold on a
-    value Design wrote itself. What no measurement reaches stays a conflict on
-    the part and rides to the Gate in the words of both, settled by nobody.
+    The recorded run `pointing` fired eight times — the Gate was approved,
+    and all were built along the ring axis. The screw came out parallel to it.
     """
     for finding in read_off_the_wrong_view(the_part, round_here):
         view = finding.get("instead")
@@ -451,16 +407,7 @@ def _the_sweep_is_the_sheets(the_part, attachments):
     """
     `printed_on_the_sheet` put back to what the sheet prints.
 
-    The phase is shown the text layer and asked to account for it; what it
-    writes under this key is its account, and an account is a paraphrase. The
-    list itself is deterministic, exact, and carries what the sheet's own
-    dimension lines measure at each number — so it is written here, over
-    whatever came back, and the description keeps the arithmetic that catches a
-    misread digit (FCC-112).
-
-    After the re-read loop, never before: that check counts the part against
-    the sheet, and it would find every callout accounted for by having been
-    copied in.
+    After the re-read loop, never before.
     """
     swept = [entry for path in attachments
              for entry in sheet_reader.printed_on_the_sheet(sheet_reader.read(path))]
@@ -474,26 +421,7 @@ def _written_down(document, gathered, intent, attachments, events):
     The document saved as a file, read back out of it, and the evidence beside it.
 
     Read back rather than passed on, because a file nothing downstream uses is
-    a file nobody keeps true. From here on the run is planned, checked and
-    built out of what is on disk, so a user who opens it and corrects an axis
-    has corrected the run — and two readings of one sheet are two files to
-    diff rather than two transcripts to compare (FCC-108).
-
-    What is on disk is what came out of the distil step, and the whole of what
-    Design gathered is the log beside it, each disagreement in it said once.
-    The reading is the requirement, and a requirement nobody can hold in their
-    head is one nobody checks; the proof of each of its numbers is what a
-    person goes looking for afterwards and no phase needs, so it is a file with
-    the same name and nothing reads it.
-
-    The Intent is written beside the sheet it was read off, because a reading
-    is the requirement one run is held to, and what was asked is what makes it
-    a requirement rather than a description of a drawing.
-
-    A part described from words alone leaves one too. There is no sheet to name
-    it after and none to say it was read off, and both of those are things the
-    file says rather than reasons not to write it: what the run is planned,
-    checked and built from is the reading, drawing or no drawing.
+    a file nobody keeps true.
     """
     source = next((path for path in attachments if sheet_reader.read(path)),
                   attachments[0] if attachments else "")
