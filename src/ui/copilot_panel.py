@@ -20,6 +20,10 @@ a list beside the Plan may hold and still stand open — see `_render_plan`.
 `FOLDS_OVER` is how long a narrated line may be before it folds into a row of
 its own, and `TITLE_KEPT` how much of its first sentence titles that row — see
 `_say`.
+
+The SDK reaches `core`, which imports FreeCAD's Qt bindings; at module-import
+time those may not exist yet, so every `copilot.sdk` import is deferred to the
+method that needs it.
 """
 import threading
 
@@ -567,11 +571,38 @@ class LoopWorker(QtCore.QObject):
         super().__init__()
         self.bridge = bridge
         self.ask = ask
-        self.client = None
-        self.pipeline = None
-        self.document = None
+        self.sdk_client = None
+        self._document = None
         self._stop = threading.Event()
         self._abort = threading.Event()
+
+    @property
+    def document(self):
+        return self._document
+
+    @document.setter
+    def document(self, value):
+        self._document = value
+        self.sdk_client = None
+
+    @property
+    def client(self):
+        """The LLM client, for the panel to clear when the model changes."""
+        if self.sdk_client is None:
+            return None
+        return self.sdk_client._llm
+
+    @client.setter
+    def client(self, value):
+        if self.sdk_client is not None:
+            self.sdk_client.llm = value
+
+    @property
+    def pipeline(self):
+        """The ApplyPipeline, for abort() to call shutdown()."""
+        if self.sdk_client is None:
+            return None
+        return self.sdk_client.pipeline
 
     def stop(self):
         self._stop.set()
@@ -595,37 +626,19 @@ class LoopWorker(QtCore.QObject):
         self._stop.set()
         self.ask.abandon()
 
-    def _get_client(self):
+    def _get_sdk_client(self):
         """
-        One client per run, built per role: `for_phase` is what picks a
-        phase's own row from the role table (FCC-312), on `core.llm.RoleClient`
-        the seam already reads.
+        The SDK Client for this Document: created once per Document, reused
+        for every Intent on it. The LLM inside is lazy and dropped when the
+        model changes so the next run rebuilds it from settings.
         """
-        if self.client is None:
-            from core.llm import client_from_roles
-            self.client = client_from_roles()
-        return self.client
-
-    def _get_tools(self, events=None):
-        """
-        The registry for one run.
-
-        The pipeline outlives a run — it keeps the Session's Owned Objects — so
-        the stream it narrates the Owned Object question into is set per run
-        rather than at construction.
-
-        `self.document` is this Session's own bound Document (FCC-181), set by
-        the panel before the first Intent is sent and reused for every Intent
-        after that — a later focus change elsewhere must not redirect a Tool
-        call or an Apply that belongs to this Session.
-        """
-        from core.freecad.apply import ApplyPipeline, build_registry
-
-        if self.pipeline is None:
-            self.pipeline = ApplyPipeline(document=self.document,
-                                          confirm=self.ask.about_objects_we_do_not_own)
-        self.pipeline.events = events
-        return build_registry(document=self.document, pipeline=self.pipeline)
+        if self.sdk_client is None:
+            from copilot.sdk import Client, NO_KERNEL
+            self.sdk_client = Client(
+                document=self._document,
+                kernel=NO_KERNEL,
+                confirm=self.ask.about_objects_we_do_not_own)
+        return self.sdk_client
 
     @QtCore.Slot(str, object, str, object, str)
     def do_work(self, intent: str, attachments: list, transcript: str,
@@ -643,9 +656,7 @@ class LoopWorker(QtCore.QObject):
         here unless a new attachment arrived to replace it (FCC-210); empty
         means run as today, describing the part from `attachments` alone.
         """
-        from copilot.sdk import events as ev
-        from copilot.sdk import EventStream
-        from core.loop.run import run
+        from copilot.sdk import events as ev, EventStream, build_registry
         from utils.logger import generate_crash_report, logger
 
         self._stop.clear()
@@ -659,39 +670,40 @@ class LoopWorker(QtCore.QObject):
         events.subscribe(lambda event: logger.error("%s: %s" % (event.kind, event.data))
                          if event.kind in (ev.BLOCKED, ev.ERROR) else None)
 
-        tools = self._get_tools(events)
         try:
-            self.document_named.emit(transcript,
-                                     str(tools.call("snapshot").get("document") or ""),
-                                     str(getattr(self.document, "Uid", "") or ""))
-        except Exception:
-            pass
-
-        try:
-            client = self._get_client()
+            sdk_client = self._get_sdk_client()
         except ValueError as exc:
             events.emit(ev.ERROR, message=str(exc))
             self.finished.emit(None, transcript)
             return
 
-        self.pipeline.start_run()
+        tools = build_registry(document=self._document, pipeline=sdk_client.pipeline)
         try:
-            result = run(intent, llm=client, tools=tools,
-                         events=events, cancelled=self._stop.is_set,
-                         aborted=self._abort.is_set,
-                         attachments=attachments, gate=self.ask.about_the_plan,
-                         ask=self.ask.about_missing_values,
-                         decide=self.ask.about_the_revision,
-                         outstanding=list(outstanding or ()),
-                         the_part_path=the_part_path or None)
+            self.document_named.emit(transcript,
+                                     str(tools.call("snapshot").get("document") or ""),
+                                     str(getattr(self._document, "Uid", "") or ""))
+        except Exception:
+            pass
+
+        sdk_client.pipeline.start_run()
+        try:
+            result = sdk_client.send(
+                intent,
+                gate=self.ask.about_the_plan,
+                ask=self.ask.about_missing_values,
+                decide=self.ask.about_the_revision,
+                attachments=attachments,
+                cancelled=self._stop.is_set,
+                outstanding=list(outstanding or ()),
+                the_part_path=the_part_path or None,
+                route_first=False,
+                events=events)
             self.finished.emit(result, transcript)
         except Exception as exc:
             events.emit("error", message=generate_crash_report(exc, "LoopWorker.do_work()"))
             self.finished.emit(None, transcript)
         finally:
-            self.pipeline.end_run()
-
-
+            sdk_client.pipeline.end_run()
 class _TitleThread(QtCore.QThread):
     """One short call naming a Session, off the UI thread so the run is not held up."""
 

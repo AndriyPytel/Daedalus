@@ -113,10 +113,7 @@ def test_the_loop_runs_off_the_gui_thread():
     }
 
     assert "moveToThread" in calls
-    assert "run" in {
-        node.func.id for node in ast.walk(tree)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-    }
+    assert "send" in calls, "LoopWorker.do_work must call sdk_client.send()"
 
 
 def test_the_dock_names_itself():

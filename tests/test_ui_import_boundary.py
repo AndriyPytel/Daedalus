@@ -1,20 +1,12 @@
 """
-The import boundary FCC-317 built stays shut (FCC-318), plus one more rule:
-nothing outside the harness directory may import from it.
+The UI layer imports nothing from core directly; all capability comes through
+copilot.sdk. This boundary means the SDK is the public surface and core can
+change freely without breaking the addon.
 
-FCC-317 repointed the panel to the SDK but could not finish the job: three
-wiring imports inside `ui/copilot_panel.py`'s `LoopWorker` still reach into
-`core.*` on purpose, because the SDK does not yet offer live-document mode,
-injectable dispatch/confirm, or outstanding passthrough
-(see FCC-317, FCC-315). Those three are named here, not silently allowed: each
-line names the ticket that owns removing it, so the exception list shrinks
-ticket by ticket instead of growing back invisibly. Any other `core` import
-anywhere under `ui/`, present or future, fails this test.
-
-The harness directory's two scripts drive `copilot.sdk.Client` the same way
-any other caller does, so nothing else in the repository has a reason to
-reach into it either; a stray import of that package is caught the same
-way a stray `core` import under `ui/` is.
+The harness directory's two scripts drive copilot.sdk.Client the same way any
+other caller does, so nothing else in the repository has a reason to reach
+into it either; a stray import of that package is caught the same way a stray
+core import under ui/ is.
 """
 import ast
 import os
@@ -22,12 +14,6 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
 UI_DIR = os.path.join(SRC, "ui")
-
-KNOWN_EXCEPTIONS = {
-    ("src/ui/copilot_panel.py", "core.llm"): "FCC-317/FCC-315: SDK has no live-document mode",
-    ("src/ui/copilot_panel.py", "core.freecad.apply"): "FCC-317/FCC-315: SDK has no injectable dispatch/confirm",
-    ("src/ui/copilot_panel.py", "core.loop.run"): "FCC-317/FCC-315: SDK has no outstanding passthrough",
-}
 
 
 def core_imports():
@@ -51,16 +37,10 @@ def core_imports():
                             yield where, alias.name
 
 
-def test_ui_does_not_import_core_except_known_wiring_gaps():
-    offenders = [
-        "%s imports %s" % (where, module)
-        for where, module in core_imports()
-        if (where, module) not in KNOWN_EXCEPTIONS
-    ]
+def test_ui_does_not_import_core():
+    offenders = ["%s imports %s" % (where, module) for where, module in core_imports()]
 
-    assert not offenders, (
-        "ui must not import core.* outside the named FCC-317 exceptions: %s"
-        % ", ".join(offenders))
+    assert not offenders, "ui must not import core.* directly: %s" % ", ".join(offenders)
 
 
 def _test_sources():
