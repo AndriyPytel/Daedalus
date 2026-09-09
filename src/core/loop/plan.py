@@ -93,52 +93,19 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     One key, because two were how the 100 mm was lost: the description and the
     answers to Plan's own questions used to arrive separately and Plan
     consistently preferred the newer, so a value read off SECTION B-B vanished
-    without ever being overruled. Every answer is now merged into the
-    description before Plan sees it, and there is nothing left to adjudicate.
+    without ever being overruled.
 
-    Beside the rendering, the same description entry by entry, addressed. That
-    is the vocabulary a Step cites from and it is the Acceptance the finished
-    part is checked against, and it is one list rather than two so that what
-    Plan is asked to account for and what the run measures cannot differ
-    (ADR-0020).
+    Beside the rendering, the same description entry by entry, addressed (ADR-0020).
 
-    A revision is handed the Plan it is rewriting, in its own words. Without it
-    a revision is written from nothing but the complaint, and a complaint names
-    only what was missing: a recorded run
-    (`logs/sessions/9958ccdc8e324a74ade9b08405be465b.jsonl`) answered "these
-    entries are unplanned" with a two-Step Plan covering exactly those and
-    dropping the nine Steps that covered the rest, was told the nine were
-    unplanned, wrote them again and dropped the two, and spent the whole
-    revision budget swapping one half of the part for the other without a
-    single Step ever running.
+    A revision is handed the Plan it is rewriting. Without it a revision is
+    written from nothing but the complaint, and a complaint names only what was
+    missing: a recorded run answered "these entries are unplanned" with a
+    two-Step Plan dropping the nine Steps that covered the rest, was told the
+    nine were unplanned, wrote them again and dropped the two, and spent the
+    whole revision budget swapping halves without a Step ever running.
 
-    A question nobody answered rides with it as an instruction rather than a
-    value or a source: Plan chooses, and says in the Step what it chose.
-
-    `looking` is the read-only Tools Plan may settle its own question with, and
-    `looked` is what they said. Both are empty until Plan asks something the
-    drawing was never going to answer: a uuid, a type's name, a property's
-    spelling.
-
-    `tried` is `Ledger.render()` (`core/ledger.py`) — this run's own failures
-    so far, distilled — placed beside `what_went_wrong_last_time` rather than
-    folded into it: that key is one Step's prose and one traceback, gone the
-    moment this replan is written; `tried` is every classified failure since
-    the run began, Step or Plan, so a revision does not ask for a shape that
-    has already failed the same way more than once.
-
-    `change_set` is `core.design.diff`'s answer to what grew since the last
-    call to this same re-plan, in the one place the description changes
-    between two Plan calls of one run: the reread loop of
-    `_plan_once_it_knows_enough`, where a question sent back to the drawing
-    grows the description and Plan is asked again before anything is applied
-    (FCC-311). Given, it replaces the whole rendering under
-    `what_the_part_is` — a moved datum reaches Plan as the datum that moved,
-    not the whole re-serialized part beside the one it already saw. What
-    Plan's Steps are held to, `what_the_plan_must_satisfy`, is still the
-    acceptance of the whole current `the_part`: shrinking that too would let a
-    Step stop citing an entry the change-set did not mention, though nothing
-    changed about it either.
+    `tried` is every classified failure since the run began, so a revision does
+    not ask for a shape that has already failed the same way more than once.
     """
     request = {"intent": intent, "document": snapshot}
     if revising:
@@ -196,41 +163,13 @@ def _steps_of(planned, op_vocabulary=None):
     The prose of each Step, the entries the Plan cites, the operation each
     kept Step declared, and the Steps refused outright.
 
-    A Step is `{"do": …, "op": …, "satisfies": [...]}`, or the bare string it
-    has always been. What a Step satisfies goes into its own prose rather than
-    beside it, because the Plan Gate shows prose: a reader who cannot tell
-    from the Gate which part of the part a Step is for cannot tell that one
-    physical cavity has been planned three times, which is what Steps 4, 5
-    and 6 of the recorded run were (FCC-94).
+    What a Step satisfies goes into its own prose: a reader who cannot tell
+    from the Gate which part a Step is for cannot tell that one physical
+    cavity has been planned three times.
 
-    A Step citing nothing is not refused here. The rule is coverage over the
-    whole Plan — no entry may be left to no Step — and a Plan is the only thing
-    that can be judged against it; a Step may legitimately carry work no entry
-    of the description names.
-
-    `op` is checked against `OP_VERBS` (ADR-0026, FCC-233) only where *planned*
-    itself carries `"op_vocabulary": "closed"` — the marker FCC-232 already
-    put on `kind`, kept the same shape here rather than invented a second one.
-    A recorded Plan predates the closed vocabulary and carries no marker at
-    all, and takes this same legacy path whether or not a Step happens to
-    have an `op` field: checking one against the list is exactly the
-    prompt-only alternative ADR-0026 measured at 14.9% and rejected by name.
-
-    A Step whose `op` is off the list under the marker is refused rather than
-    kept: it is left out of `steps` entirely, so it is never sent to Execute
-    and no code is ever asked for it, and what it cited is left out of
-    `satisfies` too, so the ordinary coverage check is what sends it back
-    through Plan again — no second `unbuildable` code path was written for a
-    case the first one already covers.
-
-    A Step written in Ukrainian is refused the same way, under the same
-    marker: the vocabulary is closed to one language as much as to one set
-    of verbs, and Ukrainian stays the language of the Intent and of the
-    conversation that produced it, never of a Step (ADR-0026, `config/
-    prompts/language.md`). "Written in Ukrainian" is `_not_english`'s own
-    call, not one Cyrillic character in an otherwise English sentence — a
-    label or a part name a user typed in the Intent is not what this
-    refuses.
+    `op` is checked against `OP_VERBS` (ADR-0026) only where *planned* carries
+    `"op_vocabulary": "closed"`. Checking one against the list without the
+    marker is what ADR-0026 measured at 14.9% and rejected by name.
     """
     steps, satisfies, cites, ops, unbuildable = [], [], [], [], []
     closed = op_vocabulary == OP_VOCABULARY
@@ -317,37 +256,16 @@ def _unconsumed(the_part, satisfies, standing=()):
     """
     The entries of the description that no Step of the Plan accounts for.
 
-    `standing` is what the Steps already applied cite between them. After a
-    handback the question the check asks is narrower — the description less what
-    the Document already answers for — and a revision that plans only the work
-    that is left is a correct Plan. Measured against the description alone it is
-    not: a recorded run was told sixteen entries were unplanned, every one of
-    them satisfied by a feature standing in the Document at that moment, and
-    spent a revision on a Plan that restated all eight Steps, four of which
-    Execute then applied nothing for (FCC-148).
+    A recorded run was told sixteen entries were unplanned, every one of them
+    satisfied by a feature standing in the Document at that moment, and spent
+    a revision on a Plan that restated all eight Steps, four of which Execute
+    then applied nothing for.
 
     The mechanical catch for the defect the epic is named after: the revised
-    Plan of the recorded run dropped the 100 mm front to rear and no rule,
-    prompt or judgement noticed. Checked over addresses and not over prose, so
-    it is a set difference rather than a comparison of sentences.
+    Plan dropped the 100 mm front to rear and no rule noticed.
 
-    Coverage, not exclusivity. One entry may legitimately feed several Steps —
-    an overall height feeds both the base solid and a through hole's depth — but
-    no entry may feed none.
-
-    Only what the drawing fixes — `read` or `derived`. An assumed value is still
-    a criterion and is still measured, but a Plan may not be refused for failing
-    to build a number nobody supplied. A derived one is not that: it is a value
-    the views settle, measured off the line work or off a tangency instead of
-    off a callout, and it is as much the part as a printed number is.
-
-    Matched as written, and never by prefix of an address — a Plan allowed to
-    cite `features` and cover everything beneath it would be the check defeating
-    itself. What is allowed is the value trailing the address, because the list
-    Plan cites from carries both on one line (`envelope → length: 150 mm
-    (read)`), and a Plan that copies the line it was handed means the entry that
-    line is. Refusing it would make the check fail on the one Plan that did
-    exactly as it was told.
+    Only what the drawing fixes — `read` or `derived`. A Plan may not be
+    refused for failing to build a number nobody supplied.
     """
     cited = {_as_written(entry) for entry in list(satisfies) + list(standing)}
     return [entry["about"] for entry in entries(the_part)

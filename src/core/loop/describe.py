@@ -268,44 +268,17 @@ A_READING_BUDGET = 60.0
 def _the_directions_are_the_drawings(the_part, intent, attachments, llm, events,
                                      budgets, cancelled):
     """
-    A direction read off the wrong view put back to the drawing before anybody
-    settles it for it.
+    A direction read off the wrong view put back to the drawing.
 
-    The hard stop below was right about the finding and wrong about the remedy.
-    The recorded run (`logs/sessions/daa17fb149474317840ef98439cfef6f.jsonl`,
-    the 2023 pipe clamp) was stopped before the Plan Gate by four findings, and
-    all four were the check's own fault: two judged a saw cut and an open
-    cutout as though they were round, and two held the Ø42 bore to account for
-    a view whose circle the tracer had in pieces. The description had read the
-    sheet correctly and the run died for it, with nothing between "something is
-    wrong" and "stop".
+    The run was stopped by four findings, and all four were the check's own
+    fault: two judged a saw cut and cutout as though round, two held the Ø42
+    bore to account for a view whose circle the tracer had in pieces.
 
-    So the finding is worked, the way the outer contour is: put back to Design
-    with what the sheet actually measures — the view each circle was traced in
-    and at what width — because that is a thing a re-read can act on and "one of
-    these is wrong" is not. Nobody is asked and nothing stops here: what the
-    drawing does not settle, `_every_direction_settled` settles off the same
-    measurement (ADR-0022).
-
-    A re-read may overrule here, which nothing else in the phase may do. It is
-    the merge's rule that made this unfixable — filled stays filled, so a wrong
-    axis cannot be talked out of itself — and the exception is exactly as wide
-    as the evidence: one address, named by a finding, carrying the measurement
-    that earned it, with the displaced value kept beside it (`corrected`).
-
-    The re-reading stops where it stops finding fewer: a look that changed
-    nothing will not change anything.
-
-    What is left when it stops is not always what a look could still fix. A
-    raster attachment has no line in it to trace — `round_here` is empty, a
-    re-ask of the same picture answers the same way it did the first time, and
-    no correction here ever measured anything. That is not the same as the
-    finding going away, and carrying the reading on as `read` says it is:
-    `_left_as_assumed` is the honest end of this phase, the one `_corrected_by`
-    has no evidence to reach — and it runs only once a look was actually taken
-    (`looked`), so a budget of zero re-reads leaves the model exactly as
-    untouched as it has always left it, rather than distrusting a reading
-    nobody has yet had the chance to put back to the drawing.
+    The finding is put back to Design with what the sheet measures — the view
+    each circle was traced in and at what width. What the drawing does not
+    settle, `_every_direction_settled` settles off the same measurement
+    (ADR-0022). A re-read may overrule, which nothing else may do — filled
+    stays filled, so a wrong axis cannot be talked out of itself.
     """
     round_here = _round_evidence(attachments)
     found = read_off_the_wrong_view(the_part, round_here)
@@ -550,36 +523,14 @@ def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
     """
     The one finding a run may not walk past: the shape of the part is nobody's.
 
-    `silhouette` has raised it since it existed and nothing has ever acted on
-    it. In the recorded run
-    (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`, the 2023 pipe
-    clamp) it stood in `conflicts` saying "no feature carries the outer contour,
-    so the outside of the part is whatever profile the envelope's overall sizes
-    are padded into" — the Gate showed eight Steps, the user approved them, and
-    the Plan padded a profile it invented. A conflict settled by nobody is a
+    The finding stood in `conflicts` saying "no feature carries the outer
+    contour" — the Gate showed eight Steps, the user approved them, and the
+    Plan padded a profile it invented. A conflict settled by nobody is a
     conflict that decided for itself.
 
-    So it is put to the drawing first, which is where the contour is, and where
-    the sheet will not say, Design is told to settle it and to write down what
-    it settled it off — an `assumed` profile with its `because`, which the Plan
-    Gate shows above the Steps. Nobody is asked and the run does not stop: the
-    defect was never that a profile was chosen, it was that the Plan chose one
-    invisibly (ADR-0022). Every other conflict rides to the Gate as it always
-    has: this is the only one that says the *outside* is missing, and it is the
-    only one no later phase can notice.
-
-    The re-reading stops where it stops finding fewer: a look that changed
-    nothing will not change anything.
-
-    Not narrowed to a view the way `_every_callout_accounted_for`'s re-read is
-    (`_the_evidence`'s `views`). That narrowing is sound because
-    `sheet_reader.dimensions` ties a missed callout to the view it is printed
-    in directly; `why` here is quoted out of the model's own prose
-    (`nobody_carries_the_outside`), before `_the_sweep_is_the_sheets` has even
-    put the sheet's own account of itself on the part, and nothing on the path
-    to it names a view with the same certainty. Guessing a view and being wrong
-    would hide the very picture the silhouette is drawn in, which is worse
-    than the pictures this keeps sending — so this keeps sending all of them.
+    The defect was never that a profile was chosen, it was that the Plan
+    chose one invisibly (ADR-0022). This is the only conflict that says the
+    *outside* is missing, and the only one no later phase can notice.
     """
     why = nobody_carries_the_outside(the_part)
     looked = 0

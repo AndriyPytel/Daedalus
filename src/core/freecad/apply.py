@@ -921,45 +921,14 @@ def fit_view(document=None):
     """
     Put everything the Document shows back inside the viewport.
 
-    Every landed Step moves the user's camera, which is the opposite of what
-    `capture_review_views` does deliberately — and the reason is the same one.
-    The camera holds whatever zoom and centre it had before the run, while a
-    part is modelled at the scale its drawing gives it: a 3 mm bracket and a
-    900 mm frame both arrive somewhere off to one side, one of them a few
-    pixels across. The user is watching a Plan land Step by Step, and cannot
-    judge what they are being asked to approve if it is not on screen.
+    A 3 mm bracket and a 900 mm frame both arrive somewhere off to one side,
+    one of them a few pixels across. The user cannot judge what they are
+    being asked to approve if it is not on screen.
 
-    `document` is the Session's own bound Document (FCC-181); left None this
-    reads whichever MDI tab is in front, which is wrong the moment two
-    Documents are open and the user is looking at the other one.
-
-    A Body's Origin carries three planes and three axes, each 1e100 mm
-    across, and `view.fitAll()` is a raw Coin3D call: it fits the camera to
-    the bounding box of everything currently visible, with no filter of its
-    own. One visible Origin feature is enough to turn "fit the part in the
-    viewport" into "fit a plane 1e100 mm across", at which point a
-    millimetre- or centimetre-scale part is a speck nothing can see. An
-    Origin plane ends up visible in the first place when a sketch is
-    attached or edited programmatically — the path a generated Step takes —
-    rather than through the GUI's own attachment editor, which is what
-    normally re-hides it. Anything past `_SCAFFOLDING` — the same threshold
-    `_measurable` already applies to the reporting path — is hidden before
-    `fitAll()` runs and shown again
-    straight after, each object's own prior `Visibility` restored rather than
-    blanket-set, so scaffolding the user had already hidden themselves stays
-    hidden; a `document` with no `Objects` to check (the `None` default, read
-    here only) leaves this skipped and `fitAll()` as bare as it always was.
-    This runs after `_transaction` has already committed or raised (never
-    inside the open transaction, so a rolled-back Step never touches
-    visibility at all), and the hide/restore happens inside one call, so
-    nothing outlives a raised exception or a rollback to leave a stale
-    `Visibility` behind — undo not tracking `ViewObject` properties is moot
-    here because none of this survives past the `finally`.
-
-    Orientation is left alone. Which way the part is turned is the user's
-    choice, and nothing here is a better one.
-
-    Headless there is no view and nothing to fit.
+    A Body's Origin carries three planes and three axes, each 1e100 mm across.
+    One visible Origin is enough to turn "fit the part" into "fit a plane
+    1e100 mm across", at which point a millimetre-scale part is a speck.
+    Anything past `_SCAFFOLDING` is hidden before `fitAll()` runs.
     """
     view = _active_view(document)
     if view is None:

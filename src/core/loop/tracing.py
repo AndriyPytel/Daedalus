@@ -16,49 +16,20 @@ def _the_geometry_disagrees(attachments, events, budget=A_READING_BUDGET):
     """
     What the sheet prints against what the sheet draws, as conflicts.
 
-    The reading is a closed walk of lines and arcs in millimetres now
-    (FCC-118), the sheet's own distances reach the faces they measure
-    (FCC-121), and `sketch_check` builds the one against the other. Nothing
-    consumed the verdict: a sheet whose digit was misread by 8 mm arrived at
-    the Plan Gate exactly as silent as a sheet that agrees with itself.
+    Which of the two is wrong — the digit, or a face the tracer took to the
+    inside of its own line — is not something a re-read can decide, so it
+    goes on the part and the user settles it at the Gate.
 
-    Recorded, never settled, and no ladder. Which of the two is wrong — the
-    digit, or a face the tracer took to the inside of its own line — is not
-    something a re-read can be asked and not something this can decide, so it
-    goes on the part in the words of both and the user settles it at the Gate.
-    That is what `conflicts` is, and it is the only phase that has both numbers
-    in front of it.
+    Measured on `tests/modelmania`: 11 printed distances reach a traced
+    outline across the four sheets, and none becomes a disagreement.
 
-    Measured on `tests/modelmania`: 11 printed distances reach a traced outline
-    across the four sheets, and none becomes a disagreement. A run against them
-    gains no conflict, which is the right answer rather than a weak check: the
-    sheets agree with themselves.
+    A dimension reaches the geometry through the feet of its extension lines,
+    so a tracing further out than `sketch_check.A_FOOT` has no face to name.
+    A band of a tenth of the printed value produces three disagreements of
+    4.5 to 4.9 mm on sheets known to agree with themselves.
 
-    And it is a floor rather than a net. A dimension reaches the geometry
-    through the feet of its own extension lines, so a tracing further out than
-    `sketch_check.A_FOOT` has no face for the foot to name and there is nothing
-    to compare — this cannot catch a digit misread by 8 mm, and widening the
-    band to reach one writes wrong faces instead: measured, a band of a tenth
-    of the printed value produces three disagreements of 4.5 to 4.9 mm on
-    sheets known to agree with themselves. The misread digit is caught where it
-    needs no correspondence at all, by the sheet measuring its own numbers
-    (`Printed.measures`) and by `uncited`.
-
-    An outline the solver could not be asked about arrives on the part as a
-    check hazard, for the same reason a re-read that found nothing says so: a
-    sheet nothing was wrong with and a sheet nobody could check both arrive at
-    the Gate with nothing to settle on them, and only one of the two is a
-    verdict. It stays on the `ERROR` stream as well, which is where a run is
-    read back from and not where a reading is settled. A child that never came
-    up, a child that died and could not be replaced, and a budget that ran out
-    are all that same sentence: those outlines are unchecked and the run goes
-    on. Nothing here may end a run — that is what makes it a reading check and
-    not a Step.
-
-    `budget` is the phase's, not the outline's. A timeout each is no bound at
-    all: a sweep can spend one timeout for every outline without returning a
-    verdict. The four sheets contain 142 outlines, so the phase's minute is a
-    child that has stopped answering rather than a normal reading time.
+    The four sheets contain 142 outlines, so the phase's minute is a child
+    that has stopped answering rather than a normal reading time.
     """
     traced = _every_outline_traced(attachments)
     if not traced:

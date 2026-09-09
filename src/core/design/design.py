@@ -132,27 +132,10 @@ def merge(held, offered):
     """
     *offered* written into *held*, filling only what is empty.
 
-    The single rule the whole phase rests on, and it is enforced here rather
-    than only asked for in the prompt: a value that is already on the model
-    stays, whatever a later pass believes it saw. What is empty is filled, what
-    is new is added, and what disagrees is appended to `conflicts` for the user
-    to settle at the Plan Gate.
-
-    A fragment that is not a model at all leaves the part exactly as it was.
-    Design answering with prose is a phase that did not do its job, and losing
-    the description over it would be the worse failure — the same call
-    `_acceptance_of` makes about an acceptance list nobody wrote.
-
-    What the merge cannot see it is told: `silhouette` reads the grown model for
-    an outside described in words and carried by nothing, `direction` for a
-    feature that points somewhere and says nowhere, `pointing` for one placed
-    along the very direction its axis points, `placement` for one sized in
-    a direction it is placed in nowhere, `placed_by_nothing` for a cavity
-    nothing places, `twice_over` for two features of the same kind placed
-    against a shared datum, which is how one physical feature comes to be
-    two, and `settled_by_nothing` for a value whose flag promises a reason it
-    does not carry. Their findings join the same `conflicts` the
-    disagreements go to.
+    A value that is already on the model stays, whatever a later pass believes
+    it saw. What is empty is filled, what is new is added, and what disagrees
+    is appended to `conflicts`. A fragment that is not a model at all leaves
+    the part exactly as it was.
     """
     if not isinstance(offered, dict):
         return _with_the_findings(dict(held or {}))
@@ -229,29 +212,12 @@ CONFLICT_ENTRY_FIELDS = ("about", "stands", "was_also_said")
 
 def _refused_conflicts(offered):
     """
-    Entries of *offered*'s own `conflicts` missing one of `CONFLICT_ENTRY_FIELDS`,
-    checked only under the same `kind_vocabulary: closed` marker `_refused_kinds`
-    gates on.
+    Entries of `conflicts` missing one of `CONFLICT_ENTRY_FIELDS`, checked only
+    under the `kind_vocabulary: closed` marker (ADR-0026).
 
-    A conflict's shape has nothing to do with naming a `kind`, so this reuses,
-    rather than adds to, the one marker that already exists. Read here not as
-    "kinds only" but as "this reply follows the declared artefact contract" —
-    the whole of ADR-0026's closed vocabulary, kind and conflict shape alike.
-    That reading is chosen for a measured reason: markers are sent about a
-    third of the time in production (Design, session
-    `afa0142baef847b0a9cd9139390af993`: 3 of 9 replies carried
-    `kind_vocabulary` at all). A second, precise marker for conflict shape
-    would be forgotten independently of the first and enforced a third of a
-    third of the time at best; one marker meaning "the current contract" is
-    worth more than several that are each mostly absent. A reply that never
-    sent `kind_vocabulary` never promised this shape either, so the fixtures
-    recorded before FCC-237 keep passing untouched.
-
-    FCC-237: a Design reply invented four different conflict shapes across one
-    session, 44 of 46 entries carrying no `what` at all — entries in that many
-    shapes cannot be rendered, compared, or told apart by the Plan Gate. The
-    entry is refused whole rather than patched, and travels on in
-    `was_also_said` so nothing it said is lost — only its shape was wrong.
+    A reply invented four different conflict shapes across one session, 44 of
+    46 entries carrying no `what` at all — entries in that many shapes cannot
+    be rendered or compared. Refused whole and travels on in `was_also_said`.
     """
     if not isinstance(offered, dict) or offered.get("kind_vocabulary") != CLOSED_KIND_VOCABULARY:
         return []
@@ -507,43 +473,12 @@ def twice_placed(model) -> list:
     Two features with the same axis direction, agreeing at one datum and
     differing at another — one placement described twice.
 
-    The recorded run (logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl,
-    2023 pipe clamp) produced bore-ring and boss-ring. Both run along the
-    depth ("perpendicular to the front view, running front-to-rear" and
-    "perpendicular to the front face"). Both agree at "the left end face:
-    65.5 mm" and differ at "the bottom face": bore-ring says 25 mm, boss-ring
-    says 15 mm. One physical ring, two descriptions with conflicting heights,
-    and both passed into Acceptance where satisfying them simultaneously is
-    impossible.
+    The rule requires all three: (1) axes point the same way, (2) at least
+    one shared datum where numeric values agree, (3) at least one shared
+    datum where numeric values differ. Without (3), two features agreeing
+    everywhere are synonym candidates (superseded_by), not conflicts.
 
-    Agreement and disagreement count only for actual measurements, never for
-    placeholders. Two features both saying "to be read again" at a datum is
-    not evidence they describe the same placement — the check compares numbers,
-    and a datum carrying no number is skipped.
-
-    The rule requires all three:
-    1. Axes point the same way (both along depth, both along height, etc.)
-    2. At least one shared datum where numeric values agree
-    3. At least one shared datum where numeric values differ
-
-    Without (1), two features may share datums by coincidence but describe
-    different geometry: bore-ring and hole-right both say "the bottom face:
-    25 mm" but bore-ring runs along depth while hole-right is described
-    through faces, so its axis is not classified and it is excluded from
-    the check entirely.
-
-    Without (2), two features along the same axis but placed differently are
-    legitimately separate: two holes both vertical but at different positions.
-
-    Without (3), two features agreeing everywhere are synonym candidates for
-    reconciliation (superseded_by), not conflicts.
-
-    Only features NOT already marked superseded_by are checked — synonyms
-    resolved by reconciliation do not trigger this.
-
-    Returns conflicts naming both features in sorted order (ADR-0019
-    order-independence: same pair produces same conflict entry regardless
-    of which page arrived first).
+    Returns conflicts in sorted order (ADR-0019 order-independence).
     """
     features = [feature for feature in _features(model)
                 if not feature.get("superseded_by")]
@@ -678,42 +613,16 @@ def silhouette(model) -> list:
     """
     The outside of the part described in words and carried by nothing.
 
-    An `envelope` is three distances between named faces, and three distances
-    are satisfied exactly as well by a rectangular prism as by the obround plate
-    the drawing shows. The recorded run
-    (`logs/sessions/57af6c09950047bf9f0582cd398d2a66.jsonl`, mm25-p1-1.pdf) is
-    the whole case: the description said "the two closed capsule-shaped exterior
-    perimeter edge loops" and "the exterior top, bottom, and rounded end
-    surfaces" — but said it inside the *fillet's* edge selection, where it is
-    prose about which edges to round and not geometry anybody builds. No feature
-    carried the outer contour, so the Plan padded a 150 × 100 rectangle 50 deep
-    and every acceptance check passed on a box.
+    An `envelope` is three distances between named faces; a rectangular prism
+    satisfies them exactly as well as an obround plate. So where the model
+    calls the outside rounded and no feature owns that contour, that is a
+    conflict. Ownership is looked for only in a feature's `id`, `kind` and
+    `topology` — a fillet whose edge-selection prose mentions a capsule is
+    what this exists to catch.
 
-    So where the model calls the outside rounded and no feature owns that
-    contour, that is a conflict, in the same list and settled the same way: by
-    the user at the Plan Gate, or by Design filling in the feature it left out.
-    The words are looked for anywhere in the model and the ownership only in a
-    feature's `id`, `kind` and `topology` — the fields that say what a feature
-    *is*. A fillet whose edge-selection prose mentions a capsule is the very
-    thing this exists to catch, so its prose must not count as carrying one.
-
-    The second finding is the datum that says the same face is flat. "the planar
-    end face at the left of the 150 mm overall length" cannot both be true and
-    sit beside "rounded end surfaces", and the merge cannot see it because
-    neither was ever written under the same address. A datum only contradicts a
-    rounded outside where it is about the ends.
-
-    The words looked for are the ones a draughtsman and a description both use
-    for an outside that is curved rather than boxed, and the list is short on
-    purpose: a word that also means something inside the part would raise this on
-    every model.
-
-    The finding is quoted from the description's own words where it has any. The
-    sweep of the sheet is in `_said` too, and quoted from there it reads as the
-    draughtsman's callout — `R12.5 — plan view (rounded ends)` — rather than as
-    the reading the user is being asked to settle. The sweep is still the
-    fallback: a sheet that prints rounded ends the description never wrote down
-    is the same finding, and it is the evidence there is.
+    The second finding is the datum that says the same face is flat — the
+    merge cannot see it because neither was ever written under the same
+    address.
     """
     said = _said(model, "")
     rounded = [(path, text) for path, text in said
@@ -803,46 +712,10 @@ def direction(model) -> list:
     """
     A feature that has a direction and no field carrying it.
 
-    The recorded run (`logs/sessions/8d07a842d06b487d8e7729ecba27ce4b.jsonl`,
-    the 2023 pipe clamp) built both M6 holes parallel to the ring axis out of
-    one sketch in the elevation plane. Both are drawn as circles in the plan, so
-    both axes are perpendicular to that ring axis, and SECTION A-A shows the
-    right-hand one crossing the split it exists to pinch — the built screw
-    missed the split and the part could not clamp.
-
-    Nothing was overruled: `position` is magnitudes keyed by datum and says how
-    far, never which way, and direction survived only as prose in `topology`,
-    which nothing downstream reads. So the right reading had nowhere to be
-    written, the wrong one could not be contradicted, and `entries` could not
-    derive a check for it. The same argument that made the outer contour a
-    feature rather than three numbers: what is not a field is not built and not
-    checked.
-
-    A hole, bore, slot or pocket therefore carries `axis`, and a profile, arc or
-    rounded end carries `plane`, both as ordinary values — named by the datums
-    they are measured against, so the acceptance measures a direction the same
-    way it measures a distance. Where one is missing this is a gap, in the same
-    list `silhouette` writes to and settled the same way: by the user at the
-    Plan Gate, or by Design filling in the field it left out.
-
-    The kinds that have an axis — the direction the hole is drilled, the slot
-    cut, the pocket sunk — are listed short and literal, because a word that also
-    describes a face would raise this on every model. The kinds that lie in a
-    plane are the curves rather than the holes: what a radius means depends on
-    the plane it is drawn in and on nothing else on the sheet, so they carry a
-    plane the way a hole carries an axis. Fillets and chamfers are deliberately
-    not among them, because they follow the edges they are put on and asking them
-    for a plane would raise a finding on every part that has any.
-
-    What a feature *is* is read off `kind` alone, through `_is_one_of`, never
-    off `id` or `topology`: a fillet whose edge-selection prose runs "...the
-    cutout and the slot" is still a fillet, and `id` is a label the model
-    chooses and never checked against anything (FCC-243). Neither list is
-    exact-only, because `config/prompts/design.md`'s closed marker is sent on
-    about a third of Design replies and `kind` is prose the rest of the
-    time — a fillet is excluded from the plane check the same way whichever
-    world it is read in: its closed `kind` is not one of `_LIES_IN_A_PLANE`'s
-    four, and its prose carries none of their words either.
+    A hole, bore, slot or pocket carries `axis`; a profile, arc or rounded end
+    carries `plane`. Where one is missing this is a gap, settled the same way
+    every gap is. What a feature *is* is read off `kind` alone, never off `id`
+    or `topology`.
     """
     found = []
     for feature in _features(model):
@@ -893,39 +766,13 @@ def pointing(model) -> list:
     A feature located along the very direction its own axis points.
 
     Nothing is ever positioned along its own axis: a through hole's axis is
-    placed in the two directions across it and in neither of them is it the
-    axis. So a feature whose `axis` runs in the depth and whose `position`
-    names a datum that fixes the depth has one of the two wrong, and which one
-    is not something the description can settle — it is a conflict, in the same
-    list `silhouette` and `direction` write to.
+    placed in the two directions across it. So a feature whose `axis` runs in
+    the depth and whose `position` names a datum that fixes the depth has one
+    of the two wrong — it is a conflict.
 
-    A blind feature is the exception that proves it: a pocket 6 mm deep starting
-    at the top face *is* placed along its own axis, by the face it is sunk from,
-    and asking otherwise would raise a finding on every blind hole, pocket and
-    counterbore there is. So the finding is for a feature that goes through —
-    which starts at no face at all — and for one placed along its axis twice
-    over, since even a blind one starts only once. A blind feature is the one
-    that has a face it starts from; what a feature says when it has none is that
-    it goes through.
-
-    "Through" is read off `topology` alone, never off `id` or `kind`: it is
-    not one of ADR-0026's 22 and never will be, because it says how a feature
-    sits rather than what it is (FCC-243).
-
-    The recorded run (`logs/sessions/141a41df15544013a9740a45138fa7ad.jsonl`,
-    the 2023 pipe clamp) is both halves of it. Both M6 holes were written
-    `axis: perpendicular to the front face` — along the depth — while carrying
-    `position → the longitudinal centre plane: coincident`, and that datum
-    fixes the depth. The axis was the wrong one: the holes are drawn as circles
-    in the plan and drilled through the height, and built along the depth the
-    right-hand screw missed the split it exists to pinch. The same run wrote
-    the central cutout `axis: parallel to the depth front to rear` and then
-    placed it 6 mm from the front face and 6 mm from the rear face — two
-    positions along its own axis, taken off the `(6)` and `(6)` of SECTION A-A,
-    which are the depths of the counterbore and the hex recess and belong to
-    the mounting hole. Neither could be contradicted: `direction` is satisfied
-    by an `axis` that is merely present, and a wrong direction reads exactly
-    like a right one.
+    A blind feature is the exception: a pocket starting at the top face *is*
+    placed along its own axis, by the face it is sunk from. "Through" is read
+    off `topology` alone, never off `id` or `kind`.
     """
     fixed = _which_way_each_datum_fixes(model)
 
@@ -1050,32 +897,14 @@ def crosswise(model) -> list:
 
     A feature is round in the view its axis points at, and nowhere else: that
     is what a projection is. So two features round in *different* views have
-    axes that are not parallel, whatever either axis was written as — and the
-    check needs no map of which view is which, which is the reason it can run
-    at all. The reader names views after where they sit on the sheet and the
-    description names them after what they show; nothing reconciles the two,
-    and nothing has to.
+    axes that are not parallel — and the check needs no map of which view is
+    which.
 
-    The recorded run (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`,
-    the 2023 pipe clamp) is the whole argument. The Ø42 bore is round in the
-    elevation. Both M6 holes are round in the plan — the reader traces them
-    there, `traced circle Ø6.10 centred (19.40, 19.27)` — and SECTION A-A shows
+    The Ø42 bore is round in the elevation. Both M6 holes are round in the
+    plan — `traced circle Ø6.10 centred (19.40, 19.27)` — and SECTION A-A shows
     the right-hand one crossing the split it is there to pinch. All three were
-    written `axis: perpendicular to the front face, along the depth front to
-    rear`, all three were built parallel, and the clamp screw ended up running
-    alongside the split instead of through it.
-
-    Its mirror is the same rule read the other way: two features round in one
-    view whose axes were written differently cannot both be right either.
-
-    Says `kind: A_CONFLICT` on every entry rather than leaving it for
-    `_which_kind_it_is`'s default to supply (FCC-248): the two axes not
-    agreeing is a conflict by the same words `HEADED` gives that kind, and an
-    unset field said nothing about who found it. The rate this changes is
-    zero — A_CONFLICT is what the default already returned for an unset
-    `kind`, so `tests/recorded/evidence_kind_ratio.json`'s 23 of 26 sessions
-    with a `conflict`-kind entry read 23 of 26 before this tag and 23 of 26
-    after it. Tagging makes the kind intentional; it does not move the count.
+    written along the depth, all three were built parallel, and the clamp
+    screw ended up running alongside the split instead of through it.
     """
     seen = []
     for feature in _features(model):
@@ -1315,47 +1144,13 @@ def placement(model) -> list:
     """
     A feature with a size in a direction and nothing placing it in that one.
 
-    The recorded run (`logs/sessions/8d07a842d06b487d8e7729ecba27ce4b.jsonl`,
-    the 2023 pipe clamp) built the left mounting foot symmetric about the ring
-    axis, `arm_top = 32.5` and `arm_bottom = 17.5`, where the drawing has it
-    flush with the ring's lowest tangent. Nothing was overruled: the description
-    named "the lower tangent plane of the ring" a datum and then never wrote a
-    value against it. The arm carried `height: 15 mm`, a length from the
-    leftmost tangent plane and a length to the cutout's closed end — a size in
-    the height and no position in the height at all. The prompt has said for as
-    long as it has existed that a position nobody named degrades into "somewhere
-    sensible" and that "sensible" defaults to centred, and centred is what came
-    out.
+    Silence had to stop being an option: a placement nobody recorded owns no
+    check, so a run can go green on a part wrong in the way the drawing is
+    loudest about. A direction is attributed through the datum a position is
+    keyed by, which is why a datum says which direction it fixes.
 
-    Silence had to stop being an option, because the Acceptance is derived from
-    the entries the description holds: a placement nobody recorded owns no
-    check, so the run measured 108, 50, 15 and the fillets and went green on a
-    part wrong in the way the drawing is loudest about.
-
-    A direction is attributed through the datum a position is keyed by, which is
-    why a datum says which direction it fixes. A datum that fixes two of them
-    places nothing: the ring axis runs front to rear, so 30 mm from it is 30 mm
-    along the length or 30 mm up the height and the magnitude does not say
-    which — which is exactly how the arm came to look placed and was not.
-
-    A depth or a thickness on a feature that has an axis is not a size in one of
-    the part's directions at all: it runs along the feature's own axis, and
-    whatever placed that axis has already placed it. A blind pocket 6 mm deep,
-    20 mm from the left end face and starting at the top face, is described
-    whole — asked for a position in the depth as well it would raise a finding
-    on every blind hole, pocket and counterbore there is, and a check that fires
-    on work that is right is a check nobody keeps. That turns on the *kind* of
-    feature and not on the field being filled in: a pocket's depth runs along
-    its own axis whether or not anybody wrote the axis down, so the pocket that
-    never said which way is short of its axis and of nothing else, and
-    `direction` is where that is said.
-
-    The directions are the words the envelope measures the part in, and a feature
-    carrying one of them carries a size along a direction. A diameter and a
-    radius are not among them, because neither is a size along anything named.
-    The two a feature spends on itself are its depth and its thickness: a blind
-    pocket's depth is 6 mm down its own axis and a boss's thickness is what it
-    stands proud by, neither of them 6 mm of the part's depth.
+    A depth or thickness on a feature with an axis runs along the feature's
+    own axis, not the part's; that is `direction`'s concern, not this one's.
     """
     fixed = _which_way_each_datum_fixes(model)
 
@@ -1386,27 +1181,10 @@ def placed_by_nothing(model) -> list:
     """
     A cavity nothing places, built wherever the profile happens to allow.
 
-    The recorded run (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`,
-    the 2023 pipe clamp) described the one cavity in the web twice: `slot-arm`,
-    30 mm long, off the plan, and `cutout-web`, "profile as drawn in VIEW B",
-    off the detail the sheet points at with `SEE VIEW B FOR CLARITY OF CUTOUT`.
-    `cutout-web` carried `position: {}` — nothing at all. Plan then built both:
-    a slot 8 mm wide it invented, and an R10 circle it invented, and the
-    circle cut the Body into two solids and ended the run. This finding is the
-    empty `position` alone, checkable and wrong on its own whether or not a
-    second feature is the same physical cavity — `twice_over` is the arithmetic
-    check for that; this one predates it and stays a separate defect
-    (ADR-0026, FCC-232).
-
-    `placement` cannot reach it — that one asks whether a size in a direction
-    has a position in that direction, and this feature had no sizes either.
-    Where another cavity is drawn in a view this one is also drawn in, the
-    finding says so as well: two cavities sharing a view, one of them placed by
-    nothing, is the shape this defect arrives in.
-
-    A cavity is a hole in the material that is not a drilled one, in the words a
-    description uses for it. It is what a detail view is usually drawn for, and a
-    detail view is the second picture a cavity gets described from.
+    The one cavity in the web was described twice: `slot-arm`, 30 mm long, and
+    `cutout-web` with `position: {}` — nothing at all. Plan built a slot 8 mm
+    wide it invented, and an R10 circle it invented, and the circle cut the
+    Body into two solids and ended the run (ADR-0026).
     """
     cavities = [feature for feature in _features(model)
                 if any(word in _what_it_is(feature) for word in _A_CAVITY)]
@@ -1527,29 +1305,14 @@ def settled_by_the_tracing(model) -> list:
     """
     Every conflict of whose two readings one was measured off the view.
 
-    A conflict is settled by the user at the Plan Gate, and that is right where
-    both readings are somebody's opinion of a callout. It is not the shape of
-    this one. The recorded run
-    (`logs/sessions/f8aaa6953cf54651bd57a3f65432d474.jsonl`, mm25-p1-1.pdf)
-    filed the central pocket as stated 40 mm wide by 30 mm high against a
-    profile traced off the middle-left view at 40 by 25, and the Plan used
-    neither: it took the stated height, kept the R30 centres on the end-bore
-    axes, and built a pocket 48.038476 mm wide, agreeing with nothing on the
-    sheet. Before that it declared the Step unbuildable and asked once for the
-    conflict to be settled — a question the description had already answered.
+    The central pocket was stated 40 mm wide by 30 mm high against a profile
+    traced at 40 by 25, and the Plan used neither: it took the stated height,
+    kept the R30 centres on the end-bore axes, and built a pocket 48.038476 mm
+    wide, agreeing with nothing on the sheet.
 
-    So where one of the readings came off the picture, that one governs: it is
-    the only one of the two that was measured rather than reasoned, which is the
-    same thing that earns `grounded` its correction. A finding, not a write:
-    `about` is the address, `instead` is the tracing and `stands` names the
-    conflict it settles, and the loop writes it through `corrected` so the
-    displaced reading stays beside it under `was`.
-
-    Narrow on purpose. Both sides talking about a tracing, or neither, is a
-    conflict nobody measured and it rides to the Gate. The address has to be
-    named twice over — the conflict names a feature the model carries, and what
-    it is `about` names a field of that feature — because a tracing written at
-    a field nobody pointed at is one more profile the sheet does not have.
+    Where one of the readings came off the picture, that one governs. Both
+    sides talking about a tracing, or neither, is a conflict nobody measured
+    and it rides to the Gate.
     """
     found = []
     for conflict in model.get("conflicts") or []:
@@ -1689,60 +1452,15 @@ def distilled(model) -> dict:
     """
     The part, without the evidence Design gathered to settle it.
 
-    Design ends in two steps — gather every piece of evidence it can, then
-    distil — and this is the second, which is why it is not a phase of its own:
-    a projection of the model that already exists, so there is no second
-    structure to hold an order the drawing never showed (ADR-0019, ADR-0024).
+    A projection of the model, so there is no second structure to hold an order
+    the drawing never showed (ADR-0019, ADR-0024). The description and the
+    criteria still come off one model (ADR-0020).
 
-    The distiller is a hybrid and this is its mechanical half, kept mechanical
-    so that what is left to judgement is only what no rule can decide. What
-    goes is the sweep of the sheet, the disagreements and the gaps something
-    has since answered, none of which is the part and none of which `entries`
-    has ever walked; on a value, what fixed it, the views it was seen in and
-    the view its circle was traced round in; and the features a later page
-    deletes, which are what the sheet said and not what the part is (FCC-127).
-    All of it stays in the evidence log, which is where the reading is checked
-    against the drawing. What stays here is every address the Acceptance is
-    derived from, so the description and the criteria still come off one model
-    (ADR-0020).
-
-    A disagreement goes whole and is settled off the reading rather than off
-    this: Plan is handed the part and nothing that argues about it (FCC-156),
-    and the Gate reads what nobody agrees on where it stands — beside the
-    document, one entry to an address (`each_disagreement_once`).
-
-    A gap is retired here for the same reason a dead datum's values are
-    re-measured here: the merge only ever grows, so what nobody had supplied
-    when the sheet was first read stays on the reading and in the log, and what
-    the Gate and Plan are shown is what nobody supplies now (ADR-0019,
-    FCC-153). A gap nobody answered survives whole, with the views it was
-    looked in.
-
-    A datum goes with the feature it belonged to, and every live value measured
-    from a dead one is re-measured from the datum that takes over (FCC-153).
-    That is the one thing here the document says and the reading does not, and
-    it is why the re-measure is the distiller's rather than the merge's: the
-    merge only ever grows, so the description the Gate is read against is still
-    the sheet's own (ADR-0019). `measured_from_what_is_gone` is what says none
-    of them is left.
-
-    `because` stays with it. It is not the proof of a number off the sheet, it
-    is what the model settled a value nobody supplied — the one thing at the
-    Gate that is the user's to overrule, read there through `decided_for_you`
-    and in the file afterwards (ADR-0022).
-
-    The other half is the model's, because neither identity nor an
-    inconsistency is decidable by a rule: two entries can be one feature under
-    two names, and a distilled part can still hold values that do not follow
-    from each other. Its boundary is five verbs — drop, merge, re-address,
-    re-measure from a surviving datum, flag — and `carried_by_no_source` is
-    what holds it. A value no source carries stays a gap and is settled the way
-    every gap is.
-
-    `tests/test_loop.py` measures what this leaves of the recorded reading of
-    the 2023 pipe clamp, against what Plan was handed of it before, and
-    `tests/test_modelmania_evidence.py` measures the title block it drops off
-    the sheet that reading was taken from.
+    A disagreement goes whole: Plan is handed the part and nothing that argues
+    about it. A gap nobody answered survives whole (ADR-0019). A datum goes
+    with the feature it belonged to, and every live value measured from a dead
+    one is re-measured from the datum that takes over. `because` stays: the
+    one thing the user can overrule, read through `decided_for_you` (ADR-0022).
     """
     taken_over = _which_datum_takes_over(model)
     document = {section: _re_measured(_without_the_evidence(value), taken_over)
@@ -1891,28 +1609,8 @@ def _one_to_an_address(conflicts):
     """
     The disagreements, one to an address, each saying which of the three it is.
 
-    The address is the merge's own path, which is what `_written` records in
-    `about` and what `entries` cites a value by, so two entries are the same
-    disagreement when they are about the same thing rather than when they are
-    worded alike. `_appended` compares whole records, which is why the recorded
-    run reached the Gate with one finding written three ways.
-
-    Compared the way a view's name is compared, because an outline's verdict is
-    addressed by the view it was traced in and the reader and the description
-    spell a view differently — the rule `_as_a_view` keeps for `round_in`,
-    applied to what an entry is about.
-
-    The first entry at an address is the one that stands, for the reason a
-    filled value stands: it is the earliest reading, and the later one is what
-    the merge goes on holding (ADR-0019). An entry about nothing addresses
-    nothing and stands beside them all.
-
-    Its kind is whatever was said at that address, which is not always said by
-    the entry that stands there: a check names the kind where it makes the
-    finding, and the same finding read back to Design and written down again in
-    the model's own words has lost it. An entry saying nothing is unclassified
-    rather than classified, so what another entry about the same thing says
-    governs it, and `A_CONFLICT` is what is left when nothing anywhere said.
+    The first entry at an address is the one that stands: it is the earliest
+    reading, and the later one is what the merge goes on holding (ADR-0019).
     """
     kinds = {}
     for conflict in conflicts:
