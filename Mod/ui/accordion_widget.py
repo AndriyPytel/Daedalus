@@ -7,6 +7,12 @@ it, wrapped text laid out in the column itself. What it used to be — a
 QTextEdit inside the chat's own scroll area, animated to a magic 1000 — is what
 truncated long thinking and what stole the mouse wheel from the chat (ADR-0011).
 
+Code in a row is coloured by one pass of one regex over the string rather than
+by a `QSyntaxHighlighter`: a highlighter needs a `QTextDocument` and this row
+is a `QLabel`. `pygments` would do it better and is not something an addon may
+assume is importable inside FreeCAD. The colours are read from FreeCAD's own
+editor parameters, never chosen here.
+
 Boxed or not, by what the row is. Reasoning and a folded list carry nothing of
 their own and rely on the column for their edges, which is the cheapest way
 this design language separates anything. A call the run made is the one shape
@@ -15,6 +21,8 @@ transcript of a dozen calls stays a column of outlines rather than a stack of
 filled slabs.
 """
 import json
+import keyword
+import re
 import time
 
 try:
@@ -40,6 +48,37 @@ def _the_code_inside(text):
     return payload["code"] if isinstance(payload, dict) and "code" in payload else text
 
 
+_PYTHON = re.compile(
+    r"(?P<block>\'\'\'[\s\S]*?\'\'\'|\"\"\"[\s\S]*?\"\"\")"
+    r"|(?P<comment>#[^\n]*)"
+    r"|(?P<string>\'(?:\\.|[^\'\\\n])*\'|\"(?:\\.|[^\"\\\n])*\")"
+    r"|(?P<number>\b\d+(?:\.\d*)?(?:[eE][-+]?\d+)?\b)"
+    r"|(?P<keyword>\b(?:%s)\b)" % "|".join(keyword.kwlist))
+
+
+_PAINTED = {"block": "Block comment", "comment": "Comment", "string": "String",
+            "number": "Number", "keyword": "Keyword"}
+
+
+def _as_markup(text):
+    """Text that Qt's rich text will show rather than read as markup."""
+    return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace("\n", "<br>").replace("  ", "&nbsp;&nbsp;"))
+
+
+def _coloured(code):
+    """*code* as rich text, in the colours FreeCAD's editor gives Python."""
+    colours = UIHelpers.get_editor_colours()
+    written, at = [], 0
+    for token in _PYTHON.finditer(code):
+        written.append(_as_markup(code[at:token.start()]))
+        written.append('<span style="color:%s;">%s</span>'
+                       % (colours[_PAINTED[token.lastgroup]], _as_markup(token.group())))
+        at = token.end()
+    written.append(_as_markup(code[at:]))
+    return '<span style="color:%s;">%s</span>' % (colours["Text"], "".join(written))
+
+
 _TOGGLE_RULE = ("QPushButton { text-align: left; padding: %dpx 0px; border: none; "
                 "background: transparent; min-width: 0px; %s }" % (SPACE_XS, css(LABEL)))
 
@@ -48,8 +87,10 @@ class AccordionWidget(QtWidgets.QFrame):
     """
     A toggle row with text that shows and hides beneath it.
 
-    The content is plain text, not rich: a traceback says `<module>`, and QLabel
-    guesses rich text by default.
+    The content is plain text unless the row is a code row, which is rich text
+    so that it can be coloured. Everything a code row shows goes through
+    `_as_markup` first: a traceback says `<module>`, and QLabel reads that as a
+    tag it does not know and drops it.
 
     A QFrame rather than a plain widget because a plain one paints neither a
     border nor a background from the stylesheet, whatever the rule says.
@@ -100,6 +141,7 @@ class AccordionWidget(QtWidgets.QFrame):
                                   css(CAPTION), SPACE_SM, SPACE_MD)
         self.content_area.setStyleSheet(
             self._code_rule if code else rule % ("", css(CAPTION), SPACE_SM, SPACE_MD))
+        self._code = code
         self.content_area.setVisible(False)
         layout.addWidget(self.content_area)
 
@@ -149,7 +191,12 @@ class AccordionWidget(QtWidgets.QFrame):
         try:
             if shown != self._buffer:
                 self.content_area.setStyleSheet(self._code_rule)
-            self.content_area.setText(shown)
+                self._code = True
+            if self._code:
+                self.content_area.setTextFormat(QtCore.Qt.RichText)
+                self.content_area.setText(_coloured(shown))
+            else:
+                self.content_area.setText(shown)
         except RuntimeError:
             pass
 

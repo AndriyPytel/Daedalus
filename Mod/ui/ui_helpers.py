@@ -150,6 +150,31 @@ class UIHelpers:
         return '"SF Mono", Monaco, Menlo, Consolas, "Liberation Mono", "Courier New", monospace'
 
     @staticmethod
+    @functools.lru_cache(maxsize=1)
+    def get_editor_colours():
+        """
+        The colours FreeCAD's Python editor and console paint code with, as
+        `#rrggbb` keyed by the parameter name.
+
+        Read rather than chosen: the addon has no colours of its own, and
+        "like the console" is a promise only these parameters keep. The
+        defaults are FreeCAD's, packed the way it packs them (`0xRRGGBBAA`),
+        for a profile that never opened the editor preferences.
+        """
+        packed = {"Text": 0x000000FF, "Keyword": 0x0000FFFF, "Comment": 0x00AA00FF,
+                  "Block comment": 0xAAAAAAFF, "String": 0xFF0000FF,
+                  "Number": 0x0000FFFF}
+        try:
+            parameters = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/Editor")
+            packed = {name: parameters.GetUnsigned(name, value)
+                      for name, value in packed.items()}
+        except Exception:
+            pass
+        return {name: QtGui.QColor((value >> 24) & 0xFF, (value >> 16) & 0xFF,
+                                   (value >> 8) & 0xFF).name()
+                for name, value in packed.items()}
+
+    @staticmethod
     def get_ui_font():
         """The general UI font FreeCAD uses."""
         try:

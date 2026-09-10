@@ -91,6 +91,14 @@ def test_a_flush_for_an_already_deleted_widget_does_not_stop_the_others():
     assert other.content_area.text() == "still seen"
 
 
+def _shown(widget):
+    """The code a coloured row shows, with its markup read back off."""
+    from ui.accordion_widget import QtGui
+
+    return QtGui.QTextDocumentFragment.fromHtml(
+        widget.content_area.text()).toPlainText().replace("\u00a0", " ")
+
+
 def test_a_json_reply_carrying_code_is_shown_as_the_code_itself():
     """
     The execute phase answers with a JSON object whose `code` key holds the
@@ -106,7 +114,7 @@ def test_a_json_reply_carrying_code_is_shown_as_the_code_itself():
     widget.append_text('\\n    print(o.Name)\\n"}')
     QT_APP.processEvents()
 
-    assert widget.content_area.text() == "print(doc.Name)\nfor o in doc.Objects:\n    print(o.Name)\n"
+    assert _shown(widget) == "print(doc.Name)\nfor o in doc.Objects:\n    print(o.Name)\n"
 
 
 def test_plain_text_is_left_alone():

@@ -206,6 +206,14 @@ def test_checks_that_could_not_be_written_render_no_rows():
     assert card.findChildren(AccordionWidget) == []
 
 
+def _shown(row):
+    """The code a coloured row shows, with its markup read back off."""
+    from ui.accordion_widget import QtGui
+
+    return QtGui.QTextDocumentFragment.fromHtml(
+        row.content_area.text()).toPlainText().replace("\u00a0", " ")
+
+
 def test_clicking_an_entry_expands_it_to_the_code_that_ran():
     from ui.accordion_widget import AccordionWidget
 
@@ -220,4 +228,4 @@ def test_clicking_an_entry_expands_it_to_the_code_that_ran():
     QT_APP.processEvents()
 
     assert row.content_area.isVisible()
-    assert row.content_area.text() == "assert True  # measured"
+    assert _shown(row) == "assert True  # measured"
