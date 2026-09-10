@@ -80,6 +80,7 @@ from tests.loop_helpers import (
     drive,
     _system_messages,
     _turns_of,
+    _execute_attempts,
     MODEL_MANIA,
     THE_CLAMP_READ_OFF_ONE_VIEW,
     _pictures_shown,
@@ -182,7 +183,7 @@ def test_the_same_failure_twice_is_told_not_to_write_a_third_variation():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL)])
 
-    third = json.loads(llm.calls[4][-1]["content"])
+    third = _execute_attempts(llm)[2]
     said = third["you_have_failed_this_the_same_way_twice"]
 
     assert "failed 2 times with the same failure" in said
@@ -201,7 +202,7 @@ def test_the_directive_matches_the_failure_and_not_some_other_one():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(IN_PIECES), failed(IN_PIECES)])
 
-    said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
+    said = _execute_attempts(llm)[2]["you_have_failed_this_the_same_way_twice"]
 
     assert "do not meet" in said
     assert "share their endpoints" in said
@@ -219,7 +220,7 @@ def test_two_different_failures_in_a_row_are_progress_and_are_left_alone():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL), failed(IN_PIECES)])
 
-    third = json.loads(llm.calls[3][-1]["content"])
+    third = _execute_attempts(llm)[1]
 
     assert "you_have_failed_this_the_same_way_twice" not in third
 
@@ -231,8 +232,7 @@ def test_one_failure_says_nothing_about_repeating_yourself():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL)])
 
-    assert "you_have_failed_this_the_same_way_twice" not in json.loads(
-        llm.calls[2][-1]["content"])
+    assert "you_have_failed_this_the_same_way_twice" not in _execute_attempts(llm)[0]
 
 
 
@@ -245,7 +245,7 @@ def test_a_known_symptom_gets_a_repair_reference_on_the_first_failure():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_SUCH_PROPERTY)])
 
-    retry = _turns_of(llm, "execute")[1]
+    retry = _execute_attempts(llm)[1]
 
     assert retry["your_failed_attempts_at_this_step"][0]["traceback"] == NO_SUCH_PROPERTY
     reference = retry["repair_reference"]
@@ -261,7 +261,7 @@ def test_a_different_known_symptom_gets_its_own_reference():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(FILLET_RADIUS)])
 
-    reference = _turns_of(llm, "execute")[1]["repair_reference"]
+    reference = _execute_attempts(llm)[1]["repair_reference"]
 
     assert "wall thickness" in reference["the_smallest_responsible_fix"]
     assert "face count" in reference["recount_after_it"]
@@ -274,7 +274,7 @@ def test_an_unknown_symptom_gets_no_repair_reference():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed("ZeroDivisionError: division by zero")])
 
-    assert "repair_reference" not in _turns_of(llm, "execute")[1]
+    assert "repair_reference" not in _execute_attempts(llm)[1]
 
 
 def test_a_step_that_has_not_failed_yet_gets_no_repair_reference():
@@ -295,7 +295,7 @@ def test_a_repair_reference_spends_no_look_and_no_extra_turn():
     ], applies=[failed(NO_SUCH_PROPERTY)])
 
     assert result.ok, result.reason
-    execute_turns = _turns_of(llm, "execute")
+    execute_turns = _execute_attempts(llm)
     assert len(execute_turns) == 2
     assert all("look" not in turn for turn in execute_turns)
 

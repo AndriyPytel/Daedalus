@@ -45,7 +45,6 @@ import os
 import re
 import tempfile
 from dataclasses import replace
-from unittest.mock import Mock
 
 import pytest
 
@@ -419,7 +418,7 @@ def _describes_a_part(turn):
         return False
 
 
-class ScriptedKernel:
+class FakeKernel:
     """
     A double for the kernel PROCESS `run_phase` talks to -- one layer in from
     the Document-mutation boundary `FakeTools`' fake `apply_step` already
@@ -458,7 +457,7 @@ _SCRIPTED_CHECKPOINT = None
 
 
 def _scripted_checkpoint():
-    """One placeholder file every `ScriptedKernel` hands out, copied, never opened."""
+    """One placeholder file every `FakeKernel` hands out, copied, never opened."""
     global _SCRIPTED_CHECKPOINT
     if _SCRIPTED_CHECKPOINT is None:
         handle, _SCRIPTED_CHECKPOINT = tempfile.mkstemp(suffix=".FCStd")
@@ -512,7 +511,7 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
         kwargs["the_part_path"] = the_part_path
     result = run(intent, llm=llm, tools=tools.registry, events=events,
                  budgets=budgets or Budgets(), attachments=list(attachments),
-                 outstanding=list(outstanding), kernel=kernel or ScriptedKernel(), **kwargs)
+                 outstanding=list(outstanding), kernel=kernel or FakeKernel(), **kwargs)
     return result, events, llm, tools
 
 
@@ -533,6 +532,16 @@ def _turns_of(llm, phase):
     system = prompt(phase)
     return [json.loads(call[-1]["content"]) for call in llm.calls
             if call[0]["content"].startswith(system)]
+
+
+def _execute_attempts(llm):
+    """
+    The task Execute was given, once per call to `execute()` in this run --
+    not the kernel's own feedback on a code turn inside one (FCC-A-53): that
+    request carries `ok`, the task that opens a call carries `steps`, and a
+    phase with N Steps written one at a time is N+1 requests for one attempt.
+    """
+    return [turn for turn in _turns_of(llm, "execute") if "steps" in turn]
 
 
 MODEL_MANIA = str(modelmania_harness.MODELMANIA_DIR / "mm25-p1-1.pdf")
@@ -1063,7 +1072,7 @@ def driven_through(gate, turns, **kwargs):
     events = EventStream()
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
                  budgets=kwargs.pop("budgets", None) or Budgets(), gate=gate,
-                 kernel=kwargs.pop("kernel", None) or ScriptedKernel(), **kwargs)
+                 kernel=kwargs.pop("kernel", None) or FakeKernel(), **kwargs)
     return result, events, llm, tools
 
 
