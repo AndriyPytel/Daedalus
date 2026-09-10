@@ -1231,6 +1231,15 @@ def _register_document(registry, active, dispatch=_direct):
         return {"size_mm": _overall_size(active())}
 
     @registry.tool(
+        "document_copy",
+        "The live Document saved to a throwaway file, for a phase kernel to open. "
+        "Driven by the loop, never by a phase; the caller deletes the file.",
+    )
+    def document_copy():
+        doc = active()
+        return {"path": dispatch(lambda: copy_of(doc))}
+
+    @registry.tool(
         "dependencies",
         "What this object is built from and what would break if it changed. "
         "Check this before modifying or deleting anything.",

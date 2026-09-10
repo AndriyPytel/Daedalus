@@ -12,6 +12,7 @@ from core.agent import phase_contract as pc
 from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import Budgets
 from core.loop.describe import _A_SIZE, _TRUE_TO
+from core.loop.document import copied
 from core.loop.execute import _DID_NOT_HOLD, _MODEL_IS_INVALID, _addressed
 from core.loop.prompt import ASSERTION_PHASE, prompt
 from core.prompts import read_prompt
@@ -191,11 +192,11 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         supervisor = supervisor or SessionTreeSupervisor()
         task = json.dumps(request, indent=2, default=str)
         
-        with tempfile.TemporaryDirectory() as working_dir:
+        with copied(tools) as document, tempfile.TemporaryDirectory() as working_dir:
             declared, session, checkpoints = run_phase(
                 pc.ASSERTION, working_dir,
                 {"design": described},
-                llm, task,
+                llm, task, document=document,
                 kernel=kernel, supervisor=supervisor, stream=events,
                 system=prompt(ASSERTION_PHASE)
             )

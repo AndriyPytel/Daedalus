@@ -652,6 +652,12 @@ def test_build_registry_registers_the_same_tools_and_schemas_as_before_the_split
             "parameters": {"type": "object", "properties": {}},
         },
         {
+            "name": "document_copy",
+            "description": "The live Document saved to a throwaway file, for a phase kernel to open. "
+                            "Driven by the loop, never by a phase; the caller deletes the file.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+        {
             "name": "describe_object",
             "description": "Every property this object actually has in the running FreeCAD, with its "
                             "type, group, documentation and current value. Use this instead of guessing "

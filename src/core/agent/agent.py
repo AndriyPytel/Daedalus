@@ -4,7 +4,7 @@ import os
 import shutil
 import time
 
-from core.events import CALL_STARTED, COST, THOUGHT, WRITING
+from core.events import CALL_STARTED, COST, THOUGHT, TOOL_RESULT, WRITING
 from core.kernel import Kernel
 from core.llm import REASONING, TEXT, Session
 from core.llm.exceptions import StreamCutOff
@@ -18,15 +18,24 @@ class AgentGaveUp(Exception):
     """The model neither ran code nor declared, or the budget ran out first."""
 
 
-def run_phase(phase, working_dir, sources, llm, task, document=None,
+_NO_DOCUMENT = object()
+
+
+def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               kernel=None, supervisor=None, stream=None, system=None):
     """
     Run *phase* as a multi-turn agent against its own kernel.
 
+    *document* is the path the first code turn opens, and the artefact the
+    phase's row of `PHASE_CONTRACT` decides it may see on disk; the default
+    is a sentinel, not `None`, which the kernel reads as an empty Document.
+
     Returns `(declared, session, checkpoints)`: what the model declared, its
     whole conversation, and every Step's checkpoint path.
     """
-    working = spawn(phase, working_dir, **sources)
+    working = spawn(phase, working_dir,
+                    **(dict(sources, document=document) if isinstance(document, str)
+                       else sources))
     session = Session(system=_composed_system(system, working))
     working_kernel = kernel
     checkpoints = []
@@ -65,7 +74,10 @@ def run_phase(phase, working_dir, sources, llm, task, document=None,
                 first_step = False
                 if result.ok and result.checkpoint:
                     checkpoints.append(_kept(working, result.checkpoint, len(checkpoints)))
-                text = _say(session, llm, _feedback(result), phase=phase, stream=stream)
+                answer = _feedback(result)
+                if stream is not None:
+                    stream.emit(TOOL_RESULT, name=phase, result=answer)
+                text = _say(session, llm, json.dumps(answer), phase=phase, stream=stream)
                 continue
             if supervisor is not None:
                 supervisor.record_turn()
@@ -94,9 +106,6 @@ def run_phase(phase, working_dir, sources, llm, task, document=None,
     finally:
         if kernel is None and working_kernel is not None:
             working_kernel.kill()
-
-
-_NO_DOCUMENT = object()
 
 
 def _kept(working_dir, checkpoint, index):
@@ -179,8 +188,13 @@ def _parsed(text):
 
 
 def _feedback(result):
-    """What the agent's next turn is told about the Step it just ran."""
-    payload = {"ok": result.ok, "checkpoint": result.checkpoint}
+    """
+    What the agent's next turn is told about the Step it just ran, as a dict:
+    the same payload is the `tool_result` that carries the kernel's answer
+    into the session log, which held only the code the model wrote.
+    """
+    payload = {"ok": result.ok, "status": "ok" if result.ok else "failed",
+               "checkpoint": result.checkpoint}
     if result.stdout:
         payload["stdout"] = result.stdout
     if result.ok:
@@ -190,4 +204,4 @@ def _feedback(result):
                        deleted=result.deleted, geometry=geometry)
     else:
         payload["traceback"] = result.traceback
-    return json.dumps(payload)
+    return payload

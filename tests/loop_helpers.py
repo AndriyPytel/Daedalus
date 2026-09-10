@@ -310,6 +310,11 @@ class FakeTools:
             self.calls.append(("overall_size", {}))
             return {"size_mm": [40, 30, 10]}
 
+        @registry.tool("document_copy", "The Document saved for a phase kernel to open.")
+        def document_copy():
+            self.calls.append(("document_copy", {}))
+            return {"path": None}
+
         @registry.tool("supported_types", "Types this build can create.", {
             "type": "object", "properties": {"prefix": {"type": "string"}},
         })

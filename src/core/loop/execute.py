@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 from core.design.gaps import entries
 from core.events import TOOL_CALL, TOOL_RESULT
+from core.loop.document import copied
 from core.tools import ToolError
 
 import tempfile
@@ -190,11 +191,11 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     supervisor = supervisor or SessionTreeSupervisor()
     task = json.dumps(request, indent=2, default=str)
     
-    with tempfile.TemporaryDirectory() as working_dir:
+    with copied(tools) as document, tempfile.TemporaryDirectory() as working_dir:
         declared, session, checkpoints = run_phase(
             pc.EXECUTE, working_dir,
             {"plan": steps, "design": as_described},
-            llm, task,
+            llm, task, document=document,
             kernel=kernel, supervisor=supervisor, stream=events,
             system=prompt(EXECUTE_PHASE, ledger=ledger.render() if ledger else "")
         )
