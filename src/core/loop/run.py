@@ -104,7 +104,7 @@ class _Asking:
 
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, aborted=None,
         attachments=(), gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
-        outstanding=(), the_part_path=None) -> LoopResult:
+        outstanding=(), the_part_path=None, kernel=None) -> LoopResult:
     """Turn an Intent into changes to the Document."""
     events = events if events is not None else EventStream()
     events.emit(INTENT, text=intent)
@@ -133,7 +133,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, aborte
     try:
         return outcome(_run(intent, llm, tools, events, budgets,
                             cancelled or (lambda: False), gate, progress, attachments,
-                            ask, decide, list(outstanding), the_part_path))
+                            ask, decide, list(outstanding), the_part_path, kernel))
     except Stopped:
         if aborted():
             return outcome(_aborted(events, "Aborted. The Step in flight was discarded; "
@@ -194,7 +194,7 @@ class LastPass:
 
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
-         decide=revise_by_default, outstanding=(), the_part_path=None):
+         decide=revise_by_default, outstanding=(), the_part_path=None, kernel=None):
     """The run itself: describe the part, plan it, gate it, build it, judge it.
     Design runs once per run, growing what it read (ADR-0018, ADR-0019). A handback
     with nothing applied since the last one stops the run; any other handback
@@ -358,7 +358,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part.the_part), looks,
                                 planned.acceptance, planned.cites, ledger,
-                                start=carried, ops=planned.ops)
+                                start=carried, ops=planned.ops, kernel=kernel)
         last_pass.steps, last_pass.applied = steps, outcome["applied_here"]
         applied = progress.applied
 
@@ -456,10 +456,11 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
-                  start=0, ops=()):
-    """One pass over the Plan: written in one call, applied one Step at a time (ADR-0021).
+                  start=0, ops=(), kernel=None):
+    """One pass over the Plan: written by one Execute phase, applied one Step at a time.
     `budgets.attempts_per_step` bounds one Step; a spent Step hands back to Plan (ADR-0013).
     `ops[i]` rides onto `apply_step` as `op` so `core/lint.py` checks the TypeId (ADR-0026).
+    A regeneration is a new Execute phase, against its own fresh kernel (FCC-A-53).
     """
     if cancelled():
         raise Stopped()
@@ -474,7 +475,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     looks = looks if looks is not None else Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
     written = execute(steps, tools, llm, events, start, budgets=budgets,
                       as_described=as_described, looks=looks, entries=entries,
-                      ledger=ledger)
+                      ledger=ledger, kernel=kernel)
 
     while index < start:
         progress.satisfied.extend(cites[index] if index < len(cites) else ())
@@ -581,7 +582,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         if cancelled():
             raise Stopped()
         written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
-                          looks, entries, ledger)
+                          looks, entries, ledger, kernel=kernel)
 
     return {"obsolete": None, "handback": None, "description": described,
             "applied_here": index,

@@ -227,15 +227,23 @@ def _first_pass_turns(model, attachments, question=""):
 
 def code_reply(*codes, label="Step", thinking=None, first=1):
     """
-    One Execute turn: the code for every Step it was asked to write (FCC-95).
+    A whole Execute phase: one turn per Step's code, closed by the turn that
+    declares it (FCC-A-53) -- no code of its own, because the kernel already
+    has it (`execute.md`).
 
     `first` is the number of the Step the first code belongs to, which is 1 for
     the whole Plan and N for a regeneration of Step N and the tail after it.
+    `thinking` rides on the first Step's own turn, the one it was reasoned out in.
     """
-    inner = {"steps": [{"step": first + offset, "code": code, "label": label}
-                       for offset, code in enumerate(codes)]}
-    body = json.dumps({"declare": inner})
-    return {"reasoning": thinking, "text": body} if thinking else body
+    numbers = [first + offset for offset in range(len(codes))]
+    turns = []
+    for position, (number, code) in enumerate(zip(numbers, codes)):
+        body = json.dumps({"code": code, "step": number, "label": label})
+        turns.append({"reasoning": thinking, "text": body}
+                     if thinking and position == 0 else body)
+    turns.append(json.dumps({"declare": {"steps": [
+        {"step": number, "label": label} for number in numbers]}}))
+    return turns
 
 
 def assertion_reply(code, uncovered=None):
@@ -411,6 +419,64 @@ def _describes_a_part(turn):
         return False
 
 
+class ScriptedKernel:
+    """
+    A double for the kernel PROCESS `run_phase` talks to -- one layer in from
+    the Document-mutation boundary `FakeTools`' fake `apply_step` already
+    fakes. Both let a level-1 test assert on the loop's own control flow
+    (retries, budgets, event order, Ledger text) without a level-1 test
+    having to pay for, or trust, real geometry; that trust is what the
+    `@pytest.mark.freecad` tests (this file's `_the_clamp_as_it_was_read`
+    callers, `test_the_document_reaches_its_phases.py`,
+    `test_vertical_slice_level2.py`, `test_apply_level2.py`) carry instead,
+    against a real `Kernel`.
+
+    It proves nothing about whether a Step's code is valid Python or valid
+    FreeCAD -- every call after `fails` is exhausted answers `ok=True`
+    regardless of what the code actually says. A test that needs to know
+    whether code runs belongs on a real kernel, not this one.
+
+    `fails` is the same shape as `OneFailingKernel`
+    (`tests/core/agent/test_a_code_turn_is_visible.py`): one `KernelResult`
+    per call that should not land, in order, so a retry a test drives is a
+    real rejection this double answered with, not a shape asserted on
+    because nothing produced it.
+    """
+
+    def __init__(self, fails=()):
+        self.calls = []
+        self._fails = list(fails)
+
+    def check(self, code, **kwargs):
+        self.calls.append(code)
+        if self._fails:
+            return self._fails.pop(0)
+        return kernel.KernelResult(ok=True, checkpoint=_scripted_checkpoint())
+
+
+_SCRIPTED_CHECKPOINT = None
+
+
+def _scripted_checkpoint():
+    """One placeholder file every `ScriptedKernel` hands out, copied, never opened."""
+    global _SCRIPTED_CHECKPOINT
+    if _SCRIPTED_CHECKPOINT is None:
+        handle, _SCRIPTED_CHECKPOINT = tempfile.mkstemp(suffix=".FCStd")
+        os.close(handle)
+    return _SCRIPTED_CHECKPOINT
+
+
+def _flattened(turns):
+    """`code_reply()` hands back a whole Execute phase as several turns; unwrap it."""
+    flat = []
+    for turn in turns:
+        if isinstance(turn, list):
+            flat.extend(turn)
+        else:
+            flat.append(turn)
+    return flat
+
+
 def scripted(turns, attachments=(), resuming=False):
     """
     The provider, turn by turn, with the Design turn every run opens with.
@@ -426,7 +492,7 @@ def scripted(turns, attachments=(), resuming=False):
     `resuming` is a run given a prior Part and no new attachment (FCC-210):
     Design does not run at all, so nothing is inserted ahead of the script.
     """
-    turns = list(turns)
+    turns = _flattened(turns)
     if turns and not attachments and not resuming and not _describes_a_part(turns[0]):
         turns.insert(0, design_reply())
     return ScriptedLLMClient(turns)
@@ -434,7 +500,7 @@ def scripted(turns, attachments=(), resuming=False):
 
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
           views=None, checks=(), attachments=(), decide=None, outstanding=(),
-          the_part_path=None):
+          the_part_path=None, kernel=None):
     """Run the loop over scripted turns and hand back everything to assert on."""
     llm = scripted(turns, attachments, resuming=bool(the_part_path))
     tools = FakeTools(applies, views=views, checks=checks)
@@ -446,7 +512,7 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
         kwargs["the_part_path"] = the_part_path
     result = run(intent, llm=llm, tools=tools.registry, events=events,
                  budgets=budgets or Budgets(), attachments=list(attachments),
-                 outstanding=list(outstanding), **kwargs)
+                 outstanding=list(outstanding), kernel=kernel or ScriptedKernel(), **kwargs)
     return result, events, llm, tools
 
 
@@ -996,7 +1062,8 @@ def driven_through(gate, turns, **kwargs):
                       checks=kwargs.pop("checks", ()))
     events = EventStream()
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
-                 budgets=kwargs.pop("budgets", None) or Budgets(), gate=gate, **kwargs)
+                 budgets=kwargs.pop("budgets", None) or Budgets(), gate=gate,
+                 kernel=kwargs.pop("kernel", None) or ScriptedKernel(), **kwargs)
     return result, events, llm, tools
 
 
