@@ -102,6 +102,11 @@ class AccordionWidget(QtWidgets.QFrame):
     elides, so a narration long enough to fold was also long enough to push
     the transcript's column past its viewport, and that column does not scroll
     sideways: what did not fit was unreachable rather than scrolled to.
+
+    The content is `Ignored` for the same reason. A wrapping QLabel still asks
+    for the width of its longest unbreakable word, and a line of Python is one
+    such word: an open code row asked for 565px in a 360px dock, and the
+    column widened to it, taking the Gate's Build button off the panel.
     """
 
     def __init__(self, title: str = "Thinking...", code: bool = False,
@@ -134,6 +139,8 @@ class AccordionWidget(QtWidgets.QFrame):
 
         self.content_area = QtWidgets.QLabel()
         self.content_area.setWordWrap(True)
+        self.content_area.setSizePolicy(QtWidgets.QSizePolicy.Ignored,
+                                        QtWidgets.QSizePolicy.Preferred)
         self.content_area.setTextFormat(QtCore.Qt.PlainText)
         self.content_area.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         rule = "QLabel { %s %s padding: 0px 0px %dpx %dpx; }"

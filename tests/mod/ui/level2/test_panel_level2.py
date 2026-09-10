@@ -3813,3 +3813,25 @@ def test_the_completeness_check_actually_catches_a_missing_kind():
     missing_now_handled = _unhandled_kinds(
         fake_kinds, [handled_source_with_dropped, unhandled_source], allowlist=set())
     assert missing_now_handled == set()
+
+
+def test_no_row_widens_the_column_past_its_viewport(panel):
+    """
+    The column does not scroll sideways, so a widget wider than the viewport
+    is not scrolled to, it is unreachable: the Gate's Build button is right
+    aligned and leaves the panel with it. An open code row is what reaches
+    that width -- a line of Python is one long unbreakable word to a wrapping
+    QLabel, and 565px of it in a 360px dock took the whole transcript with it.
+    """
+    from conftest import QtWidgets
+
+    panel._render_tool_call(
+        "run_python",
+        {"code": 'doc.getObject("Countersink_inner_chamfer_reference_plane").Placement.Base.x = 12.5'},
+        0.0)
+    panel._last_tool_call_widget.toggle_content()
+    panel.on_plan_gate(["a Step"] * 8)
+    QT_APP.processEvents()
+
+    area = panel.chat_sessions.get_current_chat_history()
+    assert area.widget().minimumSizeHint().width() <= area.viewport().width()
