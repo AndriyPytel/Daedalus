@@ -570,11 +570,16 @@ def test_the_event_stream_of_a_clean_run():
     """
     Execute's reasoning stands before the first Step starts rather than
     inside it: it is reasoning about the whole Plan, and it is spent before
-    any Step runs (FCC-95). What a Step still has of its own is
-    `step_started`, the apply and `applied`. The self-intersection check
-    (FCC-256) runs after `applied` and asks nobody, so it carries its own
-    `tool_call`/`tool_result` pair with no `call_started` around it, even
-    with nothing in the acceptance list to check.
+    any Step runs (FCC-95). A Step is delivered the moment it is declared,
+    not once the whole Plan has been written out, so its own `tool_call` /
+    `tool_result` / `applied` sit right after `step_declared`, inside the
+    same call that wrote its code -- before the model is ever asked for the
+    next Step (FCC-368). `step_started` still trails afterward: it is
+    `_work_through`'s own bookkeeping over what already landed, not part of
+    delivering the Step. The self-intersection check (FCC-256) runs after
+    `applied` and asks nobody, so it carries its own `tool_call`/
+    `tool_result` pair with no `call_started` around it, even with nothing
+    in the acceptance list to check.
     """
     _, events, _, _ = drive([
         plan_reply("Only", thinking="A box is a Part::Box."),
@@ -586,9 +591,10 @@ def test_the_event_stream_of_a_clean_run():
         INTENT,
         CALL_STARTED, WRITING, COST,
         CALL_STARTED, THOUGHT, WRITING, COST, PLAN, GATE, GATE,
-        CALL_STARTED, THOUGHT, WRITING, COST, TOOL_CALL, STEP_DECLARED, TOOL_RESULT,
+        CALL_STARTED, THOUGHT, WRITING, COST, TOOL_CALL, STEP_DECLARED,
+        TOOL_CALL, TOOL_RESULT, APPLIED, TOOL_RESULT,
         CALL_STARTED, WRITING, COST,
-        STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        STEP_STARTED,
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, THOUGHT, WRITING, COST, REVIEW_VERDICT,
@@ -600,7 +606,10 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
     """
     The same run with something to check: the Assertion phase stands between
     the last Step and the verdict, and its code rides on the Tool call the way
-    a Step's does. FCC-76.
+    a Step's does. FCC-76. The Step itself still delivers inline -- `tool_call`
+    / `applied` / `tool_result` sit inside the same call that declared it,
+    same as the plain run, because delivery happens at declare time and Design/
+    Assertion never change that (FCC-368).
     """
     _, events, _, _ = drive([
         design_reply(A_CUBE),
@@ -615,9 +624,10 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
         INTENT, ATTACHED,
         CALL_STARTED, WRITING, COST, DESIGN, PART,
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
-        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED, TOOL_RESULT,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED,
+        TOOL_CALL, TOOL_RESULT, APPLIED, TOOL_RESULT,
         CALL_STARTED, WRITING, COST,
-        STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        STEP_STARTED,
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
@@ -627,7 +637,13 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
 
 
 def test_the_event_stream_of_a_retried_run():
-    """The self-intersection check (FCC-256) still runs after `applied`, unconditionally."""
+    """
+    The self-intersection check (FCC-256) still runs after `applied`,
+    unconditionally. `bad()` still gets its own `tool_call`/`tool_result`
+    pair the moment it is declared -- it is refused, not retried in place,
+    because refusal is not drift -- and only the regenerated `good()` ever
+    reaches `applied` (FCC-368).
+    """
     _, events, _, _ = drive(
         [plan_reply("Only"), code_reply("bad()"), code_reply("good()"), suspect_reply(), verdict_reply("pass")],
         applies=[failed("boom"), None],
@@ -637,13 +653,13 @@ def test_the_event_stream_of_a_retried_run():
         INTENT,
         CALL_STARTED, WRITING, COST,
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
-        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED, TOOL_RESULT,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED,
+        TOOL_CALL, TOOL_RESULT, TOOL_RESULT,
         CALL_STARTED, WRITING, COST,
-        STEP_STARTED,
-        TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
-        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED, TOOL_RESULT,
+        STEP_STARTED, PREFLIGHT_FAILED,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED,
+        TOOL_CALL, TOOL_RESULT, APPLIED, TOOL_RESULT,
         CALL_STARTED, WRITING, COST,
-        TOOL_CALL, TOOL_RESULT, APPLIED,
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
@@ -652,6 +668,12 @@ def test_the_event_stream_of_a_retried_run():
 
 
 def test_the_event_stream_of_a_blocked_run():
+    """
+    `x()` is declared and delivered against the Document -- `tool_call`/
+    `tool_result` fire right after `step_declared` -- before Execute ever
+    finds out the budget is spent; the refusal is what trips
+    `budget_exhausted`, not the other way round (FCC-368).
+    """
     _, events, _, _ = drive(
         [plan_reply("Only"), code_reply("x()")],
         applies=[failed("boom")],
@@ -662,21 +684,26 @@ def test_the_event_stream_of_a_blocked_run():
         INTENT,
         CALL_STARTED, WRITING, COST,
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
-        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED, TOOL_RESULT,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED,
+        TOOL_CALL, TOOL_RESULT, TOOL_RESULT,
         CALL_STARTED, WRITING, COST,
-        STEP_STARTED, TOOL_CALL, TOOL_RESULT,
+        STEP_STARTED,
         PREFLIGHT_FAILED, BUDGET_EXHAUSTED,
     ]
 
 
 def test_tool_calls_and_their_results_are_both_visible():
+    """`apply_step`'s own arguments carry the kernel_result a Step declared with, so a GUI replay is checked against what the kernel actually produced (FCC-368)."""
     _, events, _, _ = drive([
         plan_reply("Only"), code_reply("box()", label="Add the box"), suspect_reply(), verdict_reply("pass"),
     ])
 
     call = next(e for e in events.of(TOOL_CALL) if e.data["name"] == "apply_step")
     result = next(e for e in events.of(TOOL_RESULT) if e.data["name"] == "apply_step")
-    assert call.data == {"name": "apply_step", "arguments": {"code": "box()", "label": "Add the box"}}
+    assert call.data == {"name": "apply_step", "arguments": {
+        "code": "box()", "label": "Add the box",
+        "kernel_result": {"created": [], "deleted": [], "modified": [], "objects": [],
+                          "names": {}, "signature": {}}}}
     assert result.data["name"] == "apply_step"
     assert result.data["result"]["status"] == "applied"
 

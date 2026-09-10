@@ -89,7 +89,7 @@ def test_a_step_the_gui_could_not_replay_reverts_the_kernel_to_the_last_landed_c
             return {"delivered": True}
         attempts["count"] += 1
         if attempts["count"] == 1:
-            return {"delivered": False, "traceback": "signature mismatch"}
+            return {"delivered": False, "drift": True, "traceback": "signature mismatch"}
         return {"delivered": True}
 
     llm = ScriptedLLMClient([

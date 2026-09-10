@@ -73,6 +73,10 @@ class ApplyResult:
     carried past the `_CHANGED_NOTHING` check it already decides rather than
     dropped there — the exact FreeCAD Names a landed Step altered without
     creating, alongside `created`.
+
+    `drift` is set only by a `SignatureMismatch`: the one failure that means
+    the GUI Document disagreed with what the kernel verified, rather than the
+    Step itself being wrong (FCC-368). Every other failure leaves it `False`.
     """
 
     ok: bool
@@ -80,12 +84,13 @@ class ApplyResult:
     description: dict = field(default_factory=dict)
     created: list = field(default_factory=list)
     modified: list = field(default_factory=list)
+    drift: bool = False
 
     def as_tool_result(self) -> dict:
         if self.ok:
             return {"status": "applied", "created": self.created,
                     "modified": self.modified, "description": self.description}
-        return {"status": "failed", "traceback": self.traceback}
+        return {"status": "failed", "traceback": self.traceback, "drift": self.drift}
 
 
 _CHANGED_NOTHING = read_prompt("changed_nothing.md")
@@ -331,6 +336,8 @@ class ApplyPipeline:
                 expected_signature=kernel_result.get("signature")))
         except Closing:
             raise
+        except SignatureMismatch as exc:
+            return ApplyResult(ok=False, traceback=str(exc), drift=True)
         except BaseException as exc:
             return ApplyResult(
                 ok=False,

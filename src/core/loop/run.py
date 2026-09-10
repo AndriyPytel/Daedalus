@@ -29,8 +29,6 @@ from core.events import (
     REVIEW_SUSPECTED,
     REVIEW_VERDICT,
     STEP_STARTED,
-    TOOL_CALL,
-    TOOL_RESULT,
     UNBUILT,
 )
 from core.ledger import Ledger
@@ -475,7 +473,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     looks = looks if looks is not None else Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
     written = execute(steps, tools, llm, events, start, budgets=budgets,
                       as_described=as_described, looks=looks, entries=entries,
-                      ledger=ledger, kernel=kernel)
+                      ledger=ledger, kernel=kernel, ops=ops)
 
     while index < start:
         progress.satisfied.extend(cites[index] if index < len(cites) else ())
@@ -515,14 +513,23 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                 "applied_here": index,
             }
 
+        if outcome.code and not outcome.apply_failed:
+            progress.applied += 1
+            progress.satisfied.extend(cites[index] if index < len(cites) else ())
+            if attempts:
+                retried.add(index)
+                retried_names.update(outcome.created)
+            described = outcome.description or described
+            looks.a_step_landed()
+            index += 1
+            attempts = []
+            charged = 0
+            free_trailing_gaps = 0
+            continue
+
         ran_dry = False
-        if outcome.code:
-            arguments = {"code": outcome.code, "label": outcome.label}
-            if index < len(ops) and ops[index]:
-                arguments["op"] = ops[index]
-            events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
-            result = tools.call("apply_step", arguments)
-            events.emit(TOOL_RESULT, name="apply_step", result=result)
+        if outcome.apply_failed:
+            traceback = outcome.apply_failed
         else:
             ran_dry = _trailing_gap(written, index + 1, len(steps))
             if ran_dry:
@@ -536,26 +543,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                           % (index + 1, _SKIPPED_A_STEP, index + 1))
             if written.said:
                 no_code = "%s\n%s" % (no_code, written.said)
-            result = {"status": "failed", "traceback": no_code}
-
-        if result.get("status") == "applied":
-            progress.applied += 1
-            progress.satisfied.extend(cites[index] if index < len(cites) else ())
-            if attempts:
-                retried.add(index)
-                retried_names.update(result.get("created", []))
-                retried_names.update(result.get("modified", []))
-            described = result.get("description") or described
-            events.emit(APPLIED, step=index + 1, label=outcome.label,
-                        created=result.get("created", []))
-            looks.a_step_landed()
-            index += 1
-            attempts = []
-            charged = 0
-            free_trailing_gaps = 0
-            continue
-
-        traceback = result.get("traceback", "The Step failed without saying why.")
+            traceback = no_code
         attempts.append(Attempt(code=outcome.code or "", traceback=traceback))
         progress.tried = [_tried(step, a) for a in attempts]
         events.emit(PREFLIGHT_FAILED, step=index + 1, attempt=len(attempts),
@@ -582,7 +570,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         if cancelled():
             raise Stopped()
         written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
-                          looks, entries, ledger, kernel=kernel)
+                          looks, entries, ledger, kernel=kernel, ops=ops)
 
     return {"obsolete": None, "handback": None, "description": described,
             "applied_here": index,

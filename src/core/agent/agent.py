@@ -47,17 +47,34 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     *on_declaration* is called with the declaration dict the moment a Step is
     declared, and only then -- Design, Plan, Assertion and Review never pass
     one, so they carry no knowledge of what it does. It answers
-    `{"delivered": True}` or `{"delivered": False, "traceback": ...}`; this
-    function knows nothing else about what "delivered" means (FCC-A-53). A
-    Step that was not delivered never joins `declarations` -- the kernel's
-    live Document is wound back to the last checkpoint that was, and the
-    model is told why and asked to write that Step again, on the same turn
-    loop it would use to correct any other failure.
+    `{"delivered": True}`, `{"delivered": False, "drift": True, "traceback":
+    ...}`, or `{"delivered": False, "traceback": ...}`; this function knows
+    nothing else about what "delivered" means (FCC-A-53).
+
+    Only `drift` -- the GUI Document and the kernel disagreeing about what
+    this Step's own code produced -- winds the kernel's live Document back to
+    the last checkpoint that landed and asks the model to write the Step
+    again, feeding it the traceback on the same turn loop it would use to
+    correct any other failure. It is a positive answer, never a default:
+    anything `on_declaration` cannot name as drift is left for
+    `core/loop/execute.py`/`_work_through` to handle exactly as it did before
+    this Step ever reached a Document -- a refused deletion, a lint or op
+    mismatch, "changed nothing", or any other FreeCAD exception keeps its
+    existing attempts, `_FAILED_THIS_WAY` classification, Ledger record and
+    handback-to-Plan path once `attempts_per_step` runs out (FCC-61). This
+    function marks that Step `delivered: False` with its traceback and lets
+    the model finish the turn it was already on, but calls `on_declaration`
+    for none of the Steps it declares afterward in this same call -- apply
+    happens strictly in Step order, so a Step that never reached the
+    Document cannot leave a later one landed underneath it. Those later
+    Steps join no `declarations` at all and get rebuilt from scratch the
+    next time `_work_through` regenerates from the failed Step onward.
+    FCC-368 only ever touches the drift case.
 
     Returns `(declared, session, declarations)`: what the model declared, and
-    every Step it declared and landed, in build order -- step, label, code
-    and checkpoint. A `code` turn with no `step` never joins `declarations`,
-    and neither does one `on_declaration` refused.
+    every Step it declared, in build order -- step, label, code and
+    checkpoint, each carrying `delivered: False` if it never reached the
+    Document. A `code` turn with no `step` never joins `declarations` at all.
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)
@@ -66,6 +83,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     working_kernel = kernel
     declarations = []
     first_step = True
+    declared_failure = None
     last_call = False
     try:
         text = _say(session, llm, task, phase=phase, stream=stream)
@@ -113,23 +131,31 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     if stream is not None:
                         stream.emit(STEP_DECLARED, step=message["step"],
                                     label=message.get("label"), checkpoint=checkpoint)
-                    delivered = (on_declaration(declaration) if on_declaration is not None
-                                else {"delivered": True})
-                    if delivered.get("delivered"):
-                        declarations.append(declaration)
+                    if declared_failure is not None:
+                        pass
                     else:
-                        working_kernel.check("pass", document=(
-                            declarations[-1]["checkpoint"] if declarations
-                            else (document if isinstance(document, str) else None)))
-                        drifted = {"ok": False, "status": "failed",
-                                  "traceback": "Step %s replayed against the Document and "
-                                                "did not land: %s\n\nWrite Step %s again."
-                                                % (message["step"], delivered.get("traceback", ""),
-                                                   message["step"])}
-                        if stream is not None:
-                            stream.emit(TOOL_RESULT, name=phase, result=drifted)
-                        text = _say(session, llm, json.dumps(drifted), phase=phase, stream=stream)
-                        continue
+                        delivered = (on_declaration(declaration) if on_declaration is not None
+                                    else {"delivered": True})
+                        if delivered.get("drift"):
+                            working_kernel.check("pass", document=(
+                                declarations[-1]["checkpoint"] if declarations
+                                else (document if isinstance(document, str) else None)))
+                            drifted = {"ok": False, "status": "failed",
+                                      "traceback": "Step %s replayed against the Document and "
+                                                    "did not land: %s\n\nWrite Step %s again."
+                                                    % (message["step"], delivered.get("traceback", ""),
+                                                       message["step"])}
+                            if stream is not None:
+                                stream.emit(TOOL_RESULT, name=phase, result=drifted)
+                            text = _say(session, llm, json.dumps(drifted), phase=phase, stream=stream)
+                            continue
+                        elif not delivered.get("delivered"):
+                            declaration["delivered"] = False
+                            declaration["traceback"] = delivered.get("traceback", "")
+                            declarations.append(declaration)
+                            declared_failure = message["step"]
+                        else:
+                            declarations.append(declaration)
                 answer = _feedback(result)
                 if stream is not None:
                     stream.emit(TOOL_RESULT, name=phase, result=answer)

@@ -6,7 +6,7 @@ import tempfile
 from dataclasses import dataclass, field
 
 from core.design.gaps import entries
-from core.events import TOOL_CALL, TOOL_RESULT
+from core.events import APPLIED, TOOL_CALL, TOOL_RESULT
 from core.loop.document import copied
 from core.tools import ToolError
 
@@ -96,10 +96,17 @@ class Attempt:
 
 @dataclass
 class ExecuteOutcome:
-    """The code for one Step, and the name its undo entry gets."""
+    """
+    The code for one Step, the name its undo entry gets, and what it
+    delivered -- or, if `on_declaration` rejected it for a reason that was
+    not drift, `apply_failed` carries what it said instead (FCC-368).
+    """
 
     code: str = None
     label: str = "Copilot Step"
+    description: dict = None
+    created: list = field(default_factory=list)
+    apply_failed: str = None
 
 
 @dataclass
@@ -135,7 +142,7 @@ class Written:
 
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
-            looks=None, entries=(), ledger=None, supervisor=None, kernel=None):
+            looks=None, entries=(), ledger=None, supervisor=None, kernel=None, ops=()):
     """
     Run every Step from `start` to the end of the Plan as one agent phase,
     against one kernel it holds open for the whole call (FCC-A-53/ADR-0027).
@@ -198,6 +205,48 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     supervisor = supervisor or SessionTreeSupervisor()
     task = json.dumps(request, indent=2, default=str)
     
+    def on_declaration(declaration):
+        """
+        Replay one declared Step into the live Document the moment it is
+        declared (ADR-0027) — the loop's `apply_step` Tool, carrying the
+        kernel's own `kernel_result` rather than a Preflight rehearsal.
+
+        Returns `{"delivered": False, "traceback": ...}` on any rejection —
+        a real refusal or a GUI Document that drifted from the kernel's —
+        so `run_phase` reverts the kernel and asks the same Step again; the
+        Step never joins `declarations` until this says it landed. `Ledger`
+        is recorded here, not in `run_phase`, because a failure resolved in
+        place before this call returns is not one `_work_through` ever sees.
+        """
+        number = declaration.get("step")
+        index = number - 1 if isinstance(number, int) else None
+        op = ops[index] if (ops and index is not None and 0 <= index < len(ops)) else None
+        arguments = {"code": declaration["code"], "label": declaration.get("label") or "Copilot Step",
+                     "kernel_result": {"created": declaration.get("created") or [],
+                                       "deleted": declaration.get("deleted") or [],
+                                       "modified": declaration.get("modified") or [],
+                                       "objects": declaration.get("objects") or [],
+                                       "names": declaration.get("names") or {},
+                                       "signature": declaration.get("signature")}}
+        if op:
+            arguments["op"] = op
+        events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
+        result = tools.call("apply_step", arguments)
+        events.emit(TOOL_RESULT, name="apply_step", result=result)
+        if result.get("status") == "applied":
+            events.emit(APPLIED, step=number, label=declaration.get("label") or "Copilot Step",
+                        created=result.get("created", []))
+            declaration["description"] = result.get("description")
+            declaration["created"] = result.get("created", [])
+            return {"delivered": True}
+        if result.get("drift"):
+            return {"delivered": False, "traceback": result.get("traceback"), "drift": True}
+        if ledger is not None:
+            step_prose = steps[index] if (index is not None and 0 <= index < len(steps)) else \
+                declaration.get("label", "")
+            ledger.record(step_prose, result.get("traceback", ""))
+        return {"delivered": False, "traceback": result.get("traceback")}
+
     working_dir = tempfile.mkdtemp()
     try:
         with copied(tools) as document:
@@ -206,7 +255,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                 {"plan": steps, "design": as_described},
                 llm, task, document=document,
                 kernel=kernel, supervisor=supervisor, stream=events,
-                system=prompt(EXECUTE_PHASE, ledger=ledger.render() if ledger else "")
+                system=prompt(EXECUTE_PHASE, ledger=ledger.render() if ledger else ""),
+                on_declaration=on_declaration,
             )
 
         reply = declared if isinstance(declared, dict) else {}
@@ -465,17 +515,27 @@ def _the_same_way_twice(attempts):
 
 def _written(declarations, start):
     """
-    Every Step the kernel ran and declared, by Step number.
+    Every Step the kernel ran and declared, by Step number, whether or not it
+    reached the Document.
 
-    `declarations` is `run_phase`'s own record of what landed, code and
-    checkpoint included — a reply's `steps` names Steps again but carries
-    none of that (ADR-0027). A declared number wins over build position.
+    `declarations` is `run_phase`'s own record, code and checkpoint included
+    — a reply's `steps` names Steps again but carries none of that
+    (ADR-0027). A declared number wins over build position. A Step
+    `on_declaration` delivered carries its own `description` and `created`,
+    written there by that callback, so `_work_through` never asks the
+    Document again for what it was just told; one it rejected for a reason
+    that was not drift carries `delivered: False` instead, and its own
+    traceback becomes `apply_failed` — the only Step this ever returns whose
+    code did not land, so `_work_through` can still hand it to its own
+    attempts/Ledger/handback path (FCC-61).
     """
     written = {}
     for position, entry in enumerate(declarations or (), start=start + 1):
         number = entry.get("step")
         written[number if isinstance(number, int) else position] = ExecuteOutcome(
-            code=str(entry["code"]), label=str(entry.get("label") or "Copilot Step"))
+            code=str(entry["code"]), label=str(entry.get("label") or "Copilot Step"),
+            description=entry.get("description"), created=list(entry.get("created") or ()),
+            apply_failed=entry.get("traceback") if entry.get("delivered") is False else None)
     return written
 
 

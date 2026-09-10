@@ -366,10 +366,11 @@ class FakeTools:
         @registry.tool("apply_step", "Apply one Step.", {
             "type": "object",
             "properties": {"code": {"type": "string"}, "label": {"type": "string"},
-                          "op": {"type": "string"}},
+                          "op": {"type": "string"},
+                          "kernel_result": {"type": "object"}},
             "required": ["code"],
         })
-        def apply_step(code, label="Step", op=None):
+        def apply_step(code, label="Step", op=None, kernel_result=None):
             """A None entry, or running off the end, means "this one worked"."""
             arguments = {"code": code, "label": label}
             if op is not None:
