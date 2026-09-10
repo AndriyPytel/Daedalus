@@ -1,6 +1,7 @@
 """The Execute phase: write code for steps and apply them."""
 import json
 import os
+import shutil
 import tempfile
 from dataclasses import dataclass, field
 
@@ -161,11 +162,9 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     Plan is how a recorded run threw away Steps nobody had attempted and
     replanned three times over with nothing applied.
 
-    The working directory the kernel writes each Step's saved copy into
-    outlives this call rather than being deleted the instant `run_phase`
-    returns: a `TemporaryDirectory` scoped to the `with` that called it used
-    to delete every one of them one line before the declarations that name
-    them were ever read.
+    The kernel's saved copy of each Step stays readable in `working_dir` for
+    as long as this call is reading the declarations that name it; every
+    exit -- a return or a raise -- removes it once that reading is done.
     """
     budgets = budgets or Budgets()
     request = {"steps": [{"step": number, "do": prose}
@@ -200,28 +199,31 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     task = json.dumps(request, indent=2, default=str)
     
     working_dir = tempfile.mkdtemp()
-    with copied(tools) as document:
-        declared, session, declarations = run_phase(
-            pc.EXECUTE, working_dir,
-            {"plan": steps, "design": as_described},
-            llm, task, document=document,
-            kernel=kernel, supervisor=supervisor, stream=events,
-            system=prompt(EXECUTE_PHASE, ledger=ledger.render() if ledger else "")
-        )
+    try:
+        with copied(tools) as document:
+            declared, session, declarations = run_phase(
+                pc.EXECUTE, working_dir,
+                {"plan": steps, "design": as_described},
+                llm, task, document=document,
+                kernel=kernel, supervisor=supervisor, stream=events,
+                system=prompt(EXECUTE_PHASE, ledger=ledger.render() if ledger else "")
+            )
 
-    reply = declared if isinstance(declared, dict) else {}
+        reply = declared if isinstance(declared, dict) else {}
 
-    written = _written(declarations, start)
-    if written:
-        return Written(steps=written,
-                       unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
-                       if (reply.get("unbuildable") or reply.get("obsolete")) else None,
-                       said=_said(reply, declarations, start))
-    if reply.get("obsolete"):
-        return Written(obsolete=str(reply["obsolete"]))
-    if reply.get("unbuildable"):
-        return Written(unbuildable=str(reply["unbuildable"]))
-    return Written(said=_said(reply, declarations, start))
+        written = _written(declarations, start)
+        if written:
+            return Written(steps=written,
+                           unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
+                           if (reply.get("unbuildable") or reply.get("obsolete")) else None,
+                           said=_said(reply, declarations, start))
+        if reply.get("obsolete"):
+            return Written(obsolete=str(reply["obsolete"]))
+        if reply.get("unbuildable"):
+            return Written(unbuildable=str(reply["unbuildable"]))
+        return Written(said=_said(reply, declarations, start))
+    finally:
+        shutil.rmtree(working_dir, ignore_errors=True)
 
 
 _SKIPPED_A_STEP = "skipped a Step it could have written"

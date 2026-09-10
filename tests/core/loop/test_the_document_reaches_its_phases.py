@@ -48,6 +48,50 @@ def test_execute_opens_the_document_the_snapshot_describes(monkeypatch, tmp_path
     assert not copy.exists(), "the copy is the caller's to delete"
 
 
+def test_the_working_directory_is_gone_once_execute_returns(monkeypatch, tmp_path):
+    """
+    `working_dir` holds the kernel's saved copy of every declared Step —
+    kept only as long as `execute` is reading `declarations` out of it, not
+    for the life of the process.
+    """
+    registry = ToolRegistry()
+    registry.tool("snapshot", "State right now.")(lambda: {"objects": [], "object_count": 0})
+    registry.tool("document_copy", "The Document for a phase kernel.")(
+        lambda: {"path": str(tmp_path / "live.FCStd")})
+    seen = {}
+
+    def fake_run_phase(kind, working_dir, *args, **kwargs):
+        seen["working_dir"] = working_dir
+        return ({"steps": [{"step": 1, "label": "one"}]}, None,
+                [{"step": 1, "code": "pass", "label": "one", "checkpoint": ""}])
+
+    monkeypatch.setattr(execute_module, "run_phase", fake_run_phase)
+
+    execute(["pad a box"], registry, ScriptedLLMClient([]), None)
+
+    assert not os.path.exists(seen["working_dir"])
+
+
+def test_the_working_directory_is_gone_even_when_execute_raises(monkeypatch, tmp_path):
+    """A phase that blew up still leaves nothing of its own workspace behind."""
+    registry = ToolRegistry()
+    registry.tool("snapshot", "State right now.")(lambda: {"objects": [], "object_count": 0})
+    registry.tool("document_copy", "The Document for a phase kernel.")(
+        lambda: {"path": str(tmp_path / "live.FCStd")})
+    seen = {}
+
+    def fake_run_phase(kind, working_dir, *args, **kwargs):
+        seen["working_dir"] = working_dir
+        raise RuntimeError("the phase died")
+
+    monkeypatch.setattr(execute_module, "run_phase", fake_run_phase)
+
+    with pytest.raises(RuntimeError):
+        execute(["pad a box"], registry, ScriptedLLMClient([]), None)
+
+    assert not os.path.exists(seen["working_dir"])
+
+
 @pytest.fixture
 def kernel():
     try:
