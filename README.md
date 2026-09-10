@@ -22,13 +22,13 @@ is a live parametric feature tree you can keep editing, not a dead mesh or an ST
 Intent ──► Design ──► Plan ──► [ Plan Gate ] ──► Step 1 ──► … ──► Assertion ──► Review
                                       │             │                              │
                                  you approve   Lint → Preflight → Apply       verdict returns
-                                 the whole Plan   (disposable worker)             to Plan
+                                 the whole Plan  (in the kernel)                  to Plan
 ```
 
 **Design → Plan → Execute → Assertion → Review is a fixed order with deterministic
 routing** (ADR-0003, ADR-0018, ADR-0019). Design says what the part is, Plan produces the
-Steps, Execute writes the code for all of them in one call and the loop applies them one
-at a time (ADR-0021), Assertion measures the finished part
+Steps, Execute holds one kernel open for the phase and declares each Step's code the
+moment it lands there (ADR-0027), Assertion measures the finished part
 against the Acceptance list, Review judges the outcome against the Intent, and a failure
 from either of the last two returns to Plan — never to Execute. There is no model-chosen
 speaker selection anywhere.
@@ -243,7 +243,7 @@ attribute list rather than a second guess at the same wrong spelling.
 
 Introspection of the running FreeCAD instance, not retrieval over documentation
 (ADR-0006). Execute may spend a bounded number of read-only **Looks** at the Document
-before it writes the Plan's code (ADR-0009, ADR-0021) — `describe_type` among them, which
+before it writes a Step's code (ADR-0009, ADR-0027) — `describe_type` among them, which
 instantiates a type in a throwaway Document so its properties, and the spellings its
 enumerations accept, are readable before the first object of it exists. What cannot be
 introspected is carried as a

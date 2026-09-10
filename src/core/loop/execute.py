@@ -112,7 +112,8 @@ class ExecuteOutcome:
 @dataclass
 class Written:
     """
-    What one Execute turn produced: the code for every Step it was asked about.
+    What one Execute phase produced: each Step's declared code, keyed by
+    number, and why a Step it was asked about has none.
 
     Keyed by the Step's number in the Plan rather than by position in the
     reply. A regeneration is asked about a tail, and a reply that leaves a Step

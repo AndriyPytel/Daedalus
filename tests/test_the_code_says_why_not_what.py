@@ -65,6 +65,43 @@ def test_no_comment_carries_a_ticket_id():
         % ", ".join(offenders))
 
 
+NOT_A_DOCUMENT = {".venv", ".git", "logs", "manual"}
+
+
+def prose_files():
+    for name in sorted(os.listdir(ROOT)):
+        if name in NOT_A_DOCUMENT or name.startswith("."):
+            continue
+        full = os.path.join(ROOT, name)
+        if os.path.isfile(full) and name.endswith(".md"):
+            yield os.path.relpath(full, ROOT)
+        elif os.path.isdir(full) and name != "tests":
+            for path, dirnames, names in os.walk(full):
+                dirnames[:] = [d for d in dirnames if d not in NOT_A_DOCUMENT]
+                for filename in sorted(names):
+                    if filename.endswith((".md", ".py")):
+                        yield os.path.relpath(os.path.join(path, filename), ROOT)
+
+
+def test_adr_0021_is_never_cited_alone():
+    """
+    A docstring or a doc that quotes ADR-0021's single-call contract
+    survives a partial revert or a copy-paste from an older commit unless
+    something reads the prose. Nothing else does.
+    """
+    offenders = []
+    for where in prose_files():
+        with open(os.path.join(ROOT, where), encoding="utf-8") as handle:
+            text = handle.read()
+        if "ADR-0021" in text and "ADR-0027" not in text:
+            offenders.append(where)
+
+    assert not offenders, (
+        "ADR-0021 is superseded by ADR-0027 (FCC-A-53): a file citing ADR-0021 "
+        "must also cite ADR-0027, either as its replacement or to say what of "
+        "ADR-0021 still holds: %s" % ", ".join(offenders))
+
+
 DOCSTRING_BUDGET = {ast.Module: 20, ast.ClassDef: 8, ast.FunctionDef: 8, ast.AsyncFunctionDef: 8}
 PRIVATE_BUDGET = 5
 HISTORY_MARKERS = ("used to", "now instead", "no longer", "replaces the old", "which is now")
