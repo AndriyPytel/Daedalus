@@ -87,8 +87,8 @@ def measure(path: str) -> Measurement:
     return Measurement(
         verdict=verdicts[-1].data.get("verdict") if verdicts else None,
         blocked_reason=blocks[-1].data.get("reason") if blocks else None,
-        steps_started=sum(1 for event in events
-                            if event.kind in (STEP_STARTED, STEP_DECLARED)),
+        steps_started=len({event.data.get("index") or event.data.get("step")
+                            for event in events if event.kind in (STEP_STARTED, STEP_DECLARED)}),
         steps_applied=sum(1 for event in events if event.kind == APPLIED),
         plan_revisions=sum(1 for event in events if event.kind == PLAN_REVISED),
         preflight_failures=sum(1 for event in events if event.kind == PREFLIGHT_FAILED),
