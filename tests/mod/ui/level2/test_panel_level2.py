@@ -13,6 +13,8 @@ nothing — is Level 1 now that the Sessions are not behind a widget. See
 tests/test_sessions.py; what stays here is the stack keeping step with them.
 """
 import os
+import threading
+import time
 
 import pytest
 
@@ -2514,6 +2516,99 @@ def test_aborting_kills_the_kernel_and_releases_a_waiting_question(panel):
     assert panel.worker._stop.is_set()
     assert panel._question_card is None
     assert not card.isEnabled(), "the card is still answerable after Abort"
+
+
+def test_stop_does_not_build_a_fresh_worker_for_an_idle_session(panel):
+    """
+    FCC-376: `on_stop`/`on_abort` used to reach the worker through the
+    `worker` property, which is `_worker_for` -- and `_worker_for` builds and
+    registers a fresh idle bundle for a Session with nothing running. Stopping
+    a Session that never sent an Intent must not silently manufacture one.
+    """
+    panel.new_chat()
+    log = panel._current_log()
+    assert log not in panel._workers
+
+    panel.on_stop()
+
+    assert log not in panel._workers
+
+
+def test_abort_does_not_build_a_fresh_worker_for_an_idle_session(panel):
+    panel.new_chat()
+    log = panel._current_log()
+    assert log not in panel._workers
+
+    panel.on_abort()
+
+    assert log not in panel._workers
+
+
+class _StuckProcess:
+    """A `claude` that starts, writes nothing, and would sit there all day."""
+
+    def __init__(self):
+        import io
+
+        self.stdin = io.StringIO()
+        self.stderr = io.StringIO()
+        self.returncode = 0
+        self.killed = threading.Event()
+
+    @property
+    def stdout(self):
+        self.killed.wait(10)
+        return iter(())
+
+    def kill(self):
+        self.killed.set()
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+
+def test_stop_and_abort_kill_the_run_provider_process_without_waiting_the_ceiling(panel):
+    """
+    FCC-376: a `claude` call under the full ceiling would otherwise hold Stop
+    and Abort for up to `_CEILING`'s 1500 seconds
+    (`core/llm/claude.py :: _CEILING`); both must instead end the run's own
+    live process at once.
+    """
+    from core.llm.claude import ClaudeCodeClient
+
+    class _StubSdkClient:
+        pipeline = None
+
+    a_turn = [{"role": "system", "content": "You are the Design phase."},
+              {"role": "user", "content": "Make a 10mm plate"}]
+
+    for action in ("stop", "abort"):
+        panel.new_chat()
+        bundle = panel._worker_for(panel._current_log())
+
+        process = _StuckProcess()
+        stub = _StubSdkClient()
+        stub._llm = ClaudeCodeClient(model="sonnet", spawn=lambda argv, cwd: process)
+        bundle.worker.sdk_client = stub
+
+        done = threading.Event()
+
+        def drive():
+            list(bundle.worker.client.stream(a_turn))
+            done.set()
+
+        driver = threading.Thread(target=drive)
+        driver.start()
+        while not stub._llm.run._live:
+            time.sleep(0.01)
+
+        started = time.monotonic()
+        getattr(bundle.worker, action)()
+
+        assert done.wait(5), "%s did not end the run in flight" % action
+        assert time.monotonic() - started < 5
+        assert process.killed.is_set()
+        driver.join(timeout=1)
 
 
 def test_the_acceptance_list_is_on_the_plan_card_before_the_gate(panel):

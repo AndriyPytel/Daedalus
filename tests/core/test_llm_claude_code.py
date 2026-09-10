@@ -381,6 +381,99 @@ def test_the_cut_off_reply_does_not_tell_the_user_to_raise_a_cap():
     assert "cap" not in str(refusal.value).lower()
 
 
+def test_ending_a_run_kills_its_own_call_rather_than_waiting_the_ceiling():
+    """
+    Stop and Abort (`Mod/ui/copilot_panel.py :: LoopWorker`) must return in
+    seconds against a call under the full `_CEILING`, not only a call given a
+    short one, so this proves `Run.end()` itself rather than the timeout.
+    """
+    client, spawn = client_over(_ProcessThatNeverAnswers())
+
+    done = threading.Event()
+
+    def drive():
+        try:
+            collect(client.stream(a_turn()))
+        except ProviderRefused:
+            pass
+        finally:
+            done.set()
+
+    driver = threading.Thread(target=drive)
+    driver.start()
+    time.sleep(0.05)
+
+    started = time.monotonic()
+    client.run.end()
+
+    assert done.wait(5), "Run.end() did not end the call"
+    assert time.monotonic() - started < 5
+    assert spawn.process.killed.is_set()
+    driver.join(timeout=1)
+
+
+def test_a_run_ending_with_no_call_in_flight_kills_nothing():
+    client = ClaudeCodeClient(model=MODEL, spawn=lambda argv, cwd: None)
+
+    client.run.end()  # must not raise with nothing registered
+
+
+def _stuck(client):
+    """Start a call against *client* that will never return on its own, and its process."""
+    started = threading.Event()
+
+    def drive():
+        try:
+            for chunk in client.stream(a_turn()):
+                started.set()
+        except ProviderRefused:
+            pass
+
+    threading.Thread(target=drive, daemon=True).start()
+    while not client.run._live:
+        time.sleep(0.01)
+    return next(iter(client.run._live))
+
+
+def test_kill_reaches_a_claude_client_behind_a_role_table():
+    from core.llm.claude import kill
+    from core.llm.roles import RoleClient
+
+    client, spawn = client_over(_ProcessThatNeverAnswers())
+    process = _stuck(client)
+    table = RoleClient({"design": client}, caller=client)
+
+    kill(table)
+
+    assert process.killed.is_set()
+
+
+def test_kill_reaches_a_claude_client_behind_a_profile():
+    from core.llm.claude import kill
+
+    class _Profiled:
+        def __init__(self, thinking, doing):
+            self.thinking = thinking
+            self.doing = doing
+
+    thinking, thinking_spawn = client_over(_ProcessThatNeverAnswers())
+    doing, doing_spawn = client_over(_ProcessThatNeverAnswers())
+    thinking_process = _stuck(thinking)
+    doing_process = _stuck(doing)
+    profiled = _Profiled(thinking, doing)
+
+    kill(profiled)
+
+    assert thinking_process.killed.is_set()
+    assert doing_process.killed.is_set()
+
+
+def test_kill_of_no_client_is_a_no_op():
+    from core.llm.claude import kill
+
+    kill(None)  # a Session with no LLM built yet has nothing to kill
+
+
 def test_a_call_that_never_answers_ends_the_run_rather_than_hanging_it():
     """
     The CLI has no timeout of its own where the keyed route leans on LiteLLM's,
