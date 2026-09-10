@@ -141,8 +141,15 @@ def narrate(event) -> Narration:
                                 % (data["index"], data["total"], data["description"]))
 
     if kind == TOOL_RESULT:
-        return Narration(status="%s → %s" % (data["name"],
-                                             data["result"].get("status", "done")))
+        result = data["result"]
+        status = "%s → %s" % (data["name"], result.get("status", "done"))
+        printed, raised = result.get("stdout") or "", result.get("traceback") or ""
+        if not (printed or raised):
+            return Narration(status=status)
+        return Narration(status=status,
+                         title="✗ %s raised" % data["name"] if raised
+                               else "%s printed" % data["name"],
+                         body="\n".join(said for said in (printed, raised) if said))
 
     if kind == PREFLIGHT_FAILED:
         return Narration(title="✗ Preflight failed (attempt %d) — retrying" % data["attempt"],

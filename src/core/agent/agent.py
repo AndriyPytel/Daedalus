@@ -1,16 +1,28 @@
-"""The multi-turn phase agent: a phase's conversation with its own kernel."""
+"""
+The multi-turn phase agent: a phase's conversation with its own kernel.
+
+A turn is read for the object it carries, by the routes `core.loop.prompt`
+reads a phase's reply by. Read one way only — the fence, else the whole text,
+then `json.loads` — this path lost the turns the model got right. Measured on
+`logs/sessions/123a8f44549a46b5a2ff1f78ab661dba.jsonl`: 5 of that run's 27
+turns, every one in Execute, every one carrying the object it meant. One wrote
+a sentence and then the object; three wrote the object, a stray
+`</parameter></invoke>`, and a second object; one wrote a truncated object
+before the whole one. Each cost a turn on `contract_correction`, and Execute
+never reached `declare` — the run had a Design and a Plan and made no part.
+"""
 import json
 import os
 import shutil
 import time
 
-from core.events import CALL_STARTED, COST, THOUGHT, TOOL_RESULT, WRITING
+from core.events import CALL_STARTED, COST, THOUGHT, TOOL_CALL, TOOL_RESULT, WRITING
 from core.kernel import Kernel
 from core.llm import REASONING, TEXT, Session
 from core.llm.exceptions import StreamCutOff
 from core.agent.phase_contract import spawn
 from core.agent.subagent import delegate
-from core.loop.prompt import _CUT_OFF_ATTEMPTS, _FENCE, prompt
+from core.loop.prompt import _CUT_OFF_ATTEMPTS, _object_of, prompt
 from core.prompts import read_prompt
 
 
@@ -66,6 +78,9 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         text = _say(session, llm, prompt("budget_last_call"),
                                     phase=phase, stream=stream)
                         continue
+                if stream is not None:
+                    stream.emit(TOOL_CALL, name=phase,
+                                arguments={"code": message["code"]})
                 if working_kernel is None:
                     working_kernel = Kernel()
                 step_document = document if first_step else _NO_DOCUMENT
@@ -174,14 +189,12 @@ def _one_turn(session, llm, content, phase=None, stream=None):
 
 
 def _parsed(text):
-    fenced = _FENCE.search(text or "")
-    candidate = (fenced.group(1) if fenced else (text or "")).strip()
-    if not candidate:
+    """The object a turn carries, or what was wrong with the turn instead."""
+    if not (text or "").strip():
         return {"_empty": True}
-    try:
-        parsed = json.loads(candidate)
-    except ValueError:
-        return {"_malformed": text[:400] if text else ""}
+    parsed = _object_of(text)
+    if parsed is None:
+        return {"_malformed": text[:400]}
     if not isinstance(parsed, dict):
         return {"_not_object": parsed}
     return parsed
