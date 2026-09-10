@@ -206,10 +206,11 @@ class Client:
         self._llm = llm
         self.events = EventStream()
         self.session = Session()
+        self.dispatch = dispatch or (lambda func, timeout=None: func())
         self.pipeline = ApplyPipeline(
             document=self.document,
             worker=self.kernel,
-            dispatch=dispatch or (lambda func, timeout=None: func()),
+            dispatch=self.dispatch,
             confirm=confirm or (lambda kinds: False),
             events=self.events)
         self.answer = answer
@@ -244,7 +245,8 @@ class Client:
 
         self._stop = False
         self._abort = False
-        tools = build_registry(document=self.document, pipeline=self.pipeline)
+        tools = build_registry(document=self.document, pipeline=self.pipeline,
+                               dispatch=self.dispatch)
 
         def _pause(question):
             self._pending = dict(prompt=prompt, gate=gate, decide=decide,

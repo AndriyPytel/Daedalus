@@ -618,11 +618,13 @@ class LoopWorker(QtCore.QObject):
         model changes so the next run rebuilds it from settings.
         """
         if self.sdk_client is None:
+            from bridge.main_thread import on_main_thread
             from copilot.sdk import Client, NO_KERNEL
             self.sdk_client = Client(
                 document=self._document,
                 kernel=NO_KERNEL,
-                confirm=self.ask.about_objects_we_do_not_own)
+                confirm=self.ask.about_objects_we_do_not_own,
+                dispatch=on_main_thread)
         return self.sdk_client
 
     @QtCore.Slot(str, object, str, object, str)
@@ -662,7 +664,8 @@ class LoopWorker(QtCore.QObject):
             self.finished.emit(None, transcript)
             return
 
-        tools = build_registry(document=self._document, pipeline=sdk_client.pipeline)
+        tools = build_registry(document=self._document, pipeline=sdk_client.pipeline,
+                              dispatch=sdk_client.dispatch)
         try:
             self.document_named.emit(transcript,
                                      str(tools.call("snapshot").get("document") or ""),

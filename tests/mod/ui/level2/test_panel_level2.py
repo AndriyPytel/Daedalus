@@ -3713,6 +3713,24 @@ def test_the_end_of_a_run_reaches_the_panel_on_the_gui_thread(panel):
     assert ran_on.get("slot") == main
 
 
+def test_the_panel_marshals_the_document_onto_the_gui_thread(panel):
+    """
+    The first Intent of a Session segfaults FreeCAD without this.
+
+    `LoopWorker.do_work` runs on a QThread and the first thing it does is
+    `pipeline.start_run()`, which reads the active Document and disables the
+    main window. `copilot.sdk.Client` defaults `dispatch` to running the
+    callable where it stands -- right for a headless script, a Document
+    mutation and a `QWidget.setEnabled` off the GUI thread here.
+    """
+    from bridge.main_thread import on_main_thread
+
+    client = panel.worker._get_sdk_client()
+
+    assert client.dispatch is on_main_thread
+    assert client.pipeline._dispatch is on_main_thread
+
+
 def test_copilot_panel_has_no_dead_request_work_signal():
     """
     `CopilotPanel.request_work` only ever had test subscribers (FCC-287a) —
