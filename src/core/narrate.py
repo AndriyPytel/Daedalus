@@ -24,7 +24,7 @@ from core.events import (
     ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
     COMPLETED, ERROR, FAILED, GATE, INTENT, OUTSTANDING, PART, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED,
-    STEP_STARTED, STOPPED, TOOL_RESULT, UNBUILT,
+    STEP_DECLARED, STEP_STARTED, STOPPED, TOOL_RESULT, UNBUILT,
 )
 
 _GATE_SAID = {
@@ -159,6 +159,9 @@ def narrate(event) -> Narration:
         created = ", ".join(data.get("created") or []) or "no new objects"
         return Narration(line="✓ Applied “%s” — %s. Ctrl+Z undoes this Step."
                               % (data["label"], created))
+
+    if kind == STEP_DECLARED:
+        return Narration(line="✓ Declared Step %s “%s”." % (data["step"], data.get("label") or ""))
 
     if kind == ASSERTION:
         return Narration(line=_assertion_said(data))

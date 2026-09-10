@@ -108,7 +108,7 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     task = json.dumps(request, indent=2, default=str)
     
     with tempfile.TemporaryDirectory() as working_dir:
-        declared, session, checkpoints = run_phase(
+        declared, session, declarations = run_phase(
             pc.PLAN, working_dir,
             {"design": the_part or {}},
             llm, task,

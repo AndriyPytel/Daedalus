@@ -192,7 +192,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     task = json.dumps(request, indent=2, default=str)
     
     with copied(tools) as document, tempfile.TemporaryDirectory() as working_dir:
-        declared, session, checkpoints = run_phase(
+        declared, session, declarations = run_phase(
             pc.EXECUTE, working_dir,
             {"plan": steps, "design": as_described},
             llm, task, document=document,

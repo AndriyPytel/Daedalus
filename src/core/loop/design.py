@@ -51,7 +51,7 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
     with tempfile.TemporaryDirectory() as working_dir:
         intent_data = body.get("intent", body)
 
-        declared, session, checkpoints = run_phase(
+        declared, session, declarations = run_phase(
             pc.DESIGN, working_dir,
             {"intent": intent_data},
             llm, task,

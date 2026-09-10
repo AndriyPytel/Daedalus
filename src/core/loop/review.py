@@ -57,7 +57,7 @@ def review_suspect(intent, views, described, llm, events, attachments=(),
     task = content
     
     with tempfile.TemporaryDirectory() as working_dir:
-        declared, session, checkpoints = run_phase(
+        declared, session, declarations = run_phase(
             pc.REVIEW_SUSPECT, working_dir,
             {"description": described},
             llm, task,
@@ -89,7 +89,7 @@ def review(intent, views, described, llm, events, attachments=(), checked=None,
     task = content
     
     with tempfile.TemporaryDirectory() as working_dir:
-        declared, session, checkpoints = run_phase(
+        declared, session, declarations = run_phase(
             pc.REVIEW, working_dir,
             {"description": described},
             llm, task,

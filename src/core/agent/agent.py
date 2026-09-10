@@ -16,7 +16,9 @@ import os
 import shutil
 import time
 
-from core.events import CALL_STARTED, COST, THOUGHT, TOOL_CALL, TOOL_RESULT, WRITING
+from core.events import (
+    CALL_STARTED, COST, STEP_DECLARED, THOUGHT, TOOL_CALL, TOOL_RESULT, WRITING,
+)
 from core.kernel import Kernel
 from core.llm import REASONING, TEXT, Session
 from core.llm.exceptions import StreamCutOff
@@ -38,19 +40,19 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     """
     Run *phase* as a multi-turn agent against its own kernel.
 
-    *document* is the path the first code turn opens, and the artefact the
-    phase's row of `PHASE_CONTRACT` decides it may see on disk; the default
-    is a sentinel, not `None`, which the kernel reads as an empty Document.
+    *document* is the path the first code turn opens; the default is a
+    sentinel, not `None`, which the kernel reads as an empty Document.
 
-    Returns `(declared, session, checkpoints)`: what the model declared, its
-    whole conversation, and every Step's checkpoint path.
+    Returns `(declared, session, declarations)`: what the model declared, and
+    every Step it declared and landed, in build order — step, label, code
+    and checkpoint. A `code` turn with no `step` never joins `declarations`.
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)
                        else sources))
     session = Session(system=_composed_system(system, working))
     working_kernel = kernel
-    checkpoints = []
+    declarations = []
     first_step = True
     last_call = False
     try:
@@ -58,7 +60,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
         while True:
             message = _parsed(text)
             if "declare" in message:
-                return message["declare"], session, checkpoints
+                return message["declare"], session, declarations
             if "delegate" in message:
                 if supervisor is None:
                     raise AgentGaveUp("%s tried to delegate with no supervisor" % phase)
@@ -87,8 +89,15 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 result = working_kernel.check(message["code"], **(
                     {} if step_document is _NO_DOCUMENT else {"document": step_document}))
                 first_step = False
-                if result.ok and result.checkpoint:
-                    checkpoints.append(_kept(working, result.checkpoint, len(checkpoints)))
+                if "step" in message and result.ok and result.checkpoint:
+                    checkpoint = _kept(working, result.checkpoint, len(declarations))
+                    declarations.append({
+                        "step": message["step"], "label": message.get("label"),
+                        "code": message["code"], "checkpoint": checkpoint,
+                    })
+                    if stream is not None:
+                        stream.emit(STEP_DECLARED, step=message["step"],
+                                    label=message.get("label"), checkpoint=checkpoint)
                 answer = _feedback(result)
                 if stream is not None:
                     stream.emit(TOOL_RESULT, name=phase, result=answer)

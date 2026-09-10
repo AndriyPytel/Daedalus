@@ -31,11 +31,12 @@ def test_agent_iterates_after_a_bad_attempt_before_declaring(kernel, tmp_path):
     """AC1/TESTING STRATEGY: fails, tries different code, then declares."""
     llm = ScriptedLLMClient([
         json.dumps({"code": "doc.addObject('Part::Box', 'Box').NoSuchProperty = 1"}),
-        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()",
+                    "step": 1, "label": "pad the box"}),
         json.dumps({"declare": {"step": "pad the box"}}),
     ])
 
-    declared, session, checkpoints = run_phase(
+    declared, session, declarations = run_phase(
         pc.EXECUTE, str(tmp_path / "execute"),
         {"design": {"kind": "box"}, "plan": [{"do": "pad 10mm"}]},
         llm, "pad a 10mm box", kernel=kernel,
@@ -43,18 +44,19 @@ def test_agent_iterates_after_a_bad_attempt_before_declaring(kernel, tmp_path):
 
     assert declared == {"step": "pad the box"}
     assert len(llm.calls) == 3
-    assert len(checkpoints) == 1
-    assert os.path.exists(checkpoints[0])
+    assert len(declarations) == 1
+    assert os.path.exists(declarations[0]["checkpoint"])
 
 
 def test_agent_does_not_iterate_past_a_first_attempt_success(kernel, tmp_path):
     """AC3: no extra turns once the model is done."""
     llm = ScriptedLLMClient([
-        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()",
+                    "step": 1, "label": "pad the box"}),
         json.dumps({"declare": {"step": "pad the box"}}),
     ])
 
-    declared, session, checkpoints = run_phase(
+    declared, session, declarations = run_phase(
         pc.EXECUTE, str(tmp_path / "execute"),
         {"design": {"kind": "box"}, "plan": [{"do": "pad 10mm"}]},
         llm, "pad a 10mm box", kernel=kernel,
@@ -62,7 +64,7 @@ def test_agent_does_not_iterate_past_a_first_attempt_success(kernel, tmp_path):
 
     assert declared == {"step": "pad the box"}
     assert len(llm.calls) == 2
-    assert len(checkpoints) == 1
+    assert len(declarations) == 1
 
 
 def test_agent_is_corrected_once_before_it_gives_up_on_an_unusable_reply(kernel, tmp_path):
@@ -96,7 +98,7 @@ def test_agent_delegates_to_a_depth1_subagent_before_declaring(kernel, tmp_path)
     supervisor = SessionTreeSupervisor()
     stream = EventStream()
 
-    declared, session, checkpoints = run_phase(
+    declared, session, declarations = run_phase(
         pc.DESIGN, str(tmp_path / "design"), {"intent": {"ask": "a plate"}},
         llm, "describe the plate", kernel=kernel, supervisor=supervisor, stream=stream,
     )
@@ -106,7 +108,7 @@ def test_agent_delegates_to_a_depth1_subagent_before_declaring(kernel, tmp_path)
     kinds = [event.kind for event in stream]
     assert SUB_AGENT_SPAWNED in kinds
     assert SUB_AGENT_ANSWERED in kinds
-    assert checkpoints == []
+    assert declarations == []
 
 
 def test_agent_delegate_without_a_supervisor_gives_up(kernel, tmp_path):
@@ -154,19 +156,21 @@ def test_the_spent_budget_buys_one_last_turn_to_declare(kernel, tmp_path):
     turn is here and declares what it has, rather than the run dying with
     nothing to show for what it already built."""
     llm = ScriptedLLMClient([
-        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()"}),
-        json.dumps({"code": "doc.addObject('Part::Box', 'Box2'); doc.recompute()"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()",
+                    "step": 1, "label": "one box"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box2'); doc.recompute()",
+                    "step": 2, "label": "two boxes"}),
         json.dumps({"declare": {"step": "one box"}}),
     ])
     supervisor = SessionTreeSupervisor(turn_budget=1)
 
-    declared, session, checkpoints = run_phase(
+    declared, session, declarations = run_phase(
         pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad a box",
         kernel=kernel, supervisor=supervisor,
     )
 
     assert declared == {"step": "one box"}
-    assert len(checkpoints) == 1
+    assert len(declarations) == 1
     assert "declare" in session.messages[-2]["content"]
 
 

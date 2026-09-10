@@ -19,8 +19,8 @@ from core.events import (
     ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
     CALL_STARTED, CHANGE_SET, COMPLETED, COST, ERROR, FAILED, GATE, INTENT, KINDS,
     OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
-    REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED, STEP_STARTED, STOPPED, SUB_AGENT_ANSWERED,
-    SUB_AGENT_REFUSED, SUB_AGENT_SPAWNED, THOUGHT,
+    REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED, STEP_DECLARED, STEP_STARTED, STOPPED,
+    SUB_AGENT_ANSWERED, SUB_AGENT_REFUSED, SUB_AGENT_SPAWNED, THOUGHT,
     TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, Event,
 )
 from core.narrate import Narration, narrate
@@ -43,6 +43,7 @@ SAMPLES = {
     TOOL_RESULT: {"name": "apply_step", "result": {"status": "applied"}},
     PREFLIGHT_FAILED: {"step": 1, "attempt": 2, "traceback": "AttributeError: Support"},
     APPLIED: {"step": 1, "label": "Base", "created": ["Pad"]},
+    STEP_DECLARED: {"step": 1, "label": "Base", "checkpoint": "/tmp/checkpoints/000.FCStd"},
     ASSERTION: {"ok": True, "confirmed": ["6.5 mm tall"], "uncovered": []},
     OUTSTANDING: {"entries": ["envelope → across the flats: 13.0 mm (read)"]},
     UNBUILT: {"step": 8, "total": 8, "description": "Assign plain carbon steel",

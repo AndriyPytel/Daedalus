@@ -5,6 +5,7 @@ Your working directory is `{{working_dir}}`, holding exactly the artefacts your 
 Reply with exactly one JSON object per turn:
 
 - `{"code": "..."}` to run Python against your kernel's Document and see what happened
+- `{"code": "...", "step": N, "label": "..."}` for code that lands Step N — that code is what gets replayed into the user's Document; a `code` turn with no `step` is exploration and dies with the kernel
 - `{"delegate": "..."}` to hand a bounded question to a depth-1 sub-agent and see its answer
 - `{"declare": ...}` once you are done
 

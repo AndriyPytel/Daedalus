@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from core.events import (
     APPLIED, ASSERTION, BLOCKED, COST, GATE, PLAN_REVISED, PREFLIGHT_FAILED,
-    REVIEW_VERDICT, STEP_STARTED, replay,
+    REVIEW_VERDICT, STEP_DECLARED, STEP_STARTED, replay,
 )
 
 
@@ -87,7 +87,8 @@ def measure(path: str) -> Measurement:
     return Measurement(
         verdict=verdicts[-1].data.get("verdict") if verdicts else None,
         blocked_reason=blocks[-1].data.get("reason") if blocks else None,
-        steps_started=sum(1 for event in events if event.kind == STEP_STARTED),
+        steps_started=sum(1 for event in events
+                            if event.kind in (STEP_STARTED, STEP_DECLARED)),
         steps_applied=sum(1 for event in events if event.kind == APPLIED),
         plan_revisions=sum(1 for event in events if event.kind == PLAN_REVISED),
         preflight_failures=sum(1 for event in events if event.kind == PREFLIGHT_FAILED),

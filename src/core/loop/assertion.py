@@ -193,7 +193,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         task = json.dumps(request, indent=2, default=str)
         
         with copied(tools) as document, tempfile.TemporaryDirectory() as working_dir:
-            declared, session, checkpoints = run_phase(
+            declared, session, declarations = run_phase(
                 pc.ASSERTION, working_dir,
                 {"design": described},
                 llm, task, document=document,
