@@ -129,39 +129,17 @@ def test_a_step_the_kernel_says_changed_nothing_leaves_the_camera_alone(pipeline
     assert fitted == []
 
 
-def test_a_stale_kernel_sessions_modified_claim_does_not_pass_a_no_op_step(pipeline):
+def test_a_step_that_only_rewrites_a_sketchs_geometry_still_lands(pipeline):
     """
-    Seen in the wild: a kernel session left inconsistent by an earlier bug
-    reported a Step as having modified objects whose signature -- count,
-    names, volume, links -- was exactly what the Document already showed.
-    Nothing landed anywhere; the claim alone must not be enough.
+    Seen in the wild (FCC-291): a Step deleted a sketch's geometry and drew
+    it again as a clean capsule. `signature_of()` does not see into a
+    Sketch's geometry, so it reads unchanged even though the rewrite is
+    real. The kernel's own `modified` is enough on its own -- it is not
+    second-guessed against a signature that cannot see this kind of change.
     """
-    from core.kernel.kernel_worker import signature_of
-
     result = pipeline.apply(
         "sk = doc.getObject('Sketch')\n",
-        kernel_result=_kernel_result(created=[], modified=["Sketch"],
-                                     signature=signature_of(pipeline.document)),
-    )
-
-    assert not result.ok
-    assert "changed nothing" in result.traceback
-    assert pipeline.trace == [], "a Step the signature says did nothing still opened a transaction"
-
-
-def test_a_modify_only_step_with_a_signature_that_moved_still_lands(pipeline):
-    """
-    A legitimate modify-only Step -- no object created or deleted, but the
-    kernel's own signature disagrees with what the Document shows now --
-    is not "changed nothing".
-    """
-    from core.kernel.kernel_worker import signature_of
-
-    moved = dict(signature_of(pipeline.document), volume=99.0)
-    result = pipeline.apply(
-        "box = doc.getObject('Box')\nbox.Length = 20\n",
-        kernel_result=_kernel_result(created=[], modified=["Box"],
-                                     signature=moved),
+        kernel_result=_kernel_result(created=[], modified=["Sketch"]),
     )
 
     assert result.ok, result.traceback
