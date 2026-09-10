@@ -23,7 +23,7 @@ from core.loop.run import run
 from tests.loop_helpers import (
     RENDER_PNG, FakeTools, assertion_reply, code_reply, design_reply, failed,
     obsolete_reply, plan_reply, question_reply, scripted, suspect_reply, verdict_reply,
-    FakeKernel,
+    StubKernel,
 )
 
 
@@ -33,7 +33,7 @@ def drive(turns, gate, budgets=None, ask=None):
     events = EventStream()
     kwargs = {"ask": ask} if ask is not None else {}
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
-                 gate=gate, budgets=budgets or Budgets(), kernel=FakeKernel(), **kwargs)
+                 gate=gate, budgets=budgets or Budgets(), kernel=StubKernel(), **kwargs)
     return result, events, tools
 
 
@@ -148,7 +148,7 @@ def test_a_revised_plan_is_shown_before_it_changes_anything():
         plan_reply("Impossible"), code_reply("nope()"),
         plan_reply("Possible"), code_reply("yes()"), suspect_reply(), verdict_reply("pass"),
     ]), tools=tools.registry, gate=gate, budgets=Budgets(attempts_per_step=1),
-        kernel=FakeKernel())
+        kernel=StubKernel())
 
     assert applied_when_shown == [[], ["nope()"]], \
         "the revised Plan ran before it was shown: %s" % applied_when_shown
@@ -211,7 +211,7 @@ def test_the_amendment_reaches_plan():
     ])
 
     run("Make a 10mm box", llm=llm, tools=FakeTools().registry, gate=gate,
-        kernel=FakeKernel())
+        kernel=StubKernel())
 
     assert "Use PartDesign, not Part primitives" in json.dumps(llm.calls[2])
 
@@ -382,7 +382,7 @@ def drive_with(turns, decide, gate=None, applies=(), checks=(), attachments=()):
     events = EventStream()
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
                  gate=gate or Gate(), decide=decide, attachments=list(attachments),
-                 kernel=FakeKernel())
+                 kernel=StubKernel())
     return result, events, tools
 
 
@@ -466,7 +466,7 @@ def test_stopping_while_the_decision_is_open_is_recorded_as_stopped():
     tools = FakeTools(checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}])
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=EventStream(),
                  cancelled=lambda: bool(stopped), decide=presses_stop,
-                 attachments=[RENDER_PNG], kernel=FakeKernel())
+                 attachments=[RENDER_PNG], kernel=StubKernel())
 
     assert result.blocked
     assert not result.ok, "a stopped run was recorded as a result the user took"
@@ -591,7 +591,7 @@ def test_plan_is_told_to_build_on_the_model_that_already_exists():
     ])
     tools = FakeTools()
     run("Make a 10mm box", llm=llm, tools=tools.registry, events=EventStream(),
-        kernel=FakeKernel())
+        kernel=StubKernel())
     plan_system = " ".join(llm.calls[1][0]["content"].split())
 
     assert "builds on the model that already exists" in plan_system
@@ -623,7 +623,7 @@ def test_amending_over_a_decision_replans_without_asking_it_again():
         code_reply("pad()"), suspect_reply(), assertion_reply("check()"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG]), tools=FakeTools().registry, events=events, gate=gate,
         attachments=[RENDER_PNG], ask=lambda question: asked.append(question) or "R30",
-        kernel=FakeKernel())
+        kernel=StubKernel())
 
     assert result.ok, result.reason
     assert asked == [], "the amendment sent the decision back to the user: %s" % asked

@@ -308,8 +308,7 @@ def test_a_failure_nothing_recognises_is_not_given_invented_advice():
     ], applies=[failed("ZeroDivisionError: division by zero"),
                 failed("ZeroDivisionError: division by zero")])
 
-    assert "you_have_failed_this_the_same_way_twice" not in json.loads(
-        llm.calls[3][-1]["content"])
+    assert "you_have_failed_this_the_same_way_twice" not in _execute_attempts(llm)[1]
 
 
 def test_the_directive_offers_leaving_the_step_out_rather_than_repeating():
@@ -319,7 +318,7 @@ def test_the_directive_offers_leaving_the_step_out_rather_than_repeating():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL)])
 
-    said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
+    said = _execute_attempts(llm)[2]["you_have_failed_this_the_same_way_twice"]
 
     assert "leave this Step out" in said
     assert "Plan is given this one back" in said

@@ -418,7 +418,7 @@ def _describes_a_part(turn):
         return False
 
 
-class FakeKernel:
+class StubKernel:
     """
     A double for the kernel PROCESS `run_phase` talks to -- one layer in from
     the Document-mutation boundary `FakeTools`' fake `apply_step` already
@@ -439,7 +439,9 @@ class FakeKernel:
     (`tests/core/agent/test_a_code_turn_is_visible.py`): one `KernelResult`
     per call that should not land, in order, so a retry a test drives is a
     real rejection this double answered with, not a shape asserted on
-    because nothing produced it.
+    because nothing produced it. It returns canned answers rather than a
+    simplified working kernel, which makes it a Stub; recording every call
+    it saw in `.calls` makes it a spy too, but Stub is what it is for.
     """
 
     def __init__(self, fails=()):
@@ -457,7 +459,7 @@ _SCRIPTED_CHECKPOINT = None
 
 
 def _scripted_checkpoint():
-    """One placeholder file every `FakeKernel` hands out, copied, never opened."""
+    """One placeholder file every `StubKernel` hands out, copied, never opened."""
     global _SCRIPTED_CHECKPOINT
     if _SCRIPTED_CHECKPOINT is None:
         handle, _SCRIPTED_CHECKPOINT = tempfile.mkstemp(suffix=".FCStd")
@@ -511,7 +513,7 @@ def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
         kwargs["the_part_path"] = the_part_path
     result = run(intent, llm=llm, tools=tools.registry, events=events,
                  budgets=budgets or Budgets(), attachments=list(attachments),
-                 outstanding=list(outstanding), kernel=kernel or FakeKernel(), **kwargs)
+                 outstanding=list(outstanding), kernel=kernel or StubKernel(), **kwargs)
     return result, events, llm, tools
 
 
@@ -1072,7 +1074,7 @@ def driven_through(gate, turns, **kwargs):
     events = EventStream()
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
                  budgets=kwargs.pop("budgets", None) or Budgets(), gate=gate,
-                 kernel=kwargs.pop("kernel", None) or FakeKernel(), **kwargs)
+                 kernel=kwargs.pop("kernel", None) or StubKernel(), **kwargs)
     return result, events, llm, tools
 
 
