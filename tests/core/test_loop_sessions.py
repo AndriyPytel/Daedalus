@@ -216,8 +216,9 @@ def test_a_plan_that_needs_no_look_costs_no_look():
 
 def test_each_step_still_gets_its_own_started_event():
     """
-    The code arrives in one call; it still lands one Step at a time. The panel
-    is unchanged and so is the undo history. FCC-95.
+    Each Step arrives on its own turn and lands the moment it is declared;
+    each still gets its own STEP_STARTED, its own APPLIED, and its own
+    undo entry.
     """
     _, events, _, _ = drive([
         plan_reply("First", "Second"),
