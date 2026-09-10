@@ -136,19 +136,21 @@ class Written:
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
             looks=None, entries=(), ledger=None, supervisor=None, kernel=None):
     """
-    Write the code for every Step from `start` to the end of the Plan, in one turn.
+    Run every Step from `start` to the end of the Plan as one agent phase,
+    against one kernel it holds open for the whole call (FCC-A-53/ADR-0027).
 
-    22 of roughly 29 provider calls for six applied Steps, and all fifteen
-    looks were API discovery rather than geometry — not one returned a
-    coordinate the code then used. Every coordinate was derived at runtime
-    inside the Step's own code. That is what makes one call possible: a Step
-    does not need the Document its predecessor will leave behind, because it
-    reads it when it runs (ADR-0021).
+    The agent writes and runs a Step's code itself, sees the kernel's answer
+    and declares the Step once it is the code that built it; `run_phase`
+    hands back its `declarations` in build order, each with the Step's own
+    number, label, code and checkpoint, and that -- not the reply's own
+    `steps` -- is what `Written` is built from. The reply's `steps` carry
+    only a summary, `{step, label}`, because the code it declares already
+    lives in the kernel.
 
-    A regeneration is the same call with `start` at the Step that failed. Step
-    N and every Step after it are written again, because the code for N+1 was
-    written assuming objects Step N was going to create — regenerating N alone
-    breaks at the *next* Step's Preflight, silently and one Step late.
+    A regeneration is the same call with `start` at the Step that failed,
+    against a fresh Snapshot of the Document as the Steps before it left it:
+    the code for a Step after it may have assumed objects the failed Step was
+    going to create, so it is written again along with everything after it.
 
     `entries` is the description addressed. In the run that named this the
     lookup was missing and the values were invented from the geometry to hand:
@@ -158,6 +160,12 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     A reply that wrote code is not a verdict on the Plan: voiding the whole
     Plan is how a recorded run threw away Steps nobody had attempted and
     replanned three times over with nothing applied.
+
+    The working directory the kernel writes each Step's saved copy into
+    outlives this call rather than being deleted the instant `run_phase`
+    returns: a `TemporaryDirectory` scoped to the `with` that called it used
+    to delete every one of them one line before the declarations that name
+    them were ever read.
     """
     budgets = budgets or Budgets()
     request = {"steps": [{"step": number, "do": prose}
@@ -191,7 +199,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     supervisor = supervisor or SessionTreeSupervisor()
     task = json.dumps(request, indent=2, default=str)
     
-    with copied(tools) as document, tempfile.TemporaryDirectory() as working_dir:
+    working_dir = tempfile.mkdtemp()
+    with copied(tools) as document:
         declared, session, declarations = run_phase(
             pc.EXECUTE, working_dir,
             {"plan": steps, "design": as_described},
@@ -199,20 +208,20 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             kernel=kernel, supervisor=supervisor, stream=events,
             system=prompt(EXECUTE_PHASE, ledger=ledger.render() if ledger else "")
         )
-    
+
     reply = declared if isinstance(declared, dict) else {}
 
-    written = _written(reply.get("steps"), start)
+    written = _written(declarations, start)
     if written:
         return Written(steps=written,
                        unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
                        if (reply.get("unbuildable") or reply.get("obsolete")) else None,
-                       said=_said(reply, start))
+                       said=_said(reply, declarations, start))
     if reply.get("obsolete"):
         return Written(obsolete=str(reply["obsolete"]))
     if reply.get("unbuildable"):
         return Written(unbuildable=str(reply["unbuildable"]))
-    return Written(said=_said(reply, start))
+    return Written(said=_said(reply, declarations, start))
 
 
 _SKIPPED_A_STEP = "skipped a Step it could have written"
@@ -452,26 +461,28 @@ def _the_same_way_twice(attempts):
     return None
 
 
-def _written(replied, start):
+def _written(declarations, start):
     """
-    The reply's Steps, by Step number, dropping anything without code.
+    Every Step the kernel ran and the model declared, by Step number.
 
-    The number the reply carries wins over its position, and the position is
-    only the fallback for a reply that numbered nothing.
+    `declarations` is `run_phase`'s own record, in build order, of the Steps
+    that landed against the kernel's Document — the reply's own `steps` names
+    them again but carries no code of its own (FCC-A-53): the code and its
+    checkpoint live only here. The number a declaration carries wins over its
+    build position, and the position is only the fallback for one that
+    numbered nothing.
     """
     written = {}
-    for position, entry in enumerate(replied or (), start=start + 1):
-        if not isinstance(entry, dict) or not entry.get("code"):
-            continue
+    for position, entry in enumerate(declarations or (), start=start + 1):
         number = entry.get("step")
         written[number if isinstance(number, int) else position] = ExecuteOutcome(
             code=str(entry["code"]), label=str(entry.get("label") or "Copilot Step"))
     return written
 
 
-def _said(reply, start):
+def _said(reply, declarations, start):
     """
-    A reply that could leave a Step without code, rendered short enough to
+    A reply that could leave a Step undeclared, rendered short enough to
     travel: what it was, not what it wrote.
 
     Capped at 300 characters. This same string reaches `PREFLIGHT_FAILED`, then
@@ -482,16 +493,22 @@ def _said(reply, start):
 
     Three things, in order: the reply's top-level keys, so a reply that had
     nothing usable says so rather than rendering empty; for `steps`, which
-    Step numbers it carried and which of those had code, since a Step missing
-    from that second list and not the first is the whole of what a reply that
-    numbered other Steps but not this one did; and, for every other key, its
-    value where that value is a short string — `unbuildable`, `obsolete`, or
-    whatever else a model answered with instead of code — truncated with it.
+    Step numbers it named and which of those the kernel actually declared
+    (from `declarations`, not the reply — the reply carries no code to check),
+    since a Step named here and missing from `declarations` is the whole of
+    what a reply that talked about a Step it never ran did; and, for every
+    other key, its value where that value is a short string —
+    `unbuildable`, `obsolete`, or whatever else a model answered with instead
+    of code — truncated with it.
     """
     keys = sorted(reply)
     parts = ["keys: %s" % ", ".join(keys) if keys else "keys: none"]
     steps = reply.get("steps")
     if isinstance(steps, list):
+        declared_numbers = {
+            entry.get("step") if isinstance(entry.get("step"), int) else position
+            for position, entry in enumerate(declarations or (), start=start + 1)
+        }
         carried, coded = [], []
         for position, entry in enumerate(steps, start=start + 1):
             if not isinstance(entry, dict):
@@ -499,7 +516,7 @@ def _said(reply, start):
             number = entry.get("step")
             number = number if isinstance(number, int) else position
             carried.append(number)
-            if entry.get("code"):
+            if number in declared_numbers:
                 coded.append(number)
         parts.append("steps carried: %s, with code: %s" % (carried, coded))
     for key, value in reply.items():

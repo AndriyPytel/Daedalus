@@ -162,3 +162,28 @@ def test_assertion_measures_against_a_copy_of_the_document(monkeypatch, tmp_path
 
     assert seen["document"] == str(copy)
     assert not copy.exists(), "the copy is the caller's to delete"
+
+
+@pytest.mark.freecad
+def test_a_declared_step_with_no_code_in_the_final_reply_still_reaches_apply_step(kernel, tmp_path):
+    """
+    FCC-367 AC1, the regression that shipped: `execute.md` tells the model to
+    end the phase with `{"declare": {"steps": [{"step": 1, "label": "..."}]}}`
+    -- no `code` -- because the code already lives in the kernel's
+    declarations. `_written` used to read only the reply's own `steps`, so an
+    obedient model produced an empty `Written` even though the kernel had
+    already run and checkpointed the Step, and it never reached `apply_step`.
+    """
+    from core.loop.budgets import Budgets
+    from tests.loop_helpers import drive, plan_reply
+
+    result, events, llm, tools = drive([
+        plan_reply("Add a box"),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box')",
+                    "step": 1, "label": "Add the box"}),
+        json.dumps({"declare": {"steps": [{"step": 1, "label": "Add the box"}]}}),
+    ], budgets=Budgets(attempts_per_step=1, trailing_gap_retries=0, revisions=0),
+        intent="Add a box")
+
+    assert tools.applied_codes() == ["doc.addObject('Part::Box', 'Box')"], (
+        "the declared Step never reached apply_step: %s" % result.reason)
