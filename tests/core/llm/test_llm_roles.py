@@ -1,11 +1,9 @@
 """
-Level 1 -- the role-to-model table wired into `core/llm.py` (FCC-312),
-replacing the two static thinking/doing profiles at the production call
-site (`ui/copilot_panel.py :: _RunContext._get_client`).
+Level 1 -- the role-to-model table every run is built from.
 
-`RoleClient` is the seam `core/loop.py :: _one_call` still asks `for_phase`
-of -- the phases keep the interface `ProfiledClient` already gave it, only
-the answer for the row is by role now, not by a `thinking`/`doing` split.
+`RoleClient` is the seam `core/loop.py :: _one_call` asks `for_phase` of: a
+phase is answered by the row that names it, and a role with no row of its own
+by the caller.
 """
 from core.llm import ROLES, RoleClient, ScriptedLLMClient
 

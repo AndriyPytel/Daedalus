@@ -1,23 +1,4 @@
-"""Profile and role client wrappers."""
-from core.llm.effort_policy import profile_of
-
-
-class ProfiledClient:
-    """
-    The client `core/loop.py :: _one_call` finds `for_phase` on.
-
-    It carries no phase of its own -- `thinking` and `doing` do, each already
-    built for the model and the effort its profile is set to -- and it is
-    never asked to stream anything itself; `for_phase` hands back the client
-    that will.
-    """
-
-    def __init__(self, thinking, doing):
-        self.thinking = thinking
-        self.doing = doing
-
-    def for_phase(self, phase: str):
-        return self.thinking if profile_of(phase) == "thinking" else self.doing
+"""Role client wrapper."""
 
 
 class RoleClient:

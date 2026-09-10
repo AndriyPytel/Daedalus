@@ -252,133 +252,89 @@ _TWO_PROVIDERS = [
 ]
 
 
-def _mock_no_stored_model(monkeypatch):
+def _mock_role_table(monkeypatch, model=""):
     """
-    The developer's own machine has a real stored model, in real FreeCAD
+    The developer's own machine has a real role table, in real FreeCAD
     settings, that has nothing to do with `_TWO_PROVIDERS` below — read it
     back and `_refresh_models` reaches for `_retire_model`, which would
-    overwrite that real setting with one of this test's fake ids. Both
-    setters are stubbed for the same reason, and the list of what the panel
-    stored is handed back to whoever wants to assert on it.
+    overwrite that real setting with one of this test's fake ids. The table
+    the panel reads and writes is handed back to whoever wants to assert on
+    it.
     """
     from bridge import settings_manager
 
     settings = settings_manager.instance()
-    written = []
+    table = [{"role": "orchestrator", "provider": "", "model": model, "effort": "medium"}]
     monkeypatch.setattr(settings, "get_last_model", lambda: "")
-    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "")
-    monkeypatch.setattr(settings, "set_profile_model",
-                        lambda profile, model_id: written.append((profile, model_id)))
     monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
-    return written
+    monkeypatch.setattr(settings, "get_role_table", lambda: table)
+    monkeypatch.setattr(settings, "set_role_table",
+                        lambda rows: table.__setitem__(slice(None), rows))
+    monkeypatch.setattr(settings, "get_role_model",
+                        lambda role: next((r for r in table if r["role"] == role), None))
+    return table
 
 
-def test_the_composer_carries_the_effort_in_force(panel):
+def test_the_composer_carries_the_effort_in_force(panel, monkeypatch):
     """
-    FCC-169: how hard the model thinks is a choice made where the model is
-    chosen, so it can be changed between two runs and compared.
+    How hard the model thinks is a choice made where the model is chosen, so
+    it can be changed between two runs and compared. Both pills read the
+    orchestrator's row of the role table.
     """
-    from core.llm import effort_for_profile
+    table = _mock_role_table(monkeypatch)
+    table[0]["effort"] = "high"
 
-    assert panel.effort_button.text() == effort_for_profile(panel._active_profile)
+    panel._show_effort()
+
+    assert panel.effort_button.text() == "high"
 
 
 def test_picking_an_effort_stores_it_and_shows_it(panel, monkeypatch):
     """The pill says what the next run will be asked for, not what was stored."""
-    from core import llm, settings
-
-    stored = []
-    monkeypatch.setattr(settings.instance(), "set_profile_effort",
-                        lambda profile, level: stored.append((profile, level)))
-    monkeypatch.setattr(settings.instance(), "get_profile_effort",
-                        lambda profile: stored[-1][1] if stored else "")
+    table = _mock_role_table(monkeypatch)
 
     panel._on_effort_selected("high")
 
-    assert stored == [(panel._active_profile, "high")]
+    assert table[0]["effort"] == "high"
     assert panel.effort_button.text() == "high"
-    assert llm.effort_for_profile(panel._active_profile) == "high"
 
 
-def test_the_toggle_flips_between_the_two_profiles_and_back(panel):
-    """The one new widget the composer gets: a two-way switch, nothing else."""
-    from core.llm import PROFILES
+def test_picking_a_model_writes_the_orchestrators_row(panel, monkeypatch):
+    """
+    The composer edits one role, and the row carries the provider too: a
+    model is only resolvable through the provider that offers it.
+    """
+    table = _mock_role_table(monkeypatch)
+    panel._refresh_models(_TWO_PROVIDERS)
 
-    start = panel._active_profile
-    panel._toggle_profile()
+    panel._on_model_selected("claude-opus-4")
 
-    assert panel._active_profile in PROFILES
-    assert panel._active_profile != start
-    assert panel.profile_button.text().startswith(panel._active_profile.capitalize())
-
-    panel._toggle_profile()
-    assert panel._active_profile == start
-
-
-def test_the_effort_pill_follows_whichever_profile_the_toggle_is_on(panel, monkeypatch):
-    from core import settings as core_settings
-    from bridge import settings_manager
-
-    settings = settings_manager.instance()
-    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-4o")
-    monkeypatch.setattr(core_settings.instance(), "get_profile_effort",
-                        lambda profile: "high" if profile == "thinking" else "low")
-
-    try:
-        panel._active_profile = "thinking"
-        panel._show_effort()
-        assert panel.effort_button.text() == "high"
-
-        panel._active_profile = "doing"
-        panel._show_effort()
-        assert panel.effort_button.text() == "low"
-    finally:
-        panel._active_profile = "doing"
-        panel._show_effort()
-
-
-def test_picking_a_model_on_one_profile_leaves_the_other_alone(panel, monkeypatch):
-    from bridge import settings_manager
-
-    _mock_no_stored_model(monkeypatch)
-    written = []
-    monkeypatch.setattr(settings_manager.instance(), "set_profile_model",
-                        lambda profile, model_id: written.append((profile, model_id)))
-
-    panel._active_profile = "thinking"
-    try:
-        panel._on_model_selected("claude-opus-4")
-        assert written == [("thinking", "claude-opus-4")]
-    finally:
-        panel._active_profile = "doing"
+    assert table[0]["model"] == "claude-opus-4"
+    assert table[0]["provider"] == "Anthropic"
 
 
 def test_the_model_the_pill_falls_back_to_is_the_model_the_run_gets(panel, monkeypatch):
     """
     Nothing stored: the pill shows the first model on offer, and a run built
     from settings must find that same one. Drawn and not stored, the panel
-    names a model while `llm.client_from_profiles` raises "No model
-    selected. Configure API keys in Preferences." over an addon whose only
-    provider needs no key at all.
+    names a model the role table does not.
     """
-    written = _mock_no_stored_model(monkeypatch)
+    table = _mock_role_table(monkeypatch)
 
     panel._refresh_models(_TWO_PROVIDERS)
 
     assert panel._current_model_id == "gpt-4o"
-    assert written == [(panel._active_profile, "gpt-4o")]
+    assert table[0]["model"] == "gpt-4o"
 
 
-def test_the_profile_never_edited_still_has_the_model_the_other_was_given(panel, monkeypatch):
+def test_a_picked_model_is_the_shared_fallback_too(panel, monkeypatch):
     """
-    A run builds a client per profile, so a model stored on the profile the
-    composer happened to be on leaves the other with none. The shared
-    fallback `get_profile_model` reads is written too, which is what makes
-    one pick answer both profiles.
+    Every caller with no role of its own reads the last-used model
+    (`settings.get_llm_credentials`), so one pick answers those as well.
     """
     from bridge import settings_manager
 
-    _mock_no_stored_model(monkeypatch)
+    _mock_role_table(monkeypatch)
     shared = []
     monkeypatch.setattr(settings_manager.instance(), "set_last_model", shared.append)
 
@@ -404,7 +360,7 @@ def test_clicking_the_model_button_opens_the_provider_step(panel, monkeypatch):
     """FCC-175: the popup opens on a flat list of providers, not their models."""
     from ui.model_selector import PROVIDER_STEP
 
-    _mock_no_stored_model(monkeypatch)
+    _mock_role_table(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
     QT_APP.processEvents()
@@ -419,7 +375,7 @@ def test_choosing_a_provider_replaces_the_list_with_its_models(panel, monkeypatc
     """Not grouping — sequence: the provider list is gone once its models are up."""
     from ui.model_selector import MODEL_STEP
 
-    _mock_no_stored_model(monkeypatch)
+    _mock_role_table(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
     QT_APP.processEvents()
@@ -439,7 +395,7 @@ def test_the_picker_opens_above_the_button_that_opens_it(panel, monkeypatch):
     """
     from conftest import QtCore
 
-    _mock_no_stored_model(monkeypatch)
+    _mock_role_table(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
     QT_APP.processEvents()
@@ -455,7 +411,7 @@ def test_a_picker_with_more_models_than_room_scrolls_inside_itself(panel, monkey
     FCC-169: the list is capped by the room the screen has, and what does not
     fit is scrolled to — never a popup taller than the display it is on.
     """
-    _mock_no_stored_model(monkeypatch)
+    _mock_role_table(monkeypatch)
     panel._refresh_models([{"id": "m%d" % n, "display": "Model %d" % n,
                             "provider": "OpenAI"} for n in range(200)])
     panel._open_model_selector()
@@ -473,7 +429,7 @@ def test_a_picker_with_more_models_than_room_scrolls_inside_itself(panel, monkey
 
 
 def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypatch):
-    written = _mock_no_stored_model(monkeypatch)
+    table = _mock_role_table(monkeypatch)
 
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
@@ -486,7 +442,7 @@ def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypa
     assert not panel.model_selector.isVisible()
     assert panel._current_model_id == "claude-opus-4"
     assert panel.model_button.text() == "Claude Opus 4"
-    assert written[-1] == (panel._active_profile, "claude-opus-4")
+    assert table[0]["model"] == "claude-opus-4"
 
 
 def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkeypatch):
@@ -494,12 +450,9 @@ def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkey
     Reopening after a model is picked shows providers again, not the
     last-selected provider's models (FCC-175's Acceptance Criteria).
     """
-    from bridge import settings_manager
     from ui.model_selector import PROVIDER_STEP
 
-    _mock_no_stored_model(monkeypatch)
-    monkeypatch.setattr(settings_manager.instance(), "set_profile_model",
-                        lambda profile, model_id: None)
+    _mock_role_table(monkeypatch)
 
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
@@ -525,7 +478,7 @@ def test_the_picker_has_no_window_frame(panel, monkeypatch):
     """
     from conftest import QtCore
 
-    _mock_no_stored_model(monkeypatch)
+    _mock_role_table(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
     QT_APP.processEvents()
@@ -542,7 +495,7 @@ def test_neither_popup_draws_a_border(panel, monkeypatch):
     the same read applies to the history popup — the opaque fill and its
     radius are the whole edge either popup has, not a hairline on top of it.
     """
-    _mock_no_stored_model(monkeypatch)
+    _mock_role_table(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel._open_model_selector()
     QT_APP.processEvents()
@@ -572,7 +525,7 @@ def test_the_popups_own_fill_is_opaque_and_comes_from_the_anchor_theme(panel, mo
     from conftest import QtGui
     from ui.ui_helpers import UIHelpers
 
-    _mock_no_stored_model(monkeypatch)
+    _mock_role_table(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
 
     original = panel.styleSheet()
@@ -639,7 +592,7 @@ def test_the_current_model_is_marked_by_a_check_not_a_recolour(panel, monkeypatc
     """
     from ui.model_selector import _Row
 
-    _mock_no_stored_model(monkeypatch)
+    _mock_role_table(monkeypatch)
     panel._refresh_models(_TWO_PROVIDERS)
     panel.model_button.setText("GPT-4o")
     panel._open_model_selector()
@@ -678,8 +631,7 @@ def test_the_button_shows_a_stored_model_no_static_list_knows(panel, monkeypatch
     from bridge import provider_manager, settings_manager
 
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: True)
-    monkeypatch.setattr(settings_manager.instance(), "get_profile_model",
-                        lambda profile: "gpt-5.6-sol")
+    _mock_role_table(monkeypatch, model="gpt-5.6-sol")
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
@@ -711,18 +663,14 @@ def test_a_provider_list_without_the_stored_model_falls_back_and_says_so(panel, 
     from bridge import provider_manager, settings_manager
 
     settings = settings_manager.instance()
-    written = []
+    table = _mock_role_table(monkeypatch, model="gpt-5.6-sol")
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
-    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-5.6-sol")
     monkeypatch.setattr(settings, "get_default_model", lambda: "gpt-4o")
-    monkeypatch.setattr(settings, "set_profile_model",
-                        lambda profile, model_id: written.append(model_id))
-    monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 
     assert panel._current_model_id == "gpt-4o"
-    assert written == ["gpt-4o"]
+    assert table[0]["model"] == "gpt-4o"
     assert panel._queue_widget.isVisible()
     assert "gpt-5.6-sol" in _now_on(panel)
 
@@ -732,11 +680,9 @@ def test_retiring_a_model_with_no_preferences_default_still_names_one(panel, mon
     from bridge import provider_manager, settings_manager
 
     settings = settings_manager.instance()
+    _mock_role_table(monkeypatch, model="gpt-5.6-sol")
     monkeypatch.setattr(provider_manager.instance(), "awaiting_model_lists", lambda: False)
-    monkeypatch.setattr(settings, "get_profile_model", lambda profile: "gpt-5.6-sol")
     monkeypatch.setattr(settings, "get_default_model", lambda: "")
-    monkeypatch.setattr(settings, "set_profile_model", lambda profile, model_id: None)
-    monkeypatch.setattr(settings, "set_last_model", lambda model_id: None)
 
     panel._refresh_models([{"id": "gpt-4o", "display": "GPT-4o", "provider": "OpenAI"}])
 

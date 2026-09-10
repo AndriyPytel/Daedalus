@@ -1070,20 +1070,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         from .model_selector import EffortPopup, ModelSelectorPopup
 
-        self._active_profile = "doing"
-
         picker = QtWidgets.QHBoxLayout()
         picker.setContentsMargins(0, 0, 0, 0)
         picker.setSpacing(0)
-
-        self.profile_button = QtWidgets.QPushButton()
-        self.profile_button.setObjectName("PickerButton")
-        self.profile_button.setFixedHeight(CONTROL_DENSE)
-        self.profile_button.setSizePolicy(QtWidgets.QSizePolicy.Maximum,
-                                          QtWidgets.QSizePolicy.Fixed)
-        self.profile_button.clicked.connect(self._toggle_profile)
-        picker.addWidget(self.profile_button)
-        self._show_profile()
 
         self.model_button = QtWidgets.QPushButton()
         self.model_button.setObjectName("PickerButton")
@@ -1225,9 +1214,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         provider has answered and none offers it any more; or, with nothing
         stored at all, the first model on offer.
 
-        Read for whichever profile the toggle is on, so a switch between
-        `thinking` and `doing` shows that profile's own model rather than
-        the one last edited.
+        The pill is the orchestrator role's row of the Preferences table, so
+        the model shown is the one the run's routing call is made with; every
+        other role is set in Preferences alone.
 
         A fallback is stored as well as shown: the run reads the setting and
         not the pill, so a first model only drawn there is a model the run
@@ -1236,7 +1225,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if models is None:
             models = provider_manager.instance().get_available_models()
         self._models = models
-        last_id = settings_manager.instance().get_profile_model(self._active_profile)
+        last_id = self._orchestrator_row().get("model", "")
 
         if not models:
             self._set_current_model(None, "No models — add API key")
@@ -1311,48 +1300,49 @@ class CopilotPanel(QtWidgets.QDockWidget):
             % (model_id, fallback))
         return fallback
 
-    def _toggle_profile(self):
+    def _orchestrator_row(self) -> dict:
         """
-        Switches which of the two profiles the model and effort pills beside
-        it edit -- Design and Plan think, Execute, Assertion and Review do,
-        and one Intent asks both, whichever one this is set to when it is
-        sent.
+        The orchestrator's row of the Preferences role table -- the one row
+        the composer's two pills edit; every other role is set in Preferences
+        alone.
         """
-        from copilot.sdk import PROFILES
+        from copilot.sdk import ORCHESTRATOR
 
-        self._active_profile = PROFILES[(PROFILES.index(self._active_profile) + 1)
-                                        % len(PROFILES)]
-        self._show_profile()
-        self._refresh_models()
+        return settings_manager.instance().get_role_model(ORCHESTRATOR) or {}
 
-    def _show_profile(self):
+    def _store_on_the_orchestrator(self, **fields):
         """
-        The label the model and effort pills read off of, not a control of
-        its own: "Thinking › opus - medium" is one phrase, and a user who
-        clicks it is asking which profile the two pills beside it belong to.
+        Write *fields* onto that row.
+
+        Through `set_role_table` and not `core.settings`, so the Preferences
+        page hears the change while it is open.
         """
-        self.profile_button.setText("%s ›" % self._active_profile.capitalize())
-        self.profile_button.setToolTip(
-            "Thinking — Design and Plan" if self._active_profile == "thinking"
-            else "Doing — Execute, Assertion and Review")
+        from copilot.sdk import ORCHESTRATOR
+
+        settings = settings_manager.instance()
+        table = settings.get_role_table()
+        for row in table:
+            if row.get("role") == ORCHESTRATOR:
+                row.update(fields)
+        settings.set_role_table(table)
 
     def _open_model_selector(self):
         self.model_selector.open_at(self._models, self.model_button)
 
     def _store_model(self, model_id: str):
         """
-        Where a chosen model is kept: on the profile the composer is editing,
-        and on the shared fallback both profiles read when they have none of
-        their own (`settings_manager.get_profile_model`).
+        Where a chosen model is kept: the orchestrator's row of the role
+        table, and the shared last-used model every caller with no role of
+        its own falls back to (`settings.get_llm_credentials`).
 
-        Both, because a run builds a client per profile: stored only on the
-        one being edited, the profile the user never toggled to has no model
-        at all, and `get_llm_credentials` answers a panel that plainly names
-        one with "No model selected".
+        The row carries the provider too: a model is only resolvable through
+        the provider that offers it, and the row is read back with no list of
+        models to hand.
         """
-        settings = settings_manager.instance()
-        settings.set_profile_model(self._active_profile, model_id)
-        settings.set_last_model(model_id)
+        entry = next((m for m in self._models if m["id"] == model_id), None)
+        self._store_on_the_orchestrator(
+            model=model_id, provider=(entry or {}).get("provider", ""))
+        settings_manager.instance().set_last_model(model_id)
 
     def _on_model_selected(self, model_id: str):
         """Drops the client so the next send rebuilds it from settings."""
@@ -1370,36 +1360,36 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         from copilot.sdk import EFFORTS, effort_is_honoured
 
-        model_id = settings_manager.instance().get_profile_model(self._active_profile)
-        if not effort_is_honoured(model_id):
+        if not effort_is_honoured(self._orchestrator_row().get("model", "")):
             return
         self.effort_selector.open_at(list(EFFORTS), self.effort_button)
 
     def _on_effort_selected(self, level: str):
         """Drops the client so the next send is asked to think the new way."""
-        settings_manager.instance().set_profile_effort(self._active_profile, level)
+        self._store_on_the_orchestrator(effort=level)
         if getattr(self, "worker", None):
             self.worker.client = None
         self._show_effort()
 
     def _show_effort(self):
         """
-        The pill carries the level in force for the active profile, and says
+        The pill carries the level the orchestrator's row is set to, and says
         when the model will ignore it.
 
-        The level is read from `core.llm` and not from settings: what is
-        stored may be empty, or a level from an older build, and the panel
-        must show what the next run will actually be asked for.
+        An empty or outdated level falls back to the single stored dial, the
+        same one `client_from_settings` is left to when a row names none: the
+        panel shows what the next run will actually be asked for.
 
         A model with no reasoning to spend cannot honour the choice, and the
         honest thing is to say so where the choice is made rather than to
         take it and drop it (`core.llm.effort_is_honoured`).
         """
-        from copilot.sdk import effort_for_profile, effort_is_honoured
+        from copilot.sdk import EFFORTS, effort_is_honoured, get_effort
 
-        model_id = settings_manager.instance().get_profile_model(self._active_profile)
-        honoured = effort_is_honoured(model_id)
-        self.effort_button.setText(effort_for_profile(self._active_profile))
+        row = self._orchestrator_row()
+        honoured = effort_is_honoured(row.get("model", ""))
+        level = row.get("effort", "")
+        self.effort_button.setText(level if level in EFFORTS else get_effort())
         self.effort_button.setEnabled(honoured)
         self.effort_button.setToolTip(
             "How hard the model is asked to think" if honoured

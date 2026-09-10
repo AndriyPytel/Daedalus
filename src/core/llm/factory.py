@@ -18,20 +18,6 @@ def effort() -> str:
     return chosen if chosen in EFFORTS else _SUBSCRIPTION_EFFORT
 
 
-def effort_for_profile(profile: str) -> str:
-    """
-    The dial *profile* -- `thinking` or `doing` -- is set to.
-
-    Reads the profile's own setting where one exists, and the old single dial
-    a user who has never split the two still has: `settings_manager ::
-    get_profile_effort` is what carries that fallback, so a level from an
-    older build or an empty store both land on `_resolved_effort`'s own
-    default the same way `effort()` already does for the single dial.
-    """
-    chosen = settings.instance().get_profile_effort(profile)
-    return chosen if chosen in EFFORTS else effort()
-
-
 def effort_is_honoured(model_id: str = None) -> bool:
     """
     Whether asking *model_id* to think harder changes anything at all.
@@ -73,9 +59,8 @@ def client_from_settings(model_id: str = None, effort: str = None):
     subscription, which is why one provider is answered by a client of its own
     before any of that is read.
 
-    *effort* is the resolved dial one client of `client_from_profiles` is
-    built at; left `None` the client falls back to the single dial in force
-    the way it always has, which is what every caller outside a profile does.
+    *effort* is the level the role's row names; left `None` the client falls
+    back to the single stored dial.
     """
     from core.llm.client import LiteLLMClient
     from core.llm.claude import ClaudeCodeClient
@@ -95,23 +80,6 @@ def client_from_settings(model_id: str = None, effort: str = None):
         api_base=api_base,
         thinking_budget=2048 if provider == "Anthropic" else None,
         effort=effort,
-    )
-
-
-def client_from_profiles():
-    """
-    The client a run is actually made with: one built per profile, each on
-    the model and the effort that profile is set to, wired so `for_phase`
-    answers every phase from the one that owns it.
-    """
-    from core.llm.roles import ProfiledClient
-
-    sm = settings.instance()
-    return ProfiledClient(
-        thinking=client_from_settings(sm.get_profile_model("thinking"),
-                                      effort_for_profile("thinking")),
-        doing=client_from_settings(sm.get_profile_model("doing"),
-                                   effort_for_profile("doing")),
     )
 
 

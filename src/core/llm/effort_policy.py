@@ -1,13 +1,6 @@
-"""Effort policy constants and profile mapping."""
+"""Effort policy constants."""
 
 EFFORTS = ("low", "medium", "high")
-
-PROFILES = ("thinking", "doing")
-
-_PHASES_OF_PROFILE = {
-    "thinking": ("design", "plan"),
-    "doing": ("execute", "assertion", "review"),
-}
 
 _OUTPUT_BUDGET = 8192
 
@@ -29,19 +22,3 @@ def _resolved_effort(explicit: str = None) -> str:
     from core.llm.factory import effort
     return effort()
 
-
-def profile_of(phase: str) -> str:
-    """
-    Which of the two profiles answers *phase*.
-
-    `thinking` is Design and Plan: reading a drawing and turning it into a
-    Step list is the demand the higher end of the dial buys headroom for.
-    `doing` is Execute, Assertion and Review, which already have the Step in
-    hand -- paying Design's rate on every one of them is one dial's worth of
-    the wrong bill. A phase this map has never heard of is `doing`, the
-    cheaper of the two guesses.
-    """
-    for profile, phases in _PHASES_OF_PROFILE.items():
-        if phase in phases:
-            return profile
-    return "doing"

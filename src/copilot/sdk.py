@@ -20,8 +20,8 @@ from core import settings as _settings
 from core.freecad_apply import ApplyPipeline, active_document, build_registry
 from core.events import EventStream, replay
 from core.kernel import Kernel
-from core.llm import (EFFORTS, PROFILES, TEXT, Session, client_from_roles,
-                      effort_for_profile, effort_is_honoured, selected_model_name,
+from core.llm import (EFFORTS, ORCHESTRATOR, TEXT, Session, client_from_roles,
+                      effort_is_honoured, selected_model_name,
                       unusable_attachments)
 from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE,
                        EXECUTE_PHASE, PLAN_PHASE, REJECT, REVIEW_PHASE, REVISE,
@@ -116,22 +116,6 @@ def get_effort():
 
 def set_effort(level):
     _settings.instance().set_effort(level)
-
-
-def get_profile_model(profile):
-    return _settings.instance().get_profile_model(profile)
-
-
-def set_profile_model(profile, model_id):
-    _settings.instance().set_profile_model(profile, model_id)
-
-
-def get_profile_effort(profile):
-    return _settings.instance().get_profile_effort(profile)
-
-
-def set_profile_effort(profile, level):
-    _settings.instance().set_profile_effort(profile, level)
 
 
 def get_role_table():
