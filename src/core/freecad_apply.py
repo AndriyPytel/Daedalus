@@ -68,15 +68,12 @@ class SignatureMismatch(Exception):
 class ApplyResult:
     """
     All the loop ever learns about a Step: it landed, or here is why not.
+    `modified` is Preflight's own measured list, carried past the
+    `_CHANGED_NOTHING` check rather than dropped there.
 
-    `modified` is Preflight's own measured list (`KernelResult.modified`),
-    carried past the `_CHANGED_NOTHING` check it already decides rather than
-    dropped there — the exact FreeCAD Names a landed Step altered without
-    creating, alongside `created`.
-
-    `drift` is set only by a `SignatureMismatch`: the one failure that means
-    the GUI Document disagreed with what the kernel verified, rather than the
-    Step itself being wrong (FCC-368). Every other failure leaves it `False`.
+    `drift` is set only by a `SignatureMismatch` -- the GUI Document
+    disagreeing with what the kernel verified, not the Step being wrong
+    (FCC-368).
     """
 
     ok: bool
@@ -292,18 +289,12 @@ class ApplyPipeline:
         """
         Lint *code* and land it on the live Document as one transaction.
 
-        `kernel_result` is what the kernel already found out by running this
-        Step for real (FCC-A-53): the names it created, deleted and modified,
-        its own name map and the signature its Document ended up with. There
-        is no second, disposable rehearsal here any more (ADR-0027
+        `kernel_result` is what the kernel already found running this Step
+        for real (FCC-A-53): names created/deleted/modified, its name map,
+        its Document's signature. No second rehearsal any more (ADR-0027
         supersedes ADR-0002 in part) -- the kernel's run *is* the rehearsal,
-        and this replay either lands what it found or is rolled back by the
-        signature check inside the transaction.
-
-        A Step that created, deleted and modified nothing is a failure here.
-        A Step that lands is fitted into the viewport. `op` is this Step's
-        declared operation (ADR-0026); `op_typeid_mismatch` reads it against
-        what the kernel actually built, not against this code's text.
+        rolled back on a signature disagreement. `op` (ADR-0026) is checked
+        against what the kernel built, not this code's text.
         """
         kernel_result = kernel_result or {}
         checked = lint(code, selection)
@@ -410,12 +401,10 @@ class ApplyPipeline:
 
     def _refused(self, deleted, doc):
         """
-        The reason this Step may not be applied, or None.
-
-        Is it deleting something that is theirs, and is it deleting the model?
-        They are separate because ownership does not cover the second one.
-        `deleted` is what the kernel's own run of this Step found it deleted
-        (FCC-A-53), read against the live Document before its transaction runs.
+        The reason this Step may not be applied, or None. Deleting something
+        theirs, and deleting the model, are separate: ownership does not
+        cover the second one. `deleted` is the kernel's own run's answer
+        (FCC-A-53), read against the Document before its transaction runs.
         """
         return self._not_ours(deleted) or self._a_rebuild(deleted, doc)
 

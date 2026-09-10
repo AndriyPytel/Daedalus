@@ -210,13 +210,11 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         Replay one declared Step into the live Document the moment it is
         declared (ADR-0027) — the loop's `apply_step` Tool, carrying the
         kernel's own `kernel_result` rather than a Preflight rehearsal.
-
-        Returns `{"delivered": False, "traceback": ...}` on any rejection —
-        a real refusal or a GUI Document that drifted from the kernel's —
-        so `run_phase` reverts the kernel and asks the same Step again; the
-        Step never joins `declarations` until this says it landed. `Ledger`
-        is recorded here, not in `run_phase`, because a failure resolved in
-        place before this call returns is not one `_work_through` ever sees.
+        Returns `{"delivered": False, "drift": True, "traceback": ...}` only
+        on a `SignatureMismatch`, so `run_phase` reverts the kernel and
+        retries in place; any other rejection answers `{"delivered": False,
+        "traceback": ...}` and is recorded to `Ledger` here, because
+        `_work_through` never sees a failure resolved before this returns.
         """
         number = declaration.get("step")
         index = number - 1 if isinstance(number, int) else None
@@ -515,19 +513,11 @@ def _the_same_way_twice(attempts):
 
 def _written(declarations, start):
     """
-    Every Step the kernel ran and declared, by Step number, whether or not it
-    reached the Document.
-
-    `declarations` is `run_phase`'s own record, code and checkpoint included
-    — a reply's `steps` names Steps again but carries none of that
-    (ADR-0027). A declared number wins over build position. A Step
-    `on_declaration` delivered carries its own `description` and `created`,
-    written there by that callback, so `_work_through` never asks the
-    Document again for what it was just told; one it rejected for a reason
-    that was not drift carries `delivered: False` instead, and its own
-    traceback becomes `apply_failed` — the only Step this ever returns whose
-    code did not land, so `_work_through` can still hand it to its own
-    attempts/Ledger/handback path (FCC-61).
+    Every Step the kernel ran and declared, by Step number, whether or not
+    it reached the Document (ADR-0027). A delivered Step carries the
+    `description`/`created` `on_declaration` wrote there; one rejected for a
+    reason that was not drift carries `delivered: False` and its traceback
+    as `apply_failed` (FCC-61).
     """
     written = {}
     for position, entry in enumerate(declarations or (), start=start + 1):

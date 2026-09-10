@@ -1881,8 +1881,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
             ev.PART: CopilotPanel._oe_part,
             ev.PLAN: CopilotPanel._oe_plan,
             ev.ASSERTION: CopilotPanel._oe_assertion,
-            ev.STEP_STARTED: CopilotPanel._oe_step_started,
-            ev.STEP_DECLARED: CopilotPanel._noop,
+            ev.STEP_STARTED: CopilotPanel._noop,
+            ev.STEP_DECLARED: CopilotPanel._oe_step_declared,
             ev.APPLIED: CopilotPanel._oe_applied,
             ev.BLOCKED: CopilotPanel._oe_blocked,
             ev.STOPPED: CopilotPanel._oe_blocked,
@@ -1965,11 +1965,17 @@ class CopilotPanel(QtWidgets.QDockWidget):
             return True
         return False
 
-    def _oe_step_started(self, event, data):
+    def _oe_step_declared(self, event, data):
+        """
+        Highlights the Step the moment it is declared, not once `_work_through`
+        gets to it -- a Step lands against the Document inline with its own
+        declaration (FCC-368), so waiting for the trailing `step_started`
+        would highlight it as running only after it already shows `applied`.
+        """
         self._the_thinking_stops()
-        self._current_step = data["index"]
+        self._current_step = data["step"]
         if self._plan_widget:
-            self._plan_widget.highlight(data["index"])
+            self._plan_widget.highlight(data["step"])
         return False
 
     def _oe_applied(self, event, data):
@@ -2051,8 +2057,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
             ev.PLAN: CopilotPanel._uq_plan,
             ev.PLAN_REVISED: CopilotPanel._uq_plan,
             ev.GATE: CopilotPanel._uq_gate,
-            ev.STEP_STARTED: CopilotPanel._uq_step_started,
-            ev.STEP_DECLARED: CopilotPanel._noop,
+            ev.STEP_STARTED: CopilotPanel._noop,
+            ev.STEP_DECLARED: CopilotPanel._uq_step_declared,
             ev.TOOL_CALL: CopilotPanel._noop,
             ev.TOOL_RESULT: CopilotPanel._noop,
             ev.PREFLIGHT_FAILED: CopilotPanel._uq_preflight_failed,
@@ -2096,8 +2102,9 @@ class CopilotPanel(QtWidgets.QDockWidget):
         if data.get("decision") == APPROVE:
             self._queue_widget.start_execute(data.get("steps"), at=event.at)
 
-    def _uq_step_started(self, event, data):
-        self._queue_widget.step_started(data["index"], at=event.at)
+    def _uq_step_declared(self, event, data):
+        """Same reasoning as `_oe_step_declared`: the Queue starts a Step's clock at declare time, not at the trailing `step_started`."""
+        self._queue_widget.step_started(data["step"], at=event.at)
 
     def _uq_applied(self, event, data):
         self._queue_widget.step_applied(data["step"], at=event.at)

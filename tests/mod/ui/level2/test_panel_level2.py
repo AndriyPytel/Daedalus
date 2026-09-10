@@ -1717,18 +1717,19 @@ def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
 def _a_queue_transcript(path):
     """
     A full run's structural events, in the order `core.loop._run` emits
-    them: Intent, an approved Gate, one Step through to Applied, Assertion,
-    Review -- everything FCC-172's Queue widget reads a phase transition off.
+    them: Intent, an approved Gate, one Step declared and applied inline
+    (FCC-368), Assertion, Review -- everything FCC-172's Queue widget reads
+    a phase transition off.
     """
     from core.events import (APPLIED, ASSERTION, EventStream, GATE, INTENT, PLAN,
-                             REVIEW_VERDICT, STEP_STARTED)
+                             REVIEW_VERDICT, STEP_DECLARED)
 
     stream = EventStream()
     stream.log_to(path)
     stream.emit(INTENT, text="a box, then a fillet")
     stream.emit(PLAN, steps=["Make a box"])
     stream.emit(GATE, decision="approve", standing=False)
-    stream.emit(STEP_STARTED, index=1, total=1, description="Make a box")
+    stream.emit(STEP_DECLARED, step=1, label="Make a box", checkpoint="c1")
     stream.emit(APPLIED, step=1, label="Box", created=["Box"])
     stream.emit(ASSERTION, ok=True, code="assert True", confirmed=["It is a box"],
                uncovered=[], traceback="")
@@ -3521,7 +3522,7 @@ def test_review_duration_is_nonzero(panel, tmp_path):
     phase_ended on the same REVIEW_VERDICT event, which leaves Review with
     zero duration.
     """
-    from core.events import EventStream, INTENT, PLAN, GATE, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED, ASSERTION, REVIEW_VERDICT
+    from core.events import EventStream, INTENT, PLAN, GATE, STEP_DECLARED, TOOL_CALL, TOOL_RESULT, APPLIED, ASSERTION, REVIEW_VERDICT
     import time
 
     log = str(tmp_path / "review-duration.jsonl")
@@ -3532,7 +3533,7 @@ def test_review_duration_is_nonzero(panel, tmp_path):
     stream.emit(INTENT, text="a box")
     stream.emit(PLAN, steps=["Box"], acceptance=[])
     stream.emit(GATE, decision="approve")
-    stream.emit(STEP_STARTED, index=1, total=1, description="Box")
+    stream.emit(STEP_DECLARED, step=1, label="Box", checkpoint="c1")
     stream.emit(TOOL_CALL, name="apply_step", arguments={"code": "box()"})
     stream.emit(TOOL_RESULT, name="apply_step", result={"status": "applied"})
     stream.emit(APPLIED, step=1, label="Box", created=["Pad"])

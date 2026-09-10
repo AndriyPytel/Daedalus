@@ -306,17 +306,12 @@ def _allocated_name_lookup(node: ast.Call, allocated: set):
 def op_typeid_mismatch(op, created, objects):
     """
     Whether a Step's declared `op` (ADR-0026) does not match what it built,
-    read off the kernel's own report of the objects its checkpoint holds
-    rather than parsed out of the code that built it (ADR-0026, FCC-A-53) --
-    the code already ran, so what it built is a fact to look up, not a guess
-    to make from the source.
-
-    `objects` is the kernel's `[{"name", "label", "type"}, ...]`; `created`
-    is the names among them this Step is responsible for. Only where the
-    type is one this table has an opinion about -- `PartDesign::` or
-    `Part::` -- since `App::` groups and spreadsheets are out of scope for a
-    verb list about modelling operations. `None` where `op` is off the
-    closed 36-verb list: a legacy Plan holds nothing to check against.
+    read off the kernel's own report of its checkpoint's objects rather than
+    parsed out of the code (FCC-A-53) -- the code already ran, so what it
+    built is a fact to look up, not a guess. `objects` is the kernel's
+    `[{"name", "label", "type"}, ...]`; `created` is the names among them
+    this Step made. Only `PartDesign::`/`Part::` types are checked -- `App::`
+    is out of scope. `None` where `op` is off the closed 36-verb list.
     """
     if op not in OP_TYPEIDS:
         return None

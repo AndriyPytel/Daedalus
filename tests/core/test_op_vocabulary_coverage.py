@@ -47,7 +47,7 @@ places.
 """
 import re
 
-from core.lint import OP_TYPEIDS, lint
+from core.lint import OP_TYPEIDS
 from core.prompts import read_prompt
 
 SHARED_TYPEID_EXCEPTIONS = {
@@ -342,17 +342,22 @@ def test_hole_accepts_partdesign_pocket_as_well_as_partdesign_hole():
     then retried onto PartDesign::Hole, which failed at runtime with "No
     base set, no sketch support either" — a working tool banned, replaced
     with a broken one, two revisions spent on the same operation.
+
+    ADR-0026/FCC-A-53: the TypeId check reads the kernel's own report of
+    what a Step built, not the code that built it (FCC-368).
     """
+    from core.lint import op_typeid_mismatch
+
     assert OP_TYPEIDS["hole"] == ("PartDesign::Hole", "PartDesign::Pocket")
 
-    code = "doc.addObject('PartDesign::Pocket', 'Hole001')"
-    result = lint(code, op="hole")
+    created, objects = ["Hole001"], [{"name": "Hole001", "type": "PartDesign::Pocket"}]
 
-    assert result.ok, result.report()
+    assert op_typeid_mismatch("hole", created, objects) is None
 
 
 def test_pocket_op_still_refuses_a_typeid_neither_pocket_nor_hole_performs():
-    code = "doc.addObject('Part::Extrusion', 'Pad001')"
-    result = lint(code, op="hole")
+    from core.lint import op_typeid_mismatch
 
-    assert not result.ok
+    created, objects = ["Pad001"], [{"name": "Pad001", "type": "Part::Extrusion"}]
+
+    assert op_typeid_mismatch("hole", created, objects) == "Part::Extrusion"
