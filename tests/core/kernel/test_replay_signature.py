@@ -69,26 +69,27 @@ def _pipeline(trace, result):
     return built
 
 
-def test_apply_hands_the_accumulated_names_to_preflight(trace):
-    result = KernelResult(ok=True, created=["Box001"], names={"Box": "Box001"})
-    pipeline = _pipeline(trace, result)
+def test_apply_hands_the_accumulated_names_to_the_transaction(trace):
+    pipeline = _pipeline(trace, None)
     pipeline._names = {"Earlier": "Earlier001"}
 
-    pipeline.apply("box = doc.addObject(\'Part::Box\', \'Box\')")
+    pipeline.apply("box = doc.addObject('Part::Box', 'Box')",
+                   kernel_result={"created": ["Box001"], "names": {"Box": "Box001"}})
 
-    assert pipeline.fake_worker.checked[0]["names"] == {"Earlier": "Earlier001"}
+    assert trace[0][2] == {"Earlier": "Earlier001"}, \
+        "the replay's own namespace did not see the accumulator's own names"
 
 
-def test_a_successful_apply_updates_the_accumulator_from_preflight(trace):
-    result = KernelResult(ok=True, created=["Box001"], names={"Box": "Box001"})
-    pipeline = _pipeline(trace, result)
+def test_a_successful_apply_updates_the_accumulator_from_the_kernel_result(trace):
+    pipeline = _pipeline(trace, None)
 
-    outcome = pipeline.apply("box = doc.addObject(\'Part::Box\', \'Box\')")
+    outcome = pipeline.apply("box = doc.addObject('Part::Box', 'Box')",
+                             kernel_result={"created": ["Box001"], "names": {"Box": "Box001"}})
 
     assert outcome.ok, outcome.traceback
     assert pipeline._names == {"Box": "Box001"}
-    assert trace[0][2] == {"Box": "Box001"}, \
-        "the replay\'s own namespace did not see what Preflight allocated"
+    assert trace[0][2] == {}, \
+        "the replay's own namespace did not see what the kernel allocated"
 
 
 def test_start_run_resets_the_accumulated_names():

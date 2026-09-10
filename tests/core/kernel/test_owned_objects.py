@@ -6,8 +6,9 @@ is the user's, including everything that existed before the assistant did, and
 may not be deleted without asking. Modifying it is covered by the Plan Gate: the
 user read and approved the Step that says so.
 
-What a Step touches is taken from Preflight, which actually ran it, rather than
-from reading the code.
+What a Step touches is taken from `kernel_result` — what the kernel already
+found running the Step for real (FCC-A-53), not a Preflight rehearsal `apply()`
+runs itself, and not from reading the code.
 
 The Owned Object rule asks about the user's objects. It has nothing to say about
 the assistant's own, and a run asked to amend an existing part cleared every
@@ -18,7 +19,6 @@ of the deletion is its own question.
 import pytest
 
 from core.freecad_apply import ApplyPipeline, refuse_without_asking
-from core.kernel import KernelResult
 from tests.core.kernel.test_apply_pipeline import FakeDocument, FakeObject, FakeWorker
 
 
@@ -34,14 +34,14 @@ class Asked:
         return self.answer
 
 
-def pipeline(worker, confirm=None, owned=None, created=("Box",), events=None):
+def pipeline(confirm=None, owned=None, created=("Box",), events=None):
     doc = FakeDocument()
 
     def transaction(document, code, label, **_):
         for name in created:
             document.Objects.append(FakeObject(name))
 
-    built = ApplyPipeline(document=doc, worker=worker,
+    built = ApplyPipeline(document=doc, worker=FakeWorker(),
                           dispatch=lambda func, timeout=None: func(),
                           transaction=transaction, confirm=confirm, owned=owned,
                           events=events)
@@ -50,15 +50,16 @@ def pipeline(worker, confirm=None, owned=None, created=("Box",), events=None):
 
 
 def touching(modified=(), deleted=(), created=()):
-    return FakeWorker(KernelResult(ok=True, render="/tmp/r.png",
-                                      modified=list(modified), deleted=list(deleted),
-                                      created=list(created)))
+    made = list(created)
+    return dict(created=made, deleted=list(deleted), modified=list(modified),
+               objects=[{"name": name, "type": "Part::Box"} for name in made],
+               names={}, signature={})
 
 
 def test_creating_something_new_is_never_confirmed():
     asked = Asked()
 
-    result = pipeline(touching(created=["Box"]), confirm=asked).apply("box()")
+    result = pipeline(confirm=asked).apply("box()", kernel_result=touching(created=["Box"]))
 
     assert result.ok
     assert asked.asks == []
@@ -67,10 +68,10 @@ def test_creating_something_new_is_never_confirmed():
 def test_modifying_an_object_we_created_is_not_confirmed():
     """The first apply creates the Box, which makes it the assistant's own."""
     asked = Asked()
-    built = pipeline(touching(created=["Box"]), confirm=asked)
-    built.apply("box()")
+    built = pipeline(confirm=asked)
+    built.apply("box()", kernel_result=touching(created=["Box"]))
 
-    result = built.apply("box.Length = 20")
+    result = built.apply("box.Length = 20", kernel_result=touching(modified=["Box"]))
 
     assert result.ok
     assert asked.asks == [], "asked about an object the assistant made itself"
@@ -78,32 +79,32 @@ def test_modifying_an_object_we_created_is_not_confirmed():
 
 def test_deleting_an_object_we_created_is_not_confirmed():
     asked = Asked()
-    built = pipeline(touching(created=["Box"]), confirm=asked)
-    built.apply("box()")
+    built = pipeline(confirm=asked)
+    built.apply("box()", kernel_result=touching(created=["Box"]))
 
-    built._worker = touching(deleted=["Box"])
-    result = built.apply("doc.removeObject('Box')")
+    result = built.apply("doc.removeObject('Box')", kernel_result=touching(deleted=["Box"]))
 
     assert result.ok
     assert asked.asks == []
 
 
 def test_ownership_is_remembered_across_steps_in_a_session():
-    built = pipeline(touching(created=["Box"]), confirm=Asked(), created=("Box", "Pad"))
-    built.apply("box()")
+    built = pipeline(confirm=Asked(), created=("Box", "Pad"))
+    built.apply("box()", kernel_result=touching(created=["Box"]))
 
     assert built.owned == {"Box", "Pad"}
 
 
 def test_recompute_of_a_dependent_object_is_not_a_modification():
     """
-    Preflight reports what changed; a downstream Shape recompute is not the Step
-    modifying the user's object, and must not turn into a prompt. The worker
-    already filtered Shape-only changes, so `modified` is empty.
+    `kernel_result` is what the kernel already found; a downstream Shape
+    recompute is not the Step modifying the user's object, and must not turn
+    into a prompt. The kernel already filtered Shape-only changes, so
+    `modified` is empty.
     """
     asked = Asked()
 
-    result = pipeline(touching(created=["Fillet"]), confirm=asked).apply("fillet()")
+    result = pipeline(confirm=asked).apply("fillet()", kernel_result=touching(created=["Fillet"]))
 
     assert result.ok
     assert asked.asks == []
@@ -116,7 +117,7 @@ def test_modifying_an_object_the_user_made_is_covered_by_the_plan_gate():
     """
     asked = Asked(answer=True)
 
-    result = pipeline(touching(modified=["UserBox"]), confirm=asked).apply("user_box()")
+    result = pipeline(confirm=asked).apply("user_box()", kernel_result=touching(modified=["UserBox"]))
 
     assert result.ok
     assert asked.asks == []
@@ -125,7 +126,7 @@ def test_modifying_an_object_the_user_made_is_covered_by_the_plan_gate():
 def test_deleting_an_object_the_user_made_asks_first():
     asked = Asked(answer=True)
 
-    result = pipeline(touching(deleted=["UserBox"]), confirm=asked).apply("remove()")
+    result = pipeline(confirm=asked).apply("remove()", kernel_result=touching(deleted=["UserBox"]))
 
     assert result.ok
     assert asked.asks == [{"delete": ["UserBox"]}]
@@ -133,9 +134,9 @@ def test_deleting_an_object_the_user_made_asks_first():
 
 def test_saying_no_stops_the_step_and_says_why_to_the_assistant():
     asked = Asked(answer=False)
-    built = pipeline(touching(deleted=["UserBox"]), confirm=asked)
+    built = pipeline(confirm=asked)
 
-    result = built.apply("doc.removeObject('UserBox')")
+    result = built.apply("doc.removeObject('UserBox')", kernel_result=touching(deleted=["UserBox"]))
 
     assert not result.ok
     assert "you created rather than I did" in result.traceback
@@ -144,7 +145,8 @@ def test_saying_no_stops_the_step_and_says_why_to_the_assistant():
 
 
 def test_the_refusal_tells_the_assistant_what_to_do_instead():
-    result = pipeline(touching(deleted=["UserBox"]), confirm=Asked(answer=False)).apply("rm()")
+    result = pipeline(confirm=Asked(answer=False)).apply(
+        "rm()", kernel_result=touching(deleted=["UserBox"]))
 
     assert "without deleting the user's own objects" in result.traceback
     assert "say why it cannot be done and stop" in result.traceback
@@ -153,7 +155,8 @@ def test_the_refusal_tells_the_assistant_what_to_do_instead():
 def test_a_step_that_modifies_and_deletes_asks_about_the_deletion_only():
     asked = Asked(answer=False)
 
-    result = pipeline(touching(modified=["A"], deleted=["B"]), confirm=asked).apply("x()")
+    result = pipeline(confirm=asked).apply(
+        "x()", kernel_result=touching(modified=["A"], deleted=["B"]))
 
     assert asked.asks == [{"delete": ["B"]}]
     assert "delete B" in result.traceback
@@ -162,11 +165,10 @@ def test_a_step_that_modifies_and_deletes_asks_about_the_deletion_only():
 
 def test_only_the_objects_that_are_not_ours_are_named():
     asked = Asked(answer=True)
-    built = pipeline(touching(created=["Ours"]), confirm=asked, created=("Ours",))
-    built.apply("make_ours()")
+    built = pipeline(confirm=asked, created=("Ours",))
+    built.apply("make_ours()", kernel_result=touching(created=["Ours"]))
 
-    built._worker = touching(deleted=["Ours", "Theirs"])
-    built.apply("remove_both()")
+    built.apply("remove_both()", kernel_result=touching(deleted=["Ours", "Theirs"]))
 
     assert asked.asks == [{"delete": ["Theirs"]}]
 
@@ -184,28 +186,8 @@ def test_the_rule_applies_regardless_of_plan_gate_approval():
     assert "gate" not in signature.parameters
 
 
-def test_preflight_still_runs_before_the_question_is_asked():
-    """Asking about what a Step 'might' do would mean guessing; Preflight knows."""
-    asked = Asked(answer=True)
-    worker = touching(modified=["UserBox"])
-
-    pipeline(worker, confirm=asked).apply("x()")
-
-    assert worker.checked, "the user was asked before the Step was even Preflighted"
-
-
-def test_a_failed_preflight_never_reaches_the_question():
-    asked = Asked(answer=True)
-    worker = FakeWorker(KernelResult(ok=False, traceback="boom"))
-
-    result = pipeline(worker, confirm=asked).apply("x()")
-
-    assert not result.ok
-    assert asked.asks == []
-
-
 def test_with_no_way_to_ask_the_users_work_is_left_alone():
-    result = pipeline(touching(deleted=["UserBox"])).apply("x()")
+    result = pipeline().apply("x()", kernel_result=touching(deleted=["UserBox"]))
 
     assert not result.ok, "deleted the user's object with nobody to ask"
 
@@ -215,9 +197,9 @@ def test_the_default_answer_is_no():
 
 
 def test_with_no_way_to_ask_our_own_objects_are_still_fine():
-    built = pipeline(touching(created=["Box"]))
+    built = pipeline()
 
-    assert built.apply("box()").ok
+    assert built.apply("box()", kernel_result=touching(created=["Box"])).ok
 
 
 def test_asking_to_delete_the_users_own_work_is_on_the_stream():
@@ -229,9 +211,9 @@ def test_asking_to_delete_the_users_own_work_is_on_the_stream():
     from core.events import ANSWER, QUESTION, EventStream
 
     events = EventStream()
-    built = pipeline(touching(deleted=["UserBox"]), confirm=Asked(True), events=events)
+    built = pipeline(confirm=Asked(True), events=events)
 
-    assert built.apply("delete()").ok
+    assert built.apply("delete()", kernel_result=touching(deleted=["UserBox"])).ok
 
     assert [event.kind for event in events] == [QUESTION, ANSWER]
     assert "UserBox" in events.first(QUESTION).data["text"]
@@ -244,9 +226,9 @@ def test_refusing_is_recorded_just_as_plainly():
     from core.events import ANSWER, EventStream
 
     events = EventStream()
-    built = pipeline(touching(deleted=["UserBox"]), confirm=Asked(False), events=events)
+    built = pipeline(confirm=Asked(False), events=events)
 
-    assert not built.apply("delete()").ok
+    assert not built.apply("delete()", kernel_result=touching(deleted=["UserBox"])).ok
     assert events.first(ANSWER).data["text"] == "You refused to let it delete UserBox."
 
 
@@ -254,17 +236,17 @@ def test_a_step_that_deletes_nothing_of_theirs_asks_nothing_and_says_nothing():
     from core.events import EventStream
 
     events = EventStream()
-    built = pipeline(touching(created=["Box"]), confirm=Asked(), events=events)
+    built = pipeline(confirm=Asked(), events=events)
 
-    assert built.apply("box()").ok
+    assert built.apply("box()", kernel_result=touching(created=["Box"])).ok
     assert list(events) == [], "a question nobody was asked is noise in the transcript"
 
 
 def test_the_pipeline_narrates_nothing_when_no_run_is_listening():
     """`run.py` and the Level 2 harness build one with no stream."""
-    built = pipeline(touching(deleted=["UserBox"]), confirm=Asked(True))
+    built = pipeline(confirm=Asked(True))
 
-    assert built.apply("delete()").ok
+    assert built.apply("delete()", kernel_result=touching(deleted=["UserBox"])).ok
 
 
 def test_only_an_explicit_yes_is_consent():
@@ -274,9 +256,10 @@ def test_only_an_explicit_yes_is_consent():
     Step delete the user's own work.
     """
     for answer in (None, "", object(), refuse_without_asking):
-        built = pipeline(touching(deleted=["UserBox"]), confirm=lambda kinds: answer)
+        built = pipeline(confirm=lambda kinds: answer)
 
-        assert not built.apply("delete()").ok, "%r was taken for consent" % (answer,)
+        result = built.apply("delete()", kernel_result=touching(deleted=["UserBox"]))
+        assert not result.ok, "%r was taken for consent" % (answer,)
 
 
 class Feature(FakeObject):
@@ -307,13 +290,13 @@ class Tree(FakeDocument):
         return next((o for o in self.Objects if o.Name == name), None)
 
 
-def modelled(worker, objects, confirm=None, owned=None, events=None):
+def modelled(objects, confirm=None, owned=None, events=None):
     doc = Tree(objects)
 
     def transaction(document, code, label, **_):
         pass
 
-    return ApplyPipeline(document=doc, worker=worker,
+    return ApplyPipeline(document=doc, worker=FakeWorker(),
                          dispatch=lambda func, timeout=None: func(),
                          transaction=transaction, confirm=confirm,
                          owned=owned, events=events)
@@ -332,8 +315,8 @@ OURS = set(EVERYTHING)
 def test_clearing_the_feature_tree_asks_even_when_the_assistant_built_it():
     asked = Asked(answer=True)
 
-    result = modelled(touching(deleted=EVERYTHING), THE_TREE,
-                      confirm=asked, owned=OURS).apply("wipe()")
+    result = modelled(THE_TREE, confirm=asked, owned=OURS).apply(
+        "wipe()", kernel_result=touching(deleted=EVERYTHING))
 
     assert result.ok
     assert asked.asks, "the assistant deleted the whole model without asking"
@@ -342,8 +325,8 @@ def test_clearing_the_feature_tree_asks_even_when_the_assistant_built_it():
 
 
 def test_refusing_the_rebuild_stops_the_step_and_says_edit_instead():
-    result = modelled(touching(deleted=EVERYTHING), THE_TREE,
-                      confirm=Asked(answer=False), owned=OURS).apply("wipe()")
+    result = modelled(THE_TREE, confirm=Asked(answer=False), owned=OURS).apply(
+        "wipe()", kernel_result=touching(deleted=EVERYTHING))
 
     assert not result.ok
     assert "rebuild of a model that is already there" in result.traceback
@@ -359,8 +342,8 @@ def test_replacing_one_feature_and_its_sketch_is_a_correction_not_a_rebuild():
     """
     asked = Asked(answer=True)
 
-    result = modelled(touching(deleted=["SketchBoreLeft", "PocketBoreLeft"]), THE_TREE,
-                      confirm=asked, owned=OURS).apply("redo_the_bore()")
+    result = modelled(THE_TREE, confirm=asked, owned=OURS).apply(
+        "redo_the_bore()", kernel_result=touching(deleted=["SketchBoreLeft", "PocketBoreLeft"]))
 
     assert result.ok
     assert asked.asks == []
@@ -369,19 +352,19 @@ def test_replacing_one_feature_and_its_sketch_is_a_correction_not_a_rebuild():
 def test_deleting_sketches_alone_is_not_counted_as_a_rebuild():
     asked = Asked(answer=True)
 
-    modelled(touching(deleted=["SketchBoreLeft", "SketchBoreRight"]), THE_TREE,
-             confirm=asked, owned=OURS).apply("tidy()")
+    modelled(THE_TREE, confirm=asked, owned=OURS).apply(
+        "tidy()", kernel_result=touching(deleted=["SketchBoreLeft", "SketchBoreRight"]))
 
     assert asked.asks == []
 
 
 def test_deleting_the_body_is_a_rebuild_by_itself():
-    """One name from Preflight, every feature in the Document gone with it."""
+    """One name from the kernel, every feature in the Document gone with it."""
     body = Feature("Body", "PartDesign::Body", ("PartDesign::Body",))
     asked = Asked(answer=False)
 
-    result = modelled(touching(deleted=["Body", "PadOuterProfile"]), THE_TREE + [body],
-                      confirm=asked, owned=OURS | {"Body"}).apply("del_body()")
+    result = modelled(THE_TREE + [body], confirm=asked, owned=OURS | {"Body"}).apply(
+        "del_body()", kernel_result=touching(deleted=["Body", "PadOuterProfile"]))
 
     assert not result.ok
     assert asked.asks == [{"rebuild": ["Body", "PadOuterProfile"]}]
@@ -394,8 +377,9 @@ def test_measurements_and_scratch_objects_do_not_count_towards_a_rebuild():
     doc = THE_TREE + scratch
     ours = OURS | {"Length", "Measurements", "Phase1CutoutReference"}
 
-    modelled(touching(deleted=["Length", "Measurements", "Phase1CutoutReference"]), doc,
-             confirm=asked, owned=ours).apply("tidy()")
+    modelled(doc, confirm=asked, owned=ours).apply(
+        "tidy()", kernel_result=touching(
+            deleted=["Length", "Measurements", "Phase1CutoutReference"]))
 
     assert asked.asks == [], "a Measurement is not a piece of the model"
 
@@ -404,10 +388,9 @@ def test_the_rebuild_question_is_on_the_stream_like_every_other():
     from core.events import ANSWER, QUESTION, EventStream
 
     events = EventStream()
-    built = modelled(touching(deleted=EVERYTHING), THE_TREE,
-                     confirm=Asked(True), owned=OURS, events=events)
+    built = modelled(THE_TREE, confirm=Asked(True), owned=OURS, events=events)
 
-    assert built.apply("wipe()").ok
+    assert built.apply("wipe()", kernel_result=touching(deleted=EVERYTHING)).ok
 
     assert [event.kind for event in events] == [QUESTION, ANSWER]
     assert "4 features of the existing model" in events.first(QUESTION).data["text"]
@@ -415,7 +398,8 @@ def test_the_rebuild_question_is_on_the_stream_like_every_other():
 
 
 def test_a_rebuild_with_nobody_to_ask_is_refused():
-    result = modelled(touching(deleted=EVERYTHING), THE_TREE, owned=OURS).apply("wipe()")
+    result = modelled(THE_TREE, owned=OURS).apply(
+        "wipe()", kernel_result=touching(deleted=EVERYTHING))
 
     assert not result.ok, "wiped the model with nobody to ask"
 
@@ -425,8 +409,8 @@ def test_both_questions_are_asked_when_a_step_does_both():
     theirs = Feature("UserPad")
     asked = Asked(answer=True)
 
-    result = modelled(touching(deleted=EVERYTHING + ["UserPad"]), THE_TREE + [theirs],
-                      confirm=asked, owned=OURS).apply("wipe()")
+    result = modelled(THE_TREE + [theirs], confirm=asked, owned=OURS).apply(
+        "wipe()", kernel_result=touching(deleted=EVERYTHING + ["UserPad"]))
 
     assert result.ok
     assert asked.asks == [{"delete": ["UserPad"]},
@@ -438,8 +422,8 @@ def test_refusing_the_first_question_never_reaches_the_second():
     asked = Asked(answer=False)
     theirs = Feature("UserPad")
 
-    result = modelled(touching(deleted=EVERYTHING + ["UserPad"]), THE_TREE + [theirs],
-                      confirm=asked, owned=OURS).apply("wipe()")
+    result = modelled(THE_TREE + [theirs], confirm=asked, owned=OURS).apply(
+        "wipe()", kernel_result=touching(deleted=EVERYTHING + ["UserPad"]))
 
     assert not result.ok
     assert asked.asks == [{"delete": ["UserPad"]}]

@@ -10,11 +10,25 @@ import os
 import pytest
 
 from core.freecad_apply import ApplyPipeline, build_registry, run_in_transaction
-from core.kernel import Kernel, find_freecadcmd
+from core.kernel import Kernel, copy_of, find_freecadcmd
+
+
+def _kernel_result(worker, doc, code, names=None):
+    """What `apply()` now expects a caller to already have from the kernel's
+    own run of *code*, rather than a rehearsal `apply()` runs itself
+    (FCC-A-53)."""
+    copy = copy_of(doc)
+    try:
+        result = worker.check(code, document=copy, names=names or {}, ephemeral=True)
+    finally:
+        os.remove(copy)
+    assert result.ok, result.traceback
+    return {"created": result.created, "deleted": result.deleted,
+            "modified": result.modified, "objects": result.objects,
+            "names": result.names, "signature": result.signature}
 
 pytestmark = pytest.mark.freecad
 
-CRASHING_CODE = "import ctypes; ctypes.string_at(0)"
 
 BOX = "box = doc.addObject('Part::Box', 'Box')\nbox.Length = 10\n"
 
@@ -53,20 +67,21 @@ def pipeline(doc, worker, tmp_path):
                          render_dir=str(tmp_path))
 
 
-def test_a_step_lands_in_the_document(pipeline, doc):
-    result = pipeline.apply(BOX, label="Add the box")
+def test_a_step_lands_in_the_document(pipeline, doc, worker):
+    result = pipeline.apply(BOX, label="Add the box",
+                            kernel_result=_kernel_result(worker, doc, BOX))
 
     assert result.ok, result.traceback
     assert result.created == ["Box"]
     assert doc.getObject("Box").Length.Value == 10
 
 
-def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline):
+def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline, doc, worker):
     """
     An Apply now answers with the part rather than a picture of it (FCC-81):
     the feature with its parameters, and the geometry read off the Shape.
     """
-    result = pipeline.apply(BOX)
+    result = pipeline.apply(BOX, kernel_result=_kernel_result(worker, doc, BOX))
 
     assert result.ok, result.traceback
     described = {f["name"]: f for f in result.description["features"]}
@@ -75,22 +90,20 @@ def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline):
                                               "surfaces": [{"kind": "Plane", "count": 6}]}
 
 
-def test_the_headless_fallback_still_draws_the_document_once(pipeline):
+def test_the_headless_fallback_still_draws_the_document_once(pipeline, doc, worker):
     """
     The Worker's rasteriser survives as the fallback, so FCC-46's per-pixel
     depth test and edges are not thrown away — called once at the end of a run
     rather than once per Step.
     """
-    import os
-
-    pipeline.apply(BOX)
+    pipeline.apply(BOX, kernel_result=_kernel_result(worker, doc, BOX))
     views = pipeline.review_views()
 
     assert len(views) == 1, "the headless fallback is one isometry, not four"
     assert os.path.getsize(views[0]) > 1000
 
 
-def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc):
+def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc, worker):
     """
     The Step that burned all three attempts of FCC-30 rung 1. It has to survive
     Preflight — a separate process building its own namespace — and Apply, or
@@ -100,24 +113,23 @@ def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc):
     aluminium = [card for card in registry.call("materials", {"name": "alumin"})["materials"]
                  if card["density"] and "2.7" in card["density"]][0]
 
-    result = pipeline.apply(
-        "body = doc.addObject('PartDesign::Body', 'Body')\n"
-        "body.ShapeMaterial = Materials.MaterialManager().getMaterial(%r)\n" % aluminium["uuid"],
-        label="Assign aluminium")
+    code = ("body = doc.addObject('PartDesign::Body', 'Body')\n"
+           "body.ShapeMaterial = Materials.MaterialManager().getMaterial(%r)\n" % aluminium["uuid"])
+    result = pipeline.apply(code, label="Assign aluminium",
+                            kernel_result=_kernel_result(worker, doc, code))
 
     assert result.ok, result.traceback
     assert "alumin" in doc.getObject("Body").ShapeMaterial.Name.lower()
 
 
-def test_a_single_undo_takes_a_whole_step_back(pipeline, doc):
+def test_a_single_undo_takes_a_whole_step_back(pipeline, doc, worker):
     """Several objects, one Step, one Ctrl+Z."""
-    result = pipeline.apply(
-        "box = doc.addObject('Part::Box', 'Box')\n"
-        "cyl = doc.addObject('Part::Cylinder', 'Cyl')\n"
-        "cut = doc.addObject('Part::Cut', 'Cut')\n"
-        "cut.Base, cut.Tool = box, cyl\n",
-        label="Box minus cylinder",
-    )
+    code = ("box = doc.addObject('Part::Box', 'Box')\n"
+           "cyl = doc.addObject('Part::Cylinder', 'Cyl')\n"
+           "cut = doc.addObject('Part::Cut', 'Cut')\n"
+           "cut.Base, cut.Tool = box, cyl\n")
+    result = pipeline.apply(code, label="Box minus cylinder",
+                            kernel_result=_kernel_result(worker, doc, code))
     assert result.ok, result.traceback
     assert len(doc.Objects) == 3
 
@@ -126,9 +138,12 @@ def test_a_single_undo_takes_a_whole_step_back(pipeline, doc):
     assert doc.Objects == [], "one undo did not take the whole Step back"
 
 
-def test_two_steps_undo_one_at_a_time(pipeline, doc):
-    pipeline.apply(BOX, label="Add the box")
-    pipeline.apply("cyl = doc.addObject('Part::Cylinder', 'Cyl')", label="Add the cylinder")
+def test_two_steps_undo_one_at_a_time(pipeline, doc, worker):
+    pipeline.apply(BOX, label="Add the box", kernel_result=_kernel_result(worker, doc, BOX))
+    cylinder_code = "cyl = doc.addObject('Part::Cylinder', 'Cyl')"
+    pipeline.apply(cylinder_code, label="Add the cylinder",
+                   kernel_result=_kernel_result(worker, doc, cylinder_code,
+                                                names=pipeline._names))
     assert sorted(o.Name for o in doc.Objects) == ["Box", "Cyl"]
 
     doc.undo()
@@ -136,8 +151,8 @@ def test_two_steps_undo_one_at_a_time(pipeline, doc):
     assert [o.Name for o in doc.Objects] == ["Box"]
 
 
-def test_the_undo_entry_is_named_after_the_step(pipeline, doc):
-    pipeline.apply(BOX, label="Add the base box")
+def test_the_undo_entry_is_named_after_the_step(pipeline, doc, worker):
+    pipeline.apply(BOX, label="Add the base box", kernel_result=_kernel_result(worker, doc, BOX))
 
     assert "Add the base box" in doc.UndoNames
 
@@ -175,44 +190,12 @@ def test_run_in_transactions_own_exec_frame_is_cut_from_the_traceback(doc):
     assert "run_in_transaction" not in formatted
 
 
-def test_code_that_crashes_the_core_never_reaches_the_document(doc, tmp_path):
+def test_apply_step_is_a_tool_and_carries_the_kernels_own_result(doc, worker, tmp_path):
     """
-    Code that crashes the core never reaches the document, and this process
-    (which is standing in for the user's FreeCAD) is still here to make the
-    assertion.
+    There is no rehearsal behind this Tool any more (ADR-0027 supersedes
+    ADR-0002 in part): the loop already ran the Step through the kernel and
+    hands its result straight through.
     """
-    with Kernel() as own:
-        pipeline = ApplyPipeline(document=doc, worker=own,
-                                 dispatch=lambda func, timeout=None: func(),
-                                 render_dir=str(tmp_path))
-
-        result = pipeline.apply(CRASHING_CODE)
-
-        assert not result.ok
-        assert "died" in result.traceback
-        assert doc.Objects == []
-    import FreeCAD
-    assert FreeCAD.getDocument("ApplyLevel2") is doc
-
-
-def test_an_unbounded_loop_never_reaches_the_document(doc, tmp_path):
-    """
-    A real hang, killed by a real timeout — only the timeout itself is
-    scaffolding, short enough that the wait is not the point of the test.
-    """
-    with Kernel(timeout=0.5) as own:
-        pipeline = ApplyPipeline(document=doc, worker=own,
-                                 dispatch=lambda func, timeout=None: func(),
-                                 render_dir=str(tmp_path))
-
-        result = pipeline.apply("while True:\n    pass")
-
-        assert not result.ok
-        assert "timed out" in result.traceback
-        assert doc.Objects == []
-
-
-def test_apply_step_is_a_tool_and_hides_preflight_behind_it(doc, worker, tmp_path):
     pipeline = ApplyPipeline(document=doc, worker=worker,
                              dispatch=lambda func, timeout=None: func(),
                              render_dir=str(tmp_path))
@@ -220,23 +203,11 @@ def test_apply_step_is_a_tool_and_hides_preflight_behind_it(doc, worker, tmp_pat
 
     assert "apply_step" in tools
 
-    result = tools.call("apply_step", {"code": BOX, "label": "Add the box"})
+    result = tools.call("apply_step", {"code": BOX, "label": "Add the box",
+                                       "kernel_result": _kernel_result(worker, doc, BOX)})
 
     assert result["status"] == "applied"
     assert result["created"] == ["Box"]
-
-
-def test_apply_step_returns_the_traceback_for_the_assistant_to_correct_against(doc, worker, tmp_path):
-    pipeline = ApplyPipeline(document=doc, worker=worker,
-                             dispatch=lambda func, timeout=None: func(),
-                             render_dir=str(tmp_path))
-    tools = build_registry(doc, pipeline=pipeline)
-
-    result = tools.call("apply_step", {"code": "doc.addObject('Part::Nonexistent', 'X')"})
-
-    assert result["status"] == "failed"
-    assert "Nonexistent" in result["traceback"]
-    assert doc.Objects == []
 
 
 def test_the_read_only_registry_has_no_apply_step(doc):
@@ -261,7 +232,7 @@ def test_a_lint_rejected_step_never_reaches_the_kernels_checkpoint(pipeline, wor
 
 
 def test_preflight_reports_what_the_step_actually_created(worker):
-    result = worker.check("doc.addObject('Part::Box', 'Box')")
+    result = worker.check("doc.addObject('Part::Box', 'Box')", document=None)
 
     assert result.ok, result.traceback
     assert result.created == ["Box"]
@@ -349,14 +320,17 @@ def test_the_users_own_object_is_protected_end_to_end(doc, worker, tmp_path):
                             render_dir=str(tmp_path),
                             confirm=lambda kinds: answers.pop(0))
 
+    delete_code = "doc.removeObject('UsersBox')"
     answers.append(False)
-    refused = pipeline.apply("doc.removeObject('UsersBox')")
+    refused = pipeline.apply(delete_code,
+                             kernel_result=_kernel_result(worker, doc, delete_code))
     assert not refused.ok
     assert "UsersBox" in refused.traceback
     assert doc.getObject("UsersBox") is not None, "removed it anyway"
 
     answers.append(True)
-    allowed = pipeline.apply("doc.removeObject('UsersBox')")
+    allowed = pipeline.apply(delete_code,
+                             kernel_result=_kernel_result(worker, doc, delete_code))
     assert allowed.ok, allowed.traceback
     assert doc.getObject("UsersBox") is None
 
@@ -373,7 +347,9 @@ def test_modifying_the_users_own_object_needs_no_permission(doc, worker, tmp_pat
                             render_dir=str(tmp_path),
                             confirm=lambda kinds: asks.append(kinds) or True)
 
-    result = pipeline.apply("doc.getObject('UsersBox').Length = 99")
+    modify_code = "doc.getObject('UsersBox').Length = 99"
+    result = pipeline.apply(modify_code,
+                            kernel_result=_kernel_result(worker, doc, modify_code))
 
     assert result.ok, result.traceback
     assert asks == []
@@ -387,9 +363,11 @@ def test_what_the_assistant_created_needs_no_permission(doc, worker, tmp_path):
                             render_dir=str(tmp_path),
                             confirm=lambda kinds: asks.append(kinds) or True)
 
-    assert pipeline.apply(BOX).ok
+    assert pipeline.apply(BOX, kernel_result=_kernel_result(worker, doc, BOX)).ok
     assert pipeline.owned == {"Box"}
 
-    assert pipeline.apply("doc.getObject('Box').Length = 25").ok
+    modify_code = "doc.getObject('Box').Length = 25"
+    assert pipeline.apply(modify_code,
+                          kernel_result=_kernel_result(worker, doc, modify_code)).ok
     assert asks == [], "asked permission for its own object"
     assert doc.getObject("Box").Length.Value == 25

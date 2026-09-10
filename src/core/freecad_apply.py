@@ -28,7 +28,7 @@ from core.events import ANSWER, QUESTION
 from core.kernel import Kernel, KernelResult, copy_of
 from core.kernel.kernel_worker import (_NamedDoc, register_step_source, signature_of,
                                 step_namespace, trimmed_traceback)
-from core.lint import lint
+from core.lint import OP_TYPEIDS, _TYPEID_REASON, lint, op_typeid_mismatch
 from core.prompts import read_prompt
 from core.tools import NO_PARAMETERS, ToolError, ToolRegistry
 
@@ -282,17 +282,38 @@ class ApplyPipeline:
         self._renders += 1
         return os.path.join(directory, "copilot_step_%d.png" % self._renders)
 
-    def apply(self, code, selection=None, label="Copilot Step", op=None) -> ApplyResult:
+    def apply(self, code, selection=None, label="Copilot Step", op=None,
+              kernel_result=None) -> ApplyResult:
         """
-        Lint *code*, Preflight it, and land it on the live Document.
+        Lint *code* and land it on the live Document as one transaction.
+
+        `kernel_result` is what the kernel already found out by running this
+        Step for real (FCC-A-53): the names it created, deleted and modified,
+        its own name map and the signature its Document ended up with. There
+        is no second, disposable rehearsal here any more (ADR-0027
+        supersedes ADR-0002 in part) -- the kernel's run *is* the rehearsal,
+        and this replay either lands what it found or is rolled back by the
+        signature check inside the transaction.
 
         A Step that created, deleted and modified nothing is a failure here.
         A Step that lands is fitted into the viewport. `op` is this Step's
-        declared operation (ADR-0026), `None` for a legacy Plan.
+        declared operation (ADR-0026); `op_typeid_mismatch` reads it against
+        what the kernel actually built, not against this code's text.
         """
-        checked = lint(code, selection, op=op)
+        kernel_result = kernel_result or {}
+        checked = lint(code, selection)
         if not checked.ok:
             return ApplyResult(ok=False, traceback=checked.report())
+
+        mismatch = op_typeid_mismatch(op, kernel_result.get("created"),
+                                      kernel_result.get("objects"))
+        if mismatch:
+            return ApplyResult(ok=False, traceback=_TYPEID_REASON % (
+                mismatch, mismatch, op, " or ".join(OP_TYPEIDS[op])))
+
+        if not (kernel_result.get("created") or kernel_result.get("deleted")
+                or kernel_result.get("modified")):
+            return ApplyResult(ok=False, traceback=_CHANGED_NOTHING)
 
         doc = self._dispatch(self._active)
         if doc is None:
@@ -300,43 +321,31 @@ class ApplyPipeline:
 
         before = set(self._dispatch(lambda: [o.Name for o in doc.Objects]))
 
-        copy = self._dispatch(lambda: copy_of(doc))
-        try:
-            preflighted = self.worker.check(code, document=copy, names=self._names,
-                                              ephemeral=True)
-        finally:
-            _discard(copy)
-
-        if not preflighted.ok:
-            return ApplyResult(ok=False, traceback=preflighted.traceback)
-
-        declined = self._refused(preflighted, doc)
+        declined = self._refused(kernel_result.get("deleted") or (), doc)
         if declined:
             return ApplyResult(ok=False, traceback=declined)
 
-        if not (preflighted.created or preflighted.deleted or preflighted.modified):
-            return ApplyResult(ok=False, traceback=_CHANGED_NOTHING)
-
         try:
             self._dispatch(lambda: self._transaction(
-                doc, code, label, names=preflighted.names,
-                expected_signature=preflighted.signature))
+                doc, code, label, names=self._names,
+                expected_signature=kernel_result.get("signature")))
         except Closing:
             raise
         except BaseException as exc:
             return ApplyResult(
                 ok=False,
-                traceback="The Step passed Preflight but failed against the real Document, "
+                traceback="The Step passed the kernel but failed against the real Document, "
                           "so it was rolled back:\n\n" + trimmed_traceback(exc),
             )
 
-        self._names = preflighted.names
+        self._names = dict(kernel_result.get("names") or {})
         self._dispatch(lambda: fit_view(doc))
         described = self._dispatch(lambda: description(doc))
         created = [o["name"] for o in described["features"] if o["name"] not in before]
         self.owned.update(created)
         return ApplyResult(ok=True, description=described, created=created,
-                           modified=list(preflighted.modified))
+                           modified=list(kernel_result.get("modified") or ()))
+
 
     def check_assertions(self, code):
         """
@@ -392,23 +401,25 @@ class ApplyPipeline:
         if self.events is not None:
             self.events.emit(kind, **data)
 
-    def _refused(self, preflighted, doc):
+    def _refused(self, deleted, doc):
         """
         The reason this Step may not be applied, or None.
 
         Is it deleting something that is theirs, and is it deleting the model?
         They are separate because ownership does not cover the second one.
+        `deleted` is what the kernel's own run of this Step found it deleted
+        (FCC-A-53), read against the live Document before its transaction runs.
         """
-        return self._not_ours(preflighted) or self._a_rebuild(preflighted, doc)
+        return self._not_ours(deleted) or self._a_rebuild(deleted, doc)
 
-    def _a_rebuild(self, preflighted, doc):
+    def _a_rebuild(self, deleted, doc):
         """
         Ask before deleting the feature tree, whoever built it.
 
         Ownership is not the question; how much of the model goes is.
         Deleting one feature is a correction; deleting several is a rebuild.
         """
-        modelling = self._modelling(doc, preflighted.deleted)
+        modelling = self._modelling(doc, deleted)
         if len(modelling) <= _A_CORRECTION:
             return None
 
@@ -457,7 +468,7 @@ class ApplyPipeline:
                            + wanted + ".")
         return allowed
 
-    def _not_ours(self, preflighted):
+    def _not_ours(self, deleted):
         """
         Ask before deleting anything the assistant did not create this Session.
 
@@ -466,7 +477,7 @@ class ApplyPipeline:
         for the same consent. Deletion is never in that prose — Execute decides
         it on its own — so it keeps the question.
 
-        Preflight already ran the Step against a copy, so this is what the code
+        The kernel already ran the Step for real, so `deleted` is what the code
         *did*, not what reading it suggested it might do.
 
         Asked and answered on the stream, like every other question put to the
@@ -479,7 +490,7 @@ class ApplyPipeline:
         one with the Plan Gate's answer — an object, and so truthy. Read as
         consent, that let Stop delete the user's own work.
         """
-        deletes = sorted(set(preflighted.deleted) - self.owned)
+        deletes = sorted(set(deleted) - self.owned)
         if not deletes:
             return None
 
@@ -1416,9 +1427,8 @@ def _physical(card, quantity):
 def _register_apply(registry, pipeline, selection):
     @registry.tool(
         "apply_step",
-        "Run one Step against the Document. The code is checked, tried against a "
-        "throwaway copy first, and then applied as a single undoable unit. You get "
-        "back either 'applied' or 'failed' with the traceback to correct against.",
+        "Run one Step against the Document, as one undoable unit. You get back "
+        "either 'applied' or 'failed' with the traceback to correct against.",
         {
             "type": "object",
             "properties": {
@@ -1438,17 +1448,24 @@ def _register_apply(registry, pipeline, selection):
                     "description": "This Step's operation, one of the 36 in plan.md's closed "
                                    "list — carried straight from the Plan, not asked for here.",
                 },
+                "kernel_result": {
+                    "type": "object",
+                    "description": "What the kernel already found running this Step for real "
+                                   "(FCC-A-53): created, deleted, modified, names, signature, "
+                                   "objects. Carried by the loop, not asked for here.",
+                },
             },
             "required": ["code"],
         },
     )
-    def apply_step(code, label="Copilot Step", op=None):
+    def apply_step(code, label="Copilot Step", op=None, kernel_result=None):
         """
-        Preflight lives behind this Tool: from here up, a Step was applied or
-        it was not, and there is no third thing to know about.
+        There is no rehearsal behind this Tool any more (ADR-0027 supersedes
+        ADR-0002 in part): from here up, a Step was applied or it was not,
+        and there is no third thing to know about.
         """
         return pipeline.apply(code, selection=selection(), label=label,
-                              op=op).as_tool_result()
+                              op=op, kernel_result=kernel_result).as_tool_result()
 
     @registry.tool(
         "check_assertions",

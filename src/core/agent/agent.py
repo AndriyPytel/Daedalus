@@ -36,16 +36,28 @@ _NO_DOCUMENT = object()
 
 
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
-              kernel=None, supervisor=None, stream=None, system=None):
+              kernel=None, supervisor=None, stream=None, system=None,
+              on_declaration=None):
     """
     Run *phase* as a multi-turn agent against its own kernel.
 
     *document* is the path the first code turn opens; the default is a
     sentinel, not `None`, which the kernel reads as an empty Document.
 
+    *on_declaration* is called with the declaration dict the moment a Step is
+    declared, and only then -- Design, Plan, Assertion and Review never pass
+    one, so they carry no knowledge of what it does. It answers
+    `{"delivered": True}` or `{"delivered": False, "traceback": ...}`; this
+    function knows nothing else about what "delivered" means (FCC-A-53). A
+    Step that was not delivered never joins `declarations` -- the kernel's
+    live Document is wound back to the last checkpoint that was, and the
+    model is told why and asked to write that Step again, on the same turn
+    loop it would use to correct any other failure.
+
     Returns `(declared, session, declarations)`: what the model declared, and
-    every Step it declared and landed, in build order — step, label, code
-    and checkpoint. A `code` turn with no `step` never joins `declarations`.
+    every Step it declared and landed, in build order -- step, label, code
+    and checkpoint. A `code` turn with no `step` never joins `declarations`,
+    and neither does one `on_declaration` refused.
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)
@@ -91,13 +103,33 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 first_step = False
                 if "step" in message and result.ok and result.checkpoint:
                     checkpoint = _kept(working, result.checkpoint, len(declarations))
-                    declarations.append({
+                    declaration = {
                         "step": message["step"], "label": message.get("label"),
                         "code": message["code"], "checkpoint": checkpoint,
-                    })
+                        "signature": dict(result.signature), "names": dict(result.names),
+                        "created": list(result.created), "modified": list(result.modified),
+                        "deleted": list(result.deleted), "objects": list(result.objects),
+                    }
                     if stream is not None:
                         stream.emit(STEP_DECLARED, step=message["step"],
                                     label=message.get("label"), checkpoint=checkpoint)
+                    delivered = (on_declaration(declaration) if on_declaration is not None
+                                else {"delivered": True})
+                    if delivered.get("delivered"):
+                        declarations.append(declaration)
+                    else:
+                        working_kernel.check("pass", document=(
+                            declarations[-1]["checkpoint"] if declarations
+                            else (document if isinstance(document, str) else None)))
+                        drifted = {"ok": False, "status": "failed",
+                                  "traceback": "Step %s replayed against the Document and "
+                                                "did not land: %s\n\nWrite Step %s again."
+                                                % (message["step"], delivered.get("traceback", ""),
+                                                   message["step"])}
+                        if stream is not None:
+                            stream.emit(TOOL_RESULT, name=phase, result=drifted)
+                        text = _say(session, llm, json.dumps(drifted), phase=phase, stream=stream)
+                        continue
                 answer = _feedback(result)
                 if stream is not None:
                     stream.emit(TOOL_RESULT, name=phase, result=answer)

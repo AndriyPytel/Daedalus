@@ -13,7 +13,24 @@ home).
 import pytest
 
 from core.freecad_apply import ApplyPipeline, run_in_transaction
-from core.kernel import Kernel, find_freecadcmd
+from core.kernel import Kernel, copy_of, find_freecadcmd
+
+
+def _kernel_result(kernel, doc, code, names=None):
+    """What `apply()` now expects a caller to already have from the kernel's
+    own run of *code*, rather than a rehearsal `apply()` runs itself
+    (FCC-A-53)."""
+    import os
+
+    copy = copy_of(doc)
+    try:
+        result = kernel.check(code, document=copy, names=names or {}, ephemeral=True)
+    finally:
+        os.remove(copy)
+    assert result.ok, result.traceback
+    return {"created": result.created, "deleted": result.deleted,
+            "modified": result.modified, "objects": result.objects,
+            "names": result.names, "signature": result.signature}
 
 pytestmark = pytest.mark.freecad
 
@@ -65,7 +82,8 @@ def test_a_step_that_bypasses_every_tool_is_still_recorded_as_owned(doc, kernel)
                              dispatch=lambda func, timeout=None: func(),
                              transaction=run_in_transaction)
 
-    result = pipeline.apply("doc.addObject('Part::Box', 'RawBox')")
+    code = "doc.addObject('Part::Box', 'RawBox')"
+    result = pipeline.apply(code, kernel_result=_kernel_result(kernel, doc, code))
 
     assert result.ok, result.traceback
     assert "RawBox" in pipeline.owned

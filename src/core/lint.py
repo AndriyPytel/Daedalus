@@ -151,13 +151,14 @@ def selected_elements(selection) -> set:
     return allowed
 
 
-def lint(code: str, selection=None, op=None) -> LintResult:
+def lint(code: str, selection=None) -> LintResult:
     """
-    Check *code* before it costs a Preflight.
+    Check *code* before it is replayed onto the Document.
 
     `selection` is the Snapshot's selection; element names in it are allowed.
-    `op` is the Step's declared operation (ADR-0026); given one, every `addObject`
-    building a `PartDesign::`/`Part::` type is checked against `OP_TYPEIDS`.
+    Whether the Step built the TypeId its declared `op` promises is answered
+    by `op_typeid_mismatch`, off what the kernel actually built rather than
+    by parsing this string (ADR-0026, FCC-A-53).
     """
     try:
         tree = ast.parse(code)
@@ -168,7 +169,6 @@ def lint(code: str, selection=None, op=None) -> LintResult:
     features = _partdesign_features(tree)
     counted = _counted_selections(tree)
     allocated = _names_allocated_here(tree)
-    allowed_typeids = set(OP_TYPEIDS.get(op, ())) | _SCAFFOLD_TYPEIDS if op in OP_TYPEIDS else None
     problems = []
     seen = set()
 
@@ -216,9 +216,6 @@ def lint(code: str, selection=None, op=None) -> LintResult:
             if problem:
                 complain(problem)
         else:
-            mismatch = _typeid_mismatch(node, allowed_typeids)
-            if mismatch:
-                complain(_TYPEID_REASON % (mismatch, mismatch, op, " or ".join(OP_TYPEIDS[op])))
             reused = _allocated_name_lookup(node, allocated)
             if reused:
                 complain(_ALLOCATED_NAME_REASON % (reused, reused))
@@ -306,27 +303,32 @@ def _allocated_name_lookup(node: ast.Call, allocated: set):
     return None
 
 
-def _typeid_mismatch(node, allowed_typeids):
+def op_typeid_mismatch(op, created, objects):
     """
-    The TypeId an `addObject`/`newObject` call builds, given only where
-    `allowed_typeids` is not `None` (an `op` on the closed 36-verb list was
-    given) and the type is one this ticket's table has an opinion about —
-    `PartDesign::` or `Part::`. Anything else (`App::` groups, spreadsheets)
-    is out of scope for a verb list about modelling operations.
+    Whether a Step's declared `op` (ADR-0026) does not match what it built,
+    read off the kernel's own report of the objects its checkpoint holds
+    rather than parsed out of the code that built it (ADR-0026, FCC-A-53) --
+    the code already ran, so what it built is a fact to look up, not a guess
+    to make from the source.
+
+    `objects` is the kernel's `[{"name", "label", "type"}, ...]`; `created`
+    is the names among them this Step is responsible for. Only where the
+    type is one this table has an opinion about -- `PartDesign::` or
+    `Part::` -- since `App::` groups and spreadsheets are out of scope for a
+    verb list about modelling operations. `None` where `op` is off the
+    closed 36-verb list: a legacy Plan holds nothing to check against.
     """
-    if allowed_typeids is None or not (isinstance(node.func, ast.Attribute)
-                                       and node.func.attr in ("addObject", "newObject")
-                                       and node.args):
+    if op not in OP_TYPEIDS:
         return None
-    first = node.args[0]
-    if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
-        return None
-    type_id = first.value
-    if not type_id.startswith(("PartDesign::", "Part::")):
-        return None
-    if type_id in allowed_typeids:
-        return None
-    return type_id
+    allowed = set(OP_TYPEIDS[op]) | _SCAFFOLD_TYPEIDS
+    built = {entry.get("name"): entry.get("type") for entry in objects or ()}
+    for name in created or ():
+        type_id = built.get(name)
+        if not type_id or not type_id.startswith(("PartDesign::", "Part::")):
+            continue
+        if type_id not in allowed:
+            return type_id
+    return None
 
 
 def _counted_selections(tree) -> set:

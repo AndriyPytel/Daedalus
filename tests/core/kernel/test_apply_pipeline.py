@@ -2,8 +2,12 @@
 Level 1 — the order the apply pipeline does things in, and what the caller sees.
 
 Everything is injected: no Qt, no FreeCAD, no worker. What matters here is that
-lint runs before Preflight, Preflight runs before the Document, and none of
-that is visible from outside — the caller gets "applied" or "failed".
+lint runs before the transaction, the transaction never opens on a Step that
+changed nothing, and none of that is visible from outside — the caller gets
+"applied" or "failed". There is no rehearsal here any more (ADR-0027
+supersedes ADR-0002 in part): the caller hands `apply()` `kernel_result`, what
+a real kernel already found running the Step for real, and `FakeWorker` here
+is only `start_run`'s own seed call, untouched by this ticket.
 """
 import pytest
 
@@ -30,13 +34,9 @@ class FakeObject:
 
 
 class FakeWorker:
-    """Records what it was asked to Preflight, answers however the test says."""
+    """Answers `start_run`'s own seed call however the test says."""
 
     def __init__(self, result=None):
-        """
-        A real worker reports what the Step touched, and a Step that touched
-        nothing is not a success, so the default here has to say it made one.
-        """
         self.result = result or KernelResult(ok=True, render="/tmp/step.png",
                                                 created=["Box"])
         self.checked = []
@@ -46,6 +46,19 @@ class FakeWorker:
         self.checked.append({"code": code, "document": document,
                              "render_path": render_path})
         return self.result
+
+
+def _kernel_result(created=("Box",), objects=None, **rest):
+    """
+    A `kernel_result` shaped like what `apply()` now expects a caller to have
+    from the kernel's own run of the Step (FCC-A-53), rather than a
+    rehearsal `apply()` runs itself.
+    """
+    made = list(created)
+    return dict(created=made, deleted=[], modified=[],
+               objects=(objects if objects is not None
+                        else [{"name": name, "type": "Part::Box"} for name in made]),
+               names={}, signature={}, **rest)
 
 
 @pytest.fixture
@@ -75,7 +88,8 @@ def test_a_clean_step_lands_and_reports_what_it_created(pipeline):
     """
     An Apply lands a Step and describes what is now there. It takes no picture.
     """
-    result = pipeline.apply("box = doc.addObject('Part::Box', 'Box')", label="Add the box")
+    result = pipeline.apply("box = doc.addObject('Part::Box', 'Box')", label="Add the box",
+                            kernel_result=_kernel_result())
 
     assert result.ok
     assert result.created == ["Box"]
@@ -92,99 +106,56 @@ def test_a_step_that_lands_puts_the_part_back_in_the_viewport(pipeline, monkeypa
     fitted = []
     monkeypatch.setattr("core.freecad_apply.fit_view", lambda doc: fitted.append(doc))
 
-    assert pipeline.apply("doc.recompute()").ok
+    assert pipeline.apply("doc.recompute()", kernel_result=_kernel_result()).ok
     assert fitted == [pipeline.document]
 
 
-def test_a_step_that_never_reached_the_document_leaves_the_camera_alone(pipeline, monkeypatch):
-    fitted = []
-    monkeypatch.setattr("core.freecad_apply.fit_view", lambda doc: fitted.append(doc))
-    pipeline.fake_worker.result = KernelResult(ok=False, traceback="boom")
-
-    assert not pipeline.apply("doc.recompute()").ok
-    assert fitted == []
-
-
-def test_lint_runs_before_preflight_so_a_bad_step_costs_nothing(pipeline):
-    result = pipeline.apply("fillet.Base = (box, ['Edge12'])")
-
-    assert not result.ok
-    assert "literal element name" in result.traceback
-    assert pipeline.fake_worker.checked == [], "Preflight ran on code lint had already rejected"
-    assert pipeline.trace == []
-
-
-def test_a_step_that_changes_nothing_is_not_a_success(pipeline):
+def test_a_step_the_kernel_says_changed_nothing_leaves_the_camera_alone(pipeline, monkeypatch):
     """
     Seen in the wild: a Step that defined a function to build the sketch and
     never called it. It raised nothing, so it scored as applied, and the Plan
-    moved on to a sketch that did not exist.
+    moved on to a sketch that did not exist. `apply()` now reads this off
+    what the kernel already found, not off a rehearsal of its own.
     """
-    pipeline.fake_worker.result = KernelResult(ok=True, render="/tmp/step.png")
+    fitted = []
+    monkeypatch.setattr("core.freecad_apply.fit_view", lambda doc: fitted.append(doc))
 
-    result = pipeline.apply("def build(doc):\n    doc.addObject('Part::Box', 'Box')\n")
+    result = pipeline.apply("def build(doc):\n    doc.addObject('Part::Box', 'Box')\n",
+                            kernel_result=_kernel_result(created=[]))
 
     assert not result.ok
     assert "changed nothing" in result.traceback
     assert pipeline.trace == [], "a Step that does nothing still opened a transaction"
+    assert fitted == []
 
 
-def test_preflight_runs_before_the_document_sees_anything(pipeline):
-    pipeline.fake_worker.result = KernelResult(ok=False, traceback="ValueError: no such property")
-
-    result = pipeline.apply("box.Nonsense = 1")
+def test_lint_runs_before_the_transaction_so_a_bad_step_costs_nothing(pipeline):
+    result = pipeline.apply("fillet.Base = (box, ['Edge12'])", kernel_result=_kernel_result())
 
     assert not result.ok
-    assert result.traceback == "ValueError: no such property"
-    assert pipeline.fake_worker.checked, "Preflight was skipped"
-    assert pipeline.trace == [], "the Document was touched despite a failed Preflight"
-
-
-def test_preflight_gets_a_throwaway_copy_not_the_document(pipeline):
-    pipeline.apply("doc.recompute()")
-
-    checked = pipeline.fake_worker.checked[0]
-    assert pipeline.document.saved_copies == [checked["document"]]
-    assert checked["render_path"] is None
-
-
-def test_the_throwaway_copy_is_deleted_afterwards(pipeline):
-    import os
-
-    pipeline.apply("doc.recompute()")
-
-    assert not os.path.exists(pipeline.fake_worker.checked[0]["document"])
+    assert "literal element name" in result.traceback
+    assert pipeline.trace == []
 
 
 def test_the_caller_sees_applied_or_failed_and_nothing_else(pipeline):
-    applied = pipeline.apply("doc.recompute()").as_tool_result()
-    pipeline.fake_worker.result = KernelResult(ok=False, traceback="boom")
-    failed = pipeline.apply("doc.recompute()").as_tool_result()
+    applied = pipeline.apply("doc.recompute()", kernel_result=_kernel_result()).as_tool_result()
+    failed = pipeline.apply("doc.recompute()", kernel_result=_kernel_result(created=[])).as_tool_result()
 
     assert applied["status"] == "applied"
-    assert failed == {"status": "failed", "traceback": "boom"}
+    assert failed["status"] == "failed"
+    assert "changed nothing" in failed["traceback"]
     assert "preflight" not in repr(applied).lower()
     assert set(applied) == {"status", "created", "modified", "description"}
 
 
-def test_a_worker_that_died_reads_as_a_failed_step_not_an_incident(pipeline):
-    pipeline.fake_worker.result = KernelResult(
-        ok=False, traceback="The Preflight Worker died while running the Step, ...")
-
-    result = pipeline.apply("import ctypes; ctypes.string_at(0)")
-
-    assert not result.ok
-    assert pipeline.trace == []
-
-
-def test_a_step_that_passes_preflight_but_fails_for_real_is_reported_as_such(trace):
+def test_a_step_that_the_kernel_ran_but_fails_for_real_is_reported_as_such(trace):
     def transaction(document, code, label, **_):
         raise RuntimeError("the live Document disagreed")
 
     pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
                              dispatch=lambda f, timeout=None: f(), transaction=transaction)
 
-    result = pipeline.apply("doc.recompute()")
+    result = pipeline.apply("doc.recompute()", kernel_result=_kernel_result())
 
     assert not result.ok
     assert "rolled back" in result.traceback
@@ -199,14 +170,14 @@ def test_closing_during_the_transaction_is_a_clean_stop_not_a_failed_step(trace)
                              dispatch=lambda f, timeout=None: f(), transaction=transaction)
 
     with pytest.raises(Closing):
-        pipeline.apply("doc.recompute()")
+        pipeline.apply("doc.recompute()", kernel_result=_kernel_result())
 
 
 def test_no_open_document_is_a_reason_not_a_crash():
     pipeline = ApplyPipeline(document=lambda: None, worker=FakeWorker(),
                              dispatch=lambda f, timeout=None: f())
 
-    result = pipeline.apply("doc.recompute()")
+    result = pipeline.apply("doc.recompute()", kernel_result=_kernel_result())
 
     assert not result.ok
     assert "no open Document" in result.traceback
@@ -214,12 +185,13 @@ def test_no_open_document_is_a_reason_not_a_crash():
 
 def test_an_element_the_user_selected_survives_the_lint(pipeline):
     result = pipeline.apply("fillet.Base = (box, ['Edge3'])",
-                            selection=[{"object": "Box", "elements": ["Edge3"]}])
+                            selection=[{"object": "Box", "elements": ["Edge3"]}],
+                            kernel_result=_kernel_result(created=["Fillet"]))
 
     assert result.ok, result.traceback
 
 
-def test_a_fillet_that_never_says_how_many_edges_never_reaches_preflight(pipeline):
+def test_a_fillet_that_never_says_how_many_edges_never_reaches_the_document(pipeline):
     """
     A filter that finds eight of the marked edges rounds eight of them and
     reports the Step applied. It fails before the Document sees it. FCC-151.
@@ -229,11 +201,11 @@ def test_a_fillet_that_never_says_how_many_edges_never_reaches_preflight(pipelin
         "for i, e in enumerate(base.Shape.Edges, 1):\n"
         "    if abs(e.Vertexes[0].Point.x - e.Vertexes[1].Point.x) < 1e-7:\n"
         "        refs.append('Edge%d' % i)\n"
-        "fillet.Base = (base, refs)\n")
+        "fillet.Base = (base, refs)\n",
+        kernel_result=_kernel_result())
 
     assert not result.ok
     assert "how many" in result.traceback
-    assert pipeline.fake_worker.checked == []
     assert pipeline.trace == []
 
 
@@ -253,8 +225,10 @@ def test_review_views_reads_the_pipelines_own_document(pipeline, monkeypatch):
 
 def test_every_document_touch_goes_through_the_dispatcher():
     """
-    Every document touch goes through the dispatcher: resolve the Document, read
-    it, copy it, run the transaction, fit the view, describe what is there now.
+    Every document touch goes through the dispatcher: resolve the Document,
+    read what is there before, run the transaction, fit the view, describe
+    what is there now. There is no rehearsal copy any more to dispatch a
+    sixth time (ADR-0027 supersedes ADR-0002 in part).
 
     The viewport is one of them. A camera moved off the main thread is a Coin
     scene graph touched from a worker, which is the crash the dispatcher exists
@@ -270,26 +244,32 @@ def test_every_document_touch_goes_through_the_dispatcher():
     pipeline = ApplyPipeline(document=doc, worker=FakeWorker(), dispatch=dispatch,
                              transaction=lambda *a, **kw: None)
 
-    pipeline.apply("doc.recompute()")
+    pipeline.apply("doc.recompute()", kernel_result=_kernel_result())
 
-    assert len(dispatched) == 6
+    assert len(dispatched) == 5
 
 
 def test_an_op_mismatch_reaches_apply_the_same_way_a_lint_rejection_does(pipeline):
     """
-    ADR-0026/FCC-233: `op` passed to `apply()` is the same route lint already
-    took `selection` by — a keyword `apply()` forwards straight to `lint()`,
-    checked before Preflight ever sees the code.
+    ADR-0026/FCC-A-53: whether a Step built the TypeId its `op` promises is
+    read off `kernel_result`'s own `created`/`objects`, checked before the
+    transaction ever sees the code.
     """
-    result = pipeline.apply("doc.addObject('Part::Extrusion', 'Pad')", op="pad")
+    result = pipeline.apply(
+        "doc.addObject('Part::Extrusion', 'Pad')", op="pad",
+        kernel_result=_kernel_result(created=["Pad"],
+                                     objects=[{"name": "Pad", "type": "Part::Extrusion"}]))
 
     assert not result.ok
     assert "pad" in result.traceback
-    assert pipeline.fake_worker.checked == []
+    assert pipeline.trace == []
 
 
 def test_an_op_none_never_blocks_a_step_the_old_pipeline_would_have_applied(pipeline):
-    result = pipeline.apply("doc.addObject('PartDesign::Pad', 'Pad')")
+    result = pipeline.apply(
+        "doc.addObject('PartDesign::Pad', 'Pad')",
+        kernel_result=_kernel_result(created=["Pad"],
+                                     objects=[{"name": "Pad", "type": "PartDesign::Pad"}]))
 
     assert result.ok
 

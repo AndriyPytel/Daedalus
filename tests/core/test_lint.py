@@ -462,48 +462,63 @@ def test_reading_midplane_is_untouched():
 
 
 def test_addobject_typeid_matching_the_steps_op_is_accepted():
-    code = "pad = doc.addObject('PartDesign::Pad', 'Pad')"
+    """
+    ADR-0026/FCC-A-53: the TypeId check is now `op_typeid_mismatch`, read off
+    the kernel's own report of what a Step built rather than parsed out of
+    the code — `lint()` no longer holds an opinion on `op` at all.
+    """
+    from core.lint import op_typeid_mismatch
 
-    assert lint(code, op="pad").ok
+    created, objects = ["Pad"], [{"name": "Pad", "type": "PartDesign::Pad"}]
+
+    assert op_typeid_mismatch("pad", created, objects) is None
 
 
 def test_addobject_typeid_not_matching_the_steps_op_is_rejected():
     """
-    ADR-0026/FCC-233: `execute.md`'s verb-to-TypeId table says `pad` builds a
-    `PartDesign::Pad`. `Part::Extrusion` is not the TypeId any of the 36
-    approved operations builds, so a Step declared `op: "pad"` that writes it
-    is rejected the same way a `Gui` import already is.
+    `execute.md`'s verb-to-TypeId table says `pad` builds a `PartDesign::Pad`.
+    `Part::Extrusion` is not the TypeId any of the 36 approved operations
+    builds, so a Step declared `op: "pad"` that built one is rejected.
     """
-    code = "pad = doc.addObject('Part::Extrusion', 'Pad')"
+    from core.lint import op_typeid_mismatch
 
-    result = lint(code, op="pad")
+    created, objects = ["Pad"], [{"name": "Pad", "type": "Part::Extrusion"}]
 
-    assert not result.ok
-    assert "Part::Extrusion" in result.report()
-    assert "pad" in result.report()
+    mismatch = op_typeid_mismatch("pad", created, objects)
+
+    assert mismatch == "Part::Extrusion"
 
 
 def test_scaffolding_typeids_are_accepted_under_any_op():
     """A Body and a Sketcher profile are common to every operation, not just
     the one the Step is named for."""
-    code = ("body = doc.addObject('PartDesign::Body', 'Body')\n"
-            "sketch = body.newObject('Sketcher::SketchObject', 'Sketch')\n"
-            "pad = doc.addObject('PartDesign::Pad', 'Pad')")
+    from core.lint import op_typeid_mismatch
 
-    assert lint(code, op="pad").ok
+    created = ["Body", "Sketch", "Pad"]
+    objects = [{"name": "Body", "type": "PartDesign::Body"},
+              {"name": "Sketch", "type": "Sketcher::SketchObject"},
+              {"name": "Pad", "type": "PartDesign::Pad"}]
+
+    assert op_typeid_mismatch("pad", created, objects) is None
 
 
 def test_no_op_given_skips_the_typeid_check():
     """Legacy code, applied without a declared `op`, is not held to the
     allow-list at all — `core/lint.py` gained this check under FCC-233 and
     every recorded run before it never named one."""
-    code = "pad = doc.addObject('Part::Extrusion', 'Pad')"
+    from core.lint import op_typeid_mismatch
 
-    assert lint(code).ok
+    created, objects = ["Pad"], [{"name": "Pad", "type": "Part::Extrusion"}]
+
+    assert op_typeid_mismatch(None, created, objects) is None
 
 
 def test_an_op_off_the_36_list_skips_the_typeid_check():
-    assert lint("pad = doc.addObject('Part::Extrusion', 'Pad')", op="squish").ok
+    from core.lint import op_typeid_mismatch
+
+    created, objects = ["Pad"], [{"name": "Pad", "type": "Part::Extrusion"}]
+
+    assert op_typeid_mismatch("squish", created, objects) is None
 
 
 
