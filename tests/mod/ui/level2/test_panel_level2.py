@@ -1301,27 +1301,27 @@ def test_the_panel_docks_on_the_main_window_once(sessions_are_the_tests_own):
         window.deleteLater()
 
 
-def test_leaving_the_copilot_workbench_does_not_take_the_chat_away():
+def test_no_workbench_of_ours_exists_to_take_the_chat_away():
     """
-    Hiding the panel on `Deactivated` is what tied the chat to one workbench.
-    Read from the source: `Deactivated` needs a running FreeCAD GUI to call.
+    FCC-361: the dock is a fixture of the main window, not of a workbench —
+    there is no `Deactivated` hook left anywhere that could hide it.
+    Read from the source: `InitGui.py` never calls `Gui.addWorkbench`.
     """
     import ast
     import os
 
     from ui import copilot_dock
 
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(copilot_dock.__file__))),
-                        "CopilotWorkbench.py")
+    mod_dir = os.path.dirname(os.path.dirname(os.path.abspath(copilot_dock.__file__)))
+    assert not os.path.exists(os.path.join(mod_dir, "CopilotWorkbench.py"))
+
+    root = os.path.dirname(mod_dir)
+    path = os.path.join(root, "InitGui.py")
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), path)
-    deactivated = [node for node in ast.walk(tree)
-                   if isinstance(node, ast.FunctionDef) and node.name == "Deactivated"]
-
-    assert deactivated, "CopilotWorkbench lost its Deactivated hook"
-    hides = [node for node in ast.walk(deactivated[0])
-             if isinstance(node, ast.Attribute) and node.attr in ("hide", "setVisible", "close")]
-    assert hides == [], "leaving the workbench still hides the chat"
+    workbench_calls = [node for node in ast.walk(tree)
+                        if isinstance(node, ast.Attribute) and node.attr == "addWorkbench"]
+    assert workbench_calls == [], "InitGui.py still registers a workbench"
 
 
 def _a_row(name="Bracket with two bores", document="Parts.FCStd", created_at=0.0):

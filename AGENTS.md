@@ -44,9 +44,9 @@ are not prose and are exempt.
 
 ## Module layout
 
-`Mod/` is FreeCAD and Qt: the workbench (`CopilotWorkbench.py`,
-`CopilotPreferences.py`) and `Mod/ui/`. `src/` is the engine and carries no
-Qt at all, not even a deferred import (`tests/test_tree_boundary.py`).
+`Mod/` is FreeCAD and Qt: `CopilotPreferences.py` and `Mod/ui/`. `src/` is
+the engine and carries no Qt at all, not even a deferred import
+(`tests/test_tree_boundary.py`).
 `Mod/ui/`'s widgets reach the engine only through `copilot.sdk`, never
 `core` directly.
 

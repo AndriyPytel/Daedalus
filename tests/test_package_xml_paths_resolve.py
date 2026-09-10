@@ -29,10 +29,10 @@ def _tracked_files():
     return [ROOT / path for path in listed]
 
 
-def test_package_xml_icon_resolves():
+def test_package_xml_carries_no_icon():
+    """FCC-361: the workbench icon it pointed at is gone with the workbench."""
     root = ET.parse(ROOT / "package.xml").getroot()
-    icon = root.find(f"{NS}icon").text
-    assert (ROOT / icon).is_file(), icon
+    assert root.find(f"{NS}icon") is None
 
 
 def test_no_tracked_file_carries_a_cyrillic_homoglyph():

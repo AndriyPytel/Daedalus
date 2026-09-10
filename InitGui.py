@@ -10,7 +10,8 @@ import sys
 def initialize():
     """
     This function is called by FreeCAD when the GUI is initialized.
-    It sets up the system path, runs the dependency check, and loads the workbench.
+    It sets up the system path, runs the dependency check, and installs the
+    dock and the preference pages.
     """
     App.Console.PrintMessage("--- [FreeCadCopilot] Initializing GUI ---\n")
     
@@ -67,14 +68,10 @@ def initialize():
         from Mod import CopilotPreferences
         App.Console.PrintMessage("[DEBUG] CopilotPreferences module loaded to register preference page.\n")
 
-        # 5. Load the workbench
-        from Mod.CopilotWorkbench import CopilotWorkbench
-        Gui.addWorkbench(CopilotWorkbench())
-        App.Console.PrintMessage("[SUCCESS] CopilotWorkbench loaded into FreeCAD GUI.\n")
-
-        # 6. Dock the chat on the main window, so it is there on every
-        #    workbench rather than only on ours. FreeCAD may not have built
-        #    the window yet at this point; the timer runs once it has.
+        # 5. Dock the chat on the main window. There is no workbench of ours
+        #    to switch to; the dock is a fixture of the window itself.
+        #    FreeCAD may not have built the window yet at this point; the
+        #    timer runs once it has.
         from ui import copilot_dock
         if copilot_dock.install(Gui.getMainWindow()) is None:
             from PySide import QtCore

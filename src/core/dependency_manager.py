@@ -137,8 +137,8 @@ def install_package(package_name, target_directory):
     the correct Python interpreter is used, which is critical in packaged
     environments like Flatpak or AppImage.
 
-    `InitGui.py:26` calls this synchronously, before `Gui.addWorkbench` and
-    the rest of the addon load, so a `pip install` that hangs on the network
+    `InitGui.py:26` calls this synchronously, before the dock and the
+    preference pages load, so a `pip install` that hangs on the network
     freezes FreeCAD before any of it appears. The 120 s ceiling is pip's own
     default connect/read timeout doubled, room for a slow mirror without
     leaving a stalled one to block the whole startup indefinitely.

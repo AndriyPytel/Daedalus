@@ -6,7 +6,7 @@ engine still carried, deferred inside a function so headless callers never
 paid for it -- moved to `Mod/bridge/main_thread.py`, so the check below no
 longer needs a module-scope exception.
 
-`Mod` -- `ui`, `CopilotWorkbench.py`, `CopilotPreferences.py` -- is FreeCAD
+`Mod` -- `ui`, `CopilotPreferences.py` -- is FreeCAD
 and Qt code, and reaches the engine through `copilot.sdk` alone; `bridge` is
 the one sanctioned exception, the Qt-touching layer FCC-353 built to carry a
 `core` setting or a model list across the boundary as a Qt signal.
@@ -19,7 +19,7 @@ SRC = os.path.join(ROOT, "src")
 MOD = os.path.join(ROOT, "Mod")
 ENGINE_DIRS = ("core", "copilot")
 MOD_NON_BRIDGE_DIRS = ("ui",)
-MOD_ROOT_FILES = ("CopilotWorkbench.py", "CopilotPreferences.py")
+MOD_ROOT_FILES = ("CopilotPreferences.py",)
 
 
 def _py_files(base):
@@ -93,3 +93,15 @@ def test_mod_reaches_the_engine_only_through_the_sdk():
     assert not offenders, (
         "Mod code outside bridge/ must cross into the engine only through "
         "copilot.sdk, bridge/ being the other sanctioned route: %s" % ", ".join(offenders))
+
+
+def test_initgui_installs_only_the_dock_and_preferences():
+    """FCC-361: the workbench registration is gone; nothing replaces it."""
+    path = os.path.join(ROOT, "InitGui.py")
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=path)
+
+    addon_imports = {module for module in _all_imports(tree)
+                      if module.startswith(("Mod", "ui", "Mod.ui"))}
+
+    assert addon_imports == {"Mod", "ui"}, addon_imports
