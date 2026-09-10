@@ -18,6 +18,16 @@ import pytest
 
 from core.freecad_apply import REVIEW_VIEWS, _OPPOSITE_ISOMETRIC, _SECTION_VIEW, capture_review_views, fit_view
 
+TURNED = ["viewIsometric", "viewIsometric", _OPPOSITE_ISOMETRIC, "viewTop", "viewFront"]
+"""
+The camera moves a capture makes, in order, for a Document that has a section
+to cut.
+
+`viewIsometric` twice because each capture is dispatched on its own and puts
+the camera back after itself: the opposite isometric turns to isometric first
+and mirrors that, rather than mirroring whatever the capture before it left.
+"""
+
 
 class SpreadsheetView:
     """A tab with no camera: what a Spreadsheet or a TechDraw page offers."""
@@ -162,8 +172,28 @@ def test_review_captures_from_the_3d_view_with_a_spreadsheet_in_front(gui, tmp_p
     written = capture_review_views(paths)
 
     assert written == paths
-    assert viewport.turned == [name for name in REVIEW_VIEWS if name != _SECTION_VIEW]
+    assert viewport.turned == TURNED
     assert viewport.camera == "wherever the user left it"
+
+
+def test_each_review_view_is_a_job_of_its_own(gui, tmp_path):
+    """
+    Every dispatched job holds the Qt main thread until it returns. Five
+    renders in one job is the longest block a run has, and the GUI can neither
+    repaint nor take a click for the whole of it — so each view is dispatched
+    on its own and the main thread gets its event loop back between them.
+    """
+    gui(SpreadsheetView(), [View3D()])
+    paths = [str(tmp_path / (name + ".png")) for name in REVIEW_VIEWS]
+    jobs = []
+
+    def dispatch(func):
+        jobs.append(func)
+        return func()
+
+    capture_review_views(paths, dispatch=dispatch)
+
+    assert len(jobs) == len(REVIEW_VIEWS) + 1, "the view is read in a job of its own too"
 
 
 def test_review_with_no_3d_view_leaves_the_rasteriser_to_it(gui, tmp_path):
@@ -186,7 +216,7 @@ def test_review_captures_a_fifth_section_view_alongside_the_existing_four(gui, t
 
     assert REVIEW_VIEWS[-1] == _SECTION_VIEW
     assert written == paths
-    assert viewport.turned == [name for name in REVIEW_VIEWS if name != _SECTION_VIEW]
+    assert viewport.turned == TURNED
 
 
 def test_the_section_view_clips_through_the_part_and_the_clip_plane_comes_off(gui, tmp_path):
@@ -262,5 +292,5 @@ def test_capture_review_views_reads_the_bound_documents_view(two_documents_open,
     written = capture_review_views(paths, BoundDocument("Background"))
 
     assert written == paths
-    assert background.turned == [name for name in REVIEW_VIEWS if name != _SECTION_VIEW]
+    assert background.turned == TURNED
     assert focused.turned == []

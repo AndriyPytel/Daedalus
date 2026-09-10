@@ -116,10 +116,13 @@ def test_the_composer_grows_with_the_text_then_scrolls(panel):
     assert panel.user_input.verticalScrollBarPolicy() == QtCore.Qt.ScrollBarAlwaysOff
 
 
-def test_send_and_stop_share_one_slot(panel):
-    """Never both, so the control strip does not shift while a run starts."""
+def test_send_stays_while_a_run_is_going(panel):
+    """
+    Send is how the next Intent is queued behind the run in flight, so it is
+    there for the length of the run and Stop comes up beside it.
+    """
     panel._set_running(True)
-    assert (panel.stop_button.isVisible(), panel.send_button.isVisible()) == (True, False)
+    assert (panel.stop_button.isVisible(), panel.send_button.isVisible()) == (True, True)
 
     panel._set_running(False)
     assert (panel.stop_button.isVisible(), panel.send_button.isVisible()) == (False, True)
@@ -138,62 +141,74 @@ def test_the_composer_shows_the_figma_placeholder(panel):
     assert panel.user_input.placeholderText() == "Describe what you want to build\u2026"
 
 
-def test_the_composer_disables_and_greys_out_while_a_run_is_going(panel):
+def test_the_composer_stays_usable_while_a_run_is_going(panel):
     """
-    Greyed the way `mark_as_reasoning` dims a subdued accordion: an opacity
-    effect, not a colour, since the theme still decides what "disabled" looks
-    like (ADR-0011).
+    A run holds the Document, not the conversation. Darkened, the composer
+    also took the Gate's answer and the next Intent with it, and the user was
+    left watching a run they could not add to.
     """
-    from conftest import QtWidgets
-
     panel._set_running(True)
-    assert not panel.user_input.isEnabled()
-    effect = panel.user_input.graphicsEffect()
-    assert isinstance(effect, QtWidgets.QGraphicsOpacityEffect)
-    assert effect.opacity() < 1.0
 
-    panel._set_running(False)
     assert panel.user_input.isEnabled()
     assert panel.user_input.graphicsEffect() is None
 
+    panel._set_running(False)
+    assert panel.user_input.isEnabled()
 
-def test_the_composer_re_enables_at_a_gate_and_disables_once_it_is_answered(panel, monkeypatch):
+
+def test_the_composer_answers_a_gate_without_being_switched_on_for_it(panel, monkeypatch):
     """
     A Gate's own answer is typed in the composer (Amend, the values Plan was
-    not given), so it must come back before the card does — and go dark again
-    the moment the run resumes, since nothing is being asked while it runs.
+    not given), and it is typed there whether or not a card is up.
     """
     monkeypatch.setattr(panel.ask, "answer", lambda answer: None)
 
     panel._set_running(True)
-    assert not panel.user_input.isEnabled()
-
     panel.on_missing_values("How many teeth?")
     QT_APP.processEvents()
-    assert panel.user_input.isEnabled(), "the composer is where the gate's answer is typed"
+    assert panel.user_input.isEnabled()
 
     panel.user_input.setPlainText("20 teeth, module 2")
     _button(panel._question_card, "Send").click()
     QT_APP.processEvents()
 
-    assert not panel.user_input.isEnabled(), "the run resumed but the composer stayed open"
-
-    panel._set_running(False)
-
-
-def test_stopping_a_gate_answer_leaves_the_composer_dark_again(panel):
-    """Stop is also "the run still has the floor" — the card it takes down
-    must not leave the composer looking answerable a moment longer."""
-    panel._set_running(True)
-    panel.on_missing_values("How many teeth?")
-    QT_APP.processEvents()
     assert panel.user_input.isEnabled()
 
-    panel.on_stop()
+    panel._set_running(False)
+
+
+def test_an_intent_sent_during_a_run_waits_behind_it(panel, monkeypatch):
+    """
+    The second Intent is not refused and does not start a second run: Qt holds
+    the queued call until the worker's `do_work` returns, and the panel only
+    has to know the run that just ended was not the last.
+    """
+    import types
+
+    log = panel._current_log()
+    bundle = panel._worker_for(log)
+    monkeypatch.setattr(panel, "_bind_document", lambda bundle: None)
+    sent = []
+    bundle.request_work.connect(lambda *args: sent.append(args[0]))
+
+    panel.user_input.setPlainText("make the base plate")
+    panel.on_send()
+    QT_APP.processEvents()
+    panel.user_input.setPlainText("and a lug on the right")
+    panel.on_send()
     QT_APP.processEvents()
 
-    assert not panel.user_input.isEnabled()
-    panel._set_running(False)
+    assert sent == ["make the base plate", "and a lug on the right"]
+    assert bundle.queued == 1
+
+    panel.on_run_finished(types.SimpleNamespace(ok=True, unmet=[], the_part_path=""), log)
+
+    assert bundle.running is True, "the queued Intent still has a run to come"
+    assert panel._running is True
+
+    panel.on_run_finished(types.SimpleNamespace(ok=True, unmet=[], the_part_path=""), log)
+
+    assert (bundle.running, bundle.queued, panel._running) == (False, 0, False)
 
 
 @pytest.mark.parametrize("status", [
@@ -779,6 +794,7 @@ def test_a_part_path_a_run_left_behind_carries_into_the_next_send_unless_a_new_d
     finally:
         bundle.request_work.disconnect()
         panel.worker.stop()
+        bundle.running = False
         panel._set_running(False)
 
     assert sent == [written]
@@ -797,6 +813,7 @@ def test_a_part_path_a_run_left_behind_carries_into_the_next_send_unless_a_new_d
     finally:
         bundle.request_work.disconnect()
         panel.worker.stop()
+        bundle.running = False
         panel._set_running(False)
 
     assert sent_with_new_drawing == [""]
@@ -1245,6 +1262,17 @@ def test_the_panel_docks_on_the_main_window_once(sessions_are_the_tests_own):
         panel._cleanup_thread()
         copilot_dock.forget()
         window.deleteLater()
+
+
+def test_the_run_lock_and_the_dock_agree_on_the_chats_name(panel):
+    """
+    `lock_gui` knows the chat by its object name, and the panel sets it. Spelt
+    twice because `core` may not be imported at panel-import time, so nothing
+    but this holds the two spellings together.
+    """
+    from core.freecad_apply import CHAT_DOCK
+
+    assert panel.objectName() == CHAT_DOCK
 
 
 def test_no_workbench_of_ours_exists_to_take_the_chat_away():

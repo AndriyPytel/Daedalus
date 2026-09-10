@@ -28,11 +28,10 @@ class FakeDocument:
 
 
 class FakeMainWindow:
-    def __init__(self):
-        self.enabled = True
+    """A window with nothing on it: this file is about the name map, not the lock."""
 
-    def setEnabled(self, value):
-        self.enabled = value
+    def children(self):
+        return []
 
 
 class FakeWorker:

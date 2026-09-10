@@ -7,7 +7,7 @@ that is visible from outside — the caller gets "applied" or "failed".
 """
 import pytest
 
-from core.freecad_apply import ApplyPipeline, Closing
+from core.freecad_apply import CHAT_DOCK, ApplyPipeline, Closing
 from core.kernel import KernelResult
 
 
@@ -244,7 +244,7 @@ def test_review_views_reads_the_pipelines_own_document(pipeline, monkeypatch):
     """
     seen = []
     monkeypatch.setattr("core.freecad_apply.capture_review_views",
-                        lambda paths, doc: seen.append(doc) or paths)
+                        lambda paths, doc, dispatch: seen.append(doc) or paths)
 
     pipeline.review_views()
 
@@ -294,14 +294,46 @@ def test_an_op_none_never_blocks_a_step_the_old_pipeline_would_have_applied(pipe
     assert result.ok
 
 
-class FakeMainWindow:
-    """Stands in for `Gui.getMainWindow()`: the only thing a run's lock touches."""
+class FakeWidget:
+    """One of the main window's own widgets: a toolbar, the 3D view, a dock."""
 
-    def __init__(self):
+    def __init__(self, name=""):
+        self.name = name
         self.enabled = True
+
+    def isWidgetType(self):
+        return True
+
+    def objectName(self):
+        return self.name
 
     def setEnabled(self, value):
         self.enabled = value
+
+
+class FakeAction(FakeWidget):
+    """A `QAction` is a child of the window too, and is not a widget."""
+
+    def isWidgetType(self):
+        return False
+
+
+class FakeMainWindow:
+    """
+    Stands in for `Gui.getMainWindow()`: what a run's lock reaches through.
+
+    Carries the chat dock among its children because the exemption is the
+    point of the lock — a window locked whole takes the Plan Gate's own
+    buttons with it.
+    """
+
+    def __init__(self):
+        self.chat = FakeWidget(CHAT_DOCK)
+        self.viewport = FakeWidget("3d")
+        self.action = FakeAction("undo")
+
+    def children(self):
+        return [self.viewport, self.chat, self.action]
 
 
 def test_start_run_snapshots_the_document_into_the_kernel(pipeline):
@@ -328,7 +360,33 @@ def test_a_run_in_flight_locks_the_gui(pipeline):
     pipeline.start_run()
 
     assert pipeline.locked is True
-    assert window.enabled is False
+    assert window.viewport.enabled is False
+
+
+def test_the_lock_leaves_the_chat_alone(pipeline):
+    """
+    The Plan Gate's Build button, Stop and the composer are all in the chat
+    dock. Locked with the rest of the window, the run waits at the Gate for an
+    answer the user has no way left to give.
+    """
+    window = FakeMainWindow()
+    pipeline._main_window = window
+
+    pipeline.start_run()
+
+    assert window.chat.enabled is True
+
+
+def test_the_lock_leaves_the_windows_actions_to_the_application(pipeline):
+    """A `QAction` is not a widget, and re-enabling one is not the lock's to do."""
+    window = FakeMainWindow()
+    pipeline._main_window = window
+    window.action.enabled = False
+
+    pipeline.start_run()
+    pipeline.end_run()
+
+    assert window.action.enabled is False
 
 
 def test_a_run_that_ends_unlocks_the_gui(pipeline):
@@ -340,7 +398,7 @@ def test_a_run_that_ends_unlocks_the_gui(pipeline):
     pipeline.end_run()
 
     assert pipeline.locked is False
-    assert window.enabled is True
+    assert window.viewport.enabled is True
 
 
 def test_start_run_with_no_open_document_still_locks(pipeline):

@@ -746,7 +746,10 @@ class _SessionWorker(QtCore.QObject):
     stale widgets the next time it is shown. `pending_question` is the one
     live Ask this Session is blocked on, if any, so switching back to a
     Session parked at its Plan Gate puts the same card up again instead of
-    losing it.
+    losing it. `queued` counts the Intents sent while a run was already in
+    flight: Qt holds each of them in this thread's own event queue until
+    `do_work` returns, so what the panel needs to know is only that the run
+    ending is not the last one.
     """
 
     request_work = QtCore.Signal(str, object, str, object, str)
@@ -763,6 +766,7 @@ class _SessionWorker(QtCore.QObject):
         self.outstanding: list = []
         self.the_part_path: str = ""
         self.sent_attachments: list = []
+        self.queued = 0
         self.dirty = False
         self.pending_question = None
         self.thread.start()
@@ -1669,6 +1673,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
         is named after the attachment check and never before it: an Intent that
         is turned away there never ran, and must not name the Session.
 
+        Sent while a run is in flight, the Intent waits behind it rather than
+        being refused: `request_work` is a queued connection to a worker thread
+        that is inside `do_work`, so Qt holds the call until that returns. The
+        transcript shows it as the user's own turn when its run starts, which
+        is where every Intent's bubble comes from.
+
         The Session's last Part path travels with it automatically, unless this
         Intent brings its own attachment — a new drawing replaces what was
         carried rather than adding to it.
@@ -1707,11 +1717,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._empty_state = None
         self.user_input.clear()
 
-        self._reset_render_state()
+        queued = bundle.running
+        if queued:
+            bundle.queued += 1
+        else:
+            self._reset_render_state()
 
         bundle.running = True
         self._set_running(True)
-        self._queue_widget.now("Planning…")
+        self._queue_widget.now("Queued behind the run in flight…" if queued else "Planning…")
         outstanding = list(bundle.outstanding)
         the_part_path = "" if attachments else bundle.the_part_path
         bundle.request_work.emit(intent, attachments, log, outstanding, the_part_path)
@@ -1765,7 +1779,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._question_card.setEnabled(False)
             self._question_card = None
             self._answers_to_enter = None
-            self._update_composer_enabled()
         bundle = self._workers.get(self._current_log())
         if bundle is not None:
             bundle.pending_question = None
@@ -1783,7 +1796,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._question_card.setEnabled(False)
             self._question_card = None
             self._answers_to_enter = None
-            self._update_composer_enabled()
         bundle = self._workers.get(self._current_log())
         if bundle is not None:
             bundle.pending_question = None
@@ -1793,31 +1805,18 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._queue_widget.now("Aborting…")
 
     def _set_running(self, running: bool):
+        """
+        Stop and Abort come up for the run; Send and the composer stay.
+
+        A run holds the Document, not the conversation: the Gate's answer is
+        typed here, and so is the next Intent, which queues behind the run in
+        flight rather than being refused (`on_send`).
+        """
         self._running = running
-        self.send_button.setVisible(not running)
         self.stop_button.setVisible(running)
         self.stop_button.setEnabled(running)
         self.abort_button.setVisible(running)
         self.abort_button.setEnabled(running)
-        self._update_composer_enabled()
-
-    def _update_composer_enabled(self):
-        """
-        Dark and unusable while the run holds the floor, back the moment it
-        gives it up — either because it ended or because a Gate is the one
-        asking, and a Gate's own answer (Amend, the values Plan was not given)
-        is typed here. Greyed the way `AccordionWidget.mark_as_reasoning`
-        subdues reasoning: an opacity effect, not a colour of its own
-        (ADR-0011).
-        """
-        enabled = not self._running or self._question_card is not None
-        self.user_input.setEnabled(enabled)
-        if enabled:
-            self.user_input.setGraphicsEffect(None)
-        else:
-            effect = QtWidgets.QGraphicsOpacityEffect(self.user_input)
-            effect.setOpacity(0.6)
-            self.user_input.setGraphicsEffect(effect)
 
     @QtCore.Slot(object)
     def on_event(self, event):
@@ -2527,7 +2526,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self._question_card = card
         self._answers_to_enter = None
-        self._update_composer_enabled()
         self.add_chat_widget(card)
 
     @QtCore.Slot(object)
@@ -2635,7 +2633,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         self._question_card = card
         self._answers_to_enter = enter
-        self._update_composer_enabled()
         self.add_chat_widget(card)
 
     def _answer_with(self, decide):
@@ -2664,7 +2661,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
         card, self._question_card = self._question_card, None
         self._answers_to_enter = None
-        self._update_composer_enabled()
         if card is not None:
             for button in card.findChildren(QtWidgets.QPushButton):
                 if button.objectName() in ("PrimaryButton", "ReviewApprove"):
@@ -2722,7 +2718,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
         bundle = self._workers.get(log)
         if bundle is None:
             return
-        bundle.running = False
+        bundle.running = bundle.queued > 0
+        bundle.queued = max(0, bundle.queued - 1)
         self.upload_widget.discard(*bundle.sent_attachments)
         bundle.sent_attachments = []
         bundle.outstanding = list(getattr(result, "unmet", None) or ())
@@ -2731,8 +2728,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
             bundle.dirty = True
             return
 
-        self._set_running(False)
         self._the_thinking_stops()
+        if bundle.running:
+            self._reset_render_state()
+            self._queue_widget.now("Planning…")
+            return
+
+        self._set_running(False)
         if result is not None and result.ok and result.unmet:
             self._queue_widget.now(
                 "Finished, but not verified — you took it as it is over %d failed "

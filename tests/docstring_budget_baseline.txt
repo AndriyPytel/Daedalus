@@ -283,7 +283,6 @@ Mod/ui/copilot_panel.py::_show_effort
 Mod/ui/copilot_panel.py::_store_model
 Mod/ui/copilot_panel.py::_the_thinking_stops
 Mod/ui/copilot_panel.py::_time_the_tool_call
-Mod/ui/copilot_panel.py::_update_composer_enabled
 Mod/ui/copilot_panel.py::_update_queue
 Mod/ui/copilot_panel.py::_worker_for
 Mod/ui/copilot_panel.py::abort

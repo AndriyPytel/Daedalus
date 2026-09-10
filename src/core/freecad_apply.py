@@ -168,6 +168,25 @@ def refuse_without_asking(kinds):
     return False
 
 
+CHAT_DOCK = "FreeCadCopilotPanel"
+
+
+def lock_gui(window, locked, chat=CHAT_DOCK):
+    """
+    Hold the main window against the user for the run — except the chat.
+
+    Build, Stop and the composer are all in that dock, and a window disabled
+    whole takes them with it: the run then waits at the Gate for an answer
+    nobody can give. Qt disables a subtree with its parent, so the exemption
+    has to be made widget by widget rather than by re-enabling the dock. A
+    `QAction` is not a widget and its state is the application's own.
+    """
+    for child in window.children():
+        if not child.isWidgetType() or child.objectName() == chat:
+            continue
+        child.setEnabled(not locked)
+
+
 class ApplyPipeline:
     """
     Hand it code; it lands as one undoable unit or comes back with a reason.
@@ -238,14 +257,14 @@ class ApplyPipeline:
                 seeded = self.worker.check("pass", document=copy, ephemeral=True)
             finally:
                 _discard(copy)
-        self._dispatch(lambda: self.main_window.setEnabled(False))
+        self._dispatch(lambda: lock_gui(self.main_window, True))
         self.locked = True
         self._names = {}
         return seeded
 
     def end_run(self):
         """Unlock the GUI: the run is over, by whichever outcome ended it."""
-        self._dispatch(lambda: self.main_window.setEnabled(True))
+        self._dispatch(lambda: lock_gui(self.main_window, False))
         self.locked = False
 
     def _active(self):
@@ -345,7 +364,7 @@ class ApplyPipeline:
         """
         doc = self._dispatch(self._active)
         paths = [self._render_path() for _ in REVIEW_VIEWS]
-        views = self._dispatch(lambda: capture_review_views(paths, doc))
+        views = capture_review_views(paths, doc, dispatch=self._dispatch)
         return views or self._rasterised()
 
     def _rasterised(self):
@@ -778,46 +797,58 @@ def _section_plane(document):
     return FreeCAD.Placement(center, FreeCAD.Rotation(FreeCAD.Vector(1, 0, 0), -90))
 
 
-def capture_review_views(paths, document=None, size=(800, 600)):
+def capture_review_views(paths, document=None, size=(800, 600), dispatch=_direct):
     """
-    The five views Review judges, captured once, camera put back afterwards.
+    The five views Review judges, one dispatched call each.
 
-    Two isometrics from opposite corners, plus top, front and a section. The
-    section makes a shell, bore or blind pocket visible that the others miss.
+    Two isometrics from opposite corners, plus top, front and a section, which
+    makes a shell, bore or blind pocket visible that the others miss.
+
+    A dispatched call holds the Qt main thread until it returns, and five
+    renders in one is the longest block a run has. Per view, the event loop
+    runs between captures and each of them stands alone (`_capture_view`).
     """
-    import FreeCAD
-
-    view = _active_view(document)
+    view = dispatch(lambda: _active_view(document))
     if view is None:
         return []
 
+    return [path for name, path in zip(REVIEW_VIEWS, paths)
+            if dispatch(lambda name=name, path=path: _capture_view(view, name, path,
+                                                                  document, size))]
+
+
+def _capture_view(view, name, path, document, size):
+    """
+    Write one of Review's views to *path*, or say there was none to write.
+
+    The camera and the clip plane are put back before this returns, whichever
+    way it goes: nothing of the user's outlives one capture, so the opposite
+    isometric turns to isometric itself rather than inheriting it.
+    """
+    import FreeCAD
+
     camera = view.getCamera()
     sectioned = False
-    written = []
     try:
-        for name, path in zip(REVIEW_VIEWS, paths):
-            if name == _OPPOSITE_ISOMETRIC:
-                view.setCameraOrientation(view.getCameraOrientation().multiply(
-                    FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), 180)))
-            elif name == _SECTION_VIEW:
-                plane = _section_plane(document)
-                if plane is None:
-                    continue
-                view.toggleClippingPlane(1, False, True, plane)
-                sectioned = True
-            else:
-                getattr(view, name)()
-            view.fitAll()
-            view.saveImage(path, size[0], size[1], "Current")
-            if name == _SECTION_VIEW:
-                view.toggleClippingPlane(0)
-                sectioned = False
-            written.append(path)
+        if name == _OPPOSITE_ISOMETRIC:
+            view.viewIsometric()
+            view.setCameraOrientation(view.getCameraOrientation().multiply(
+                FreeCAD.Rotation(FreeCAD.Vector(0, 1, 0), 180)))
+        elif name == _SECTION_VIEW:
+            plane = _section_plane(document)
+            if plane is None:
+                return False
+            view.toggleClippingPlane(1, False, True, plane)
+            sectioned = True
+        else:
+            getattr(view, name)()
+        view.fitAll()
+        view.saveImage(path, size[0], size[1], "Current")
     finally:
-        view.setCamera(camera)
         if sectioned:
             view.toggleClippingPlane(0)
-    return written
+        view.setCamera(camera)
+    return True
 
 
 def _active_body(doc, dispatch=_direct):
