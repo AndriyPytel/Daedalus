@@ -61,6 +61,22 @@ def test_entering_execute_lists_the_foreseen_steps_queued_until_they_start():
     assert queue.step_state(2) == QUEUED
 
 
+def test_the_wait_for_the_build_button_is_not_plans_time():
+    """
+    Plan's row is the time Plan took, and the Gate's wait belongs to the
+    user: a row read thirty-four minutes where the model had answered in
+    forty seconds, because the wait for the Build click sat inside it.
+    """
+    from ui.queue_widget import PLAN
+
+    queue = _widget()
+    queue.start_plan(["Make a box"], at=1000.0)
+    queue.waited(1800.0)
+    queue.start_execute(["Make a box"], at=2900.0)
+
+    assert queue._text_labels[PLAN].text() == "Plan  1:40"
+
+
 def test_start_execute_takes_the_gates_steps_over_what_plan_foresaw():
     """
     The Plan Gate is edited directly now (FCC-177): if Build changed the

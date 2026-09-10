@@ -428,6 +428,22 @@ class QueueWidget(QtWidgets.QFrame):
         self._steps_container.setVisible(False)
         self._repaint_phases()
 
+    def waited(self, seconds):
+        """
+        The user's own time, taken off the clock of the phase that was running.
+
+        A run sits at the Plan Gate until Build is clicked, and that wait is
+        not work the row should charge for: Plan read 31 minutes where the
+        model had answered in one. The running phase's start is moved forward
+        rather than each row keeping an idle tally of its own, because every
+        clock here is the difference between two `event.at` stamps and
+        nothing else.
+        """
+        running = next((phase for phase in PHASES if self._states[phase] == RUNNING), None)
+        if running is not None and running in self._phase_start_times:
+            self._phase_start_times[running] += seconds
+            self._repaint_phases()
+
     def start_execute(self, steps=None, at=None):
         """
         The Plan is approved: Plan is done, Execute is running.

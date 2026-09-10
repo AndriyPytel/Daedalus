@@ -1464,6 +1464,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._total_usd = 0.0
         self._run_start_time = None
         self._last_event_time = None
+        self._waiting_on_you_since = None
+        self._waited_seconds = 0.0
         self._last_tool_call_time = None
         self._last_tool_call_widget = None
         self._last_tool_call_name = None
@@ -1474,14 +1476,16 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _update_usage_total(self):
         """
-        Redraw the header's running total from `self._total_usd` and elapsed time.
+        Redraw the header's total: what the run cost and what it took.
 
-        Time is computed from event.at deltas (run start to last event), so a
-        replayed session shows the same duration the live run showed.
+        Elapsed is `event.at` deltas less the wait on the user, so a run held
+        at the Plan Gate for half an hour stops reading as 31 minutes of work
+        where the model answered in one.
         """
         elapsed_seconds = 0.0
         if self._run_start_time is not None and self._last_event_time is not None:
-            elapsed_seconds = self._last_event_time - self._run_start_time
+            elapsed_seconds = (self._last_event_time - self._run_start_time
+                               - self._waited_seconds)
 
         time_str = _format_elapsed(elapsed_seconds)
         self.usage_label.setText(f"{_format_cost(self._total_usd)}  {time_str}")
@@ -1859,6 +1863,8 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._total_usd = 0.0
             self._run_start_time = event.at
             self._last_event_time = event.at
+            self._waiting_on_you_since = None
+            self._waited_seconds = 0.0
             self._update_usage_total()
             self._last_assertion_event = None
             self._last_review_verdict_event = None
@@ -2097,7 +2103,25 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._queue_widget.start_plan(data["steps"], at=event.at)
 
     def _uq_gate(self, event, data):
+        """
+        The Gate opens a wait on the user, and its decision closes one.
+
+        Measured here, not in `on_event`'s own table: after `start_execute`
+        the running phase is Execute, and the wait belongs to the phase that
+        was running while it lasted.
+        """
         from copilot.sdk import APPROVE
+
+        if "decision" not in data:
+            self._waiting_on_you_since = event.at
+            return
+
+        if self._waiting_on_you_since is not None:
+            waited = event.at - self._waiting_on_you_since
+            self._waiting_on_you_since = None
+            self._waited_seconds += waited
+            self._queue_widget.waited(waited)
+            self._update_usage_total()
 
         if data.get("decision") == APPROVE:
             self._queue_widget.start_execute(data.get("steps"), at=event.at)

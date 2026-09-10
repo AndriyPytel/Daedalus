@@ -1830,6 +1830,29 @@ def test_cost_events_accumulate_into_one_running_total(panel):
     assert panel.usage_label.text().startswith("$0.11")
 
 
+def test_the_wait_for_the_build_button_is_not_run_time(panel):
+    """
+    The header's clock is what the run took, and a run sitting at the Plan
+    Gate is not running: it is waiting on a click. Thirty minutes between the
+    ask and the decision read as thirty minutes of work, so a run answered in
+    a minute was reported at half an hour.
+    """
+    from copilot.sdk import APPROVE
+    from core.events import COST, GATE, INTENT, Event
+
+    panel.new_chat()
+    panel.on_event(Event(INTENT, {"text": "a box"}, at=1000.0))
+    panel.on_event(Event(COST, {"phase": "plan", "usd": 0.01, "model": "sonnet",
+                                "seconds": 1.0}, at=1040.0))
+    panel.on_event(Event(GATE, {"steps": 1, "asked": True}, at=1041.0))
+    panel.on_event(Event(GATE, {"decision": APPROVE, "standing": False,
+                                "steps": ["Make a box"]}, at=2841.0))
+    panel.on_event(Event(COST, {"phase": "execute", "usd": 0.01, "model": "sonnet",
+                                "seconds": 1.0}, at=2861.0))
+
+    assert panel.usage_label.text() == "$0.02  1:01"
+
+
 def test_a_call_under_a_cent_still_shows_what_it_cost(panel):
     from core.events import COST, Event
 
