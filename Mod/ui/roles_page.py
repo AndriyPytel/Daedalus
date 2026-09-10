@@ -3,11 +3,12 @@ RolesPage -- "Role -> Model" preference sub-page (FCC-312).
 
 One row per role `core.llm.ROLES` names, seeded with
 `core.llm.DEFAULT_ROLE_TABLE` (FCC-293's values) and editable here. A role's
-Provider and Effort are picked from a fixed list; its Model is free text,
-because the live model list a provider actually offers is fetched over the
-network per API key (`bridge.provider_manager`), and a role's model is set
-once and rarely, not chosen from whatever happens to be configured this
-session.
+Provider and Effort are picked from a fixed list; its Model is picked from
+what that provider offers, and stays typable, because that list is fetched
+over the network per API key (`bridge.provider_manager`) and a role may name
+a model this session has no key to reach -- a seeded row, or a provider whose
+fetch has not answered yet. `models_changed` is what refills the lists when
+it does.
 """
 try:
     from PySide2 import QtCore, QtWidgets
@@ -27,6 +28,9 @@ class RolesPage(QtWidgets.QWidget):
         self.setObjectName("CopilotRolesPage")
         self.setWindowTitle("Role → Model")
         self._build_ui()
+
+        from bridge import provider_manager
+        provider_manager.instance().models_changed.connect(self._on_models_changed)
 
     def _build_ui(self):
         outer = QtWidgets.QVBoxLayout(self)
@@ -59,6 +63,24 @@ class RolesPage(QtWidgets.QWidget):
         from copilot.sdk import providers
         return list(providers())
 
+    @staticmethod
+    def _fill_models(combo, provider, model):
+        """Offer *provider*'s models, keeping *model* whether it is one of them or not."""
+        from bridge import provider_manager
+
+        combo.clear()
+        combo.addItems([entry["id"] for entry
+                        in provider_manager.instance().get_models_for_provider(provider)])
+        combo.setCurrentText(model)
+
+    def _on_models_changed(self, _models):
+        for row_index in range(self.table.rowCount()):
+            provider_combo = self.table.cellWidget(row_index, 1)
+            model_combo = self.table.cellWidget(row_index, 2)
+            if provider_combo and model_combo:
+                self._fill_models(model_combo, provider_combo.currentText(),
+                                  model_combo.currentText())
+
     def loadSettings(self):
         from bridge import settings_manager
         from copilot.sdk import EFFORTS
@@ -80,7 +102,12 @@ class RolesPage(QtWidgets.QWidget):
                 provider_combo.setCurrentText(current_provider)
             self.table.setCellWidget(row_index, 1, provider_combo)
 
-            self.table.setItem(row_index, 2, QtWidgets.QTableWidgetItem(row.get("model", "")))
+            model_combo = QtWidgets.QComboBox()
+            model_combo.setEditable(True)
+            self._fill_models(model_combo, current_provider, row.get("model", ""))
+            provider_combo.currentTextChanged.connect(
+                lambda name, combo=model_combo: self._fill_models(combo, name, combo.currentText()))
+            self.table.setCellWidget(row_index, 2, model_combo)
 
             effort_combo = QtWidgets.QComboBox()
             effort_combo.addItems(list(EFFORTS))
@@ -98,12 +125,12 @@ class RolesPage(QtWidgets.QWidget):
         for row_index in range(self.table.rowCount()):
             role_item = self.table.item(row_index, 0)
             provider_combo = self.table.cellWidget(row_index, 1)
-            model_item = self.table.item(row_index, 2)
+            model_combo = self.table.cellWidget(row_index, 2)
             effort_combo = self.table.cellWidget(row_index, 3)
             table.append({
                 "role": role_item.text() if role_item else "",
                 "provider": provider_combo.currentText() if provider_combo else "",
-                "model": model_item.text() if model_item else "",
+                "model": model_combo.currentText().strip() if model_combo else "",
                 "effort": effort_combo.currentText() if effort_combo else "",
             })
         settings_manager.instance().set_role_table(table)
