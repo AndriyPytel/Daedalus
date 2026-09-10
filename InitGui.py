@@ -1,5 +1,10 @@
 """
 FreeCadCopilot - GUI Initialization
+
+FreeCAD runs this file with exec(compile(source, path, "exec")) from inside a
+function of FreeCADGuiInit. There is no __file__, and everything defined here
+is a local of that call, so initialize() cannot look itself up by name: the
+addon directory is read off its code object at module level and handed in.
 """
 import FreeCADGui as Gui
 import FreeCAD as App
@@ -7,7 +12,7 @@ import traceback
 import os
 import sys
 
-def initialize():
+def initialize(addon_path):
     """
     This function is called by FreeCAD when the GUI is initialized.
     It sets up the system path, runs the dependency check, and installs the
@@ -17,7 +22,6 @@ def initialize():
     
     try:
         # 1. Register icon path
-        addon_path = os.path.dirname(os.path.abspath(__file__))
         sys.path.insert(0, os.path.join(addon_path, "src"))
         sys.path.insert(0, os.path.join(addon_path, "Mod"))
         sys.path.insert(0, addon_path)
@@ -83,5 +87,4 @@ def initialize():
         App.Console.PrintError(traceback.format_exc())
         App.Console.PrintError("=" * 50 + "\n")
 
-# Standard execution path when FreeCAD loads the addon's GUI
-initialize()
+initialize(os.path.dirname(os.path.abspath(initialize.__code__.co_filename)))
