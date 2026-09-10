@@ -613,16 +613,15 @@ class LoopWorker(QtCore.QObject):
 
     def _get_sdk_client(self):
         """
-        The SDK Client for this Document: created once per Document, reused
-        for every Intent on it. The LLM inside is lazy and dropped when the
-        model changes so the next run rebuilds it from settings.
+        The SDK Client for this Document, its own `Kernel()` (`Client`'s
+        default) and all: created once, reused for every Intent, and dropped
+        only when the model changes so the next run rebuilds it from settings.
         """
         if self.sdk_client is None:
             from bridge.main_thread import on_main_thread
-            from copilot.sdk import Client, NO_KERNEL
+            from copilot.sdk import Client
             self.sdk_client = Client(
                 document=self._document,
-                kernel=NO_KERNEL,
                 confirm=self.ask.about_objects_we_do_not_own,
                 dispatch=on_main_thread)
         return self.sdk_client
@@ -746,10 +745,9 @@ class _SessionWorker(QtCore.QObject):
     stale widgets the next time it is shown. `pending_question` is the one
     live Ask this Session is blocked on, if any, so switching back to a
     Session parked at its Plan Gate puts the same card up again instead of
-    losing it. `queued` counts the Intents sent while a run was already in
-    flight: Qt holds each of them in this thread's own event queue until
-    `do_work` returns, so what the panel needs to know is only that the run
-    ending is not the last one.
+    losing it. One file, one Intent: a second Intent while `running` is
+    already `True` is refused at the composer (`CopilotPanel._document_busy`),
+    never queued here.
     """
 
     request_work = QtCore.Signal(str, object, str, object, str)
@@ -766,7 +764,6 @@ class _SessionWorker(QtCore.QObject):
         self.outstanding: list = []
         self.the_part_path: str = ""
         self.sent_attachments: list = []
-        self.queued = 0
         self.dirty = False
         self.pending_question = None
         self.thread.start()
@@ -1670,22 +1667,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def on_send(self):
         """
-        Sends the composer's text as an Intent.
+        Sends the composer's text as an Intent, or answers a waiting question.
 
-        While the Plan is waiting on a question the composer answers, this
-        answers it rather than starting a second run on the answer. The Session
-        is named after the attachment check and never before it: an Intent that
-        is turned away there never ran, and must not name the Session.
-
-        Sent while a run is in flight, the Intent waits behind it rather than
-        being refused: `request_work` is a queued connection to a worker thread
-        that is inside `do_work`, so Qt holds the call until that returns. The
-        transcript shows it as the user's own turn when its run starts, which
-        is where every Intent's bubble comes from.
-
-        The Session's last Part path travels with it automatically, unless this
-        Intent brings its own attachment — a new drawing replaces what was
-        carried rather than adding to it.
+        One file, one Intent: a Document already running -- this Session's or
+        another bound to the same Document -- refuses the Intent at the
+        composer, before the Session is named or the composer cleared. The
+        Part path a run last read or wrote travels unless this one brings its own.
         """
         if self._answers_to_enter is not None:
             self._answer_with(self._answers_to_enter)
@@ -1711,6 +1698,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
         bundle = self._worker_for(log)
         self._bind_document(bundle)
 
+        if self._document_busy(bundle):
+            self.add_chat_widget(AssistantMessageWidget(
+                "This Document already has a run in flight. Wait for it to "
+                "finish, or work from a different open Document."))
+            return
+
         self._name_session(index, session["session"], intent)
 
         attachments = self.chip_bar.get_and_clear()
@@ -1721,18 +1714,27 @@ class CopilotPanel(QtWidgets.QDockWidget):
             self._empty_state = None
         self.user_input.clear()
 
-        queued = bundle.running
-        if queued:
-            bundle.queued += 1
-        else:
-            self._reset_render_state()
-
+        self._reset_render_state()
         bundle.running = True
         self._set_running(True)
-        self._queue_widget.now("Queued behind the run in flight…" if queued else "Planning…")
+        self._queue_widget.now("Planning…")
         outstanding = list(bundle.outstanding)
         the_part_path = "" if attachments else bundle.the_part_path
         bundle.request_work.emit(intent, attachments, log, outstanding, the_part_path)
+
+    def _document_busy(self, bundle: _SessionWorker) -> bool:
+        """
+        Whether *bundle*'s own Document already has a run in flight -- this
+        Session's, or another Session bound to the same live Document. An
+        unbound Document (`None`) never collides with another unbound one.
+        """
+        if bundle.running:
+            return True
+        doc = bundle.worker.document
+        if doc is None:
+            return False
+        return any(other is not bundle and other.running and other.worker.document is doc
+                   for other in self._workers.values())
 
     def _name_session(self, index: int, session_id, intent: str):
         """
@@ -2752,8 +2754,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         bundle = self._workers.get(log)
         if bundle is None:
             return
-        bundle.running = bundle.queued > 0
-        bundle.queued = max(0, bundle.queued - 1)
+        bundle.running = False
         self.upload_widget.discard(*bundle.sent_attachments)
         bundle.sent_attachments = []
         bundle.outstanding = list(getattr(result, "unmet", None) or ())
@@ -2763,11 +2764,6 @@ class CopilotPanel(QtWidgets.QDockWidget):
             return
 
         self._the_thinking_stops()
-        if bundle.running:
-            self._reset_render_state()
-            self._queue_widget.now("Planning…")
-            return
-
         self._set_running(False)
         if result is not None and result.ok and result.unmet:
             self._queue_widget.now(

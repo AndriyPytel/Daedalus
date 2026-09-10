@@ -118,8 +118,7 @@ def test_the_composer_grows_with_the_text_then_scrolls(panel):
 
 def test_send_stays_while_a_run_is_going(panel):
     """
-    Send is how the next Intent is queued behind the run in flight, so it is
-    there for the length of the run and Stop comes up beside it.
+    Stop stays up for the length of a run in flight, beside Send.
     """
     panel._set_running(True)
     assert (panel.stop_button.isVisible(), panel.send_button.isVisible()) == (True, True)
@@ -177,11 +176,11 @@ def test_the_composer_answers_a_gate_without_being_switched_on_for_it(panel, mon
     panel._set_running(False)
 
 
-def test_an_intent_sent_during_a_run_waits_behind_it(panel, monkeypatch):
+def test_a_second_intent_on_a_running_document_is_refused(panel, monkeypatch):
     """
-    The second Intent is not refused and does not start a second run: Qt holds
-    the queued call until the worker's `do_work` returns, and the panel only
-    has to know the run that just ended was not the last.
+    One file, one Intent (FCC-375): a second Intent sent while this Session's
+    Document already has a run in flight is refused at the composer, with a
+    reason, rather than queued behind it.
     """
     import types
 
@@ -198,17 +197,50 @@ def test_an_intent_sent_during_a_run_waits_behind_it(panel, monkeypatch):
     panel.on_send()
     QT_APP.processEvents()
 
-    assert sent == ["make the base plate", "and a lug on the right"]
-    assert bundle.queued == 1
+    assert sent == ["make the base plate"], "the second Intent must never start a run"
+    assert panel.user_input.toPlainText() == "and a lug on the right", \
+        "a refused Intent is left in the composer, not thrown away"
+    assert "run in flight" in _said_in(panel)
 
     panel.on_run_finished(types.SimpleNamespace(ok=True, unmet=[], the_part_path=""), log)
 
-    assert bundle.running is True, "the queued Intent still has a run to come"
-    assert panel._running is True
+    assert (bundle.running, panel._running) == (False, False)
 
-    panel.on_run_finished(types.SimpleNamespace(ok=True, unmet=[], the_part_path=""), log)
+    panel.on_send()
+    QT_APP.processEvents()
+    assert sent == ["make the base plate", "and a lug on the right"], \
+        "the same Intent sends once the Document's run has ended"
 
-    assert (bundle.running, bundle.queued, panel._running) == (False, 0, False)
+
+def test_two_sessions_on_the_same_document_cannot_both_run(panel, monkeypatch):
+    """
+    One file, one Intent holds across Sessions, not only within one: a second
+    Session bound to the same Document the first is still running against is
+    refused too, and neither of its `snapshot`/`start_run` calls is ever
+    reached (FCC-378) -- `on_send` never gets past `_document_busy`.
+    """
+    import types
+
+    from ui.copilot_panel import _SessionWorker, EventBridge, AskTheUser
+
+    first_log = panel._current_log()
+    first = panel._worker_for(first_log)
+    monkeypatch.setattr(panel, "_bind_document", lambda bundle: None)
+    same_document = object()
+    first.worker._document = same_document
+
+    second = _SessionWorker(EventBridge(), AskTheUser())
+    second.worker._document = same_document
+    panel._workers["second-session"] = second
+
+    first.running = True
+    assert panel._document_busy(second) is True
+
+    first.running = False
+    assert panel._document_busy(second) is False
+
+    second.shut_down(grace_ms=100)
+    del panel._workers["second-session"]
 
 
 @pytest.mark.parametrize("status", [
@@ -3859,3 +3891,47 @@ def test_no_row_widens_the_column_past_its_viewport(panel):
 
     area = panel.chat_sessions.get_current_chat_history()
     assert area.widget().minimumSizeHint().width() <= area.viewport().width()
+
+
+def test_a_step_that_faults_ends_its_own_run_and_the_gui_survives(panel, monkeypatch):
+    """
+    FCC-378: a Step that faults must end its own run, not take the process
+    down with it. `send()` raising is `do_work`'s worst case -- it still has
+    to emit `finished` with no result and still has to call `pipeline.end_run`,
+    so the Document is unlocked and the panel is left usable for the next
+    Intent rather than stuck mid-run.
+    """
+    import types
+
+    from ui.copilot_panel import LoopWorker, EventBridge, AskTheUser
+
+    worker = LoopWorker(EventBridge(), AskTheUser())
+
+    ended = []
+
+    class _FakePipeline:
+        def start_run(self):
+            return None
+
+        def end_run(self):
+            ended.append(True)
+
+    class _FakeClient:
+        def __init__(self):
+            self.pipeline = _FakePipeline()
+            self.dispatch = lambda func, timeout=None: func()
+
+        def send(self, *args, **kwargs):
+            raise RuntimeError("a Step faulted inside the kernel")
+
+    fake_registry = types.SimpleNamespace(call=lambda *a, **k: {"document": ""})
+    monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
+    monkeypatch.setattr("copilot.sdk.build_registry", lambda **kwargs: fake_registry)
+
+    finished = []
+    worker.finished.connect(lambda result, transcript: finished.append(result))
+
+    worker.do_work("break something", [], "")
+
+    assert finished == [None], "a faulting Step still ends the run rather than raising out"
+    assert ended == [True], "end_run must still run so the Document is left unlocked"

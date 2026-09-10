@@ -293,7 +293,6 @@ Mod/ui/copilot_panel.py::on_owned_objects
 Mod/ui/copilot_panel.py::on_plan_gate
 Mod/ui/copilot_panel.py::on_revision
 Mod/ui/copilot_panel.py::on_run_finished
-Mod/ui/copilot_panel.py::on_send
 Mod/ui/copilot_panel.py::slotActivateDocument
 Mod/ui/copilot_panel.py::slotDeletedDocument
 Mod/ui/copilot_panel.py::switch_session
