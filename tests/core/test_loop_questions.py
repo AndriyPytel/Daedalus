@@ -58,6 +58,7 @@ from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
 from tests.loop_helpers import (
     RENDER_PNG,
+    StubKernel,
     DESCRIPTION,
     read,
     settled,
@@ -179,7 +180,7 @@ def test_with_no_attachment_a_question_is_settled_by_plan_itself():
 
     assert result.ok, result.reason
     assert asked == []
-    assert len(llm.calls) == 6, "a turn was spent re-reading a drawing that is not there"
+    assert len(llm.calls) == 7, "a turn was spent re-reading a drawing that is not there"
 
 
 def test_a_question_alongside_steps_is_still_a_plan():
@@ -389,7 +390,7 @@ def test_a_refuted_suspicion_fails_assertion_and_replans_then_passes():
     assert events.first(PLAN_REVISED).data["because"] == "the acceptance checks failed"
     assert events.first(REVIEW_VERDICT).data["verdict"] == "pass"
 
-    first_assertion_request = json.loads(llm.calls[4][-1]["content"])
+    first_assertion_request = json.loads(llm.calls[5][-1]["content"])
     assert raised + " (suspected)" in first_assertion_request["acceptance"]
 
 
@@ -408,7 +409,7 @@ def test_an_empty_acceptance_list_costs_no_llm_call():
 
     assert result.ok
     assert result.unmet == [], "a clean Document must not gate the verdict"
-    assert len(llm.calls) == 5, "an extra provider call on a Plan with nothing to check"
+    assert len(llm.calls) == 6, "an extra provider call on a Plan with nothing to check"
     assert events.first(ASSERTION) is None
     ran = [args["code"] for name, args in tools.calls if name == "check_assertions"]
     assert len(ran) == 1 and "BOPAlgo_SelfIntersect" in ran[0], \
@@ -462,8 +463,8 @@ def test_failed_assertions_return_to_plan_and_never_to_execute():
         checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED),
                 SELF_INTERSECTION_HELD, None])
 
-    to_plan = json.dumps(llm.calls[5])
-    to_execute = json.dumps(llm.calls[6])
+    to_plan = json.dumps(llm.calls[6])
+    to_execute = json.dumps(llm.calls[7])
 
     assert "13.0 mm across the flats" in to_plan
     assert "AssertionError" in to_plan
@@ -641,7 +642,7 @@ def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
     assert result.ok
     assert events.first(PLAN_REVISED) is None, "a broken check sent Plan to rebuild"
     assert len([c for c in tools.calls if c[0] == "check_assertions"]) == 3
-    assert "AttributeError" in json.dumps(llm.calls[5])
+    assert "AttributeError" in json.dumps(llm.calls[6])
 
 
 def test_a_check_that_cannot_be_written_lets_review_judge_alone():
@@ -675,7 +676,7 @@ def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
     llm = ScriptedLLMClient([
         design_reply(A_NUT),
         planning_the_nut("Make it"),
-        code_reply("make()"),
+        *code_reply("make()"),
         suspect_reply(),
         assertion_reply("bad_check()"),
         assertion_reply("bad_check()"),
@@ -696,7 +697,7 @@ def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
         return any(name == "check_assertions" for name, _ in tools.calls)
 
     result = run("Make a nut", llm=llm, tools=tools.registry, events=events,
-                 cancelled=cancelled, attachments=[RENDER_PNG])
+                 cancelled=cancelled, attachments=[RENDER_PNG], kernel=StubKernel())
 
     assert result.blocked
     assert "Stopped by you" in result.reason
@@ -977,8 +978,10 @@ def test_an_entry_no_step_ever_landed_for_is_still_unplanned():
         plan_reply(*[{"do": "Pad part %d" % (number + 1), "satisfies": [entry]}
                      for number, entry in enumerate(BUILT)],
                    {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
-        json.dumps({"declare": {"steps": [{"step": number, "code": "part%d()" % number,
-                               "label": "Part %d" % number} for number in range(1, 4)],
+        *[json.dumps({"code": "part%d()" % number, "step": number, "label": "Part %d" % number})
+          for number in range(1, 4)],
+        json.dumps({"declare": {"steps": [{"step": number, "label": "Part %d" % number}
+                               for number in range(1, 4)],
                     "unbuildable": "the fourth pad has nothing to stand on"}}),
         plan_reply({"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
         plan_reply({"do": "Pad part 4", "satisfies": [BUILT[3]]},
@@ -1306,7 +1309,7 @@ def test_an_inherited_failure_is_checked_again_at_the_end_of_the_new_run():
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         outstanding=inherited)
 
-    checked = json.loads(llm.calls[4][-1]["content"])
+    checked = json.loads(llm.calls[5][-1]["content"])
 
     assert checked["acceptance"] == ACCEPTANCE + inherited
 
@@ -1316,7 +1319,7 @@ def test_an_inherited_entry_the_new_run_already_lists_is_not_listed_twice():
         planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
         outstanding=[ACCEPTANCE[0]])
 
-    assert json.loads(llm.calls[4][-1]["content"])["acceptance"] == ACCEPTANCE
+    assert json.loads(llm.calls[5][-1]["content"])["acceptance"] == ACCEPTANCE
 
 
 def test_an_inherited_failure_that_now_passes_is_no_longer_outstanding():

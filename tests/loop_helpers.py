@@ -1005,8 +1005,10 @@ def _four_steps_applied_then_a_handback():
         plan_reply(*[{"do": "Pad part %d" % (number + 1), "satisfies": [entry]}
                      for number, entry in enumerate(BUILT)],
                    {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
-        json.dumps({"declare": {"steps": [{"step": number, "code": "part%d()" % number,
-                               "label": "Part %d" % number} for number in range(1, 5)],
+        *[json.dumps({"code": "part%d()" % number, "step": number, "label": "Part %d" % number})
+          for number in range(1, 5)],
+        json.dumps({"declare": {"steps": [{"step": number, "label": "Part %d" % number}
+                               for number in range(1, 5)],
                     "unbuildable": "the bore misses the web as planned"}}),
         plan_reply({"do": "Bore the central hole from the top face",
                     "satisfies": list(LEFT_TO_BUILD)}),
