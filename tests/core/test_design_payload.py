@@ -165,6 +165,8 @@ def test_the_first_pass_does_not_grow_past_its_measured_baseline():
     """
     report = {}
     for name, path in ATTACHMENTS.items():
+        if not os.path.exists(path):
+            pytest.skip("drawing not found: %s; set FCC_MODELMANIA_DIR" % path)
         first_pass = _first_pass_report(path)
         second_pass = _first_pass_report(path)
         report[name] = {"first_pass": first_pass, "second_pass": second_pass}

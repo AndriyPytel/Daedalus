@@ -83,6 +83,7 @@ from tests.loop_helpers import (
     _execute_attempts,
     scripted,
     StubKernel,
+    needs_drawing,
     MODEL_MANIA,
     THE_CLAMP_READ_OFF_ONE_VIEW,
     _pictures_shown,
@@ -865,6 +866,7 @@ def test_design_is_given_the_line_work_of_the_views_in_millimetres():
     page-sized call is narrowed to its own pictures and the printed-callout
     list, and the drawn line work is sheet-wide, not one page's.
     """
+    needs_drawing(MODEL_MANIA)
     llm = ScriptedLLMClient([*_first_pass_turns(A_DATUM, [MODEL_MANIA]),
                              plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
