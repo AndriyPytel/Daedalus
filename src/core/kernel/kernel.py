@@ -9,9 +9,10 @@ as a traceback the assistant can correct against (ADR-0002).
 A Step's code runs directly against the kernel's live Document. A Step that
 succeeds is checkpointed (`saveCopy`, no reopen); a Step that fails leaves
 the Document exactly as it was, by reopening the checkpoint. `check` called
-with no `document` argument at all continues the kernel's running session;
-handing it a `document` -- a path, or explicit `None` for an empty Document
--- is a fresh handoff that starts the session over.
+with no `document` argument at all continues the kernel's running session,
+resuming on the last checkpoint rather than the blank Document a restart
+brings up, or refusing where no checkpoint exists yet (ADR-0027); handing it
+a `document` -- a path, or explicit `None` -- is always a fresh handoff.
 
 Nothing here imports FreeCAD. The parent is the addon's process; the only
 FreeCAD in play is the child's.
@@ -129,6 +130,8 @@ class Kernel:
         self._reader = None
         self._stderr = None
         self._draining = None
+        self._checkpoint = None
+        self._needs_resume = False
 
     @property
     def alive(self):
@@ -190,9 +193,11 @@ class Kernel:
         A replacement that cannot be started is a request without an answer,
         not an exception thrown at a caller who asked for a Step: the Step
         may cost a Step and never the run. The kernel stays dead and the next
-        request tries again.
+        request tries again. `_needs_resume` marks the replacement as blank,
+        for `check()` to resume from checkpoint rather than continue onto it.
         """
         self.kill()
+        self._needs_resume = True
         try:
             self.start()
         except Exception:
@@ -210,10 +215,20 @@ class Kernel:
         """
         Run *code* as one Step in the kernel.
 
-        `document` not given: continues the kernel's own session.
-        `document` given: fresh handoff from that path.
+        `document` not given: continues the kernel's own session, resuming
+        on the last checkpoint if the worker restarted since (ADR-0027) --
+        or refusing if no checkpoint exists yet to resume onto.
+        `document` given: fresh handoff from that path, always honoured.
         Returns a KernelResult. Never raises for anything the code did.
         """
+        if document is _CONTINUE and self._needs_resume:
+            if self._checkpoint is None:
+                return KernelResult(ok=False, traceback=(
+                    "The kernel died before any Step had landed, so there is no "
+                    "checkpoint to resume from. Hand check() an explicit document "
+                    "to start a session."))
+            document = self._checkpoint
+
         request = {"code": code}
         if document is not _CONTINUE:
             request["document"] = document
@@ -226,6 +241,8 @@ class Kernel:
         response, why = self._ask(request, timeout or self.timeout, "the Step")
         if response is None:
             return KernelResult(ok=False, traceback=why)
+        self._checkpoint = response.get("checkpoint") or self._checkpoint
+        self._needs_resume = False
         return KernelResult.from_response(response)
 
     def reading(self, request, timeout=None):

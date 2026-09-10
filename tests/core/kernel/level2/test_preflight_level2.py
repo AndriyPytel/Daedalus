@@ -414,11 +414,18 @@ def test_an_infinite_loop_is_killed_on_timeout(fresh):
 
 
 def test_the_worker_still_works_after_it_died(fresh):
+    """
+    "Still works" now means the replacement is reachable and answers
+    honestly, not that it serves an empty Document as a continuing session
+    (FCC-370): before any Step has landed there is no checkpoint to resume,
+    so the next call is refused rather than pretending nothing happened.
+    """
     fresh.check(CRASHING_CODE)
 
     result = fresh.check("doc.addObject('Part::Box', 'Box')")
 
-    assert result.ok, result.traceback
+    assert not result.ok
+    assert fresh.alive
 
 
 def test_worker_death_is_never_raised_at_the_caller(fresh):
@@ -426,7 +433,8 @@ def test_worker_death_is_never_raised_at_the_caller(fresh):
         result = fresh.check(CRASHING_CODE)
         assert not result.ok
 
-    assert fresh.check("pass").ok
+    assert not fresh.check("pass").ok
+    assert fresh.check("pass", document=None).ok
 
 
 def test_a_body_left_in_pieces_is_still_refused(warm):

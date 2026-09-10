@@ -4,13 +4,18 @@ Level 2 — the kernel's checkpoint contract, against a real headless FreeCAD.
 Per this ticket's own TESTING STRATEGY: a passing Step's checkpoint carries
 the new object, and a failing Step's reload leaves the prior checkpoint's
 object count unchanged -- both verified by reopening the checkpoint file
-from disk, not by reading the kernel's own claim about itself.
+from disk, not by reading the kernel's own claim about itself. Also here: a
+worker killed mid-run, or timed out, resumes the next Step on the last
+checkpoint rather than an empty Document, and a worker that dies before any
+Step landed is refused rather than served one.
 """
 import pytest
 
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
+
+CRASHING_CODE = "import ctypes; ctypes.string_at(0)"
 
 
 @pytest.fixture
@@ -120,3 +125,51 @@ def test_a_name_map_addition_from_a_failed_step_does_not_survive_the_reload(kern
 
     after = kernel.check("assert 'Extra' not in names, names")
     assert after.ok, after.traceback
+
+
+def test_a_worker_killed_mid_run_resumes_the_next_step_on_the_last_checkpoint(kernel):
+    first = kernel.check("doc.addObject('Part::Box', 'FromFirst')")
+    assert first.ok, first.traceback
+    doomed = kernel.pid
+
+    crashed = kernel.check(CRASHING_CODE)
+    assert not crashed.ok, "the crash should be reported as this Step's own failure"
+    assert kernel.pid != doomed, "the worker was not replaced"
+
+    second = kernel.check(
+        "assert doc.getObject('FromFirst') is not None, "
+        "'the resumed kernel does not see the checkpointed object'"
+    )
+
+    assert second.ok, second.traceback
+
+
+def test_a_timeout_resumes_the_next_step_on_the_last_checkpoint_too(kernel):
+    first = kernel.check("doc.addObject('Part::Box', 'FromFirst')")
+    assert first.ok, first.traceback
+    hung = kernel.pid
+
+    timed_out = kernel.check("while True:\n    pass", timeout=0.5)
+    assert not timed_out.ok
+    assert kernel.pid != hung, "the worker was not replaced"
+
+    second = kernel.check(
+        "assert doc.getObject('FromFirst') is not None, "
+        "'the resumed kernel does not see the checkpointed object'"
+    )
+
+    assert second.ok, second.traceback
+
+
+def test_a_crash_before_any_step_lands_is_refused_not_served_as_an_empty_session(kernel):
+    doomed = kernel.pid
+
+    crashed = kernel.check(CRASHING_CODE)
+    assert not crashed.ok
+    assert kernel.pid != doomed, "the worker was not replaced"
+
+    refused = kernel.check("doc.addObject('Part::Box', 'Box')")
+
+    assert not refused.ok, \
+        "an empty Document with no checkpoint behind it was served as if it were a session"
+    assert "checkpoint" in refused.traceback.lower()
