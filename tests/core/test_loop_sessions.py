@@ -80,6 +80,7 @@ from tests.loop_helpers import (
     drive,
     _turns_of,
     _execute_attempts,
+    StubKernel,
     MODEL_MANIA,
     THE_2023_CLAMP,
     _the_clamp_as_it_was_read,
@@ -229,11 +230,14 @@ def test_each_step_still_gets_its_own_started_event():
     assert [e.data["step"] for e in events.of(APPLIED)] == [1, 2]
 
 
-def test_a_preflight_failure_rewrites_the_failing_step_and_the_whole_tail():
+def test_a_regeneration_asks_for_the_failed_step_and_everything_unapplied():
     """
-    The code for Step N+1 was written assuming objects Step N was going to
-    create. Regenerating Step N alone breaks silently — at the *next* Step's
-    Preflight, not at this one. FCC-95.
+    Steps 2 and 3 were both declared and checkpointed inside the same kernel
+    session that landed Step 1 (FCC-A-53) -- but Step 2 never applied, and
+    Step 3's code was written in the kernel on top of objects Step 2 was
+    going to leave in the user's Document and never did. Discarding both and
+    asking for them again is correct, not merely cheap: nothing after the
+    failed Step has premises that survived it.
     """
     result, _, llm, tools = drive(
         [
@@ -378,8 +382,10 @@ def test_an_interior_gap_says_a_step_was_skipped_not_that_room_ran_out():
     result, events, _, _ = drive(
         [
             plan_reply("First", "Second", "Third"),
-            json.dumps({"declare": {"steps": [{"step": 1, "code": "first()"},
-                                  {"step": 3, "code": "third()"}]}}),
+            json.dumps({"code": "first()", "step": 1, "label": "Step"}),
+            json.dumps({"code": "third()", "step": 3, "label": "Step"}),
+            json.dumps({"declare": {"steps": [{"step": 1, "label": "Step"},
+                                                {"step": 3, "label": "Step"}]}}),
             code_reply("second()", "third()", first=2),
             suspect_reply(), verdict_reply("pass"),
         ],
@@ -438,27 +444,31 @@ def test_a_reply_with_nothing_usable_says_so_in_the_traceback():
     assert "not sure what to build here" in failure.data["traceback"]
 
 
-def test_the_rendering_of_what_was_said_is_capped_not_the_reply():
+def test_what_reaches_plan_is_capped_whatever_shape_the_reply_took():
     """
-    An Execute reply carries the code for a whole Plan. What travels in the
-    traceback is the shape of the reply, not its content — the numbers, never
-    the code — so a Step's worth of code arriving beside the one left out
-    cannot make the traceback the size of the reply that produced it.
+    A reply carries no code of its own (FCC-A-53), so it cannot balloon the
+    traceback with a Step's worth of it the way ADR-0021's whole-Plan reply
+    could — but it can still name far more Steps than it ever wrote code for,
+    and what travels in the traceback is the shape of that claim, not its
+    size.
     """
     result, events, _, _ = drive(
         [
             plan_reply("First", "Second"),
-            json.dumps({"declare": {"steps": [{"step": 1, "code": "x" * 5000, "label": "Step"}]}}),
-            code_reply("second()", first=2),
+            json.dumps({"declare": {"steps": [
+                {"step": number, "label": "Step"} for number in range(1, 300)]}}),
+            code_reply("first()", "second()"),
             suspect_reply(), verdict_reply("pass"),
         ],
     )
 
     assert result.ok
     failure = events.first(PREFLIGHT_FAILED)
-    assert failure.data["step"] == 2
-    assert "x" * 100 not in failure.data["traceback"]
-    assert len(failure.data["traceback"]) < 500
+    assert failure.data["step"] == 1
+    assert "299" not in failure.data["traceback"], \
+        "the tail of a 299-Step claim reached the traceback uncapped"
+    assert len(failure.data["traceback"]) < 600, \
+        "the prefix plus the 300-char cap on what was said should not run away"
 
 
 def test_a_step_that_lands_is_unaffected_by_what_the_reply_said():
@@ -494,7 +504,7 @@ def test_the_reason_a_recompute_failed_reaches_the_next_attempts_request():
         applies=[failed("Pad (PartDesign::Pad): Linked shape object is empty"), None],
     )
 
-    retry = json.loads(llm.calls[3][-1]["content"])
+    retry = _execute_attempts(llm)[1]
 
     assert retry["your_failed_attempts_at_this_step"] == [
         {"code": "pad_one()",
@@ -651,7 +661,8 @@ def test_obsolete_beside_code_does_not_throw_that_code_away():
     """
     result, events, _, tools = drive([
         plan_reply("Pad the outline", "Fillet the marked edges"),
-        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+        json.dumps({"code": "pad()", "step": 1, "label": "Pad"}),
+        json.dumps({"declare": {"steps": [{"step": 1, "label": "Pad"}],
                     "obsolete": "Step 2 does not say which edges are marked."}}),
         plan_reply("Fillet the four corner edges"),
         code_reply("fillet()"),
@@ -674,7 +685,8 @@ def test_a_step_left_out_with_a_reason_hands_back_without_spending_attempts():
     """
     result, events, llm, tools = drive([
         plan_reply("Pad the outline", "Pocket the hex recess"),
-        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+        json.dumps({"code": "pad()", "step": 1, "label": "Pad"}),
+        json.dumps({"declare": {"steps": [{"step": 1, "label": "Pad"}],
                     "unbuildable": "Step 2 cuts a hex inside a bore of the same "
                                    "diameter, so it moves no material."}}),
         plan_reply("Pocket a wider hex recess"),
@@ -684,7 +696,7 @@ def test_a_step_left_out_with_a_reason_hands_back_without_spending_attempts():
 
     assert result.ok
     assert tools.applied_codes() == ["pad()", "hex()"]
-    assert len(_turns_of(llm, "execute")) == 2, "the left-out Step was written again"
+    assert len(_execute_attempts(llm)) == 2, "the left-out Step was written again"
     assert events.first(PREFLIGHT_FAILED) is None
     revised = events.first(PLAN_REVISED)
     assert "moves no material" in revised.data["reason"]
@@ -715,7 +727,7 @@ def test_an_unbuildable_reply_on_a_retry_hands_back_instead_of_being_asked_again
 
     assert result.ok
     assert tools.applied_codes() == ["fillet_root()", "fillet_root_smaller()"]
-    first_plan, retry, after_replan = _turns_of(llm, "execute")
+    first_plan, retry, after_replan = _execute_attempts(llm)
     assert "your_failed_attempts_at_this_step" not in first_plan
     assert retry["your_failed_attempts_at_this_step"] == [
         {"code": "fillet_root()",
@@ -767,8 +779,8 @@ def test_review_and_assertion_are_both_given_the_whole_description():
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
-    to_review = json.loads(llm.calls[3][-1]["content"][0]["text"].split("\n\n")[0])
-    to_assertion = json.loads(llm.calls[4][-1]["content"])
+    to_review = json.loads(llm.calls[4][-1]["content"][0]["text"].split("\n\n")[0])
+    to_assertion = json.loads(llm.calls[5][-1]["content"])
 
     assert to_assertion["the_document_as_it_now_stands"] == DESCRIPTION
     assert to_review["the_document_as_it_now_stands"] == DESCRIPTION
@@ -797,7 +809,7 @@ def test_review_is_told_when_there_is_no_render_to_judge_by():
                                 "description": {"features": [], "geometry": {}}}])
     llm = scripted([plan_reply("Only"), code_reply("sketch()"), suspect_reply(), verdict_reply("pass")])
 
-    run("Sketch a square", llm=llm, tools=tools.registry)
+    run("Sketch a square", llm=llm, tools=tools.registry, kernel=StubKernel())
 
     content = llm.calls[-1][-1]["content"]
     assert not [b for b in content if b.get("type") == "image_url"]
