@@ -55,6 +55,7 @@ _PHASE_VOCABULARY = {
     REVIEW_SUSPECT_PHASE: ("The artefacts are English",),
     REVIEW_PHASE: ("The artefacts are English",),
     "contract_correction": (),
+    "budget_last_call": (),
 }
 
 

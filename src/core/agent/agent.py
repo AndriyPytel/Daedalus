@@ -31,6 +31,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=None,
     working_kernel = kernel
     checkpoints = []
     first_step = True
+    last_call = False
     try:
         text = _say(session, llm, task, phase=phase, stream=stream)
         while True:
@@ -50,7 +51,12 @@ def run_phase(phase, working_dir, sources, llm, task, document=None,
                 if supervisor is not None:
                     supervisor.record_turn()
                     if supervisor.outcome:
-                        raise AgentGaveUp("%s ran out of budget before declaring" % phase)
+                        if last_call:
+                            raise AgentGaveUp("%s ran out of budget before declaring" % phase)
+                        last_call = True
+                        text = _say(session, llm, prompt("budget_last_call"),
+                                    phase=phase, stream=stream)
+                        continue
                 if working_kernel is None:
                     working_kernel = Kernel()
                 step_document = document if first_step else _NO_DOCUMENT
@@ -63,6 +69,11 @@ def run_phase(phase, working_dir, sources, llm, task, document=None,
                 continue
             if supervisor is not None:
                 supervisor.record_turn()
+                if supervisor.outcome and not last_call:
+                    last_call = True
+                    text = _say(session, llm, prompt("budget_last_call"),
+                                phase=phase, stream=stream)
+                    continue
                 if supervisor.outcome:
                     if "_malformed" in message:
                         raise AgentGaveUp(
@@ -170,6 +181,8 @@ def _parsed(text):
 def _feedback(result):
     """What the agent's next turn is told about the Step it just ran."""
     payload = {"ok": result.ok, "checkpoint": result.checkpoint}
+    if result.stdout:
+        payload["stdout"] = result.stdout
     if result.ok:
         touched = set(result.created) | set(result.modified)
         geometry = {name: g for name, g in result.geometry.items() if name in touched}

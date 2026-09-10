@@ -33,7 +33,9 @@ shutdown message: the parent kills the process rather than asking it to go.
 "__main__", and importing this module as `core.kernel.kernel_worker` for its
 `SENTINEL` must not start serving, so both names are named at the foot.
 """
+import contextlib
 import difflib
+import io
 import json
 import linecache
 import os
@@ -592,6 +594,34 @@ _IDLE_CAUSE_MESSAGE = {
 }
 
 
+STDOUT_LIMIT = 4000
+
+
+def _capturing():
+    """
+    Somewhere for a Step's own output to go that is still a real text stream:
+    `sys.stdout.buffer.write` is what a Step is free to call, and a bare
+    `StringIO` has no `buffer` at all.
+    """
+    return io.TextIOWrapper(io.BytesIO(), encoding="utf-8", errors="replace",
+                            write_through=True)
+
+
+def _printed(said):
+    """
+    What a Step's code wrote to stdout, capped and marked where it was cut.
+
+    A Step's print is the one channel an agent has for looking at the Document
+    -- its answer says what changed, not what is there -- and the one field of
+    that answer the model can grow without limit.
+    """
+    said.flush()
+    text = said.buffer.getvalue().decode("utf-8", "replace")
+    if len(text) <= STDOUT_LIMIT:
+        return text
+    return text[:STDOUT_LIMIT] + "\n...cut here, %d characters in all" % len(text)
+
+
 def _measured(namespace):
     """
     An assertion script's own `held` and `failed` lists, read back out of
@@ -825,8 +855,10 @@ def run_step(request):
     namespace["names"] = names
 
     touched = _Touched(doc)
+    said = _capturing()
     try:
-        response = _run_step_body(doc, namespace, touched, request)
+        with contextlib.redirect_stdout(said):
+            response = _run_step_body(doc, namespace, touched, request)
     except AssertionError as exc:
         response = {"ok": False, "traceback": trimmed_traceback(exc)}
         held, failed = _measured(namespace)
@@ -836,6 +868,9 @@ def run_step(request):
             response["failed"] = failed
     except BaseException as exc:
         response = {"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)}
+    printed = _printed(said)
+    if printed:
+        response["stdout"] = printed
 
     if response.get("ok"):
         if not ephemeral:
