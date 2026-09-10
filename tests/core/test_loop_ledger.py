@@ -81,6 +81,8 @@ from tests.loop_helpers import (
     _system_messages,
     _turns_of,
     _execute_attempts,
+    scripted,
+    StubKernel,
     MODEL_MANIA,
     THE_CLAMP_READ_OFF_ONE_VIEW,
     _pictures_shown,
@@ -337,7 +339,7 @@ def test_a_step_that_never_failed_any_other_way_tells_plan_to_change_the_step():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL)] * 3, budgets=Budgets(attempts_per_step=3))
 
-    to_plan = json.dumps(llm.calls[5])
+    to_plan = json.dumps(_turns_of(llm, "plan")[1])
 
     assert "failed the same way" in to_plan
     assert "Rewording it will send Execute back at the same wall" in to_plan
@@ -355,7 +357,7 @@ def test_a_step_that_failed_variously_does_not_tell_plan_to_change_the_step():
     ], applies=[failed(NO_MATERIAL), failed(IN_PIECES), failed(NO_MATERIAL)],
        budgets=Budgets(attempts_per_step=3))
 
-    assert "Rewording it" not in json.dumps(llm.calls[4])
+    assert "Rewording it" not in json.dumps(_turns_of(llm, "plan")[1])
 
 
 
@@ -504,7 +506,7 @@ def test_the_ledger_survives_a_step_landing_and_reaches_the_next_steps_prompt():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(NO_MATERIAL), None, failed("boom")])
 
-    step_2_retry = _system_messages(llm)[4]
+    step_2_retry = _system_messages(llm)[8]
     assert "Cut the hooks" in step_2_retry
     assert "moved no material" in step_2_retry
 
@@ -534,7 +536,7 @@ def test_a_lint_rejection_fires_the_same_way_twice():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(rejected), failed(rejected)])
 
-    said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
+    said = _execute_attempts(llm)[2]["you_have_failed_this_the_same_way_twice"]
     assert "not valid Python" in said
 
 
@@ -547,7 +549,7 @@ def test_changed_nothing_fires_the_same_way_twice():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[failed(_CHANGED_NOTHING), failed(_CHANGED_NOTHING)])
 
-    said = json.loads(llm.calls[4][-1]["content"])["you_have_failed_this_the_same_way_twice"]
+    said = _execute_attempts(llm)[2]["you_have_failed_this_the_same_way_twice"]
     assert "Document is unchanged" in said
 
 
