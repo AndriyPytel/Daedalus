@@ -187,9 +187,10 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             {"code": a.code, "traceback": a.traceback} for a in attempts
         ]
         request["what_to_do_now"] = (
-            "Step %d failed and is not in the Document; the Steps before it are, and the "
-            "Document above is how they left it. Write Step %d again, and every Step after "
-            "it — the code you wrote for those assumed objects Step %d never created."
+            "Step %d has not landed; the Document above is exactly what is there right "
+            "now -- read it rather than assume what a failed attempt did or did not "
+            "leave behind. Write Step %d again, and every Step after it — the code you "
+            "wrote for those assumed objects Step %d never created."
             % (start + 1, start + 1, start + 1)
         )
         again = _the_same_way_twice(attempts)
@@ -198,6 +199,9 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         reference = _repair_reference(attempts)
         if reference:
             request["repair_reference"] = reference
+        passed = _last_code_that_passed_the_kernel(attempts)
+        if passed:
+            request["code_that_already_passed_the_kernel"] = passed
 
     looked = looks.still_true() if looks is not None else []
     if looked:
@@ -438,6 +442,19 @@ _REPAIR_REFERENCE = (
      "any check that measured a face count or a bounding dimension off the "
      "un-filleted Body: a radius that now fits changes both."),
 )
+
+
+def _last_code_that_passed_the_kernel(attempts):
+    """
+    The most recent attempt whose own traceback says it passed the kernel
+    and failed only against the real Document (FCC-291) -- lost otherwise
+    the moment a later, kernel-rejected rewrite pushes it out of
+    `your_failed_attempts_at_this_step`'s view of "what to try next".
+    """
+    for attempt in reversed(attempts):
+        if "passed the kernel" in (attempt.traceback or ""):
+            return attempt.code
+    return None
 
 
 def _repair_reference(attempts):

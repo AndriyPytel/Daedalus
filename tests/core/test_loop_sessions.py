@@ -1312,3 +1312,34 @@ def test_the_four_that_named_what_ended_the_run_stand_under_conflict():
         [core.A_CONFLICT] * 4
     assert all(at in under_conflict for at in NAMED_WHAT_ENDED_THE_RUN)
     assert "In conflict" not in _turns_of(llm, "plan")[0]["what_the_part_is"]
+
+
+def test_the_retry_request_does_not_lie_about_the_step_being_missing_and_carries_last_passing_code():
+    """
+    A Step whose code the kernel accepted, then the real Document rejected
+    (FCC-291's incident: a name collision on replay), used to be told flatly
+    "is not in the Document" -- false when the kernel session and the real
+    Document had already drifted apart -- and the code that passed was
+    dropped the moment a second, worse rewrite replaced it as "the last
+    attempt".
+    """
+    _, _, llm, _ = drive(
+        [
+            plan_reply("First", "Second"),
+            code_reply("first()", "second_v1()"),
+            code_reply("second_v2()", first=2),
+            code_reply("second_v3()", first=2),
+            suspect_reply(), verdict_reply("pass"),
+        ],
+        applies=[None,
+                 failed("The Step passed the kernel but failed against the real "
+                        "Document, so it was rolled back:\n\nboom"),
+                 failed("AttributeError: no Length on this")],
+    )
+
+    first_retry, second_retry = _execute_attempts(llm)[1:3]
+
+    assert "is not in the Document" not in first_retry["what_to_do_now"]
+    assert first_retry["code_that_already_passed_the_kernel"] == "second_v1()"
+    assert second_retry["code_that_already_passed_the_kernel"] == "second_v1()", \
+        "the code that passed the kernel was lost behind a later, worse rewrite"
