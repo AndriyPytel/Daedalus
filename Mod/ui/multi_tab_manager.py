@@ -63,6 +63,13 @@ class ChatSessionManager(QtWidgets.QWidget):
         The scroll animation is held on the scroll area because nothing else
         references it and Qt would otherwise collect it mid-flight.
 
+        Kinetic scrolling is not grabbed on the viewport: a QScroller holding
+        the left button takes the press before the labels do, so a drag over a
+        message pans the column instead of selecting its text, and it pans
+        sideways as well -- far enough that the Gate's Build button leaves the
+        panel and only another drag brings it back. The wheel and the bar
+        scroll this column.
+
         The gutter belongs to this column, not to each widget in it: SPACE_MD
         on all four sides, the way AI Elements' Conversation carries the
         padding its messages fill. Set on the widgets instead, the two add up
@@ -114,13 +121,6 @@ class ChatSessionManager(QtWidgets.QWidget):
 
         vbar.actionTriggered.connect(_the_user_took_over)
         vbar.rangeChanged.connect(_on_range_changed)
-
-        scroller = QtWidgets.QScroller.scroller(scroll.viewport())
-        props = scroller.scrollerProperties()
-        props.setScrollMetric(QtWidgets.QScrollerProperties.VerticalOvershootPolicy, QtWidgets.QScrollerProperties.OvershootAlwaysOff)
-        props.setScrollMetric(QtWidgets.QScrollerProperties.OvershootDragResistanceFactor, 1.0)
-        scroller.setScrollerProperties(props)
-        QtWidgets.QScroller.grabGesture(scroll.viewport(), QtWidgets.QScroller.LeftMouseButtonGesture)
 
         scroll.setStyleSheet("""
             QScrollArea {

@@ -2040,6 +2040,21 @@ def test_deleting_a_session_takes_its_transcript_with_it(panel, tmp_path):
     assert "doomed" not in [s["name"] for s in settings_manager.instance().get_sessions()]
 
 
+def test_nothing_grabs_the_left_button_off_the_transcript():
+    """
+    A QScroller on the viewport pans the column with the left button, which
+    takes the press before a message label can select its text and drags the
+    column sideways until the Gate's Build button is off the panel (FCC-320).
+    """
+    from conftest import QtWidgets
+    from ui import multi_tab_manager
+
+    manager = multi_tab_manager.ChatSessionManager()
+    _, area = manager.add_new_chat("scroller")
+
+    assert not QtWidgets.QScroller.hasScroller(area.viewport())
+
+
 def test_pruning_takes_the_chat_area_with_the_session(sessions_are_the_tests_own,
                                                       monkeypatch):
     """A page left behind would show the wrong Session's transcript (FCC-17)."""
