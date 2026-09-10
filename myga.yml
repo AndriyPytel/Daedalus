@@ -9,7 +9,8 @@ tracker: youtrack
 review_by: manager
 external_tracking: false
 permissions:
-  commit: allow
+  # auto: commit after every change that leaves the tests green, without asking
+  commit: auto
   merge_local: allow
   push: deny
   pull_request: deny
