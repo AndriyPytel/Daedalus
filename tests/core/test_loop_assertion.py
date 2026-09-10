@@ -59,6 +59,7 @@ from tests.loop_helpers import (
     _a_real_png,
     _a_real_pdf,
     RENDER_PNG,
+    StubKernel,
     read,
     settled,
     A_CUBE,
@@ -754,7 +755,7 @@ def test_a_pdf_that_cannot_be_rendered_here_still_goes_out_as_a_file_block():
     """
     drawing = _a_real_pdf()
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
+                             *code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools().registry, attachments=[drawing])
 
@@ -802,10 +803,10 @@ def test_a_pdf_rides_into_review_beside_the_render():
     """
     drawing = _a_real_pdf()
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
+                             *code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
-                 attachments=[drawing])
+                 attachments=[drawing], kernel=StubKernel())
 
     assert result.ok
     content = llm.calls[-1][-1]["content"]
@@ -839,10 +840,10 @@ def test_an_intent_with_no_attachments_sends_what_it_always_did():
 
 def test_an_attachment_that_has_been_moved_is_dropped_not_fatal():
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
+                             *code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools().registry,
-                 attachments=["/nowhere/gone.png", RENDER_PNG])
+                 attachments=["/nowhere/gone.png", RENDER_PNG], kernel=StubKernel())
 
     assert result.ok
     content = llm.calls[0][-1]["content"]
@@ -1061,7 +1062,7 @@ def test_a_revision_plans_from_the_same_description_and_does_not_read_again():
     ], attachments=[RENDER_PNG])
 
     assert len(events.of(DESIGN)) == 1
-    replan = json.loads(llm.calls[6][-1]["content"])
+    replan = json.loads(llm.calls[7][-1]["content"])
     assert replan["what_the_part_is"] == render(distilled(A_PART))
     assert replan["what_went_wrong_last_time"] == "not right"
 
@@ -1072,10 +1073,10 @@ def test_review_is_shown_the_drawing_beside_the_render():
     so "does this resemble what I was shown" was not a question it could ask.
     """
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
-                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
+                             *code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run("Build this bracket", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
-        attachments=[RENDER_PNG])
+        attachments=[RENDER_PNG], kernel=StubKernel())
 
     content = llm.calls[-1][-1]["content"]
     images = [block for block in content if block.get("type") == "image_url"]
@@ -1099,7 +1100,7 @@ def test_an_attachment_that_has_been_moved_does_not_break_review():
                      suspect_reply(), verdict_reply("pass")])
 
     result = run("Build this", llm=llm, tools=FakeTools(views=[RENDER_PNG]).registry,
-                 attachments=["/nowhere/gone.png"])
+                 attachments=["/nowhere/gone.png"], kernel=StubKernel())
 
     assert result.ok
     content = llm.calls[-1][-1]["content"]
@@ -1132,8 +1133,8 @@ def test_a_failed_verdict_returns_to_plan_and_never_to_execute():
         suspect_reply(), verdict_reply("pass"),
     ])
 
-    to_plan = json.dumps(llm.calls[5])
-    to_execute = json.dumps(llm.calls[6])
+    to_plan = json.dumps(llm.calls[6])
+    to_execute = json.dumps(llm.calls[7])
 
     assert "The box is 20mm, not 10mm." in to_plan
     assert "The box is 20mm, not 10mm." not in to_execute, "the verdict reached Execute"
