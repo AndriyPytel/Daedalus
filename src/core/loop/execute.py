@@ -463,14 +463,11 @@ def _the_same_way_twice(attempts):
 
 def _written(declarations, start):
     """
-    Every Step the kernel ran and the model declared, by Step number.
+    Every Step the kernel ran and declared, by Step number.
 
-    `declarations` is `run_phase`'s own record, in build order, of the Steps
-    that landed against the kernel's Document — the reply's own `steps` names
-    them again but carries no code of its own (FCC-A-53): the code and its
-    checkpoint live only here. The number a declaration carries wins over its
-    build position, and the position is only the fallback for one that
-    numbered nothing.
+    `declarations` is `run_phase`'s own record of what landed, code and
+    checkpoint included — a reply's `steps` names Steps again but carries
+    none of that (ADR-0027). A declared number wins over build position.
     """
     written = {}
     for position, entry in enumerate(declarations or (), start=start + 1):
