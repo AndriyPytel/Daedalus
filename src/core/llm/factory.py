@@ -116,12 +116,20 @@ def client_from_profiles():
 
 
 def client_from_roles():
-    """Build `RoleClient` from the settings table: one client per row, keyed by role."""
+    """
+    Build `RoleClient` from the settings table: one client per row, keyed by role.
+
+    A row naming a model no configured provider reports is dropped, not
+    raised: the table is seeded with defaults nobody chose, and the role then
+    answers from the caller's own model, as a missing row already does.
+    """
     from core.llm.roles import RoleClient
 
     sm = settings.instance()
-    roles = {
-        row["role"]: client_from_settings(row["model"], row.get("effort"))
-        for row in sm.get_role_table()
-    }
+    roles = {}
+    for row in sm.get_role_table():
+        try:
+            roles[row["role"]] = client_from_settings(row["model"], row.get("effort"))
+        except ValueError:
+            continue
     return RoleClient(roles=roles, caller=client_from_settings())

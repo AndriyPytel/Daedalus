@@ -57,3 +57,31 @@ def test_removing_a_roles_row_falls_the_phase_back_to_the_caller():
     client.roles.pop("design")
 
     assert client.for_phase("design") is caller
+
+
+def test_a_role_whose_model_no_provider_reports_falls_back_to_the_caller(monkeypatch):
+    """
+    The default table (`core.role_defaults`) names Anthropic models. A user on
+    the subscription provider has never chosen those, and their first Intent
+    used to die on the first row instead of running on the model they did
+    choose.
+    """
+    import types
+
+    from core.llm import factory
+
+    def build(model_id=None, effort=None):
+        if model_id == "claude-sonnet-5":
+            raise ValueError("'claude-sonnet-5' is not a model any configured "
+                             "provider reports.")
+        return ScriptedLLMClient([model_id or "caller"])
+
+    monkeypatch.setattr(factory, "client_from_settings", build)
+    monkeypatch.setattr(factory.settings, "instance", lambda: types.SimpleNamespace(
+        get_role_table=lambda: [{"role": "design", "model": "claude-sonnet-5"},
+                                {"role": "execute", "model": "opus"}]))
+
+    client = factory.client_from_roles()
+
+    assert client.for_role("design") is client.caller
+    assert client.for_role("execute") is not client.caller
