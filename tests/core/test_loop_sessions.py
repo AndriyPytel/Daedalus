@@ -79,6 +79,7 @@ from tests.loop_helpers import (
     scripted,
     drive,
     _turns_of,
+    _execute_attempts,
     MODEL_MANIA,
     THE_2023_CLAMP,
     _the_clamp_as_it_was_read,
@@ -122,8 +123,10 @@ def test_an_interior_gap_gets_no_free_continuation():
     result, events, _, _ = drive(
         [
             plan_reply("First", "Second", "Third"),
-            json.dumps({"declare": {"steps": [{"step": 1, "code": "first()"},
-                                  {"step": 3, "code": "third()"}]}}),
+            json.dumps({"code": "first()", "step": 1, "label": "Step"}),
+            json.dumps({"code": "third()", "step": 3, "label": "Step"}),
+            json.dumps({"declare": {"steps": [{"step": 1, "label": "Step"},
+                                              {"step": 3, "label": "Step"}]}}),
         ],
         budgets=Budgets(attempts_per_step=1, revisions=0),
     )
@@ -187,7 +190,7 @@ def test_the_whole_plan_is_written_in_one_call():
     assert result.ok
     assert tools.applied_codes() == ["first()", "second()", "third()"]
 
-    turns = _turns_of(llm, "execute")
+    turns = _execute_attempts(llm)
     assert len(turns) == 1, "Execute was asked more than once for a Plan that built"
     assert [s["step"] for s in turns[0]["steps"]] == [1, 2, 3]
     assert [s["do"] for s in turns[0]["steps"]] == ["First", "Second", "Third"]
@@ -206,7 +209,7 @@ def test_a_plan_that_needs_no_look_costs_no_look():
     ])
 
     looked = [e.data["name"] for e in events.of(TOOL_CALL)]
-    assert set(looked) == {"apply_step", "check_assertions"}
+    assert set(looked) == {"apply_step", "check_assertions", "execute"}
     assert not [name for name, _ in tools.calls if name in ("supported_types", "describe_type")]
 
 
@@ -245,7 +248,7 @@ def test_a_preflight_failure_rewrites_the_failing_step_and_the_whole_tail():
     assert result.ok
     assert tools.applied_codes() == ["first()", "second()", "second_again()", "third_again()"]
 
-    regeneration = _turns_of(llm, "execute")[1]
+    regeneration = _execute_attempts(llm)[1]
     assert [s["step"] for s in regeneration["steps"]] == [2, 3], \
         "the tail after the failing Step was not written again"
     assert regeneration["your_failed_attempts_at_this_step"] == [
@@ -269,7 +272,7 @@ def test_the_regeneration_is_written_against_the_document_as_it_stands():
         applies=[None, failed("boom")],
     )
 
-    regeneration = _turns_of(llm, "execute")[1]
+    regeneration = _execute_attempts(llm)[1]
     assert regeneration["document"]["objects"] == [{"name": "Box"}]
     assert regeneration["document"]["object_count"] == 1
 
@@ -296,7 +299,7 @@ def test_a_failure_at_every_step_costs_no_more_than_it_costs_today():
         applies=[failed("a"), None, failed("b"), None, failed("c"), None],
     )
 
-    assert len(_turns_of(llm, "execute")) == 4
+    assert len(_execute_attempts(llm)) == 4
 
 
 def test_a_step_that_applied_carries_none_of_its_failures_into_the_next_writing():
@@ -317,7 +320,7 @@ def test_a_step_that_applied_carries_none_of_its_failures_into_the_next_writing(
         applies=[failed("AttributeError: no Length on this"), None, failed("a different boom")],
     )
 
-    retry_of_first, retry_of_second = _turns_of(llm, "execute")[1:]
+    retry_of_first, retry_of_second = _execute_attempts(llm)[1:]
 
     assert "AttributeError: no Length on this" in json.dumps(retry_of_first)
     assert "AttributeError: no Length on this" not in json.dumps(retry_of_second), \
@@ -547,8 +550,10 @@ def test_a_revised_plan_does_not_reapply_steps_that_already_landed():
     result, events, llm, tools = drive([
         plan_reply("Pad the outline", "Fillet the marked edges",
                    "Drill the hole", "Chamfer the edge"),
-        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"},
-                              {"step": 2, "code": "fillet()", "label": "Fillet"}],
+        json.dumps({"code": "pad()", "step": 1, "label": "Pad"}),
+        json.dumps({"code": "fillet()", "step": 2, "label": "Fillet"}),
+        json.dumps({"declare": {"steps": [{"step": 1, "label": "Pad"},
+                              {"step": 2, "label": "Fillet"}],
                     "unbuildable": "Step 3 needs a hole diameter nobody supplied."}}),
         plan_reply("Pad the outline", "Fillet the marked edges",
                    "Drill a 6mm hole", "Chamfer the edge"),
@@ -567,7 +572,7 @@ def test_a_revised_plan_does_not_reapply_steps_that_already_landed():
     carried = [e.data["step"] for e in after if e.kind == APPLIED and e.data["step"] in (1, 2)]
     assert carried == [1, 2], "a carried Step was not marked applied on the second pass"
 
-    second_pass = _turns_of(llm, "execute")[-1]
+    second_pass = _execute_attempts(llm)[-1]
     assert [s["step"] for s in second_pass["steps"]] == [3, 4], \
         "Execute was asked to write Steps it had already applied"
 
@@ -580,7 +585,8 @@ def test_a_revised_plan_whose_first_step_differs_reexecutes_everything():
     """
     result, events, llm, tools = drive([
         plan_reply("Pad the outline", "Fillet the marked edges"),
-        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+        json.dumps({"code": "pad()", "step": 1, "label": "Pad"}),
+        json.dumps({"declare": {"steps": [{"step": 1, "label": "Pad"}],
                     "unbuildable": "Step 2 needs edges nobody named."}}),
         plan_reply("Pad a wider outline", "Fillet the named edges"),
         code_reply("pad_wider()", "fillet_named()"),
@@ -590,7 +596,7 @@ def test_a_revised_plan_whose_first_step_differs_reexecutes_everything():
     assert result.ok, result.reason
     assert tools.applied_codes() == ["pad()", "pad_wider()", "fillet_named()"]
 
-    second_pass = _turns_of(llm, "execute")[-1]
+    second_pass = _execute_attempts(llm)[-1]
     assert [s["step"] for s in second_pass["steps"]] == [1, 2], \
         "a Step that only reads differently was still treated as carried"
 
