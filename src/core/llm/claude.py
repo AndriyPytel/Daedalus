@@ -28,11 +28,10 @@ class Run:
     """
     The live `claude` processes one run's calls have spawned.
 
-    A run is whatever holds a `ClaudeCodeClient` for the length of one
-    Session's Intent -- `Mod/ui/copilot_panel.py :: LoopWorker` holds one, and
-    passes it to every client it builds so Stop, Abort and shutdown share the
-    one kill path (FCC-376, FCC-377) instead of `core/llm.py`'s old global
-    `_live`, which could only ever kill every run at once.
+    One per `ClaudeCodeClient`, so `kill` walking a role table or a
+    thinking/doing profile ends the processes of that client tree alone --
+    where `core/llm.py`'s global `_live` could only ever kill every run at
+    once, which is the whole of Stop and Abort's problem.
     """
 
     def __init__(self):
