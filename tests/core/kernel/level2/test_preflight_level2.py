@@ -415,10 +415,9 @@ def test_an_infinite_loop_is_killed_on_timeout(fresh):
 
 def test_the_worker_still_works_after_it_died(fresh):
     """
-    "Still works" now means the replacement is reachable and answers
-    honestly, not that it serves an empty Document as a continuing session
-    (FCC-370): before any Step has landed there is no checkpoint to resume,
-    so the next call is refused rather than pretending nothing happened.
+    A death with no checkpoint behind it leaves the replacement reachable
+    and honest: it refuses the next call rather than answer against an
+    empty Document. An explicit `document` is how a caller starts over.
     """
     fresh.check(CRASHING_CODE)
 
