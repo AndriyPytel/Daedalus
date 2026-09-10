@@ -104,30 +104,37 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         stream.emit(STEP_DECLARED, step=message["step"],
                                     label=message.get("label"), checkpoint=checkpoint)
                     if declared_failure is not None:
-                        pass
+                        skipped = {"ok": False, "status": "failed",
+                                  "traceback": "Step %s was not applied because Step %s "
+                                                "failed. Fix Step %s first."
+                                                % (message["step"], declared_failure,
+                                                   declared_failure)}
+                        if stream is not None:
+                            stream.emit(TOOL_RESULT, name=phase, result=skipped)
+                        text = _say(session, llm, json.dumps(skipped), phase=phase, stream=stream)
+                        continue
+                    delivered = (on_declaration(declaration) if on_declaration is not None
+                                else {"delivered": True})
+                    if delivered.get("drift"):
+                        working_kernel.check("pass", document=(
+                            declarations[-1]["checkpoint"] if declarations
+                            else (document if isinstance(document, str) else None)))
+                        drifted = {"ok": False, "status": "failed",
+                                  "traceback": "Step %s replayed against the Document and "
+                                                "did not land: %s\n\nWrite Step %s again."
+                                                % (message["step"], delivered.get("traceback", ""),
+                                                   message["step"])}
+                        if stream is not None:
+                            stream.emit(TOOL_RESULT, name=phase, result=drifted)
+                        text = _say(session, llm, json.dumps(drifted), phase=phase, stream=stream)
+                        continue
+                    elif not delivered.get("delivered"):
+                        declaration["delivered"] = False
+                        declaration["traceback"] = delivered.get("traceback", "")
+                        declarations.append(declaration)
+                        declared_failure = message["step"]
                     else:
-                        delivered = (on_declaration(declaration) if on_declaration is not None
-                                    else {"delivered": True})
-                        if delivered.get("drift"):
-                            working_kernel.check("pass", document=(
-                                declarations[-1]["checkpoint"] if declarations
-                                else (document if isinstance(document, str) else None)))
-                            drifted = {"ok": False, "status": "failed",
-                                      "traceback": "Step %s replayed against the Document and "
-                                                    "did not land: %s\n\nWrite Step %s again."
-                                                    % (message["step"], delivered.get("traceback", ""),
-                                                       message["step"])}
-                            if stream is not None:
-                                stream.emit(TOOL_RESULT, name=phase, result=drifted)
-                            text = _say(session, llm, json.dumps(drifted), phase=phase, stream=stream)
-                            continue
-                        elif not delivered.get("delivered"):
-                            declaration["delivered"] = False
-                            declaration["traceback"] = delivered.get("traceback", "")
-                            declarations.append(declaration)
-                            declared_failure = message["step"]
-                        else:
-                            declarations.append(declaration)
+                        declarations.append(declaration)
                 answer = _feedback(result)
                 if stream is not None:
                     stream.emit(TOOL_RESULT, name=phase, result=answer)
