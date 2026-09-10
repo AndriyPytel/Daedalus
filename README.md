@@ -256,25 +256,27 @@ prompt, so a phase never discovers it by failing.
 
 | Path | What lives there |
 |---|---|
-| `core/loop.py` | The Design → Plan → Execute → Assertion → Review loop, budgets, the Plan Gate |
-| `core/design.py` | The part Design holds: the merge that never overwrites, and how it reads at the Gate |
-| `core/tools.py` | The Tool registry — the only sanctioned route to the Document |
-| `core/freecad_tools.py` | The Tools themselves: snapshot, describe_object, dependencies, apply_step, and the `TRAPS` |
-| `core/lint.py` | The AST lint that runs before Preflight |
-| `core/preflight.py` | The parent half: owns one warm headless FreeCAD, enforces the timeout |
-| `core/preflight_worker.py` | The child half: runs inside that FreeCAD, measures the Promise |
-| `core/apply.py` | Lint → Preflight → Apply, as one undoable transaction |
-| `core/llm.py` | The provider seam — LiteLLM, plus a scripted client for tests |
-| `core/events.py` | The event stream every phase narrates into, and the per-Session log |
-| `core/narrate.py` | What an event says to a person — the panel and `run.py` share it |
-| `core/sessions.py` | The Sessions: the durable index, the naming, the bound. No Qt |
-| `core/session_title.py` | The short call that names a Session from its first Intent |
-| `ui/copilot_panel.py` | The dock: composer, transcript, question card, model picker |
-| `ui/multi_tab_manager.py` | The stack of chat areas, one per Session |
-| `ui/history_popup.py` | The Session Picker |
-| `config/prompts/*.md` | The three phase prompts — copy to tune, kept out of the source |
+| `src/core/loop/` | The Design → Plan → Execute → Assertion → Review loop, budgets, the Plan Gate |
+| `src/core/design/` | The part Design holds: the merge that never overwrites, and how it reads at the Gate |
+| `src/core/agent/` | The multi-turn phase agent, and the visibility contract each phase runs under |
+| `src/core/tools.py` | The Tool registry — the only sanctioned route to the Document |
+| `src/core/freecad_apply.py` | Lint → Preflight → Apply, as one undoable transaction, and the FreeCAD-backed Tools themselves: snapshot, describe_object, dependencies, apply_step, and the `TRAPS` |
+| `src/core/kernel/` | The persistent headless FreeCAD: the parent half, the worker that runs a Step's code, and the Preflight rasteriser |
+| `src/core/lint.py` | The AST lint that runs before Preflight |
+| `src/core/llm/` | The provider seam — LiteLLM, the `claude` CLI, plus a scripted client for tests |
+| `src/core/sheets/` | Reads the drawing and checks a traced sketch against it |
+| `src/core/events.py` | The event stream every phase narrates into, and the per-Session log |
+| `src/core/narrate.py` | What an event says to a person — the panel and `tools/run.py` share it |
+| `src/core/sessions.py` | The Sessions: the durable index, the naming, the bound. No Qt |
+| `src/core/session_title.py` | The short call that names a Session from its first Intent |
+| `src/copilot/sdk.py` | The one assembly a caller drives — the only crossing between `src/`'s Qt-free engine and `Mod/` |
+| `Mod/ui/copilot_panel.py` | The dock: composer, transcript, question card, model picker |
+| `Mod/ui/multi_tab_manager.py` | The stack of chat areas, one per Session |
+| `Mod/ui/history_popup.py` | The Session Picker |
+| `Mod/bridge/` | Qt-touching mirrors of `core/` concerns the UI needs directly: settings, provider fetch, logging, the main-thread marshaller |
+| `config/prompts/` | The phase, lint and message prompts, grouped by reader (`system/`, `lint/`, `messages/`); copy to tune, kept out of the source |
 | `Mod/` | Workbench registration and the Preferences pages |
-| `tests/` | The suite; `tools/run.py` drives a slice against a live provider |
+| `tests/` | The suite; `src/tools/run.py` drives a slice against a live provider |
 
 ---
 
@@ -303,7 +305,7 @@ Access goes through LiteLLM (ADR-0004) — one client for every provider, carryi
 thinking blocks and `cache_control` through the stream. Keys are yours and stay in your
 FreeCAD settings; there is no service in the middle.
 
-`core/model_catalog.py` is the registry of which providers exist and where each one
+`src/core/model_catalog.py` is the registry of which providers exist and where each one
 lives. There is no bundled model list: the real one is fetched from the provider on a
 worker thread as soon as a key is present, so the model picker shows what your key
 actually entitles you to and nothing it does not.
