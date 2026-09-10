@@ -93,6 +93,18 @@ class ApplyResult:
 _CHANGED_NOTHING = read_prompt("changed_nothing.md")
 
 
+def _changed_nothing(kernel_result, doc, dispatch):
+    """
+    `modified` alone, with a `signature` that already matches *doc*, is a
+    stale kernel's claim, not a change (seen live: FCC-291). A genuine
+    modify-only Step moves the signature or is silent about it.
+    """
+    if kernel_result.get("created") or kernel_result.get("deleted"):
+        return False
+    return not kernel_result.get("modified") or \
+        kernel_result.get("signature") == dispatch(lambda: signature_of(doc))
+
+
 def _direct(func, timeout=None):
     """The identity dispatch: run *func* right here, no Qt, no marshalling."""
     return func()
@@ -307,13 +319,12 @@ class ApplyPipeline:
             return ApplyResult(ok=False, traceback=_TYPEID_REASON % (
                 mismatch, mismatch, op, " or ".join(OP_TYPEIDS[op])))
 
-        if not (kernel_result.get("created") or kernel_result.get("deleted")
-                or kernel_result.get("modified")):
-            return ApplyResult(ok=False, traceback=_CHANGED_NOTHING)
-
         doc = self._dispatch(self._active)
         if doc is None:
             return ApplyResult(ok=False, traceback="There is no open Document to apply this Step to.")
+
+        if _changed_nothing(kernel_result, doc, self._dispatch):
+            return ApplyResult(ok=False, traceback=_CHANGED_NOTHING)
 
         before = set(self._dispatch(lambda: [o.Name for o in doc.Objects]))
 

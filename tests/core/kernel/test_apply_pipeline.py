@@ -48,17 +48,17 @@ class FakeWorker:
         return self.result
 
 
-def _kernel_result(created=("Box",), objects=None, **rest):
+def _kernel_result(created=("Box",), modified=(), objects=None, signature=None, **rest):
     """
     A `kernel_result` shaped like what `apply()` now expects a caller to have
     from the kernel's own run of the Step (FCC-A-53), rather than a
     rehearsal `apply()` runs itself.
     """
     made = list(created)
-    return dict(created=made, deleted=[], modified=[],
+    return dict(created=made, deleted=[], modified=list(modified),
                objects=(objects if objects is not None
                         else [{"name": name, "type": "Part::Box"} for name in made]),
-               names={}, signature={}, **rest)
+               names={}, signature=(signature if signature is not None else {}), **rest)
 
 
 @pytest.fixture
@@ -127,6 +127,44 @@ def test_a_step_the_kernel_says_changed_nothing_leaves_the_camera_alone(pipeline
     assert "changed nothing" in result.traceback
     assert pipeline.trace == [], "a Step that does nothing still opened a transaction"
     assert fitted == []
+
+
+def test_a_stale_kernel_sessions_modified_claim_does_not_pass_a_no_op_step(pipeline):
+    """
+    Seen in the wild: a kernel session left inconsistent by an earlier bug
+    reported a Step as having modified objects whose signature -- count,
+    names, volume, links -- was exactly what the Document already showed.
+    Nothing landed anywhere; the claim alone must not be enough.
+    """
+    from core.kernel.kernel_worker import signature_of
+
+    result = pipeline.apply(
+        "sk = doc.getObject('Sketch')\n",
+        kernel_result=_kernel_result(created=[], modified=["Sketch"],
+                                     signature=signature_of(pipeline.document)),
+    )
+
+    assert not result.ok
+    assert "changed nothing" in result.traceback
+    assert pipeline.trace == [], "a Step the signature says did nothing still opened a transaction"
+
+
+def test_a_modify_only_step_with_a_signature_that_moved_still_lands(pipeline):
+    """
+    A legitimate modify-only Step -- no object created or deleted, but the
+    kernel's own signature disagrees with what the Document shows now --
+    is not "changed nothing".
+    """
+    from core.kernel.kernel_worker import signature_of
+
+    moved = dict(signature_of(pipeline.document), volume=99.0)
+    result = pipeline.apply(
+        "box = doc.getObject('Box')\nbox.Length = 20\n",
+        kernel_result=_kernel_result(created=[], modified=["Box"],
+                                     signature=moved),
+    )
+
+    assert result.ok, result.traceback
 
 
 def test_lint_runs_before_the_transaction_so_a_bad_step_costs_nothing(pipeline):
