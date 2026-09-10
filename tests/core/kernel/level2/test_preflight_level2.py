@@ -414,11 +414,17 @@ def test_an_infinite_loop_is_killed_on_timeout(fresh):
 
 
 def test_the_worker_still_works_after_it_died(fresh):
+    """
+    A death with no checkpoint behind it leaves the replacement reachable
+    and honest: it refuses the next call rather than answer against an
+    empty Document. An explicit `document` is how a caller starts over.
+    """
     fresh.check(CRASHING_CODE)
 
     result = fresh.check("doc.addObject('Part::Box', 'Box')")
 
-    assert result.ok, result.traceback
+    assert not result.ok
+    assert fresh.alive
 
 
 def test_worker_death_is_never_raised_at_the_caller(fresh):
@@ -426,7 +432,8 @@ def test_worker_death_is_never_raised_at_the_caller(fresh):
         result = fresh.check(CRASHING_CODE)
         assert not result.ok
 
-    assert fresh.check("pass").ok
+    assert not fresh.check("pass").ok
+    assert fresh.check("pass", document=None).ok
 
 
 def test_a_body_left_in_pieces_is_still_refused(warm):
