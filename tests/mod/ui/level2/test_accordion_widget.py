@@ -89,3 +89,29 @@ def test_a_flush_for_an_already_deleted_widget_does_not_stop_the_others():
     QT_APP.processEvents()
 
     assert other.content_area.text() == "still seen"
+
+
+def test_a_json_reply_carrying_code_is_shown_as_the_code_itself():
+    """
+    The execute phase answers with a JSON object whose `code` key holds the
+    script; streamed into the row verbatim it reads as one line with `\\n`
+    spelled out. Half of that object is not JSON and stays as it arrived.
+    """
+    widget = _widget()
+    widget.append_text('{"code": "print(doc.Name)\\nfor o in doc.Objects:')
+    QT_APP.processEvents()
+
+    assert widget.content_area.text().startswith('{"code"')
+
+    widget.append_text('\\n    print(o.Name)\\n"}')
+    QT_APP.processEvents()
+
+    assert widget.content_area.text() == "print(doc.Name)\nfor o in doc.Objects:\n    print(o.Name)\n"
+
+
+def test_plain_text_is_left_alone():
+    widget = _widget()
+    widget.append_text("just words, no object")
+    QT_APP.processEvents()
+
+    assert widget.content_area.text() == "just words, no object"

@@ -14,6 +14,7 @@ Figma's Tool card gives a border to: a hairline and no fill, so that a
 transcript of a dozen calls stays a column of outlines rather than a stack of
 filled slabs.
 """
+import json
 import time
 
 try:
@@ -24,6 +25,20 @@ except ImportError:
 from ui.design_tokens import ICON, ICON_DENSE, SPACE_COMPOSER, SPACE_MD, SPACE_SM, SPACE_XS
 from ui.typography import CAPTION, LABEL, css
 from ui.ui_helpers import UIHelpers
+
+
+def _the_code_inside(text):
+    """
+    The code of a reply that is a JSON object carrying one, the text itself
+    for everything else: `{"code": "..."}` streamed verbatim reads as one
+    line with `\\n` spelled out in it, and half of it is not JSON at all.
+    """
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        return text
+    return payload["code"] if isinstance(payload, dict) and "code" in payload else text
+
 
 _TOGGLE_RULE = ("QPushButton { text-align: left; padding: %dpx 0px; border: none; "
                 "background: transparent; min-width: 0px; %s }" % (SPACE_XS, css(LABEL)))
@@ -80,10 +95,11 @@ class AccordionWidget(QtWidgets.QFrame):
         self.content_area.setWordWrap(True)
         self.content_area.setTextFormat(QtCore.Qt.PlainText)
         self.content_area.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        rule = "QLabel { %s %s padding: 0px 0px %dpx %dpx; }"
+        self._code_rule = rule % ("font-family: %s;" % UIHelpers.get_monospace_font(),
+                                  css(CAPTION), SPACE_SM, SPACE_MD)
         self.content_area.setStyleSheet(
-            "QLabel { %s %s padding: 0px 0px %dpx %dpx; }"
-            % ("font-family: %s;" % UIHelpers.get_monospace_font() if code else "",
-               css(CAPTION), SPACE_SM, SPACE_MD))
+            self._code_rule if code else rule % ("", css(CAPTION), SPACE_SM, SPACE_MD))
         self.content_area.setVisible(False)
         layout.addWidget(self.content_area)
 
@@ -129,8 +145,11 @@ class AccordionWidget(QtWidgets.QFrame):
         does to every other flush queued behind it.
         """
         self._flush_pending = False
+        shown = _the_code_inside(self._buffer)
         try:
-            self.content_area.setText(self._buffer)
+            if shown != self._buffer:
+                self.content_area.setStyleSheet(self._code_rule)
+            self.content_area.setText(shown)
         except RuntimeError:
             pass
 
