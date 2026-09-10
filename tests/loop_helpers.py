@@ -224,6 +224,10 @@ def _first_pass_turns(model, attachments, question=""):
     return [design_reply(model, question=question)] * calls
 
 
+class _MultiTurn(list):
+    """A group of separate provider calls, unwrapped by `_flattened` -- not one call's own stream."""
+
+
 def code_reply(*codes, label="Step", thinking=None, first=1):
     """
     A whole Execute phase: one turn per Step's code, closed by the turn that
@@ -235,7 +239,7 @@ def code_reply(*codes, label="Step", thinking=None, first=1):
     `thinking` rides on the first Step's own turn, the one it was reasoned out in.
     """
     numbers = [first + offset for offset in range(len(codes))]
-    turns = []
+    turns = _MultiTurn()
     for position, (number, code) in enumerate(zip(numbers, codes)):
         body = json.dumps({"code": code, "step": number, "label": label})
         turns.append({"reasoning": thinking, "text": body}
@@ -468,10 +472,14 @@ def _scripted_checkpoint():
 
 
 def _flattened(turns):
-    """`code_reply()` hands back a whole Execute phase as several turns; unwrap it."""
+    """
+    `code_reply()` hands back a whole Execute phase as several turns; unwrap
+    it. A bare list is left alone -- it is one call's own stream, an
+    Exception anywhere in it raised there (`ScriptedLLMClient._replay`).
+    """
     flat = []
     for turn in turns:
-        if isinstance(turn, list):
+        if isinstance(turn, _MultiTurn):
             flat.extend(turn)
         else:
             flat.append(turn)
@@ -877,7 +885,8 @@ def on_a_subscription(turns):
 def a_clean_run(llm):
     """One run over *llm* with nothing wrong in it, as what it produced."""
     events = EventStream()
-    result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events)
+    result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events,
+                 kernel=StubKernel())
     return result, events
 
 

@@ -83,6 +83,7 @@ from tests.loop_helpers import (
     _cut_off,
     on_a_subscription,
     a_clean_run,
+    StubKernel,
     CLEAN,
     GEAR,
     MISSING,
@@ -173,9 +174,9 @@ def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
 
     assert [name for name, _ in tools.calls].count("review_views") == 1
 
-    assert llm.calls[4][0]["content"].startswith(prompt("review"))
+    assert llm.calls[5][0]["content"].startswith(prompt("review"))
 
-    review_content = llm.calls[4][1]["content"]
+    review_content = llm.calls[5][1]["content"]
     assert sum(1 for part in review_content if part["type"] == "image_url") == 4
     assert "the same result seen from" in review_content[0]["text"]
     assert "not several" in review_content[0]["text"]
@@ -199,8 +200,8 @@ def test_the_same_four_views_reach_both_review_calls():
 
     assert [name for name, _ in tools.calls].count("review_views") == 1
 
-    suspect_content = llm.calls[3][1]["content"]
-    review_content = llm.calls[4][1]["content"]
+    suspect_content = llm.calls[4][1]["content"]
+    review_content = llm.calls[5][1]["content"]
     assert sum(1 for part in suspect_content if part["type"] == "image_url") == 4
     assert sum(1 for part in review_content if part["type"] == "image_url") == 4
     assert ([part["image_url"] for part in suspect_content if part["type"] == "image_url"]
@@ -234,7 +235,7 @@ def test_a_run_with_no_views_still_reaches_a_verdict():
     )
 
     assert result.ok
-    assert "No render was produced" in llm.calls[3][1]["content"][0]["text"]
+    assert "No render was produced" in llm.calls[4][1]["content"][0]["text"]
 
 
 def test_a_step_that_cannot_be_built_returns_to_plan():
@@ -321,10 +322,12 @@ def test_a_step_handed_back_after_another_one_landed_is_still_replanned():
     result, _, _, tools = drive(
         [
             plan_reply("First", "Impossible"),
-            json.dumps({"declare": {"steps": [{"step": 1, "code": "first()", "label": "First"}],
+            json.dumps({"code": "first()", "step": 1, "label": "First"}),
+            json.dumps({"declare": {"steps": [{"step": 1, "label": "First"}],
                         "unbuildable": "the second cuts nothing"}}),
             plan_reply("Second", "Impossible again"),
-            json.dumps({"declare": {"steps": [{"step": 1, "code": "second()", "label": "Second"}],
+            json.dumps({"code": "second()", "step": 1, "label": "Second"}),
+            json.dumps({"declare": {"steps": [{"step": 1, "label": "Second"}],
                         "unbuildable": "still cuts nothing"}}),
             plan_reply("Third"),
             code_reply("third()"),
@@ -539,7 +542,7 @@ def test_a_stream_the_provider_cut_off_is_sent_again_rather_than_failing():
                                code_reply("box()"), suspect_reply(), verdict_reply("pass", "Good.")])
 
     assert result.ok
-    assert len(llm.calls) == 6, "design, Plan twice, Execute, review_suspect, Review"
+    assert len(llm.calls) == 7, "design, Plan twice, Execute (code, declare), review_suspect, Review"
 
 
 
@@ -612,7 +615,9 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
         INTENT, ATTACHED,
         CALL_STARTED, WRITING, COST, DESIGN, PART,
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
-        CALL_STARTED, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED, TOOL_RESULT,
+        CALL_STARTED, WRITING, COST,
+        STEP_STARTED, TOOL_CALL, TOOL_RESULT, APPLIED,
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, ASSERTION,
@@ -632,9 +637,13 @@ def test_the_event_stream_of_a_retried_run():
         INTENT,
         CALL_STARTED, WRITING, COST,
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
-        CALL_STARTED, WRITING, COST, STEP_STARTED,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED, TOOL_RESULT,
+        CALL_STARTED, WRITING, COST,
+        STEP_STARTED,
         TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED,
-        CALL_STARTED, WRITING, COST, TOOL_CALL, TOOL_RESULT, APPLIED,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED, TOOL_RESULT,
+        CALL_STARTED, WRITING, COST,
+        TOOL_CALL, TOOL_RESULT, APPLIED,
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
@@ -653,7 +662,9 @@ def test_the_event_stream_of_a_blocked_run():
         INTENT,
         CALL_STARTED, WRITING, COST,
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
-        CALL_STARTED, WRITING, COST, STEP_STARTED, TOOL_CALL, TOOL_RESULT,
+        CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED, TOOL_RESULT,
+        CALL_STARTED, WRITING, COST,
+        STEP_STARTED, TOOL_CALL, TOOL_RESULT,
         PREFLIGHT_FAILED, BUDGET_EXHAUSTED,
     ]
 
@@ -663,8 +674,8 @@ def test_tool_calls_and_their_results_are_both_visible():
         plan_reply("Only"), code_reply("box()", label="Add the box"), suspect_reply(), verdict_reply("pass"),
     ])
 
-    call = events.first(TOOL_CALL)
-    result = events.first(TOOL_RESULT)
+    call = next(e for e in events.of(TOOL_CALL) if e.data["name"] == "apply_step")
+    result = next(e for e in events.of(TOOL_RESULT) if e.data["name"] == "apply_step")
     assert call.data == {"name": "apply_step", "arguments": {"code": "box()", "label": "Add the box"}}
     assert result.data["name"] == "apply_step"
     assert result.data["result"]["status"] == "applied"
@@ -744,14 +755,15 @@ def test_a_phase_is_answered_by_the_client_its_own_profile_names():
             return self._thinking if phase in ("design", "plan") else self._doing
 
     thinking = ScriptedLLMClient([design_reply(), plan_reply("Only")])
-    doing = ScriptedLLMClient([code_reply("box()"), suspect_reply(), verdict_reply("pass")])
+    doing = ScriptedLLMClient([*code_reply("box()"), suspect_reply(), verdict_reply("pass")])
     llm = TwoProfiles(thinking, doing)
     events = EventStream()
 
-    result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events)
+    result = run("Make a box", llm=llm, tools=FakeTools().registry, events=events,
+                 kernel=StubKernel())
 
     assert result.ok
-    assert llm.asked == ["design", "plan", "execute", "review_suspect", "review"]
+    assert llm.asked == ["design", "plan", "execute", "execute", "review_suspect", "review"]
     assert not doing.turns and not thinking.turns
 
 
@@ -827,7 +839,7 @@ def test_a_provider_that_says_nothing_about_what_it_spent_writes_cost_with_only_
     _, events, _, _ = drive(CLEAN)
 
     cost_events = events.of(COST)
-    assert len(cost_events) == 5
+    assert len(cost_events) == 6
     for cost in cost_events:
         assert "seconds" in cost.data
         assert isinstance(cost.data["seconds"], float)
@@ -930,7 +942,8 @@ def test_the_user_can_stop_between_steps():
         plan_reply("First", "Second", "Third"),
         code_reply("first()"),
         code_reply("second()"),
-    ]), tools=tools.registry, events=events, cancelled=lambda: stop["now"])
+    ]), tools=tools.registry, events=events, cancelled=lambda: stop["now"],
+        kernel=StubKernel())
 
     assert result.blocked
     assert result.awaiting_user
