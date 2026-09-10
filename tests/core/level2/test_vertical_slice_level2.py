@@ -126,6 +126,13 @@ def scripted_model():
     then the whole of it written in one Execute turn, then the verdict. Each
     Step still lands on its own, through its own apply.
     """
+    steps = [
+        (STEP_SKETCH, "Sketch the square"),
+        (STEP_PAD, "Pad the sketch"),
+        (STEP_PARAMETER, "Change the pad length"),
+        (STEP_FILLET, "Fillet the top edges"),
+        (STEP_HOLE, "Drill the hole"),
+    ]
     return ScriptedLLMClient([
         json.dumps({"declare": {"design": {}, "question": ""}}),
         json.dumps({"declare": {"steps": [
@@ -136,12 +143,10 @@ def scripted_model():
             % (TOP_EDGES, RADIUS),
             "Drill a %gmm hole through it on the centreline" % BORE,
         ]}}),
+        *[json.dumps({"code": code, "step": number, "label": label})
+          for number, (code, label) in enumerate(steps, start=1)],
         json.dumps({"declare": {"steps": [
-            {"step": 1, "code": STEP_SKETCH, "label": "Sketch the square"},
-            {"step": 2, "code": STEP_PAD, "label": "Pad the sketch"},
-            {"step": 3, "code": STEP_PARAMETER, "label": "Change the pad length"},
-            {"step": 4, "code": STEP_FILLET, "label": "Fillet the top edges"},
-            {"step": 5, "code": STEP_HOLE, "label": "Drill the hole"},
+            {"step": number, "label": label} for number, (code, label) in enumerate(steps, start=1)
         ]}}),
         json.dumps({"declare": {"suspected": []}}),
         json.dumps({"declare": {"verdict": "pass",
@@ -343,9 +348,10 @@ def test_each_step_of_the_run_undoes_in_turn(own_slice_run):
 
 def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
     """
-    Every event the panel draws the run from. The seven Tool calls are the
-    five applies, the self-intersection check (FCC-256, unconditional) and
-    the one review_views the loop drives at the end.
+    Every event the panel draws the run from. The twelve Tool calls are the
+    five kernel checks a code turn makes of its own Step (FCC-A-53), the five
+    applies, the self-intersection check (FCC-256, unconditional) and the one
+    review_views the loop drives at the end.
 
     CALL_STARTED, COST, THOUGHT and WRITING are per-call bookkeeping and say nothing
     about the order of the run, so they are filtered out before checking the
@@ -357,8 +363,8 @@ def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
 
     assert kinds[:2] == [INTENT, PLAN]
     assert len(events.of(STEP_STARTED)) == 5
-    assert len(events.of(TOOL_CALL)) == 7
-    assert len(events.of(TOOL_RESULT)) == 7
+    assert len(events.of(TOOL_CALL)) == 12
+    assert len(events.of(TOOL_RESULT)) == 12
     assert len(events.of(APPLIED)) == 5
     assert events.last(REVIEW_VERDICT).data["verdict"] == "pass"
     assert events.first(BLOCKED) is None
