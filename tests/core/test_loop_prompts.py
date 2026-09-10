@@ -84,8 +84,8 @@ from tests.loop_helpers import (
 
 
 @pytest.mark.parametrize("turn, phase",
-                         [(0, "design"), (1, "plan"), (2, "execute"), (3, "review_suspect"),
-                          (4, "assertion"), (5, "review")])
+                         [(0, "design"), (1, "plan"), (2, "execute"), (4, "review_suspect"),
+                          (5, "assertion"), (6, "review")])
 def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
     """
     The file reached the provider — not that the loader returned a string. The
@@ -121,7 +121,7 @@ def test_the_traps_land_in_the_prompts_that_ask_for_them():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, execute_system, suspect_system, review_system = _system_messages(llm)
+    _, plan_system, execute_system, _, suspect_system, review_system = _system_messages(llm)
 
     assert "{{traps}}" not in plan_system
     for text in (plan_system, execute_system):
@@ -142,7 +142,7 @@ def test_the_sketch_construction_rule_reaches_plan_and_execute():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, execute_system, suspect_system, review_system = (
+    _, plan_system, execute_system, _, suspect_system, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     for text in (plan_system, execute_system):
@@ -194,7 +194,7 @@ def test_assertion_is_told_what_a_fillet_does_to_the_surface_it_replaced():
         assertion_reply("assert True, 'the length'"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    assertion_system = " ".join(_system_messages(llm)[4].split())
+    assertion_system = " ".join(_system_messages(llm)[5].split())
 
     assert "A fillet's own surface is not the surface it was cut into" in assertion_system
     assert "minor radius" in assertion_system
@@ -217,7 +217,7 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ])
-    _, _, execute_system, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
+    _, _, execute_system, _, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     for cancelled in ("invariant of its own", "assert it in the Step's code",
                       "thinner as the radius grows"):
@@ -247,7 +247,7 @@ def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, execute_system, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
+    _, plan_system, execute_system, _, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     assert "base, then addition, then subtraction" in plan_system
     assert "fillet or a chamfer only once every one of those stands" in plan_system
@@ -278,7 +278,7 @@ def test_the_reading_rules_moved_to_the_design_phase_whole():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    design_system, plan_system, _, _, review_system = (
+    design_system, plan_system, _, _, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     for rule in ("A description is not a description of the *picture*",
@@ -307,7 +307,7 @@ def test_a_value_carries_a_named_datum_and_a_read_or_assumed_flag():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    design_system, _, _, _, review_system = (
+    design_system, _, _, _, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "Every value carries its datum and its flag" in design_system
@@ -493,7 +493,7 @@ def test_the_datum_and_the_flag_reach_the_checks_without_anyone_rewriting_them()
         assertion_reply("assert True, 'the length'"),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
-    _, plan_system, _, _, assertion_system, _ = (
+    _, plan_system, _, _, _, assertion_system, _ = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "You do not write the acceptance list" in plan_system
@@ -570,7 +570,7 @@ def test_a_step_is_an_action_a_user_would_perform_not_a_call():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, _, _, review_system = (
+    _, plan_system, _, _, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "an action a user would perform" in plan_system
@@ -687,7 +687,7 @@ def test_plan_names_declared_numbers_and_not_how_a_reference_is_found():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, _, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
+    _, plan_system, _, _, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     assert "A link is written as the name you gave" not in plan_system, \
         "plan.md still asks Plan for the link FCC-71 takes back"
@@ -706,7 +706,7 @@ def test_the_positive_form_of_the_lint_rules_reaches_execute():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ])
-    _, _, execute_system, _, review_system = (
+    _, _, execute_system, _, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "computes its own Shape from its Profile" in execute_system
@@ -729,7 +729,7 @@ def test_a_step_that_selects_a_subset_says_how_many_it_expects():
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(), verdict_reply("pass"),
     ])
-    _, plan_system, execute_system, _, review_system = (
+    _, plan_system, execute_system, _, _, review_system = (
         " ".join(text.split()) for text in _system_messages(llm))
 
     assert "says how many" in plan_system
