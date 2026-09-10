@@ -165,6 +165,9 @@ class _Touched:
     def modified(self):
         return {name for name, properties in self._changed.items() if properties}
 
+    def touched(self):
+        return bool(self.created or self.deleted or self.modified())
+
 
 _HINT_LIMIT = 60
 
@@ -840,7 +843,9 @@ def run_step(request):
     A `document` in *request* is a fresh handoff: the session starts over
     from that path, with a name map seeded from *request*'s own `names`.
     `ephemeral=True` skips checkpoint writes. Pass: checkpoint is written.
-    Fail: the last checkpoint is reopened, so the Step never happened.
+    Fail: the last checkpoint is reopened only when `_Touched.touched()`
+    says the Step actually changed the Document -- a read-only probe that
+    raises leaves it exactly as it was.
     """
     ephemeral = request.get("ephemeral", False)
     if "document" in request or _SESSION["doc"] is None:
@@ -860,6 +865,7 @@ def run_step(request):
         with contextlib.redirect_stdout(said):
             response = _run_step_body(doc, namespace, touched, request)
     except AssertionError as exc:
+        touched.diff(doc)
         response = {"ok": False, "traceback": trimmed_traceback(exc)}
         held, failed = _measured(namespace)
         if held is not None:
@@ -867,6 +873,7 @@ def run_step(request):
         if failed is not None:
             response["failed"] = failed
     except BaseException as exc:
+        touched.diff(doc)
         response = {"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)}
     printed = _printed(said)
     if printed:
@@ -877,7 +884,7 @@ def run_step(request):
             _save_checkpoint(doc)
         _SESSION["names"] = names
     else:
-        if not ephemeral:
+        if not ephemeral and touched.touched():
             _reload_checkpoint()
     response["checkpoint"] = _SESSION["checkpoint"]
     response["names"] = dict(_SESSION["names"])

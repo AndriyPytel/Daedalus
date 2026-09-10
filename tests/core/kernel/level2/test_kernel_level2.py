@@ -72,6 +72,24 @@ def test_a_failing_steps_reload_leaves_the_prior_checkpoints_object_count_unchan
         "the reload left the failed Step's object behind"
 
 
+def test_a_read_only_failing_step_does_not_rewind_the_kernel(kernel):
+    """
+    AC5: a Step that raises without touching the Document must not undo an
+    earlier, passing Step -- only a Step whose own diff is non-empty rewinds.
+    """
+    passed = kernel.check("doc.addObject('Part::Box', 'Box')")
+    assert passed.ok, passed.traceback
+
+    read_only_failure = kernel.check("print(doc.NotAnAttribute)")
+    assert not read_only_failure.ok
+
+    still_there = kernel.check(
+        "assert doc.getObject('Box') is not None, "
+        "'a read-only failure rewound the kernel'"
+    )
+    assert still_there.ok, still_there.traceback
+
+
 def test_a_second_step_sees_the_first_steps_object_in_the_live_document(kernel):
     """
     The session continues across Steps: the second Step works against the same
