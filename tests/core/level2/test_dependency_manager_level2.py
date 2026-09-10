@@ -39,7 +39,7 @@ def test_the_sheet_reader_says_so_rather_than_failing_without_pymupdf():
     wanted and a dependency that is load-bearing are different things, and this
     is the line between them.
     """
-    from core import sheet_reader
+    from core.sheets import sheet_reader
 
     assert hasattr(sheet_reader, "available")
     assert sheet_reader.read(__file__) is None

@@ -214,7 +214,7 @@ def sheet_cache(tmp_path_factory):
     still parsed once per worker unless every file that shares it is pinned
     to the same worker (`pytest_xdist_make_scheduler` above, FCC-283).
     """
-    from core import sheet_reader
+    from core.sheets import sheet_reader
 
     cache = {}
 
@@ -232,7 +232,7 @@ def sheet_cache(tmp_path_factory):
 @pytest.fixture(scope="module")
 def modelmania_sheets(sheet_cache):
     """The four distinct drawings, read through the session's shared cache."""
-    from core import sheet_reader
+    from core.sheets import sheet_reader
     from tests import modelmania_harness
 
     if not modelmania_harness.MODELMANIA_DIR.is_dir():

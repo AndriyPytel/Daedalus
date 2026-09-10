@@ -460,7 +460,7 @@ def test_a_sweep_of_modelmania_sized_readings_is_answered_in_seconds(warm):
     readings well inside the phase budget, so the limit bounds a stopped child
     rather than normal work.
     """
-    from core import sheet_reader, sketch_check
+    from core.sheets import sheet_reader, sketch_check
 
     corners = [(0.0, 0.0), (98.2, 0.0), (98.2, 30.0), (0.0, 30.0)]
     entities = [

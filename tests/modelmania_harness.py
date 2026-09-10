@@ -42,7 +42,7 @@ def the_2023_clamp_as_read():
 
 def verdicts(sheets):
     """Build every traced outline against the dimensions its sheet supplies."""
-    from core import sketch_check
+    from core.sheets import sketch_check
 
     return [
         (name, sketch_check.checked(outline, view.view, sheet.between))
