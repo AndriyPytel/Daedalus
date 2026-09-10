@@ -24,6 +24,65 @@ from core.llm.exceptions import ProviderRefused
 from core.llm.effort_policy import _CEILING, _resolved_effort
 
 
+class Run:
+    """
+    The live `claude` processes one run's calls have spawned.
+
+    A run is whatever holds a `ClaudeCodeClient` for the length of one
+    Session's Intent -- `Mod/ui/copilot_panel.py :: LoopWorker` holds one, and
+    passes it to every client it builds so Stop, Abort and shutdown share the
+    one kill path (FCC-376, FCC-377) instead of `core/llm.py`'s old global
+    `_live`, which could only ever kill every run at once.
+    """
+
+    def __init__(self):
+        self._live = set()
+        self._lock = threading.Lock()
+
+    def register(self, process):
+        with self._lock:
+            self._live.add(process)
+
+    def release(self, process):
+        with self._lock:
+            self._live.discard(process)
+
+    def end(self):
+        """Kill every process this run currently has in flight."""
+        with self._lock:
+            live = list(self._live)
+        for process in live:
+            process.kill()
+
+
+def kill(client):
+    """
+    End every live `claude` process reachable from *client*'s own tree.
+
+    `RoleClient` and `ProfiledClient` (`core/llm/__init__.py`) name no process
+    of their own -- the process belongs to whichever `ClaudeCodeClient` a role
+    or profile resolves to, and a fan-out (`ThreadPoolExecutor`) may hold
+    several of those live under the one `Run` at once. *client* is `None`
+    where a Session has not built one yet, which is a no-op rather than an
+    error: there is nothing running to kill.
+    """
+    if client is None:
+        return
+    if isinstance(client, ClaudeCodeClient):
+        client.run.end()
+        return
+    roles = getattr(client, "roles", None)
+    if roles is not None:
+        for role_client in roles.values():
+            kill(role_client)
+        kill(getattr(client, "caller", None))
+        return
+    for profile in ("thinking", "doing"):
+        nested = getattr(client, profile, None)
+        if nested is not None:
+            kill(nested)
+
+
 _CLAUDE_CANDIDATES = (
     os.path.expanduser("~/.local/bin/claude"),
     "/usr/local/bin/claude",
@@ -110,12 +169,13 @@ class ClaudeCodeClient:
     """
 
     def __init__(self, model: str, spawn: Callable = None,
-                 timeout: float = None, effort: str = None):
+                 timeout: float = None, effort: str = None, run: Run = None):
         self.model = model
         self.effort = _resolved_effort(effort)
         self.timeout = _CEILING[self.effort] if timeout is None else timeout
         self.last_cost = None
         self._spawn = spawn
+        self.run = run if run is not None else Run()
 
     def stream(self, messages: list, **overrides) -> Iterator[Chunk]:
         """
@@ -179,6 +239,7 @@ class ClaudeCodeClient:
 
         ceiling = threading.Timer(self.timeout, give_up)
         ceiling.start()
+        self.run.register(process)
         try:
             process.stdin.write(json.dumps(_user_turn(messages)) + "\n")
             process.stdin.flush()
@@ -220,6 +281,7 @@ class ClaudeCodeClient:
                     % (self.model, code), detail[:400])
         finally:
             ceiling.cancel()
+            self.run.release(process)
             process.kill()
 
 

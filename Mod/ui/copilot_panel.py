@@ -590,22 +590,40 @@ class LoopWorker(QtCore.QObject):
         return self.sdk_client.pipeline
 
     def stop(self):
+        """
+        Ends the run without waiting out a provider call already in flight.
+
+        `cancelled()` is only polled between provider calls
+        (`core/loop/run.py`, `describe.py`, `plan.py`, `assertion.py`), and one
+        of those calls is a `claude` subprocess under a ceiling of up to 1500
+        seconds (`core/llm/claude.py :: _CEILING`). Killing this run's own live
+        processes ends that call at once, the same as `abort`, while leaving
+        the kernel alone so the in-flight Step can still checkpoint.
+        """
+        from core.llm.claude import kill
+
         self._stop.set()
+        kill(self.client)
         self.ask.abandon()
 
     def abort(self):
         """
         Kills the kernel now, discarding whatever Step is in flight.
 
-        Where `stop` only raises the flag and leaves the running Step to
-        finish and checkpoint on its own, this also calls `pipeline.shutdown`
-        -- the same call a Session's own teardown already makes -- so the
-        `Kernel.check` call in flight comes back a crash rather than a result,
-        and `core/kernel.py`'s reopen-the-checkpoint recovery is what keeps
-        the in-flight Step out of the Document. The kernel itself survives:
-        `Kernel.kill` only drops the process, so the next Step run restarts it.
+        Where `stop` leaves the kernel to checkpoint the Step on its own, this
+        also calls `pipeline.shutdown` -- the same call a Session's own
+        teardown already makes -- so the `Kernel.check` call in flight comes
+        back a crash rather than a result, and `core/kernel.py`'s
+        reopen-the-checkpoint recovery is what keeps the in-flight Step out of
+        the Document. The kernel itself survives: `Kernel.kill` only drops the
+        process, so the next Step run restarts it. `kill(self.client)` ends
+        this run's own `claude` process the same way `stop` does, rather than
+        waiting for it to notice the kernel is gone.
         """
+        from core.llm.claude import kill
+
         self._abort.set()
+        kill(self.client)
         if self.pipeline is not None:
             self.pipeline.shutdown()
         self._stop.set()
@@ -1776,8 +1794,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
     def on_stop(self):
         """
         Ends the run, and disables any question card with it: a card left
-        clickable after Stop answers a run that is already over. Stopping the
-        worker also releases a waiting question.
+        clickable after Stop answers a run that is already over.
+
+        Reaches the on-screen Session's worker through `self._workers` rather
+        than the `worker` property (`_worker_for`), which would build and
+        register a fresh idle bundle for a Session with nothing running.
         """
         if self._question_card is not None:
             self._question_card.setEnabled(False)
@@ -1786,7 +1807,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         bundle = self._workers.get(self._current_log())
         if bundle is not None:
             bundle.pending_question = None
-        self.worker.stop()
+            bundle.worker.stop()
         self.stop_button.setEnabled(False)
         self.abort_button.setEnabled(False)
         self._queue_widget.now("Stopping after the current attempt…")
@@ -1795,6 +1816,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
         """
         Kills the kernel now, discarding whatever Step is in flight — where
         Stop lets it finish.
+
+        Same `self._workers` lookup as `on_stop`, for the same reason: the
+        `worker` property would build a fresh idle bundle for a Session with
+        no run in flight rather than reach the one that is.
         """
         if self._question_card is not None:
             self._question_card.setEnabled(False)
@@ -1803,7 +1828,7 @@ class CopilotPanel(QtWidgets.QDockWidget):
         bundle = self._workers.get(self._current_log())
         if bundle is not None:
             bundle.pending_question = None
-        self.worker.abort()
+            bundle.worker.abort()
         self.stop_button.setEnabled(False)
         self.abort_button.setEnabled(False)
         self._queue_widget.now("Aborting…")
