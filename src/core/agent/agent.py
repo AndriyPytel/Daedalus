@@ -10,6 +10,10 @@ a sentence and then the object; three wrote the object, a stray
 `</parameter></invoke>`, and a second object; one wrote a truncated object
 before the whole one. Each cost a turn on `contract_correction`, and Execute
 never reached `declare` — the run had a Design and a Plan and made no part.
+
+`_feedback` carries `volume` on both branches. What a feature moved is the
+number the model's own failing assert was about, so a failed Step is exactly
+the reply worth having it on.
 """
 import json
 import os
@@ -256,6 +260,8 @@ def _feedback(result):
                "checkpoint": result.checkpoint}
     if result.stdout:
         payload["stdout"] = result.stdout
+    if result.volume:
+        payload["volume"] = result.volume
     if result.ok:
         touched = set(result.created) | set(result.modified)
         geometry = {name: g for name, g in result.geometry.items() if name in touched}

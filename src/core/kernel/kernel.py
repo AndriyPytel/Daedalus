@@ -59,6 +59,7 @@ class KernelResult:
     failed: list = None
     stdout: str = ""
     geometry: dict = field(default_factory=dict)
+    volume: dict = field(default_factory=dict)
     checkpoint: str = None
     names: dict = field(default_factory=dict)
     signature: dict = field(default_factory=dict)
@@ -83,6 +84,7 @@ class KernelResult:
         if not response.get("ok"):
             return cls(ok=False, traceback=response.get("traceback", "the kernel failed"),
                        held=held, failed=failed, stdout=response.get("stdout", ""),
+                       volume=response.get("volume") or {},
                        checkpoint=checkpoint, names=names)
         return cls(ok=True,
                    render=response.get("render"),
@@ -92,6 +94,7 @@ class KernelResult:
                    modified=response.get("modified", []),
                    held=held, failed=failed, stdout=response.get("stdout", ""),
                    geometry=response.get("geometry") or {},
+                   volume=response.get("volume") or {},
                    checkpoint=checkpoint, names=names,
                    signature=response.get("signature") or {})
 

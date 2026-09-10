@@ -215,6 +215,13 @@ fails with nothing beyond the raw exception — not which of the Step's checks
 it was or what value it saw. Say what failed and what it came out as:
 `assert abs(x - y) < tol, "outside diameter %.3f, wanted %.3f" % (x, y)`.
 
+**What a feature moved is measured for you, on every reply.** `volume` gives
+each feature the Step created its own material before and after and the
+difference, so an assert about how much a cut removed reads that number rather
+than deriving it from two `Shape.Volume` reads of your own. Where a feature
+moved nothing, the reply also says whether flipping `Reversed` would have moved
+it — the one thing a volume assert of your own cannot tell you.
+
 **Say how many, where a Step works on part of the model.** A fillet, a
 chamfer or a draft that filters the geometry gets whatever the filter finds:
 the recorded run asked for the outline of an obround pad, whose profile meets

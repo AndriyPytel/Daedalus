@@ -29,6 +29,14 @@ down, this process goes with it and the parent restarts a new one -- which is
 the entire point of the arrangement (ADR-0002). That is also why there is no
 shutdown message: the parent kills the process rather than asking it to go.
 
+What a failure hands back is measured. Across the five FCC-291 sessions of
+2026-09-10 (logs/review/rlm-execute-cost-audit.md) 45 of 152 kernel calls
+failed: 15 on the Step's own volume assert, which raises before any check here
+runs, and 10 on dereferencing a lookup that returned None. One Pocket took 35
+of its session's 53 calls to find the sign of its own direction by hand. So a
+failing Step is handed `volume`, the idle-feature diagnosis and the Document's
+own objects, not only the traceback.
+
 `freecadcmd` runs a script with `__name__` set to its basename rather than
 "__main__", and importing this module as `core.kernel.kernel_worker` for its
 `SENTINEL` must not start serving, so both names are named at the foot.
@@ -248,7 +256,26 @@ def _name_of(obj):
     return getattr(obj, "__name__", None) or type(obj).__name__
 
 
-def introspect(exc):
+def _what_the_document_holds(doc, name):
+    """
+    Answer a dereference of `None` with the objects that do exist.
+
+    `'NoneType' object has no attribute 'Shape'` names neither the lookup that
+    failed nor what it could have found, and FreeCAD renames an object whose
+    Name is taken, so asked-for and allocated names routinely differ.
+    """
+    if doc is None:
+        return ""
+    try:
+        held = ", ".join("%s (%s, %s)" % (o["name"], o["label"], o["type"])
+                         for o in summarise(doc))
+    except BaseException:
+        return ""
+    return ("\nThe lookup before %r returned None -- nothing in the Document answered it."
+            "\nThe Document holds: %s" % (name, held))
+
+
+def introspect(exc, doc=None):
     """
     Answer an AttributeError with what the object actually has.
 
@@ -263,10 +290,16 @@ def introspect(exc):
     descriptor, which is neither, hence the isinstance rather than a truth
     test. A hint is never worth losing the traceback it was meant to explain,
     so anything that goes wrong here gives back nothing.
+
+    `obj` is None both when the exception carries no object information and
+    when the object dereferenced was `None` itself; *doc* is what the second
+    case is answered with.
     """
     obj, name = getattr(exc, "obj", None), getattr(exc, "name", None)
-    if obj is None or not name:
+    if not name:
         return ""
+    if obj is None:
+        return _what_the_document_holds(doc, name)
     try:
         public = sorted(a for a in dir(obj) if not a.startswith("_"))
         declared = getattr(obj, "PropertiesList", None)
@@ -526,6 +559,26 @@ def _volume_of(obj):
     return shape.Volume
 
 
+def _volume_moved(doc, created):
+    """
+    How much material each feature this Step created actually moved.
+
+    Two volume reads the volume-neutral check below makes anyway, handed back
+    rather than left for the Step's own code to derive.
+    """
+    moved = {}
+    for name in sorted(created):
+        obj = doc.getObject(name)
+        if obj is None or not obj.isDerivedFrom(_MOVES_MATERIAL):
+            continue
+        base = getattr(obj, "BaseFeature", None)
+        before = _volume_of(base) if base is not None else 0.0
+        now = _volume_of(obj)
+        moved[name] = {"before": round(before, 6), "after": round(now, 6),
+                       "moved": round(now - before, 6)}
+    return moved
+
+
 def _features_that_moved_no_material(doc, created):
     """
     Features this Step created that came out the same volume they went in.
@@ -535,15 +588,10 @@ def _features_that_moved_no_material(doc, created):
     untouched. FreeCAD calls it 'Up-to-date' and 'Valid'.
     """
     idle = []
-    for name in sorted(created):
-        obj = doc.getObject(name)
-        if obj is None or not obj.isDerivedFrom(_MOVES_MATERIAL):
-            continue
-        base = getattr(obj, "BaseFeature", None)
-        before = _volume_of(base) if base is not None else 0.0
-        now = _volume_of(obj)
+    for name, volume in _volume_moved(doc, created).items():
+        before, now = volume["before"], volume["after"]
         if abs(now - before) <= _VOLUME_TOLERANCE * max(1.0, abs(before)):
-            idle.append((obj, before, now))
+            idle.append((doc.getObject(name), before, now))
     return idle
 
 
@@ -595,6 +643,36 @@ _IDLE_CAUSE_MESSAGE = {
         "Compare the feature's placement against the Body's BoundBox by hand."
     ),
 }
+
+_IDLE_HEADLINE = "this Step added a feature that neither removed nor added any material"
+
+_IDLE_EXPLANATION = (
+    "A Pad, Pocket, Hole or Fillet that leaves the Body's volume exactly as it found it "
+    "did not happen: a Pocket whose profile is extruded away from the solid cuts nothing."
+)
+
+
+def _idle_feature_report(doc, created):
+    """
+    What this Step's volume-neutral features did, as the hint a failure carries.
+
+    A Step's own volume assert raises before any check in `_run_step_body`
+    runs, so every failure carries this and not only the clean runs. A hint is
+    never worth losing the traceback it explains: anything raised here is lost.
+    """
+    try:
+        idle = _features_that_moved_no_material(doc, created)
+        if not idle:
+            return ""
+        lines = [
+            "%s (%s): %s mm3 before, %s mm3 after -- %s"
+            % (obj.Name, obj.TypeId, before, now,
+               _IDLE_CAUSE_MESSAGE[_diagnose_idle_feature(obj, before, now)])
+            for obj, before, now in idle
+        ]
+        return "\n%s\n%s" % ("\n".join(lines), _IDLE_EXPLANATION)
+    except BaseException:
+        return ""
 
 
 STDOUT_LIMIT = 4000
@@ -773,23 +851,8 @@ def _run_step_body(doc, namespace, touched, request):
     if failures:
         raise RuntimeError("recompute left these objects in error:\n" + "\n".join(failures))
 
-    idle = _features_that_moved_no_material(doc, touched.created)
-    if idle:
-        lines = []
-        for obj, before, now in idle:
-            cause = _diagnose_idle_feature(obj, before, now)
-            lines.append(
-                "%s (%s): %s mm3 before, %s mm3 after -- %s"
-                % (obj.Name, obj.TypeId, round(before, 6), round(now, 6),
-                   _IDLE_CAUSE_MESSAGE[cause])
-            )
-        raise RuntimeError(
-            "this Step added a feature that neither removed nor added any material:\n"
-            + "\n".join(lines)
-            + "\nA Pad, Pocket, Hole or Fillet that leaves the Body's volume exactly as it "
-              "found it did not happen: a Pocket whose profile is extruded away from the solid "
-              "cuts nothing."
-        )
+    if _features_that_moved_no_material(doc, touched.created):
+        raise RuntimeError(_IDLE_HEADLINE)
 
     scattered = _bodies_in_pieces(doc)
     if scattered:
@@ -821,6 +884,7 @@ def _run_step_body(doc, namespace, touched, request):
         "deleted": sorted(touched.deleted),
         "modified": sorted(touched.modified()),
         "geometry": _geometry_snapshot(doc),
+        "volume": _volume_moved(doc, touched.created),
         "signature": signature_of(doc),
     }
     held, failed = _measured(namespace)
@@ -866,7 +930,9 @@ def run_step(request):
             response = _run_step_body(doc, namespace, touched, request)
     except AssertionError as exc:
         touched.diff(doc)
-        response = {"ok": False, "traceback": trimmed_traceback(exc)}
+        response = {"ok": False,
+                    "traceback": trimmed_traceback(exc) + _idle_feature_report(doc, touched.created),
+                    "volume": _volume_moved(doc, touched.created)}
         held, failed = _measured(namespace)
         if held is not None:
             response["held"] = held
@@ -874,7 +940,10 @@ def run_step(request):
             response["failed"] = failed
     except BaseException as exc:
         touched.diff(doc)
-        response = {"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)}
+        response = {"ok": False,
+                    "traceback": (trimmed_traceback(exc) + introspect(exc, doc)
+                                  + _idle_feature_report(doc, touched.created)),
+                    "volume": _volume_moved(doc, touched.created)}
     printed = _printed(said)
     if printed:
         response["stdout"] = printed
