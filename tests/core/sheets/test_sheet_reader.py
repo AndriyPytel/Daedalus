@@ -34,6 +34,13 @@ needs_pymupdf = pytest.mark.skipif(not sheet_reader.available(),
                                    reason="PyMuPDF is not installed")
 
 
+def _skip_unless_present(*paths):
+    """The `sheet_cache` guard (`tests/conftest.py`), for the tests that read a drawing directly."""
+    for path in paths:
+        if not os.path.exists(path):
+            pytest.skip("sheet not found: %s; set FCC_MODELMANIA_DIR" % path)
+
+
 @pytest.fixture(scope="module")
 def sheet(sheet_cache):
     if not sheet_reader.available():
@@ -394,6 +401,7 @@ def test_a_raster_exported_on_a_black_background_is_still_cut_up(tmp_path):
     the edge of the picture instead of assumed.
     """
     pytest.importorskip("PIL")
+    _skip_unless_present(RASTER)
 
     sheet = sheet_reader.read(RASTER, into=str(tmp_path))
 
@@ -413,6 +421,7 @@ def test_a_raster_view_keeps_the_dimensions_that_belong_to_it(tmp_path):
     dimensions on every side.
     """
     pytest.importorskip("PIL")
+    _skip_unless_present(RASTER)
 
     sheet = sheet_reader.read(RASTER, into=str(tmp_path))
     widest = max(sheet.crops, key=lambda crop: crop.rect[2] - crop.rect[0])
@@ -431,6 +440,7 @@ def test_a_raster_is_still_cut_up_and_still_says_it_has_no_text_layer(tmp_path):
     be inferred from an empty one.
     """
     pytest.importorskip("PIL")
+    _skip_unless_present(RASTER)
 
     sheet = sheet_reader.read(RASTER, into=str(tmp_path))
 
@@ -812,6 +822,7 @@ def test_a_raster_crop_is_not_enlarged_past_what_the_file_holds(tmp_path):
     """
     from PIL import Image
 
+    _skip_unless_present(RASTER)
     sheet = sheet_reader.read(RASTER, into=str(tmp_path))
     original = Image.open(RASTER).size
     for crop in sheet.crops:
@@ -1651,6 +1662,7 @@ def test_what_a_picture_has_inside_a_region_is_measured_off_the_four_sheets():
     """
     import pymupdf
 
+    _skip_unless_present(*modelmania_harness.SHEETS.values())
     inside, alongside, clipped = [], [], []
     for path in modelmania_harness.SHEETS.values():
         document = pymupdf.open(path)
@@ -1688,6 +1700,7 @@ def test_a_picture_no_region_reaches_becomes_a_shape_only_crop():
     import pymupdf
 
     path = str(modelmania_harness.MODELMANIA_DIR / "model-mania-2024.pdf")
+    _skip_unless_present(path)
     page = pymupdf.open(path)[0]
     words = [w for w in page.get_text("words") if str(w[4]).strip()]
     regions = sheet_reader._the_regions_of(page, words)
@@ -1974,6 +1987,7 @@ def test_read_registers_its_temp_dir_for_atexit_cleanup(monkeypatch, tmp_path):
     """
     import shutil as shutil_module
 
+    _skip_unless_present(SHEET)
     copy = tmp_path / "fcc-263.pdf"
     shutil_module.copyfile(SHEET, copy)
 
@@ -2004,6 +2018,7 @@ def test_a_read_failure_is_logged_once_and_then_cached_quiet(monkeypatch, caplog
     """
     import shutil as shutil_module
 
+    _skip_unless_present(SHEET)
     copy = tmp_path / "fcc-265.pdf"
     shutil_module.copyfile(SHEET, copy)
 
@@ -2036,6 +2051,7 @@ def test_two_sessions_reading_the_same_sheet_at_once_render_it_once(monkeypatch,
     """
     import shutil as shutil_module
 
+    _skip_unless_present(SHEET)
     copy = tmp_path / "fcc-267.pdf"
     shutil_module.copyfile(SHEET, copy)
 
@@ -2131,6 +2147,7 @@ def test_a_page_fills_the_accumulator_by_field_name_not_position(tmp_path):
     a fresh `_PageAccumulator` and reading each field back by name is the test
     that a positional swap could not have passed.
     """
+    _skip_unless_present(SHEET)
     document = sheet_reader.pymupdf.open(SHEET)
     page_state = sheet_reader._PageAccumulator()
 

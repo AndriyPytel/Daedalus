@@ -79,6 +79,7 @@ from tests.loop_helpers import (
     scripted,
     drive,
     _turns_of,
+    needs_drawing,
     MODEL_MANIA,
     THE_2023_CLAMP,
     _the_clamp_as_it_was_read,
@@ -557,6 +558,7 @@ def test_a_sheet_is_shown_as_its_views_and_not_as_one_page():
     layout plus one picture per view it arrives at 279 DPI. A single picture
     reaching Design means the sheet went out at the resolution that misreads.
     """
+    needs_drawing(MODEL_MANIA)
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
@@ -576,6 +578,7 @@ def test_design_is_told_what_the_sheet_prints_rather_than_asked_to_find_it():
     `100` are on this sheet; the run that named the defect read one of them as
     something else.
     """
+    needs_drawing(MODEL_MANIA)
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
@@ -625,6 +628,7 @@ def test_a_callout_the_description_never_used_goes_back_to_design_naming_it():
     the callout is missing from both sides. Held against the file it is caught,
     and the question that comes back says the number.
     """
+    needs_drawing(MODEL_MANIA)
     thin = {"envelope": {"length": read("150 mm")}}
     llm = ScriptedLLMClient([*_first_pass_turns(thin, [MODEL_MANIA]), design_reply({}),
                              plan_reply("Only"), code_reply("box()"),

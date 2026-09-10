@@ -508,10 +508,18 @@ def scripted(turns, attachments=(), resuming=False):
     return ScriptedLLMClient(turns)
 
 
+def needs_drawing(*paths):
+    """The `sheet_cache` guard (`tests/conftest.py`), for a run given a drawing directly."""
+    for path in paths:
+        if not os.path.exists(path):
+            pytest.skip("drawing not found: %s; set FCC_MODELMANIA_DIR" % path)
+
+
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
           views=None, checks=(), attachments=(), decide=None, outstanding=(),
           the_part_path=None, kernel=None):
     """Run the loop over scripted turns and hand back everything to assert on."""
+    needs_drawing(*attachments)
     llm = scripted(turns, attachments, resuming=bool(the_part_path))
     tools = FakeTools(applies, views=views, checks=checks)
     events = EventStream()
