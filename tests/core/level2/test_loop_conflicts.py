@@ -696,7 +696,8 @@ def test_a_rejected_review_carries_the_unbuilt_step_s_entry_on_the_auto_answer(c
         plan_reply({"do": "Pad the outline 80 mm long", "satisfies": [THE_LENGTH]},
                    {"do": "Assign plain carbon steel to the Body",
                     "satisfies": [THE_MATERIAL]}),
-        json.dumps({"declare": {"steps": [{"step": 1, "code": "pad()", "label": "Pad"}],
+        json.dumps({"code": "pad()", "step": 1, "label": "Pad"}),
+        json.dumps({"declare": {"steps": [{"step": 1, "label": "Pad"}],
                     "unbuildable": NO_CARD}}),
         suspect_reply(),
         assertion_reply(CHECKS),
@@ -1216,7 +1217,7 @@ def test_a_closed_marked_steps_op_reaches_the_apply_step_tool_call():
 
     assert ("apply_step", {"code": "doc.addObject('Part::Box', 'Box')",
                            "label": "Add the box", "op": "pad"}) in tools.calls
-    call = events.first(TOOL_CALL)
+    call = next(e for e in events.of(TOOL_CALL) if e.data["name"] == "apply_step")
     assert call.data["arguments"]["op"] == "pad"
 
 
