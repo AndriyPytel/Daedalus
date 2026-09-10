@@ -19,15 +19,14 @@ pytestmark = pytest.mark.freecad
 
 
 def _a_box_run():
-    """design -> plan -> execute -> review, the smallest Plan that lands."""
+    """design -> plan -> execute (code, declare) -> review, the smallest Plan that lands."""
     return ScriptedLLMClient([
         "design",
         json.dumps({"declare": {"design": {}, "question": ""}}),
         json.dumps({"declare": {"steps": ["Add a 10mm cube"]}}),
-        json.dumps({"declare": {"steps": [
-            {"step": 1, "code": "doc.addObject('Part::Box', 'Box')",
-             "label": "Add the box"},
-        ]}}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box')", "step": 1,
+                    "label": "Add the box"}),
+        json.dumps({"declare": {"steps": [{"step": 1, "label": "Add the box"}]}}),
         json.dumps({"declare": {"suspected": []}}),
         json.dumps({"declare": {"verdict": "pass", "reason": "A 10mm cube."}}),
     ])
@@ -125,16 +124,15 @@ def test_control_names_abort_separately_from_stop():
 
 
 def _a_question_then_a_box_run():
-    """design asks once, then plan -> execute -> review, once it is answered."""
+    """design asks once, then plan -> execute (code, declare) -> review, once it is answered."""
     return ScriptedLLMClient([
         "design",
         json.dumps({"declare": {"design": {}, "question": "solid or hollow?"}}),
         json.dumps({"declare": {"design": {"solid": True}, "question": ""}}),
         json.dumps({"declare": {"steps": ["Add a 10mm cube"]}}),
-        json.dumps({"declare": {"steps": [
-            {"step": 1, "code": "doc.addObject('Part::Box', 'Box')",
-             "label": "Add the box"},
-        ]}}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box')", "step": 1,
+                    "label": "Add the box"}),
+        json.dumps({"declare": {"steps": [{"step": 1, "label": "Add the box"}]}}),
         json.dumps({"declare": {"suspected": []}}),
         json.dumps({"declare": {"verdict": "pass", "reason": "A 10mm cube."}}),
     ])
@@ -160,10 +158,9 @@ def test_no_answer_callback_pauses_in_a_resumable_needs_answer_state(kernel):
         json.dumps({"declare": {"design": {}, "question": "solid or hollow?"}}),
         json.dumps({"declare": {"design": {"solid": True}, "question": ""}}),
         json.dumps({"declare": {"steps": ["Add a 10mm cube"]}}),
-        json.dumps({"declare": {"steps": [
-            {"step": 1, "code": "doc.addObject('Part::Box', 'Box')",
-             "label": "Add the box"},
-        ]}}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box')", "step": 1,
+                    "label": "Add the box"}),
+        json.dumps({"declare": {"steps": [{"step": 1, "label": "Add the box"}]}}),
         json.dumps({"declare": {"suspected": []}}),
         json.dumps({"declare": {"verdict": "pass", "reason": "A 10mm cube."}}),
     ])
