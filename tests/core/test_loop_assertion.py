@@ -708,14 +708,22 @@ def test_a_replayed_session_says_what_was_asked_before_it_says_what_was_read(tmp
     Read back off the log rather than off the live stream, because the session
     opened tomorrow is the one that has to be judged, and it is judged against
     what was asked.
+
+    A_CUBE names none of this sheet's own callouts, so the reading goes back
+    to it once over what it missed (`_every_callout_accounted_for`) before
+    Design is done — a turn the script has to answer for the run to reach
+    Plan at all, the same shape `_first_pass_turns` plus one empty re-read
+    gives every other test that scripts a real sheet this thin.
     """
     intent = "Build the pipe clamp on this sheet."
+    needs_drawing(MODEL_MANIA)
     path = str(tmp_path / "session.jsonl")
     events = EventStream()
     events.log_to(path)
-    llm = ScriptedLLMClient([design_reply(A_CUBE), plan_reply("Only",
-                                                             satisfies=everything(A_CUBE)),
-                             code_reply("box()"), suspect_reply(), verdict_reply("pass")])
+    llm = scripted([*_first_pass_turns(A_CUBE, [MODEL_MANIA]), design_reply({}),
+                    plan_reply("Only", satisfies=everything(A_CUBE)),
+                    code_reply("box()"), suspect_reply(), verdict_reply("pass")],
+                   attachments=[MODEL_MANIA])
 
     run(intent, llm=llm, tools=FakeTools().registry, events=events,
         attachments=[MODEL_MANIA])
