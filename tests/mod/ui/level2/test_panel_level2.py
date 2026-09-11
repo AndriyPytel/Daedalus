@@ -2574,10 +2574,13 @@ def test_stop_and_abort_kill_the_run_provider_process_without_waiting_the_ceilin
     (`core/llm/claude.py :: _CEILING`); both must instead end the run's own
     live process at once.
     """
-    from core.llm.claude import ClaudeCodeClient
+    from core.llm.claude import ClaudeCodeClient, kill
 
     class _StubSdkClient:
         pipeline = None
+
+        def kill_provider(self):
+            kill(self._llm)
 
     a_turn = [{"role": "system", "content": "You are the Design phase."},
               {"role": "user", "content": "Make a 10mm plate"}]
@@ -4030,3 +4033,14 @@ def test_a_step_that_faults_ends_its_own_run_and_the_gui_survives(panel, monkeyp
 
     assert finished == [None], "a faulting Step still ends the run rather than raising out"
     assert ended == [True], "end_run must still run so the Document is left unlocked"
+
+
+def test_stop_with_no_sdk_client_yet_is_a_no_op(monkeypatch):
+    """A Stop before any Intent has built an `sdk_client` has nothing to kill."""
+    from ui.copilot_panel import LoopWorker, EventBridge, AskTheUser
+
+    worker = LoopWorker(EventBridge(), AskTheUser())
+    monkeypatch.setattr(worker.ask, "abandon", lambda: None)
+
+    worker.stop()
+    worker.abort()

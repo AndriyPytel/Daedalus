@@ -600,10 +600,9 @@ class LoopWorker(QtCore.QObject):
         processes ends that call at once, the same as `abort`, while leaving
         the kernel alone so the in-flight Step can still checkpoint.
         """
-        from core.llm.claude import kill
-
         self._stop.set()
-        kill(self.client)
+        if self.sdk_client is not None:
+            self.sdk_client.kill_provider()
         self.ask.abandon()
 
     def abort(self):
@@ -616,14 +615,13 @@ class LoopWorker(QtCore.QObject):
         back a crash rather than a result, and `core/kernel.py`'s
         reopen-the-checkpoint recovery is what keeps the in-flight Step out of
         the Document. The kernel itself survives: `Kernel.kill` only drops the
-        process, so the next Step run restarts it. `kill(self.client)` ends
-        this run's own `claude` process the same way `stop` does, rather than
-        waiting for it to notice the kernel is gone.
+        process, so the next Step run restarts it. `sdk_client.kill_provider()`
+        ends this run's own `claude` process the same way `stop` does, rather
+        than waiting for it to notice the kernel is gone.
         """
-        from core.llm.claude import kill
-
         self._abort.set()
-        kill(self.client)
+        if self.sdk_client is not None:
+            self.sdk_client.kill_provider()
         if self.pipeline is not None:
             self.pipeline.shutdown()
         self._stop.set()
