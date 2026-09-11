@@ -233,3 +233,21 @@ def test_send_cancelled_stops_the_run_before_it_starts():
     assert result.blocked
     assert STOPPED in [event.kind for event in seen]
     client.close()
+
+
+def test_kill_provider_reaches_this_clients_own_llm(monkeypatch):
+    """
+    What `Mod/ui/copilot_panel.py`'s `LoopWorker.stop`/`abort` need of
+    `core.llm.claude.kill`, reached through the SDK instead of a second
+    `core.llm.claude` import outside `bridge/`.
+    """
+    from copilot import sdk
+
+    calls = []
+    monkeypatch.setattr("core.llm.claude.kill", lambda client: calls.append(client))
+    client = sdk.Client.__new__(sdk.Client)
+    client._llm = object()
+
+    client.kill_provider()
+
+    assert calls == [client._llm]

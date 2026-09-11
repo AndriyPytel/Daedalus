@@ -279,6 +279,12 @@ class Client:
         return self.send(pending["prompt"], gate=pending["gate"], decide=pending["decide"],
                          ask=lambda question: answer, attachments=pending["attachments"])
 
+    def kill_provider(self):
+        """End this Client's own live provider process at once (FCC-376)."""
+        from core.llm.claude import kill
+
+        kill(self._llm)
+
     def save(self, path):
         """Write this Client's Document to *path* and hand the path back."""
         self.document.saveAs(path)
