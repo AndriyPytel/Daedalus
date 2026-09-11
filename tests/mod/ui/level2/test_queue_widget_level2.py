@@ -280,3 +280,43 @@ def test_a_design_that_failed_is_not_reopened_by_the_part():
     queue.design_written()
 
     assert queue.phase_state(DESIGN) == FAILED
+
+
+def test_a_phase_closed_and_reopened_sums_the_time_of_its_passes():
+    from ui.queue_widget import EXECUTE, PLAN
+
+    queue = _widget()
+    queue.start_plan(["Make a box"], at=0.0)
+    queue.start_execute(at=100.0)
+    queue.start_plan(["Make a box, revised"], at=160.0)
+    queue.start_execute(at=220.0)
+
+    assert queue._text_labels[PLAN].text() == "Plan  2:40"
+    assert queue._text_labels[EXECUTE].text() == "Execute  1:00"
+
+
+def test_a_running_phase_shows_finished_passes_plus_the_one_in_flight():
+    from ui.queue_widget import EXECUTE
+
+    queue = _widget()
+    queue._live = True
+    queue.start_plan(["Make a box"], at=0.0)
+    queue.start_execute(at=100.0)
+    queue.start_plan(["Make a box, revised"], at=160.0)
+    queue.start_execute(at=220.0)
+    queue.call_ended(245.0)
+
+    assert queue._text_labels[EXECUTE].text() == "Execute  1:25"
+
+
+def test_reset_clears_the_accumulated_phase_time():
+    from ui.queue_widget import PLAN
+
+    queue = _widget()
+    queue.start_plan(["Make a box"], at=0.0)
+    queue.start_execute(at=100.0)
+    queue.reset(at=500.0)
+    queue.start_plan(["Make a box"], at=530.0)
+    queue.start_execute(at=560.0)
+
+    assert queue._text_labels[PLAN].text() == "Plan  0:30"
