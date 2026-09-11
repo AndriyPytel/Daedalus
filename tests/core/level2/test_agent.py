@@ -9,6 +9,7 @@ import pytest
 
 from core.agent import phase_contract as pc
 from core.agent import AgentGaveUp, run_phase
+from core.agent import agent
 from core.events import SUB_AGENT_ANSWERED, SUB_AGENT_SPAWNED, EventStream
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
@@ -185,3 +186,25 @@ def test_a_phase_that_will_not_declare_on_its_last_turn_gives_up(kernel, tmp_pat
     with pytest.raises(AgentGaveUp):
         run_phase(pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad a box",
                   kernel=kernel, supervisor=supervisor)
+
+
+def test_a_run_that_only_ever_reads_is_demanded_a_declaration_then_gives_up(kernel, tmp_path, monkeypatch):
+    """Acceptance: Execute counts turns since its last declared Step; past the
+    limit it demands one on the next turn; a pass that still does not declare
+    after the demand ends with AgentGaveUp naming the turns spent."""
+    monkeypatch.setattr(agent, "_DECLARATION_LIMIT", 2)
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "print('probe 1')"}),
+        json.dumps({"code": "print('probe 2')"}),
+        json.dumps({"code": "print('probe 3')"}),
+        json.dumps({"code": "print('probe 4')"}),
+    ])
+
+    with pytest.raises(AgentGaveUp) as excinfo:
+        run_phase(pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "look around",
+                  kernel=kernel)
+
+    assert "3" in str(excinfo.value)
+    assert len(llm.calls) == 4
+    demand = llm.calls[-1][-1]
+    assert "declare" in json.dumps(demand)

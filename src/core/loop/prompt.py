@@ -56,6 +56,7 @@ _PHASE_VOCABULARY = {
     REVIEW_PHASE: ("The artefacts are English",),
     "contract_correction": (),
     "budget_last_call": (),
+    "declaration_limit": (),
 }
 
 

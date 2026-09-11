@@ -30,7 +30,8 @@ def _scripted_turns(n_steps):
     turns = []
     for i in range(n_steps):
         turns.append(json.dumps({
-            "code": f"doc.addObject('Part::Box', 'Box{i:03d}')"
+            "code": f"doc.addObject('Part::Box', 'Box{i:03d}'); doc.recompute()",
+            "step": i, "label": f"box {i:03d}",
         }))
     turns.append(json.dumps({"declare": "done"}))
     return turns
