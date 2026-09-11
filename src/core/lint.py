@@ -335,6 +335,12 @@ def _counted_selections(tree) -> set:
     them, because an empty selection is only the extreme of the failure. The
     recorded run's fillet had exactly that guard, found eight of the edges its
     Step described, and passed it.
+
+    A name assigned from a comprehension over a counted source, dropping
+    nothing, is itself counted: it holds one element per element of a
+    length that has already been checked, so an intermediate name carries
+    the count as far as the reference does. Assignments run in a fixpoint so
+    a chain of such names — one comprehension over another — carries it too.
     """
     counted = set()
     for node in ast.walk(tree):
@@ -353,6 +359,23 @@ def _counted_selections(tree) -> set:
                     and inner.func.id == "len" and len(inner.args) == 1
                     and isinstance(inner.args[0], ast.Name)):
                 counted.add(inner.args[0].id)
+
+    comprehension_assigns = [node for node in ast.walk(tree)
+                              if isinstance(node, ast.Assign)
+                              and len(node.targets) == 1
+                              and isinstance(node.targets[0], ast.Name)
+                              and isinstance(node.value, (ast.ListComp, ast.GeneratorExp, ast.SetComp))]
+    grown = True
+    while grown:
+        grown = False
+        for node in comprehension_assigns:
+            name = node.targets[0].id
+            if name in counted:
+                continue
+            if all(isinstance(gen.iter, ast.Name) and gen.iter.id in counted
+                   and not gen.ifs for gen in node.value.generators):
+                counted.add(name)
+                grown = True
     return counted
 
 
