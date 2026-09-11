@@ -559,3 +559,58 @@ def test_a_lookup_of_a_name_that_is_not_the_one_just_created_is_accepted():
     code = "doc.addObject('Part::Box', 'Box')\nother = doc.getObject('OtherBox')"
 
     assert lint(code).ok
+
+
+def test_a_name_assigned_from_a_counted_comprehension_passes_the_lint():
+    """
+    The ticket's fillet: the comprehension is written into a name first, then
+    that name is handed to `Base`, and the chain is no different from writing
+    it inline.
+    """
+    code = (
+        "if len(rim) != 4:\n"
+        "    raise RuntimeError('the base has 4 edges, found %d' % len(rim))\n"
+        "names = ['Edge%d' % (i + 1) for i, _ in rim]\n"
+        "f.Base = (base, names)\n"
+    )
+
+    assert lint(code).ok, lint(code).report()
+
+
+def test_a_chain_of_comprehension_assignments_stays_counted():
+    code = (
+        "if len(rim) != 4:\n"
+        "    raise RuntimeError('the base has 4 edges, found %d' % len(rim))\n"
+        "idx = [i for i, _ in rim]\n"
+        "names = ['Edge%d' % (i + 1) for i in idx]\n"
+        "f.Base = (base, names)\n"
+    )
+
+    assert lint(code).ok, lint(code).report()
+
+
+def test_a_name_from_a_filtered_comprehension_is_still_rejected():
+    code = (
+        "if len(rim) != 4:\n"
+        "    raise RuntimeError('the base has 4 edges, found %d' % len(rim))\n"
+        "names = ['Edge%d' % (i + 1) for i, _ in rim if i > 1]\n"
+        "f.Base = (base, names)\n"
+    )
+
+    result = lint(code)
+
+    assert not result.ok
+    assert "how many" in result.report()
+
+
+def test_a_name_from_an_uncounted_source_comprehension_is_still_rejected():
+    code = (
+        "picks = pick(base)\n"
+        "names = ['Edge%d' % (i + 1) for i in picks]\n"
+        "f.Base = (base, names)\n"
+    )
+
+    result = lint(code)
+
+    assert not result.ok
+    assert "how many" in result.report()
