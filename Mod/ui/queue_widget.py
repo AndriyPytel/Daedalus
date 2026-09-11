@@ -214,6 +214,7 @@ class QueueWidget(QtWidgets.QFrame):
         self._text_labels = {}
         self._phase_start_times = {}
         self._phase_end_times = {}
+        self._phase_totals = {}
         self._step_start_times = {}
         self._step_end_times = {}
         self._current_call_start = None
@@ -292,6 +293,7 @@ class QueueWidget(QtWidgets.QFrame):
         self._states[DESIGN] = RUNNING
         self._phase_start_times = {}
         self._phase_end_times = {}
+        self._phase_totals = {}
         self._step_start_times = {}
         self._step_end_times = {}
         self._current_call_start = None
@@ -377,17 +379,24 @@ class QueueWidget(QtWidgets.QFrame):
         event's `at`, records when that happened. Kept in one place because
         the two were briefly separate calls the panel made in pairs, and a
         pair is something a caller can get half right: a row can then print a
-        duration that belongs to a phase it is no longer in. A phase is only
-        stamped as opening if it was not already running, so a Plan revised
-        four times keeps the time the first one started.
+        duration that belongs to a phase it is no longer in. Closing a
+        RUNNING phase adds that pass's span to `_phase_totals` rather than
+        overwriting it, so a phase reopened by a later pass keeps what its
+        earlier passes already took.
         """
         if at is None:
             return
         if closing is not None and self._states[closing] == RUNNING:
             self._phase_end_times[closing] = at
+            self._accumulate(closing, at)
         if opening is not None and self._states[opening] != RUNNING:
             self._phase_start_times[opening] = at
         self._latest_event_time = at
+
+    def _accumulate(self, phase, at):
+        start = self._phase_start_times.get(phase)
+        if start is not None:
+            self._phase_totals[phase] = self._phase_totals.get(phase, 0) + (at - start)
 
     def design_written(self, at=None):
         """
@@ -414,7 +423,10 @@ class QueueWidget(QtWidgets.QFrame):
 
         Design is closed here only as a fallback: a run whose Design wrote no
         part file emits no `PART`, and a Design left Running under a Running
-        Plan is a state no run is ever in.
+        Plan is a state no run is ever in. A replan can land while Execute,
+        Assertion or Review is still Running from the pass this one
+        supersedes, so each is closed here too, adding its span to
+        `_phase_totals` before it is put back to Queued.
         """
         self._timed(at, DESIGN, PLAN)
         if self._states[DESIGN] != FAILED:
@@ -422,6 +434,8 @@ class QueueWidget(QtWidgets.QFrame):
         if self._states[PLAN] != FAILED:
             self._states[PLAN] = RUNNING
         for phase in (EXECUTE, ASSERTION, REVIEW):
+            if self._states[phase] == RUNNING and at is not None:
+                self._accumulate(phase, at)
             if self._states[phase] != FAILED:
                 self._states[phase] = QUEUED
         self._foreseen = list(steps)
@@ -618,25 +632,23 @@ class QueueWidget(QtWidgets.QFrame):
         """
         Repaint all phase rows with current state and elapsed time.
 
-        A RUNNING phase shows its elapsed time and optionally the live call
-        time with ceiling. A DONE phase shows its total duration. Times are
-        computed from event.at deltas so replayed sessions show the same
-        numbers the live run showed.
+        A RUNNING phase shows its finished passes' total plus the one in
+        flight; a DONE phase shows the sum of every pass it took, `_timed`
+        and `start_plan` having folded each pass into `_phase_totals` as it
+        closed. Times are computed from event.at deltas so replayed sessions
+        show the same numbers the live run showed.
         """
         for phase in PHASES:
             label_text = _LABEL[phase]
 
-            if self._states[phase] == DONE and phase in self._phase_end_times:
-                start = self._phase_start_times.get(phase)
-                end = self._phase_end_times[phase]
-                if start is not None:
-                    elapsed = end - start
-                    label_text = f"{_LABEL[phase]}  {_format_time(elapsed)}"
+            if self._states[phase] == DONE and phase in self._phase_totals:
+                elapsed = self._phase_totals[phase]
+                label_text = f"{_LABEL[phase]}  {_format_time(elapsed)}"
 
             elif self._states[phase] == RUNNING:
                 start = self._phase_start_times.get(phase)
                 if start is not None and self._latest_event_time is not None:
-                    elapsed = self._latest_event_time - start
+                    elapsed = self._latest_event_time - start + self._phase_totals.get(phase, 0)
                     label_text = f"{_LABEL[phase]}  {_format_time(elapsed)}"
 
                     if (self._current_call_start is not None and 
