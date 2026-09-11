@@ -40,9 +40,9 @@ _NO_DOCUMENT = object()
 
 
 _DECLARATION_LIMIT = 15
-"""Turns a phase may run code without declaring a Step before it is
-demanded one, past which a phase that still does not declare gives up
-(FCC-381): a pass can spend a whole budget reading and declare nothing."""
+"""Turns a phase may run code without declaring a Step before it is demanded
+one, past which a phase that still does not declare gives up. A pass that only
+reads spends the whole budget and leaves the run nothing to apply."""
 
 
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
@@ -104,6 +104,15 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         text = _say(session, llm, prompt("budget_last_call"),
                                     phase=phase, stream=stream)
                         continue
+                if message.get("step") in delivered_steps:
+                    refused = {"ok": False, "status": "refused",
+                              "step": message["step"], "next_step": message["step"] + 1,
+                              "traceback": "Step %s was already delivered. Write Step %s "
+                                            "next." % (message["step"], message["step"] + 1)}
+                    if stream is not None:
+                        stream.emit(TOOL_RESULT, name=phase, result=refused)
+                    text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
+                    continue
                 if stream is not None:
                     stream.emit(TOOL_CALL, name=phase,
                                 arguments={"code": message["code"]})
@@ -115,16 +124,6 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 first_step = False
                 delivered_step = None
                 if "step" in message and result.ok and result.checkpoint:
-                    if message["step"] in delivered_steps:
-                        refused = {"ok": False, "status": "refused",
-                                  "step": message["step"], "next_step": message["step"] + 1,
-                                  "traceback": "Step %s was already delivered. Write Step %s "
-                                                "next."
-                                                % (message["step"], message["step"] + 1)}
-                        if stream is not None:
-                            stream.emit(TOOL_RESULT, name=phase, result=refused)
-                        text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
-                        continue
                     since_declaration = 0
                     declaration_demanded = False
                     checkpoint = _kept(working, result.checkpoint, len(declarations))

@@ -320,3 +320,17 @@ def test_reset_clears_the_accumulated_phase_time():
     queue.start_execute(at=560.0)
 
     assert queue._text_labels[PLAN].text() == "Plan  0:30"
+
+
+def test_the_gate_wait_is_taken_off_every_pass_of_the_phase():
+    from ui.queue_widget import PLAN
+
+    queue = _widget()
+    queue.start_plan(["Make a box"], at=0.0)
+    queue.waited(30.0)
+    queue.start_execute(at=100.0)
+    queue.start_plan(["Make a box, revised"], at=160.0)
+    queue.waited(20.0)
+    queue.start_execute(at=220.0)
+
+    assert queue._text_labels[PLAN].text() == "Plan  1:50"

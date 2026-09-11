@@ -278,3 +278,44 @@ def test_a_run_that_only_ever_reads_is_demanded_a_declaration_then_gives_up(kern
     assert len(llm.calls) == 4
     demand = llm.calls[-1][-1]
     assert "declare" in json.dumps(demand)
+
+
+def test_a_refused_redeclaration_never_reaches_the_kernel(kernel, tmp_path):
+    """A Step already delivered is refused before its code runs, so the kernel
+    is not left holding objects the Document never took."""
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()",
+                    "step": 1, "label": "first box"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Twin'); doc.recompute()",
+                    "step": 1, "label": "first box again"}),
+        json.dumps({"declare": {"step": "done"}}),
+    ])
+
+    run_phase(pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad a box",
+              kernel=kernel, on_declaration=lambda declaration: {"delivered": True})
+
+    named = kernel.check("print([o.Name for o in doc.Objects])")
+    assert "Twin" not in named.stdout
+
+
+def test_a_declaration_resets_the_turns_counted_against_the_limit(kernel, tmp_path, monkeypatch):
+    """The limit is turns since the last Step, not turns in the pass: a phase
+    that declares keeps working for a whole limit again."""
+    monkeypatch.setattr(agent, "_DECLARATION_LIMIT", 3)
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "print('probe 1')"}),
+        json.dumps({"code": "print('probe 2')"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()",
+                    "step": 1, "label": "first box"}),
+        json.dumps({"code": "print('probe 3')"}),
+        json.dumps({"code": "print('probe 4')"}),
+        json.dumps({"declare": {"step": "done"}}),
+    ])
+
+    declared, _, declarations = run_phase(
+        pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad a box",
+        kernel=kernel, on_declaration=lambda declaration: {"delivered": True})
+
+    assert declared == {"step": "done"}
+    assert len(declarations) == 1
+    assert len(llm.calls) == 6

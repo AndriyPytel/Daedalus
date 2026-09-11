@@ -280,7 +280,7 @@ class Client:
                          ask=lambda question: answer, attachments=pending["attachments"])
 
     def kill_provider(self):
-        """End this Client's own live provider process at once (FCC-376)."""
+        """End this Client's own live provider process at once."""
         from core.llm.claude import kill
 
         kill(self._llm)
