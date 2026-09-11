@@ -39,6 +39,12 @@ class AgentGaveUp(Exception):
 _NO_DOCUMENT = object()
 
 
+_DECLARATION_LIMIT = 15
+"""Turns a phase may run code without declaring a Step before it is
+demanded one, past which a phase that still does not declare gives up
+(FCC-381): a pass can spend a whole budget reading and declare nothing."""
+
+
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               kernel=None, supervisor=None, stream=None, system=None,
               on_declaration=None):
@@ -62,6 +68,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     first_step = True
     declared_failure = None
     last_call = False
+    since_declaration = 0
+    declaration_demanded = False
     try:
         text = _say(session, llm, task, phase=phase, stream=stream)
         while True:
@@ -78,6 +86,15 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 text = _say(session, llm, json.dumps(feedback), phase=phase, stream=stream)
                 continue
             if "code" in message:
+                if declaration_demanded:
+                    raise AgentGaveUp(
+                        "%s ran %d turns without declaring" % (phase, since_declaration))
+                since_declaration += 1
+                if since_declaration > _DECLARATION_LIMIT:
+                    declaration_demanded = True
+                    text = _say(session, llm, prompt("declaration_limit"),
+                                phase=phase, stream=stream)
+                    continue
                 if supervisor is not None:
                     supervisor.record_turn()
                     if supervisor.outcome:
@@ -108,6 +125,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                             stream.emit(TOOL_RESULT, name=phase, result=refused)
                         text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
                         continue
+                    since_declaration = 0
+                    declaration_demanded = False
                     checkpoint = _kept(working, result.checkpoint, len(declarations))
                     declaration = {
                         "step": message["step"], "label": message.get("label"),
