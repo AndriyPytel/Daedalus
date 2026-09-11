@@ -185,3 +185,73 @@ def test_a_phase_that_will_not_declare_on_its_last_turn_gives_up(kernel, tmp_pat
     with pytest.raises(AgentGaveUp):
         run_phase(pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad a box",
                   kernel=kernel, supervisor=supervisor)
+
+
+def test_agent_refuses_a_second_declaration_of_a_delivered_step_number(kernel, tmp_path):
+    """AC1/AC2: a delivered Step's feedback carries its number and the next
+    one; declaring that number again this call is refused with the same two
+    numbers, and `on_declaration` never runs for the refused turn."""
+    calls = []
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()",
+                    "step": 1, "label": "first box"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box2'); doc.recompute()",
+                    "step": 1, "label": "first box again"}),
+        json.dumps({"declare": {"step": "done"}}),
+    ])
+
+    def on_declaration(declaration):
+        calls.append(declaration["step"])
+        return {"delivered": True}
+
+    _, session, declarations = run_phase(
+        pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad a box",
+        kernel=kernel, on_declaration=on_declaration,
+    )
+
+    assert calls == [1]
+    assert len(declarations) == 1
+
+    first_feedback = json.loads(session.messages[3]["content"])
+    second_feedback = json.loads(session.messages[5]["content"])
+
+    assert first_feedback["step"] == 1
+    assert first_feedback["next_step"] == 2
+
+    assert second_feedback["ok"] is False
+    assert second_feedback["step"] == 1
+    assert second_feedback["next_step"] == 2
+
+
+def test_a_step_that_failed_delivery_can_be_declared_again(kernel, tmp_path):
+    """AC4: a failed delivery is not the same invariant as an already-delivered
+    Step -- the same number is refused only once it has succeeded, so the
+    model can fix its code and redeclare the number that failed."""
+    calls = []
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()",
+                    "step": 1, "label": "first box"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box2'); doc.recompute()",
+                    "step": 1, "label": "first box fixed"}),
+        json.dumps({"declare": {"step": "done"}}),
+    ])
+
+    def on_declaration(declaration):
+        calls.append(declaration["step"])
+        if len(calls) == 1:
+            return {"delivered": False, "traceback": "signature mismatch"}
+        return {"delivered": True}
+
+    _, session, declarations = run_phase(
+        pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad a box",
+        kernel=kernel, on_declaration=on_declaration,
+    )
+
+    assert calls == [1, 1]
+    assert [d["step"] for d in declarations] == [1, 1]
+    assert declarations[0]["delivered"] is False
+    assert declarations[1].get("delivered", True) is True
+
+    second_feedback = json.loads(session.messages[5]["content"])
+    assert second_feedback["step"] == 1
+    assert second_feedback["next_step"] == 2

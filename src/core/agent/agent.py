@@ -58,6 +58,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     session = Session(system=_composed_system(system, working))
     working_kernel = kernel
     declarations = []
+    delivered_steps = set()
     first_step = True
     declared_failure = None
     last_call = False
@@ -95,7 +96,18 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 result = working_kernel.check(message["code"], **(
                     {} if step_document is _NO_DOCUMENT else {"document": step_document}))
                 first_step = False
+                delivered_step = None
                 if "step" in message and result.ok and result.checkpoint:
+                    if message["step"] in delivered_steps:
+                        refused = {"ok": False, "status": "refused",
+                                  "step": message["step"], "next_step": message["step"] + 1,
+                                  "traceback": "Step %s was already delivered. Write Step %s "
+                                                "next."
+                                                % (message["step"], message["step"] + 1)}
+                        if stream is not None:
+                            stream.emit(TOOL_RESULT, name=phase, result=refused)
+                        text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
+                        continue
                     checkpoint = _kept(working, result.checkpoint, len(declarations))
                     declaration = {
                         "step": message["step"], "label": message.get("label"),
@@ -107,7 +119,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     if stream is not None:
                         stream.emit(STEP_DECLARED, step=message["step"],
                                     label=message.get("label"), checkpoint=checkpoint)
-                    if declared_failure is not None:
+                    if declared_failure is not None and message["step"] != declared_failure:
                         skipped = {"ok": False, "status": "failed",
                                   "traceback": "Step %s was not applied because Step %s "
                                                 "failed. Fix Step %s first."
@@ -139,7 +151,13 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         declared_failure = message["step"]
                     else:
                         declarations.append(declaration)
+                        delivered_steps.add(message["step"])
+                        delivered_step = message["step"]
+                        declared_failure = None
                 answer = _feedback(result)
+                if delivered_step is not None:
+                    answer["step"] = delivered_step
+                    answer["next_step"] = delivered_step + 1
                 if stream is not None:
                     stream.emit(TOOL_RESULT, name=phase, result=answer)
                 text = _say(session, llm, json.dumps(answer), phase=phase, stream=stream)
