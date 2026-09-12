@@ -31,13 +31,19 @@ def _origins(module):
 
 
 def foreign_modules(modules, root):
-    """Names and paths of already-imported modules of ours not served from `root`."""
+    """
+    Names and paths of already-imported modules of ours not served from `root`.
+
+    Compared by real path: FreeCAD's `Mod` holds a symlink to a checkout, and
+    when that checkout is this one the same file arrives under two names.
+    """
+    root = os.path.realpath(root)
     offenders = []
     for name, module in modules.items():
         if module is None or name.split(".")[0] not in OUR_PACKAGES:
             continue
         for origin in _origins(module):
-            if os.path.commonpath([root, os.path.abspath(origin)]) != root:
+            if os.path.commonpath([root, os.path.realpath(origin)]) != root:
                 offenders.append("%s (%s)" % (name, origin))
     return offenders
 
