@@ -1,0 +1,153 @@
+- attribution: ''
+  difficulty: 3
+  dimensioned: false
+  features:
+  - revolve
+  - circular-pattern
+  - shell
+  file: ball-bearing-fag-6207-shielded.jpg
+  licence: CC BY 4.0
+  part: single-row deep groove ball bearing with retained shield, FAG 6207
+  source: https://commons.wikimedia.org/wiki/File:1990s_ball_bearing_6207_RE17_by_Fischers_Aktien_Gesellschaft_Bielefeld_factory_Germany.jpg
+- attribution: ''
+  difficulty: 2
+  dimensioned: false
+  features:
+  - revolve
+  - hole-pattern
+  - chamfer
+  file: flange-adaptor-8-hole-with-stub.jpg
+  licence: CC BY-SA 4.0
+  part: round pipe flange adaptor, 8-hole bolt circle, stepped boss with pipe stub
+  source: https://commons.wikimedia.org/wiki/File:Adaptor.flange.1.jpg
+- attribution: ''
+  difficulty: 1
+  dimensioned: false
+  features:
+  - extrude
+  - hole-pattern
+  - chamfer
+  file: blind-flange-8-bolt.jpg
+  licence: CC BY-SA 3.0
+  part: blind pipe flange, plain disc bolted over a pipe end
+  source: https://commons.wikimedia.org/wiki/File:Blindflansch01.jpg
+- attribution: ''
+  difficulty: 4
+  dimensioned: false
+  features:
+  - revolve
+  - boolean-union
+  - hole-pattern
+  - thread
+  file: check-valve-flanged-body.jpg
+  licence: CC BY 3.0
+  part: inline check valve body, threaded bonnet cap, flanged both ends
+  source: https://commons.wikimedia.org/wiki/File:Gate_valve.JPG
+- attribution: ''
+  difficulty: 2
+  dimensioned: false
+  features:
+  - revolve
+  - chamfer
+  file: check-valve-brass-compression.jpg
+  licence: CC0
+  part: brass inline check valve with compression fittings
+  source: https://commons.wikimedia.org/wiki/File:Check_Valve.jpg
+- attribution: ''
+  difficulty: 1
+  dimensioned: false
+  features:
+  - revolve
+  - loft
+  - thread
+  file: adjustable-clamping-lever.jpg
+  licence: CC BY-SA 3.0
+  part: adjustable clamping lever with threaded boss
+  source: https://commons.wikimedia.org/wiki/File:01_Klemmhebel_2012.jpg
+- attribution: ''
+  difficulty: 3
+  dimensioned: false
+  features:
+  - revolve
+  - boolean-union
+  - chamfer
+  file: pillow-block-bearing.jpg
+  licence: Public domain
+  part: cast-iron pillow block (plummer) bearing housing with grease fitting
+  source: https://commons.wikimedia.org/wiki/File:Pillow-block-bearing.jpg
+- attribution: ''
+  difficulty: 2
+  dimensioned: false
+  features:
+  - revolve
+  - circular-pattern
+  - extrude
+  file: handwheel-red-plastic-valve.jpg
+  licence: CC BY-SA 3.0
+  part: 5-spoke plastic valve handwheel with hub
+  source: https://commons.wikimedia.org/wiki/File:Handrad.jpg
+- attribution: ''
+  difficulty: 4
+  dimensioned: false
+  features:
+  - extrude
+  - revolve
+  - boolean-union
+  - fillet
+  file: connecting-rod-honda-gx160.jpg
+  licence: CC BY-SA 4.0
+  part: small-engine aluminium connecting rod, Honda GX160
+  source: https://commons.wikimedia.org/wiki/File:Bielle_Honda_GX160.jpg
+- attribution: ''
+  difficulty: 3
+  dimensioned: false
+  features:
+  - extrude
+  - circular-pattern
+  - boolean-cut
+  file: spur-gear-cast-iron-large.jpg
+  licence: CC BY-SA 4.0
+  part: large cast-iron spur gear with spoked web
+  source: https://commons.wikimedia.org/wiki/File:Zahnrad,_TGZ_Genthin_02.jpg
+- attribution: ''
+  difficulty: 5
+  dimensioned: false
+  features:
+  - revolve
+  - loft
+  - boolean-union
+  file: camshaft-automotive.jpg
+  licence: Public domain
+  part: automotive camshaft with integral lobes and journals
+  source: https://commons.wikimedia.org/wiki/File:Camshaft.jpg
+- attribution: ''
+  difficulty: 2
+  dimensioned: false
+  features:
+  - extrude
+  - revolve
+  - sweep
+  file: crank-handle-offset.jpg
+  licence: CC BY-SA 4.0
+  part: offset hand crank with rotating grip and square drive tang
+  source: https://commons.wikimedia.org/wiki/File:Manivelle_01.jpg
+- attribution: ''
+  difficulty: 2
+  dimensioned: false
+  features:
+  - extrude
+  - revolve
+  - circular-pattern
+  file: door-hinge-butt-installed.jpg
+  licence: CC BY-SA 4.0
+  part: butt hinge pair (two leaves and pin) mounted in a door frame
+  source: https://commons.wikimedia.org/wiki/File:Door_Hinge.jpg
+- attribution: ''
+  difficulty: 1
+  dimensioned: false
+  features:
+  - revolve
+  file: door-hinge-barrel-pin.jpg
+  licence: CC BY-SA 3.0
+  part: cylindrical barrel-and-pin door hinge mounted in a frame
+  source: https://commons.wikimedia.org/wiki/File:Deurscharnier.jpg

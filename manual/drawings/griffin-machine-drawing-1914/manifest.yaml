@@ -1,0 +1,79 @@
+- file: gland-bushing-flanged.png
+  part: Flanged gland/bushing with two bolt holes and a central bore
+  source: https://archive.org/details/machinedrawingpr01grif
+  licence: Public Domain (pre-1929 US publication)
+  attribution: Griffin, F.E., Machine Drawing (American School of Correspondence,
+    Chicago, 1914), Plate D, p.187 — scan via Internet Archive
+  difficulty: 1
+  features:
+  - turn
+  - hole-pattern
+  - bore
+  dimensioned: true
+- file: slide-valve-flanged.png
+  part: Slide valve plate, flanged block with a rectangular port
+  source: https://archive.org/details/machinedrawingpr01grif
+  licence: Public Domain (pre-1929 US publication)
+  attribution: Griffin, F.E., Machine Drawing (American School of Correspondence,
+    Chicago, 1914), Plate D, p.187 — scan via Internet Archive
+  difficulty: 2
+  features:
+  - extrude
+  - pocket
+  - fillet
+  dimensioned: true
+- file: chest-cover-flanged.png
+  part: Flanged rectangular chest cover plate with a 10-hole bolt pattern
+  source: https://archive.org/details/machinedrawingpr01grif
+  licence: Public Domain (pre-1929 US publication)
+  attribution: Griffin, F.E., Machine Drawing (American School of Correspondence,
+    Chicago, 1914), Plate D, p.187 — scan via Internet Archive
+  difficulty: 3
+  features:
+  - extrude
+  - hole-pattern
+  - fillet
+  dimensioned: true
+- file: steam-pipe-elbow-flanged.png
+  part: Cast steam-pipe elbow (return bend) with bolted flanges at both ends — re-cropped
+    to its own views/dims/label only
+  source: https://archive.org/details/machinedrawingpr01grif
+  licence: Public Domain (pre-1929 US publication)
+  attribution: Griffin, F.E., Machine Drawing (American School of Correspondence,
+    Chicago, 1914), Plate D, p.187 — scan via Internet Archive
+  difficulty: 3
+  features:
+  - revolve
+  - sweep
+  - hole-pattern
+  - fillet
+  dimensioned: true
+- file: exhaust-tee-flanged.png
+  part: Cast exhaust pipe tee fitting with bolted flanges on all three ports — re-cropped
+    to its own views/dims/label only
+  source: https://archive.org/details/machinedrawingpr01grif
+  licence: Public Domain (pre-1929 US publication)
+  attribution: Griffin, F.E., Machine Drawing (American School of Correspondence,
+    Chicago, 1914), Plate D, p.187 — scan via Internet Archive
+  difficulty: 3
+  features:
+  - revolve
+  - sweep
+  - hole-pattern
+  - fillet
+  dimensioned: true
+- file: steam-chest-housing.png
+  part: Cast steam chest housing body, plan view + longitudinal section, own dimensions
+    and label only
+  source: https://archive.org/details/machinedrawingpr01grif
+  licence: Public Domain (pre-1929 US publication)
+  attribution: Griffin, F.E., Machine Drawing (American School of Correspondence,
+    Chicago, 1914), Plate D, p.187 — scan via Internet Archive
+  difficulty: 5
+  features:
+  - extrude
+  - pocket
+  - hole-pattern
+  - fillet
+  - section
+  dimensioned: true

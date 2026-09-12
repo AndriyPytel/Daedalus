@@ -1,0 +1,142 @@
+- file: rotator-pin.pdf
+  part: Rotator retaining pin, plain cylindrical pin with chamfered ends
+  source: https://commons.wikimedia.org/wiki/File:Rotator_Pin_Drawing_v1_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+  difficulty: 1
+  features:
+  - turn
+  - chamfer
+  dimensioned: true
+- file: hatch-spacer-21-5mm.pdf
+  part: Cylindrical spacer sleeve, 21.5 mm long, hatch mechanism
+  source: https://commons.wikimedia.org/wiki/File:21.50_mm_Spacer_Drawing_v1_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+  difficulty: 1
+  features:
+  - turn
+  - through-hole
+  dimensioned: true
+- file: hatch-engage-knob.pdf
+  part: Turned engage knob with a knurled grip and a bore for the spindle
+  source: https://commons.wikimedia.org/wiki/File:Engage_Knob_Drawing_v2_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+  difficulty: 2
+  features:
+  - revolve
+  - knurl
+  - bore
+  dimensioned: true
+- file: door-side-bracket.pdf
+  part: L-shaped mounting bracket, door side of the hatch mechanism
+  source: https://commons.wikimedia.org/wiki/File:Door_Side_Bracket_Drawing_v1_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+  difficulty: 2
+  features:
+  - extrude
+  - hole-pattern
+  - fillet
+  dimensioned: true
+- file: cover-limit-plate.pdf
+  part: Flat limit-stop cover plate with mounting holes
+  source: https://commons.wikimedia.org/wiki/File:Cover_Limit_Plate_Drawing_v2_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+  difficulty: 2
+  features:
+  - extrude
+  - hole-pattern
+  dimensioned: true
+- file: bell-crank-base.pdf
+  part: Bell crank pivot base plate with sectioned bosses and hole pattern
+  source: https://commons.wikimedia.org/wiki/File:Bottom_Middle_Bell_Crank_Base_Drawing_v3_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+  difficulty: 3
+  features:
+  - extrude
+  - hole-pattern
+  - fillet
+  - section
+  dimensioned: true
+- file: gearbox-base-plate.pdf
+  part: Machined base plate for the gearbox assembly, with hole pattern and pockets
+  source: https://commons.wikimedia.org/wiki/File:Gearbox_Base_Plate_Drawing_v2_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+  difficulty: 3
+  features:
+  - extrude
+  - hole-pattern
+  - pocket
+  dimensioned: true
+- file: handle-base.pdf
+  part: Handle base bracket with pivot bore and mounting holes
+  source: https://commons.wikimedia.org/wiki/File:Handle_Base_Drawing_v3_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+  difficulty: 3
+  features:
+  - extrude
+  - hole-pattern
+  - fillet
+  - bore
+  dimensioned: true
+- file: long-yoke.png
+  part: Threaded clevis/fork rod-end yoke with a through-hole eye and a forked slot
+    end
+  source: https://commons.wikimedia.org/wiki/File:Long_Yoke_Drawing_v4_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+    — page-1 render, original PDF rate-limited on Wikimedia
+  difficulty: 3
+  features:
+  - turn
+  - fork-slot
+  - thread
+  - fillet
+  dimensioned: true
+- file: ratchet-case.png
+  part: Ratchet pawl housing block with a threaded hole and a keyed slot bore
+  source: https://commons.wikimedia.org/wiki/File:Ratchet_Case_Drawing_v2_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+    — page-1 render, original PDF rate-limited on Wikimedia
+  difficulty: 2
+  features:
+  - extrude
+  - pocket
+  - thread
+  dimensioned: true
+- file: latch-base-lh.png
+  part: Latch base bracket, left-hand, with pivot bores, hole pattern and a sectioned
+    boss
+  source: https://commons.wikimedia.org/wiki/File:Latch_Base_-_LH_Drawing_v7_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+    — page-1 render, original PDF rate-limited on Wikimedia
+  difficulty: 4
+  features:
+  - extrude
+  - hole-pattern
+  - fillet
+  - section
+  dimensioned: true
+- file: top-bell-crank.png
+  part: Top bell crank lever with two pivot bosses and a machined pocket, detail +
+    section views
+  source: https://commons.wikimedia.org/wiki/File:Top_Bell_Crank_Drawing_v5_(Hatch,_Crew,_Apollo_11_by_NASA_and_Smithsonian_Institution).pdf
+  licence: CC0-1.0
+  attribution: NASA / Smithsonian Institution (Smithsonian X 3D, Apollo 11 hatch mechanism)
+    — page-1 render, original PDF rate-limited on Wikimedia
+  difficulty: 4
+  features:
+  - extrude
+  - pocket
+  - fillet
+  - section
+  - detail-view
+  dimensioned: true
