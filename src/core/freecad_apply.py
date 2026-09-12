@@ -556,7 +556,11 @@ TRAPS = [
     "PartDesign::Fillet with UseAllEdges set rounds every edge of the base feature, "
     "which is a different part from one with the edges the drawing marks rounded. "
     "Where only some edges are meant, select them by computing which — off face "
-    "normals, edge length, the plane an edge lies in — and pass that list in Base.",
+    "normals, edge length, the plane an edge lies in — and pass that list in Base. "
+    "None of those three tells a rim's inner edges from its outer ones — a slot's "
+    "hole rim and the plate's own edge share length, plane and z. Only the two "
+    "faces either side of an edge say which way a fillet on it pulls, and Preflight "
+    "refuses a Base that mixes them, naming the edges it will not carry together.",
     "Shape.BoundBox is taken off the shape's triangulation, so on a curved face it "
     "reports the tessellation and not the surface — and lands inside the true extreme, "
     "by the sagitta of whatever chord the mesh happened to use. The BoundBox of a pad "
