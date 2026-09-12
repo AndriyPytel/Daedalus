@@ -24,7 +24,7 @@ import io
 import os
 import tokenize
 
-from tests.source_tree import ROOT, sources
+from tests.source_tree import ROOT, sources, tracked
 
 MACHINE_READABLE = ("# type:", "# noqa", "# pragma:", "# pylint:", "# flake8:",
                     "# fmt:", "# -*-", "#!")
@@ -69,18 +69,22 @@ NOT_A_DOCUMENT = {".venv", ".git", "logs", "manual"}
 
 
 def prose_files():
+    known = tracked()
     for name in sorted(os.listdir(ROOT)):
         if name in NOT_A_DOCUMENT or name.startswith("."):
             continue
         full = os.path.join(ROOT, name)
         if os.path.isfile(full) and name.endswith(".md"):
-            yield os.path.relpath(full, ROOT)
+            if name in known:
+                yield os.path.relpath(full, ROOT)
         elif os.path.isdir(full) and name != "tests":
             for path, dirnames, names in os.walk(full):
                 dirnames[:] = [d for d in dirnames if d not in NOT_A_DOCUMENT]
                 for filename in sorted(names):
                     if filename.endswith((".md", ".py")):
-                        yield os.path.relpath(os.path.join(path, filename), ROOT)
+                        where = os.path.relpath(os.path.join(path, filename), ROOT)
+                        if where.replace(os.sep, "/") in known:
+                            yield where
 
 
 def test_adr_0021_is_never_cited_alone():

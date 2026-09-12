@@ -14,9 +14,24 @@ different rules -- a test may name a Document and a test explains itself in
 prose.
 """
 import os
+import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
+
+
+def tracked():
+    """
+    Every path the repository holds, relative to ROOT, from git itself.
+
+    A guard that walks the filesystem judges whatever happens to sit in the
+    working tree -- a scratch document, a local export, a directory somebody
+    excluded in `.git/info/exclude` -- and fails on a file the repository
+    does not ship. What the addon ships is what git tracks.
+    """
+    listed = subprocess.run(["git", "ls-files"], cwd=ROOT,
+                            capture_output=True, text=True, check=True)
+    return set(listed.stdout.split("\n")) - {""}
 
 NOT_THE_ADDON = {"tests", "manual", "logs", "docs", "config", "src", ".git", ".venv"}
 
