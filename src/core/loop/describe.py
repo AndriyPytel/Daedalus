@@ -133,6 +133,11 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
     phase after this one is handed the part rather than the reading of it.
     `tests/test_loop.py` measures both against the recorded run of the 2023
     pipe clamp.
+
+    `DESIGN` is emitted from a `finally` around the reconcile and the two
+    checks that follow it, not after them: a real description already sits
+    in `the_part` once gathering starts, and a raise partway through must not
+    cost the log the only record of what the run understood the part to be.
     """
     the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled)
     the_part = merge({}, the_part)
@@ -145,19 +150,20 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
                                   _answered(question, ask, events), llm, events,
                                   attachments)
 
-    if grouped:
-        if cancelled():
-            raise Stopped()
-        grown, _ = _reconciled(the_part, intent, llm, events, attachments)
-        the_part = merge(the_part, grown)
+    try:
+        if grouped:
+            if cancelled():
+                raise Stopped()
+            grown, _ = _reconciled(the_part, intent, llm, events, attachments)
+            the_part = merge(the_part, grown)
 
-    the_part = _every_callout_accounted_for(the_part, intent, attachments, llm, events,
-                                            budgets, cancelled)
-    the_part = _the_outside_is_carried(the_part, intent, attachments, llm, events,
-                                       budgets, cancelled)
-
-    if the_part:
-        events.emit(DESIGN, model=the_part)
+        the_part = _every_callout_accounted_for(the_part, intent, attachments, llm, events,
+                                                budgets, cancelled)
+        the_part = _the_outside_is_carried(the_part, intent, attachments, llm, events,
+                                           budgets, cancelled)
+    finally:
+        if the_part:
+            events.emit(DESIGN, model=the_part)
     the_part = _the_sweep_is_the_sheets(the_part, attachments)
     the_part = _the_directions_are_the_drawings(the_part, intent, attachments, llm,
                                                 events, budgets, cancelled)
