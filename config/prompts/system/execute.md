@@ -232,6 +232,15 @@ the Step fail where the selection does not match it — `if len(edges) != 12:
 raise RuntimeError(...)` before the reference is assigned. The lint refuses a
 `Base` computed into a variable that nothing raises on the length of.
 
+**The count agreeing is not the concavity agreeing.** A rim's inner and outer
+edges pass a length, a plane and a z check identically -- a slot's hole rim and
+the plate's own outer edge are the same length, in the same plane, at the same
+z. Only the two faces either side of an edge say which way a fillet on it
+pulls: Preflight rejects a `Base` whose edges are not all one concavity and
+names the mixed ones, so a selection built off length or position alone is
+still worth checking against the parts it actually rounds before the Step
+runs, not after it comes back refused.
+
 ## How you work
 
 You are a multi-turn agent, not a one-shot reply. Your working directory

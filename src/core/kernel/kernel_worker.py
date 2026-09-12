@@ -371,6 +371,63 @@ def _bodies_with_inverted_solid(doc):
     return inverted
 
 
+def _edge_concavity_sign(shape, edge):
+    """
+    Convex/concave sign of one Base edge: `normal.dot(other.CenterOfMass -
+    point)` at its midpoint, negative for convex. Beats the Solution Notes'
+    `cross(n1, n2).dot(tangent)` -- OCC's own per-edge curve direction is
+    not consistent around one rim, so that one splits a uniform corner set.
+    `None` without exactly two adjacent faces, or an edge-on normal.
+    """
+    import Part
+
+    faces = shape.ancestorsOfType(edge, Part.Face)
+    if len(faces) != 2:
+        return None
+    mid = 0.5 * (edge.FirstParameter + edge.LastParameter)
+    point = edge.valueAt(mid)
+    face, other = faces
+    u, v = face.Surface.parameter(point)
+    normal = face.normalAt(u, v)
+    sign = normal.dot(other.CenterOfMass - point)
+    if abs(sign) < 1e-9:
+        return None
+    return -1 if sign < 0 else 1
+
+
+def _fillets_with_mixed_concavity(doc):
+    """
+    Every `PartDesign::Fillet` whose `Base` edges are not all one concavity.
+
+    A single radius on a Base that mixes concave and convex edges pulls half
+    a rim outward and half inward -- the report still says the Step
+    succeeded, because a mixed selection recomputes clean.
+    """
+    mixed = []
+    for obj in doc.Objects:
+        if obj.TypeId != "PartDesign::Fillet":
+            continue
+        base = getattr(obj, "Base", None)
+        if not base or not base[0]:
+            continue
+        feature, names = base
+        shape = getattr(feature, "Shape", None)
+        if shape is None or shape.isNull():
+            continue
+        by_sign = {}
+        for name in names:
+            edge = shape.getElement(name)
+            sign = _edge_concavity_sign(shape, edge)
+            if sign is None:
+                continue
+            by_sign.setdefault(sign, []).append(name)
+        if len(by_sign) > 1:
+            sides = ", ".join("%s: %s" % ("concave" if sign > 0 else "convex", ", ".join(edges))
+                              for sign, edges in sorted(by_sign.items(), reverse=True))
+            mixed.append("%s: Base mixes concave and convex edges (%s)" % (obj.Name, sides))
+    return mixed
+
+
 _A_DRESSUP = {"PartDesign::Fillet": ("Radius", "makeFillet"),
               "PartDesign::Chamfer": ("Size", "makeChamfer")}
 
@@ -850,6 +907,15 @@ def _run_step_body(doc, namespace, touched, request):
     failures = _objects_left_in_error(doc)
     if failures:
         raise RuntimeError("recompute left these objects in error:\n" + "\n".join(failures))
+
+    mixed = _fillets_with_mixed_concavity(doc)
+    if mixed:
+        raise RuntimeError(
+            "this Step built a fillet whose Base mixes concavities:\n" + "\n".join(mixed)
+            + "\nOne radius on a mixed selection pulls the concave edges inward and the "
+              "convex edges outward -- split Base by concavity (a face's own normal against "
+              "the other face's CenterOfMass at the edge's midpoint) and fillet one side "
+              "at a time.")
 
     if _features_that_moved_no_material(doc, touched.created):
         raise RuntimeError(_IDLE_HEADLINE)
