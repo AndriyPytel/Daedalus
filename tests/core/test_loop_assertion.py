@@ -1242,3 +1242,64 @@ def test_no_step_carries_named_parameters_any_more():
     assert "the_operation_this_step_names" not in llm.calls[1][1]["content"]
     assert all("parameters" not in args
                for name, args in tools.calls if name == "apply_step")
+
+
+def test_a_description_that_succeeded_survives_a_reconcile_that_raises(monkeypatch, tmp_path):
+    """
+    The description Design already finished writes `DESIGN` to the log even
+    where the reconcile that runs after it blows up, so a session opened
+    tomorrow reads what the run understood the part to be instead of nothing
+    at all.
+    """
+    import core.loop.describe as loop_describe
+
+    monkeypatch.setattr(loop_describe, "_first_pass",
+                        lambda intent, llm, events, attachments, cancelled: (A_PART, "", True))
+
+    def _blows_up(*args, **kwargs):
+        raise RuntimeError("the reconcile blew up")
+
+    monkeypatch.setattr(loop_describe, "_reconciled", _blows_up)
+
+    path = str(tmp_path / "session.jsonl")
+    events = EventStream()
+    events.log_to(path)
+
+    result = run("Build this", llm=ScriptedLLMClient([]), tools=FakeTools().registry,
+                 events=events, attachments=[RENDER_PNG])
+
+    assert not result.ok
+
+    replayed, truncated = replay(path)
+    kinds = [event.kind for event in replayed]
+
+    assert not truncated
+    assert kinds.index(INTENT) < kinds.index(DESIGN) < kinds.index(ERROR)
+    assert events.first(DESIGN).data["model"] == A_PART
+
+
+def test_a_description_that_itself_failed_writes_no_design(monkeypatch, tmp_path):
+    """
+    `_first_pass` never produced a part, so there is nothing to distil and no
+    `DESIGN` to write — a run must have finished the description before the
+    log is allowed to claim it did.
+    """
+    import core.loop.describe as loop_describe
+
+    def _blows_up(*args, **kwargs):
+        raise RuntimeError("first pass blew up")
+
+    monkeypatch.setattr(loop_describe, "_first_pass", _blows_up)
+
+    path = str(tmp_path / "session.jsonl")
+    events = EventStream()
+    events.log_to(path)
+
+    result = run("Build this", llm=ScriptedLLMClient([]), tools=FakeTools().registry,
+                 events=events, attachments=[RENDER_PNG])
+
+    assert not result.ok
+    assert events.first(DESIGN) is None
+
+    replayed, truncated = replay(path)
+    assert DESIGN not in [event.kind for event in replayed]
