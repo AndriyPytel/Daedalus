@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from core.events import ANSWER, COMPLETED, INTENT, QUESTION, ROUTED
+from core.events import ANSWER, COMPLETED, INTENT, QUESTION, ROUTED, replay
 from core.kernel import Kernel, find_freecadcmd
 from core.llm import ScriptedLLMClient
 
@@ -251,3 +251,28 @@ def test_kill_provider_reaches_this_clients_own_llm(monkeypatch):
     client.kill_provider()
 
     assert calls == [client._llm]
+
+
+def test_a_real_runs_transcript_replays_as_the_run_that_wrote_it(tmp_path, kernel):
+    """
+    FCC-390's replay tests all wrote their own transcript by hand, so a bug in
+    `Client.send`'s own path to disk -- as distinct from `EventStream.log_to`
+    called directly -- would have passed every one of them. This drives an
+    actual headless run and reads back the file `Client` itself wrote.
+    """
+    from copilot.sdk import Client
+
+    path = str(tmp_path / "session.jsonl")
+    client = Client(kernel=kernel, llm=_a_box_run())
+    client.events.log_to(path)
+
+    result = client.send("Add a 10mm cube")
+    assert result.ok, result.reason
+
+    live_kinds = [event.kind for event in client.events]
+    restored, truncated = replay(path)
+
+    assert not truncated
+    assert [event.kind for event in restored] == live_kinds
+    assert COMPLETED in live_kinds
+    client.close()
