@@ -898,11 +898,12 @@ def _run_step_body(doc, namespace, touched, request):
     exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
     touched.diff(doc)
 
-    scope = _recompute_scope(doc, touched)
-    if scope is None:
-        doc.recompute()
-    else:
-        doc.recompute(scope)
+    if touched.touched():
+        scope = _recompute_scope(doc, touched)
+        if scope is None:
+            doc.recompute()
+        else:
+            doc.recompute(scope)
 
     failures = _objects_left_in_error(doc)
     if failures:

@@ -10,6 +10,7 @@ import tempfile
 from core.agent.agent import run_phase
 from core.agent import phase_contract as pc
 from core.agent.subagent import SessionTreeSupervisor
+from core.kernel import Kernel
 from core.loop.budgets import Budgets
 from core.loop.describe import _A_SIZE, _TRUE_TO
 from core.loop.document import copied
@@ -149,6 +150,27 @@ assert not failed, "these did not hold: " + "; ".join(failed)
 """
 
 
+class _LazyKernel:
+    """
+    A Kernel not booted until an Assertion attempt runs code, shared across
+    every attempt of one `assertion()` call so a retry reuses the subprocess
+    and the open Document instead of booting and copying afresh. A retry that
+    never writes code (`declare` straight away) still boots nothing.
+    """
+
+    def __init__(self):
+        self._real = None
+
+    def check(self, *args, **kwargs):
+        if self._real is None:
+            self._real = Kernel()
+        return self._real.check(*args, **kwargs)
+
+    def kill(self):
+        if self._real is not None:
+            self._real.kill()
+
+
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
               after_a_retry=(), supervisor=None, kernel=None):
     """Writes and runs acceptance checks against the finished Document — read-only, once per run.
@@ -164,17 +186,17 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
     cancelled = cancelled or (lambda: False)
 
-    for label, measured in (("the envelope check", the_envelope_measured(acceptance)),
-                            ("the self-intersection check", SELF_INTERSECTION_CHECK)):
-        if not measured:
-            continue
-        events.emit(TOOL_CALL, name="check_assertions", arguments={"code": measured})
-        result = tools.call("check_assertions", {"code": measured})
+    fixed_checks = [c for c in
+                   (the_envelope_measured(acceptance), SELF_INTERSECTION_CHECK) if c]
+    if fixed_checks:
+        code = "\n".join(fixed_checks)
+        events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
+        result = tools.call("check_assertions", {"code": code})
         events.emit(TOOL_RESULT, name="check_assertions", result=result)
         if not result.get("ok"):
-            traceback = result.get("traceback") or (label + " failed.")
-            unmet = _unmet_in(traceback) or [label]
-            events.emit(ASSERTION, ok=False, code=measured, confirmed=[],
+            traceback = result.get("traceback") or "the fixed checks failed."
+            unmet = _unmet_in(traceback) or ["the envelope and self-intersection checks"]
+            events.emit(ASSERTION, ok=False, code=code, confirmed=[],
                         uncovered=[], traceback=traceback, unmet=unmet)
             return Checked(failed=True, traceback=traceback, unmet=unmet,
                            geometry=result.get("geometry") or {})
@@ -183,60 +205,66 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         return None
 
     attempts = []
-    for _ in range(budgets.attempts_per_step):
-        if cancelled():
-            raise Stopped()
-        if attempts:
-            request["your_failed_attempts_at_the_checks"] = list(attempts)
+    working_kernel = kernel or _LazyKernel()
+    try:
+        with copied(tools) as document:
+            for attempt in range(budgets.attempts_per_step):
+                if cancelled():
+                    raise Stopped()
+                if attempts:
+                    request["your_failed_attempts_at_the_checks"] = list(attempts)
 
-        supervisor = supervisor or SessionTreeSupervisor()
-        task = json.dumps(request, indent=2, default=str)
-        
-        with copied(tools) as document, tempfile.TemporaryDirectory() as working_dir:
-            declared, session, declarations = run_phase(
-                pc.ASSERTION, working_dir,
-                {"design": described},
-                llm, task, document=document,
-                kernel=kernel, supervisor=supervisor, stream=events,
-                system=prompt(ASSERTION_PHASE)
-            )
-        
-        reply = declared if isinstance(declared, dict) else {}
-        code = str(reply.get("code") or "").strip()
-        uncovered = [str(entry) for entry in (reply.get("uncovered") or ())]
-        if not code:
-            attempts.append({"code": "", "traceback": "You replied with no code. "
-                                                      "Write the checks."})
-            continue
+                supervisor = supervisor or SessionTreeSupervisor()
+                task = json.dumps(request, indent=2, default=str)
 
-        events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
-        result = tools.call("check_assertions", {"code": code})
-        events.emit(TOOL_RESULT, name="check_assertions", result=result)
+                with tempfile.TemporaryDirectory() as working_dir:
+                    run_kwargs = {"kernel": working_kernel, "supervisor": supervisor,
+                                 "stream": events, "system": prompt(ASSERTION_PHASE)}
+                    if attempt == 0:
+                        run_kwargs["document"] = document
+                    declared, session, declarations = run_phase(
+                        pc.ASSERTION, working_dir, {"design": described}, llm, task,
+                        **run_kwargs)
 
-        if result.get("ok"):
-            held = result.get("held")
-            confirmed = list(held) if held is not None else \
-                [entry for entry in acceptance if entry not in uncovered]
-            checked = Checked(confirmed=confirmed, uncovered=uncovered,
-                              geometry=result.get("geometry") or {})
-            events.emit(ASSERTION, ok=True, code=code, confirmed=confirmed,
-                        uncovered=uncovered, traceback="")
-            return checked
+                reply = declared if isinstance(declared, dict) else {}
+                code = str(reply.get("code") or "").strip()
+                uncovered = [str(entry) for entry in (reply.get("uncovered") or ())]
+                if not code:
+                    attempts.append({"code": "", "traceback": "You replied with no code. "
+                                                              "Write the checks."})
+                    continue
 
-        traceback = result.get("traceback") or "The checks failed without saying why."
-        if _the_model_failed(traceback):
-            held = result.get("held")
-            confirmed = list(held) if held is not None else []
-            worker_failed = result.get("failed")
-            unmet = list(worker_failed) if worker_failed is not None else \
-                (_unmet_in(traceback) or list(acceptance))
-            events.emit(ASSERTION, ok=False, code=code, confirmed=confirmed,
-                        uncovered=uncovered, traceback=traceback, unmet=unmet)
-            return Checked(failed=True, confirmed=confirmed, traceback=traceback,
-                           uncovered=uncovered, unmet=unmet,
-                           geometry=result.get("geometry") or {})
+                events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
+                result = tools.call("check_assertions", {"code": code})
+                events.emit(TOOL_RESULT, name="check_assertions", result=result)
 
-        attempts.append({"code": code, "traceback": traceback})
+                if result.get("ok"):
+                    held = result.get("held")
+                    confirmed = list(held) if held is not None else \
+                        [entry for entry in acceptance if entry not in uncovered]
+                    checked = Checked(confirmed=confirmed, uncovered=uncovered,
+                                      geometry=result.get("geometry") or {})
+                    events.emit(ASSERTION, ok=True, code=code, confirmed=confirmed,
+                                uncovered=uncovered, traceback="")
+                    return checked
+
+                traceback = result.get("traceback") or "The checks failed without saying why."
+                if _the_model_failed(traceback):
+                    held = result.get("held")
+                    confirmed = list(held) if held is not None else []
+                    worker_failed = result.get("failed")
+                    unmet = list(worker_failed) if worker_failed is not None else \
+                        (_unmet_in(traceback) or list(acceptance))
+                    events.emit(ASSERTION, ok=False, code=code, confirmed=confirmed,
+                                uncovered=uncovered, traceback=traceback, unmet=unmet)
+                    return Checked(failed=True, confirmed=confirmed, traceback=traceback,
+                                   uncovered=uncovered, unmet=unmet,
+                                   geometry=result.get("geometry") or {})
+
+                attempts.append({"code": code, "traceback": traceback})
+    finally:
+        if kernel is None:
+            working_kernel.kill()
 
     events.emit(ASSERTION, ok=None, code="", confirmed=[],
                 uncovered=list(acceptance),
