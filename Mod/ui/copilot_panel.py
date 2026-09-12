@@ -666,8 +666,8 @@ class LoopWorker(QtCore.QObject):
         events = EventStream([self.bridge.subscriber()])
         try:
             events.log_to(transcript)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error("could not open transcript %s: %s" % (transcript, exc))
 
         events.subscribe(lambda event: logger.error("%s: %s" % (event.kind, event.data))
                          if event.kind in (ev.BLOCKED, ev.ERROR) else None)

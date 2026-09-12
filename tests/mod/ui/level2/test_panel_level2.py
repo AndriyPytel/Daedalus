@@ -4044,3 +4044,48 @@ def test_stop_with_no_sdk_client_yet_is_a_no_op(monkeypatch):
 
     worker.stop()
     worker.abort()
+
+
+def test_an_unopenable_transcript_is_logged_not_swallowed(monkeypatch, tmp_path):
+    """
+    A missing transcript log must not cost the user their run, but it must
+    say why it is missing. FCC-390: the bare `except: pass` here left five
+    Sessions with no transcript at all and no line anywhere naming the cause.
+    """
+    import types
+
+    from bridge import logger as logger_module
+    from ui.copilot_panel import LoopWorker, EventBridge, AskTheUser
+
+    worker = LoopWorker(EventBridge(), AskTheUser())
+
+    class _FakePipeline:
+        def start_run(self):
+            return None
+
+        def end_run(self):
+            return None
+
+    class _FakeClient:
+        def __init__(self):
+            self.pipeline = _FakePipeline()
+            self.dispatch = lambda func, timeout=None: func()
+
+        def send(self, *args, **kwargs):
+            return types.SimpleNamespace(ok=True)
+
+    fake_registry = types.SimpleNamespace(call=lambda *a, **k: {"document": ""})
+    monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
+    monkeypatch.setattr("copilot.sdk.build_registry", lambda **kwargs: fake_registry)
+
+    errors = []
+    monkeypatch.setattr(logger_module.logger, "error", lambda msg: errors.append(msg))
+
+    unopenable = str(tmp_path / "does-not-exist" / "session.jsonl")
+    finished = []
+    worker.finished.connect(lambda result, transcript: finished.append(transcript))
+
+    worker.do_work("do something", [], unopenable)
+
+    assert finished == [unopenable], "an unopenable transcript must not stop the run"
+    assert any(unopenable in msg for msg in errors), "the failure must name the path"
