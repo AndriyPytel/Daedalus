@@ -103,6 +103,24 @@ def test_the_headless_fallback_still_draws_the_document_once(pipeline, doc, work
     assert os.path.getsize(views[0]) > 1000
 
 
+def test_a_provider_that_answers_none_beats_freecads_active_document(doc, worker):
+    """
+    A provider that answers `None` means no open Document, whatever
+    `FreeCAD.ActiveDocument` holds -- proven here with a real Document open
+    and active in the process.
+    """
+    import FreeCAD
+
+    assert FreeCAD.ActiveDocument is doc
+    pipeline = ApplyPipeline(document=lambda: None, worker=worker,
+                             dispatch=lambda func, timeout=None: func())
+
+    result = pipeline.apply(BOX, kernel_result=_kernel_result(worker, doc, BOX))
+
+    assert not result.ok
+    assert "no open Document" in result.traceback
+
+
 def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc, worker):
     """
     The Step that burned all three attempts of FCC-30 rung 1. It has to survive
