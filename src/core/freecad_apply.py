@@ -270,12 +270,14 @@ class ApplyPipeline:
         self.locked = False
 
     def _active(self):
-        doc = self._document() if callable(self._document) else self._document
-        if doc is not None:
-            return doc
-        import FreeCAD
+        """
+        Calls `document` if callable; returns it as given otherwise.
 
-        return FreeCAD.ActiveDocument
+        No `FreeCAD.ActiveDocument` fallback: every production caller
+        passes a concrete Document, so a provider answering `None`
+        means there is none, not "ask the process".
+        """
+        return self._document() if callable(self._document) else self._document
 
     def _render_path(self):
         import tempfile
