@@ -19,6 +19,7 @@ DELTAS = ["A ", "10mm ", "box."]
 
 class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
+        self.server.last_headers = self.headers
         self.server.last_body = json.loads(
             self.rfile.read(int(self.headers["Content-Length"])).decode()
         )
@@ -46,6 +47,7 @@ class _Handler(BaseHTTPRequestHandler):
 def local_endpoint():
     server = HTTPServer(("127.0.0.1", 0), _Handler)
     server.last_body = None
+    server.last_headers = None
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
@@ -64,6 +66,22 @@ def test_a_local_openai_compatible_endpoint_streams(local_endpoint):
     assert reply.text == "A 10mm box."
     assert server.last_body["stream"] is True
     assert server.last_body["messages"] == [{"role": "user", "content": "Describe it."}]
+
+
+def test_a_header_the_gateway_routes_on_reaches_the_wire(local_endpoint):
+    """
+    OpenCode Go answers a call with no `x-opencode-session` header with 400
+    "Request is missing x-opencode-session and cannot be routed efficiently",
+    for every model it sells. The header is not a body field, so only what the
+    server received proves it was sent.
+    """
+    server, base = local_endpoint
+    client = LiteLLMClient(model="openai/local-model", api_key="not-needed", api_base=base,
+                           extra_headers={"x-opencode-session": "fcc-1"})
+
+    collect(client.stream([{"role": "user", "content": "Describe it."}]))
+
+    assert server.last_headers["x-opencode-session"] == "fcc-1"
 
 
 def test_how_hard_to_think_reaches_a_model_litellm_has_no_entry_for(local_endpoint):

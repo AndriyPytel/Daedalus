@@ -86,3 +86,60 @@ def test_status_prints_the_same_table_compare_builds(tmp_path, capsys):
     expected = compare([str(out / "haiku" / "mm25.jsonl")],
                        [str(out / "opus" / "mm25.jsonl")], "haiku", "opus")
     assert capsys.readouterr().out.strip() == expected.strip()
+
+
+def test_a_run_is_told_which_provider_sells_the_model(monkeypatch):
+    """`run.py` resolves a model through the provider named to it, not a fetch."""
+    spawned = {}
+
+    def fake_popen(cmd):
+        spawned["cmd"] = cmd
+        return None
+
+    monkeypatch.setattr(lane.subprocess, "Popen", fake_popen)
+
+    lane.run_one("mm25", "sheet.pdf", "glm-5.3-flash", "medium", None,
+                 "/tmp/mm25.jsonl", "Build it.", "OpenCode Go")
+
+    cmd = spawned["cmd"]
+    assert cmd[cmd.index("--provider") + 1] == "OpenCode Go"
+    assert cmd[cmd.index("--model") + 1] == "glm-5.3-flash"
+
+
+def test_a_task_with_no_sheet_attaches_nothing(monkeypatch):
+    """A part named by a standard is an Intent with no page to read."""
+    spawned = {}
+    monkeypatch.setattr(lane.subprocess, "Popen", lambda cmd: spawned.setdefault("cmd", cmd))
+
+    lane.run_one("bolt-nut", "", "sonnet", "medium", None, "/tmp/b.jsonl",
+                 "Model an M12 nut.", "Claude (subscription)")
+
+    assert "--attach" not in spawned["cmd"]
+
+
+def test_a_run_that_never_stops_is_killed_on_the_wall_clock():
+    """
+    A gateway model's `cost` events carry no `usd`, so `--budget-usd` cannot
+    trip and only the clock can end a run that keeps talking.
+    """
+    clock = [0.0]
+
+    class Endless:
+        returncode = None
+
+        def poll(self):
+            return None
+
+        def kill(self):
+            self.returncode = -9
+
+        def wait(self):
+            return self.returncode
+
+    process = Endless()
+    outcome = lane.watch(process, "/nonexistent.jsonl", hang_seconds=1e9, run_seconds=60,
+                         poll_seconds=1, sleep=lambda seconds: clock.__setitem__(0, clock[0] + 10),
+                         now=lambda: clock[0])
+
+    assert outcome == "over time"
+    assert process.returncode == -9

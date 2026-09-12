@@ -13,6 +13,8 @@ old `ab_watchdog.sh` rule): if its log has not grown for `--hang-seconds`
 (default 1800, the wall-clock silence `ab_watchdog.sh` used), the run is
 killed and retried rather than left to rot the lane overnight.
 
+One sweep is one provider; two are two sweeps into one `--out`.
+
 `--status` prints `core.measure.compare`'s table over the logs a lane run
 already wrote, without starting anything -- two models compare directly the
 way `tools/measure_session.py --baseline/--experiment` did; any other count
@@ -59,15 +61,19 @@ def save_state(path, state):
         json.dump(state, handle, indent=2, sort_keys=True)
 
 
-def watch(process, log, hang_seconds, poll_seconds=5, sleep=time.sleep, now=time.time):
+def watch(process, log, hang_seconds, run_seconds=None, poll_seconds=5,
+          sleep=time.sleep, now=time.time):
     """Kill *process* once *log* has stopped growing for *hang_seconds*.
 
     Polls the log's size rather than the process's own liveness: a run that
     is alive but stuck talking to a provider looks identical to one working
     quietly on a big Step, and only silence on disk tells the two apart.
+
+    *run_seconds* caps a run that never goes quiet: a gateway model's `cost`
+    events carry no `usd`, so `--budget-usd` cannot trip on one.
     """
     last_size = -1
-    last_change = now()
+    started = last_change = now()
     while process.poll() is None:
         sleep(poll_seconds)
         size = os.path.getsize(log) if os.path.exists(log) else 0
@@ -77,20 +83,33 @@ def watch(process, log, hang_seconds, poll_seconds=5, sleep=time.sleep, now=time
             process.kill()
             process.wait()
             return "hung"
+        if run_seconds is not None and now() - started > run_seconds:
+            process.kill()
+            process.wait()
+            return "over time"
     return "exited"
 
 
-def run_one(label, sheet, model, effort, budget_usd, log, intent, python=sys.executable):
-    """One run of one sheet, as a subprocess of `tools/run.py`."""
+def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
+            python=sys.executable):
+    """
+    One run of one sheet, as a subprocess of `tools/run.py`.
+
+    A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone,
+    which is what a part named by a standard rather than drawn on a page is.
+    """
     cmd = [python, os.path.join(ROOT, "tools", "run.py"),
-          "--intent", intent, "--attach", sheet, "--model", model,
-          "--effort", effort, "--log", log]
+          "--intent", intent, "--model", model,
+          "--provider", provider, "--effort", effort, "--log", log]
+    if sheet:
+        cmd += ["--attach", sheet]
     if budget_usd is not None:
         cmd += ["--budget-usd", str(budget_usd)]
     return subprocess.Popen(cmd)
 
 
-def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries, resume):
+def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
+          resume, provider, run_seconds):
     state_path = os.path.join(out, "state.json")
     state = load_state(state_path) if resume else {"runs": {}}
 
@@ -108,8 +127,8 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
             outcome = "hung"
             for attempt in range(1, retries + 1):
                 rotate(stem)
-                process = run_one(label, sheet, model, effort, budget_usd, log, intent)
-                outcome = watch(process, log, hang_seconds)
+                process = run_one(label, sheet, model, effort, budget_usd, log, intent, provider)
+                outcome = watch(process, log, hang_seconds, run_seconds)
                 if outcome == "exited" and process.returncode == 0:
                     break
                 print("%s attempt %d: %s (exit %s)"
@@ -146,11 +165,15 @@ def main():
     parser.add_argument("--model", action="append", default=[],
                         help="Repeatable; each model sweeps every --task")
     parser.add_argument("--task", action="append", default=[],
-                        help="label=/path/to/sheet.pdf, repeatable")
+                        help="label=/path/to/sheet.pdf, repeatable; an empty path attaches nothing")
     parser.add_argument("--intent", default="Build the Phase 1 model from this drawing.")
+    parser.add_argument("--provider", default="Claude (subscription)",
+                        help="Which provider sells every --model of this sweep")
     parser.add_argument("--effort", default="medium")
     parser.add_argument("--budget-usd", type=float, default=None)
     parser.add_argument("--hang-seconds", type=float, default=HANG_SECONDS)
+    parser.add_argument("--run-seconds", type=float, default=None,
+                        help="Wall-clock ceiling on one run, whatever it is doing")
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--status", action="store_true",
@@ -168,7 +191,8 @@ def main():
 
     os.makedirs(args.out, exist_ok=True)
     sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,
-         args.out, args.hang_seconds, args.retries, args.resume)
+         args.out, args.hang_seconds, args.retries, args.resume, args.provider,
+         args.run_seconds)
     return 0
 
 

@@ -21,11 +21,35 @@ sys.path.insert(0, _SRC)
 sys.path.insert(0, os.path.dirname(_SRC))
 
 
+def client_for(provider, model_id, effort):
+    """
+    The client for *model_id* at *provider*, in a process no panel ran in.
+
+    `core.model_registry` is filled by the panel's own fetch, which never runs
+    here, so the provider is named on the command line and recorded before
+    `client_from_settings` is asked to resolve it.
+    """
+    from core import model_registry
+    from core.llm.factory import client_from_settings
+
+    model_registry.remember(model_id, provider, model_id)
+    return client_from_settings(model_id, effort)
+
+
 def main():
+    """
+    One run, headless.
+
+    FreeCAD is imported before anything of the addon's: importing it is what
+    puts its `AdditionalPythonPackages` on `sys.path`, and that is where
+    litellm, httpx and pymupdf are installed.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--intent", required=True)
     parser.add_argument("--attach", nargs="*", default=[])
     parser.add_argument("--model", default=None)
+    parser.add_argument("--provider", default="Claude (subscription)",
+                        help="Which provider sells --model, as core.model_catalog names it")
     parser.add_argument("--effort", default="medium")
     parser.add_argument("--budget-usd", type=float, default=None,
                         help="Ceiling on what this run may spend; unset runs to completion")
@@ -40,11 +64,12 @@ def main():
             sys.path.insert(0, lib)
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+    import FreeCAD  # noqa: F401
+
     from copilot.sdk import Client
     from core.events import COST
-    from core.llm import ClaudeCodeClient
 
-    llm = ClaudeCodeClient(model=args.model, effort=args.effort) if args.model else None
+    llm = client_for(args.provider, args.model, args.effort) if args.model else None
     client = Client(llm=llm, confirm=lambda kinds: args.allow_user_objects is True)
     client.events.log_to(args.log)
 

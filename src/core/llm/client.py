@@ -26,12 +26,13 @@ class LiteLLMClient:
 
     def __init__(self, model: str, api_key: str, api_base: str = None,
                  thinking_budget: int = None, completion: Callable = None,
-                 effort: str = None):
+                 effort: str = None, extra_headers: dict = None):
         self.model = model
         self.api_key = api_key
         self.api_base = api_base
         self.thinking_budget = thinking_budget
         self.effort = effort
+        self.extra_headers = extra_headers
         self.last_cost = None
         self._completion = completion
 
@@ -47,6 +48,10 @@ class LiteLLMClient:
         looks complete — the same `openai/` gate leaves a bare `api_base`
         model unpriced too, not because pricing is wrong but because LiteLLM
         was never asked for usage on that stream.
+
+        `extra_headers` is what a gateway routes a call on rather than reads
+        off the body: OpenCode Go answers a call without `x-opencode-session`
+        with 400 for every model it sells.
 
         Every raw chunk is kept, on top of whatever the caller already
         accumulates from the yielded Chunks, so `_priced` can reassemble them
@@ -67,6 +72,8 @@ class LiteLLMClient:
         )
         if self.api_base:
             kwargs["api_base"] = self.api_base
+        if self.extra_headers:
+            kwargs.setdefault("extra_headers", dict(self.extra_headers))
         if self.thinking_budget:
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": self.thinking_budget}
         elif _may_reason(self.model):

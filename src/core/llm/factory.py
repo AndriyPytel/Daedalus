@@ -1,7 +1,10 @@
 """Factory functions that build clients from settings."""
 import sys
+import uuid
 
 from core import model_catalog, settings
+
+_GATEWAY_SESSION = {"OpenCode Go": "fcc-%s" % uuid.uuid4().hex}
 from core.llm.effort_policy import EFFORTS, _SUBSCRIPTION_EFFORT
 from core.llm.attachments import litellm_model_name
 
@@ -49,6 +52,12 @@ def selected_model_name(model_id: str = None) -> str:
     return litellm_model_name(provider, mid)
 
 
+def _gateway_headers(provider: str) -> dict | None:
+    """The header a gateway routes on, or None where the provider needs none."""
+    session = _GATEWAY_SESSION.get(provider)
+    return {"x-opencode-session": session} if session else None
+
+
 def client_from_settings(model_id: str = None, effort: str = None):
     """
     Build a client from the provider settings page and stored keys.
@@ -61,6 +70,10 @@ def client_from_settings(model_id: str = None, effort: str = None):
 
     *effort* is the level the role's row names; left `None` the client falls
     back to the single stored dial.
+
+    A gateway that routes on a session header gets one for the whole process:
+    OpenCode Go answers a call without `x-opencode-session` with 400 for every
+    model it sells, and one addon run is one session to route.
     """
     from core.llm.client import LiteLLMClient
     from core.llm.claude import ClaudeCodeClient
@@ -80,6 +93,7 @@ def client_from_settings(model_id: str = None, effort: str = None):
         api_base=api_base,
         thinking_budget=2048 if provider == "Anthropic" else None,
         effort=effort,
+        extra_headers=_gateway_headers(provider),
     )
 
 
