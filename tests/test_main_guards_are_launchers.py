@@ -15,6 +15,7 @@ LAUNCHED = {
     "src/tools/run.py",
     "src/tools/lane.py",
     "src/tools/kernel_smoke.py",
+    "src/tools/report.py",
 }
 
 MAIN_GUARD = re.compile(r'^if __name__ (==|in) ', re.MULTILINE)
