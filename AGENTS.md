@@ -76,15 +76,3 @@ A test that scans the tree by a hardcoded list of packages, paths or names is
 a liability — it must derive that list, or another test must assert the list
 is complete. Three guards here held a package tuple written before `copilot/`
 existed and stayed green for the whole epic.
-
-## RLM rewrite branch (FCC-291)
-
-This branch, `FCC-291-rlm-rewrite`, is a long-lived fork of `dev`, forked at
-the tag `pre-rlm-rewrite-dev-baseline` (commit `030d214`). Every ticket from
-FCC-296 onward lands its commits here, not on `dev`. Nothing else lands on
-`dev` for the rewrite's whole lifetime — no freeze rule and no reproduce-list
-ticket, because the remaining fix work on the current architecture finished
-before this epic started (FCC-292/293/294). The rewrite becomes `dev` by
-tag-and-replace at cutover (FCC-320), gated on the comparison harness's pass
-rate — not by merging this branch into `dev`. See `FCC-291`'s Solution Notes
-for the full decision.
