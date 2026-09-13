@@ -2,7 +2,7 @@
 The panel, built for real against FreeCAD's own Qt binding, offscreen.
 
 Most of the panel stays Level 3 — how a widget *looks* under a theme is not
-something a test can tell you, which is exactly the finding behind ADR-0011.
+something a test can tell you.
 What is checked here is the arithmetic and the state machine that would
 otherwise be verified by opening the panel and squinting: the composer's
 height, Send and Stop sharing one slot, and Sessions surviving a restart —
@@ -180,7 +180,7 @@ def test_the_composer_answers_a_gate_without_being_switched_on_for_it(panel, mon
 
 def test_a_second_intent_on_a_running_document_is_refused(panel, monkeypatch):
     """
-    One file, one Intent (FCC-375): a second Intent sent while this Session's
+    One file, one Intent: a second Intent sent while this Session's
     Document already has a run in flight is refused at the composer, with a
     reason, rather than queued behind it.
     """
@@ -219,7 +219,7 @@ def test_two_sessions_on_the_same_document_cannot_both_run(panel, monkeypatch):
     One file, one Intent holds across Sessions, not only within one: a second
     Session bound to the same Document the first is still running against is
     refused too, and neither of its `snapshot`/`start_run` calls is ever
-    reached (FCC-378) -- `on_send` never gets past `_document_busy`.
+    reached -- `on_send` never gets past `_document_busy`.
     """
     import types
 
@@ -256,7 +256,7 @@ def test_a_long_line_on_the_queue_does_not_widen_the_panel(panel, status):
     QScrollArea, so its minimum width is the panel's. Unwrapped, a Step
     description made the dock wider — and Qt does not give the width back when
     the text goes short again, so the user lost the dock width they had set.
-    FCC-21, inherited by the Queue from the status line it replaced.
+    Inherited by the Queue from the status line it replaced.
 
     The dock's own minimumSizeHint only follows its child once shown, which
     the fixture's panel is not. The child is where the width is decided.
@@ -406,7 +406,7 @@ def test_a_model_that_cannot_reason_is_not_offered_the_choice(panel, monkeypatch
 
 
 def test_clicking_the_model_button_opens_the_provider_step(panel, monkeypatch):
-    """FCC-175: the popup opens on a flat list of providers, not their models."""
+    """The popup opens on a flat list of providers, not their models."""
     from ui.model_selector import PROVIDER_STEP
 
     _mock_role_table(monkeypatch)
@@ -439,7 +439,7 @@ def test_choosing_a_provider_replaces_the_list_with_its_models(panel, monkeypatc
 
 def test_the_picker_opens_above_the_button_that_opens_it(panel, monkeypatch):
     """
-    FCC-169: the trigger is at the bottom of a docked panel, so a list that
+    The trigger is at the bottom of a docked panel, so a list that
     drops down drops off the screen.
     """
     from conftest import QtCore
@@ -457,7 +457,7 @@ def test_the_picker_opens_above_the_button_that_opens_it(panel, monkeypatch):
 
 def test_a_picker_with_more_models_than_room_scrolls_inside_itself(panel, monkeypatch):
     """
-    FCC-169: the list is capped by the room the screen has, and what does not
+    The list is capped by the room the screen has, and what does not
     fit is scrolled to — never a popup taller than the display it is on.
     """
     _mock_role_table(monkeypatch)
@@ -497,7 +497,7 @@ def test_choosing_a_model_closes_the_popup_and_updates_the_panel(panel, monkeypa
 def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkeypatch):
     """
     Reopening after a model is picked shows providers again, not the
-    last-selected provider's models (FCC-175's Acceptance Criteria).
+    last-selected provider's models (an Acceptance Criterion).
     """
     from ui.model_selector import PROVIDER_STEP
 
@@ -521,8 +521,8 @@ def test_reopening_the_selector_always_starts_at_the_provider_step(panel, monkey
 
 def test_the_picker_has_no_window_frame(panel, monkeypatch):
     """
-    FCC-169: no border around the popup — a real OS window frame would be
-    one no ``ADR-0011`` colour or ``design_tokens`` radius could match, since
+    No border around the popup — a real OS window frame would be
+    one no theme colour or ``design_tokens`` radius could match, since
     the platform paints it, not the theme.
     """
     from conftest import QtCore
@@ -540,7 +540,7 @@ def test_the_picker_has_no_window_frame(panel, monkeypatch):
 
 def test_neither_popup_draws_a_border(panel, monkeypatch):
     """
-    FCC-169: the user asked twice for no border around the model picker, and
+    The user asked twice for no border around the model picker, and
     the same read applies to the history popup — the opaque fill and its
     radius are the whole edge either popup has, not a hairline on top of it.
     """
@@ -559,7 +559,7 @@ def test_neither_popup_draws_a_border(panel, monkeypatch):
 
 def test_the_popups_own_fill_is_opaque_and_comes_from_the_anchor_theme(panel, monkeypatch):
     """
-    FCC-169: a ``Qt.Popup`` is top-level and has nothing behind it, so a
+    A ``Qt.Popup`` is top-level and has nothing behind it, so a
     translucent fill composites onto whatever the platform hands a bare
     top-level window instead of the docked panel it floats over — white,
     regardless of FreeCAD's own dark theme, which is what the user
@@ -606,7 +606,7 @@ def test_the_popups_own_fill_is_opaque_and_comes_from_the_anchor_theme(panel, mo
 
 def test_the_picker_opens_below_when_that_side_has_more_room(monkeypatch):
     """
-    FCC-169's default is above, but only because the trigger this addon has
+    The picker opens above by default, but only because the trigger this addon has
     is at the bottom of a docked panel. A trigger near the top of the screen
     has it the other way round, and the measurement in ``_reflow`` is what
     has to notice that, not the direction itself.
@@ -675,7 +675,7 @@ def test_the_button_shows_a_stored_model_no_static_list_knows(panel, monkeypatch
     """
     The stored id lives only in the provider's fetched list, which has not
     landed when the panel is built. Falling through to the first available
-    model — GPT-4o — is FCC-41.
+    model — GPT-4o — is deliberate.
     """
     from bridge import provider_manager, settings_manager
 
@@ -780,7 +780,7 @@ def _never_call_the_real_model(panel):
 def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
     """
     The panel used to collect the attached paths and drop them on the floor.
-    What it emits is what the run is given. FCC-4.
+    What it emits is what the run is given.
     """
     _never_call_the_real_model(panel)
     picture = tmp_path / "bracket.png"
@@ -804,9 +804,9 @@ def test_send_hands_the_attachments_over_and_clears_the_bar(panel, tmp_path):
 def test_a_part_path_a_run_left_behind_carries_into_the_next_send_unless_a_new_drawing_arrives(
         panel, tmp_path):
     """
-    Mirrors `bundle.outstanding` (FCC-98): `on_run_finished` remembers the
+    Mirrors `bundle.outstanding`: `on_run_finished` remembers the
     last Part path a run left behind, and `on_send` forwards it into the next
-    request unless the composer has a fresh attachment waiting — FCC-210.
+    request unless the composer has a fresh attachment waiting.
     """
     import types
 
@@ -891,7 +891,7 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     """
     Told before the run, not after Plan already ignored it — and the chips stay
     on the bar, so the offending one can be taken off and the Intent sent
-    again. FCC-14.
+    again.
     """
     from copilot import sdk
 
@@ -1084,7 +1084,7 @@ def test_a_long_title_on_a_folded_row_does_not_widen_the_panel(panel):
     narration long enough to fold is exactly the narration long enough to push
     the transcript's column past the viewport, and the column's horizontal
     scrollbar is off, so what does not fit is unreachable rather than
-    scrolled to. FCC-21 again, one widget along.
+    scrolled to -- the same defect, one widget along.
     """
     from ui.accordion_widget import AccordionWidget
 
@@ -1416,7 +1416,7 @@ def test_the_run_lock_and_the_dock_agree_on_the_chats_name(panel):
 
 def test_no_workbench_of_ours_exists_to_take_the_chat_away():
     """
-    FCC-361: the dock is a fixture of the main window, not of a workbench —
+    The dock is a fixture of the main window, not of a workbench —
     there is no `Deactivated` hook left anywhere that could hide it.
     Read from the source: `InitGui.py` never calls `Gui.addWorkbench`.
     """
@@ -1502,7 +1502,7 @@ def test_the_document_a_session_worked_on_is_in_the_row_tooltip(panel):
 
 
 def test_the_row_name_and_time_take_their_type_from_the_design_system(panel):
-    """FCC-180: 13px/11px were not on the four-pair scale FCC-171 fixed."""
+    """13px/11px were not on the four-pair scale added earlier."""
     from ui.typography import CAPTION, LABEL, css
 
     row = _a_row()
@@ -1537,10 +1537,10 @@ def test_the_delete_icon_is_tinted_to_the_button_like_every_other_icon(panel):
     """
     The row's icon was the one call site not going through `UIHelpers.get_icon`,
     so it painted the SVG's own hardcoded white — invisible under a light
-    FreeCAD theme, and a colour of the addon's own, which ADR-0011 forbids.
+    FreeCAD theme, and a colour of the addon's own, which the theme rules forbid.
 
     A theme is one global stylesheet, which is what the colour has to arrive
-    through — the route ADR-0011 describes, not a QPalette call.
+    through — that route, not a QPalette call.
     """
     row = _a_row()
     for wanted in ("#c8321e", "#1e64c8"):
@@ -1734,7 +1734,7 @@ def test_a_session_still_waiting_for_its_title_asks_again(panel):
 
 def test_a_launch_opens_an_empty_session_and_keeps_the_earlier_ones(sessions_are_the_tests_own):
     """
-    The panel used to reopen the last Session with its transcript. FCC-42.
+    The panel used to reopen the last Session with its transcript.
     """
     from ui.copilot_panel import CopilotPanel
     from bridge import settings_manager
@@ -1832,7 +1832,7 @@ def _a_transcript(path):
 def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
     """
     Restoring replays the log through the switch that rendered it live, so a
-    restored Session cannot drift from a live one. FCC-5.
+    restored Session cannot drift from a live one.
     """
     from ui.accordion_widget import AccordionWidget
     from ui.plan_widget import PlanWidget
@@ -1856,8 +1856,8 @@ def test_a_session_comes_back_with_its_whole_transcript(panel, tmp_path):
 def _a_queue_transcript(path):
     """
     A full run's structural events, in the order `core.loop._run` emits
-    them: Intent, an approved Gate, one Step declared and applied inline
-    (FCC-368), Assertion, Review -- everything FCC-172's Queue widget reads
+    them: Intent, an approved Gate, one Step declared and applied inline,
+    Assertion, Review -- everything the Queue widget reads
     a phase transition off.
     """
     from core.events import (APPLIED, ASSERTION, EventStream, GATE, INTENT, PLAN,
@@ -1879,7 +1879,7 @@ def test_a_session_comes_back_with_its_queue_at_every_phase_done(panel, tmp_path
     """
     The Queue is restored the same way the Plan and the transcript are: by
     replaying the log through `on_event`, the one switch that also renders it
-    live (FCC-172).
+    live.
     """
     from ui.queue_widget import ASSERTION, DESIGN, DONE, EXECUTE, PLAN, REVIEW
 
@@ -1941,7 +1941,7 @@ def test_a_run_blocked_in_plan_marks_the_queue_plan_failed(panel, tmp_path):
 
 
 def _a_cost_transcript(path):
-    """Two calls, Design then Plan (FCC-176): the total after both is their sum."""
+    """Two calls, Design then Plan: the total after both is their sum."""
     from core.events import COST, EventStream, INTENT
 
     stream = EventStream()
@@ -2007,7 +2007,7 @@ def test_a_new_intent_zeroes_the_total_mid_session(panel):
     A follow-up Intent in the same open chat starts a second run, and the
     total is the run's, not the Session's (Solution Notes: "cumulative cost
     for the entire run from Intent to Review verdict") -- the same boundary
-    `_update_queue` already resets `_queue_widget` on (FCC-172).
+    `_update_queue` already resets `_queue_widget` on.
     """
     from core.events import COST, INTENT, Event
 
@@ -2035,7 +2035,7 @@ def test_a_restored_session_shows_its_final_total(panel, tmp_path):
 def test_a_session_recorded_before_the_step_render_went_away_still_opens(panel, tmp_path):
     """
     An old transcript carries `render` events, and this build has no such kind
-    any more (FCC-81). The renderer skips it the way it skips any kind it does
+    any more. The renderer skips it the way it skips any kind it does
     not know: a Session is not refused over an event that has been retired.
     """
     log = str(tmp_path / "before.jsonl")
@@ -2084,7 +2084,7 @@ def _spin(times=50):
 def test_a_long_transcript_is_replayed_a_chunk_at_a_time(panel, tmp_path, monkeypatch):
     """
     Opening a Session with hundreds of Steps used to replay them all in one
-    pass on the GUI thread, and the panel was frozen for the duration. FCC-16.
+    pass on the GUI thread, and the panel was frozen for the duration.
     """
     from ui import copilot_panel
 
@@ -2207,7 +2207,7 @@ def test_nothing_grabs_the_left_button_off_the_transcript():
     """
     A QScroller on the viewport pans the column with the left button, which
     takes the press before a message label can select its text and drags the
-    column sideways until the Gate's Build button is off the panel (FCC-320).
+    column sideways until the Gate's Build button is off the panel.
     """
     from conftest import QtWidgets
     from ui import multi_tab_manager
@@ -2220,7 +2220,7 @@ def test_nothing_grabs_the_left_button_off_the_transcript():
 
 def test_pruning_takes_the_chat_area_with_the_session(sessions_are_the_tests_own,
                                                       monkeypatch):
-    """A page left behind would show the wrong Session's transcript (FCC-17)."""
+    """A page left behind would show the wrong Session's transcript."""
     from core import sessions as sessions_module
     from ui import multi_tab_manager
 
@@ -2238,7 +2238,7 @@ def test_pruning_takes_the_chat_area_with_the_session(sessions_are_the_tests_own
 def test_a_restored_session_owns_nothing(panel, tmp_path):
     """
     Each Session's Owned Objects live on its own worker, not one shared one
-    (FCC-181). Reopening yesterday's Session must not grant the assistant
+    not one shared one. Reopening yesterday's Session must not grant the assistant
     rights over objects another Session owns, and switching away from a
     Session that does own something must not cost it that ownership either —
     it is not reset on every switch any more, because the pipeline switching
@@ -2300,7 +2300,7 @@ def test_returning_to_a_session_does_not_keep_another_ones_widgets(panel, tmp_pa
 def test_switching_mid_run_moves_the_panel_without_touching_the_run(panel):
     """
     A run narrates into the Session it started from, but the Session it
-    started from is no longer the only one the panel can show (FCC-181): each
+    started from is no longer the only one the panel can show: each
     Session runs on its own worker, so leaving one running and looking at
     another is switching, not interrupting.
     """
@@ -2323,7 +2323,7 @@ def test_activating_a_documents_own_session_switches_the_panel_to_it(panel):
     """
     Bringing a Document's MDI tab forward in FreeCAD moves the panel to
     whichever Session named that Document, without the user touching the
-    picker (FCC-181, AC).
+    picker (an Acceptance Criterion).
     """
     import FreeCAD
 
@@ -2440,7 +2440,7 @@ def test_enter_while_a_question_is_open_answers_it_rather_than_starting_a_run(pa
     Enter in the composer goes to `on_send`, which had exactly one behaviour: a
     new Intent, a new run, a new Plan. The question stayed on screen unanswered
     and the re-plan asked it again — which is what "it planned first and only
-    then started asking" looked like from the outside. FCC-71.
+    then started asking" looked like from the outside.
     """
     answered, sent = [], []
     monkeypatch.setattr(panel.ask, "answer", answered.append)
@@ -2468,7 +2468,7 @@ def test_an_answered_card_is_spent_and_says_so(panel, monkeypatch):
     the accent fill is written by the stylesheet, and a stylesheet rule
     outranks the disabled palette Qt would otherwise grey the button with, so
     the button sat there looking exactly as pressable as before. Subdued the
-    way this panel subdues anything -- an opacity effect (ADR-0011).
+    way this panel subdues anything -- an opacity effect.
     """
     from conftest import QtWidgets
 
@@ -2600,7 +2600,7 @@ def test_stopping_releases_a_waiting_question(panel):
 
 def test_aborting_kills_the_kernel_and_releases_a_waiting_question(panel):
     """
-    Abort is Stop plus one more thing (FCC-303): the kernel dies now rather
+    Abort is Stop plus one more thing: the kernel dies now rather
     than once the in-flight Step finishes on its own, so `pipeline.shutdown`
     is what tells the two apart at the panel's own boundary.
     """
@@ -2625,7 +2625,7 @@ def test_aborting_kills_the_kernel_and_releases_a_waiting_question(panel):
 
 def test_stop_does_not_build_a_fresh_worker_for_an_idle_session(panel):
     """
-    FCC-376: `on_stop`/`on_abort` used to reach the worker through the
+    `on_stop`/`on_abort` used to reach the worker through the
     `worker` property, which is `_worker_for` -- and `_worker_for` builds and
     registers a fresh idle bundle for a Session with nothing running. Stopping
     a Session that never sent an Intent must not silently manufacture one.
@@ -2674,7 +2674,7 @@ class _StuckProcess:
 
 def test_stop_and_abort_kill_the_run_provider_process_without_waiting_the_ceiling(panel):
     """
-    FCC-376: a `claude` call under the full ceiling would otherwise hold Stop
+    A `claude` call under the full ceiling would otherwise hold Stop
     and Abort for up to `_CEILING`'s 1500 seconds
     (`core/llm/claude.py :: _CEILING`); both must instead end the run's own
     live process at once.
@@ -2723,7 +2723,7 @@ def test_the_acceptance_list_is_on_the_plan_card_before_the_gate(panel):
     """
     A criterion the user cannot see is a criterion they cannot correct, and the
     Plan Gate is the only place they could. The `plan` event is emitted before
-    `gate(...)` is called, so this is what the Gate is looking at. FCC-75.
+    `gate(...)` is called, so this is what the Gate is looking at.
     """
     from core.events import Event, PLAN, PLAN_REVISED
 
@@ -2748,7 +2748,7 @@ def test_an_answer_off_the_drawing_says_so_rather_than_no_values_given(panel):
     A question put back to the sheet is answered without the user, and the
     transcript has to show that rather than falling through to "No values
     given, so the Plan will say what it assumed" — which would be a lie: a
-    value read off the drawing is read, not assumed. FCC-90.
+    value read off the drawing is read, not assumed.
     """
     from core.events import ANSWER, Event
 
@@ -2765,7 +2765,7 @@ def test_an_answer_off_the_drawing_says_so_rather_than_no_values_given(panel):
 def test_an_attached_picture_stays_in_the_chat_after_the_chips_clear(panel, tmp_path):
     """
     `chip_bar.get_and_clear()` took the chips off the bar and nothing replaced
-    them, so the user could not see what the run had been shown. FCC-88.
+    them, so the user could not see what the run had been shown.
 
     The picture stands in a row of its own, pushed to the right margin where
     the Intent it came with stands, so it is looked for among a transcript
@@ -2794,7 +2794,7 @@ def test_an_attachment_whose_file_has_gone_renders_its_name(panel):
     A clipboard paste is a temp file the panel deletes when the run ends, so a
     Session opened tomorrow points at nothing. A renderer that raised would be
     swallowed by `EventStream.emit` and the whole transcript would lose it
-    silently. FCC-88.
+    silently.
     """
     from core.events import ATTACHED, Event
 
@@ -2844,7 +2844,7 @@ def test_the_gate_cards_the_document_rather_than_opening_it_in_the_chat(panel, t
     What stands above the Steps is the file the reading was written to, and the
     description itself is in the file rather than in the chat: it is the run's
     requirement, and a requirement is corrected where the run is planned from
-    (FCC-108). It is carded rather than underlined, on the one file shape the
+    is corrected where the run is planned from. It is carded rather than underlined, on the one file shape the
     design has, so that what the run wrote reads the same as what the user
     attached; the card carries the path the `part` event carries, so what a
     user opens is that very file and not a copy of it.
@@ -2889,7 +2889,7 @@ def test_what_was_decided_the_questions_and_the_criteria_all_stand_open(panel):
     """
     The three things the Steps are read beside. Each is short, and the Gate is
     the only place any of them is correctable, so none of them is a click away
-    (ADR-0022).
+    so none of them is a click away.
     """
     from core.events import PLAN, Event
 
@@ -2939,7 +2939,7 @@ def test_a_long_list_beside_the_steps_folds_and_says_how_many_it_holds(panel):
 def test_the_decision_card_offers_three_answers_and_returns_the_one_clicked(panel):
     """
     Take it, fix it, start again. The last is the one the Plan Gate has no word
-    for: REJECT stops a run and does not licence a restart. FCC-77.
+    for: REJECT stops a run and does not licence a restart.
     """
     from conftest import QtWidgets
 
@@ -2994,7 +2994,7 @@ def test_a_review_that_passed_still_says_so_in_the_transcript(panel, tmp_path):
 
 def test_a_suspicion_before_assertion_does_not_start_or_finish_review(panel, tmp_path):
     """
-    `review_suspect` runs before Assertion now (FCC-257, FCC-258), so a
+    `review_suspect` runs before Assertion now, so a
     `review_suspected` event is on the real stream ahead of `assertion` on
     every pass. Driven through `on_event` as the loop actually emits them: the
     Queue must not read a `review_suspected` event as the Assertion-is-done,
@@ -3024,7 +3024,7 @@ def _review_transcript_evidence(panel, tmp_path, verdict="fail",
                                 reason="the flange is mirrored"):
     """
     What `_update_review_evidence` reads off the stream before a Review
-    verdict's own `on_revision` is asked anything (FCC-178): the acceptance
+    verdict's own `on_revision` is asked anything: the acceptance
     checks, the four views `review_views` wrote, and the verdict itself.
     """
     from conftest import QtGui
@@ -3048,7 +3048,7 @@ def _review_transcript_evidence(panel, tmp_path, verdict="fail",
 
 def test_a_review_verdict_shows_the_confirmation_card_figma_names(panel, tmp_path):
     """
-    FCC-178: once Review has run, the three-way question is Figma's
+    Once Review has run, the three-way question is Figma's
     Confirmation card -- its own evidence above Approve / Reject / Start
     Over -- not the plain question the acceptance checks fall back to when
     Review never got the chance to run at all.
@@ -3103,7 +3103,7 @@ def test_an_assertion_failure_before_review_keeps_the_plain_decision_card(panel,
     """
     The acceptance checks can fail before Review is ever asked anything --
     there is no Review verdict to show, so this stays the plain question
-    FCC-178 leaves alone.
+    the confirmation-card test above leaves alone.
     """
     from conftest import QtWidgets
 
@@ -3128,7 +3128,7 @@ def test_a_new_intent_clears_the_review_verdict_that_would_have_shown_the_card(
     """
     A follow-up Intent in the same Session starts a new run: a Review
     verdict left over from the run before must not turn its own decision
-    card into FCC-178's, since nothing was reviewed yet this time.
+    card into the Confirmation card's, since nothing was reviewed yet this time.
     """
     from conftest import QtWidgets
 
@@ -3147,7 +3147,7 @@ def test_a_new_intent_clears_the_review_verdict_that_would_have_shown_the_card(
 
 
 def test_completing_assertion_with_every_check_passed_shows_the_results_card(panel):
-    """FCC-179, AC1: a green mark per confirmed entry, in the chat scroll."""
+    """A green mark per confirmed entry, in the chat scroll."""
     from core.events import ASSERTION, Event
 
     from ui.accordion_widget import AccordionWidget
@@ -3169,7 +3169,7 @@ def test_completing_assertion_with_every_check_passed_shows_the_results_card(pan
 
 
 def test_completing_assertion_with_a_failed_check_shows_a_failed_row(panel):
-    """FCC-179, AC2: a red mark per `unmet` entry."""
+    """A red mark per `unmet` entry."""
     from core.events import ASSERTION, Event
 
     from ui.accordion_widget import AccordionWidget
@@ -3219,7 +3219,7 @@ def test_completing_assertion_with_a_mixed_result_shows_both_rows_in_one_card(pa
 
 def test_checks_that_could_not_be_written_keep_the_plain_narration_line(panel):
     """
-    FCC-179's own fallback, the same shape FCC-178's is: `ok` is `None` when
+    The assertion results' own fallback, the same shape the Confirmation card's is: `ok` is `None` when
     the checks were never written at all, so there is no pass/fail count to
     structure and the plain line `_assertion_said` already gives stays the
     only thing shown, the way it did before this ticket.
@@ -3240,7 +3240,7 @@ def test_checks_that_could_not_be_written_keep_the_plain_narration_line(panel):
 
 
 def test_a_replayed_session_renders_the_assertion_results_card(panel, tmp_path):
-    """A restored Session never saw the checks run live, only the log (FCC-169)."""
+    """A restored Session never saw the checks run live, only the log."""
     from ui.accordion_widget import AccordionWidget
     from ui.assertion_results_widget import AssertionResultsWidget
 
@@ -3259,7 +3259,7 @@ def test_a_replayed_session_renders_the_assertion_results_card(panel, tmp_path):
 
 
 def test_the_plan_gate_offers_exactly_one_build_button(panel):
-    """FCC-177: Build replaces Approve / Approve and carry on / Amend / Reject."""
+    """Build replaces Approve / Approve and carry on / Amend / Reject."""
     from conftest import QtWidgets
 
     from core.events import Event, PLAN
@@ -3295,7 +3295,7 @@ def test_clicking_build_answers_with_the_plan_as_generated_when_nothing_was_edit
 
 
 def test_clicking_build_answers_with_the_plan_as_edited(panel, monkeypatch):
-    """Editing, adding, and reordering all reach the answer Build sends. FCC-177."""
+    """Editing, adding, and reordering all reach the answer Build sends."""
     from core.events import Event, PLAN
     from core.loop.gate import APPROVE
 
@@ -3340,7 +3340,7 @@ def test_stop_while_the_decision_is_open_releases_it_and_is_not_an_acceptance(pa
     `abandon` releases every waiting question with an Approval, which is not
     one of the three answers, so Stop falls to the default rather than hanging
     on an open card. Deliberately not ACCEPT: the loop asks `cancelled()`
-    before it plans anything, so the run is recorded as stopped. FCC-77.
+    before it plans anything, so the run is recorded as stopped.
     """
     import threading
 
@@ -3382,7 +3382,6 @@ def test_what_was_decided_for_the_user_stands_above_the_steps(panel):
     Nothing is asked between the attachment and the Gate now, so a value the
     model settled for itself is read here or nowhere. Above the Steps, because
     a decision the Steps were built on is read before them or it is not read.
-    FCC-127.
     """
     from core.events import PLAN, Event
 
@@ -3408,8 +3407,8 @@ def test_what_was_decided_for_the_user_stands_above_the_steps(panel):
 
 def test_reasoning_streams_inline_and_never_pins_to_the_queue(panel):
     """
-    FCC-173: the status line used to carry the last 90 characters of every
-    reasoning chunk (`copilot_panel.py:1073` before this ticket). Reasoning
+    The status line used to carry the last 90 characters of every
+    reasoning chunk (`copilot_panel.py:1073` before this change). Reasoning
     now only ever lands in its own accordion, in the chat scroll.
     """
     from core.events import Event, THOUGHT
@@ -3673,7 +3672,7 @@ def test_reasoning_is_not_truncated_to_ninety_characters(panel):
 
 
 def test_a_run_with_no_reasoning_shows_no_thinking_accordion(panel):
-    """A model that emits no reasoning gets no empty placeholder for it. FCC-173."""
+    """A model that emits no reasoning gets no empty placeholder for it."""
     from core.events import Event, INTENT, PLAN
     from ui.accordion_widget import AccordionWidget
 
@@ -3692,7 +3691,7 @@ def test_a_run_with_no_reasoning_shows_no_thinking_accordion(panel):
 def test_reasoning_reads_subdued_unlike_a_decision_the_plan_made(panel):
     """
     Figma's Chain of Thought component reads subdued next to an answer.
-    ADR-0011 forbids a colour of its own, so this is an opacity effect on the
+    The design system forbids a colour of its own, so this is an opacity effect on the
     reasoning accordion's text, the way `HistoryItem` dims its timestamp --
     and it is what tells reasoning apart from an accordion that is not
     reasoning, such as "Decided for you".
@@ -3722,7 +3721,7 @@ def test_reasoning_reads_subdued_unlike_a_decision_the_plan_made(panel):
 
 def test_the_part_event_closes_design_on_the_queue_before_any_plan(panel, tmp_path):
     """
-    The wiring for FCC-194: `PART` is what says Design ended, and a Plan that
+    The wiring: `PART` is what says Design ended, and a Plan that
     takes half an hour to answer must not leave the Queue with no row Running.
     """
     from core.events import EventStream, INTENT, PART
@@ -3822,7 +3821,7 @@ def test_review_duration_is_nonzero(panel, tmp_path):
 
 def test_a_tool_result_still_says_what_came_back_after_it_is_timed(panel):
     """
-    The duration goes on the call's own row (FCC-193). What the call answered
+    The duration goes on the call's own row. What the call answered
     is a separate sentence, and the Queue's line is where it has always gone —
     timing a row must not swallow it.
     """
@@ -3981,7 +3980,7 @@ def test_the_panel_marshals_the_document_onto_the_gui_thread(panel):
 
 def test_copilot_panel_has_no_dead_request_work_signal():
     """
-    `CopilotPanel.request_work` only ever had test subscribers (FCC-287a) —
+    `CopilotPanel.request_work` only ever had test subscribers —
     the real work goes through the Session's own `bundle.request_work`.
     """
     from ui.copilot_panel import CopilotPanel
@@ -4017,7 +4016,7 @@ PANEL_DISPATCH_ALLOWLIST = {
 
 def test_every_event_kind_is_handled_by_a_panel_dispatcher_or_allowlisted():
     """
-    `on_event`, `_update_queue` and `_update_review_evidence` (FCC-285) each
+    `on_event`, `_update_queue` and `_update_review_evidence` each
     run their own `if event.kind == ev.X` chain over the same stream. A kind
     missing from all three today renders nothing and fails nothing — this is
     the CI check that would have caught it, without touching any of the three
@@ -4098,7 +4097,7 @@ def test_no_row_widens_the_column_past_its_viewport(panel):
 
 def test_a_step_that_faults_ends_its_own_run_and_the_gui_survives(panel, monkeypatch):
     """
-    FCC-378: a Step that faults must end its own run, not take the process
+    A Step that faults must end its own run, not take the process
     down with it. `send()` raising is `do_work`'s worst case -- it still has
     to emit `finished` with no result and still has to call `pipeline.end_run`,
     so the Document is unlocked and the panel is left usable for the next
@@ -4154,7 +4153,7 @@ def test_stop_with_no_sdk_client_yet_is_a_no_op(monkeypatch):
 def test_an_unopenable_transcript_is_logged_not_swallowed(monkeypatch, tmp_path):
     """
     A missing transcript log must not cost the user their run, but it must
-    say why it is missing. FCC-390: the bare `except: pass` here left five
+    say why it is missing. The bare `except: pass` here left five
     Sessions with no transcript at all and no line anywhere naming the cause.
     """
     import types
