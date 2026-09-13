@@ -1,19 +1,18 @@
-"""Builds a Sketch from the traced outline; the solver says whether the reading is self-consistent
-— geometry can be built, unlike a person-vs-person diff.
-
-Constraints:
-Verdict is movement distance, not solver return code — a bad solve moves geometry to satisfy it.
-A_SHIFT is the pass/fail line for how far a traced entity may move onto the sheet's own numbers.
-Runs only in the Preflight child — Document mutation on the loop thread crashes FreeCAD,
-and Sketcher.Constraint itself can segfault.
-Wire fields cross as plain lists — JSON has no tuple, and the report format uses `%`.
-
-Measured (tests/modelmania, 4 sheets, 142 outlines): movement 0.15-0.30mm median, 0.50-0.75mm p90,
-1.0-1.5mm worst; a wrong double-callout snap (42 vs 50) moves 9.88mm.
-Built again where the solver does not converge, up to _TRIES (3) times — a 1.5% failure rate
-compounds to 3 in a million over three tries, and a reading nothing can solve is not made
-solvable by a fourth. A second solve() on a sketch that failed is not a second try, since the
-start it failed from is where it now sits; a fresh build is.
+"""
+Builds a Sketch from the traced outline; the solver says whether the
+reading is self-consistent -- geometry can be built, unlike a
+person-vs-person diff. Verdict is movement distance, not solver return
+code, since a bad solve moves geometry to satisfy it; `A_SHIFT` is the
+pass/fail line for how far a traced entity may move onto the sheet's own
+numbers; it runs only in the Preflight child, since Document mutation on
+the loop thread crashes FreeCAD and Sketcher.Constraint itself can
+segfault; and wire fields cross as plain lists, since JSON has no tuple
+and the report format uses `%`. Measured (four sheets, 142 outlines):
+movement 0.15-0.30mm median, 0.50-0.75mm p90, 1.0-1.5mm worst, a wrong
+double-callout snap (42 vs 50) moves 9.88mm, and it is built again where
+the solver does not converge, up to `_TRIES` (3) times, since a 1.5%
+failure rate compounds to 3 in a million over three tries and a reading
+nothing can solve is not made solvable by a fourth.
 """
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -30,13 +29,13 @@ A_SHIFT = 2.0
 @dataclass(frozen=True)
 class Trouble:
     """
-    One constraint the solver objected to, back at the entity it came from.
-    `at` is an index into the walk; `constraint` an index into the sketch's own
-    constraints — two fields because they are two coordinate systems, since one
-    number meaning both is a resolution thrown away. `constraint` is None where
-    there was no constraint, every entity that merely moved. The solver counts
-    constraints from one; `constraint` counts from zero, as
-    `Sketch.Constraints` is indexed.
+    One constraint the solver objected to, back at the entity it came
+    from. `at` is an index into the walk; `constraint` an index into the
+    sketch's own constraints, two fields because they are two coordinate
+    systems, since one number meaning both is a resolution thrown away.
+    `constraint` is None where there was no constraint, every entity that
+    merely moved, and the solver counts constraints from one while
+    `constraint` counts from zero, as `Sketch.Constraints` is indexed.
     """
 
     at: int = None
@@ -49,14 +48,14 @@ class Trouble:
 @dataclass(frozen=True)
 class Verdict:
     """
-    What one outline came to when it was built. `solved` is `Sketch.solve()`'s
-    return, zero meaning solved; `dof` is what the reading leaves undetermined,
+    What one outline came to when it was built: `solved` is `Sketch.solve()`'s
+    return, zero meaning solved, and `dof` is what the reading leaves undetermined,
     expected to be large since a profile off one view carries no position.
-    `printed` counts sizes written from the sheet's text; `distances` the
-    printed distances reaching two points of this outline. `disagrees` is each
-    of those the tracing does not agree with before solving. `moved` is how far
-    the furthest entity moved to satisfy them, in mm; `shifted` is each entity
-    moved further than the fit can account for — the verdict this exists for.
+    `printed` counts sizes written from the sheet's text; `distances` the printed
+    distances reaching two points of this outline; `disagrees` is each of those the
+    tracing does not agree with before solving. `moved` is how far the furthest
+    entity moved to satisfy them, in mm; `shifted` is each entity moved further
+    than the fit can account for -- the verdict this exists for.
     """
 
     view: str = ""
@@ -86,14 +85,14 @@ def available():
 
 def checked(outline, view="", between=()):
     """
-    One traced outline built as a sketch, and the solver's verdict on it.
-    Builds in the process that calls it, the Preflight child and nothing else —
-    `checked_by` is the entry point for everybody upstream. A reading is
-    under-constrained on purpose, since one view carries no position and the
-    walk is free to move as a whole; from a start the solver picks itself, the
-    same sketch can come out solved or not run to run — measured on a two-arc
-    bore, three builds in two hundred came back `-3`. The retry policy is the
-    module's own (see its docstring).
+    One traced outline built as a sketch, and the solver's verdict on
+    it. Builds in the process that calls it, the Preflight child and
+    nothing else -- `checked_by` is the entry point for everybody
+    upstream. A reading is under-constrained on purpose, since one view
+    carries no position and the walk is free to move as a whole; from a
+    start the solver picks itself, the same sketch can come out solved
+    or not run to run -- measured on a two-arc bore, three builds in two
+    hundred came back `-3`.
     """
     if not available() or not outline.entities:
         return None
@@ -154,14 +153,12 @@ _OF_A_TROUBLE = ("at", "constraint", "printed", "said")
 
 def checked_by(worker, outline, view="", between=(), timeout=None):
     """
-    One outline built in the Preflight child, and the solver's verdict on it.
-
-    None where there was no verdict to be had — an outline with nothing in it,
-    or a child that died or hung on this reading. Nothing checked and nothing
-    passed are the same answer here: the description simply gains no conflict.
-
-    `timeout` is what is left of the sweep's own budget, so the last outline
-    asked cannot outlive it.
+    One outline built in the Preflight child, and the solver's verdict
+    on it: none where there was no verdict to be had -- an outline with
+    nothing in it, or a child that died or hung on this reading. Nothing
+    checked and nothing passed are the same answer here: the description
+    simply gains no conflict. `timeout` is what is left of the sweep's
+    own budget, so the last outline asked cannot outlive it.
     """
     if not outline.entities:
         return None
@@ -242,11 +239,11 @@ A_SQUARE_ON = 0.99
 
 def _measured_across(sketch, outline, view, between):
     """
-    Every printed distance that reaches two faces of this outline, written.
-
-    Written between two *faces*, not corners. Measured on SECTION A-A of
-    `mm25-p1-1.pdf`: corner matching turns 50 mm into 47.01 mm traced and
-    reports 2.07 mm of spurious movement. Only dimensions square to the sheet.
+    Every printed distance that reaches two faces of this outline,
+    written. Written between two *faces*, not corners. Measured on
+    SECTION A-A of `mm25-p1-1.pdf`: corner matching turns 50 mm into
+    47.01 mm traced and reports 2.07 mm of spurious movement, and only
+    dimensions square to the sheet.
     """
     import Sketcher
 
@@ -314,8 +311,8 @@ def _the_face_at(outline, foot, way):
     The traced line a dimension's foot stands on, or None. `A_FOOT` (2.0 mm)
     bounds how far across the dimension; at 2.6 mm four more dimensions find a
     face and one contradicts another. `A_GAP` (3.0 mm) bounds how far past the
-    face's end — measured 0-2.63 mm known, next at 3.17 mm. At 2.0x3.0, four
-    sheets write 11 distances, worst movement under 1.5 mm.
+    face's end -- measured 0-2.63 mm known, next at 3.17 mm, and at 2.0x3.0,
+    four sheets write 11 distances, worst movement under 1.5 mm.
     """
     best, best_gap = None, A_FOOT
     for at, entity in enumerate(outline.entities):
@@ -413,9 +410,9 @@ def _as_geometry(entity):
 
 def _joined(sketch, outline):
     """
-    The walk itself, as coincidences: this entity ends where the next begins.
-    This is the whole of what the order was kept for. A circle joins nothing
-    and an outline not found closed is not closed here — forcing one shut would
+    The walk itself, as coincidences: this entity ends where the next begins --
+    the whole of what the order was kept for. A circle joins nothing and an
+    outline not found closed is not closed here -- forcing one shut would
     invent geometry. Written against the entity each one joins, so a walk that
     cannot close names the place it could not close.
     """

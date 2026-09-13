@@ -1,21 +1,19 @@
-"""The sheet as evidence, before anybody reads it — rendered, cropped, and its ink measured, never
-handed to the provider whole.
-
-Constraints:
-Rendered at a DPI chosen from the sheet's own text, not the provider's default — a misread digit
-("108" read as "100") is an 8mm contradiction on the record (ADR-0019).
-Cut into per-view crops under MAX_EDGE so no provider downscale halves a callout across a view.
-What is printed is extracted from the vector layer, never read back off a render.
-Regions are found on the sheet's own ink (CELL/REACH/FRAME/A_RULE/INK), not a fixed brightness
-threshold — a screenshot on a black background broke one.
-An outline with no vector content is traced from the raster instead, reported as `traced`, never
-as read.
-
-Measured (four sheets): traced sizes run ~1mm under the drawn size; a 150x50mm plate came back as
-two edges 50.3mm apart from a picture with no vector outline at all.
-
-Degrades rather than fails: no PyMuPDF means no text/render and `read` returns None; no NumPy
-means nothing is traced.
+"""
+The sheet as evidence, before anybody reads it -- rendered, cropped, and
+its ink measured, never handed to the provider whole. Rendered at a DPI
+chosen from the sheet's own text, not the provider's default, since a
+misread digit ("108" read as "100") is an 8mm contradiction on the
+record; cut into per-view crops under MAX_EDGE so no provider downscale
+halves a callout across a view; what is printed is extracted from the
+vector layer, never read back off a render; regions are found on the
+sheet's own ink, not a fixed brightness threshold, since a screenshot on
+a black background broke one; and an outline with no vector content is
+traced from the raster instead, reported as `traced`, never as read.
+Measured (four sheets): traced sizes run ~1mm under the drawn size, a
+150x50mm plate came back as two edges 50.3mm apart from a picture with
+no vector outline at all, and it degrades rather than fails -- no
+PyMuPDF means no text/render and `read` returns None, no NumPy means
+nothing is traced.
 """
 import atexit
 import collections
@@ -161,14 +159,12 @@ class Outline:
 @dataclass(frozen=True)
 class Drawn:
     """
-    One view's own line work, in millimetres of the part.
-
-    `outlines` is the traced entities grouped into the walks they were measured
-    along, same objects in walk order. `left_out`/`traced_left_out` count
-    entities and walks dropped for being too short.
-
-    `from_a_picture` marks a view whose body is a placed picture, where the
-    outline is not in the line work and the list is annotation only.
+    One view's own line work, in millimetres of the part. `outlines` is
+    the traced entities grouped into the walks they were measured along,
+    same objects in walk order, and `left_out`/`traced_left_out` count
+    entities and walks dropped for being too short. `from_a_picture`
+    marks a view whose body is a placed picture, where the outline is
+    not in the line work and the list is annotation only.
     """
     view: str
     entities: list = field(default_factory=list)
@@ -181,14 +177,12 @@ class Drawn:
 @dataclass(frozen=True)
 class Printed:
     """
-    One string the sheet carries, with where it is and which crop shows it.
-
-    `measures` is what the sheet itself measures where this number is printed,
-    in mm; `off_by` is its distance from the number. Both are None where no
-    dimension line measures it — silence is honest, invention is not.
-
-    `notation` is the symbol drawn, not typed, before this string: `35 THRU` in
-    text where the sheet shows `Ø35 THRU`.
+    One string the sheet carries, with where it is and which crop shows
+    it. `measures` is what the sheet itself measures where this number
+    is printed, in mm; `off_by` is its distance from the number, both
+    None where no dimension line measures it -- silence is honest,
+    invention is not. `notation` is the symbol drawn, not typed, before
+    this string: `35 THRU` in text where the sheet shows `Ø35 THRU`.
     """
     text: str
     at: tuple
@@ -610,8 +604,8 @@ def _regions(grid, page_rect):
     The occupied cells as the handful of boxes the sheet lays out. Flood fill
     with a reach, so a dimension standing off its view joins it while two views
     a clear gap apart stay apart. Deliberately not perfect: a region swallowing
-    its neighbour costs resolution, splitting one costs nothing, since every
-    crop is sent. Under a dozen cells is a speck.
+    its neighbour costs resolution, splitting one costs nothing since every
+    crop is sent, and under a dozen cells is a speck.
     """
     rows, columns = len(grid), len(grid[0])
     seen = [[False] * columns for _ in range(rows)]
@@ -805,7 +799,7 @@ def _orphan_pictures(regions, pictures, page_rect):
     `_the_region_holding_the_picture` already answers whether a picture is in a
     region worth speaking of; a no is the same fact, read here not as a source
     of numbers, never a crop. The isometric in every sheet's corner is measured
-    at 6%-16% covered. A bbox off the page or with no area is not a view.
+    at 6%-16% covered, and a bbox off the page or with no area is not a view.
     """
     found = []
     for picture in pictures:
@@ -1500,8 +1494,8 @@ TRUE_TO = 0.6
 def _spans(page):
     """
     Dimension lines across the breaks in them (the gap the number sits in).
-    `A_TILT` bounds two segments' angle difference for one line, in degrees.
-    `A_SIDESTEP` bounds their offset across it. `THE_TEXT_GAP` measures the
+    `A_TILT` bounds two segments' angle difference for one line, in degrees;
+    `A_SIDESTEP` bounds their offset across it; `THE_TEXT_GAP` measures the
     2023 sheet's 108, broken by 31 pt of paper for a 22 pt string. `A_SPAN` is
     the shortest span worth measuring, below which are arrowheads and ticks.
     """
@@ -1585,8 +1579,8 @@ def _the_span_measuring(spans, word):
     The span a number is printed against: nearest line that brackets it.
     Nearest, not shortest: preferring the shorter of two candidates loses the
     pairing the sheet actually drew. `BESIDE` bounds a number's offset from its
-    own dimension line, in points (14 pt on this sheet's 9.5 pt text). `WITHIN`
-    bounds where along the span it must sit.
+    own dimension line, in points (14 pt on this sheet's 9.5 pt text), and
+    `WITHIN` bounds where along the span it must sit.
     """
     middle = ((word[0] + word[2]) / 2.0, (word[1] + word[3]) / 2.0)
     best, best_at = None, BESIDE
@@ -1635,9 +1629,9 @@ def _measured(words, spans, gaps):
     """
     Every printed number beside the length of the line that measures it: the
     string, the span, and the scale voted on by them are all the draughtsman's
-    own (ADR-0019). `AGREED` is how close two scale votes count as the same —
-    0.014 on 0.7 mm/pt. `TRUE_TO` is how far a span may sit from its number, in
-    mm — true pairings land inside 0.05 mm, false ones 7-100 mm out.
+    own. `AGREED` is how close two scale votes count as the same -- 0.014 on
+    0.7 mm/pt. `TRUE_TO` is how far a span may sit from its number, in mm --
+    true pairings land inside 0.05 mm, false ones 7-100 mm out.
     """
     votes, measuring = [], {}
     for at, word in enumerate(words):
@@ -1695,10 +1689,10 @@ A_SIGN_IS_A_CURVE = 12
 def _notation(page, words):
     """
     The symbols the sheet draws rather than types, by the word they stand
-    against. `Ø` is geometry, not text. `A_SIGN` bounds the sign's size as a
+    against. `Ø` is geometry, not text; `A_SIGN` bounds the sign's size as a
     share of line height (6.3x7.7 pt on 12.9 pt text). `A_SIGN_STANDS_OFF`
-    bounds its gap from the numeral (2.1 pt). `A_SIGN_IS_A_CURVE` is its piece
-    count (47), telling diameter from depth.
+    bounds its gap from the numeral (2.1 pt), and `A_SIGN_IS_A_CURVE` is its
+    piece count (47), telling diameter from depth.
     """
     signs = []
     for path in page.get_drawings():
@@ -1740,9 +1734,9 @@ def _traced(document, page, rect, millimetres_per_point, regions):
     """
     What the picture holding a view says about the part, in millimetres. These
     sheets export every view as a placed raster at 186 DPI (measured on all
-    four), so the outline exists only as pixels; one pixel is 0.2 mm
-    (ADR-0019). Circles are fitted through each hole's boundary. `A_SHADE`
-    bounds how far a pixel must be from the paper to be the part.
+    four), so the outline exists only as pixels; one pixel is 0.2 mm. Circles
+    are fitted through each hole's boundary, and `A_SHADE` bounds how far a
+    pixel must be from the paper to be the part.
     """
     if not _numpy():
         return [], []
@@ -1843,11 +1837,11 @@ def _pixels_of(document, xref):
 
 def _the_holes_in(part):
     """
-    Every patch of paper the part encloses, as its boundary and its outline.
-    Paper touching the picture's edge is paper around the view; what is left is
-    a hole. Two forms of the edge return: unordered, fitted with a circle, and
-    walked in order, read as a shape. `A_HOLE` bounds the smallest hole worth
-    measuring, in pixels — below it is anti-aliasing and a numeral's white.
+    Every patch of paper the part encloses, as its boundary and its outline. Paper
+    touching the picture's edge is paper around the view; what is left is a hole.
+    Two forms of the edge return: unordered, fitted with a circle, and walked in
+    order, read as a shape, and `A_HOLE` bounds the smallest hole worth measuring,
+    in pixels -- below it is anti-aliasing and a numeral's white.
     """
     numpy = _numpy()
     height, width = part.shape
@@ -2114,15 +2108,14 @@ THE_FEET_AGREE = 0.5
 
 def _measured_between(page, words, measured_by, named, millimetres_per_point, gaps):
     """
-    Each printed distance against the two points on the part it measures.
-
-    Measured on the four sheets, 35 of the 42 pairs both feet were found for
-    come back and the 7 discarded are 1.05-18.4 mm out. `THE_FEET_AGREE` is
-    how far the two feet may be from measuring what the sheet prints, in mm.
-
-    `AN_OVERSHOOT` is how far past its dimension line an extension line runs,
-    in points — 5.6 pt is what the `150` on `mm25-p1-1.pdf` overshoots by.
-    `A_SQUARE` is how far off perpendicular an extension line may be drawn.
+    Each printed distance against the two points on the part it
+    measures. Measured on the four sheets, 35 of the 42 pairs both feet
+    were found for come back and the 7 discarded are 1.05-18.4 mm out;
+    `THE_FEET_AGREE` is how far the two feet may be from measuring what
+    the sheet prints, in mm. `AN_OVERSHOOT` is how far past its
+    dimension line an extension line runs, in points -- 5.6 pt is what
+    the `150` on `mm25-p1-1.pdf` overshoots by, and `A_SQUARE` is how
+    far off perpendicular an extension line may be drawn.
     """
     limit = FRAME * page.rect.width * page.rect.height
     segments = _segments_in(page, page.rect, limit, dashed=False)
@@ -2981,13 +2974,14 @@ def _holds(rect, point):
 
 def uncited(sheet, model):
     """
-    The dimensions the sheet prints that the finished description never used.
-    The check `printed_on_the_sheet` was written for: asked of the model
-    itself, that list cannot name a callout the model never saw; held against
-    the text layer it can. A number is 'used' if it appears anywhere in the
-    description, including `not_defined` and `conflicts` — deliberately loose
-    the other way, since a false alarm costs one more look and a miss costs the
-    part. `printed_on_the_sheet` itself is not counted as a citation.
+    The dimensions the sheet prints that the finished description never
+    used. The check `printed_on_the_sheet` was written for: asked of the
+    model itself, that list cannot name a callout the model never saw;
+    held against the text layer it can. A number is 'used' if it appears
+    anywhere in the description, including `not_defined` and
+    `conflicts` -- deliberately loose the other way, since a false
+    alarm costs one more look and a miss costs the part, and
+    `printed_on_the_sheet` itself is not counted as a citation.
     """
     if sheet is None or not model:
         return []
@@ -2999,10 +2993,9 @@ def uncited(sheet, model):
 
 def invented(sheet, model):
     """
-    Every number in the description that is on no sheet (ADR-0019).
-
-    The tracing is within its own slack: a millimetre and a half, since a
-    face is measured to the inside of its line.
+    Every number in the description that is on no sheet. The tracing is
+    within its own slack: a millimetre and a half, since a face is
+    measured to the inside of its line.
     """
     if sheet is None or not model:
         return []
