@@ -85,11 +85,9 @@ class Crop:
     `rect` is where it came from on the page, in the page's own units, so a
     callout's coordinates can be said to be inside it.
 
-    `shape_only` is set on a placed picture no region of ink ever reached —
-    the isometric in the corner of these sheets, whose callouts are read
-    elsewhere and whose outline is the only thing worth having. It is
-    rendered once, at a resolution carrying the shape, not the paper's fine
-    print.
+    `shape_only` marks a placed picture no region of ink ever reached — the
+    isometric in a sheet's corner, read only for its outline, rendered once at
+    the resolution carrying its shape, not the paper's fine print.
     """
     name: str
     path: str
@@ -149,14 +147,11 @@ class Outline:
     """
     One silhouette or one hole boundary, as the walk it was measured along.
 
-    Order is the information: the boundary is walked in sequence, and that
-    sequence is the only thing saying two edges meet. Sorted by length it is
-    a bag of pieces, and a closed profile cannot be recovered from the
-    longest pieces of one — a cap takes off the short pieces, which are the
-    fillets and steps that close it.
+    Order is the information: a closed profile cannot be recovered from the
+    longest pieces alone — a cap takes off the short pieces that close it.
 
-    `area` is what the outline encloses, in mm², and ranks outlines by it:
-    the picture's own noise is small, and a silhouette is not.
+    `area` is what the outline encloses, in mm², and ranks outlines by it: the
+    picture's own noise is small, and a silhouette is not.
     """
     entities: list = field(default_factory=list)
     closed: bool = False
@@ -168,16 +163,12 @@ class Drawn:
     """
     One view's own line work, in millimetres of the part.
 
-    `outlines` is the traced entities grouped into the walks they were
-    measured along, same objects in walk order.
+    `outlines` is the traced entities grouped into the walks they were measured
+    along, same objects in walk order. `left_out`/`traced_left_out` count
+    entities and walks dropped for being too short.
 
-    `left_out` and `traced_left_out` count the entities and traced walks
-    dropped for being shorter, so a cut view's list says so rather than
-    looking complete.
-
-    `from_a_picture` says whether this view's body was placed as a picture,
-    in which case the outline is not in the line work and the list is
-    annotation only.
+    `from_a_picture` marks a view whose body is a placed picture, where the
+    outline is not in the line work and the list is annotation only.
     """
     view: str
     entities: list = field(default_factory=list)
@@ -192,14 +183,12 @@ class Printed:
     """
     One string the sheet carries, with where it is and which crop shows it.
 
-    `measures` is what the sheet itself measures where this number is
-    printed, in mm, and `off_by` is how far that is from the number. Both are
-    None where no dimension line measures it (a drawing number, a note, a
-    view label), since silence is honest and an invented millimetre is not.
+    `measures` is what the sheet itself measures where this number is printed,
+    in mm; `off_by` is its distance from the number. Both are None where no
+    dimension line measures it — silence is honest, invention is not.
 
-    `notation` is the symbol drawn, not typed, immediately in front of this
-    string: the text layer carries `35 THRU` where the sheet shows `Ø35
-    THRU`, and a bore and a length are not the same thing.
+    `notation` is the symbol drawn, not typed, before this string: `35 THRU` in
+    text where the sheet shows `Ø35 THRU`.
     """
     text: str
     at: tuple
@@ -319,14 +308,10 @@ def _read(path, into, legible_px, max_edge):
 @dataclass
 class _PageAccumulator:
     """
-    What every page of the document adds to, named so a page's own function
-    cannot mistake one list of the same type for another.
-
-    Nine positional `list` arguments to `_a_page` let two adjacent ones of
-    the same type (`printed` and `callouts`) swap at the call site and still
-    compile and pass static analysis; a mutation by field name
-    (`page_state.printed.extend(...)`) cannot be silently mistaken for a
-    mutation of `page_state.callouts`.
+    What every page adds to, so a page's own function cannot mistake one list
+    of a type for another. Nine positional `list` args to `_a_page` let two
+    adjacent same-type ones (`printed`/`callouts`) swap at the call site; a
+    field-name mutation cannot be mistaken for the wrong list.
     """
     overviews: list = field(default_factory=list)
     crops: list = field(default_factory=list)
@@ -341,13 +326,11 @@ class _PageAccumulator:
 
 def _from_pdf(path, into, legible_px, max_edge):
     """
-    Every page of the drawing, each one cut into its views and measured.
-
-    Every page, because a sheet's second page is the rest of the same drawing
-    and reading one of them is reading part of a drawing. Measured on
-    `model-mania_-in-person-2023 copy.pdf`, whose page 2 prints
-    `6.6 X 8.0 THRU ALL`: the recorded run asked the user how wide that slot is
-    and then invented 8 mm, which is the number printed on the page nobody read.
+    Every page of the drawing, each one cut into its views and measured. Every
+    page, because a sheet's second page is the rest of the same drawing. On
+    `model-mania_-in-person-2023 copy.pdf`, page 2 prints `6.6 X 8.0 THRU ALL`:
+    a run that read only page 1 asked the user how wide that slot is and
+    invented 8 mm.
     """
     document = pymupdf.open(path)
     page_state = _PageAccumulator()
@@ -480,17 +463,11 @@ def _on_page(name, at, of_pages):
 
 def _dpi_for(words, legible_px, notes):
     """
-    The resolution the callouts need, which is not the resolution the sheet has.
-
-    Set by the text that carries a digit, deliberately by nothing else. The
-    smallest type on `mm25-p1-1.pdf` is a 4.1 pt title-block paragraph (28 of
-    the 89 words on the sheet); sizing the render so it is legible puts every
-    crop at 492 DPI and fourteen tiles to read something nobody models from.
-    Sizing by the callouts gives 279 DPI and six.
-
-    A digit is the test because every dimension has one and no boilerplate
-    depends on being read; the percentile absorbs an odd small date or scale
-    note without dragging the whole sheet up.
+    The resolution the callouts need, which is not the resolution the sheet
+    has. Set by the text that carries a digit, deliberately by nothing else. On
+    `mm25-p1-1.pdf`, sizing the render so a 4.1 pt title-block paragraph is
+    legible puts every crop at 492 DPI and fourteen tiles; sizing by the
+    callouts gives 279 DPI and six.
     """
     sizes = sorted(_heights(words, digits_only=True)) or sorted(_heights(words))
     if not sizes:
@@ -530,12 +507,10 @@ def _fits(rect, max_edge):
 
 def _affordable(rect):
     """
-    The highest DPI at which a rect still costs less than the provider will pay.
-
-    Solved rather than searched, then walked down a step at a time, because the
-    cost is in whole patches and the closed form is off by one wherever the
-    rounding up lands. A rect this pays for is a rect that arrives at the size
-    it was rendered.
+    The highest DPI at which a rect still costs less than the provider will
+    pay. Solved rather than searched, then walked down a step at a time, since
+    the cost is in whole patches and the closed form is off by one wherever the
+    rounding up lands.
     """
     if not rect.width or not rect.height:
         return 150
@@ -569,13 +544,10 @@ def _the_regions_of(page, words):
 
 def _ink_grid(page, words):
     """
-    The sheet as occupied cells: every line segment and every word.
-
-    Segment by segment rather than path by path, because a path is not a view.
-    Measured on `mm25-p1-1.pdf`, three of its twenty-five paths each span more
-    than half the sheet — one drawn object holding the geometry of several views
-    at once — so clustering their boxes puts the whole drawing in one region and
-    changes nothing.
+    The sheet as occupied cells: every line segment and every word. Segment by
+    segment rather than path by path, because a path is not a view — on
+    `mm25-p1-1.pdf`, three of twenty-five paths each span more than half the
+    sheet, one drawn object holding several views at once.
     """
     columns = int(page.rect.width / CELL) + 1
     rows = int(page.rect.height / CELL) + 1
@@ -635,14 +607,11 @@ def _segments(path):
 
 def _regions(grid, page_rect):
     """
-    The occupied cells as the handful of boxes the sheet lays out.
-
-    Flood fill with a reach, so a dimension standing off its view joins it
-    while two views a clear gap apart stay apart. Deliberately not perfect: a
-    region swallowing its neighbour costs resolution, a region splitting one
-    view in half costs nothing, since every crop is sent and the downstream
-    coverage check answers for what is in them. Under a dozen cells is a
-    speck, a stray tick or artefact rather than anything drawn.
+    The occupied cells as the handful of boxes the sheet lays out. Flood fill
+    with a reach, so a dimension standing off its view joins it while two views
+    a clear gap apart stay apart. Deliberately not perfect: a region swallowing
+    its neighbour costs resolution, splitting one costs nothing, since every
+    crop is sent. Under a dozen cells is a speck.
     """
     rows, columns = len(grid), len(grid[0])
     seen = [[False] * columns for _ in range(rows)]
@@ -797,15 +766,11 @@ def _share_of(box, region):
 
 def _the_region_holding_the_picture(box, regions):
     """
-    Where a picture is traced, which is the region holding most of it.
-
-    Regions overlap and a picture can lie across two, so the larger share
-    decides, not a threshold: a picture 0.55 in one region and 0.45 in
-    another is traced in the 0.55, where a threshold both shares fail would
-    leave it traced in neither. `IN_THE_REGION` is left saying the one thing
-    a threshold can — that a picture is in no region worth speaking of —
-    which is the isometric reaching over every sheet's title block, at most
-    0.36 of itself in any region there.
+    Where a picture is traced, which is the region holding most of it. Regions
+    overlap and a picture can lie across two, so the larger share decides, not
+    a threshold: 0.55 in one region and 0.45 in another traces in the 0.55,
+    where a threshold both fail would leave it in neither. `IN_THE_REGION` says
+    only that a picture is in no region worth speaking of.
     """
     best, most = None, IN_THE_REGION
     for region in regions:
@@ -837,15 +802,10 @@ def _shared(box, region, area):
 def _orphan_pictures(regions, pictures, page_rect):
     """
     The placed pictures none of the sheet's regions ever reached.
-
-    `_the_region_holding_the_picture` already answers "is this picture in a
-    region worth speaking of" for the tracer; a no is the same fact this
-    asks for — not read here as a source of numbers, never a crop. The
-    isometric in the corner of every sheet is exactly that picture, measured
-    at 6%-16% covered by the regions that do exist.
-
-    A bbox off the page or with no area is not a view: `mm25-p2.pdf` places
-    one at x from -35 to 0, a sliver `page_rect` does not contain at all.
+    `_the_region_holding_the_picture` already answers whether a picture is in a
+    region worth speaking of; a no is the same fact, read here not as a source
+    of numbers, never a crop. The isometric in every sheet's corner is measured
+    at 6%-16% covered. A bbox off the page or with no area is not a view.
     """
     found = []
     for picture in pictures:
@@ -860,12 +820,11 @@ def _orphan_pictures(regions, pictures, page_rect):
 
 def _shape_dpi(rect):
     """
-    The resolution a shape-only picture is rendered at.
-
-    Nothing on it is read, so `_dpi_for`'s legibility budget does not apply —
-    `SHAPE_LONG_EDGE` is sized instead for the outline and orientation this
-    picture is kept for, at a cost measured on `tests/modelmania` at under 420
-    visual tokens against `_dpi_for`'s several thousand.
+    The resolution a shape-only picture is rendered at. Nothing on it is read,
+    so `_dpi_for`'s legibility budget does not apply — `SHAPE_LONG_EDGE` is
+    sized instead for the outline and orientation it is kept for, measured on
+    `tests/modelmania` at under 420 visual tokens against `_dpi_for`'s several
+    thousand.
     """
     longest = max(rect.width, rect.height) / 72.0
     return max(72, int(SHAPE_LONG_EDGE / longest)) if longest else 72
@@ -873,12 +832,10 @@ def _shape_dpi(rect):
 
 def _covering(regions, boxes, page_rect):
     """
-    Every printed word inside some region, whatever the flood fill decided.
-
-    The coverage rule is the one the whole module answers to, so it is enforced
+    Every printed word inside some region, whatever the flood fill decided. The
+    coverage rule is the one the whole module answers to, so it is enforced
     rather than assumed: a callout the regions missed gets a region of its own
-    instead of being quietly absent from every crop — which is the failure this
-    replaces, arriving in a new place.
+    instead of being quietly absent from every crop.
     """
     regions = list(regions)
     for box in boxes:
@@ -961,14 +918,11 @@ def _names_for(regions, words, page_rect):
 
 def _captions(words):
     """
-    The labels the draughtsman printed, told apart from the notes that name one.
-
-    A label is set on a line of its own — `SECTION A-A`, `VIEW B`, `DETAIL A`,
-    the label word and its designator and nothing else. Measured on the 2023
-    sheet, `SEE VIEW B FOR CLARITY OF CUTOUT` is six words on three lines with
-    `SEE` in front of `VIEW`, and that leading word is the whole difference
-    between a label and a note — read as a label it named all four crops of
-    the main drawing after a view 500 pt away.
+    The labels the draughtsman printed, told apart from the notes that name
+    one. A label is set on a line of its own — `SECTION A-A`, `VIEW B`, `DETAIL
+    A` — the label word and its designator, nothing else. On the 2023 sheet,
+    `SEE VIEW B FOR CLARITY OF CUTOUT` reads as a label because `SEE` leads
+    `VIEW`.
     """
     lines = {}
     for word in words:
@@ -988,13 +942,11 @@ def _captions(words):
 
 def _runs(line):
     """
-    One baseline as the separate pieces of text set on it.
-
-    `SAME_LINE` is how far apart two words can be and still be the same printed
-    line, in points. Measured on the 2023 sheet: `SECTION` and `A-A` stand 3.1
-    pt apart, and the nearest thing sharing that baseline anywhere else on the
-    sheet is a hundred points away — wide enough for a word space, far short of
-    a second column.
+    One baseline as the separate pieces of text set on it. `SAME_LINE` bounds
+    how far apart two words may be and still share a printed line, in points.
+    On the 2023 sheet, `SECTION` and `A-A` stand 3.1 pt apart, and the nearest
+    thing sharing that baseline elsewhere is a hundred points away — wide
+    enough for a word space, short of a column.
     """
     run = []
     for word in line:
@@ -1058,17 +1010,10 @@ _IN_ORDER = ("the first one", "the second one", "the third one",
 def _where(rect, page_rect, ordinal):
     """
     A region with no label of its own: where it is, and which one it is there.
-
-    A crop's name is what `seen_in` cites, so two crops sharing a name name
-    two pictures and settle nothing. Measured on the 2023 sheet, the bottom
-    view at (20,384)-(524,600) and the notes beside it at (396,540)-(616,608)
-    are both lower centre; on `mm25-p1-1.pdf` the top view and the fillet
-    note are both upper left.
-
-    The ordinal is the region's place among the ones sharing its corner,
-    counted the way a page is read; nought means it is the only one there and
-    wants no number. `_IN_ORDER` gives it as words, not a number, since the
-    name is read aloud at the Plan Gate and cited in a sentence.
+    A crop's name is what `seen_in` cites, so two crops sharing a name settle
+    nothing — the 2023 sheet's bottom view and its notes are both lower centre.
+    The ordinal counts a region's place among ones sharing its corner, page-
+    read order; `_IN_ORDER` gives it in words for the Plan Gate.
     """
     middle_x = (rect.x0 + rect.x1) / 2 - page_rect.x0
     middle_y = (rect.y0 + rect.y1) / 2 - page_rect.y0
@@ -1136,16 +1081,10 @@ def _a_callout(text):
 def _nearest_end(ends, anchor):
     """
     The segment a leader starts with: the shoulder drawn against the text.
-
-    Measured to the edge of the text box, not its middle. A leader is drawn
-    as a short horizontal shoulder touching the string, then the slope.
-    Measured from the centre, `(R30)` on `mm25-p1-1.pdf` picks up a 17 pt
-    arrowhead stem from a different dimension 12 pt away and follows it
-    nowhere; measured to the box, the shoulder lands on the edge at zero and
-    the chain runs to the pocket wall the arrow is actually touching.
-
-    A tie on the box edge is broken by reach: the shoulder belongs to the
-    leader, the tick belongs to whatever it was ticking.
+    Measured to the edge of the text box, not its middle — measured from the
+    centre, `(R30)` on `mm25-p1-1.pdf` picks up a 17 pt arrowhead stem from a
+    dimension 12 pt away; measured to the box, the shoulder lands where it is
+    actually touching. A tie is broken by reach.
     """
     best, best_at = None, _TOUCHES
     for start, end in ends:
@@ -1229,17 +1168,10 @@ def _on_the_span(point, along, forward, start):
 def _the_outlines_worth_reporting(outlines):
     """
     The traced walks that fit in one view's budget, largest first, kept whole.
-
-    Cutting an outline to its longest pieces took the fillets and steps off
-    it — measured on the 2023 sheet, 51 and 41 pieces cut to 24, so 44 pieces
-    of the two biggest silhouettes went missing and nothing counted them.
-
-    `A_SHAPE` is how many traced entities one view is reported by. An
-    outline is kept or dropped whole, never cut, since what a cut takes off
-    is the short pieces that close it; this is the budget whole outlines are
-    fitted into, largest area first. Measured uncapped on the four sheets,
-    the heaviest view traces 115 entities, so nothing real is dropped and a
-    view tracing into noise still is.
+    Cutting to longest pieces took the fillets and steps off — on the 2023
+    sheet, 51 and 41 pieces cut to 24, losing 44 pieces of the two biggest
+    silhouettes. `A_SHAPE` bounds how many entities one view is reported by;
+    uncapped, the heaviest view of the four sheets traces 115.
     """
     kept, left_out, room = [], 0, A_SHAPE
     for outline in sorted(outlines, key=lambda one: -one.area):
@@ -1254,13 +1186,11 @@ def _the_outlines_worth_reporting(outlines):
 def _drawn(page, named, millimetres_per_point, document=None, circles=None,
            measuring=(), leaders=()):
     """
-    Each view's own geometry, in millimetres of the part.
-
-    On the 2023 sheet the ring's centre line is at y=247.9 pt, the arm's two
-    faces at 276.3 and 318.8, so the arm's top face is 10.0 mm below the axis.
-    A run that assumed the arm centred on the ring axis was 17.5 mm out.
-
-    `ENOUGH` is how many entities one view is reported by, longest first.
+    Each view's own geometry, in millimetres of the part. On the 2023 sheet the
+    ring's centre line is at y=247.9 pt, the arm's two faces at 276.3 and
+    318.8, so the arm's top face is 10.0 mm below the axis — a run assuming the
+    arm centred on the ring axis was 17.5 mm out. `ENOUGH` is how many entities
+    one view is reported by, longest first.
     """
     limit = FRAME * page.rect.width * page.rect.height
     pictures = [pymupdf.Rect(*picture["bbox"]) for picture in page.get_image_info()]
@@ -1298,14 +1228,9 @@ def _drawn(page, named, millimetres_per_point, document=None, circles=None,
 def _centres_in(page, rect, limit, millimetres_per_point):
     """
     The centre lines of one view, taken path by path rather than chained.
-
-    Chaining quietly loses them: a centre line is drawn with a dash pattern,
-    so its pieces do not touch, and `_chained` (which joins a polyline end to
-    end) turned the 2023 sheet's bolt circle into 165 fragments two
-    millimetres long, each below the shortest entity worth reporting.
-
-    A dashed path is one object, read as one: a circle where its points lie
-    on one, otherwise the line between its two ends.
+    Chaining quietly loses them: a centre line is dashed, so its pieces do not
+    touch, and `_chained` turned the 2023 sheet's bolt circle into 165
+    fragments two millimetres long. A dashed path is read as one object.
     """
     numpy = _numpy()
     view = _as_tuple(rect)
@@ -1340,12 +1265,10 @@ def _centres_in(page, rect, limit, millimetres_per_point):
 
 def _segments_in(page, rect, limit, dashed=None):
     """
-    Every line segment of the sheet that lies wholly inside one view.
-
-    `dashed` selects by the pattern the line was drawn with: True for the
-    centre lines, False for everything else, None for both. The pattern is in
-    the file and is the only thing that says a line is an axis rather than an
-    edge, so it is not something to recover by eye later.
+    Every line segment of the sheet that lies wholly inside one view. `dashed`
+    selects by the pattern the line was drawn with: True for centre lines,
+    False for everything else, None for both. The pattern is in the file and is
+    the only thing that says a line is an axis rather than an edge.
     """
     view = _as_tuple(rect)
     inside = []
@@ -1363,12 +1286,11 @@ def _segments_in(page, rect, limit, dashed=None):
 
 def _is_dashed(path):
     """
-    Whether this path was drawn as a centre line.
-
-    A PDF dash pattern is a string like `[ 43.2 3.6 3.6 3.6 ] 16.6` — the array
-    is the pattern and the number is the phase. An empty array is a solid line.
-    Both patterns this draughtsman uses are long-dash-short-dash, which is the
-    ISO chain line, which is a centre line: an axis, or a plane of symmetry.
+    Whether this path was drawn as a centre line. A PDF dash pattern is a
+    string like `[ 43.2 3.6 3.6 3.6 ] 16.6` — the array is the pattern, the
+    number is the phase, an empty array is solid. This draughtsman's dash
+    pattern is long-dash-short-dash, the ISO chain line: an axis, or a plane of
+    symmetry.
     """
     pattern = path.get("dashes") or ""
     opened, closed = pattern.find("["), pattern.find("]")
@@ -1379,13 +1301,10 @@ def _is_dashed(path):
 
 def _chained(segments, snap=0.05):
     """
-    The segments as the polylines they were drawn as.
-
-    A PDF carries no arcs — every curve arrives flattened into a run of very
-    short straight pieces — so an arc can only be recovered from the run, and
-    the run only exists once the pieces are joined end to end. A junction where
-    three or more lines meet ends the chain: that is a corner of the drawing
-    and not a curve continuing.
+    The segments as the polylines they were drawn as. A PDF carries no arcs —
+    every curve arrives flattened into a run of very short straight pieces — so
+    an arc is recovered only once the pieces are joined end to end. A junction
+    of three or more lines ends the chain.
     """
     key = lambda point: (round(point[0] / snap), round(point[1] / snap))
     edges, meeting = [], {}
@@ -1514,11 +1433,9 @@ def _angle(centre, point):
 def _in_millimetres(point, rect, millimetres_per_point):
     """
     A point of the page as a point of the view, in the part's own millimetres.
-
-    Measured from the view's own lower left corner and with y running up, which
-    is how every dimension on the sheet is read and the opposite of how a PDF
-    counts. A coordinate in page points would have to be converted by whoever
-    used it, and the conversion is the arithmetic this exists to remove.
+    Measured from the view's own lower left corner with y running up, which is
+    how every dimension on the sheet is read and the opposite of how a PDF
+    counts; the conversion is the arithmetic this exists to remove.
     """
     return ((point[0] - rect.x0) * millimetres_per_point,
             (rect.y1 - point[1]) * millimetres_per_point)
@@ -1540,14 +1457,11 @@ _SCALE = ("SCALE:", "SCALE")
 
 def _millimetres_per_point(words, notes):
     """
-    How much of the part one point of the page is, off the sheet's own scale.
-
-    A PDF page is in points at 72 to the inch, so a drawing plotted 1:1 puts
-    0.3528 mm of the part in every point — verified on the 2023 sheet, where
-    the arm's 15 mm measures 42.5 pt between its dimension's extension lines.
-    A sheet plotted 1:2 draws the same part half size, and the ratio printed
-    in its title block is the only thing that says so; `_SCALE` is what the
-    title block calls it, so that ratio can be found.
+    How much of the part one point of the page is, off the sheet's own scale. A
+    PDF page is in points at 72/inch, so a 1:1 plot puts 0.3528 mm in every
+    point — verified on the 2023 sheet, the arm's 15 mm measures 42.5 pt. A 1:2
+    plot halves the part, and the title block's own ratio (`_SCALE`) is the
+    only thing that says so.
     """
     ratio, said = 1.0, "1:1"
     for at, word in enumerate(words):
@@ -1585,14 +1499,11 @@ TRUE_TO = 0.6
 
 def _spans(page):
     """
-    Dimension lines across the breaks in them (the gap where the number sits).
-
-    `A_TILT` is how far apart two segments' angles may be and still be one
-    drawn line, in degrees. `A_SIDESTEP` is how far apart two segments may sit
-    across that line and still be it. `THE_TEXT_GAP` is measured on the 2023
-    sheet, where the 108's dimension line is broken by 31 pt of paper for a
-    22 pt string. `A_SPAN` is the shortest span worth measuring by, in points,
-    below which are arrowheads and centre-line ticks.
+    Dimension lines across the breaks in them (the gap the number sits in).
+    `A_TILT` bounds two segments' angle difference for one line, in degrees.
+    `A_SIDESTEP` bounds their offset across it. `THE_TEXT_GAP` measures the
+    2023 sheet's 108, broken by 31 pt of paper for a 22 pt string. `A_SPAN` is
+    the shortest span worth measuring, below which are arrowheads and ticks.
     """
     limit = FRAME * page.rect.width * page.rect.height
     lines = {}
@@ -1654,12 +1565,10 @@ def _a_span(first, last, angle, standoff):
 
 def _a_number(text):
     """
-    What a printed string is worth as a length, or None if it is not one.
-
-    `Ø` never arrives — it is drawn as geometry — so a bore's callout is the
-    bare number, and `(R30)` and `R2 TYP` carry theirs with a letter and
-    brackets around it. Only the leading number is taken: `6.6 X 8.0 THRU` is
-    measured, if it is measured at all, by the 6.6.
+    What a printed string is worth as a length, or None if it is not one. `Ø`
+    never arrives — it is drawn as geometry — so a bore's callout is the bare
+    number, and `(R30)`/`R2 TYP` carry theirs with a letter and brackets. Only
+    the leading number is taken: `6.6 X 8.0 THRU` is measured by the 6.6.
     """
     said = str(text).strip().lstrip("(").lstrip("\u00d8R")
     said = said.split()[0] if said.split() else ""
@@ -1674,16 +1583,10 @@ def _a_number(text):
 def _the_span_measuring(spans, word):
     """
     The span a number is printed against: nearest line that brackets it.
-
-    Nearest, not shortest: a number sits centred on the line that measures
-    it, and preferring the shorter of two candidate spans loses the pairing
-    the sheet actually drew (measured on the 2025 sheets).
-
-    `BESIDE` is how far a number may sit off its own dimension line and still
-    be its number, in points — 14 pt is one line of this sheet's 9.5 pt text
-    plus its standoff. `WITHIN` is how far in from a span's ends the number
-    must sit, as a share of the span, since a number near the end of a long
-    span may belong to something else collinear with it.
+    Nearest, not shortest: preferring the shorter of two candidates loses the
+    pairing the sheet actually drew. `BESIDE` bounds a number's offset from its
+    own dimension line, in points (14 pt on this sheet's 9.5 pt text). `WITHIN`
+    bounds where along the span it must sit.
     """
     middle = ((word[0] + word[2]) / 2.0, (word[1] + word[3]) / 2.0)
     best, best_at = None, BESIDE
@@ -1730,17 +1633,11 @@ def _the_gap_measuring(gaps, word):
 
 def _measured(words, spans, gaps):
     """
-    Every printed number beside the length of the line that measures it.
-
-    The whole answer to ADR-0019: the string is the draughtsman's own, the
-    span is the draughtsman's own, and the scale is voted on by them.
-
-    `AGREED` is how close two votes on the scale must be to count as the same
-    vote: two per cent of 0.7 mm/pt is 0.014, and the four sheets measured
-    here vote inside 0.0002 of each other. `TRUE_TO` is how far a span's
-    measurement may sit from its printed number and still be that number's
-    measurement, in mm — on all four sheets a true pairing lands inside 0.05
-    mm and a false one lands 7 to 100 mm out.
+    Every printed number beside the length of the line that measures it: the
+    string, the span, and the scale voted on by them are all the draughtsman's
+    own (ADR-0019). `AGREED` is how close two scale votes count as the same —
+    0.014 on 0.7 mm/pt. `TRUE_TO` is how far a span may sit from its number, in
+    mm — true pairings land inside 0.05 mm, false ones 7-100 mm out.
     """
     votes, measuring = [], {}
     for at, word in enumerate(words):
@@ -1770,13 +1667,11 @@ def _measured(words, spans, gaps):
 
 def _the_scale_the_lines_vote_for(scale, voters, printed_scale, notes):
     """
-    What the sheet's own dimension lines make of the scale its title block prints.
-
-    Checked, never substituted. The title block is a statement of intent and the
-    lines are what was plotted, and on all four sheets measured they agree to
-    four figures — but a sheet re-plotted at another scale with its title block
-    left alone is a silent failure mode, and this is the only thing that would
-    notice it.
+    What the sheet's own dimension lines make of the scale its title block
+    prints. Checked, never substituted. The title block is a statement of
+    intent, the lines are what was plotted, and on all four sheets measured
+    they agree to four figures — but a sheet re-plotted with its title block
+    left alone is a silent failure this is the only thing that would notice.
     """
     if scale is None or voters < 3:
         return
@@ -1799,14 +1694,11 @@ A_SIGN_IS_A_CURVE = 12
 
 def _notation(page, words):
     """
-    The symbols the sheet draws rather than types, by the word they stand against.
-
-    `Ø` is geometry, not text. `A_SIGN` is the sign's size as a share of line
-    height — measured on `mm25-p1-1.pdf`, whose 12.9 pt text carries a
-    6.3 x 7.7 pt sign. `A_SIGN_STANDS_OFF` is how far in front of the numeral
-    the sign may stand — the gap is 2.1 pt on a 12.9 pt line. `A_SIGN_IS_A_CURVE`
-    is how many pieces the sign is flattened into (47 here), which tells the
-    diameter sign apart from the depth sign (four straight lines).
+    The symbols the sheet draws rather than types, by the word they stand
+    against. `Ø` is geometry, not text. `A_SIGN` bounds the sign's size as a
+    share of line height (6.3x7.7 pt on 12.9 pt text). `A_SIGN_STANDS_OFF`
+    bounds its gap from the numeral (2.1 pt). `A_SIGN_IS_A_CURVE` is its piece
+    count (47), telling diameter from depth.
     """
     signs = []
     for path in page.get_drawings():
@@ -1846,15 +1738,11 @@ THE_SAME_HOLE = 0.15
 
 def _traced(document, page, rect, millimetres_per_point, regions):
     """
-    What the picture holding a view says about the part, in millimetres.
-
-    These sheets export every view as a placed raster at 186 DPI (measured on
-    all four), so the outline exists only as pixels (ADR-0019). Circles are
-    fitted through each hole's boundary as a whole. One pixel is 0.2 mm here.
-
-    `A_SHADE` is how far from the paper a pixel must be to be the part,
-    measured off the picture's own corners — a view exported on a dark
-    background has dark paper.
+    What the picture holding a view says about the part, in millimetres. These
+    sheets export every view as a placed raster at 186 DPI (measured on all
+    four), so the outline exists only as pixels; one pixel is 0.2 mm
+    (ADR-0019). Circles are fitted through each hole's boundary. `A_SHADE`
+    bounds how far a pixel must be from the paper to be the part.
     """
     if not _numpy():
         return [], []
@@ -1900,14 +1788,10 @@ def _traced(document, page, rect, millimetres_per_point, regions):
 
 def _a_bore_in_pieces(hole, rect, millimetres_per_point):
     """
-    A hole the fit would not call a circle, offered to the callouts as its arcs.
-
-    `A_BORE_IN_PIECES` is how far the pieces may disagree about their shared
-    circle, as a share of its radius.
-
-    Measured on the four sheets: 18 holes come back whole circles and 23 come
-    back a bore in pieces, and no callout's leader ends inside one of the 23
-    (the Ø42 and Ø50 of the 2023 sheet end 45 and 74 points outside the nearest).
+    A hole the fit would not call a circle, offered to the callouts as its
+    arcs. `A_BORE_IN_PIECES` is how far the pieces may disagree about their
+    shared circle, as a share of its radius — measured on the four sheets, 18
+    holes come back whole circles, 23 come back a bore in pieces.
     """
     arcs = [entity for entity in hole.entities if entity.kind == "arc"]
     if not arcs or not _of_one_circle(arcs):
@@ -1960,17 +1844,10 @@ def _pixels_of(document, xref):
 def _the_holes_in(part):
     """
     Every patch of paper the part encloses, as its boundary and its outline.
-
-    Paper touching the picture's edge is the paper around the view; what is
-    left is inside the part, which is what a hole is. Two forms of the same
-    edge come back: the boundary unordered, which a circle is fitted
-    through, and the boundary walked round in order, which a non-circular
-    shape is read from.
-
-    `A_HOLE` is the smallest hole worth measuring, in pixels of the placed
-    picture — below it is anti-aliasing along an edge and a numeral's white,
-    neither a bore. At 186 DPI a 2 mm hole is 15 px across and covers 170 px,
-    so this keeps everything a drawing would dimension.
+    Paper touching the picture's edge is paper around the view; what is left is
+    a hole. Two forms of the edge return: unordered, fitted with a circle, and
+    walked in order, read as a shape. `A_HOLE` bounds the smallest hole worth
+    measuring, in pixels — below it is anti-aliasing and a numeral's white.
     """
     numpy = _numpy()
     height, width = part.shape
@@ -2024,17 +1901,11 @@ def _boundary(patch):
 
 def _circle_through(points, round_to=None):
     """
-    The circle fitted through a whole boundary at once, or None if it is not one.
-
-    Algebraic and in one step (least-squares solution of `x² + y² = ax + by
-    + c`), so every point has the same say — fitted greedily along the
-    boundary instead, a bore comes back as fifteen to thirty fragments with
-    radii it never had, which is why this does not go through `_fitted`.
-
-    `ROUND` is how far a hole's boundary may sit from its fitted circle, as a
-    share of that circle's radius, and still be a circle: a true bore lands
-    inside 0.02, a slot or pocket lands 0.3 and worse, the empty ground
-    between two populations rather than a tuned threshold.
+    The circle fitted through a whole boundary at once, or None if not one.
+    Algebraic, least-squares `x²+y²=ax+by+c`, so every point has equal say —
+    fitted greedily, a bore comes back fifteen to thirty fragments with radii
+    it never had. `ROUND` is the share of radius a boundary may sit from its
+    fit: a true bore lands inside 0.02, a slot 0.3 and worse.
     """
     numpy = _numpy()
     round_to = ROUND if round_to is None else round_to
@@ -2065,12 +1936,11 @@ A_TURN = 30.0
 
 def _outline(mask):
     """
-    The boundary of a patch of pixels, walked round in order.
-
-    Ordered, which is the whole point: an unordered set of boundary pixels can
-    be fitted with one circle and nothing else, and a part is lines and arcs in
-    sequence. Moore-neighbour tracing, starting from the topmost-leftmost pixel
-    and keeping the patch on the same hand throughout.
+    The boundary of a patch of pixels, walked round in order. Ordered, which is
+    the whole point: an unordered set of boundary pixels fits one circle and
+    nothing else, and a part is lines and arcs in sequence. Moore-neighbour
+    tracing, from the topmost-leftmost pixel, keeping the patch on the same
+    hand throughout.
     """
     numpy = _numpy()
     height, width = mask.shape
@@ -2139,12 +2009,11 @@ def _straight(run, within):
 
 def _curved(run, within):
     """
-    The run as one circle fitted through all of it, or None.
-
-    `A_TURN` is how far round a circle a run must go to be an arc, in degrees.
-    Thirty degrees is where the two populations separate: the 2025 plate's
-    rounded ends sweep 180, its pocket fillets sweep 40-47, and radii the
-    part cannot have (R310 across 98 mm, R104 across 39) sweep 18-27.
+    The run as one circle fitted through all of it, or None. `A_TURN` is how
+    far round a circle a run must go to be an arc, in degrees. Thirty degrees
+    is where the two populations separate: the 2025 plate's rounded ends sweep
+    180, its pocket fillets sweep 40-47, and radii the part cannot have sweep
+    18-27.
     """
     if len(run) < 6:
         return None
@@ -2160,7 +2029,7 @@ def _curved(run, within):
 
 
 def _spread(run):
-    """How far across a run is, used to turn a pixel band into a share of it."""
+    """How far across a run is, turned into a share of it for a pixel band."""
     numpy = _numpy()
     return float(max(run[:, 0].max() - run[:, 0].min(),
                      run[:, 1].max() - run[:, 1].min())) / 2.0 or 1.0
@@ -2308,16 +2177,10 @@ def _the_chain_lines(page, gaps):
 def _the_feet_on_a_centre_line(feet, forward, chain):
     """
     Which of a dimension's two feet stands on a centre line rather than a face.
-
-    A distance taken off the middle of the part is drawn no differently from
-    one off a face — same extension line, same arrow — except at the far end,
-    where it runs into the chain line it was drawn off instead of the part.
-    The chain line is the sheet's own notation for an axis or plane of
-    symmetry, so this is arithmetic, not a reading of the view.
-
-    Square to the dimension, since an extension line is: a chain line running
-    the way the dimension measures is the centre line of something else the
-    foot happens to sit near, and says nothing about what this foot stands on.
+    A distance off the middle of the part is drawn no differently from one off
+    a face — same extension line, same arrow — except at the far end, where it
+    runs into the chain line instead of the part; this is arithmetic, not a
+    reading of the view. Square to the dimension, since an extension line is.
     """
     on = []
     for which, foot in zip(("first", "second"), feet):
@@ -2336,18 +2199,11 @@ def _the_feet_on_a_centre_line(feet, forward, chain):
 
 def _the_feet_brought_together(feet, on, forward):
     """
-    A foot standing on a centre line, read at the station the other foot stands at.
-
-    An extension line off a centre line stops where the chain line starts,
-    and one off a face stops at the face, so the two ends sit nowhere near
-    each other across the dimension — 84 pt apart on the 2023 sheet's `7`,
-    30 mm of a distance printed 7. In the one direction the dimension
-    measures, the two feet are still 7 mm apart, so the centre line's foot is
-    taken along its own line to the other foot's station — nothing invented,
-    since that is what a centre line is.
-
-    Both feet on chain lines is left alone: there is no face in the pair to
-    bring anything to, and the check throwing that pair out is the honest end.
+    A foot on a centre line, read at the station the other foot stands at. An
+    extension line off a centre line stops at the chain line, one off a face
+    stops at the face — 84 pt apart on the 2023 sheet's `7` (30 mm read for 7
+    mm). The centre foot is taken along its own line to the other station; both
+    feet on chain lines is left alone.
     """
     if len(on) != 1:
         return feet
@@ -2436,18 +2292,11 @@ def _the_pixels_against_the_callouts(circles, printed, leaders, notes,
 
 def _the_printed_size(drawn, entities, across):
     """
-    The traced hole, again, carrying the size the draughtsman printed.
-
-    A hole is one feature however many pieces it was traced in, so a callout
-    reaching it sizes every one of them — sizing the first alone would leave
-    the rest at the pixels' size and invent the reading (one bore, two sizes)
-    that `sketch_check` exists to report.
-
-    The printed value becomes the entity's `size`, and `read` says so: the
-    tracing found the feature, the text layer supplies what it measures, and
-    arithmetic runs only that direction. The traced diameter is kept beside
-    it as the evidence the two are one feature, and what a reader checks the
-    printed number against.
+    The traced hole, again, carrying the size the draughtsman printed. A hole
+    is one feature however many pieces it was traced in, so a callout reaching
+    it sizes every one — sizing the first alone would invent the reading (one
+    bore, two sizes) `sketch_check` exists to report. The printed value becomes
+    `size`; the traced diameter stays beside it as evidence.
     """
     for view in drawn:
         for held in [view.entities] + [one.entities for one in view.outlines]:
@@ -2460,14 +2309,10 @@ def _the_printed_size(drawn, entities, across):
 def _from_raster(path, into, max_edge):
     """
     A PNG or a photo: the same cutting up, off its ink, and no text layer.
-
-    Worth doing without one: regions come out of the picture rather than a
-    draughtsman's file, so they are rougher, but they buy the same
-    resolution that was failing.
-
-    A crop over the cap is scaled down, never enlarged the other way —
-    enlarging a small crop adds pixels, adds no ink, and is billed for every
-    one. The file holds what the file holds.
+    Worth doing without one: regions come from the picture rather than a
+    draughtsman's file, so they are rougher but buy the same resolution that
+    was failing. A crop over the cap is scaled down, never enlarged: enlarging
+    adds pixels, adds no ink, and is billed for every one.
     """
     picture = Image.open(path).convert("RGB")
     width, height = picture.size
@@ -2540,13 +2385,11 @@ def _without_the_frame(grid):
 
 def _raster_regions(grid, cell, width, height):
     """
-    The marked cells of a picture as the boxes its views are in.
-
-    Merged on their own ink and padded afterwards, in that order: padding
-    first chains, since a margin wide enough to bring a dimension along is
-    wide enough to touch the next view's margin, and the whole sheet comes
-    back as a single crop — the thing this module exists to stop. Padded
-    after, the crops simply overlap, as they do at every other cut anyway.
+    The marked cells of a picture as the boxes its views are in. Merged on
+    their own ink and padded afterwards, in that order: padding first chains,
+    since a margin wide enough to bring a dimension along is wide enough to
+    touch the next view's margin, and the whole sheet comes back as one crop.
+    Padded after, crops simply overlap, as they do at every other cut.
     """
     rows, columns = len(grid), len(grid[0])
     seen = [[False] * columns for _ in range(rows)]
@@ -2582,12 +2425,10 @@ def _raster_regions(grid, cell, width, height):
 
 def _merged_boxes(boxes):
     """
-    Overlapping regions joined into one, until none of them overlap.
-
-    Dropping a box that sits inside another is not enough: two views whose ink
-    genuinely overlaps would be sent as two crops that are each mostly the
-    other one. Joined, they are one crop of both, which costs resolution — and
-    the tiling gives it back.
+    Overlapping regions joined into one, until none of them overlap. Dropping a
+    box inside another is not enough: two views whose ink genuinely overlaps
+    would be sent as two crops each mostly showing the other. Joined, they are
+    one crop costing resolution the tiling gives back.
     """
     boxes = list(boxes)
     joined = True
@@ -2644,17 +2485,13 @@ _A_DIMENSION = ("\u00d8", "\u2300", "R", "(", ")", "\u00b0", "\u00b1", "X", "\u0
 
 def view_names(sheet):
     """
-    The views on the sheet, in the order a reader meets them.
-
-    One name per view: a tiled crop's own "`, part N of M`" is stripped
-    since that names a tile, not a view, so a name here is exactly what
-    `shown(sheet, views=...)` matches against and what `seen_in`,
-    `Drawn.view` and `Between.view` already say elsewhere.
-
-    A `shape_only` crop (a placed picture no region of ink reached, the
-    isometric in the corner of these sheets) counts as a view of its own —
-    it has no `Drawn` entry since nothing traced it, but leaving it out would
-    still show its picture in a full call with no name to ask for it alone.
+    The views on the sheet, in the order a reader meets them. One name per
+    view: a tiled crop's own '`, part N of M`' is stripped since that names a
+    tile, not a view, so a name here is exactly what `shown(sheet, views=...)`
+    matches against and what `seen_in`, `Drawn.view` and `Between.view` already
+    say elsewhere. A `shape_only` crop (a placed picture no region of ink
+    reached) counts as a view of its own, with no `Drawn` entry since nothing
+    traced it.
     """
     if sheet is None:
         return []
@@ -2669,11 +2506,10 @@ def view_names(sheet):
 def _the_view_of(name):
     """
     A crop's, a printed string's or a leader's own name, narrowed to the view
-    it belongs to.
-
-    A tile is named after its view with "`, part N of M`" appended
-    (`_part_named`), so stripping that suffix is the join back from a tile, a
-    `seen_in` or a `Drawn.view` to the one name `view_names` hands out for it.
+    it belongs to. A tile is named after its view with '`, part N of M`'
+    appended (`_part_named`), so stripping that suffix is the join back from a
+    tile, a `seen_in` or a `Drawn.view` to the name `view_names` hands out for
+    it.
     """
     return name.split(", part ")[0] if name else name
 
@@ -2805,15 +2641,11 @@ def _the_printed_list(sheet, views=None):
 
 def _the_span_of(entry, span):
     """
-    What one measured callout says about itself, on its own line.
-
-    The number the sheet's own line work measures where this one is printed,
-    and — where the two feet of that line were found — where the line runs,
-    in the millimetres of the view the drawn list is in. Which way it runs is
-    said in words as well as in the two points: a distance drawn up the view
-    and a distance drawn across it are different values of different features,
-    and the pair of coordinates that says so is read wrong more easily than
-    the phrase is.
+    What one measured callout says about itself, on its own line. The number
+    the sheet's line work measures where this is printed, and — where the two
+    feet were found — where the line runs, in the view's millimetres. A
+    distance up the view and one across it are different features; a wrong-read
+    coordinate pair is easier to make than a wrong-read phrase.
     """
     said = ("; the sheet measures %.1f mm between the faces this one's "
             "dimension line is drawn across" % entry.measures)
@@ -2826,15 +2658,11 @@ def _the_span_of(entry, span):
 
 def _the_run_of(span):
     """
-    Which way a dimension line runs, in the view's own axes.
-
-    Read off the two feet rather than off the line, which is not kept: a foot
-    stands where its own extension line meets the part, and the two stand at
-    their own stations along it, so the component across the run is not zero
-    even on a distance drawn square. The 108 of the 2023 sheet has its feet
-    10 mm apart across a 108 mm run. `_A_SQUARE_RUN` is how much of that a run
-    may carry and still be called square; a distance genuinely drawn at 45°
-    lands at 1.0 and is called neither.
+    Which way a dimension line runs, in the view's own axes. Read off the two
+    feet, not the line: a foot stands where its extension line meets the part,
+    so the run's cross-component is not zero even on a square distance — the
+    2023 sheet's 108 has feet 10 mm apart across a 108 mm run. `_A_SQUARE_RUN`
+    bounds how much may still be called square; 45° lands at 1.0.
     """
     across = abs(span.second[0] - span.first[0])
     up = abs(span.second[1] - span.first[1])
@@ -2850,12 +2678,10 @@ _A_SQUARE_RUN = 0.25
 
 def _the_leader_list(sheet, views=None):
     """
-    Where each callout's leader runs.
-
-    `views` keeps only the leaders whose callout is `seen_in` one of them — the
-    join is the callout's own text and position, matched back to `sheet.printed`
-    the way `_showing` matched it in the first place, because a leader carries
-    neither a view nor a page of its own.
+    Where each callout's leader runs. `views` keeps only leaders whose callout
+    is `seen_in` one of them — the join is the callout's own text and position,
+    matched back to `sheet.printed` the way `_showing` matched it in the first
+    place, because a leader carries neither a view nor a page of its own.
     """
     lines = ["Where each callout's leader runs, traced through the file's own "
              "line work rather than judged by eye. The point given is where the "
@@ -2920,17 +2746,11 @@ def _standing_on_a_centre_line(on):
 
 def _the_drawn_list(sheet, views=None):
     """
-    The line work each view is drawn with, as far as it can be proved to be anything.
-
-    An entity nothing can prove anything about is an extension line, hatch
-    stroke or edge, and nothing says which. Read beside the contours, a 40 mm
-    extension line is a 40 mm edge; left out and counted, it is a number
-    nobody was invited to build from. They stay in `drawn` (the record of the
-    sheet) and are kept out here (the record of the part), the same split
-    `_the_printed_list` makes.
-
-    `views` keeps only entries whose own `view` names one of them, and
-    `round_in` alongside them.
+    The line work each view is drawn with, as far as it can be proved to be
+    anything. An entity nothing can prove is an extension line, hatch stroke or
+    edge: read beside the contours a 40 mm extension line is a 40 mm edge;
+    counted alone it is a number nobody was invited to build from. They stay in
+    `drawn`, kept out here, the split `_the_printed_list` makes.
     """
     lines = ["The line work each view is drawn with, taken out of the file and "
              "converted to millimetres of the part. Coordinates are millimetres "
@@ -3027,12 +2847,11 @@ def _as_reported(measurement):
 
 def _how_wide(entity):
     """
-    How wide a round entity is, printed where the sheet printed it.
-
-    The traced diameter is the evidence that found the feature and never its
-    size: it reads about a millimetre under, so reporting it where a callout
-    has been carried would hand the description the one number this module is
-    not allowed to supply.
+    How wide a round entity is, printed where the sheet printed it. The traced
+    diameter is the evidence that found the feature and never its size: it
+    reads about a millimetre under, so reporting it where a callout has been
+    carried would hand the description a number this module is not allowed to
+    supply.
     """
     return entity.printed if entity.printed is not None else entity.diameter
 
@@ -3064,15 +2883,13 @@ def round_evidence(sheet):
 
 def printed_on_the_sheet(sheet):
     """
-    The extracted sweep, in the shape the description records it in.
-
-    Written by this module, not the phase reading the sheet, and put into the
-    model over whatever the phase wrote — it is the text layer, already exact
-    and already carrying what the sheet's own dimension lines measure at each
-    number, so a paraphrase of it is a loss. In the run that named this
-    (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`) 230 entries came
-    back as 22 sentences — "Page 1: (6), (6), 30, (25) — SECTION A-A" — and
-    `off_by`, the arithmetic that catches 108 read as 100, went with them.
+    The extracted sweep, in the shape the description records it in. Written by
+    this module, not the phase reading the sheet, and put into the model over
+    whatever the phase wrote — it is the text layer, already exact and already
+    carrying what the sheet's own dimension lines measure at each number, so a
+    paraphrase of it is a loss. In the run that named this, 230 entries came
+    back as 22 sentences, and `off_by`, the arithmetic that catches 108 read as
+    100, went with them.
     """
     if sheet is None:
         return []
@@ -3092,12 +2909,10 @@ def _as_swept(entry):
 def _the_callouts(sheet):
     """
     What the sheet prints outside its title block, as the draughtsman set it.
-
-    The same split `dimensions` makes, made once more where the sheet is shown:
-    a drawing number, a revision date and `1:2` are printed on the sheet and are
-    not values of the part. They stay in `printed`, because the sweep is a
-    record of the sheet, and they are kept out of here, because what Design is
-    shown is a record of the part.
+    The same split `dimensions` makes, made again where the sheet is shown: a
+    drawing number, a revision date and `1:2` are printed but not values of the
+    part. They stay in `printed`, a record of the sheet, and are kept out of
+    what Design is shown, a record of the part.
     """
     if sheet is None:
         return []
@@ -3128,16 +2943,11 @@ def dimensions(sheet):
 
 def _a_dimension(text):
     """
-    Whether a string off the sheet is a number the part could be built from.
-
-    An item number is not one: `1.` and `2.` enumerate the notes on every
-    one of these sheets, and read as callouts they are dimensions the
-    description can never account for, sending Design back to explain that a
-    full stop is a full stop. A dimension is printed `30`, `42.5`, `(R30)`; a
-    trailing full stop with no digit after it is a list marker only.
-
-    `_A_DIMENSION` is what such a callout is written with: a bare number,
-    with or without parentheses, a radius or diameter sign, or a decimal.
+    Whether a string off the sheet is a number the part could be built from. An
+    item number is not one: `1.`/`2.` enumerate the notes on these sheets, and
+    a trailing full stop with no digit after it is a list marker only.
+    `_A_DIMENSION` is what a real one is written with: a bare number, with or
+    without parentheses, a radius or diameter sign, or a decimal.
     """
     stripped = text.strip().strip("()")
     for sign in _A_DIMENSION:
@@ -3172,20 +2982,12 @@ def _holds(rect, point):
 def uncited(sheet, model):
     """
     The dimensions the sheet prints that the finished description never used.
-
-    The check `printed_on_the_sheet` was written for. Asked of the model
-    itself, that list is the model's own account of what it noticed, checked
-    against itself — it cannot name the callout it never saw. Held against
-    the text layer it can.
-
-    A number is "used" if it appears anywhere in the description, including
-    in `not_defined` and `conflicts` — accounted for by being written down,
-    per the prompt's existing rule. Deliberately loose the other way: a false
-    alarm costs one more look at the sheet, a miss costs the part.
-
-    `printed_on_the_sheet` is not counted as a citation: it is this module's
-    own list, and counting it would mean every callout is accounted for by
-    having been copied in, the failure this check exists to catch.
+    The check `printed_on_the_sheet` was written for: asked of the model
+    itself, that list cannot name a callout the model never saw; held against
+    the text layer it can. A number is 'used' if it appears anywhere in the
+    description, including `not_defined` and `conflicts` — deliberately loose
+    the other way, since a false alarm costs one more look and a miss costs the
+    part. `printed_on_the_sheet` itself is not counted as a citation.
     """
     if sheet is None or not model:
         return []
@@ -3224,29 +3026,21 @@ def invented(sheet, model):
 def _near(number, drawn):
     """
     Whether the tracing measured something this size, within its own slack.
-
-    `A_DISTANCE` is how far the pixels may be from what the sheet prints for
-    the same thing, in millimetres. The four-sheet evidence test finds 11
-    printed distances that reach a traced outline and no disagreement. It is
-    the one band the tracing is read with, here and in `sketch_check`, and the
-    reading it exists to catch is 8 mm out.
+    `A_DISTANCE` bounds how far the pixels may be from the sheet's printed
+    distance, in mm. The four-sheet evidence test finds 11 distances reaching a
+    traced outline with no disagreement; it is the one band the tracing is read
+    with, and it exists to catch an 8 mm miss.
     """
     return any(abs(number - measured) <= A_DISTANCE for measured in drawn)
 
 
 def _derived_from(number, cited):
     """
-    Whether one number is the distance between two of the sheet's own.
-
-    A distance nobody printed is `derived`, told so rather than called
-    undefined, and deriving it is subtraction: measured on the recorded runs,
-    `95.5 mm to the bore axis` is the 2023 sheet's 108 less its 12.5, and
-    `125 mm` is the 2025 sheet's 150 less its 25 — calling those inventions
-    would fire on every correct reading of a drawing dimensioned from one end.
-
-    Two distinct callouts, subtraction only: a callout paired with itself
-    exempts every doubling of a printed value, and a sum is the description
-    stating arithmetic of its own, which `wrong_sums` is the check for.
+    Whether one number is the distance between two of the sheet's own. A
+    distance nobody printed is `derived`, told so rather than called undefined:
+    `95.5 mm to the bore axis` is the 2023 sheet's 108 less its 12.5. Two
+    distinct callouts, subtraction only: a callout paired with itself exempts
+    doubling, and a sum is arithmetic `wrong_sums` checks for.
     """
     numbers = [one for one in cited if isinstance(one, float)]
     return any(abs(number - abs(one - other)) < 0.01

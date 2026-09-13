@@ -10,6 +10,10 @@ Wire fields cross as plain lists — JSON has no tuple, and the report format us
 
 Measured (tests/modelmania, 4 sheets, 142 outlines): movement 0.15-0.30mm median, 0.50-0.75mm p90,
 1.0-1.5mm worst; a wrong double-callout snap (42 vs 50) moves 9.88mm.
+Built again where the solver does not converge, up to _TRIES (3) times — a 1.5% failure rate
+compounds to 3 in a million over three tries, and a reading nothing can solve is not made
+solvable by a fourth. A second solve() on a sketch that failed is not a second try, since the
+start it failed from is where it now sits; a fresh build is.
 """
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -27,17 +31,12 @@ A_SHIFT = 2.0
 class Trouble:
     """
     One constraint the solver objected to, back at the entity it came from.
-
-    `at` is an index into the walk and `constraint` an index into the sketch's
-    own constraints, and they are two fields because they are two coordinate
-    systems: a rectangle is four entities and six constraints, so one number
-    meaning both is a resolution computed and thrown away. `at` is the field
-    every Trouble in a verdict is read with; `constraint` is None where there
-    was no constraint, which is every entity that merely moved.
-
-    The solver counts its constraints from one — `ConflictingConstraints` on
-    that rectangle comes back `[5, 6]` for the fifth and sixth — and
-    `constraint` counts from zero, the way `Sketch.Constraints` is indexed.
+    `at` is an index into the walk; `constraint` an index into the sketch's own
+    constraints — two fields because they are two coordinate systems, since one
+    number meaning both is a resolution thrown away. `constraint` is None where
+    there was no constraint, every entity that merely moved. The solver counts
+    constraints from one; `constraint` counts from zero, as
+    `Sketch.Constraints` is indexed.
     """
 
     at: int = None
@@ -50,21 +49,14 @@ class Trouble:
 @dataclass(frozen=True)
 class Verdict:
     """
-    What one outline came to when it was built.
-
-    `solved` is what `Sketch.solve()` returned, where zero is solved and
-    anything else is not, and `dof` is what the reading leaves undetermined,
-    which is expected to be large: a profile off one view carries no position
-    and nothing here invents one. `printed` counts the sizes written from the
-    sheet's own text rather than from the pixels, and `distances` the printed
-    distances that reached two points of this outline — every other number on a
-    sheet is one of these, so until they arrive the check has almost nothing of
-    the drawing to hold the tracing against. `disagrees` is each of those the
-    tracing does not agree with before any solving, which is the plainest thing
-    here: what the sheet prints between two faces against what the pixels put
-    between them. `moved` is how far the furthest entity had to move to satisfy
-    them, in millimetres, and `shifted` each entity that moved further than the
-    fit can account for, which is the verdict this exists for.
+    What one outline came to when it was built. `solved` is `Sketch.solve()`'s
+    return, zero meaning solved; `dof` is what the reading leaves undetermined,
+    expected to be large since a profile off one view carries no position.
+    `printed` counts sizes written from the sheet's text; `distances` the
+    printed distances reaching two points of this outline. `disagrees` is each
+    of those the tracing does not agree with before solving. `moved` is how far
+    the furthest entity moved to satisfy them, in mm; `shifted` is each entity
+    moved further than the fit can account for — the verdict this exists for.
     """
 
     view: str = ""
@@ -95,26 +87,13 @@ def available():
 def checked(outline, view="", between=()):
     """
     One traced outline built as a sketch, and the solver's verdict on it.
-
-    Builds in the process that calls it, which is the Preflight child and
-    nothing else. `checked_by` is the entry point for everybody upstream —
-    see the note at the top of this module.
-
-    Built again where the solver did not converge, up to `_TRIES` times, which
-    is three: the failure is a coin the solver tosses at each build, 1.5 in a
-    hundred once is 3 in a million three times over, and a reading nothing can
-    solve is not made solvable by a fourth document. A
-    reading is under-constrained on purpose — one view carries no position, so
-    the walk is free to move as a whole — and from a start the solver picks for
-    itself the same sketch comes out solved or not solved run to run: measured
-    on the two-arc bore below, three builds in two hundred came back `-3`. A
-    second `solve()` on the same sketch is not a second try, because the start
-    it failed from is where it now sits; a fresh build is. What that costs is a
-    document nobody sees, and what it buys is the one answer this module has no
-    other way of telling apart — geometry that stayed where the pixels put it
-    because the sheet agrees with itself, from geometry that stayed there
-    because the solver gave up. The first is a reading with nothing wrong with
-    it; the second measured nothing at all and read as the first.
+    Builds in the process that calls it, the Preflight child and nothing else —
+    `checked_by` is the entry point for everybody upstream. A reading is
+    under-constrained on purpose, since one view carries no position and the
+    walk is free to move as a whole; from a start the solver picks itself, the
+    same sketch can come out solved or not run to run — measured on a two-arc
+    bore, three builds in two hundred came back `-3`. The retry policy is the
+    module's own (see its docstring).
     """
     if not available() or not outline.entities:
         return None
@@ -313,14 +292,10 @@ def _across(one, other, way):
 def _squarely(entry):
     """
     The constraint one printed distance is, where it is drawn square, or None.
-
-    A dimension drawn along the sheet measures in one direction only, and the
-    other coordinate of the two faces it measures is not its business — which
-    is what makes a face rather than a corner enough to write it against.
-
-    Square is `A_SQUARE_ON`, the cosine of the angle between the dimension and
-    the face it measures to. A drawing is plotted square, so this is rounding in
-    the file rather than a second direction.
+    A dimension along the sheet measures one direction only, and the other
+    coordinate is not its business — a face rather than a corner is enough to
+    write it against. Square is `A_SQUARE_ON`, the cosine between dimension and
+    face; plotted square makes this rounding, not a second direction.
     """
     import math
 
@@ -336,13 +311,11 @@ def _squarely(entry):
 
 def _the_face_at(outline, foot, way):
     """
-    The traced line a dimension's foot stands on, or None.
-
-    `A_FOOT` (2.0 mm): how far across the dimension. At 2.6 mm four more
-    dimensions find a face, and one contradicts another outright.
-    `A_GAP` (3.0 mm): how far past the face's end. Measured: 0-2.63 mm on
-    known feet, next is 3.17 mm. At 2.0 x 3.0, four sheets write 11 distances
-    across 10 outlines, worst movement under 1.5 mm.
+    The traced line a dimension's foot stands on, or None. `A_FOOT` (2.0 mm)
+    bounds how far across the dimension; at 2.6 mm four more dimensions find a
+    face and one contradicts another. `A_GAP` (3.0 mm) bounds how far past the
+    face's end — measured 0-2.63 mm known, next at 3.17 mm. At 2.0x3.0, four
+    sheets write 11 distances, worst movement under 1.5 mm.
     """
     best, best_gap = None, A_FOOT
     for at, entity in enumerate(outline.entities):
@@ -377,12 +350,10 @@ def _past_the_end(foot, start, along, long_enough):
 
 def _how_far_it_moved(sketch, outline):
     """
-    Each entity against where the pixels put it, after the solve, in millimetres.
-
-    This is the verdict. Two numbers that cannot both be true seldom make a
-    sketch unsolvable — the solver satisfies them by moving the geometry, and
-    the geometry is the one thing here that was measured rather than read. So
-    what is asked is not whether it solved but what it cost.
+    Each entity against where the pixels put it, after the solve, in
+    millimetres. This is the verdict. Two numbers that cannot both be true
+    seldom make a sketch unsolvable — the solver satisfies them by moving the
+    geometry — so what is asked is not whether it solved but what it cost.
     """
     import math
 
@@ -443,15 +414,10 @@ def _as_geometry(entity):
 def _joined(sketch, outline):
     """
     The walk itself, as coincidences: this entity ends where the next begins.
-
-    This is the whole of what the order was kept for. A circle is a walk of its
-    own and joins nothing, and an outline that was not found closed is not
-    closed here — forcing one shut is inventing geometry, and the solver would
-    then object to this module rather than to the sheet.
-
-    Written down against the entity each one joins, the same as a size and a
-    distance are, so that a walk the solver cannot close names the place in the
-    walk it could not close.
+    This is the whole of what the order was kept for. A circle joins nothing
+    and an outline not found closed is not closed here — forcing one shut would
+    invent geometry. Written against the entity each one joins, so a walk that
+    cannot close names the place it could not close.
     """
     import Sketcher
 
@@ -493,15 +459,11 @@ def _sized(sketch, outline):
 
 def _troubles(indices, written, outline):
     """
-    Each constraint the solver objected to, back at the entity it was written for.
-
-    The solver counts its constraints from one and `written` is keyed by what
-    `addConstraint` returned, which counts from zero — so the index arriving
-    here names the constraint before it, and reading it as it comes reports the
-    coincidence for the dimension and the dimension for nothing at all.
-
-    A distance is written between two faces and comes back at the first of
-    them, which is the one its own foot named.
+    Each constraint the solver objected to, back at the entity it was written
+    for. The solver counts constraints from one; `written` is keyed by what
+    `addConstraint` returned, from zero — the index here names the constraint
+    before it, so a coincidence reads for the dimension after it. A distance
+    between two faces comes back at the first, the one its foot named.
     """
     found = []
     for index in indices:
