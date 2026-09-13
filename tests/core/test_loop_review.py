@@ -326,8 +326,8 @@ def test_a_step_handed_back_twice_with_nothing_applied_stops_the_run():
     assert "80.5 mm does not reach it either" in result.reason
     assert "the description it was planned from" in result.reason
     assert "not a run stopped for want of an answer" in result.reason, (
-        "the block text does not say this is the no-progress stop, not the "
-        "nobody-answered stop FCC-127/FCC-133 removed")
+        "the block text does not say this is the no-progress stop rather "
+        "than the one for a question nobody answered")
     assert tools.applied_codes() == []
     assert len(events.of(PLAN_REVISED)) == 1, "the loop kept rewriting a Step going nowhere"
 
