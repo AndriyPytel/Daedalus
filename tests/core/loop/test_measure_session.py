@@ -1,5 +1,5 @@
 """
-Level 1 — measuring a Session log by the FCC-23/45/55/56 definitions.
+Level 1 — measuring a Session log by the definitions `core.measure` itself uses.
 
 Fixtures under `tests/recorded/sessions/` are real Session logs, copied in
 whole from `logs/sessions/`, so the numbers below are read off an actual run
@@ -26,7 +26,7 @@ def _fixture(name):
 
 def test_steps_started_and_applied_come_from_the_declaration_event(tmp_path):
     """
-    FCC-304: a Step's declaration is `STEP_STARTED`, one event per Step, and
+    A Step's declaration is `STEP_STARTED`, one event per Step, and
     `steps_started`/`steps_applied` are a plain count of it and of `APPLIED` —
     a hand count of a driven multi-Step run's own log must match what
     `measure` reports for it.
@@ -209,8 +209,8 @@ def test_review_suspected_never_counts_toward_the_review_fail_rate(tmp_path):
     `review_suspected` is `review_suspect`'s own event, not a verdict — it never
     gates and it is not what `review_fail_rate` measures. A log with more
     `review_suspected` events than passing `review_verdict` ones must still
-    read a fail rate of 0%, or the two phases FCC-258 split apart would be
-    read back together (FCC-257, FCC-258).
+    read a fail rate of 0%, or the two phases that were split apart from
+    each other would be read back together.
     """
     from core.events import REVIEW_SUSPECTED, REVIEW_VERDICT, EventStream
 
@@ -238,7 +238,7 @@ def test_compare_reports_the_assertion_and_review_fail_rates():
     assert _cells(table, "review fail rate") == ["0.0%", "50.0%"]
 def test_assertion_fail_rate_counts_named_checks_not_whole_batches(tmp_path):
     """
-    `opus/mm23-off` (FCC-191 review): one `assertion` event, `ok: false`,
+    `opus/mm23-off`: one `assertion` event, `ok: false`,
     98 `confirmed` entries and 12 `unmet` ones — 110 named checks, 89% of
     them held. The event-level reading was `1/1 = 100%`; counting checks
     instead reads the same run as ~10.9% failed, not a total loss.
@@ -330,7 +330,7 @@ def test_pass_rate_excludes_a_session_where_review_never_ran(tmp_path):
     A block before Review ever gets a turn leaves `verdict` at `None` — a
     fact about what happened to the run, not the same fact as Review
     weighing in and saying no. Folding it into the denominator the same way
-    an explicit fail is folded in is the FCC-292 defect: one genuine pass
+    an explicit fail is folded in was the counting defect: one genuine pass
     and one never-reviewed block used to read as a 50% pass rate; it must
     read as 100%, over the one run Review actually judged.
     """
@@ -378,7 +378,7 @@ def test_pass_rate_still_counts_a_session_review_explicitly_failed(tmp_path):
 def test_blocked_rate_does_not_count_a_session_the_user_stopped(tmp_path):
     """
     A `Stopped` exception (`core/loop.py :: run`) now emits `stopped`, not
-    `blocked` (FCC-292) - the run was told to stop, it did not run out of
+    `blocked` - the run was told to stop, it did not run out of
     road - so a user cancel alongside a genuine block must read a 50%
     blocked rate, not 100%.
     """
@@ -433,7 +433,7 @@ def test_a_session_log_tells_a_user_stop_and_a_genuine_block_apart(tmp_path):
 
 def test_blocked_rate_does_not_count_a_budget_exhausted_or_an_aborted_session(tmp_path):
     """
-    FCC-303 extends FCC-292's split to the rest of the six kinds: a run that
+    This extends that same split to the rest of the six outcome kinds: a run that
     spent its own revision ceiling (`budget_exhausted`) and a run the user
     killed the kernel on (`aborted`) are neither of them the `blocked` a
     genuine impasse is, so a blocked rate over one of each and one real block
@@ -484,9 +484,9 @@ def test_a_session_log_tells_all_six_outcome_kinds_apart(tmp_path):
 
 def test_a_run_counts_the_questions_it_asked(tmp_path):
     """
-    FCC-294: pass rate, cost and wall time already have a field on
-    `Measurement`; question count did not, so the report FCC-294/FCC-319
-    are gated on could not say how many questions a run needed to finish.
+    Pass rate, cost and wall time already have a field on
+    `Measurement`; question count did not, so the report this measurement
+    feeds could not say how many questions a run needed to finish.
     """
     from core.events import ANSWER, EventStream, QUESTION
 

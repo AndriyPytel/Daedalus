@@ -1,21 +1,22 @@
 """
-FCC-241: marker compliance is an instrument, not a gate. FCC-236 changed
+Marker compliance is an instrument, not a gate. A later prompt fix changed
 `config/prompts/design.md` to raise the rate a Design reply carries
 `kind_vocabulary`; before this file, nothing in the suite could say whether
-it worked, because the only rate ever measured lived in a docstring
-(`FCC-241`'s ticket text) and a docstring is not re-run.
+it worked, because the only rate ever measured lived in a docstring (that
+earlier ticket's text) and a docstring is not re-run.
 
-This test states the two rates FCC-241's ticket names as a measured fact,
-read off `tests/recorded/vocabulary_marker_compliance.json`
+This test states the two rates that earlier ticket's text names as a
+measured fact, read off `tests/recorded/vocabulary_marker_compliance.json`
 (`tests/recorded/extract_vocabulary_compliance.py` regenerates it, and
 names both sessions and the method in its own docstring). It asserts the
-fixture's own frozen counts, not a threshold: both sessions predate
-FCC-236's own commit (`90113ab`, 2026-08-28 00:50:07) reaching the branch
+fixture's own frozen counts, not a threshold: both sessions predate the
+prompt fix's own commit (`90113ab`, 2026-08-28 00:50:07) reaching the branch
 each ran on, so both numbers are the *before* rate, not an after -- there is
-no post-FCC-236 session in `logs/` yet to build an after-rate from. A test
-that asserted "the rate must exceed N%" would start failing not when
-compliance regressed but the day a genuinely post-FCC-236 session finally
-lands here with a different rate, which is backwards for an instrument.
+no session in `logs/` yet that postdates the prompt fix to build an
+after-rate from. A test that asserted "the rate must exceed N%" would start
+failing not when compliance regressed but the day a genuinely post-fix
+session finally lands here with a different rate, which is backwards for an
+instrument.
 
 The markers checked are derived from `config/prompts/language.md` itself,
 the same way `tests/test_language_prompt.py::test_a_reply_shows_the_marker_
@@ -83,7 +84,7 @@ def test_480b9995_after_the_epic_but_still_pre_fcc_236_measures_40_and_100_perce
 
 def test_neither_recorded_session_postdates_fcc_236():
     """
-    FCC-236 committed 2026-08-28 00:50:07 (`90113ab`). Both sessions this
+    The prompt fix committed 2026-08-28 00:50:07 (`90113ab`). Both sessions this
     fixture measures started before that, so both are *before* rates --
     named in the fixture's own `"when"` field, not left to be assumed.
     """

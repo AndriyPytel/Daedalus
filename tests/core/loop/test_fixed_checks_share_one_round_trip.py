@@ -1,4 +1,4 @@
-"""FCC-389 AC4: the envelope and self-intersection checks cost one round trip."""
+"""The envelope and self-intersection checks cost one round trip."""
 import json
 
 from core.events import EventStream, TOOL_CALL

@@ -1,10 +1,10 @@
 """
-FCC-366 AC4 — `run_phase` no longer returns a value no caller reads.
+`run_phase` no longer returns a value no caller reads.
 
-The bare `checkpoints` list ADR-0027 replaced was unpacked at every call
-site and read at none (`FCC-A-53`); this is the grep-level guard the
-ticket's TESTING STRATEGY calls for, so a future call site cannot bring the
-dead name back without this test failing.
+The bare `checkpoints` list that replaced it was unpacked at every call
+site and read at none; this is the grep-level guard against that
+regression, so a future call site cannot bring the dead name back without
+this test failing.
 """
 import os
 
