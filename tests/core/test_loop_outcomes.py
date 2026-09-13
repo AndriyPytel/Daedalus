@@ -100,3 +100,18 @@ def test_a_budget_exhausted_run_is_told_apart_from_a_genuine_block():
     other_events = EventStream()
     _block(other_events, "The Plan came back with no Steps.", [], 0)
     assert [event.kind for event in other_events] == [BLOCKED]
+
+
+def test_changes_the_shape_prefers_the_closed_op_over_prose_words():
+    """
+    `op` from the closed nomenclature settles the question outright: a
+    Step's prose can carry a property word and a geometry word at once
+    ("set the label to match the loft"), but a real `op` never lies about
+    what Preflight actually built.
+    """
+    from core.loop.run import _changes_the_shape
+
+    assert _changes_the_shape("update the visibility flag", op=None) is False
+    assert _changes_the_shape("update the visibility flag", op="pad") is True
+    assert _changes_the_shape("set the label to match the loft", op="additive-loft") is True
+    assert _changes_the_shape("set the label to match the loft", op=None) is True
