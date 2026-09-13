@@ -4,11 +4,11 @@ durable -- a name, when it was created, the Document it worked on, and the
 path of its event log -- with nothing about its content held in a second
 place. These rules -- which Session is in the index, which may be renamed
 by a generated title, what is pruned off the tail, whose transcript is due
--- used to live inside a `QWidget`, so the only way to reach them was to
-build a dock, which even the tests paid for. Where the index and the
-transcripts actually live is a seam: `SettingsIndex` is the real one,
-FreeCAD's settings and its user directory, while `ui/multi_tab_manager.py`
-holds the other half, one chat area per Session at the same positions.
+-- live here rather than inside a `QWidget`, so reaching them costs no dock.
+Where the index and the transcripts actually live is a seam: `SettingsIndex`
+is the real one, FreeCAD's settings and its user directory, while
+`ui/multi_tab_manager.py` holds the other half, one chat area per Session at
+the same positions.
 """
 import os
 import time

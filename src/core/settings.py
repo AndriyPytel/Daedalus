@@ -131,7 +131,7 @@ class Settings:
 
         Empty until the user picks one, and `core.llm` is what decides what
         empty means: the levels are its dial, and a value stored here that it
-        no longer offers must not become a flag nobody can spell.
+        does not offer must not become a flag nobody can spell.
         """
         return self._grp().GetString("Effort", "")
 

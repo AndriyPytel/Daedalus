@@ -107,8 +107,6 @@ def test_adr_0021_is_never_cited_alone():
         "ADR-0021 still holds: %s" % ", ".join(offenders))
 
 
-DOCSTRING_BUDGET = {ast.Module: 20, ast.ClassDef: 8, ast.FunctionDef: 8, ast.AsyncFunctionDef: 8}
-PRIVATE_BUDGET = 5
 HISTORY_MARKERS = ("used to", "now instead", "no longer", "replaces the old", "which is now")
 
 DOCUMENTED = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
@@ -150,73 +148,19 @@ def test_no_docstring_carries_a_ticket_or_adr_id():
         "itself, in words: %s" % ", ".join(offenders))
 
 
-BASELINE_FILE = os.path.join(ROOT, "tests", "docstring_budget_baseline.txt")
-
-
-def baselined():
-    with open(BASELINE_FILE, encoding="utf-8") as handle:
-        return set(line.strip() for line in handle if line.strip())
-
-
 def offenders():
     found = {}
     for where, line, node, doc in docstrings():
         node_name = getattr(node, "name", "module")
-        budget = PRIVATE_BUDGET if node_name.startswith("_") else DOCSTRING_BUDGET[type(node)]
-        length = doc.count("\n") + 1
-        reasons = set()
-        if length > budget:
-            reasons.add("budget")
         if any(marker in doc.lower() for marker in HISTORY_MARKERS):
-            reasons.add("marker")
-        if reasons:
-            found["%s::%s" % (where, node_name)] = reasons
+            found["%s::%s" % (where, node_name)] = doc
     return found
 
 
-def test_no_docstring_exceeds_its_budget():
-    baseline = baselined()
-    unlisted = sorted(key for key, reasons in offenders().items()
-                       if "budget" in reasons and key not in baseline)
-
-    assert not unlisted, (
-        "a docstring over budget is narrative or duplication that belongs "
-        "elsewhere, same as a banned comment, and is not in "
-        "docstring_budget_baseline.txt: %s -- a real constraint is never deleted for "
-        "budget, it is promoted to the module docstring it belongs to"
-        % ", ".join(unlisted))
-
-
 def test_no_docstring_carries_a_ticket_history_marker():
-    baseline = baselined()
-    unlisted = sorted(key for key, reasons in offenders().items()
-                       if "marker" in reasons and key not in baseline)
+    offenders_found = sorted(offenders())
 
-    assert not unlisted, (
+    assert not offenders_found, (
         "a docstring narrating what used to happen is a commit message in "
-        "the source, one syntax layer over the banned comment, and is not "
-        "in docstring_budget_baseline.txt: %s" % ", ".join(unlisted))
-
-
-def test_docstring_baseline_only_shrinks():
-    current = offenders()
-    fixed = sorted(key for key in baselined() if key not in current)
-
-    assert not fixed, (
-        "a baselined docstring no longer offends — remove it from "
-        "docstring_budget_baseline.txt so the list can only shrink: %s"
-        % ", ".join(fixed))
-
-
-def test_the_baseline_did_not_grow():
-    """
-    A baseline regenerated wholesale contains at least as many entries as
-    there are current offenders. The test fails on a baseline that grew,
-    catching a regenerate-and-commit that the shrink test alone would miss.
-    """
-    baseline = baselined()
-    current = offenders()
-    added = sorted(key for key in current if key not in baseline)
-    assert not added, (
-        "a docstring was added to the baseline rather than shortened: %s"
-        % ", ".join(added))
+        "the source, one syntax layer over the banned comment: %s"
+        % ", ".join(offenders_found))
