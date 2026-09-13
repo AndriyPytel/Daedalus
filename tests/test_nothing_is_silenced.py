@@ -65,7 +65,7 @@ ALLOWED_EXCEPT_PASS = {
     ("src/core/kernel/kernel.py", 179),
     ("src/core/kernel/kernel.py", 197),
     ("src/core/kernel/kernel_worker.py", 167),
-    ("src/core/loop/execute.py", 553),
+    ("src/core/loop/execute.py", 549),
     ("src/core/loop/looks.py", 67),
     ("src/core/loop/looks.py", 70),
     ("src/core/sessions.py", 28),

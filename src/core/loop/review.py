@@ -12,11 +12,10 @@ from core.loop.prompt import REVIEW_PHASE, REVIEW_SUSPECT_PHASE, _as_image, prom
 
 def _review_content(request, views, attachments):
     """
-    A Review request's content blocks — the views, named for the prose,
-    then whatever the user attached to the Intent.
-
-    Both Review calls send this shape; only what they put in `request`
-    differs, and neither is told how the result was produced (ADR-0003).
+    A Review request's content blocks -- the views, named for the prose,
+    then whatever the user attached to the Intent. Both Review calls
+    send this shape; only what they put in `request` differs, and
+    neither is told how the result was produced.
     """
     content = [{"type": "text", "text": json.dumps(request, indent=2, default=str)}]
 
@@ -46,8 +45,8 @@ def _review_content(request, views, attachments):
 def review_suspect(intent, views, described, llm, events, attachments=(),
                    supervisor=None, kernel=None):
     """
-    Look at the finished Document before Assertion measures it, and name what
-    a render alone can only suspect. Never a verdict of its own (ADR-0015).
+    Look at the finished Document before Assertion measures it, and name
+    what a render alone can only suspect. Never a verdict of its own.
     """
     request = {"intent": intent, "the_document_as_it_now_stands": described}
     content = _review_content(request, views, attachments)
@@ -73,10 +72,9 @@ def review_suspect(intent, views, described, llm, events, attachments=(),
 def review(intent, views, described, llm, events, attachments=(), checked=None,
            supervisor=None, kernel=None):
     """
-    Judge the outcome against the Intent.
-
-    Not given the Plan, the code, or Execute's reasoning — an independent
-    judgement (ADR-0015). This is the run's one gating verdict.
+    Judge the outcome against the Intent. Not given the Plan, the code,
+    or Execute's reasoning -- an independent judgement. This is the
+    run's one gating verdict.
     """
     request = {"intent": intent, "the_document_as_it_now_stands": described}
     if checked is not None:

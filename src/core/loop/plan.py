@@ -37,12 +37,10 @@ from core.loop.results import Stopped
 @dataclass
 class Plan:
     """
-    The Steps, and what the finished part has to satisfy.
-
-    `question` is what Plan must know before it can plan at all — set
-    *instead of* steps, never beside them. `acceptance` is what has to be
-    true of the finished part (ADR-0020). `ops` is the operation each Step
-    declared (ADR-0026).
+    The Steps, and what the finished part has to satisfy. `question` is
+    what Plan must know before it can plan at all, set *instead of*
+    steps, never beside them. `acceptance` is what has to be true of the
+    finished part, and `ops` is the operation each Step declared.
     """
 
     steps: list
@@ -59,14 +57,13 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
          unanswered=(), revising=(), looking=(), looked=(), tried="",
          supervisor=None, kernel=None):
     """
-    Produce an ordered list of Steps from the Intent and a Snapshot.
-
-    Plan never sees the picture; it is handed the part Design describes, one
-    key and the user's own words (ADR-0019) — two keys once let the newer
-    always win and lost a value read off SECTION B-B. Addressed entry by
-    entry beside the rendering (ADR-0020). A revision is handed the Plan it
-    rewrites, or it drops Steps a bare complaint never named. `tried` is
-    every classified failure so far, so a revision does not repeat one.
+    Produce an ordered list of Steps from the Intent and a Snapshot. Plan
+    never sees the picture; it is handed the part Design describes, one
+    key and the user's own words -- two keys once let the newer always
+    win and lost a value read off SECTION B-B. A revision is handed the
+    Plan it rewrites, or it drops Steps a bare complaint never named, and
+    `tried` is every classified failure so far, so a revision does not
+    repeat one.
     """
     request = {"intent": intent, "document": snapshot}
     if revising:
@@ -121,9 +118,11 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
 
 def _steps_of(planned, op_vocabulary=None):
     """
-    The prose of each Step, the entries the Plan cites, the operation each kept Step declared, and the Steps refused outright.
-
-    What a Step satisfies goes into its own prose, so the Gate can tell one physical cavity planned three times. `op` is checked against `OP_VERBS` (ADR-0026) only where `"op_vocabulary": "closed"` — unmarked, ADR-0026 measured that check at 14.9% and rejected it.
+    The prose of each Step, the entries the Plan cites, the operation each kept
+    Step declared, and the Steps refused outright. What a Step satisfies goes
+    into its own prose, so the Gate can tell one physical cavity planned three
+    times. `op` is checked against `OP_VERBS` only where `"op_vocabulary":
+    "closed"` -- unmarked, that check was measured at 14.9% and rejected.
     """
     steps, satisfies, cites, ops, unbuildable = [], [], [], [], []
     closed = op_vocabulary == OP_VOCABULARY
@@ -175,8 +174,8 @@ def _in_the_prose(entry):
 
 def _acceptance_of(the_part):
     """
-    What the finished part has to satisfy: the description's own entries
-    (ADR-0020). An assumed value is a criterion too, and marked assumed.
+    What the finished part has to satisfy: the description's own
+    entries. An assumed value is a criterion too, and marked assumed.
     """
     return [entry["says"] for entry in entries(the_part)]
 
@@ -198,8 +197,8 @@ def _unconsumed(the_part, satisfies, standing=()):
 
 def _op_off_the_list(unbuildable) -> str:
     """
-    What Plan is told when one of its own Steps named an operation off the
-    closed 36-verb list (ADR-0026).
+    What Plan is told when one of its own Steps named an operation off
+    the closed 36-verb list.
     """
     named = "\n".join("- %r %s" % (item["step"], item["why"]) for item in unbuildable)
     return (named
@@ -282,8 +281,10 @@ def _one_direction_per_step(mixed):
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
                                revising=(), ledger=None):
-    """Plan, letting it ask for what the description did not carry, and the run waits.
-    A question goes to the drawing first (ADR-0022); unanswered, Plan chooses for itself.
+    """
+    Plan, letting it ask for what the description did not carry, and the
+    run waits. A question goes to the drawing first; unanswered, Plan
+    chooses for itself.
     """
     grown, for_the_build, change_set = the_part, False, None
     while True:

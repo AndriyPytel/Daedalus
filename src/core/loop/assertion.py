@@ -43,12 +43,10 @@ def the_envelope_measured(acceptance):
     """
     The check nobody had to write: the part's three overall sizes, sorted
     against sorted so it never has to know which way the part was built.
-
-    Measured: a lug built 25mm tall for 30 drawn passed Preflight
-    (logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl).
-    Constraints: `_TRUE_TO` is 0.5mm, since `optimalBoundingBox` -- not
-    triangulated -- lands inside the true extreme on a curved face
-    (ADR-0022); guessing orientation from geometry was rejected.
+    Measured: a lug built 25mm tall for 30 drawn passed Preflight.
+    `_TRUE_TO` is 0.5mm, since `optimalBoundingBox` -- not triangulated --
+    lands inside the true extreme on a curved face; guessing orientation
+    from geometry was rejected.
     """
     sizes = []
     for address, value in _addressed(acceptance).items():
@@ -135,10 +133,11 @@ class _LazyKernel:
 
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
               after_a_retry=(), supervisor=None, kernel=None):
-    """Writes and runs acceptance checks against the finished Document — read-only, once per run.
-
-    Constraints: a context of its own — Review is deliberately not told how the result was produced
-    (ADR-0003). Measured (warm worker): ~0.3s first solid, then ~0.7ms/solid marginal.
+    """
+    Writes and runs acceptance checks against the finished Document,
+    read-only, once per run. A context of its own -- Review is
+    deliberately not told how the result was produced. Measured (warm
+    worker): ~0.3s first solid, then ~0.7ms/solid marginal.
     """
     budgets = budgets or Budgets()
     request = {"acceptance": list(acceptance),

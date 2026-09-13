@@ -98,12 +98,11 @@ class Attempt:
 class ExecuteOutcome:
     """
     The code for one Step, the name its undo entry gets, and what it
-    delivered -- or, if `on_declaration` rejected it for a reason that was
-    not drift, `apply_failed` carries what it said instead (FCC-368).
-
-    `retries` is every traceback from the in-place rewrites `on_declaration`
-    ran before `apply_failed` reached its budget (FCC-372); `retried` marks
-    that same in-place rewriting on a Step that went on to land.
+    delivered -- or, if `on_declaration` rejected it for a reason that
+    was not drift, `apply_failed` carries what it said instead. `retries`
+    is every traceback from the in-place rewrites `on_declaration` ran
+    before `apply_failed` reached its budget; `retried` marks that same
+    in-place rewriting on a Step that went on to land.
     """
 
     code: str = None
@@ -119,13 +118,12 @@ class ExecuteOutcome:
 class Written:
     """
     What one Execute phase produced: each Step's declared code, keyed by
-    number, and why a Step it was asked about has none.
-
-    Keyed by Step number, not reply position, so a reply leaving a Step out
-    leaves a hole there instead of shifting later Steps' code. `unbuildable`
-    is why a Step was left out of a reply that coded the rest. `said` is
+    number, and why a Step it was asked about has none. Keyed by Step
+    number, not reply position, so a reply leaving a Step out leaves a
+    hole there instead of shifting later Steps' code. `unbuildable` is
+    why a Step was left out of a reply that coded the rest, and `said` is
     what a reply carried instead of code, when it could leave a Step
-    uncovered — none of either means a call spent for nothing.
+    uncovered -- none of either means a call spent for nothing.
     """
 
     steps: dict = field(default_factory=dict)
@@ -140,13 +138,12 @@ class Written:
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
             looks=None, entries=(), ledger=None, supervisor=None, kernel=None, ops=()):
     """
-    Run every Step from `start` to the end of the Plan as one agent phase,
-    against one kernel held open for the whole call (FCC-A-53/ADR-0027).
-
-    Constraints: `Written` comes from `run_phase`'s own `declarations`, in
-    build order, not the reply's `steps` summary -- the code already lives
-    in the kernel. A reply that writes code is not a verdict on the Plan;
-    voiding it discards Steps nobody attempted. A regeneration replays from
+    Run every Step from `start` to the end of the Plan as one agent
+    phase, against one kernel held open for the whole call. `Written`
+    comes from `run_phase`'s own `declarations`, in build order, not the
+    reply's `steps` summary -- the code already lives in the kernel. A
+    reply that writes code is not a verdict on the Plan, voiding it
+    discards Steps nobody attempted, and a regeneration replays from
     `start` against a fresh Snapshot.
     """
     budgets = budgets or Budgets()
@@ -184,11 +181,11 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     def on_declaration(declaration):
         """
         Replay one declared Step into the live Document via `apply_step`
-        the moment it declares (ADR-0027). A `SignatureMismatch` answers
+        the moment it declares. A `SignatureMismatch` answers
         `drift: True`; any other refusal answers `retry: True` while
-        `refused[step]` stays under `budgets.attempts_per_step` (FCC-372)
-        -- both rewind the kernel and retry in this session. Once spent
-        the answer is final, `_work_through` hands the Step back, and every
+        `refused[step]` stays under `budgets.attempts_per_step`, both
+        rewind the kernel and retry in this session. Once spent the
+        answer is final, `_work_through` hands the Step back, and every
         non-drift refusal is recorded to `Ledger` here.
         """
         number = declaration.get("step")
@@ -420,11 +417,11 @@ def _the_same_way_twice(attempts):
 
 def _written(declarations, start):
     """
-    Every Step the kernel ran and declared, by Step number, whether or not
-    it reached the Document (ADR-0027). A delivered Step carries the
-    `description`/`created` `on_declaration` wrote there; one rejected for a
-    reason that was not drift carries `delivered: False` and its traceback
-    as `apply_failed` (FCC-61).
+    Every Step the kernel ran and declared, by Step number, whether or
+    not it reached the Document. A delivered Step carries the
+    `description`/`created` `on_declaration` wrote there; one rejected
+    for a reason that was not drift carries `delivered: False` and its
+    traceback as `apply_failed`.
     """
     written = {}
     for position, entry in enumerate(declarations or (), start=start + 1):
@@ -471,10 +468,9 @@ def _said(reply, declarations, start):
 def _lookable(tools):
     """
     The Tools Execute may ask with: everything that only reads.
-
-    `apply_step` is excluded — the loop decides when a Step runs, and a
-    phase applying its own code is a second, unbudgeted route to the
-    Document. `review_views` moves the camera, a loop inside a phase (ADR-0015).
+    `apply_step` is excluded, since the loop decides when a Step runs and
+    a phase applying its own code is a second, unbudgeted route to the
+    Document; `review_views` moves the camera, a loop inside a phase.
     """
     return [described for described in tools.describe()
             if described["name"] not in NOT_A_LOOK]
@@ -483,11 +479,11 @@ def _lookable(tools):
 def _emit_plan(events, kind, planned, reason=None, unanswered=(), decided=(),
                **counted):
     """
-    A Plan on the stream, in one place — the panel reads both kinds alike.
-    `unanswered` is the only place a Plan's own choices are correctable —
-    the Gate cannot show what it was never handed. `decided` is the same
-    for values settled before Plan saw them (ADR-0022); `counted` names
-    which revision this is, of how many, and why.
+    A Plan on the stream, in one place -- the panel reads both kinds
+    alike. `unanswered` is the only place a Plan's own choices are
+    correctable, since the Gate cannot show what it was never handed, and
+    `decided` is the same for values settled before Plan saw them.
+    `counted` names which revision this is, of how many, and why.
     """
     extra = {"reason": reason} if reason is not None else {}
     events.emit(kind, steps=list(planned.steps), acceptance=list(planned.acceptance),
@@ -497,10 +493,10 @@ def _emit_plan(events, kind, planned, reason=None, unanswered=(), decided=(),
 def _review_views(tools, events):
     """
     The four viewport views for Review, or nothing where there is no GUI.
-    Driven by the loop, once per run — a picture is not something a phase
-    gets to ask for (ADR-0015). A missing Tool falls through to the same
-    nothing as a headless build; a failing one is narrated and let go, since
-    a finished run is not lost over its photograph.
+    Driven by the loop, once per run -- a picture is not something a
+    phase gets to ask for. A missing Tool falls through to the same
+    nothing as a headless build; a failing one is narrated and let go,
+    since a finished run is not lost over its photograph.
     """
     if "review_views" not in tools:
         return []

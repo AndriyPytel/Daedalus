@@ -1,9 +1,8 @@
 """
-Describe the part by reading the drawings multiple times.
-
-Constraints: ADR-0024 splits the phase into gather-then-distil, and
-`DESIGN` is emitted from a `finally` around the reconcile so a raise
-mid-phase does not cost the log the part it already understood.
+Describe the part by reading the drawings multiple times, split into
+gather-then-distil. `DESIGN` is emitted from a `finally` around the
+reconcile so a raise mid-phase does not cost the log the part it already
+understood.
 """
 import re
 import time
@@ -93,10 +92,9 @@ def _answered(question, ask, events):
 
 def _written_in(the_part, intent, question, answer, llm, events, attachments):
     """
-    A person's answer, back through Design rather than on to Plan.
-
-    The drawing answering writes `read` and the person answering writes
-    `assumed` (ADR-0022).
+    A person's answer, back through Design rather than on to Plan. The
+    drawing answering writes `read` and the person answering writes
+    `assumed`.
     """
     body = {"intent": intent, "the_part_as_you_described_it": the_part,
             "the_question": question if answer else _settle_it(question)}
@@ -115,11 +113,9 @@ def _settle_it(question):
 
 def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments):
     """
-    The part as Design has it, before anything is planned.
-
-    Constraints: ADR-0019 asks once before any Step is drafted; ADR-0022 lets
-    it ride unanswered to the Gate instead of blocking the run.
-    Measured: tests/test_loop.py, against the 2023 pipe clamp run.
+    The part as Design has it, before anything is planned. It asks once
+    before any Step is drafted, and lets a question ride unanswered to the
+    Gate instead of blocking the run.
     """
     the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled)
     the_part = merge({}, the_part)
@@ -163,11 +159,10 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
 def _every_number_is_the_sheets(the_part, intent, attachments, llm, events, budgets,
                                 cancelled):
     """
-    A number on the description that is on no sheet, put back to the drawing
-    (ADR-0019).
-
-    Measured over 32 descriptions: 4 to 8 numbers fire per sheet; held against
-    the other three drawings, they invent 150 to 180 in total.
+    A number on the description that is on no sheet, put back to the
+    drawing. Measured over 32 descriptions: 4 to 8 numbers fire per
+    sheet; held against the other three drawings, they invent 150 to
+    180 in total.
     """
     found = _off_the_sheet(attachments, the_part)
     if not found:
@@ -307,11 +302,10 @@ def _look_at_the_view_again(found):
 
 def _every_direction_settled(the_part, round_here):
     """
-    A direction read off the wrong view, settled off the view the circle is
-    actually in (ADR-0022).
-
-    The recorded run `pointing` fired eight times — the Gate was approved,
-    and all were built along the ring axis. The screw came out parallel to it.
+    A direction read off the wrong view, settled off the view the circle
+    is actually in. The recorded run `pointing` fired eight times, the
+    Gate was approved, and all were built along the ring axis; the screw
+    came out parallel to it.
     """
     for finding in read_off_the_wrong_view(the_part, round_here):
         view = finding.get("instead")
@@ -327,11 +321,11 @@ def _every_direction_settled(the_part, round_here):
 
 def _the_tracing_governs(the_part):
     """
-    A conflict one of whose readings was traced, written into the feature.
-
-    Written through `corrected`, so the displaced reading stays under `was`
-    and the Gate shows both (ADR-0022). Value is `assumed` since a tracing
-    settled it, not the sheet's dimension; `because` is the conflict itself.
+    A conflict one of whose readings was traced, written into the
+    feature. Written through `corrected`, so the displaced reading stays
+    under `was` and the Gate shows both. Value is `assumed` since a
+    tracing settled it, not the sheet's dimension; `because` is the
+    conflict itself.
     """
     for finding in settled_by_the_tracing(the_part):
         the_part = corrected(the_part, finding["about"],
@@ -400,9 +394,9 @@ def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
                             cancelled):
     """
     The one finding a run may not walk past: the shape of the part is
-    nobody's. Unsettled, this once let the Plan pad an invented profile and
-    the Gate approve it — a conflict settled by nobody decided for itself.
-    The defect was the Plan choosing invisibly (ADR-0022): the only conflict
+    nobody's. Unsettled, this once let the Plan pad an invented profile
+    and the Gate approve it -- a conflict settled by nobody decided for
+    itself. The defect was the Plan choosing invisibly: the only conflict
     no later phase can notice.
     """
     why = nobody_carries_the_outside(the_part)
