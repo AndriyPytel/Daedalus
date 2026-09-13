@@ -78,16 +78,11 @@ class _NowLabel(QtWidgets.QLabel):
 
 
 class _StepLabel(QtWidgets.QLabel):
-    """
-    A Step description on one line, opened to the whole of it by a click.
+    """A Step description on one line, opened to the whole of it by a click.
 
-    A Step is written for the model that has to execute it, so it arrives as a
-    paragraph: the run this widget was built against foresaw fourteen Steps
-    averaging 480 characters. Wrapped, one Step fills the panel and the Queue
-    stops being a queue; cut off with no way to open it, the text is a
-    fragment. Collapsed is one elided line, expanded is the paragraph, and the
-    click that swaps them is on the row itself -- there is no room here for a
-    disclosure arrow per Step.
+    A Step arrives as a paragraph written for the model (this run foresaw
+    fourteen Steps averaging 480 characters). Collapsed is one elided
+    line, expanded the paragraph; the click that swaps them is the row.
     """
 
     def __init__(self, text: str):
@@ -118,16 +113,11 @@ class _StepLabel(QtWidgets.QLabel):
 
 
 def _row(layout, text, size, step=False):
-    """
-    One icon + text row, added to *layout*, as the pair its state is painted onto.
+    """One icon + text row, added to *layout*, paired with its painted state.
 
-    The icon is pinned to the first line rather than centred: a phase is one
-    line and a Step opened out is several, and a mark that drifts to the
-    middle of a paragraph no longer reads as that paragraph's state.
-
-    A QFrame rather than a plain widget so the stylesheet can wash the row
-    under the pointer, which is the whole of what a row here does on hover and
-    the only thing the design language lets a hover do.
+    The icon pins to the first line, not centred: an opened Step spans
+    several lines and a centred mark stops reading as its state. A
+    QFrame, not a plain widget, lets the stylesheet wash the row on hover.
     """
     container = QtWidgets.QFrame()
     container.setObjectName("QueueRow")
@@ -145,15 +135,11 @@ def _row(layout, text, size, step=False):
 
 
 def _paint(icon_label, text_label, state, size):
-    """
-    The state of one row, put on its mark and on the weight of its text.
+    """The state of one row, put on its mark and on the weight of its text.
 
-    Not on the text's colour: this design language never repaints what it is
-    reporting on, it swaps the glyph beside it -- a failed row is a row with a
-    cross in front of it, not a red row. The two semantic colours ADR-0011
-    keeps go on the glyph, where they are a mark rather than a wash of red
-    across a paragraph the user still has to read.
-
+    Not on the text's colour: this design language swaps the glyph
+    beside it rather than repainting it -- a failed row gets a cross,
+    not a red row. ADR-0011's two colours go on the glyph, not the text.
     """
     icon_label.setPixmap(
         UIHelpers.get_icon(_ICON[state], size=size, on=text_label,
@@ -180,22 +166,14 @@ def _format_time(seconds):
 
 
 class QueueWidget(QtWidgets.QFrame):
-    """
-    Where the run is, pinned above the composer: one row per phase, Execute's
-    foreseen Steps nested under its row.
+    """Where the run is, pinned above the composer: one row per phase,
+    Execute's foreseen Steps nested under its row.
 
-    Folded, it is two lines -- the phase that is running, and what is
-    happening inside it: the Step being applied, or the sentence saying the
-    run is waiting on the user. That is the whole of what the status line
-    under the transcript used to say, and it said it in a place that scrolled
-    past while the list of phases it duplicated stayed pinned to whichever
-    message it happened to be rendered beside. Unfolded, the five phases and
-    every foreseen Step, which is more than fits above a composer, so it is
-    capped and scrolls.
-
-    A phase already `FAILED` never moves again on its own: the run has
-    stopped, and every method below leaves a `FAILED` phase where it is
-    rather than carrying it forward as if the run were still going.
+    Folded, two lines -- the phase running, and what is happening inside
+    it: the Step being applied, or that the run waits on the user.
+    Unfolded, the five phases and every foreseen Step, more than fits
+    above a composer, so it is capped and scrolls. A phase already
+    `FAILED` never moves again: every method below leaves it as is.
     """
 
     CEILING = 0.4
@@ -338,18 +316,14 @@ class QueueWidget(QtWidgets.QFrame):
         self._repaint_phases()
 
     def now(self, text):
-        """
-        What is happening inside the phase that is running, in one line.
+        """What is happening inside the phase that is running, in one line.
 
-        Every sentence the panel used to pin under the transcript arrives
-        here: the Step being applied, the question the run is blocked on, the
-        model it switched to, and how it stopped. One line, elided, because
-        this is above the composer and a wrapped paragraph here would push
-        the transcript off the panel.
-
-        A line before any run has started is the whole of what this widget is
-        showing, and shows it -- a provider retiring the chosen model is said
-        to a panel that has been asked to do nothing yet.
+        Every sentence pinned under the transcript arrives here: the Step
+        applied, the question the run is blocked on, the model it switched
+        to, and how it stopped. One line, elided, since a wrapped paragraph
+        here would push the transcript off the panel; it shows before any
+        run has started too -- a provider retiring the model is said to a
+        panel asked to do nothing yet.
         """
         self._now_label.set_full(text)
         self.setVisible(self._live or bool(text))
@@ -372,17 +346,11 @@ class QueueWidget(QtWidgets.QFrame):
         return len(self._step_states)
 
     def _timed(self, at, closing=None, opening=None):
-        """
-        One phase's clock, stamped by the same call that moves its mark.
-
-        Every verb below both changes a state and, if the caller passed the
-        event's `at`, records when that happened. Kept in one place because
-        the two were briefly separate calls the panel made in pairs, and a
-        pair is something a caller can get half right: a row can then print a
-        duration that belongs to a phase it is no longer in. Closing a
-        RUNNING phase adds that pass's span to `_phase_totals` rather than
-        overwriting it, so a phase reopened by a later pass keeps what its
-        earlier passes already took.
+        """One phase's clock, stamped by the same call that moves its mark.
+        Every verb below changes state and, given `at`, records when that
+        happened, so a split pair cannot print a duration for a phase left
+        behind. RUNNING adds its span to `_phase_totals`, so a reopened
+        phase keeps its earlier time.
         """
         if at is None:
             return
@@ -399,16 +367,14 @@ class QueueWidget(QtWidgets.QFrame):
             self._phase_totals[phase] = self._phase_totals.get(phase, 0) + (at - start)
 
     def design_written(self, at=None):
-        """
-        Design ended: it wrote the part down, and Plan is already running.
+        """Design ended: it wrote the part down, and Plan is already running.
 
         `PART` is the one event that says Design is over -- `_written_down`
-        emits it at the end of `_describe_the_part` and nothing else emits it
-        at all -- while the `DESIGN` event fires mid-phase with five rounds
-        still to run. Plan is started from here rather than waited for,
-        because the loop goes straight from the part into `replan()` with only
-        a snapshot between them, and a Plan that took thirty-one minutes to
-        answer would otherwise leave no row Running at all.
+        emits it at the end of `_describe_the_part` and nothing else does --
+        while `DESIGN` fires mid-phase with five rounds still to run. Plan
+        starts here rather than waited for: the loop goes straight into
+        `replan()` with only a snapshot between, and a Plan taking
+        thirty-one minutes to answer would otherwise leave no row Running.
         """
         self._timed(at, DESIGN, PLAN)
         if self._states[DESIGN] != FAILED:
@@ -510,16 +476,14 @@ class QueueWidget(QtWidgets.QFrame):
             self.start_assertion(at=at)
 
     def step_failed(self, index, at=None):
-        """
-        1-based. An attempt at *index* did not build, and the loop will try
-        again: the Step is marked failed and nothing else moves.
+        """1-based. An attempt at *index* did not build, and the loop retries:
+        the Step is marked failed and nothing else moves.
 
-        A Step retried three times behind an unchanged Queue is what a stalled
-        run looks like from the outside -- the run that motivated this had two
-        failed attempts on Step 4 and a Queue that still showed Step 4 running.
-        The loop does not re-announce a Step it is retrying, so the mark stays
-        failed for as long as the attempts go on, and `step_applied` turns it
-        Done if one of them lands: a Step that recovers does not stay red.
+        A Step retried three times behind an unchanged Queue is a stalled run
+        from the outside -- two failed attempts on Step 4 once left a Queue
+        still showing it running. The loop does not re-announce a retried
+        Step, so the mark stays failed until `step_applied` turns it Done if
+        an attempt lands: a Step that recovers does not stay red.
         """
         self._timed(at)
         self._set_step_state(index - 1, FAILED)
@@ -629,14 +593,11 @@ class QueueWidget(QtWidgets.QFrame):
         self._paint_head()
 
     def _repaint_phases(self):
-        """
-        Repaint all phase rows with current state and elapsed time.
-
-        A RUNNING phase shows its finished passes' total plus the one in
-        flight; a DONE phase shows the sum of every pass it took, `_timed`
-        and `start_plan` having folded each pass into `_phase_totals` as it
-        closed. Times are computed from event.at deltas so replayed sessions
-        show the same numbers the live run showed.
+        """Repaint all phase rows with current state and elapsed time.
+        RUNNING shows finished passes' total plus the one in flight; DONE
+        shows the sum of every pass, folded into `_phase_totals` by
+        `_timed`/`start_plan` as each closed. Times come from event.at
+        deltas so replayed sessions match the live run.
         """
         for phase in PHASES:
             label_text = _LABEL[phase]
@@ -671,16 +632,11 @@ class QueueWidget(QtWidgets.QFrame):
             self._fit_open_height()
 
     def _paint_head(self):
-        """
-        The folded line: the phase that is running, or the last one to have
-        moved once nothing is.
-
-        A run that stopped still has to say where it stopped, so a finished or
-        failed Queue keeps the phase it ended on rather than falling back to
-        the first. Open, the list below already says which phase is running,
-        in its own row -- so the head names the disclosure instead of saying
-        the same thing twice, the way Chain-of-Thought's own header keeps a
-        fixed title rather than restating its first step.
+        """The folded line: the running phase, or the last to have moved once
+        nothing is.
+        A stopped run still has to say where it stopped, so a finished or
+        failed Queue keeps the phase it ended on. Open, the list below
+        already names which phase runs, so the head names the disclosure.
         """
         if self._open:
             self._head_icon.setPixmap(QtGui.QPixmap())
@@ -734,15 +690,11 @@ class QueueWidget(QtWidgets.QFrame):
         self._paint_running_mark()
 
     def _sync_spin_timer(self):
-        """
-        Ticking costs nothing on its own, but this panel is pinned for the
-        45 minutes a run takes, so a timer left running behind a hidden
-        panel or a finished run is a timer running for nothing.
-
-        The cached pixmap is dropped on every start rather than kept across
-        a stop/start: it is tinted from *self*'s palette, which is only
-        correct once Qt has polished the widget, and a start following a
-        `showEvent` is exactly when that has just become true.
+        """Ticking costs nothing alone, but this panel is pinned for the 45
+        minutes a run takes, so a timer behind a hidden or finished panel
+        runs for nothing. The cached pixmap drops on every start: tinted
+        from *self*'s palette, correct only once Qt has polished it, true
+        right after a `showEvent`.
         """
         running = any(state == RUNNING for state in self._states.values())
         if running and self.isVisible():
