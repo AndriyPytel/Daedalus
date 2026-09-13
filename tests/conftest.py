@@ -5,9 +5,20 @@ Importing FreeCAD prepends its Mod directory, where this addon is symlinked
 from one checkout, so a run from a worktree would import that one instead.
 The path manipulation after the FreeCAD import restores the checkout's own
 modules to the front of sys.path.
+
+`FREECAD_USER_HOME` is set before that import: FreeCAD reads it once, at
+startup, to decide where `user.cfg` lives. Redirecting it to a throwaway
+directory here means the whole process, not just `SettingsManager`'s own
+group, never opens the user's real configuration -- the file a concurrent
+`pytest -n auto` run once truncated to nothing, taking the stored API keys
+and session list with it.
 """
+import atexit
+import glob
 import os
+import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 
 import pytest
@@ -19,6 +30,30 @@ for entry in (SRC, MOD):
         sys.path.insert(0, entry)
 
 from core.loop import execute as loop
+
+
+def _redirected_freecad_home():
+    """
+    A throwaway `UserAppData`, with the real `AdditionalPythonPackages`
+    symlinked back in.
+
+    That directory is where FreeCAD's own Addon Manager puts `litellm`,
+    `httpx` and everything they pull in -- nothing in this checkout
+    installs them into the venv, so losing that directory to the redirect
+    would fail every import that reaches an LLM provider, not just the
+    settings this redirect exists to protect.
+    """
+    home = tempfile.mkdtemp(prefix="freecadcopilot-test-freecad-home-")
+    real_packages = sorted(glob.glob(os.path.expanduser(
+        "~/Library/Application Support/FreeCAD/*/AdditionalPythonPackages")))
+    if real_packages:
+        os.symlink(real_packages[-1], os.path.join(home, "AdditionalPythonPackages"))
+    return home
+
+
+_FREECAD_HOME = _redirected_freecad_home()
+atexit.register(shutil.rmtree, _FREECAD_HOME, ignore_errors=True)
+os.environ["FREECAD_USER_HOME"] = _FREECAD_HOME
 
 
 def _freecad_lib_dirs():
