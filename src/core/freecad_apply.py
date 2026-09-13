@@ -315,6 +315,7 @@ class ApplyPipeline:
             )
 
         self._names = dict(kernel_result.get("names") or {})
+        self._dispatch(lambda: _show_tip(doc))
         self._dispatch(lambda: fit_view(doc))
         described = self._dispatch(lambda: description(doc))
         created = [o["name"] for o in described["features"] if o["name"] not in before]
@@ -982,6 +983,26 @@ def _hide_scaffolding(document):
         view_object.Visibility = False
         hidden.append(view_object)
     return hidden
+
+
+def _show_tip(document):
+    """
+    Sets Visibility=True on each Body's current Tip and False on every other
+    measurable feature it owns, so a run cut off mid-Step never leaves the
+    modelled geometry hidden with nothing to correct it. Origin planes and
+    other scaffolding fail `_measurable` already and are left untouched.
+    """
+    for obj in getattr(document, "Objects", None) or ():
+        if getattr(obj, "TypeId", "") != _A_BODY:
+            continue
+        tip = getattr(obj, "Tip", None)
+        for feature in getattr(obj, "Group", None) or ():
+            if _measurable(feature) is None:
+                continue
+            view_object = getattr(feature, "ViewObject", None)
+            if view_object is None:
+                continue
+            view_object.Visibility = feature is tip
 
 
 def fit_view(document=None):
