@@ -6,12 +6,4 @@
   <maintainer email="pytelandriy@gmail.com">Maui</maintainer>
   <license file="LICENSE">AGPLv3.0</license>
   <url type="repository" branch="master">https://github.com/AndriyPytel/FreeCadCopilot</url>
-  <content>
-    <workbench>
-      <classname>FreeCadCopilot</classname>
-      <name>FreeCadCopilot</name>
-      <description>Kernel/sub-agent AI architecture for FreeCAD</description>
-      <subdirectory>./</subdirectory>
-    </workbench>
-  </content>
 </package>

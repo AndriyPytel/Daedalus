@@ -35,6 +35,12 @@ def test_package_xml_carries_no_icon():
     assert root.find(f"{NS}icon") is None
 
 
+def test_package_xml_carries_no_workbench_entry():
+    """FCC-361: the dock lives on the main window, so package.xml declares no workbench."""
+    root = ET.parse(ROOT / "package.xml").getroot()
+    assert root.find(f"{NS}content") is None
+
+
 def test_no_tracked_file_carries_a_cyrillic_homoglyph():
     offenders = []
     for path in _tracked_files():
