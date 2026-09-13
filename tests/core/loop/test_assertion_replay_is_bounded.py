@@ -9,7 +9,6 @@ stands in.
 """
 import json
 import os
-import time
 
 import pytest
 
@@ -42,14 +41,14 @@ def a_box_with_three_fillets():
         FreeCAD.closeDocument(doc.Name)
 
 
-_REPLAY_BOUND_SECONDS = 5.0
+_REPLAY_BOUND_CALLS = 3
 """
-Measured on this fixture (Box + 3 fillets): one `document_copy`, one folded
-envelope + self-intersection round trip and one attempt's `check_assertions`
-round trip together ran 0.52s-0.63s across three runs, one `freecadcmd`
-worker booted once. 5s leaves headroom for a slower CI worker boot without
-hiding a regression back toward the 9m12s the ticket is about, which was
-several boots and copies, not one.
+Measured on this fixture (Box + 3 fillets, one acceptance criterion, a
+`declare` on the first attempt): one `document_copy` to open the phase's own
+copy and two `check_assertions` round trips, one for the fixed
+self-intersection check and one for the declared attempt. Any run past that
+is a retry the phase was not asked for or a fixed check run more than once,
+neither of which the wall clock this replaced was measuring.
 """
 
 
@@ -62,25 +61,24 @@ def test_the_phase_replays_under_the_measured_bound(a_box_with_three_fillets):
     fixture_path = a_box_with_three_fillets
     checks_worker = Kernel()
     registry = ToolRegistry()
+    calls = []
     registry.tool("document_copy", "The Document for a phase kernel.")(
-        lambda: {"path": copy_of_fixture(fixture_path)})
+        lambda: calls.append("document_copy") or {"path": copy_of_fixture(fixture_path)})
     registry.tool("check_assertions", "Measure the live Document.", {
         "type": "object", "properties": {"code": {"type": "string"}},
-    })(lambda code: _check(checks_worker, fixture_path, code))
+    })(lambda code: calls.append("check_assertions") or _check(checks_worker, fixture_path, code))
 
     llm = ScriptedLLMClient([json.dumps({"declare": {"code": "assert True"}})])
     events = EventStream()
 
-    started = time.time()
     checked = assertion(["the part is a box with rounded edges"], {}, registry, llm, events)
-    elapsed = time.time() - started
 
     checks_worker.kill()
 
     assert checked.failed is False
-    print("ASSERTION_REPLAY_ELAPSED=%.3f" % elapsed)
-    assert elapsed < _REPLAY_BOUND_SECONDS, \
-        "the Assertion phase took %.2fs, past the %ss bound" % (elapsed, _REPLAY_BOUND_SECONDS)
+    assert len(calls) <= _REPLAY_BOUND_CALLS, \
+        "the Assertion phase made %d kernel calls, past the %d call bound: %r" % (
+            len(calls), _REPLAY_BOUND_CALLS, calls)
 
 
 def copy_of_fixture(fixture_path):
