@@ -1,14 +1,12 @@
-"""The AST lint that runs before Preflight — rules about silent-wrong-answer failures a traceback
-can't teach a way out of.
-
-Constraints:
-No literal Edge12/Face3/Vertex7 (ADR-0005) — topological naming makes them silently wrong.
-No Gui.*/live selection (ADR-0002) — Preflight and Apply run headless.
-Nothing may be made active (ADR-0008) — no headless active-object API exists.
-No raw .Shape/addProperty disguised as a PartDesign feature (ADR-0012).
-A computed selection (list/comprehension Base) must assert its own length.
-No bare except/pass swallows a Step's failure (ADR-0008).
-No literal-name lookup of an object this Step just allocated — a collision renames it silently.
+"""
+The AST lint that runs before Preflight: rules about silent-wrong-answer
+failures a traceback can't teach a way out of. No literal Edge12/Face3/Vertex7,
+since topological naming makes them silently wrong; no Gui.*/live selection,
+because Preflight and Apply run headless; nothing may be made active, since
+no headless active-object API exists; no raw .Shape/addProperty disguised as
+a PartDesign feature. A computed selection must assert its own length, no
+bare except/pass swallows a Step's failure, and no literal-name lookup of an
+object this Step just allocated, since a collision would rename it silently.
 """
 import ast
 import re
@@ -153,12 +151,11 @@ def selected_elements(selection) -> set:
 
 def lint(code: str, selection=None) -> LintResult:
     """
-    Check *code* before it is replayed onto the Document.
-
-    `selection` is the Snapshot's selection; element names in it are allowed.
-    Whether the Step built the TypeId its declared `op` promises is answered
-    by `op_typeid_mismatch`, off what the kernel actually built rather than
-    by parsing this string (ADR-0026, FCC-A-53).
+    Check *code* before it is replayed onto the Document. `selection` is the
+    Snapshot's selection; element names in it are allowed. Whether the Step
+    built the TypeId its declared `op` promises is answered by
+    `op_typeid_mismatch`, off what the kernel actually built rather than by
+    parsing this string.
     """
     try:
         tree = ast.parse(code)
@@ -305,13 +302,14 @@ def _allocated_name_lookup(node: ast.Call, allocated: set):
 
 def op_typeid_mismatch(op, created, objects):
     """
-    Whether a Step's declared `op` (ADR-0026) does not match what it built,
-    read off the kernel's own report of its checkpoint's objects rather than
-    parsed out of the code (FCC-A-53) -- the code already ran, so what it
-    built is a fact to look up, not a guess. `objects` is the kernel's
+    Whether a Step's declared `op` does not match what it built, read off
+    the kernel's own report of its checkpoint's objects rather than parsed
+    out of the code, since the code already ran and what it built is a fact
+    to look up, not a guess. `objects` is the kernel's
     `[{"name", "label", "type"}, ...]`; `created` is the names among them
-    this Step made. Only `PartDesign::`/`Part::` types are checked -- `App::`
-    is out of scope. `None` where `op` is off the closed 36-verb list.
+    this Step made. Only `PartDesign::`/`Part::` types are checked, `App::`
+    is out of scope, and `None` comes back where `op` is off the closed
+    36-verb list.
     """
     if op not in OP_TYPEIDS:
         return None
@@ -328,19 +326,15 @@ def op_typeid_mismatch(op, created, objects):
 
 def _counted_selections(tree) -> set:
     """
-    Variables whose length this Step checks against a number, and raises on.
-
-    An `if` that ends in a `raise` and an `assert` are the two shapes; a
-    length compared to nothing in particular — `if not edges` — is not one of
-    them, because an empty selection is only the extreme of the failure. The
-    recorded run's fillet had exactly that guard, found eight of the edges its
-    Step described, and passed it.
-
-    A name assigned from a comprehension over a counted source, dropping
-    nothing, is itself counted: it holds one element per element of a
-    length that has already been checked, so an intermediate name carries
-    the count as far as the reference does. Assignments run in a fixpoint so
-    a chain of such names — one comprehension over another — carries it too.
+    Variables whose length this Step checks against a number, and raises on:
+    an `if` that ends in a `raise`, and an `assert`, are the two shapes, and
+    a length compared to nothing in particular -- `if not edges` -- is not
+    one of them, since an empty selection is only the extreme of the
+    failure. The recorded run's fillet had exactly that guard, found eight
+    of the edges its Step described, and passed it. A name assigned from a
+    comprehension over a counted source, dropping nothing, is itself
+    counted, and assignments run in a fixpoint so a chain of such names
+    carries the count too.
     """
     counted = set()
     for node in ast.walk(tree):
@@ -381,16 +375,14 @@ def _counted_selections(tree) -> set:
 
 def _uncounted_selection(node: ast.Assign, counted: set):
     """
-    The `x.Base = (obj, elements)` whose element list nothing counted, or None.
-
-    A list written out in the code states its own count; an uncounted variable
-    states nothing, and that is the whole of the failure — the filter runs,
-    finds what it finds, and the Step applies to that.
-
-    A comprehension inherits the count of what it walks. Walking a list the
-    Step counted and raised on, and dropping none of it, yields one name per
-    element of a length that has already been checked; an `if` in the
-    comprehension, or a source nothing counted, states nothing again.
+    The `x.Base = (obj, elements)` whose element list nothing counted, or
+    None. A list written out in the code states its own count; an uncounted
+    variable states nothing, and that is the whole of the failure -- the
+    filter runs, finds what it finds, and the Step applies to that. A
+    comprehension inherits the count of what it walks, dropping none of it
+    to yield one name per element of an already-checked length, while an
+    `if` in the comprehension, or a source nothing counted, states nothing
+    again.
     """
     for target in node.targets:
         if not (isinstance(target, ast.Attribute) and target.attr == "Base"):

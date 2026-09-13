@@ -1,21 +1,14 @@
 """
-The Sessions and the rules about them, with no Qt in the room.
-
-A Session is durable: a name, when it was created, the Document it worked on,
-and the path of its event log. The index lives in the settings manager, the
-transcript stays in the log the event stream already writes per event. Nothing
-about a Session's content is held in a second place.
-
-These rules — which Session is in the index, which may be renamed by a
-generated title, what is pruned off the tail, whose transcript is due — used to
-live inside a `QWidget`, so the only way to reach them was to build a dock. The
-tests that did paid for it: they set up by reaching into the record dicts by
-hand. None of it needs a widget, so none of it is behind one any more.
-
-Where the index and the transcripts actually live is a seam. `SettingsIndex` is
-the real one, FreeCAD's settings and its user directory; the tests pass a list
-and a temp directory. `ui/multi_tab_manager.py` holds the other half — one
-chat area per Session, at the same positions.
+The Sessions and the rules about them, with no Qt in the room: a Session is
+durable -- a name, when it was created, the Document it worked on, and the
+path of its event log -- with nothing about its content held in a second
+place. These rules -- which Session is in the index, which may be renamed
+by a generated title, what is pruned off the tail, whose transcript is due
+-- used to live inside a `QWidget`, so the only way to reach them was to
+build a dock, which even the tests paid for. Where the index and the
+transcripts actually live is a seam: `SettingsIndex` is the real one,
+FreeCAD's settings and its user directory, while `ui/multi_tab_manager.py`
+holds the other half, one chat area per Session at the same positions.
 """
 import os
 import time
@@ -135,16 +128,14 @@ class Sessions:
 
     def begin(self, index: int, name: str):
         """
-        The Session's first Intent: it takes a name and enters the picker.
-
-        Returns `(started, dropped)`. `started` is False once it already has,
-        so a second Intent changes nothing. `dropped` is the positions pruned
-        off the tail to make room, oldest first — the caller owns whatever it
-        hung on those positions and has to let go of them.
-
-        This is where the index grows, so this is where it is bounded. Pruning
-        moves the Sessions after it, so the caller must re-read the live
-        position rather than reuse the one it passed in.
+        The Session's first Intent: it takes a name and enters the picker,
+        returning `(started, dropped)`. `started` is False once it already
+        has, so a second Intent changes nothing; `dropped` is the positions
+        pruned off the tail to make room, oldest first, and the caller owns
+        whatever it hung on those positions. This is where the index grows,
+        so this is where it is bounded, and pruning moves the Sessions
+        after it, so the caller must re-read the live position rather than
+        reuse the one it passed in.
         """
         session = self.at(index)
         if session is None or session["indexed"]:
@@ -173,12 +164,11 @@ class Sessions:
 
     def title_arrived(self, session_id, title: str):
         """
-        The generated title, taken once and then frozen. A rename outranks it.
-
-        Keyed by the Session's own typed identity, not the position or the
-        log path: the call outlives the position, and a Session deleted while
-        one was in flight must not rename its neighbour. Returns the position
-        renamed, or None.
+        The generated title, taken once and then frozen; a rename outranks
+        it. Keyed by the Session's own typed identity, not the position or
+        the log path, since the call outlives the position and a Session
+        deleted mid-flight must not rename its neighbour. Returns the
+        position renamed, or None.
         """
         record = next((s for s in self._sessions if _matches(s, session_id)), None)
         if not _wants_a_title(record) or not title.strip():
@@ -204,16 +194,13 @@ class Sessions:
 
     def name_document(self, session_id, document: str, document_id: str = "") -> bool:
         """
-        Record which Document a Session worked on, so the picker can say so.
-
-        Two things are kept because they answer two questions. The name is
-        what the user calls the file and is what the picker shows. The id is
-        the Document's own `Uid`, and it is what a Document is recognised by:
-        FreeCAD calls every unsaved Document "Unnamed", so a Session that ran
-        against yesterday's unsaved Document is matched by name to the empty
-        one created this morning, and the panel opens the wrong chat.
-
-        Matched by the Session's own typed identity, the same as `title_arrived`.
+        Record which Document a Session worked on, so the picker can say
+        so, keeping two things that answer two questions. The name is what
+        the user calls the file and is what the picker shows; the id is the
+        Document's own `Uid`, since FreeCAD calls every unsaved Document
+        "Unnamed" and matching by name alone would open the wrong chat.
+        Matched by the Session's own typed identity, the same as
+        `title_arrived`.
         """
         for record in self._sessions:
             if not _matches(record, session_id):

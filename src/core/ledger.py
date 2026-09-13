@@ -1,9 +1,10 @@
-"""A run-scoped, distilled memory of classified Preflight/lint/apply rejections.
-
-Survives the whole run: one is created per call to `run()` and carried across
-every later Step, every retry, and every replan. Entries are deduplicated by
-classification, not by Step. `max_lines` = `len(phrase_table) + 1`: the count
-of distinct lines this ledger can ever hold.
+"""
+A run-scoped, distilled memory of classified Preflight/lint/apply
+rejections. Survives the whole run: one is created per call to `run()` and
+carried across every later Step, every retry, and every replan. Entries are
+deduplicated by classification, not by Step; `max_lines` is
+`len(phrase_table) + 1`, the count of distinct lines this ledger can ever
+hold.
 """
 from collections import OrderedDict
 

@@ -1,13 +1,11 @@
 """
-The models a key can actually call, asked of the provider itself. The table of
-providers is the registry of what the addon can reach; a bundled model list was
-a second answer to the same question, and one that could only go stale.
-
-Owns the whole path — URL, headers, request, parsing — so the endpoint and its
-auth sit inside the tested seam. FreeCAD-free, so it is importable in tests.
-
-httpx, not vendor SDKs: they are not dependencies of this addon — only litellm
-is — and httpx ships with litellm carrying certifi's trust store.
+The models a key can actually call, asked of the provider itself, because a
+bundled model list was a second answer to the same question that could only
+go stale. Owns the whole path -- URL, headers, request, parsing -- so the
+endpoint and its auth sit inside the tested seam, and is FreeCAD-free so it
+is importable in tests. Uses httpx rather than vendor SDKs, since only
+litellm is a dependency of this addon and httpx ships with it, carrying
+certifi's trust store.
 """
 import httpx
 
@@ -84,18 +82,16 @@ _NOT_A_READER = ("embed", "tts", "whisper", "image", "audio", "moderation",
 
 def _offerable(provider: str, model_id: str, accepts_images=None) -> bool:
     """
-    Whether *model_id* is worth offering: the addon's work is a drawing in and
-    code out, so a model that cannot see one is no use for it. Narrower than
-    dropping embeddings — `o3-mini` is a chat model with no eyes.
-
-    Only the three vendors LiteLLM names itself are judged. A gateway sells
-    under ids of its own and a local server serves whatever was pulled, so
-    LiteLLM's silence about those is not a verdict.
-
-    LiteLLM's table ships with LiteLLM and so is always a release behind the
-    model everyone wants, which is why an id it has never heard of is offered
-    rather than hidden. The words in ``_NOT_A_READER`` are the exception:
-    nothing called an embedding or a voice was ever going to read a drawing.
+    Whether *model_id* is worth offering: the addon's work is a drawing in
+    and code out, so a model that cannot see one is no use for it, narrower
+    than dropping embeddings since `o3-mini` is a chat model with no eyes.
+    Only the three vendors LiteLLM names itself are judged, because a
+    gateway sells under ids of its own and a local server serves whatever
+    was pulled, so LiteLLM's silence about those is not a verdict. LiteLLM's
+    own table is always a release behind the model everyone wants, so an id
+    it has never heard of is offered rather than hidden, except the words in
+    ``_NOT_A_READER``, since nothing called an embedding or a voice was ever
+    going to read a drawing.
     """
     if provider not in _VENDORS:
         return True
@@ -114,23 +110,13 @@ def fetch(provider: str, api_key: str, base_url: str | None = None,
           accepts_images=None) -> list[dict]:
     """
     Return ``[{id, display}]`` for ``provider``, raising on transport or HTTP
-    failure. ``base_url`` overrides the provider's endpoint — it is where the
-    Custom/Local server lives, and where tests point.
-
-    ``accepts_images`` is the sight verdict, ``llm.accepts_images`` by default:
-    True, False, or None for a model LiteLLM has never heard of.
-
-    A local server's address is a setting of its own, never the API key — a key
-    read as a URL is what produced "Request URL is missing an 'http://' or
-    'https://' protocol". Its key is optional: a server that wants no token
-    ignores the header, one that does gets it, which is why the key field
-    stays. Anthropic and Google both page their model lists, so each is asked
-    for one page of 1000, which nobody is near.
-
-    The subscription answers out of this module rather than over a socket: its
-    CLI validates a model but cannot enumerate one, and its three aliases are
-    the only bundled list that cannot go stale, because each always points at
-    the latest version of its model.
+    failure; ``base_url`` overrides the provider's endpoint, for the
+    Custom/Local server or a test. A local server's address is a setting of
+    its own, never the API key, since a key read as a URL breaks the
+    request; its key stays optional, ignored by a server that wants none.
+    The subscription answers out of this module rather than over a socket,
+    since its CLI validates a model but cannot enumerate one, and its three
+    aliases are the only bundled list that cannot go stale.
     """
     if needs_no_key(provider):
         return [{"id": alias, "display": alias} for alias in _ALIASES]

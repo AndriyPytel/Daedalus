@@ -17,11 +17,11 @@ _PARAM_PATH = "User parameter:BaseApp/Preferences/FreeCadCopilot"
 
 class Settings:
     """
-    The persistence half of the old `_SettingsManager`. Access via ``instance()``.
-
-    A local server's address is not a secret and is not a key. It lives in its
-    own setting so it is never password-masked, never stored beside the keys,
-    and a server that wants both an address and a token has room for both.
+    The persistence half of the old `_SettingsManager`, reached via
+    ``instance()``. A local server's address is not a secret and is not a
+    key. It lives in its own setting so it is never password-masked, never
+    stored beside the keys, and a server that wants both an address and a
+    token has room for both.
     """
 
     @staticmethod
@@ -162,15 +162,14 @@ class Settings:
 
     def get_llm_credentials(self, model_id: str = None):
         """
-        Returns (provider, model_id, api_key) for the given model_id,
-        or for the last-/default-model if model_id is None.
-        Raises ValueError if not configured.
-
-        A local server is configured by its address; the token is optional, so
-        a missing key is only an error when there is no address either. A
-        provider that holds its own credential has neither, and is not asked
-        for one: the `claude` CLI is signed in to a subscription, and the key
-        this would demand is one nothing reads.
+        Returns (provider, model_id, api_key) for the given model_id, or for
+        the last-/default-model if model_id is None, raising ValueError if
+        not configured. A local server is configured by its address; the
+        token is optional, so a missing key is only an error when there is
+        no address either. A provider that holds its own credential has
+        neither and is not asked for one, since the `claude` CLI is signed
+        in to a subscription and the key this would demand is one nothing
+        reads.
         """
         from core import model_catalog
         from core import model_registry

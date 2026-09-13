@@ -52,14 +52,9 @@ src/core/llm/factory.py::effort_is_honoured
 src/core/llm/stream.py::_translate
 src/core/measure.py::_gate_wait_seconds
 src/core/model_catalog.py::_offerable
-src/core/model_catalog.py::fetch
 src/core/narrate.py::Narration
-src/core/narrate.py::module
 src/core/narrate.py::narrate
-src/core/sessions.py::begin
 src/core/sessions.py::module
-src/core/sessions.py::name_document
 src/core/settings.py::get_effort
-src/core/settings.py::get_llm_credentials
 src/core/sheets/sheet_reader.py::_measured_between
 src/core/tools.py::module

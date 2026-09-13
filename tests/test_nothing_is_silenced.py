@@ -59,16 +59,16 @@ ALLOWED_EXCEPT_PASS = {
     ("Mod/ui/upload_widget.py", 280),
     ("src/core/dependency_manager.py", 97),
     ("src/core/events.py", 103),
-    ("src/core/freecad_apply.py", 148),
-    ("src/core/freecad_apply.py", 482),
-    ("src/core/freecad_apply.py", 604),
+    ("src/core/freecad_apply.py", 135),
+    ("src/core/freecad_apply.py", 466),
+    ("src/core/freecad_apply.py", 588),
     ("src/core/kernel/kernel.py", 185),
     ("src/core/kernel/kernel.py", 204),
     ("src/core/kernel/kernel_worker.py", 177),
     ("src/core/loop/execute.py", 553),
     ("src/core/loop/looks.py", 67),
     ("src/core/loop/looks.py", 70),
-    ("src/core/sessions.py", 35),
+    ("src/core/sessions.py", 28),
 }
 
 

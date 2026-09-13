@@ -1,23 +1,14 @@
 """
-The path a Step takes from generated code to the Document:
-
-    lint  ->  Preflight  ->  the Qt main thread  ->  a transaction
-
-Callers see "applied" or "failed, here is the traceback". Preflight sits
-*behind* this, not beside it, so it never becomes a third seam.
-
-Document operations are marshalled to the Qt main thread and block the caller
-until they return, so there are never concurrent mutations of the Document.
-
-Also the FreeCAD-backed Tools: the only code in the addon that touches the
-Document. API knowledge comes from introspecting the running FreeCAD —
-property lists, supported types, real dependencies — not from a
-documentation corpus that mixes versions and would reintroduce the removed
-API this project exists to eliminate (ADR-0006). What these Tools report is
-true of the user's exact build, because it was asked of it.
-
-Introspection reports what exists, not always what is correct. `TRAPS` is the
-cases where the two differ; the prompt carries that list and nothing more.
+The path a Step takes from generated code to the Document: lint, Preflight,
+the Qt main thread, a transaction, with Preflight behind this seam rather
+than beside it, so callers see only "applied" or "failed, here is the
+traceback". Document operations are marshalled to the Qt main thread and
+block the caller until they return, so there are never concurrent mutations
+of the Document. Also the FreeCAD-backed Tools, the only code in the addon
+that touches the Document: API knowledge comes from introspecting the
+running FreeCAD -- property lists, supported types, real dependencies --
+never a documentation corpus that mixes versions, and `TRAPS` names the
+cases where introspection reports something that exists but is not correct.
 """
 import math
 import os
@@ -69,11 +60,9 @@ class ApplyResult:
     """
     All the loop ever learns about a Step: it landed, or here is why not.
     `modified` is Preflight's own measured list, carried past the
-    `_CHANGED_NOTHING` check rather than dropped there.
-
-    `drift` is set only by a `SignatureMismatch` -- the GUI Document
-    disagreeing with what the kernel verified, not the Step being wrong
-    (FCC-368).
+    `_CHANGED_NOTHING` check rather than dropped there. `drift` is set only
+    by a `SignatureMismatch`, the GUI Document disagreeing with what the
+    kernel verified, not the Step being wrong.
     """
 
     ok: bool
@@ -100,14 +89,12 @@ def _direct(func, timeout=None):
 
 def run_in_transaction(doc, code, label="Copilot Step", names=None, expected_signature=None):
     """
-    Execute *code* against *doc* as one undoable unit. Main thread only.
-
-    The recompute runs inside the transaction, so one undo takes the whole
-    Step back. *names* is the requested-name -> allocated-name map from an
+    Execute *code* against *doc* as one undoable unit, main thread only; the
+    recompute runs inside the transaction, so one undo takes the whole Step
+    back. *names* is the requested-name -> allocated-name map from an
     earlier Step's Preflight, exposed through the same `_NamedDoc` wrapper
-    the kernel uses (`core/kernel/kernel_worker.py::run_step`). *expected_signature*
-    is what Preflight verified; `None` skips the check, a mismatch aborts
-    the transaction.
+    the kernel uses. *expected_signature* is what Preflight verified; `None`
+    skips the check, a mismatch aborts the transaction.
     """
     names = {} if names is None else names
     doc.openTransaction(label)
@@ -166,13 +153,12 @@ CHAT_DOCK = "FreeCadCopilotPanel"
 
 def lock_gui(window, locked, chat=CHAT_DOCK):
     """
-    Hold the main window against the user for the run — except the chat.
-
-    Build, Stop and the composer are all in that dock, and a window disabled
-    whole takes them with it: the run then waits at the Gate for an answer
-    nobody can give. Qt disables a subtree with its parent, so the exemption
-    has to be made widget by widget rather than by re-enabling the dock. A
-    `QAction` is not a widget and its state is the application's own.
+    Hold the main window against the user for the run, except the chat dock
+    that carries Build, Stop and the composer -- disabling the whole window
+    would leave the run waiting at the Gate for an answer nobody can give.
+    Qt disables a subtree with its parent, so the exemption is made widget by
+    widget rather than by re-enabling the dock; a `QAction` is not a widget
+    and its state is the application's own.
     """
     for child in window.children():
         if not child.isWidgetType() or child.objectName() == chat:
@@ -279,13 +265,11 @@ class ApplyPipeline:
               kernel_result=None) -> ApplyResult:
         """
         Lint *code* and land it on the live Document as one transaction.
-
         `kernel_result` is what the kernel already found running this Step
-        for real (FCC-A-53): names created/deleted/modified, its name map,
-        its Document's signature. No second rehearsal any more (ADR-0027
-        supersedes ADR-0002 in part) -- the kernel's run *is* the rehearsal,
-        rolled back on a signature disagreement. `op` (ADR-0026) is checked
-        against what the kernel built, not this code's text.
+        for real -- names created/deleted/modified, its name map, its
+        Document's signature -- so the kernel's run is the rehearsal, rolled
+        back on a signature disagreement, with no second rehearsal here.
+        `op` is checked against what the kernel built, not this code's text.
         """
         kernel_result = kernel_result or {}
         checked = lint(code, selection)
@@ -358,7 +342,7 @@ class ApplyPipeline:
 
     def review_views(self):
         """
-        The views Review judges, captured once at the end of a run (ADR-0015).
+        The views Review judges, captured once at the end of a run.
         """
         doc = self._dispatch(self._active)
         paths = [self._render_path() for _ in REVIEW_VIEWS]
@@ -607,11 +591,10 @@ def _load_geometry_modules():
 
 def _selection(dispatch=_direct):
     """
-    What the user has selected right now, sub-element names included.
-
-    The one sanctioned source of an `Edge12` (ADR-0005); headless has no GUI
-    and therefore no selection. Read through *dispatch*, since the worker
-    thread that calls this cannot touch Qt directly.
+    What the user has selected right now, sub-element names included -- the
+    one sanctioned source of an `Edge12`; headless has no GUI and therefore
+    no selection. Read through *dispatch*, since the worker thread that
+    calls this cannot touch Qt directly.
     """
     try:
         import FreeCADGui
@@ -705,14 +688,12 @@ def _hide_scaffolding(document):
 
 def fit_view(document=None):
     """
-    Put everything the Document shows back inside the viewport.
-
-    A 3 mm bracket and a 900 mm frame both arrive off to one side, a few
-    pixels across — the user cannot judge what to approve unscreened.
-
-    A Body's Origin carries three planes and three axes, each 1e100 mm
-    across; one visible Origin turns "fit the part" into "fit a plane 1e100
-    mm across". Anything past `_SCAFFOLDING` is hidden before `fitAll()` runs.
+    Put everything the Document shows back inside the viewport, since a 3 mm
+    bracket and a 900 mm frame both arrive off to one side, too small to
+    judge unscreened. A Body's Origin carries three planes and three axes,
+    each 1e100 mm across, and one visible Origin turns "fit the part" into
+    "fit a plane 1e100 mm across", so anything past `_SCAFFOLDING` is hidden
+    before `fitAll()` runs.
     """
     view = _active_view(document)
     if view is None:
@@ -775,14 +756,12 @@ def _section_plane(document):
 
 def capture_review_views(paths, document=None, size=(800, 600), dispatch=_direct):
     """
-    The five views Review judges, one dispatched call each.
-
-    Two isometrics from opposite corners, plus top, front and a section, which
-    makes a shell, bore or blind pocket visible that the others miss.
-
-    A dispatched call holds the Qt main thread until it returns, and five
-    renders in one is the longest block a run has. Per view, the event loop
-    runs between captures and each of them stands alone (`_capture_view`).
+    The five views Review judges, one dispatched call each: two isometrics
+    from opposite corners, plus top, front and a section, which makes a
+    shell, bore or blind pocket visible that the others miss. A dispatched
+    call holds the Qt main thread until it returns, and five renders in one
+    is the longest block a run has, so the event loop runs between captures
+    and each stands alone.
     """
     view = dispatch(lambda: _active_view(document))
     if view is None:
@@ -896,12 +875,11 @@ _DIMENSIONAL = ("Distance", "DistanceX", "DistanceY", "Radius", "Diameter")
 
 def description(doc):
     """
-    What the Document now holds, in the two layers Review can judge by.
-
-    The feature tree with its parameters is trustworthy because Lint forces
-    it to be genuine PartDesign (ADR-0012). The inventory read off `Shape` is
-    what it came out as — the only one that reports a hole nobody thought to
-    ask about, since the Acceptance list is written before the part exists.
+    What the Document now holds, in the two layers Review can judge by. The
+    feature tree with its parameters is trustworthy because Lint forces it
+    to be genuine PartDesign; the inventory read off `Shape` is what it came
+    out as, the only one that reports a hole nobody thought to ask about,
+    since the Acceptance list is written before the part exists.
     """
     return {"features": [_described(obj) for obj in doc.Objects],
             "geometry": _inventory(doc)}
@@ -1040,11 +1018,11 @@ _SCRATCH = "CopilotTypeProbe"
 
 def _inventoried(obj):
     """
-    Every property the object has, as the running FreeCAD reports it.
-
-    Shared by `describe_object` and `describe_type`. An enumeration is named
-    where there is one — `'Through all'` for `ThroughAll` is a Preflight
-    failure no property list would catch. An empty-string value is dropped: a third of one listing was `"group": ""` and `"documentation": ""`.
+    Every property the object has, as the running FreeCAD reports it, shared
+    by `describe_object` and `describe_type`. An enumeration is named where
+    there is one -- `'Through all'` for `ThroughAll` is a Preflight failure
+    no property list would catch. An empty-string value is dropped: a third
+    of one listing was `"group": ""` and `"documentation": ""`.
     """
     inventory = []
     for prop in obj.PropertiesList:
@@ -1089,8 +1067,7 @@ def _enumerations(obj, prop):
 
 def _described_type(type_id):
     """
-    What a type has, asked of a throwaway Document and never of the user's
-    (ADR-0006).
+    What a type has, asked of a throwaway Document and never of the user's.
     """
     import FreeCAD
 
@@ -1395,9 +1372,9 @@ def _register_apply(registry, pipeline, selection):
     )
     def apply_step(code, label="Copilot Step", op=None, kernel_result=None):
         """
-        There is no rehearsal behind this Tool any more (ADR-0027 supersedes
-        ADR-0002 in part): from here up, a Step was applied or it was not,
-        and there is no third thing to know about.
+        There is no rehearsal behind this Tool any more: from here up, a
+        Step was applied or it was not, and there is no third thing to know
+        about.
         """
         return pipeline.apply(code, selection=selection(), label=label,
                               op=op, kernel_result=kernel_result).as_tool_result()
