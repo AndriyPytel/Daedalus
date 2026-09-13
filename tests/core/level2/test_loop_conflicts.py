@@ -149,7 +149,7 @@ def test_the_reading_is_never_built_in_the_addon_s_own_process(
     The bug this arrangement exists for: `_describe_the_part` runs on the
     loop's worker thread, and a Document made there takes FreeCAD down with it
     — the window went in the middle of a run and the transcript stopped at the
-    event before this check (FCC-126).
+    event before this check.
 
     So the outline goes down the pipe, and what comes back is the child's.
     """
@@ -190,7 +190,7 @@ def test_the_reading_is_never_built_in_the_addon_s_own_process(
 def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
         tmp_path, monkeypatch):
     """
-    Death is the normal outcome here (ADR-0002). A verdict nobody could reach
+    Death is the normal outcome here. A verdict nobody could reach
     is no disagreement, the sweep goes on to the next outline, and the run
     carries the outline it could not check as a hazard rather than as a clean
     sheet.
@@ -225,7 +225,7 @@ def test_a_child_that_dies_on_a_reading_costs_the_reading_and_not_the_run(
 def test_a_child_that_cannot_come_back_leaves_the_rest_unchecked_and_the_run_alive(
         tmp_path, monkeypatch):
     """
-    The promise FCC-126 made and did not keep: the reading check may cost a
+    The promise made and not kept: the reading check may cost a
     reading, never the run. A restart that cannot be made is the same outcome
     as a reading nobody could take — unchecked, said out loud, and Design goes
     on to the Plan Gate.
@@ -386,7 +386,7 @@ def test_a_sheet_is_read_once_however_many_phases_ask_for_it(tmp_path, monkeypat
 def test_a_number_on_no_sheet_is_put_to_the_drawing_and_then_left_as_a_conflict(
         monkeypatch):
     """
-    The other direction of the sweep, which is the shape of ADR-0019. Asked
+    The other direction of the sweep: the part only ever grows. Asked
     once, and then recorded — the number may be right and derived from
     something this cannot see, so the Gate is where a person says so.
     """
@@ -410,9 +410,8 @@ def test_a_number_on_no_sheet_is_put_to_the_drawing_and_then_left_as_a_conflict(
 
 def test_a_number_off_the_sheet_is_signed_as_machine_written(monkeypatch):
     """
-    FCC-249: `_every_number_is_the_sheets` never set `kind`, relying on
-    `_which_kind_it_is`'s default (FCC-248 found this and could not fix it,
-    the file being another lane's). It is the second machine check, beside
+    `_every_number_is_the_sheets` never set `kind`, relying on
+    `_which_kind_it_is`'s default. It is the second machine check, beside
     `crosswise`, whose entries fell through to that default; both are signed
     here the same way.
     """
@@ -483,7 +482,7 @@ def test_a_direction_the_sheet_settles_is_corrected_rather_than_stopping_the_run
     """
     The 2026-08-13 run stopped here and told the user to correct the axis in
     `logs/parts/*.yaml` and run it again. The view the circle was traced round
-    in is the answer, and the loop is holding it. FCC-127.
+    in is the answer, and the loop is holding it.
     """
     _traced(monkeypatch, TRACED_IN_THE_PLAN)
 
@@ -512,7 +511,7 @@ def test_the_direction_it_displaced_is_beside_it_in_the_reading(monkeypatch):
 def test_what_was_decided_for_the_user_stands_above_the_steps(monkeypatch):
     """
     The Gate is the single point of interaction now, so a decision the model
-    made is read there or it is not read at all. FCC-127.
+    made is read there or it is not read at all.
     """
     _traced(monkeypatch, TRACED_IN_THE_PLAN)
 
@@ -527,7 +526,7 @@ def test_nothing_is_asked_between_the_attachment_and_the_gate(monkeypatch):
     """
     A user answering "You decide" got a block twice. Nobody is asked for a
     value any more: the drawing is read, the model settles the rest, and the
-    Gate shows it. FCC-127.
+    Gate shows it.
     """
     _traced(monkeypatch, TRACED_IN_THE_PLAN)
     asked = []
@@ -543,7 +542,7 @@ def test_a_plan_that_asks_for_a_value_is_told_to_choose_and_never_the_user():
     """
     Plan's question used to reach the panel and block the run on a
     `threading.Event`. It reaches the sheet, and past that the model chooses
-    and says in the Step what it chose. FCC-127.
+    and says in the Step what it chose.
     """
     asked = []
 
@@ -571,7 +570,7 @@ def test_the_eight_holes_of_the_recorded_run_end_corrected_and_the_run_goes_on(m
     The reply arrived at `axis`, the overrule was written at the position each
     finding is addressed to, and the merge dropped the axis for being filled
     already — so the re-read changed nothing, the loop broke on finding no
-    fewer, and the run ended where FCC-110 had it end.
+    fewer, and the run ended where it ended before.
     """
     assert len(pointing(THE_CLAMP_READ_OFF_THE_WRONG_VIEW)) == 8
 
@@ -1006,9 +1005,9 @@ def test_type_cache_fixture_redirects_to_tmp_path(tmp_path):
 
 def test_a_closed_step_op_off_the_36_list_is_refused_and_names_the_verb():
     """
-    ADR-0026/FCC-233: `_steps_of` checks a Step's `op` against `OP_VERBS` (36
+    `_steps_of` checks a Step's `op` against `OP_VERBS` (36
     values) only when the Plan reply itself carries `"op_vocabulary":
-    "closed"` — the same gate FCC-232 put on `kind`. Refused rather than
+    "closed"` — the same gate already put on `kind`. Refused rather than
     silently kept, so it never reaches Execute at all: no code is produced
     for it and its citation is left unaccounted for, which is what sends the
     entry it was meant to satisfy back through the ordinary coverage check
@@ -1041,8 +1040,8 @@ def test_a_closed_step_op_on_the_36_list_is_kept_with_its_op():
 
 def test_an_unmarked_reply_takes_the_legacy_path_op_or_not():
     """
-    No `op_vocabulary` marker — the shape every recorded fixture (pre-FCC-233)
-    and every bare-string Step already has — is never checked, whatever `op`
+    No `op_vocabulary` marker — the shape every recorded fixture from before
+    this check and every bare-string Step already has — is never checked, whatever `op`
     (if any) rides along with it.
     """
     from core.loop.plan import _steps_of
@@ -1066,7 +1065,7 @@ def test_a_bare_string_step_is_unaffected_by_the_op_check():
 
 def test_a_closed_step_written_in_ukrainian_is_refused():
     """
-    ADR-0026/FCC-234: the vocabulary `config/prompts/language.md` holds is
+    The vocabulary `config/prompts/language.md` holds is
     closed to one language as much as to one set of verbs, under the same
     `"op_vocabulary": "closed"` marker `_steps_of` already gates the 36-op
     check with.
@@ -1129,7 +1128,7 @@ def test_a_closed_step_with_one_cyrillic_label_is_not_refused():
 
 
 def test_an_unmarked_reply_takes_the_legacy_path_for_language_too():
-    """The same legacy escape the op check gets (FCC-233) applies here: a
+    """The same legacy escape the op check gets applies here: a
     Plan predating the closed vocabulary marker is never refused for
     language, whatever it is written in."""
     from core.loop.plan import _steps_of
@@ -1157,8 +1156,8 @@ def test_an_off_list_op_sends_plan_back_naming_the_verb_and_the_36_allowed():
     """
     Excluding the Step is not by itself enough: a Plan told only "an entry is
     uncovered" has no reason to pick a different verb next turn, which is the
-    same actionability rule FCC-232 had to apply to a refused `kind`
-    (ADR-0026, FCC-233). The revision names the refused verb and hands back
+    same actionability rule already applied to a refused `kind`.
+    The revision names the refused verb and hands back
     the 36 it may choose from instead.
     """
     _, events, llm, _ = drive([
@@ -1210,7 +1209,7 @@ def test_a_run_never_asks_execute_about_a_step_whose_op_was_refused():
 
 def test_a_closed_marked_steps_op_reaches_the_apply_step_tool_call():
     """
-    ADR-0026/FCC-233: `core/lint.py` can only check the TypeId a Step's code
+    `core/lint.py` can only check the TypeId a Step's code
     builds against its declared `op` if that `op` actually reaches
     `apply_step`. A legacy, unmarked Plan (every other test in this file)
     still calls `apply_step` with exactly `{"code", "label"}` — no `op` key
@@ -1231,10 +1230,10 @@ def test_a_closed_marked_steps_op_reaches_the_apply_step_tool_call():
 
 def test_split_to_budget_opens_each_shared_image_at_most_once():
     """
-    FCC-287b: `_split_to_budget` recomputes `_group_tokens` for overlapping
+    `_split_to_budget` recomputes `_group_tokens` for overlapping
     subsets of `views` at every recursion level it descends into — a view's
-    image used to be reopened with `PIL.Image.open` once per level, not once
-    per call.
+    image must be opened with `PIL.Image.open` at most once per call,
+    not once per level.
     """
     import types
     from PIL import Image as PILImage
@@ -1289,7 +1288,7 @@ def test_split_to_budget_opens_each_shared_image_at_most_once():
 
 def test_run_state_namespaces_are_dataclasses_that_reject_a_typo():
     """
-    FCC-276: `progress`, `standing`, `part`, `last_pass` inside `_run` are
+    `progress`, `standing`, `part`, `last_pass` inside `_run` are
     `@dataclass` instances, so a typo'd field name is an immediate
     `AttributeError` rather than a silently created dict key.
     """

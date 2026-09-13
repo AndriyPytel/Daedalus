@@ -9,7 +9,7 @@ what is being checked here is the machinery, not the model's taste.
 
 The load-bearing assertion is the last one: the fillet is still on the intended
 edge after a parameter upstream in the history changes. That is the whole reason
-ADR-0005 forbids a literal `Edge12`.
+a literal `Edge12` is forbidden.
 
 STEP_FILLET is the point of the whole slice: the edges are worked out from the
 geometry at execution time, and no element name is written down in advance.
@@ -254,7 +254,7 @@ def test_the_fillet_was_placed_by_a_computed_reference(slice_run):
 
 
 def test_the_generated_code_would_have_been_rejected_if_it_hardcoded_an_edge():
-    """The lint that makes the Computed Reference the only option (ADR-0005)."""
+    """The lint that makes the Computed Reference the only option."""
     from core.lint import lint
 
     assert lint(STEP_FILLET).ok, lint(STEP_FILLET).report()
@@ -281,7 +281,8 @@ def test_the_fillet_stays_on_the_intended_edge_after_an_upstream_change(own_slic
     """
     Change the pad length — upstream of the fillet in the history — and the
     fillet must still be on the top edges. A hardcoded `Edge12` would not
-    crash here; it would silently move, which is why ADR-0005 exists.
+    crash here; it would silently move, which is why the Computed
+    Reference is required.
 
     The section stays square, so the filleted top stays the same area on all
     four of its edges.
@@ -350,7 +351,7 @@ def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
     """
     Every event the panel draws the run from. The twelve Tool calls are the
     five kernel checks a code turn makes of its own Step (FCC-A-53), the five
-    applies, the self-intersection check (FCC-256, unconditional) and the one
+    applies, the self-intersection check (unconditional) and the one
     review_views the loop drives at the end.
 
     CALL_STARTED, COST, THOUGHT and WRITING are per-call bookkeeping and say nothing
@@ -372,7 +373,7 @@ def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
 
 def test_no_step_rendered_and_review_still_got_a_picture(slice_run):
     """
-    No Step produces a picture at all any more (FCC-81): there is one render
+    No Step produces a picture at all any more: there is one render
     in a run and it is the one Review judges by — the Worker's rasteriser
     here, because this run is headless.
     """
@@ -392,7 +393,7 @@ def test_the_description_review_judged_by_is_in_the_session_log(slice_run):
     A whole run leaves behind what Review was actually given, and it is a
     description of the part rather than three lines per object: the Pad's
     length in mm, and the hole read off the Shape with a diameter and an axis
-    that no Acceptance list had to ask for. FCC-81.
+    that no Acceptance list had to ask for.
     """
     applied = [e for e in slice_run["events"].of(TOOL_RESULT)
                if e.data["name"] == "apply_step"]

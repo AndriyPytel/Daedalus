@@ -1,5 +1,5 @@
 """
-FCC-321: a phase agent iterates against its own kernel instead of answering
+A phase agent iterates against its own kernel instead of answering
 in one call.
 """
 import json
@@ -89,7 +89,7 @@ def test_agent_is_corrected_once_before_it_gives_up_on_an_unusable_reply(kernel,
 
 
 def test_agent_delegates_to_a_depth1_subagent_before_declaring(kernel, tmp_path):
-    """FCC-322 AC3: a phase's code turn may hand off a bounded question to a
+    """A phase's code turn may hand off a bounded question to a
     depth-1 sub-agent and continue from its answer."""
     llm = ScriptedLLMClient([
         json.dumps({"delegate": "does 'ring axis' belong to the closed datum list?"}),

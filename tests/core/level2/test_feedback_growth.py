@@ -1,5 +1,5 @@
 """
-FCC-342: a Step's feedback carries only the geometry it touched.
+A Step's feedback carries only the geometry it touched.
 
 The measurement matters: over a scripted N-Step phase, total bytes in feedback
 messages grow linearly in Step count, not quadratically.

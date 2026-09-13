@@ -1,8 +1,8 @@
 """
 Level 2 — the Assertion phase's self-intersection check against a real headless
-FreeCAD (FCC-256).
+FreeCAD.
 
-`BOPAlgo_SelfIntersect` is too expensive to run after every Step (FCC-253 Q4),
+`BOPAlgo_SelfIntersect` is too expensive to run after every Step,
 so it runs once here, against the finished Document, the same way the
 envelope check already does (`core/loop.py:the_envelope_measured`). The
 harness is the Preflight Worker for the same reason `test_assertion_level2.py`
@@ -11,9 +11,9 @@ and already opens a copy from disk rather than the live Document.
 
 TWISTED_SOLID folds a bowtie profile back on itself and caps it into a single
 solid — self-intersecting geometry `BOPAlgo_SelfIntersect` finds and names by
-the failing object (`isValid()` also returns `False` on this fixture; FCC-253
-Q4 keeps `isValid()`/volume-sign in Preflight because they are cheap, and
-reserves `BOPAlgo_SelfIntersect` for Assertion because it is not).
+the failing object (`isValid()` also returns `False` on this fixture;
+`isValid()`/volume-sign stay in Preflight because they are cheap, and
+`BOPAlgo_SelfIntersect` is reserved for Assertion because it is not).
 """
 import pytest
 
@@ -76,7 +76,7 @@ def test_a_self_intersecting_solid_is_named_by_the_check(worker):
 
 def test_two_separately_valid_solids_that_overlap_each_other_still_hold(worker):
     """
-    FCC-253 Q5: body-to-body (pairwise) intersection is out of scope for this
+    Body-to-body (pairwise) intersection is out of scope for this
     epic. Two Boxes that overlap in space are still each, individually, a
     valid solid — this check names neither of them.
     """

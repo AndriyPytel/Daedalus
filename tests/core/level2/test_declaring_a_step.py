@@ -1,7 +1,6 @@
 """
-FCC-366: a Step is declared at the moment it is built, per ADR-0027 — the
-declaration is what carries it out of the kernel, not a summary written
-after the fact.
+A Step is declared at the moment it is built: the declaration is what
+carries it out of the kernel, not a summary written after the fact.
 """
 import json
 

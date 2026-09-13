@@ -1,10 +1,10 @@
 """
-Level 2 — the Assertion phase against a real headless FreeCAD (FCC-76).
+Level 2 — the Assertion phase against a real headless FreeCAD.
 
 A fake would agree with any measurement, which is exactly the thing being
 checked here: that a distance taken between two antiparallel planar faces is
 the number on the drawing however the part is turned, while the axis-aligned
-bounding box is not (ADR-0007).
+bounding box is not.
 
 The harness is the Preflight Worker, because that is what actually runs the
 checks: it already `exec`s code in a namespace with `doc`, `App` and `Part`,
@@ -97,7 +97,7 @@ def test_a_check_that_does_not_hold_names_the_entry_it_came_from(worker):
 
 def test_an_entry_that_fails_does_not_hide_the_entries_under_it(worker):
     """
-    Every entry is measured before anything is reported (FCC-103).
+    Every entry is measured before anything is reported.
 
     A recorded run wrote one assert per entry, put the material third, got it
     wrong, and stopped there — the forty geometric entries below it were never
