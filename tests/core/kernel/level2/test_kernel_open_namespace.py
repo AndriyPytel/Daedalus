@@ -41,3 +41,15 @@ def test_a_freecad_tools_helper_still_works_from_a_steps_code(kernel):
     )
 
     assert result.ok, result.traceback
+
+
+def test_a_bare_import_app_resolves_to_the_pre_bound_freecad_module(kernel):
+    """A bare `import App` must not shadow the pre-bound name with FreeCAD's
+    own `Mod/Mesh/App` namespace package (dcaa993's now-fixed trap)."""
+    result = kernel.check(
+        "import App\n"
+        "assert App is FreeCAD\n"
+        "App.Vector(1, 2, 3)"
+    )
+
+    assert result.ok, result.traceback

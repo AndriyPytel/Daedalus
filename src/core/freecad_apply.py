@@ -586,11 +586,6 @@ TRAPS = [
     "FreeCAD only reports it as a plain RuntimeError once the recompute runs, with no "
     "earlier signal. A second piece of geometry that does not touch the first belongs "
     "in its own Body, not a second wire in the same sketch.",
-    "A Step's namespace already binds App and FreeCAD to the FreeCAD module; a bare "
-    "`import App` shadows that binding with an empty PEP 420 namespace package of the "
-    "same name on sys.path, distinct from FreeCAD (App is FreeCAD is False), and every "
-    "attribute after it -- App.Vector, App.Placement -- dies with AttributeError for "
-    "the rest of the Step. Use the App or FreeCAD already bound; never import either.",
 ]
 
 _SNAPSHOT_LIMIT = 200

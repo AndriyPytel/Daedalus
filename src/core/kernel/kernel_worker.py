@@ -167,8 +167,17 @@ def step_namespace(doc):
     Sketch geometry (Part.Circle, Part.LineSegment) lives outside Sketcher
     in every FreeCAD version; leaving Part out turns correct code into a
     NameError the assistant answers by inventing Sketcher.Circle.
+
+    FreeCAD ships its own `Mod/Mesh/App` directory on `sys.path`, an
+    unrelated PEP 420 namespace package that shares the name `App`; a bare
+    `import App` inside a Step finds that instead unless `sys.modules["App"]`
+    is already populated, since the import system checks the cache first.
+    Registering it here, once, makes `import App` and the pre-bound name the
+    same object rather than asking every Step never to write the import.
     """
     import FreeCAD
+
+    sys.modules["App"] = FreeCAD
 
     namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__"}
     for module in STEP_MODULES:
