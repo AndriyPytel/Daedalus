@@ -266,16 +266,19 @@ def test_a_step_that_never_failed_any_other_way_tells_plan_to_change_the_step():
     """
     Rewording it sends Execute back at the same wall, which is what the
     recorded run did: three identical failures, a replan, and three more.
-    FCC-372: the three failures are rewrites in one kernel session now, not
-    three Execute calls, before Plan hears about any of it.
+    FCC-372: the failures are rewrites in one kernel session now, not
+    separate Execute calls, before Plan hears about any of it. `zero()` is a
+    fourth, free attempt ahead of the three charged ones -- a declared
+    Step's first refusal costs nothing against `attempts_per_step`, the same
+    as a scratch turn's.
     """
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
-        retried_code_reply("one()", "two()", "three()"),
+        retried_code_reply("zero()", "one()", "two()", "three()"),
         plan_reply("Cut the hooks, differently"),
         code_reply("four()"),
         suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed(NO_MATERIAL)] * 3, budgets=Budgets(attempts_per_step=3))
+    ], applies=[failed(NO_MATERIAL)] * 4, budgets=Budgets(attempts_per_step=3))
 
     to_plan = json.dumps(_turns_of(llm, "plan")[1])
 
@@ -288,11 +291,11 @@ def test_a_step_that_failed_variously_does_not_tell_plan_to_change_the_step():
     """ Sixty-nine of a hundred and thirty-five minutes of one recorded session were spent waiting at a Plan Gate, against six seconds of FreeCAD. Four of those waits were revisions of a Plan the user had already read and approved: a Step Execute could not build, checks that did not hold, part of the description nothing planned. A standing approval is the user saying "get on with it" — and it covers the Plan and only the Plan."""
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
-        retried_code_reply("one()", "two()", "three()"),
+        retried_code_reply("zero()", "one()", "two()", "three()"),
         plan_reply("Cut the hooks, differently"),
         code_reply("four()"),
         suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed(NO_MATERIAL), failed(IN_PIECES), failed(NO_MATERIAL)],
+    ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL), failed(IN_PIECES), failed(NO_MATERIAL)],
        budgets=Budgets(attempts_per_step=3))
 
     assert "Rewording it" not in json.dumps(_turns_of(llm, "plan")[1])

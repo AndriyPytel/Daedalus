@@ -178,16 +178,20 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     task = json.dumps(request, indent=2, default=str)
     refused = {}
     tried = {}
+    free_refusal_spent = set()
 
     def on_declaration(declaration):
         """
-        Replay one declared Step into the live Document via `apply_step`
-        the moment it declares. A `SignatureMismatch` answers
-        `drift: True`; any other refusal answers `retry: True` while
-        `refused[step]` stays under `budgets.attempts_per_step`, both
-        rewind the kernel and retry in this session. Once spent the
-        answer is final, `_work_through` hands the Step back, and every
-        non-drift refusal is recorded to `Ledger` here.
+        Replay one declared Step into the live Document via `apply_step` the
+        moment it declares. A `SignatureMismatch` answers `drift: True`; any
+        other refusal answers `retry: True` and rewinds the kernel, with the
+        first such refusal per Step free of charge against
+        `budgets.attempts_per_step` whenever `attempts_per_step > 1` -- the
+        same as a scratch turn's failure costs nothing -- bounding the Step
+        at `attempts_per_step + 1` attempts rather than leaving it unbounded.
+        Once the budget is spent the answer is final, `_work_through` hands
+        the Step back, and every non-drift refusal is recorded to `Ledger`
+        here.
         """
         number = declaration.get("step")
         index = number - 1 if isinstance(number, int) else None
@@ -219,13 +223,17 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             declaration.get("label", "")
         if ledger is not None:
             ledger.record(step_prose, traceback or "")
-        refused[number] = refused.get(number, 0) + 1
         tried.setdefault(number, []).append(traceback or "")
-        events.emit(PREFLIGHT_FAILED, step=number, attempt=refused[number],
+        events.emit(PREFLIGHT_FAILED, step=number, attempt=len(tried[number]),
                     traceback=traceback or "")
+        directive = _the_same_way_twice(
+            [Attempt(code="", traceback=t) for t in tried[number]])
+        if number not in free_refusal_spent and budgets.attempts_per_step > 1:
+            free_refusal_spent.add(number)
+            return {"delivered": False, "traceback": traceback, "retry": True,
+                    "directive": directive}
+        refused[number] = refused.get(number, 0) + 1
         if refused[number] < budgets.attempts_per_step:
-            directive = _the_same_way_twice(
-                [Attempt(code="", traceback=t) for t in tried[number]])
             return {"delivered": False, "traceback": traceback, "retry": True,
                     "directive": directive}
         declaration["retries"] = list(tried[number])
