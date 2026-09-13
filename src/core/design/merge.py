@@ -32,6 +32,7 @@ from core.design.orientation_checks import (
     crosswise,
     direction,
     pointing,
+    unproven_datum,
 )
 from core.design.settlement_checks import (
     placed_by_nothing,
@@ -227,7 +228,7 @@ def _with_the_findings(model):
              + crosswise(model) + placement(model) + placed_by_nothing(model)
              + twice_over(model) + settled_by_nothing(model)
              + unsafe_supersession(model) + twice_placed(model)
-             + blanket_edge_treatment(model))
+             + blanket_edge_treatment(model) + unproven_datum(model))
     if found:
         model["conflicts"] = _appended(model.get("conflicts"), found)
     return model

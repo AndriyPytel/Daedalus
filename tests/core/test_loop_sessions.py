@@ -1193,9 +1193,11 @@ def test_the_log_of_the_recorded_run_keeps_one_entry_to_an_address():
     address, and the document keeps none of them at all — Plan is handed the
     part and nothing that argues about it.
 
-    Twenty-five of the twenty-six say what they are about. The twenty-sixth
+    Twenty-five of the thirty-two say what they are about. The thirty-third
     names the two views that disagree about the right-lug recess and no path at
-    all, so it addresses nothing and stands beside them all.
+    all, so it addresses nothing and stands beside them all. Seven of the
+    thirty-two are `datums` entries: none of the reading's seven datums carries
+    a `proves`, so every one of them is short of it.
     """
     document, logged, _ = _the_clamp_as_it_was_read()
     addressed = [conflict["about"] for conflict in logged["conflicts"]
@@ -1203,8 +1205,8 @@ def test_the_log_of_the_recorded_run_keeps_one_entry_to_an_address():
 
     assert len(THE_2023_CLAMP["conflicts"]) == 33
     assert len(logged["features"]) == len(THE_2023_CLAMP["features"]) == 13
-    assert len(logged["conflicts"]) == 26
-    assert len(set(addressed)) == len(addressed) == 25
+    assert len(logged["conflicts"]) == 33
+    assert len(set(addressed)) == len(addressed) == 32
     assert "conflicts" not in document
 
 
@@ -1216,16 +1218,17 @@ def test_every_entry_of_the_recorded_run_says_which_of_the_three_it_is():
     not be run is not a sheet that agrees with itself.
 
     Twenty-five of the recorded run's are disagreements, which is what the
-    model writes into the section and what the merge finds. One is the gap
-    `placement` finds: the ring split is 3 mm wide and nothing places it in the
-    width. None is a check hazard, because no headless FreeCAD ran.
+    model writes into the section and what the merge finds. Eight are gaps:
+    the ring split is 3 mm wide and nothing places it in the width, and none
+    of the reading's seven datums carries a `proves`. None is a check hazard,
+    because no headless FreeCAD ran.
     """
     _, logged, _ = _the_clamp_as_it_was_read()
     of_each_kind = {kind: [conflict for conflict in logged["conflicts"]
                            if conflict["kind"] == kind] for kind in core.KINDS}
 
-    assert sum(len(found) for found in of_each_kind.values()) == 26
-    assert [len(of_each_kind[kind]) for kind in core.KINDS] == [25, 1, 0]
+    assert sum(len(found) for found in of_each_kind.values()) == 33
+    assert [len(of_each_kind[kind]) for kind in core.KINDS] == [25, 8, 0]
     assert of_each_kind[core.A_GAP][0]["about"] == \
         "features \u2192 ring-split \u2192 position \u2192 the width"
 

@@ -862,7 +862,8 @@ def _a_run_that_reads_the_sheet_every_way(sheet, intent):
 
 A_BOX_FROM_WORDS = {
     "datums": [{"name": "the base", "is": "the face the box stands on",
-                "fixes": "the height"}],
+                "fixes": "the height",
+                "proves": "10 mm to the top face, matching the overall height"}],
     "envelope": {"length": settled("10 mm", "the Intent asks for a 10 mm box"),
                  "width": settled("10 mm", "a box named by one size is square"),
                  "height": settled("10 mm", "a box named by one size is square")},

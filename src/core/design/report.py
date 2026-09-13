@@ -63,7 +63,7 @@ def _under_each_kind(conflicts):
     return written
 
 
-_THE_PROOF = ("from", "seen_in", "round_in")
+_THE_PROOF = ("from", "seen_in", "round_in", "proves")
 
 
 def distilled(model) -> dict:

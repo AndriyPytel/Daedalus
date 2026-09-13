@@ -84,6 +84,32 @@ def _which_way_each_datum_fixes(model):
     return fixed
 
 
+def unproven_datum(model) -> list:
+    """
+    A datum that fixes a direction and carries no `proves` -- an
+    independent measured distance to a neighbouring known surface, matched
+    against a known dimension. The 2024 Model Mania run named "the
+    underside face" for a plate's whole vertical chain and it was the top:
+    an envelope came out right either reading, because a shift in the base
+    moves the top and the bottom by the same amount, so nothing but a
+    proof distinct from the envelope can catch it.
+    """
+    found = []
+    for datum in (model or {}).get("datums") or ():
+        if not isinstance(datum, dict) or not datum.get("name"):
+            continue
+        fixes = str(datum.get("fixes") or "").lower()
+        if not any(way in fixes for way in _A_DIRECTION) or _filled(datum.get("proves")):
+            continue
+        found.append(_conflict(
+            _under(_under("datums", str(datum["name"])), "proves"),
+            "no `proves` measures this datum against a neighbouring known "
+            "surface, so which face it is was guessed rather than checked",
+            str(datum.get("fixes") or ""),
+            kind=A_GAP))
+    return found
+
+
 def pointing(model) -> list:
     """
     A feature located along the very direction its own axis points.

@@ -20,7 +20,8 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
     {
       "datums": [
         {"name": "the left end face", "is": "the flat face at the left of the part",
-         "fixes": "the length"}
+         "fixes": "the length",
+         "proves": "150 mm to the right end face, matching the overall length"}
       ],
       "envelope": {
         "length": {"value": "150 mm", "flag": "read"},
@@ -52,12 +53,25 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   rear" — so a magnitude measured from it is a magnitude in a known direction.
   An axis fixes two of them and says so: 30 mm from the ring axis is 30 mm along
   the length or 30 mm up the height, and the number does not choose.
+  Each one also carries `proves`: the measured distance from this datum to a
+  neighbouring named surface, and the printed dimension it matches — the one
+  check that is sensitive to which face was picked. Two candidate faces for
+  the same datum name most often sit a known thickness or offset apart, so an
+  envelope alone cannot tell them apart: shifting the base up and the part's
+  top down by the same amount leaves every overall size unchanged, which is
+  exactly why an envelope check is not a proof of a datum, only of itself. A
+  datum whose proof does not match the dimension it was measured against —
+  5.16 mm to the lowest face where the drawing gives no 5.16 mm and the plate
+  is 5 mm thick — is `conflict` or `question`, never a value written down
+  regardless. Without `proves`, the datum is not `read`.
 - **`envelope`** is how big the part is overall, one entry per direction, each
   one named in words rather than as X, Y, Z — and named by what it is measured
   **between**: "depth front to rear", "length between the end faces". An
   envelope entry is checked on the finished part the same way a wall thickness
   is, between the two faces it names, so an entry that names neither cannot be
-  checked at all.
+  checked at all. It is never a datum's proof: an envelope checks the size of
+  the part, and a datum's `proves` checks the datum's position, and a chain
+  built on the wrong base can still hit the right envelope end to end.
 - **`features`** is everything on the part — every hole, fillet, chamfer,
   pocket, boss, thread. Each one carries an `id` you choose and never reuse, a
   `kind` from the closed vocabulary below, a `region` when the drawing names
