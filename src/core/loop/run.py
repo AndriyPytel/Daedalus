@@ -453,9 +453,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                   start=0, ops=(), kernel=None):
     """One pass over the Plan: written by one Execute phase, applied one Step at a time.
     `budgets.attempts_per_step` bounds one Step; a spent Step hands back to Plan (ADR-0013).
-    `ops[i]` rides onto `apply_step` as `op` so `core/lint.py` checks the TypeId (ADR-0026).
-    A regeneration (a fresh Execute phase, FCC-A-53) is for a Step nobody wrote code for;
-    `outcome.apply_failed` here is already exhausted from retrying in place (FCC-372).
+    `ops[i]` rides onto `apply_step` as `op` so `core/lint.py` checks the TypeId (ADR-0026);
+    `outcome.apply_failed` is exhausted already (FCC-372). `exploration` carries
+    `agent.py`'s undeclared-turn count across a same-Step regeneration (FCC-A-53).
     """
     if cancelled():
         raise Stopped()
@@ -467,10 +467,14 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     retried = set()
     retried_names = set()
     unbuilt = []
+    exploration = {}
     looks = looks if looks is not None else Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
+    probe, probed_step = _step_exploration(exploration, steps, start)
     written = execute(steps, tools, llm, events, start, budgets=budgets,
                       as_described=as_described, looks=looks, entries=entries,
-                      ledger=ledger, kernel=kernel, ops=ops)
+                      ledger=ledger, kernel=kernel, ops=ops, exploration=probe)
+    if probed_step is not None:
+        exploration[probed_step] = probe["turns"]
 
     while index < start:
         progress.satisfied.extend(cites[index] if index < len(cites) else ())
@@ -577,8 +581,11 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         if cancelled():
             raise Stopped()
+        probe, probed_step = _step_exploration(exploration, steps, index)
         written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
-                          looks, entries, ledger, kernel=kernel, ops=ops)
+                          looks, entries, ledger, kernel=kernel, ops=ops, exploration=probe)
+        if probed_step is not None:
+            exploration[probed_step] = probe["turns"]
 
     return {"obsolete": None, "handback": None, "description": described,
             "applied_here": index,
@@ -611,6 +618,18 @@ def _not_reached(unbuilt, acceptance):
              for step in unbuilt for entry in step["entries"]}
     return [entry for entry in acceptance
             if str(entry).partition(": ")[0] in cited]
+
+
+def _step_exploration(exploration, steps, position):
+    """
+    `agent.py`'s undeclared-turn count for the Step at *position*, keyed by
+    its own prose so a Plan revision that leaves the Step unchanged still
+    means the same key, and one that rewrites it starts the count over.
+    `position` may run off the end of *steps* -- nothing left to build, a
+    pass over a Plan already applied in full -- and reads as a fresh count.
+    """
+    step = steps[position] if position < len(steps) else None
+    return {"turns": exploration.get(step, 0)}, step
 
 
 def _always_the_same_way(attempts):

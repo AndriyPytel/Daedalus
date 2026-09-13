@@ -138,16 +138,17 @@ class Written:
 
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
-            looks=None, entries=(), ledger=None, supervisor=None, kernel=None, ops=()):
+            looks=None, entries=(), ledger=None, supervisor=None, kernel=None, ops=(),
+            exploration=None):
     """
     Run every Step from `start` to the end of the Plan as one agent phase,
     against one kernel held open for the whole call (FCC-A-53/ADR-0027).
-
     Constraints: `Written` comes from `run_phase`'s own `declarations`, in
     build order, not the reply's `steps` summary -- the code already lives
     in the kernel. A reply that writes code is not a verdict on the Plan;
     voiding it discards Steps nobody attempted. A regeneration replays from
-    `start` against a fresh Snapshot.
+    `start` against a fresh Snapshot; `exploration` passes through to
+    `run_phase`, keyed there by `_work_through`'s outstanding Step.
     """
     budgets = budgets or Budgets()
     request = {"steps": [{"step": number, "do": prose}
@@ -242,7 +243,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                 llm, task, document=document,
                 kernel=kernel, supervisor=supervisor, stream=events,
                 system=prompt(EXECUTE_PHASE, ledger=ledger.render() if ledger else ""),
-                on_declaration=on_declaration,
+                on_declaration=on_declaration, exploration=exploration,
             )
 
         reply = declared if isinstance(declared, dict) else {}

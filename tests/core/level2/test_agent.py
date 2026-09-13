@@ -370,3 +370,41 @@ def test_a_delegate_answered_after_the_demand_is_given_a_code_turn(kernel, tmp_p
 
     assert declared == {"step": "done"}
     assert len(declarations) == 1
+
+
+def test_run_phase_seeds_since_declaration_from_the_exploration_argument(kernel, tmp_path, monkeypatch):
+    """
+    The turn budget re-keyed to the Step, not the phase call: an
+    `exploration` count already spent probing this Step in an earlier
+    regeneration is read back in, so the demand fires on the very first
+    code turn of this call rather than resetting to a fresh
+    `_DECLARATION_LIMIT`.
+    """
+    monkeypatch.setattr(agent, "_DECLARATION_LIMIT", 2)
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "print('probe 3')"}),
+        json.dumps({"code": "print('probe 4')"}),
+    ])
+    exploration = {"turns": 2}
+
+    with pytest.raises(AgentGaveUp):
+        run_phase(pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "look around",
+                  kernel=kernel, exploration=exploration)
+
+    assert len(llm.calls) == 2, "the demand fires on the first code turn, not the third"
+
+
+def test_run_phase_writes_the_ending_count_back_into_the_exploration_argument(kernel, tmp_path):
+    """A caller reusing the same `exploration` dict across a regeneration
+    reads what this call spent, so the next call can carry it forward."""
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "print('probe 1')"}),
+        json.dumps({"code": "print('probe 2')"}),
+        json.dumps({"declare": {"unbuildable": "nothing to build here"}}),
+    ])
+    exploration = {}
+
+    run_phase(pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "look around",
+              kernel=kernel, exploration=exploration)
+
+    assert exploration["turns"] == 2

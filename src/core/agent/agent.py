@@ -41,13 +41,17 @@ _NO_DOCUMENT = object()
 
 _DECLARATION_LIMIT = 15
 """Turns a phase may run code without declaring a Step before it is demanded
-one, past which a phase that still does not declare gives up. A pass that only
-reads spends the whole budget and leaves the run nothing to apply."""
+one, past which a phase that still does not declare gives up. Counted against
+the Step in progress, not the call: a caller that threads the same
+`exploration` dict through a regeneration for the same undeclared Step
+carries the count forward, so a fresh Session no longer buys a fresh budget
+for probing the one thing that keeps failing. A pass that only reads spends
+the whole budget and leaves the run nothing to apply."""
 
 
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               kernel=None, supervisor=None, stream=None, system=None,
-              on_declaration=None):
+              on_declaration=None, exploration=None):
     """
     Run *phase* as a multi-turn agent against its own kernel. *on_declaration*,
     called the moment a Step is declared, answers `{"delivered": True}`,
@@ -56,7 +60,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     (FCC-A-53, FCC-372). Either `retry` flavour rewinds the kernel to the
     last checkpoint and asks again in this session; a plain
     `{"delivered": False}` is final, for `_work_through`'s handback (FCC-61).
-    Returns `(declared, session, declarations)`.
+    *exploration* seeds and is updated with `since_declaration` (see there).
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)
@@ -69,7 +73,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     declared_failure = None
     pending_retry = None
     last_call = False
-    since_declaration = 0
+    exploration = {} if exploration is None else exploration
+    since_declaration = exploration.get("turns", 0)
     declaration_demanded = False
     try:
         text = _say(session, llm, task, phase=phase, stream=stream)
@@ -228,6 +233,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                             % phase)
             text = _say(session, llm, prompt("contract_correction"), phase=phase, stream=stream)
     finally:
+        exploration["turns"] = since_declaration
         if kernel is None and working_kernel is not None:
             working_kernel.kill()
 
