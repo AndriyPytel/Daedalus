@@ -1,4 +1,5 @@
 """Test double for the LLM client seam."""
+import threading
 from typing import Iterable, Iterator, List
 
 from core.llm.types import REASONING, TEXT, Chunk
@@ -10,20 +11,27 @@ class ScriptedLLMClient:
     and it records the messages it was asked with.
 
         client = ScriptedLLMClient(["a plan", {"reasoning": "hmm", "text": "code"}])
+
+    A Design fan-out intentionally shares one instance across its threads, so
+    the check-and-pop over `turns` is locked rather than split across two calls.
     """
 
     def __init__(self, turns: Iterable = ()):
         self.model = "scripted"
         self.turns: List = list(turns)
         self.calls: List[list] = []
+        self._lock = threading.Lock()
 
     def stream(self, messages: list, **overrides) -> Iterator[Chunk]:
-        self.calls.append(messages)
-        if not self.turns:
-            raise AssertionError(
-                "ScriptedLLMClient ran out of turns on call %d" % len(self.calls)
-            )
-        return _replay(self.turns.pop(0), len(self.calls))
+        with self._lock:
+            self.calls.append(messages)
+            call = len(self.calls)
+            if not self.turns:
+                raise AssertionError(
+                    "ScriptedLLMClient ran out of turns on call %d" % call
+                )
+            turn = self.turns.pop(0)
+        return _replay(turn, call)
 
 
 def _replay(turn, call: int) -> Iterator[Chunk]:
