@@ -107,7 +107,7 @@ def test_the_questions_nobody_answered_are_shown_beside_the_plan():
     """
     A Plan told to choose for itself carries values nobody supplied, and the
     Gate is the only place they are correctable — so the Gate is handed the
-    questions, not only the Steps. FCC-96.
+    questions, not only the Steps.
     """
     _, events, _, _ = drive(
         [question_reply("What module?"), plan_reply("Sketch it"), code_reply("a()"),
@@ -121,7 +121,7 @@ def test_a_replan_does_not_refill_the_re_read_ceiling():
     """
     The counters used to be locals of one Plan, so every re-plan started the
     questioning over: the same question went to the user twice and the sheet
-    could be re-read without end. FCC-96.
+    could be re-read without end.
     """
     asked = []
 
@@ -143,7 +143,7 @@ def test_a_replan_does_not_refill_the_re_read_ceiling():
 
 def test_a_replan_after_a_reread_is_handed_the_change_set_not_the_whole_part():
     """
-    FCC-311: the sheet answering Plan's own question grows the description
+    The sheet answering Plan's own question grows the description
     between two calls to Plan within the same re-plan — the one place that
     happens — so the second call is handed what changed, named by id, rather
     than the whole re-serialized part beside the one it already saw.
@@ -170,7 +170,7 @@ def test_with_no_attachment_a_question_is_settled_by_plan_itself():
     """
     No sheet to ask and nobody to ask either, so no turn is spent on either:
     Plan is told to choose, and the only turn Design costs is the one it
-    describes the part in. FCC-93, ADR-0022.
+    describes the part in.
     """
     asked = []
 
@@ -203,7 +203,7 @@ def test_a_replan_after_a_handback_may_ask_rather_than_planning_blind():
     A re-plan that needs a value nobody gave it used to answer with a question
     and no Steps, and the loop took `planned.steps` blind: the question was
     dropped and the revised Plan was empty. It may still ask; what it gets back
-    is "choose it yourself", and the Plan that follows is a Plan. FCC-67.
+    is "choose it yourself", and the Plan that follows is a Plan.
 
     Four `nope`s, not three: a declared Step's first refusal is free.
     """
@@ -250,7 +250,7 @@ def test_no_plan_without_steps_ever_reaches_execute(monkeypatch):
     """
     Unreachable through `plan()`, which either has Steps, or a question, or
     raises. The guard is the cheap insurance that no future path sends Review
-    over a Document nothing changed. FCC-67.
+    over a Document nothing changed.
     """
     import core.loop.plan as loop_plan_module
     from core.loop.plan import Plan
@@ -287,7 +287,7 @@ def test_the_assertion_phase_runs_after_the_last_step_and_between_the_two_review
     checked is how close the built part is to the goal, not the arithmetic of
     a state that may not be ready yet, and not a second opinion Review has
     already given without it. Read-only, so it goes through a Tool of its own
-    rather than through apply. FCC-76, FCC-257, FCC-258.
+    rather than through apply.
     """
     _, events, llm, tools = a_run_over_the_nut(
         planning_the_nut("Sketch it", "Pad it"),
@@ -313,7 +313,7 @@ def test_review_suspecting_nothing_still_lets_assertion_gate_the_verdict():
     `review_suspect` raising no suspicion is not the same as Assertion having
     nothing to do: Assertion still runs its full acceptance-list check and
     still decides pass/fail, and the gating Review — when Assertion passes —
-    still runs after it (FCC-258).
+    still runs after it.
     """
     passing, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"),
@@ -342,7 +342,7 @@ def test_a_suspicion_never_gates_but_reaches_assertions_acceptance_list():
     `review_suspect` naming something is not a verdict: the pass carries on to
     Assertion regardless of what it raised, and what it raised is folded into
     the very list Assertion measures, carrying `(suspected)` the way a Plan
-    entry carries `(read)` or `(assumed)` (FCC-257, FCC-258).
+    entry carries `(read)` or `(assumed)`.
     """
     raised = "envelope → width: 40 mm"
     result, events, llm, _ = a_run_over_the_nut(
@@ -369,8 +369,8 @@ def test_a_suspicion_never_gates_but_reaches_assertions_acceptance_list():
 
 def test_a_refuted_suspicion_fails_assertion_and_replans_then_passes():
     """
-    The other half of the confirmed suspicion above (FCC-258's own Testing
-    Strategy: a suspicion that Assertion measures and finds false, with the
+    The other half of the confirmed suspicion above (the Testing
+    Strategy case: a suspicion that Assertion measures and finds false, with the
     run still passing once it is fixed). A `suspected` row is measured
     exactly like any other acceptance entry — a failed check on it rejects
     through the same `replan()` path as a Plan-authored entry, no separate
@@ -400,9 +400,9 @@ def test_a_refuted_suspicion_fails_assertion_and_replans_then_passes():
 def test_an_empty_acceptance_list_costs_no_llm_call():
     """
     Nothing to check means no provider is ever asked to write one. The
-    deterministic self-intersection check still runs — it is unconditional
-    (FCC-256) — but it costs one `check_assertions` call, not a phase, and a
-    clean Document still passes with nothing left unmet. FCC-76.
+    deterministic self-intersection check still runs — it is unconditional —
+    but it costs one `check_assertions` call, not a phase, and a
+    clean Document still passes with nothing left unmet.
     """
     result, events, llm, tools = drive([
         plan_reply("Add a box"),
@@ -421,8 +421,9 @@ def test_an_empty_acceptance_list_costs_no_llm_call():
 
 def test_a_self_intersecting_document_is_caught_even_with_no_acceptance_list():
     """
-    FCC-256 AC1: "caught once ... before Review ever judges a render of it" is
-    unconditional. A Plan that writes no acceptance entries must not skip the
+    The acceptance criterion "caught once ... before Review ever judges a
+    render of it" is unconditional. A Plan that writes no acceptance entries
+    must not skip the
     self-intersection check, and a failing check must still gate the verdict
     through the same `decided()`/`replan()` path a written check uses — not
     return `None` and let the run pass regardless.
@@ -451,7 +452,7 @@ def test_failed_assertions_return_to_plan_and_never_to_execute():
     """
     A failed check is a rejected result: revision, feedback, a new Plan and a
     new Plan Gate. The traceback is what Plan is told, and Execute is told
-    none of it — the mirror of a failed verdict. FCC-76.
+    none of it — the mirror of a failed verdict.
     """
     _, events, llm, _ = a_run_over_the_nut(
         planning_the_nut("Make it"),
@@ -479,7 +480,7 @@ def test_failed_assertions_return_to_plan_and_never_to_execute():
 
 def test_a_feature_that_moved_without_a_retry_touching_it_fails_a_later_assertion_pass():
     """
-    FCC-260: the geometry-diff defect. A feature no Step named and no retry
+    The geometry-diff defect. A feature no Step named and no retry
     touched moved between two Assertion passes of the same run — the "slot
     shortened until it passes" class `config/prompts/assertion.md` documents,
     caught here rather than only when it happens to sit inside an unmet
@@ -524,7 +525,8 @@ def test_a_feature_named_in_what_a_retry_touched_does_not_fail_a_later_assertion
     The mirror of the test above: the same feature moves, but the retry that
     passed a Step in the second cycle already named it, so the geometry-diff
     check is not the thing that sends the workaround back — the existing
-    Assertion verdict decides alone, the same way it did before FCC-260.
+    Assertion verdict decides alone, the same way it did before the
+    geometry-diff check existed.
     """
     A_SPLIT = {"features": [{"id": "ring-split", "kind": "2 mm split",
                              "width": {"value": "2 mm", "flag": "read"}}]}
@@ -561,8 +563,9 @@ def test_a_feature_named_in_what_a_retry_touched_does_not_fail_a_later_assertion
 
 def test_a_run_out_of_revisions_names_the_assertions_not_review():
     """
-    FCC-22's separate accounting, extended: a run stopped by failed checks must
-    not tell the user Review kept rejecting the result. FCC-76.
+    The rule that keeps failed-check accounting separate from Review's,
+    extended: a run stopped by failed checks must not tell the user Review
+    kept rejecting the result.
     """
     result, _, _, _ = a_run_over_the_nut(
         *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS)] * 5,
@@ -579,8 +582,7 @@ def test_a_run_out_of_revisions_names_the_assertions_not_review():
 def test_review_is_told_the_facts_the_checks_confirmed():
     """
     Measured facts beside the four views, so Review judges what the checks did
-    not cover rather than re-judging what they did. The views do not go
-    (ADR-0015). FCC-76.
+    not cover rather than re-judging what they did. The views do not go.
     """
     _, events, llm, _ = a_run_over_the_nut(
         planning_the_nut("Make it"),
@@ -601,10 +603,10 @@ def test_review_is_told_not_to_fail_on_a_suspicion_the_checks_never_confirmed():
     """
     A mirrored flank or a displaced hole reads from the render alone, on a
     face no check happened to cover — `ACCEPTANCE[1]` stays uncovered here,
-    the way FCC-76 leaves a check that could not run. `review.md` is what
-    stops that reading from becoming its own `fail`: the same rule that
-    already keeps a dimension off the picture (`a diameter was never a
-    pixel`), generalised from dimensions to any visual suspicion (FCC-204).
+    the way the existing rule leaves a check that could not run. `review.md`
+    is what stops that reading from becoming its own `fail`: the same rule
+    that already keeps a dimension off the picture (`a diameter was never a
+    pixel`), generalised from dimensions to any visual suspicion.
     Proof has to be the request `review()` actually receives, not the static
     prompt text: `checked=` is the channel this carries, and it stays gated
     to `review()` alone (not `review_suspect()`, which runs before Assertion
@@ -630,7 +632,7 @@ def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
     An AttributeError in the checking code says nothing about the nut. Read as
     a failed model it would send Plan to rebuild a part that is already right,
     so it is handed back to the phase that wrote it, on the same attempts
-    budget Execute uses. FCC-76.
+    budget Execute uses.
     """
     result, events, llm, tools = a_run_over_the_nut(
         planning_the_nut("Make it"),
@@ -651,7 +653,7 @@ def test_a_check_that_cannot_be_written_lets_review_judge_alone():
     """
     Attempts spent on a check that never runs is not a reason to rebuild a good
     model, and not a reason to lose a finished run either: the phase gives up,
-    says so, and everything it failed to cover goes to Review. FCC-76.
+    says so, and everything it failed to cover goes to Review.
     """
     result, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"),
@@ -673,7 +675,7 @@ def test_a_check_that_cannot_be_written_lets_review_judge_alone():
 def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
     """
     Stop is a decision, not a request. Three attempts at writing the checks is
-    long enough that a run which ignored it there would feel hung. FCC-76.
+    long enough that a run which ignored it there would feel hung.
     """
     llm = ScriptedLLMClient([
         design_reply(A_NUT),
@@ -716,7 +718,6 @@ def test_the_acceptance_is_the_descriptions_own_entries_and_not_plans_paraphrase
     values came out of a re-read, and the depth entry carried 50 mm, so
     Assertion would have measured 50 mm on the built part and reported a pass on
     a part the drawing never showed. Derived, there is nothing to rewrite.
-    FCC-94.
     """
     _, events, llm, _ = drive([
         design_reply(THE_CAVITY),
@@ -735,7 +736,7 @@ def test_the_acceptance_is_the_descriptions_own_entries_and_not_plans_paraphrase
 def test_a_value_the_user_assumed_is_still_marked_assumed_in_the_acceptance():
     """
     The kind of value most likely to be wrong is the one somebody settled, so it
-    is a criterion and it says at the Gate that it is theirs to correct. FCC-94.
+    is a criterion and it says at the Gate that it is theirs to correct.
     """
     told = {"envelope": {"length": {"value": "150 mm", "flag": "assumed"}}}
 
@@ -752,7 +753,7 @@ def test_a_step_says_at_the_gate_which_part_of_the_part_it_is_for():
     """
     A reader who cannot tell from the Gate which entry a Step is for cannot tell
     that one cavity has been planned three times, which is what Steps 4, 5 and 6
-    of the recorded run were. FCC-94.
+    of the recorded run were.
     """
     _, events, _, _ = drive([
         design_reply(THE_CAVITY),
@@ -775,7 +776,7 @@ def test_a_plan_that_leaves_a_read_entry_unconsumed_is_planned_again():
     """
     The headline defect: the revised Plan dropped the 100 mm front to rear and
     no rule, prompt or judgement noticed. A set difference over addresses
-    notices, and the run says which entry went missing. FCC-94.
+    notices, and the run says which entry went missing.
     """
     result, events, llm, _ = drive([
         design_reply(THE_CAVITY),
@@ -812,7 +813,7 @@ def test_a_plan_citing_the_whole_line_it_was_handed_has_cited_the_entry():
     `what_the_plan_must_satisfy` gives the address and the value on one line,
     and a Plan copying that line means the entry the line is. Refusing it would
     make the check fail on the one Plan that did exactly as it was told, and
-    every run would replan to a block. FCC-94.
+    every run would replan to a block.
     """
     _, events, _, _ = drive([
         design_reply(THE_CAVITY),
@@ -834,7 +835,7 @@ def test_a_step_carries_the_address_it_cites_and_not_the_paragraph_behind_it():
     separately, addressed, in `what_each_entry_says`. The address says which
     part of the part the Step is for, which is what the citation is in the prose
     for; the flag stays, because an assumed value is the one thing the Gate must
-    not let past unread. FCC-127.
+    not let past unread.
     """
     _, events, _, _ = drive([
         design_reply(THE_CAVITY),
@@ -852,11 +853,11 @@ def test_a_step_carries_the_address_it_cites_and_not_the_paragraph_behind_it():
 
 def test_a_suspected_citation_keeps_its_flag_through_the_trim():
     """
-    `_in_the_prose` trims a citation to its address and flag (FCC-127); a
+    `_in_the_prose` trims a citation to its address and flag; a
     `suspected` row must survive that trim the same way `read`, `derived`
     and `assumed` already do, or a Plan citing a carried-forward suspicion
     in a later Step loses the one thing that told the Gate it was never
-    confirmed (FCC-258 AC3).
+    confirmed.
     """
     assert _in_the_prose("thread \u2192 pitch: 1.25 mm (suspected)") == (
         "thread \u2192 pitch (suspected)")
@@ -866,7 +867,6 @@ def test_one_entry_may_feed_several_steps():
     """
     An overall height feeds both the base solid and a through hole's depth, and
     citing it twice is right. What may not happen is an entry feeding no Step.
-    FCC-94.
     """
     _, events, _, _ = drive([
         design_reply(THE_CAVITY),
@@ -887,7 +887,7 @@ def test_no_step_has_to_build_a_feature_the_later_page_replaced():
     with an arm at 45°. With both on the description as `read`, the coverage
     check required a Step for the ear's bore as well: the revision that dropped
     it was handed back for leaving an entry unplanned, and a whole revision went
-    on a hole the drawing had deleted. FCC-127.
+    on a hole the drawing had deleted.
     """
     superseded = {
         "features": [
@@ -915,7 +915,7 @@ def test_no_step_has_to_build_a_feature_the_later_page_replaced():
 def test_an_assumed_entry_is_not_something_a_plan_can_be_refused_over():
     """
     A Plan cannot be refused for failing to build a number nobody supplied. The
-    entry is still checked; it is not a coverage duty. FCC-94.
+    entry is still checked; it is not a coverage duty.
     """
     told = {"envelope": {"length": {"value": "150 mm", "flag": "assumed"}}}
 
@@ -941,7 +941,7 @@ def test_a_revision_that_plans_only_the_unbuilt_steps_passes_the_coverage_check(
     applied Steps already satisfy. Without the subtraction the recorded run was
     told sixteen entries were unplanned, every one of them standing in the
     Document, and spent a second revision on a Plan that restated all eight
-    Steps — four of which Execute then applied nothing for. FCC-148.
+    Steps — four of which Execute then applied nothing for.
     """
     result, events, llm, tools = drive(_four_steps_applied_then_a_handback(),
                                        attachments=[RENDER_PNG], budgets=Budgets(revisions=5))
@@ -956,7 +956,7 @@ def test_a_revision_that_plans_only_the_unbuilt_steps_passes_the_coverage_check(
 def test_an_entry_an_applied_step_satisfied_is_not_reported_as_unplanned():
     """
     The four entries the Document already answers for never reach Plan as a
-    complaint. FCC-148.
+    complaint.
     """
     _, _, llm, _ = drive(_four_steps_applied_then_a_handback(),
                          attachments=[RENDER_PNG], budgets=Budgets(revisions=5))
@@ -973,7 +973,6 @@ def test_an_entry_no_step_ever_landed_for_is_still_unplanned():
     """
     The subtraction is of what was applied, not of what was planned: a revision
     that drops an entry no Step in the Document answers for is still refused.
-    FCC-148.
     """
     result, events, _, _ = drive([
         design_reply(THE_BRACKET),
@@ -1002,7 +1001,8 @@ def test_a_plan_that_never_learns_to_cite_stops_the_run_and_says_why():
     """
     The coverage re-plan spends the same shared ceiling as every other cause, so
     a prompt regression stops the run with a reason instead of looping — and
-    FCC-22's separate accounting names the right cause. FCC-94.
+    the rule that keeps failed-check accounting separate names the right
+    cause.
     """
     result, _, _, tools = drive(
         [design_reply(THE_CAVITY)] + [plan_reply("Cut it")] * 5,
@@ -1021,7 +1021,7 @@ def test_a_step_whose_sum_does_not_come_out_never_reaches_the_gate():
     the left extreme at the 0 mm tangent plane". It places it at 8.58, and the
     only thing in the run that multiplied by the cosine was Execute — after the
     Gate, after the user had approved it, and at the cost of a revision each
-    time. The sum is worked out where the number is still cheap. FCC-127.
+    time. The sum is worked out where the number is still cheap.
     """
     result, events, _, tools = drive([
         plan_reply("Pad the arm to an assumed 80.5 mm station, so the left extreme "
@@ -1044,7 +1044,7 @@ def test_a_step_whose_sum_does_not_come_out_never_reaches_the_gate():
 def test_a_plan_whose_arithmetic_never_comes_out_stops_the_run():
     """
     The same shared ceiling as every other cause, so a Plan that keeps writing
-    sums that do not come out stops with a reason instead of looping. FCC-127.
+    sums that do not come out stops with a reason instead of looping.
     """
     result, _, _, tools = drive(
         [plan_reply("Pad it to 65.5 - 80.5 * cos(45°) = 0 mm")] * 5,
@@ -1061,7 +1061,7 @@ def test_a_run_with_no_attachment_still_plans_and_still_shows_an_acceptance():
     With no drawing the description holds only what the user's answers supplied,
     and where it holds nothing at all an empty Acceptance means no Assertion
     phase rather than a phase that checks nothing — the behaviour from before
-    there was a list. FCC-94.
+    there was a list.
     """
     told = {"envelope": {"length": {"value": "150 mm", "flag": "assumed"}}}
 

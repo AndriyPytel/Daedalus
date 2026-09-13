@@ -1,5 +1,5 @@
 """
-Level 2 — the render Review judges by, against a real FreeCAD (FCC-46).
+Level 2 — the render Review judges by, against a real FreeCAD.
 
 The renderer is software-rasterised because a headless FreeCAD has no GL
 context, and the two things that made it stop resembling the viewport were a

@@ -1,9 +1,8 @@
 """
-FCC-322: the five phase prompts (`config/prompts/{design,plan,execute,
-assertion,review}.md`, plus `review_suspect.md`) instruct FCC-321's
-multi-turn agent, not the old one-call-per-phase `_ask` shape -- run through
-a real prompt, a scripted LLM client and a real kernel per the ticket's own
-TESTING STRATEGY.
+The five phase prompts (`config/prompts/{design,plan,execute,
+assertion,review}.md`, plus `review_suspect.md`) instruct the multi-turn
+phase agent, not the old one-call-per-phase `_ask` shape -- run through
+a real prompt, a scripted LLM client and a real kernel.
 """
 import json
 import os

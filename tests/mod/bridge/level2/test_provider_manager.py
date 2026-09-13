@@ -84,7 +84,7 @@ def test_a_fetched_only_model_still_resolves_after_a_key_change(manager):
     deliberately does not fetch — it runs on the Step thread — so it fell back
     to a bundled list, which cannot know about a model only the provider reports.
     Changing a key and sending straight away is what a user does after topping
-    up a quota. FCC-53.
+    up a quota.
     """
     _fetched(manager, "openai", LIVE_ONLY)
     assert manager.get_model_entry("gpt-5.6-terra")["provider"] == "openai"
@@ -128,7 +128,7 @@ def test_a_model_nobody_ever_reported_is_still_unknown(manager):
 @pytest.mark.freecad
 def test_a_failed_fetch_lets_the_next_ensure_fetched_retry(manager, monkeypatch):
     """
-    FCC-271. `_threads` was never cleared on failure, so it kept doubling as
+    `_threads` was never cleared on failure, so it kept doubling as
     an "already asked" mark and `_ensure_fetched` returned silently forever.
     """
     monkeypatch.setattr(manager, "_configured", lambda provider: ("key", ""))

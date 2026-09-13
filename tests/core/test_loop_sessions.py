@@ -163,8 +163,9 @@ def test_steps_applied_before_a_trailing_gap_stay_applied():
 def test_execute_leaving_no_code_does_not_apply_anything_and_a_regeneration_does():
     """
     A reply with no `steps`, no `obsolete` and no `unbuildable` is a failed
-    attempt now (FCC-304 deleted the mid-turn look Execute used to be able to
-    ask with) — the free trailing-gap continuation gives it one more try, and
+    attempt now (an earlier change deleted the mid-turn look Execute used to
+    be able to ask with) — the free trailing-gap continuation gives it one
+    more try, and
     that one writes the Step.
     """
     result, _, _, tools = drive([
@@ -182,7 +183,7 @@ def test_the_whole_plan_is_written_in_one_call():
     """
     Execute cost 22 of roughly 29 provider calls in the recorded run, for six
     applied Steps. It is asked once, with every Step of the Plan in front of it,
-    and answers with the code for all of them. FCC-95.
+    and answers with the code for all of them.
     """
     result, _, llm, tools = drive([
         plan_reply("First", "Second", "Third"),
@@ -203,7 +204,7 @@ def test_a_plan_that_needs_no_look_costs_no_look():
     """
     A Plan whose Steps are all buildable is one Execute call and nothing
     else the model has to be asked for — `check_assertions` still runs the
-    deterministic self-intersection check (FCC-256), which asks nobody.
+    deterministic self-intersection check, which asks nobody.
     """
     _, events, _, tools = drive([
         plan_reply("First", "Second"),
@@ -235,7 +236,7 @@ def test_each_step_still_gets_its_own_started_event():
 
 def test_a_refused_step_is_rewritten_in_place_and_not_regenerated():
     """
-    FCC-372: Step 2's own refusal used to discard the kernel session Step 1
+    Step 2's own refusal used to discard the kernel session Step 1
     already landed in and ask Plan-side Execute for the whole tail again,
     against a fresh Snapshot. It is rewritten in the same call instead --
     one Execute call for the whole Plan, one `snapshot` Tool call, and the
@@ -269,7 +270,7 @@ def test_a_refused_step_is_rewritten_in_place_and_not_regenerated():
 
 def test_a_failure_at_every_step_costs_no_more_than_it_costs_today():
     """
-    FCC-372: a Step the Document refuses is rewritten where it stands, so
+    A Step the Document refuses is rewritten where it stands, so
     three Steps that each fail once and land on the retry still cost one
     Execute call -- the phase a failure used to spend is gone, not merely
     cheaper.
@@ -406,8 +407,8 @@ def test_a_reply_with_nothing_usable_says_so_in_the_traceback():
 
 def test_what_reaches_plan_is_capped_whatever_shape_the_reply_took():
     """
-    A reply carries no code of its own (FCC-A-53), so it cannot balloon the
-    traceback with a Step's worth of it the way ADR-0021's whole-Plan reply
+    A reply carries no code of its own, so it cannot balloon the
+    traceback with a Step's worth of it the way a whole-Plan reply
     could — but it can still name far more Steps than it ever wrote code for,
     and what travels in the traceback is the shape of that claim, not its
     size.
@@ -452,8 +453,8 @@ def test_a_step_that_lands_is_unaffected_by_what_the_reply_said():
 def test_the_reason_a_recompute_failed_reaches_the_next_attempts_request():
     """
     The reason has to reach the model, not merely the event stream — a
-    causeless message is what made every attempt a re-spelling. FCC-11,
-    FCC-372: the reply is the same-session retry now, not a fresh request.
+    causeless message is what made every attempt a re-spelling. The reply
+    is the same-session retry now, not a fresh request.
     """
     _, _, llm, _ = drive(
         [
@@ -719,7 +720,7 @@ def test_review_and_assertion_are_both_given_the_whole_description():
     """
     Both phases judge a finished part, so both get the same description of it
     — the features with their parameters and the geometry off the Shape, not
-    a list of type names. FCC-81.
+    a list of type names.
     """
     _, _, llm, _ = drive([
         design_reply(A_CUBE),
@@ -770,8 +771,8 @@ def test_review_is_told_when_there_is_no_render_to_judge_by():
 def test_an_attachment_reaches_the_design_phase_as_a_picture():
     """
     The panel used to collect the attached paths and throw them away, so the
-    user showed the assistant a photo it never saw. FCC-4. The phase that
-    receives it is the Design phase since FCC-86; Plan never sees a picture.
+    user showed the assistant a photo it never saw. The phase that
+    receives it is the Design phase; Plan never sees a picture.
     """
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), suspect_reply(), verdict_reply("pass")])
@@ -852,7 +853,7 @@ def test_a_run_given_a_prior_part_skips_the_design_phase():
     """
     The second half of one conversation plans from what the first half already
     read off the sheet, rather than asking Design to describe it again — the
-    bug this fixes (FCC-210, ev160-178 of session 796bf66c).
+    bug this fixes (ev160-178 of session 796bf66c).
     """
     from core.design import part_file
 
@@ -969,7 +970,7 @@ def test_the_document_says_why_a_value_is_the_users_and_the_log_says_what_proved
     recorded reading. `from` and `seen_in` prove a number rather than being one
     and are cut mechanically into the log — 2,190 characters of them. The 357
     characters of `because` stay, because they are the only thing telling a
-    user the model chose a value rather than read it (ADR-0022), and so does
+    user the model chose a value rather than read it, and so does
     the flag on every one of the 46 entries the Acceptance is derived from.
 
     The document says more of it than the reading does — 1,376 characters — and
@@ -1020,7 +1021,7 @@ def test_a_value_corrected_in_the_file_is_the_one_the_run_is_planned_from(monkey
     The Gate links to the file rather than showing the description, so the file
     has to be the description the run is held to. Corrected between the writing
     and the reading back — which is what a user does when the link opens on a
-    misread length — the correction is what Plan is handed (FCC-108).
+    misread length — the correction is what Plan is handed.
     """
     written = part_file.saved
 
@@ -1119,7 +1120,7 @@ def test_nothing_the_document_states_is_measured_from_a_face_the_sheet_deleted()
     position of the outer profile, the bore and the outer ring from the left
     lug's tangent plane, and the slot from the axis of the hole it replaces.
     Every one of them is a criterion the finished part is checked against and
-    none of them is on it (FCC-153).
+    none of them is on it.
     """
     document, logged, _ = _the_clamp_as_it_was_read()
 
@@ -1134,7 +1135,7 @@ def test_each_of_the_seven_is_re_measured_from_a_datum_that_survives():
     the datum that takes over from the dead one — the arm's own free end face
     where the left lug's tangent plane was, the slot's axis where the hole's
     was — with what it said from the face that is gone kept under `was`, so the
-    Gate shows a person which seven the later page unsettled (ADR-0022). The
+    Gate shows a person which seven the later page unsettled. The
     dead datum leaves `datums` with the feature that owned it.
     """
     document, _, _ = _the_clamp_as_it_was_read()
@@ -1150,7 +1151,7 @@ def test_each_of_the_seven_is_re_measured_from_a_datum_that_survives():
 def test_what_the_sheet_said_still_reaches_the_user_at_the_gate():
     """
     The re-measure is the distiller's and never the merge's: the merge stays
-    monotonic (ADR-0019), so the description the Gate is read against is still
+    monotonic, so the description the Gate is read against is still
     the sheet's own — the 108 mm the second page unsettles, and the datum it is
     measured from, both written where Design put them.
     """
@@ -1188,9 +1189,9 @@ def test_the_log_of_the_recorded_run_keeps_one_entry_to_an_address():
     drops an entry only where the whole record repeats, so one disagreement
     written twice in two words was two entries and a re-read that spelled a
     view differently was a third. The reading keeps all 33, because the merge
-    only ever grows (ADR-0019); the log beside the document keeps one to an
+    only ever grows; the log beside the document keeps one to an
     address, and the document keeps none of them at all — Plan is handed the
-    part and nothing that argues about it (FCC-156).
+    part and nothing that argues about it.
 
     Twenty-five of the twenty-six say what they are about. The twenty-sixth
     names the two views that disagree about the right-lug recess and no path at
@@ -1240,7 +1241,7 @@ def test_the_four_that_named_what_ended_the_run_stand_under_conflict():
     the part looks, and not among the checks nobody could run.
 
     Where a user reads them is the reading the Gate is shown, since the
-    document Plan is handed argues about nothing (FCC-156).
+    document Plan is handed argues about nothing.
     """
     _, events, llm, _ = drive([
         design_reply(THE_2023_CLAMP),
@@ -1266,8 +1267,8 @@ def test_the_four_that_named_what_ended_the_run_stand_under_conflict():
 
 def test_a_step_the_real_document_rejects_after_the_kernel_took_it_is_retried_in_place():
     """
-    FCC-372: a Step the kernel accepted but the real Document rolled back
-    (FCC-291's name-collision incident) is rewritten in the same session
+    A Step the kernel accepted but the real Document rolled back
+    (a name-collision incident) is rewritten in the same session
     now, so the "is not in the Document" lie a fresh regeneration used to
     tell, and the passing code a second rewrite used to bury, cannot
     happen -- there is no second request to carry either.

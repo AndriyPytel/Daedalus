@@ -1,5 +1,5 @@
 """
-Level 2 -- the geometry fingerprint FCC-260's Assertion check compares, off a
+Level 2 -- the geometry fingerprint the Assertion check compares, off a
 real headless FreeCAD Document.
 
 The check itself lives in the Assertion phase (core/loop.py::run,

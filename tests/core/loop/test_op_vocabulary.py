@@ -1,6 +1,5 @@
 """
-`config/prompts/plan.md`'s closed `op` vocabulary (FCC-233, ADR-0026,
-`FCC-A-52`).
+`config/prompts/plan.md`'s closed `op` vocabulary.
 
 The vocabulary is read out of `config/prompts/plan.md` itself, never copied
 into this file — the same rule `test_vocabulary_closure.py` applies to
@@ -23,9 +22,9 @@ def _language_md():
 
 def _op_section(text):
     """
-    The closed `op` vocabulary. It lives in `language.md` now (ADR-0026,
-    FCC-234), composed into `plan.md` by `core.loop.prompt` rather than
-    written there a second time.
+    The closed `op` vocabulary. It lives in `language.md` now, composed
+    into `plan.md` by `core.loop.prompt` rather than written there a second
+    time.
     """
     start = text.index("## The operation is one of 36")
     end = text.index("## A Step is one sentence")
@@ -54,7 +53,7 @@ def test_the_marker_and_the_op_field_are_both_in_the_reply_shape():
 def test_core_loop_op_verbs_matches_the_prompts_own_list():
     """
     `core.loop.OP_VERBS` is the closed list `_steps_of` refuses an `op`
-    against (FCC-233); this prompt is what asks the model for it. Two
+    against; this prompt is what asks the model for it. Two
     independent copies of a closed list is exactly the shape that drifts
     silently, so a test keeps them equal rather than a comment promising it.
     """
@@ -85,8 +84,8 @@ def test_every_op_typeid_lint_checks_is_named_in_execute_md():
 
     `additive-helix`'s TypeId is exempt: which type this build offers for a
     thread is knowledge about a specific FreeCAD build, so it belongs in
-    TRAPS and never as a literal string in a prompt file (FCC-58,
-    `test_the_curve_and_thread_types_are_traps_not_prompt_copy`).
+    TRAPS and never as a literal string in a prompt file
+    (`test_the_curve_and_thread_types_are_traps_not_prompt_copy`).
     """
     from core.lint import _PRIMITIVE_SHAPES, OP_TYPEIDS
 
@@ -99,7 +98,7 @@ def test_every_op_typeid_lint_checks_is_named_in_execute_md():
 
     assert not missing, missing
     assert "additive-helix" in text, \
-        "additive-helix must still be named, even where its TypeId is a trap (FCC-58)"
+        "additive-helix must still be named, even where its TypeId is a trap"
     assert "PartDesign::Additive<Shape>" in text
     assert "PartDesign::Subtractive<Shape>" in text
     missing_shapes = [shape for shape in _PRIMITIVE_SHAPES if shape not in text]

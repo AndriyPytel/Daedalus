@@ -155,7 +155,7 @@ def no_module_leaves_a_qthread_running():
     deadlock, not this one's failure. Scoped to the module, not the test: a
     Session's own worker thread is meant to outlive any one test in a file
     like `test_panel_level2.py`, where the `panel` fixture is module-scoped
-    and Sessions carry their thread across the whole file by design (FCC-181)
+    and Sessions carry their thread across the whole file by design
     — checking per test would fail every one of them. What must not survive
     past the module's own teardown (`panel`'s `built._cleanup_thread()`, or
     whatever the module's fixtures do) is a thread nothing is tracking
@@ -205,7 +205,7 @@ _SHEET_TEST_FILES = {
 def pytest_xdist_make_scheduler(config, log):
     """
     Puts the three files that share `tests/modelmania/*.pdf` on one worker
-    under `--dist loadfile` (FCC-283).
+    under `--dist loadfile`.
 
     `@pytest.mark.xdist_group("sheets")` on those files, as the ticket asks
     for, does nothing under `loadfile`: `LoadFileScheduling._split_scope`
@@ -247,7 +247,7 @@ def sheet_cache(tmp_path_factory):
     That dedup is per-worker: under `-n 8 --dist loadfile` each worker gets
     its own `session`-scoped instance of this fixture, so the same PDF is
     still parsed once per worker unless every file that shares it is pinned
-    to the same worker (`pytest_xdist_make_scheduler` above, FCC-283).
+    to the same worker (`pytest_xdist_make_scheduler` above).
     """
     from core.sheets import sheet_reader
 

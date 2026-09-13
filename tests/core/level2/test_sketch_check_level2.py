@@ -99,7 +99,8 @@ def test_one_bore_given_two_printed_sizes_moves_the_geometry_that_was_measured()
     two numbers that cannot both be true are usually *solvable* — the solver
     satisfies them by moving the geometry, and the geometry is the one thing
     here that was measured. Two arcs of one bore, one snapped to 42 and one to
-    50, cost 9.88 mm of movement, which is the size of the error ADR-0019 lost.
+    50, cost 9.88 mm of movement, which is the size of the error a bare
+    solver-return-code check would lose.
     """
     verdict = sketch_check.checked(_a_bore_in_two_pieces(42.0, 50.0), "a view")
 

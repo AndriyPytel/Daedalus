@@ -102,7 +102,7 @@ def test_review_is_no_longer_told_the_bounding_box():
     `overall_size` is a union of `shape.BoundBox` — the axis-aligned envelope,
     with the flaw that makes it not a measurement: a nut turned 17° reports
     14.626 × 14.355 × 6.500 and not one of those numbers is on the drawing.
-    Its place is taken by the acceptance list. FCC-75.
+    Its place is taken by the acceptance list.
     """
     _, _, llm, tools = drive([
         plan_reply("Pad the base"), code_reply("pad()"), suspect_reply(), verdict_reply("pass"),
@@ -120,7 +120,6 @@ def test_plan_is_told_to_cite_and_told_it_does_not_write_the_list():
     about writing a list is the copy about citing one — the identity of a
     feature is settled before Plan is called, so the same cavity read off three
     views is one Step and Plan is told outright it may not decide that again.
-    FCC-75, FCC-94.
 
     Part.LineSegment alone still appears in the traps, where it is a fact about
     this build; what goes is Plan being asked to write it as a parameter.
@@ -149,7 +148,7 @@ def test_plan_is_told_to_cite_and_told_it_does_not_write_the_list():
 def test_the_named_parameters_mechanism_is_gone_from_the_code():
     """
     Not merely unused — absent. A comparator left importable is a comparator
-    the next ticket wires back in. FCC-75.
+    a later change wires back in.
     """
     with pytest.raises(ImportError):
         from core.kernel.kernel_worker import wrong_parameters    # noqa: F401
@@ -161,10 +160,10 @@ def test_the_named_parameters_mechanism_is_gone_from_the_code():
 
 def test_review_is_given_four_views_and_execute_cannot_ask_for_one():
     """
-    One view is not enough: the mirrored gear of FCC-54 reads only from above,
-    and in isometry the tooth flank is foreshortened, which is exactly why
+    One view is not enough: a mirrored gear read from above only, and in
+    isometry the tooth flank is foreshortened, which is exactly why
     Review passed it. Execute may not ask for a view either — a picture on
-    request would be a loop inside a phase. FCC-63.
+    request would be a loop inside a phase.
     """
     views = [RENDER_PNG] * 4
     _, _, llm, tools = drive(
@@ -190,7 +189,7 @@ def test_the_same_four_views_reach_both_review_calls():
     """
     `_review_views` is driven once per run and handed to both `review_suspect`
     and the gating `review` — a picture is not something either phase gets to
-    ask for a second time (FCC-257, FCC-258).
+    ask for a second time.
     """
     views = [RENDER_PNG] * 4
     _, _, llm, tools = drive(
@@ -212,7 +211,7 @@ def test_the_same_four_views_reach_both_review_calls():
 
 def test_view_names_names_every_review_view_including_the_section():
     """
-    FCC-261: `_VIEW_NAMES` labels Review's own prose off `len(pictures)`, so a
+    `_VIEW_NAMES` labels Review's own prose off `len(pictures)`, so a
     `REVIEW_VIEWS` that grew a fifth entry and left this short of it would
     mislabel the section capture rather than fail loudly.
     """
@@ -226,7 +225,7 @@ def test_a_run_with_no_views_still_reaches_a_verdict():
     """
     No views still degrades Review to the Description alone, and a registry with
     no `review_views` at all — an older one, a test one — is the same case as
-    a headless one. FCC-63.
+    a headless one.
     """
     result, _, llm, _ = drive(
         [plan_reply("Add a box"),
@@ -244,7 +243,7 @@ def test_a_step_that_cannot_be_built_returns_to_plan():
     """
     Execute has one escape today and it is narrow: `obsolete` means the Step no
     longer makes sense. "I cannot build this" was not handled at all — the run
-    died with whatever had already been applied left in the Document. FCC-61.
+    died with whatever had already been applied left in the Document.
 
     Four attempts, not three: a declared Step's first refusal is free, the
     same as a scratch turn's, so `attempts_per_step`'s default of 3 only
@@ -272,7 +271,7 @@ def test_a_step_that_cannot_be_built_returns_to_plan():
 def test_the_replan_after_a_handback_reads_the_document_as_it_is():
     """
     The Steps already applied are not repeated: the revision is planned from a
-    fresh Snapshot, the same path `obsolete` already takes. FCC-61.
+    fresh Snapshot, the same path `obsolete` already takes.
 
     Four `nope`s, not three: the first refusal of a declared Step is free.
     """
@@ -310,7 +309,7 @@ def test_a_step_handed_back_twice_with_nothing_applied_stops_the_run():
     Step is worded. The Model Mania run handed Step 1 of 8 back over a left arm
     that could not both be 73 mm long and reach the tangent plane the drawing
     gives, was replanned, handed the same Step back again, and finished the
-    whole budget with an empty Document. FCC-127.
+    whole budget with an empty Document.
     """
     result, events, _, tools = drive(
         [
@@ -335,7 +334,7 @@ def test_a_step_handed_back_twice_with_nothing_applied_stops_the_run():
 def test_a_step_handed_back_after_another_one_landed_is_still_replanned():
     """
     Progress is progress: a handback that follows an applied Step is a Plan
-    being carried the rest of the way, not a loop. FCC-127.
+    being carried the rest of the way, not a loop.
     """
     result, _, _, tools = drive(
         [
@@ -360,9 +359,9 @@ def test_a_step_handed_back_after_another_one_landed_is_still_replanned():
 
 def test_a_run_out_of_revisions_stops_and_names_handbacks_not_amendments():
     """
-    FCC-22's rule survives the new cause: whichever branch spends the last
-    unit is not blamed for the others. A run stopped by handbacks does not
-    report amendments. FCC-61.
+    The rule that keeps failed-check accounting separate survives the new
+    cause: whichever branch spends the last unit is not blamed for the
+    others. A run stopped by handbacks does not report amendments.
     """
     result, _, _, _ = drive(
         [
@@ -385,7 +384,7 @@ def test_the_revisions_ceiling_is_computed_from_the_plans_length():
     """
     A four-Step Plan and a forty-Step Plan cannot have the same allowance —
     a long Plan has more places to hand back from, and every handback spends
-    one. The configured value is the floor. FCC-61.
+    one. The configured value is the floor.
     """
     assert revisions_ceiling(Budgets(), ["s"] * 4) == 3
     assert revisions_ceiling(Budgets(), ["s"] * 6) == 3
@@ -537,7 +536,7 @@ def test_a_reply_that_is_all_reasoning_and_no_answer_is_not_called_malformed():
     """
     Kimi-k3 spent a whole design turn thinking and stopped without answering.
     "did not reply with JSON. It said: " with nothing after it told the user
-    nothing about what went wrong (FCC-108).
+    nothing about what went wrong.
     """
     reasoning_only = [{"reasoning": "thinking..."} for _ in range(50)]
     result, events, _, _ = drive(reasoning_only, attachments=[RENDER_PNG])
@@ -590,13 +589,13 @@ def test_the_event_stream_of_a_clean_run():
     """
     Execute's reasoning stands before the first Step starts rather than
     inside it: it is reasoning about the whole Plan, and it is spent before
-    any Step runs (FCC-95). A Step is delivered the moment it is declared,
+    any Step runs. A Step is delivered the moment it is declared,
     not once the whole Plan has been written out, so its own `tool_call` /
     `tool_result` / `applied` sit right after `step_declared`, inside the
     same call that wrote its code -- before the model is ever asked for the
-    next Step (FCC-368). `step_started` still trails afterward: it is
+    next Step. `step_started` still trails afterward: it is
     `_work_through`'s own bookkeeping over what already landed, not part of
-    delivering the Step. The self-intersection check (FCC-256) runs after
+    delivering the Step. The self-intersection check runs after
     `applied` and asks nobody, so it carries its own `tool_call`/
     `tool_result` pair with no `call_started` around it, even with nothing
     in the acceptance list to check.
@@ -626,10 +625,10 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
     """
     The same run with something to check: the Assertion phase stands between
     the last Step and the verdict, and its code rides on the Tool call the way
-    a Step's does. FCC-76. The Step itself still delivers inline -- `tool_call`
+    a Step's does. The Step itself still delivers inline -- `tool_call`
     / `applied` / `tool_result` sit inside the same call that declared it,
     same as the plain run, because delivery happens at declare time and Design/
-    Assertion never change that (FCC-368).
+    Assertion never change that.
     """
     _, events, _, _ = drive([
         design_reply(A_CUBE),
@@ -658,11 +657,11 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
 
 def test_the_event_stream_of_a_retried_run():
     """
-    The self-intersection check (FCC-256) still runs after `applied`,
+    The self-intersection check still runs after `applied`,
     unconditionally. `bad()` still gets its own `tool_call`/`tool_result`
     pair the moment it is declared, refused there as `preflight_failed`,
     and rewritten in the same Execute session -- only the rewritten
-    `good()` ever reaches `applied` (FCC-372).
+    `good()` ever reaches `applied`.
     """
     _, events, _, _ = drive(
         [plan_reply("Only"), retried_code_reply("bad()", "good()"), suspect_reply(), verdict_reply("pass")],
@@ -692,7 +691,7 @@ def test_the_event_stream_of_a_blocked_run():
     `tool_result` fire right after `step_declared` -- before Execute ever
     finds out the budget is spent; the refusal fires `preflight_failed` and,
     with `attempts_per_step` already spent, `budget_exhausted` inside the
-    same session, without a second Execute phase (FCC-372).
+    same session, without a second Execute phase.
     """
     _, events, _, _ = drive(
         [plan_reply("Only"), code_reply("x()")],
@@ -713,7 +712,7 @@ def test_the_event_stream_of_a_blocked_run():
 
 
 def test_tool_calls_and_their_results_are_both_visible():
-    """`apply_step`'s own arguments carry the kernel_result a Step declared with, so a GUI replay is checked against what the kernel actually produced (FCC-368)."""
+    """`apply_step`'s own arguments carry the kernel_result a Step declared with, so a GUI replay is checked against what the kernel actually produced."""
     _, events, _, _ = drive([
         plan_reply("Only"), code_reply("box()", label="Add the box"), suspect_reply(), verdict_reply("pass"),
     ])
@@ -730,7 +729,7 @@ def test_tool_calls_and_their_results_are_both_visible():
 
 def test_no_step_puts_a_picture_in_the_stream():
     """
-    The per-Step viewport screenshot is gone, panel and all (FCC-81). Nobody
+    The per-Step viewport screenshot is gone, panel and all. Nobody
     read it: the only images that reach a model go through `_as_image`, and
     the step render was never among them.
     """
@@ -1057,10 +1056,10 @@ def test_a_run_reports_what_it_did():
 
 def test_plan_can_ask_instead_of_planning():
     """
-    The in-process half of FCC-25: with a value the part cannot be built
-    without missing, Plan answers with a question and no Plan is shown. That it
-    may ask is unchanged; who answers it is not — nobody does, and Plan chooses
-    and says in the Step what it chose (ADR-0022).
+    This is the in-process half of the standing rule: with a value the part
+    cannot be built without missing, Plan answers with a question and no Plan
+    is shown. That it may ask is unchanged; who answers it is not — nobody
+    does, and Plan chooses and says in the Step what it chose.
     """
     result, events, _, tools = drive(
         [question_reply(MISSING),
@@ -1084,7 +1083,7 @@ def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan
     goes back through Design and lands in the same model by the same merge, so
     what Plan is handed next is the description grown, never an answer standing
     beside it, which is the arrangement that lost the 100 mm. The user supplied
-    it, so it is `assumed`. FCC-25, FCC-93, ADR-0022.
+    it, so it is `assumed`.
     """
     llm = ScriptedLLMClient([
         design_reply({}, question=MISSING),
@@ -1135,10 +1134,10 @@ def test_with_nobody_to_ask_the_run_does_not_stall():
 def test_a_run_nobody_answered_at_all_reaches_the_gate_rather_than_a_block():
     """
     Every question put to the sheet, the sheet saying nothing to any of them,
-    and Plan told to choose each time. That is the run FCC-127 was written for:
-    the model settles the value and `because` says who settled it, so the Gate
-    is where it is read. A count of unanswered questions is not a reason to end
-    a run (FCC-133).
+    and Plan told to choose each time. That is exactly the run this rule was
+    written for: the model settles the value and `because` says who settled
+    it, so the Gate is where it is read. A count of unanswered questions is
+    not a reason to end a run.
     """
     asked = []
 
@@ -1169,7 +1168,7 @@ def test_a_question_about_a_material_card_is_answered_from_the_tools():
     part: no drawing prints one. A recorded run put it to the sheet three
     times, was told each time that nothing in the views answers it, and ended
     on the third for want of an answer. The Tool that holds it answers it and
-    the run carries on (FCC-149).
+    the run carries on.
     """
     result, events, llm, tools = drive([
         design_reply(SETTLED),
@@ -1194,7 +1193,7 @@ def test_a_question_about_a_material_card_is_answered_from_the_tools():
 def test_rereads_are_spent_only_on_questions_put_to_the_drawing():
     """
     One re-read, two questions: the one about the build is a look and costs it
-    nothing, so the one about the part still gets the sheet (FCC-149).
+    nothing, so the one about the part still gets the sheet.
     """
     result, events, llm, tools = drive([
         design_reply(SETTLED),
@@ -1217,7 +1216,7 @@ def test_rereads_are_spent_only_on_questions_put_to_the_drawing():
 def test_rereads_counts_re_reads_of_the_drawing_and_nothing_else():
     """
     One budget, one job. With one re-read allowed the sheet is asked once, and
-    the three questions nobody answered cost nothing further (FCC-133).
+    the three questions nobody answered cost nothing further.
     """
     result, events, llm, _ = drive([
         design_reply(SETTLED),
@@ -1242,7 +1241,7 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
     R2. SECTION A-A shows the depth, hatched, and the R2 edges are drawn in red
     in every view — the user attached the sheet so they would not have to answer
     what it shows. The first pass missed it, which is what a first pass does;
-    the route is what has to stop the miss becoming a question. FCC-90.
+    the route is what has to stop the miss becoming a question.
     """
     asked = []
 
@@ -1272,7 +1271,7 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
     added = [entry for entry in changed if entry["section"] == "features"]
     assert added == [{"section": "features", "kind": "added", "id": "pocket-front",
                       "now": OFF_THE_SECTION["features"][0]}], \
-        "the re-plan was not handed the change-set (FCC-311)"
+        "the re-plan was not handed the change-set"
     assert "you_asked_and_were_answered" not in to_plan
 
 
@@ -1281,7 +1280,7 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
     The run read the left bore axis 20 mm from the left end face and then 25 mm,
     both `read`, and built 25. 20 is still what the Gate shows, and the
     disagreement is visible rather than absent — the merge is enforced by `id`
-    in the loop, not only asked for in the prompt. FCC-93.
+    in the loop, not only asked for in the prompt.
     """
     _, events, llm, _ = drive([
         design_reply(A_PART),
@@ -1298,7 +1297,7 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
 
     shown = json.loads(llm.calls[3][-1]["content"])["what_the_part_is"]
     conflicts_shown = [entry for entry in shown if entry["section"] == "conflicts"]
-    assert conflicts_shown, "the disagreement never reached the Plan Gate (FCC-311)"
+    assert conflicts_shown, "the disagreement never reached the Plan Gate"
     assert conflicts_shown[0]["now"]["stands"] == read("15 mm")
     assert conflicts_shown[0]["now"]["was_also_said"] == read("25 mm")
 
@@ -1306,11 +1305,11 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
 def test_a_question_the_sheet_does_not_answer_is_settled_by_the_model():
     """
     A tolerance nobody printed is not on the sheet, and nobody is asked for it
-    either: Plan chooses and says in the Step what it chose (ADR-0022).
+    either: Plan chooses and says in the Step what it chose.
 
     The sheet saying nothing is on the stream. Without it a stalled run cannot
     be told from one where the drawing was never looked at, which is the first
-    thing anybody reading the log asks (FCC-96).
+    thing anybody reading the log asks.
     """
     asked = []
 
@@ -1332,7 +1331,7 @@ def test_a_question_the_sheet_does_not_answer_is_settled_by_the_model():
 def test_a_drawing_that_keeps_answering_is_never_a_question_for_anybody():
     """
     Every answer off the sheet is a question that never had to be settled by
-    anybody, and it costs a re-read and nothing else. FCC-90, ADR-0022.
+    anybody, and it costs a re-read and nothing else.
     """
     asked = []
 
@@ -1354,7 +1353,7 @@ def test_the_re_reads_have_a_ceiling_of_their_own():
     """
     A Plan that keeps asking and a drawing that keeps answering would never
     terminate. Past the ceiling the question is not put to the sheet again, and
-    Plan is told to choose (ADR-0022).
+    Plan is told to choose.
     """
     asked = []
 
@@ -1380,7 +1379,7 @@ def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
     not be 50 mm tall with 30 mm end rounds — and it never reached the drawing,
     because the loop stopped one line above the re-read. A question raised after
     Plan was told to choose is a *new* obstacle, and the sheet answers it as
-    often as any other. FCC-96.
+    often as any other.
     """
     asked = []
     off_the_sheet = {"datums": [{"name": "the front-to-rear centre plane"}]}
@@ -1406,7 +1405,7 @@ def test_the_same_question_twice_is_listed_once_and_does_not_end_the_run():
     """
     Nothing has changed since the last time it was asked, so asking again says
     nothing new — but it is still not a reason to end a run, and the Gate is
-    shown the question once rather than once per asking (FCC-133).
+    shown the question once rather than once per asking.
     """
     result, events, _, tools = drive([
         design_reply(A_PART),

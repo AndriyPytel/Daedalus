@@ -1,7 +1,7 @@
 """
-FCC-368: a Step reaches the Document as it is declared, not once the whole
+A Step reaches the Document as it is declared, not once the whole
 phase is over -- `on_declaration` fires, and answers, before the next turn's
-code is ever asked for (ADR-0027, FCC-A-53).
+code is ever asked for.
 """
 import json
 
@@ -117,7 +117,7 @@ def test_a_step_the_gui_could_not_replay_reverts_the_kernel_to_the_last_landed_c
 def test_a_step_the_document_refused_for_a_non_drift_reason_also_reverts_and_retries_in_place(
     kernel, tmp_path):
     """
-    FCC-372: any refusal the Document gives at declare time -- an ownership
+    Any refusal the Document gives at declare time -- an ownership
     guard, a lint mismatch, not only a GUI signature drift -- rewinds the
     kernel to the last landed checkpoint and asks for the Step again in this
     same session, the same as drift does.

@@ -1,17 +1,17 @@
 """
-Level 2 -- the Assertion results widget FCC-179 adds, built for real against
+Level 2 -- the Assertion results widget, built for real against
 FreeCAD's own Qt binding, offscreen.
 
 A pure renderer of one `ASSERTION` event's own data (`ui/assertion_results_
 widget.py`'s own docstring): every row and the summary line above them come
-from `confirmed`/`unmet`/`code`, nothing else. This is where FCC-179's
+from `confirmed`/`unmet`/`code`, nothing else. This is where its
 Acceptance Criteria on that rendering are checked -- the pass/fail marks, the
 summary count, and the per-entry expand to the code that ran. The wiring
 from a live `core.events.Event` to this widget, and the fallback for the one
 case it renders nothing for, is `tests/test_panel_level2.py`'s, the same
 split `test_review_verdict_widget_level2.py` draws for the Review card.
 
-FCC-169 rebuilt this card to Figma's `TestResults` anatomy: the tests below
+This card was rebuilt to Figma's `TestResults` anatomy: the tests below
 that touch icon colour and progress proportion are this file's part of that
 -- rule 1 of the ten, a row is never recoloured to report its state, only
 the mark beside it
@@ -109,7 +109,7 @@ def _mixed(confirmed=("Base height is 10mm",), unmet=("Lug height is 30mm",),
 
 def test_a_mixed_result_shows_a_passed_row_and_a_failed_row_together():
     """
-    FCC-169: a run where the checks measured some entries true and some
+    A run where the checks measured some entries true and some
     false, proved against this widget unmodified -- it already iterates
     `confirmed` and `unmet` independently, so a mixed `ASSERTION` renders a
     mixed card with no change to `AssertionResultsWidget` at all.

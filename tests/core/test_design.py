@@ -2,7 +2,7 @@
 Level 1 — the merge and the rendering of the part Design describes.
 
 No provider, no FreeCAD: the merge is the single most load-bearing piece of
-logic in FCC-93, so it is tested on its own rather than only through a run. The
+logic, so it is tested on its own rather than only through a run. The
 numbers are the ones from the run that named the defect
 (`logs/sessions/daefe57b593448e9baf83422fc37af1e.jsonl`, mm25-p1-1.pdf).
 """
@@ -68,7 +68,7 @@ def test_a_field_already_filled_is_not_replaced():
 def test_the_disagreement_is_recorded_rather_than_reconciled():
     """
     Two incompatible dimensions stay recorded as a conflict and are not settled
-    by the machine — the FCC-59 boundary. The known cost is accepted: the first
+    by the machine. The known cost is accepted: the first
     pass is authoritative even where it was wrong, so the disagreement has to
     reach the user at the Plan Gate instead.
     """
@@ -140,7 +140,7 @@ NOT_DEFINED_DEPTH = {
 
 def test_a_not_defined_field_is_filled_by_a_later_pass():
     """
-    FCC-235: session afa0142baef847b0a9cd9139390af993 derived a depth its own
+    Session afa0142baef847b0a9cd9139390af993 derived a depth its own
     first pass had recorded `not_defined` and could not write it — the field
     was already "filled", by the general rule, with a gap rather than a value.
     `not_defined` -> a value is the one exception to that rule: it fills, and
@@ -379,7 +379,7 @@ def test_a_feature_with_neither_an_axis_nor_a_curve_is_left_alone():
 
 def test_a_fillets_own_topology_prose_never_asks_it_for_an_axis():
     """
-    FCC-243, session `480b9995421e443d97b439a4f55bc3fe`: `fillet-outer` has
+    Session `480b9995421e443d97b439a4f55bc3fe`: `fillet-outer` has
     `kind: "fillet"` and a `topology` reading "...the outer edges of the arms
     and band, the ring's two end rims, the cutout and the slot" — the word
     "slot" put it through the axis check, though `direction`'s own docstring
@@ -537,8 +537,9 @@ A_THROUGH_HOLE_PLACED_ALONG_ITS_OWN_AXIS = {
 
 def test_a_through_feature_placed_along_its_own_axis_is_a_conflict():
     """
-    FCC-106, the half of it a present `axis` cannot answer. Nothing is
-    positioned along its own axis, and a feature that goes through starts at no
+    This is the half of the axis check that a present `axis` cannot answer
+    on its own. Nothing is positioned along its own axis, and a feature that
+    goes through starts at no
     face — so an axis in the depth and a position keyed by a datum that fixes
     the depth cannot both be right.
 
@@ -648,7 +649,7 @@ def test_the_part_reads_as_a_structure_and_not_as_json():
 
 
 def test_every_value_carries_its_datum_and_its_flag_on_the_line():
-    """FCC-87's discipline, structural now rather than one line of prose per value."""
+    """This discipline is structural now rather than one line of prose per value."""
     written = render(THE_PART)
 
     assert "the left end face: 20 mm (read)" in written
@@ -733,8 +734,8 @@ def test_the_gate_reads_the_conflicts_grouped_by_kind():
 
 def test_grouped_conflicts_orders_the_evidence_log_the_way_render_orders_text():
     """
-    FCC-244: `part_file.logged` writes `each_disagreement_once`'s list to the
-    evidence sidecar beside the reading -- the surface FCC-156 actually built
+    `part_file.logged` writes `each_disagreement_once`'s list to the
+    evidence sidecar beside the reading -- the surface actually built
     ("the list stands in the log beside it"), not the Plan Gate, which is
     shown the distilled document alone and opens no other file. A YAML log has
     no heading to say a kind once for a whole group, so `grouped_conflicts`
@@ -799,7 +800,7 @@ def test_every_value_is_addressed_by_where_it_sits():
     entry is cited by exactly the words it is kept under and there is one
     notation, not two. Matched by identity in a list, never by position: a
     feature added ahead of another must not move the address of everything
-    after it. FCC-94.
+    after it.
     """
     assert _about(THE_PART) == [
         "envelope → length",
@@ -812,7 +813,7 @@ def test_an_envelope_entry_is_as_addressable_as_a_feature():
     """
     The value the recorded run lost between the description and the Plan was
     the 100 mm front to rear — an envelope entry, not a feature. An enumeration
-    that only reached features could not have caught it. FCC-94.
+    that only reached features could not have caught it.
     """
     assert "envelope → depth front to rear" in _about(THE_PART)
 
@@ -821,7 +822,7 @@ def test_an_entry_carries_its_datum_and_its_flag_into_the_words():
     """
     A criterion is the description's own entry and not a paraphrase of it: the
     datum is the key it sits under, and it reaches the assert message with the
-    flag still on it. FCC-94.
+    flag still on it.
     """
     said = [entry["says"] for entry in entries(THE_PART)]
 
@@ -833,7 +834,7 @@ def test_an_entry_carries_its_datum_and_its_flag_into_the_words():
 def test_an_assumed_value_is_an_entry_and_says_so():
     """
     Dropping it would hide from the checks the one kind of value most likely to
-    be wrong, and the user has to see at the Gate that it is theirs. FCC-94.
+    be wrong, and the user has to see at the Gate that it is theirs.
     """
     entry = entries({"envelope": {"length": {"value": "150 mm", "flag": "assumed"}}})[0]
 
@@ -845,7 +846,7 @@ def test_a_conflict_and_a_gap_are_not_criteria():
     """
     A conflict holds two values of which neither is settled, so a criterion
     derived from one would assert whichever half the merge happened to keep —
-    the machine settling what ADR-0019 says the user settles. FCC-94.
+    the machine settling what a user, not code, is meant to settle.
     """
     assert not [entry for entry in entries(THE_PART) if "conflict" in entry["about"]]
     assert not [entry for entry in entries(THE_PART) if "not_defined" in entry["about"]]
@@ -875,7 +876,7 @@ def test_a_feature_the_later_page_replaces_is_no_longer_the_part():
     ear beside the Phase 2 arm, both `read`: every entry of the superseded ear
     was a criterion the part had to meet and a Step Plan had to write, so the
     Plan built a mounting bore the second page had deleted and spent a revision
-    being told it had left one unplanned. FCC-127.
+    being told it had left one unplanned.
     """
     about = [entry["about"] for entry in entries(THE_ARM_REPLACED)]
 
@@ -887,7 +888,7 @@ def test_a_feature_that_is_gone_is_not_checked_for_what_it_never_said():
     """
     Not the part any more means not judged either: a finding about a feature the
     later page deleted is a conflict at the Gate about geometry nobody is going
-    to build. FCC-127.
+    to build.
     """
     silent = merge({}, {"features": [
         {"id": "left-bore", "kind": "Ø6.6 bore", "topology": "through",
@@ -1073,13 +1074,13 @@ def test_the_finding_arrives_through_the_merge_like_every_other():
 
 def test_crosswise_says_its_own_kind_rather_than_falling_into_the_default():
     """
-    FCC-248: every entry `crosswise` returns left `kind` unset, so
+    Every entry `crosswise` returns left `kind` unset, so
     `core._which_kind_it_is` fell through to its default -- A_CONFLICT --
     for both findings. That default exists for the model's own `conflicts`
     entries, which never carry a `kind` at all (`config/prompts/design.md`
     asks for `about`/`stands`/`was_also_said` and nothing else); a machine
     check landing on the same fallback by omission rather than by declaring
-    what it found is the same defect FCC-243 named for `kind` read off the
+    what it found is the same defect already named for `kind` read off the
     wrong field, one layer up: nothing here says the finding is machine-made.
 
     A_CONFLICT is still the right kind -- two axes that cannot both be right
@@ -1415,7 +1416,7 @@ def test_a_well_formed_assumed_passes_untouched():
 def test_a_value_that_passed_is_never_nobodys_at_the_gate():
     """
     `decided_for_you` fell back to prose saying nothing settled the value, which
-    is the section AC5 of FCC-127 rests on. Nothing reaches that fallback once
+    is the guarantee this fallback rests on. Nothing reaches that fallback once
     the check has let the model through.
     """
     from core.design.gaps import (
@@ -1798,11 +1799,11 @@ CLOSED = "closed"
 
 def test_a_kind_off_the_closed_list_is_refused_and_the_field_stays_empty():
     """
-    ADR-0026/FCC-232: an `offered` fragment marking itself `"kind_vocabulary":
+    An `offered` fragment marking itself `"kind_vocabulary":
     "closed"` has every feature's `kind` checked against `core.FEATURE_KIND`
     (22 values). A value off that list is refused -- not written into the
     model -- so the field reads as not yet filled rather than as a value that
-    was overruled, the same distinction FCC-94 already keeps for every other
+    was overruled, the same distinction already kept for every other
     field.
     """
     grown = merge({}, {"kind_vocabulary": CLOSED,
@@ -1818,7 +1819,7 @@ def test_a_refused_kind_names_the_banned_synonym_it_maps_onto():
     """
     A refusal that only says "invalid" gives the next turn no reason to
     answer differently, and burns the revision budget re-asking for a value
-    already ruled out (FCC-231's banned-prose-synonym sentences). Naming the
+    already ruled out (the banned-prose-synonym sentences). Naming the
     kind the word maps onto -- `round` is a `fillet`, `recess` is a
     `counterbore` -- is correctable in one turn.
     """
@@ -1831,7 +1832,7 @@ def test_a_refused_kind_names_the_banned_synonym_it_maps_onto():
 
 def test_a_refused_region_word_names_pad_and_the_region_field():
     """
-    A region word (`ring`, `arm`, `web`, ...) is the open-set leak ADR-0026
+    A region word (`ring`, `arm`, `web`, ...) is the open-set leak
     measured at 18.5% of the corpus -- the refusal for one names both halves
     of the fix: the `kind` is `pad`, and the word itself belongs in the new
     `region` field.
@@ -1848,7 +1849,7 @@ def test_an_unmarked_offer_takes_the_legacy_unvalidated_path():
     A recorded model has no `kind_vocabulary` marker -- it was written
     against the prose grammar that existed before this ticket. Checking it
     against the closed list would flag most of the corpus and is exactly the
-    rejected alternative ADR-0026 names ("a closed list added to the prompts
+    rejected alternative already named ("a closed list added to the prompts
     and nothing else"); the marker is what tells the two apart.
     """
     grown = merge({}, {"features": [{"id": "arm-1",
@@ -1870,7 +1871,7 @@ def test_a_closed_kind_that_is_valid_is_written_normally():
 def test_a_refused_kind_is_a_gap_the_next_turn_may_fill():
     """
     Refusing the write leaves the field unfilled, a gap the next turn may
-    close -- not a value already filled that FCC-94's rule then forbids
+    close -- not a value already filled that the no-overwrite rule then forbids
     changing.
     """
     first = merge({}, {"kind_vocabulary": CLOSED,
@@ -2003,7 +2004,7 @@ def test_left_mounting_hole_and_phase2_slot_are_caught_by_kind_and_overlapping_d
 
 def test_a_dimension_in_kind_is_refused_and_the_dimension_belongs_in_a_field():
     """
-    ADR-0026 §6: eleven dimension fields (`diameter`, `outer_diameter`,
+    Eleven dimension fields (`diameter`, `outer_diameter`,
     `radius`, `thickness`, `length`, `width`, `depth`, `angle`, `count`,
     `pitch`, `bolt_circle_diameter`) absorb what `kind` prose used to carry.
     A `kind` sentence that still carries a dimension is off the 22-value
@@ -2055,12 +2056,12 @@ def test_superseded_by_fires_once_a_duplicate_pair_is_reconciled():
 
 def test_a_malformed_conflict_entry_is_refused_under_the_kind_vocabulary_marker():
     """
-    FCC-237: a Design reply invented four conflict shapes across one recorded
+    A Design reply invented four conflict shapes across one recorded
     session, 44 of 46 entries carrying no `what` at all. A reply that opts
     into the closed vocabulary (`kind_vocabulary: closed`) is held to the
     pinned shape — `about`, `stands`, `was_also_said` — and an entry missing
     one of them is refused rather than merged in as-is, exactly as an
-    off-vocabulary `kind` is (FCC-231). Nothing the entry said is lost: it
+    off-vocabulary `kind` is. Nothing the entry said is lost: it
     travels on whole under `was_also_said` of the refusal.
     """
     grown = merge({}, {
@@ -2156,12 +2157,11 @@ def _every_conflict_entry():
 
 def test_how_many_recorded_conflict_entries_satisfy_the_pinned_shape():
     """
-    FCC-237: of every conflict entry `tests/recorded/` carries — the merged
+    Of every conflict entry `tests/recorded/` carries — the merged
     fixtures and the raw model replies alike — 32 of 38 already carry `about`,
     `stands` and `was_also_said`. The 6 that do not are the raw Design replies
-    in `claude-code-design-effort.jsonl`, sent before this ticket pinned a
-    shape at all. The number is measured here rather than claimed in a
-    docstring.
+    in `claude-code-design-effort.jsonl`, sent before a shape was pinned at
+    all. The number is measured here rather than claimed in a docstring.
     """
     entries = _every_conflict_entry()
 
@@ -2173,8 +2173,9 @@ def test_how_many_recorded_conflict_entries_satisfy_the_pinned_shape():
 
 def test_how_many_recorded_conflict_entries_are_machine_written_gaps():
     """
-    FCC-244, half of AC3, and a dead end on its own: `tests/recorded/`
-    carries no machine-written `kind: gap` at all. `_every_conflict_entry`
+    Half of the machine-written-gap measurement, and a dead end on its own:
+    `tests/recorded/` carries no machine-written `kind: gap` at all.
+    `_every_conflict_entry`
     walks raw model replies and small merge fixtures, none of which has been
     through `direction`/`placement`/`twice_over` -- the passes that write a
     gap only run inside `merge()`, on a fully merged document, and none of
@@ -2193,21 +2194,21 @@ def test_how_many_recorded_conflict_entries_are_machine_written_gaps():
 
 def test_the_validators_fire_on_every_recorded_description():
     """
-    FCC-244 AC3, the real answer: the gap-finding passes are deterministic
+    The real answer: the gap-finding passes are deterministic
     given a description, so the true count is produced by running them over
     `tests/recorded/vocabulary_kinds.json`'s 47 descriptions through the real
     `merge()` path, not by searching for their output in a corpus extracted
     before they ran.
 
     387 machine-written findings total, none of the 47 descriptions producing
-    zero (mean 8.23, median 8, max 16, min 1). Set beside FCC-237's 38
-    model-written conflict entries for this same corpus (32 of which match
+    zero (mean 8.23, median 8, max 16, min 1). Set beside the 38 model-written
+    conflict entries measured for this same corpus above (32 of which match
     the pinned shape), the ratio is 387 machine to 38 model -- about 91%
-    machine-written, close to the live session this ticket was opened against
+    machine-written, close to the live session that prompted this measurement
     (22 of 23, 96%). The anecdote holds up.
 
     Every description firing at least once is the more interesting half: a
-    notice that fires on every run is not a notice, so FCC-248's threshold
+    notice that fires on every run is not a notice, so the notice threshold
     cannot be "the evidence file is non-empty" -- the file is never empty --
     and must be "the file holds at least one entry the model itself wrote",
     which is exactly what `grouped_conflicts` already separates out.
@@ -2226,9 +2227,9 @@ def test_the_validators_fire_on_every_recorded_description():
 
 def test_a_conflict_kind_entry_fires_on_most_real_sessions_not_a_rare_few():
     """
-    FCC-248, before AC1-4 are wired: the ticket's own AC2 assumes "the file
-    holds at least one entry the model itself wrote" is a rare condition,
-    citing FCC-244's 2 of 47 recorded *descriptions*
+    Before the notice-threshold checks are wired: that requirement assumes
+    "the file holds at least one entry the model itself wrote" is a rare
+    condition, citing the earlier measurement's 2 of 47 recorded *descriptions*
     (`test_the_validators_fire_on_every_recorded_description`, `merge()` run
     in isolation, no attachment). Measured the other way -- over real
     sessions that reached Design and still have their evidence sidecar on
@@ -2273,10 +2274,10 @@ def _machine_written(conflict):
 
 def test_every_validator_signs_the_finding_it_writes():
     """
-    FCC-249 AC1: authorship is written where the finding is created, not
+    Authorship is written where the finding is created, not
     inferred later off `kind` (`A_CONFLICT` is correct for both a
-    model-written disagreement and a machine-detected one, FCC-248) or off
-    shape (a model reply can land on a validator's own field set, FCC-237).
+    model-written disagreement and a machine-detected one) or off
+    shape (a model reply can land on a validator's own field set).
     Every one of `merge()`'s validators appends `machine_written: True` --
     exercised here by running the whole pipeline over a description that
     trips a gap, a synonym conflict and a duplicate placement together.
@@ -2301,7 +2302,7 @@ A_DESCRIPTION_EVERY_VALIDATOR_CAN_FIRE_ON = {
 
 def test_a_model_entry_untouched_by_a_validator_carries_no_authorship_field():
     """
-    FCC-249 AC2: the one entry the raw description already carries under
+    The one entry the raw description already carries under
     `conflicts` -- the model's own reading of the sheet -- passes through
     `merge()` unrewritten and unsigned.
     """
@@ -2316,10 +2317,10 @@ def test_a_model_entry_untouched_by_a_validator_carries_no_authorship_field():
 
 def test_no_new_kind_value_carries_authorship():
     """
-    FCC-249 AC5: authorship is a second axis, not a longer `KINDS`. The whole
-    of FCC-230 exists because `kind` once carried two meanings; adding
-    `"machine"` to the list that already answers "what sort of finding" would
-    rebuild the exact defect four tickets removed it for.
+    Authorship is a second axis, not a longer `KINDS`. `kind` once carried
+    two meanings before it was split this way; adding `"machine"` to the
+    list that already answers "what sort of finding" would rebuild the
+    exact defect that split removed it for.
     """
     assert core.KINDS == (core.A_CONFLICT, core.A_GAP, core.A_CHECK_HAZARD)
     assert "machine" not in core.KINDS and "model" not in core.KINDS
@@ -2327,13 +2328,13 @@ def test_no_new_kind_value_carries_authorship():
 
 def test_grouped_conflicts_now_orders_by_authorship_not_by_kind():
     """
-    FCC-249 AC4: `grouped_conflicts` -- the ordering `part_file.logged` writes
+    `grouped_conflicts` -- the ordering `part_file.logged` writes
     the evidence sidecar through -- now stands every model-written entry
     ahead of every machine-written one, in place of the `kind` order it used
-    before this ticket (`_under_each_kind`, used by `render()`, is untouched:
+    before (`_under_each_kind`, used by `render()`, is untouched:
     the Plan Gate's own three-kind grouping is a different question).
 
-    A machine-written `A_CONFLICT` (`crosswise`'s own kind, FCC-248) arrives
+    A machine-written `A_CONFLICT` (`crosswise`'s own kind) arrives
     before `THE_PART`'s one model entry, which also reads as `A_CONFLICT`
     through `_which_kind_it_is`'s default -- the exact pair the old, kind-only
     order could never tell apart, kept apart here only by which one is
@@ -2353,14 +2354,13 @@ def test_grouped_conflicts_now_orders_by_authorship_not_by_kind():
     assert grouped[0] == THE_PART["conflicts"][0]
 
 
-def test_fcc_248s_condition_is_stated_but_not_wired():
+def test_the_notice_condition_is_stated_but_not_wired():
     """
-    FCC-249 AC4: FCC-248's condition -- "the evidence file holds at least one
-    entry the model itself wrote" -- is now decidable, stated here as a
-    one-line predicate over the signed field. Not called from `core/loop.py`
-    or `ui/`: whether the notice ships is still FCC-248's question, reopened
-    on this ticket's measured count rather than settled by this ticket's
-    code.
+    The condition "the evidence file holds at least one entry the model
+    itself wrote" is now decidable, stated here as a one-line predicate over
+    the signed field. Not called from `core/loop.py` or `ui/`: whether the
+    notice ships is still an open question, reopened on this measured count
+    rather than settled by this code.
     """
     fires = dict(THE_PART)
     quiet = dict(THE_PART, conflicts=[dict(THE_PART["conflicts"][0], machine_written=True)])
@@ -2372,11 +2372,11 @@ def test_fcc_248s_condition_is_stated_but_not_wired():
 
 def test_the_machine_and_model_counts_read_off_the_field_disagree_with_38():
     """
-    FCC-249 AC3, measured rather than assumed to agree -- and 387:38 was
-    never a ratio in the first place.
+    Measured rather than assumed to agree -- 387:38 was never a ratio in the
+    first place.
 
     The 387 is `merge()` run over `tests/recorded/vocabulary_kinds.json`'s 47
-    descriptions -- the corpus and the method FCC-244 used -- and every one
+    descriptions -- the corpus and the method used earlier -- and every one
     of the resulting entries now reads `machine_written: True` straight off
     the field. That half reproduces exactly.
 
@@ -2384,9 +2384,9 @@ def test_the_machine_and_model_counts_read_off_the_field_disagree_with_38():
     walking a disjoint set of already-recorded entries elsewhere in
     `tests/recorded/` -- 33 of them sitting in `reading_2023_clamp.json`, a
     fixture that predates this field and so cannot carry it no matter who
-    wrote each entry. FCC-244 divided one by the other and read the result as
-    a machine-to-model share; it was two unrelated populations wearing one
-    ratio.
+    wrote each entry. The earlier measurement divided one by the other and
+    read the result as a machine-to-model share; it was two unrelated
+    populations wearing one ratio.
 
     This test does not repeat that mistake by pairing 387 with a different
     number from a different corpus. The 5 below is `_every_conflict_entry_in`
@@ -2398,7 +2398,7 @@ def test_the_machine_and_model_counts_read_off_the_field_disagree_with_38():
     unambiguously model-written entries over `claude-code-design-effort.jsonl`
     -- not "387:5", which would carry the same defect 387:38 did.
 
-    The corrected figure for the corpus FCC-244 actually used, computed
+    The corrected figure for the corpus actually used earlier, computed
     the same way over the same 47 descriptions, is 387 machine to 0 model
     (see `test_no_recorded_description_holds_a_model_written_conflict` for
     why that zero is a different kind of number, and not the rate).
@@ -2455,22 +2455,22 @@ def _every_conflict_entry_in(name):
 
 def test_no_recorded_description_holds_a_model_written_conflict():
     """
-    Not FCC-248's number. `tests/recorded/vocabulary_kinds.json`'s 47 raw
-    descriptions carry 0 `conflicts` entries between them before `merge()`
-    ever runs -- every one of the 47 is missing the key outright. So "0 of 47
-    hold a model-written entry after merge()" is the extraction speaking, the
-    same wall FCC-244 hit and reported honestly
+    Not the notice threshold's number. `tests/recorded/vocabulary_kinds.json`'s
+    47 raw descriptions carry 0 `conflicts` entries between them before
+    `merge()` ever runs -- every one of the 47 is missing the key outright.
+    So "0 of 47 hold a model-written entry after merge()" is the extraction
+    speaking, the same wall hit and reported honestly earlier
     (`test_how_many_recorded_conflict_entries_are_machine_written_gaps`): a
     corpus that carries no conflict entries at all cannot say how often one
     is model-written, any more than it could say how often one is a gap.
 
-    This corpus cannot answer FCC-248's question, because it carries no
-    conflict entries to begin with; the question becomes answerable once
-    signed entries accumulate from runs made after this ticket ships, not
-    from this fixture. Two corpora that do carry conflict entries say the
-    true rate is not zero and is not rare: session
+    This corpus cannot answer the notice-threshold question, because it
+    carries no conflict entries to begin with; the question becomes
+    answerable once signed entries accumulate from later runs, not from
+    this fixture. Two corpora that do carry conflict entries say the true
+    rate is not zero and is not rare: session
     `480b9995421e443d97b439a4f55bc3fe`'s evidence sidecar holds 28 machine and
-    1 model of 29 (FCC-248's own comment), and `reading_2023_clamp.json` holds
+    1 model of 29, and `reading_2023_clamp.json` holds
     32 validator-shaped and 1 no validator produces of 33 -- roughly one
     model-written entry per description, consistently, in every corpus that
     has any conflicts to look at.
@@ -2489,7 +2489,7 @@ def test_no_recorded_description_holds_a_model_written_conflict():
 
 def test__conflict_builds_the_shared_finding_dict():
     """
-    FCC-269: the one place the five conflict-finding fields are assembled,
+    The one place the five conflict-finding fields are assembled,
     so a new one lands here instead of in each of the eleven call sites that
     already spelled out `kind` by hand.
     """

@@ -1,15 +1,16 @@
 """
 Replays `tests/recorded/vocabulary_steps.json`'s English Steps through the
 same operation-verb extraction measured over `logs/` (which is gitignored,
-hence the tracked fixture — FCC-231's established substitute), then collapses
-every detected verb onto the closed 36-`op` vocabulary (ADR-0026, FCC-233) the
-way its synonym clusters and its real-operation classification say to: `round`/`apply` fold onto `fillet`, `drill`/`bore`/`counterbore`
+hence the tracked fixture, already established as the substitute), then
+collapses every detected verb onto the closed 36-`op` vocabulary the way
+its synonym clusters and its real-operation classification say to: `round`/`apply` fold onto `fillet`, `drill`/`bore`/`counterbore`
 onto `hole`, `join`/`union` onto `fuse`, `draw` onto `sketch`, and so on. A
 constructor verb (`create`/`make`/`build`) followed by an object noun or a
 literal TypeId — `"Create a PartDesign::Pad named ..."` — is resolved off
 that noun instead, via `core.lint.OP_TYPEIDS`'s own reverse mapping, since
-FCC-233's ADR text calls this out by name: "`create`/`make`/`build` ... are a
-generic constructor wrapper around whatever the real operation is."
+the decision that closed the vocabulary calls this out by name:
+"`create`/`make`/`build` ... are a generic constructor wrapper around
+whatever the real operation is."
 
 The extraction regex, `VERB_STEMS`, the English-language filter (167
 non-ASCII-heavy Steps and 3 refusals excluded) and the `(satisfies: …)`
@@ -142,7 +143,8 @@ def _classify(step):
     """
     The `op` this Step resolves to, plus every distinct closed op detected —
     `op` is the first, so a compound legacy Step ("sketch ... and pad it")
-    still gets exactly one, the way a revised, FCC-233-shaped Plan would
+    still gets exactly one, the way a revised Plan shaped by the closed
+    vocabulary would
     have split it into two Steps instead. `None` is the residue: no real
     operation verb, and no constructor noun or TypeId either — a Step
     describing something outside geometry entirely, most often a material
@@ -164,8 +166,8 @@ def test_the_english_steps_are_397_matching_the_tracked_fixture():
     """
     584 raw Steps minus 167 non-ASCII-heavy minus 3 refusals is 414 —
     `ste-plan-verbs.md`'s own count, measured over `logs/`. The tracked
-    fixture is a 567-Step subset of that same corpus (FCC-231/232's
-    established substitute for a gitignored directory), and the same filter
+    fixture is a 567-Step subset of that same corpus (already established
+    as the substitute for a gitignored directory), and the same filter
     over it yields 397, not 414: a fixture is a sample of the sessions that
     happened to be captured, not the full corpus re-measured.
     """
@@ -180,7 +182,8 @@ def test_almost_every_english_step_resolves_to_one_of_the_36_ops():
     of them a geometry operation, and none of the 36 was ever going to
     name one. This is the fixture's residue, the same shape
     `test_vocabulary_closure.py` reports for `kind` residue over
-    `vocabulary_kinds.json`, and it is what ADR-0026 means where it says
+    `vocabulary_kinds.json`, and it is what the decision that closed the
+    vocabulary means where it says
     the non-operations "have nowhere to go" once `op` is a closed field.
     """
     residue = [step for step in _english(_steps()) if _classify(step)[0] is None]
@@ -202,7 +205,7 @@ def test_159_english_steps_resolve_to_more_than_one_closed_op():
     over the open 47-lemma surface vocabulary (many raw multi-verb Steps,
     such as "fillet ... and round ...", collapse onto the same closed `op`
     and are single once merged), but still the majority case for a Step
-    that predates the "one Step, one op" rule this ticket adds (ADR-0026).
+    that predates the "one Step, one op" rule.
     """
     multi = [step for step in _english(_steps()) if len(_classify(step)[1]) > 1]
 

@@ -1,6 +1,5 @@
 """
-Level 2 -- the "Role -> Model" preference sub-page, rendered for real
-(FCC-312).
+Level 2 -- the "Role -> Model" preference sub-page, rendered for real.
 
 Seeded from `core.llm.DEFAULT_ROLE_TABLE`; editing a row and saving is what
 `bridge.settings_manager.set_role_table` reads back.

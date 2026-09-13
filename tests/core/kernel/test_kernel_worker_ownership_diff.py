@@ -1,8 +1,8 @@
 """
 Level 1 -- ownership observed by a PropertiesList diff, not recorded by a
-Tool call (FCC-300).
+Tool call.
 
-FCC-299 opened the kernel namespace, so a Step's code no longer has to route
+Opening the kernel namespace means a Step's code no longer has to route
 through anything `core/kernel_worker.py` could intercept. `_Touched` answers
 this by snapshotting the Document's own state before and after a Step's code
 runs -- the same before/after `PropertiesList` diff `fcc-research-doc-diff.md`

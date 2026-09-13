@@ -3,7 +3,7 @@ Level 2 — introspection against a real Document.
 
 Every property name asserted here is asserted against the running FreeCAD, not
 against a fixture. A fixture would happily agree that `sketch.Support` exists;
-this build will not (ADR-0006, ADR-0007).
+this build will not.
 """
 import json
 import math
@@ -70,7 +70,7 @@ def test_fitting_the_view_where_there_is_no_view_is_not_a_failure():
 
 def test_the_section_plane_lands_in_an_off_center_cavity_not_the_wholepart_bbox_center(doc):
     """
-    FCC-261: a shelled 40mm cube's cavity sits at the same point as its own
+    A shelled 40mm cube's cavity sits at the same point as its own
     exterior bbox centre, so that fixture cannot tell a plane that actually
     targets the cavity from one that just takes the whole part's bbox
     centre — both give the same answer. This part can: a 15mm-deep blind
@@ -108,7 +108,7 @@ def test_the_section_plane_lands_in_an_off_center_cavity_not_the_wholepart_bbox_
 
 def test_the_section_plane_falls_back_to_the_bbox_center_with_nothing_hollow(doc):
     """
-    FCC-261: a solid block has no void to centre on, and a solid part is
+    A solid block has no void to centre on, and a solid part is
     still owed a section view — the fallback this test pins down.
     """
     from core.freecad_apply import _section_plane
@@ -125,7 +125,7 @@ def test_the_section_plane_falls_back_to_the_bbox_center_with_nothing_hollow(doc
 
 def test_the_cavity_search_costs_a_fraction_of_a_second_even_on_a_forty_hole_plate(doc):
     """
-    FCC-261: `_cavity_center` runs one boolean `cut` per Review section
+    `_cavity_center` runs one boolean `cut` per Review section
     capture, so its cost has to stay well under what one capture can spend.
     Measured at ~0.11s for this fixture (a 200x200x30 plate, forty 8mm
     bores) on the machine this suite runs on; the 1s ceiling here is the
@@ -170,7 +170,7 @@ def test_the_overall_size_is_what_is_modelled(tools, part):
     """
     The one number a drawing states outright, and the one nothing else in the
     loop measured: Review judged four renders and a list of type names, so
-    "a gear the right size" was not a question it could ask. FCC-66.
+    "a gear the right size" was not a question it could ask.
     """
     assert tools.call("overall_size")["size_mm"] == [10, 20, 5]
 
@@ -179,7 +179,7 @@ def test_the_origin_datums_do_not_become_the_overall_size(tools, doc):
     """
     A Body carries three planes and three axes, each 1e100 across. Taken
     literally they make every part 2e+100 mm wide — which is exactly what the
-    old measurement reported to Preflight before FCC-66. A Body brings its
+    old measurement reported to Preflight. A Body brings its
     Origin with it, so adding one is all it takes to put them in the Document.
     """
     doc.addObject("PartDesign::Body", "Body")
@@ -320,7 +320,7 @@ def test_a_type_is_describable_before_any_object_of_it_exists(tools, doc):
     """
     The gap `supported_types` and `describe_object` leave between them: one
     reports that PartDesign::Pocket exists, the other needs a Pocket to already
-    be in the Document. FCC-95.
+    be in the Document.
     """
     described = tools.call("describe_type", {"type_id": "PartDesign::Pocket"})
 
@@ -333,7 +333,7 @@ def test_a_type_is_describable_before_any_object_of_it_exists(tools, doc):
 def test_an_enumeration_reports_the_spellings_this_build_accepts(tools):
     """
     `'Through all'` is not one of them, and assigning it is what killed Step 2
-    of the recorded run. FCC-95.
+    of the recorded run.
 
     A length is a number, not a choice, and has nothing to spell.
     """
@@ -349,7 +349,7 @@ def test_describing_a_type_leaves_the_document_and_the_session_as_they_were(tool
     """
     The Tool instantiates the type somewhere, and it may not be here. A scratch
     Document left open, or the user's Document no longer the active one, is the
-    same defect as writing to theirs. FCC-95.
+    same defect as writing to theirs.
     """
     import FreeCAD
 
@@ -375,7 +375,7 @@ def test_a_type_this_build_does_not_have_says_so_rather_than_inventing_it(tools)
 def test_describe_type_cannot_be_used_to_apply_anything(tools, doc):
     """
     Read-only in the only sense that matters: there is no argument through
-    which code, a value or a Document could be passed. FCC-95.
+    which code, a value or a Document could be passed.
     """
     schema = {described["name"]: described for described in tools.describe()}["describe_type"]
 
@@ -456,7 +456,7 @@ def _plate(doc, holes=1):
 
     A `Part::Box` would describe as a box and prove nothing: the Description's
     first layer is the feature tree, and it is trustworthy only because Lint
-    forces the tree to be genuine PartDesign (ADR-0012).
+    forces the tree to be genuine PartDesign.
 
     The profile sits on XY and the material is above it, so the cut goes up.
     """
@@ -511,7 +511,7 @@ def test_a_feature_is_described_by_its_parameters_not_by_its_type_alone(describe
     """
     `{name, label, type}` says a `PartDesign::Pad` exists and not one dimension
     of it, so there was nothing to judge and the whole weight fell on the
-    picture. FCC-81.
+    picture.
     """
     assert _feature(described, "Pad")["parameters"]["Length"] == "10.0 mm"
     assert _feature(described, "Hole")["parameters"]["Diameter"] == "8.0 mm"
@@ -533,7 +533,7 @@ def test_the_inventory_reports_how_much_material_there_is(doc):
     """
     A Pocket extruded away from the solid cuts nothing, and the feature tree,
     the face families and the overall size all come out identical whether it
-    cut or not. Volume is the one reading that tells the two apart. FCC-96.
+    cut or not. Volume is the one reading that tells the two apart.
 
     20 x 20 x 10 less one 8mm bore through it.
     """
@@ -633,7 +633,7 @@ def test_traps_carries_the_seed_taxonomy_classes_not_yet_in_it():
 
 def test_build_registry_registers_the_same_tools_and_schemas_as_before_the_split():
     """
-    Golden schema list captured from `build_registry` before FCC-268 split it
+    Golden schema list captured from `build_registry` before it was split
     into `_register_*` functions, so a tool silently dropped or renamed in the
     split fails this test instead of surfacing later as a missing LLM tool.
     """

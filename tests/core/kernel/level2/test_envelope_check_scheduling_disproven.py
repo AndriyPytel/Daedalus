@@ -1,11 +1,11 @@
 
 """
-FCC-247, second half -- the deterministic envelope check (`the_envelope_
-measured`, `core/loop.py:2356`) is free (no model call) where the model-
-authored check is not, so the 11.7x cost/benefit ratio that closed the rest
-of `check_assertions` (`tests/test_per_step_assertion_scheduling_disproven.
-py`) does not reach it -- a free check earns its keep on a single true
-positive. This file measures the one thing that decides it anyway: schedule
+The second half of the envelope-check scheduling question: the deterministic
+envelope check (`the_envelope_measured`, `core/loop.py:2356`) is free (no
+model call) where the model-authored check is not, so the 11.7x cost/benefit
+ratio that closed the rest of `check_assertions` (`tests/test_per_step_
+assertion_scheduling_disproven.py`) does not reach it -- a free check earns
+its keep on a single true positive. This file measures the one thing that decides it anyway: schedule
 it to run right after the Step whose own `satisfies` completes the
 envelope's addresses, rather than waiting for the run's own `assertion()`,
 and does any *later* Step in the same Plan still move the built part's
@@ -23,8 +23,9 @@ are a measured FreeCAD bounding box, not an assumption.
 citations at Step 1, but the un-cited latch Steps after it still grow the
 bounding box by 12 mm. A per-Step trigger gated on "this Step's own
 citations complete the envelope" would have failed a correct, unfinished
-part. FCC-247's free half stays unbuilt for the same reason FCC-240 was
-closed: the near-zero running cost does not make a false-fire free, because
+part. The deterministic check's free half stays unbuilt for the same reason
+the per-step assertion scheduling work was closed: the near-zero running cost
+does not make a false-fire free, because
 a false-fire routes into a revision, and a revision costs roughly a whole
 extra attempt. The other session, `a7b95d14ea20491c8dd6c654b3285bf3`, is the
 one place in the whole corpus the deterministic check would have been a true

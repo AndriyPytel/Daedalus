@@ -1,7 +1,7 @@
 """
 Level 2 — ephemeral sessions write no checkpoint.
 
-Per FCC-341: a fresh-handoff `check(code, document=..., ephemeral=True)` writes
+A fresh-handoff `check(code, document=..., ephemeral=True)` writes
 no checkpoint file, and costs less than the same fresh handoff without
 `ephemeral=True` to the same document.
 """
@@ -56,7 +56,7 @@ def test_ephemeral_fresh_handoff_costs_no_more_than_a_non_ephemeral_one(kernel, 
     """
     A fresh handoff (`document=...`) always reopens the document from disk,
     whether or not `ephemeral=True` -- that open is the same cost either way
-    and is not what FCC-341 touched. What FCC-341 removed is the checkpoint
+    and is not what the ephemeral change touched. What it removed is the checkpoint
     save: a non-ephemeral fresh handoff calls `doc.saveCopy` twice (once for
     the baseline it opens onto, once for the success checkpoint), ephemeral
     calls it zero times.
@@ -68,7 +68,7 @@ def test_ephemeral_fresh_handoff_costs_no_more_than_a_non_ephemeral_one(kernel, 
     on the same file costs ~19ms, so a continuing session (no open, one
     saveCopy) and an ephemeral fresh handoff (one open, no saveCopy) can land
     on either side of a 2x bound depending only on which of those two costs
-    is larger that day -- the FCC-387 report saw the open lose, this run
+    is larger that day -- an earlier measurement run saw the open lose, this run
     sees the saveCopy lose. Comparing two fresh handoffs to the same document
     holds the open cost fixed and isolates exactly the saveCopy calls
     ephemeral skips: measured on this machine, ephemeral costs ~20% of the

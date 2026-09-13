@@ -1,12 +1,12 @@
 """
-Level 2 -- the Plan widget FCC-177 rewrites, built for real against
+Level 2 -- the Plan widget, built for real against
 FreeCAD's own Qt binding, offscreen.
 
 `ui/plan_widget.py`'s own docstring draws the split: editable until `lock()`,
-a read-only per-Step marker display after. This is where FCC-177's Acceptance
+a read-only per-Step marker display after. This is where the Acceptance
 Criteria on that split are checked -- inline editing, add, remove, reorder,
 and the switch to the marker display `highlight()`/`mark()` already painted
-before this ticket. The wiring from a live `core.events.Event` through the
+before this rewrite. The wiring from a live `core.events.Event` through the
 panel to these calls is `tests/test_panel_level2.py`'s, the same split
 `test_queue_widget_level2.py` draws for the Queue.
 """
@@ -99,7 +99,7 @@ def test_locking_stops_further_editing_add_and_delete():
 
 
 def test_locking_freezes_exactly_what_the_plan_held_at_that_moment():
-    """Build reads `steps()` and locks in the same breath (FCC-177) -- an edit after either is moot."""
+    """Build reads `steps()` and locks in the same breath -- an edit after either is moot."""
     plan = _widget(("A", "B"))
     plan._list.item(0).setText("A, edited")
 

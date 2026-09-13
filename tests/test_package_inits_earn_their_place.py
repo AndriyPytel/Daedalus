@@ -1,5 +1,5 @@
 """
-No package `__init__.py` under `src/` is a docstring and nothing else (FCC-349).
+No package `__init__.py` under `src/` is a docstring and nothing else.
 
 `core/freecad`'s was exactly that -- a docstring naming `apply` and `traps`,
 grouping nothing a caller reached through the package. Its modules moved up

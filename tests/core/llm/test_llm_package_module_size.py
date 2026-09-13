@@ -1,4 +1,4 @@
-"""Guards the package split's own acceptance criterion — FCC-337.
+"""Guards the package split's own acceptance criterion.
 
 Every module under `core/llm/` stays under the split's own ceiling, so the
 concern it holds stays a single read.

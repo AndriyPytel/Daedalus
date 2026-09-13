@@ -1,6 +1,6 @@
 """
 `config/prompts/design.md`'s closed `kind` vocabulary and its region-name
-clause (FCC-231, ADR-0026, `FCC-A-52`).
+clause.
 
 The vocabulary is read out of `config/prompts/design.md` itself, never
 copied into this file: a test carrying its own copy of the closed list
@@ -26,7 +26,7 @@ def _vocabulary_md():
 def _naming_section(text):
     """
     The closed `kind`/`id`/datum/envelope vocabulary. It lives in
-    `language.md` now (ADR-0026, FCC-234), composed into `design.md` by
+    `language.md` now, composed into `design.md` by
     `core.loop.prompt` rather than written there a second time.
     """
     start = text.index("## Naming from a closed vocabulary")
@@ -103,7 +103,7 @@ def _classify(text, kinds, synonyms):
 
 
 def test_the_kind_vocabulary_covers_all_but_six_of_410_features():
-    """Residue target from FCC-231's Acceptance Criteria: 6 or fewer of 410,
+    """Residue target from this ticket's Acceptance Criteria: 6 or fewer of 410,
     each one named: two `material specification` entries, one reference
     region, and three snap-latch features no kind names cleanly."""
     kinds, synonyms = _kind_vocabulary(_naming_section(_vocabulary_md()))
@@ -122,7 +122,7 @@ def test_the_kind_vocabulary_covers_all_but_six_of_410_features():
 
 
 def test_no_word_appears_in_two_of_designs_bare_vocabularies():
-    """`ear` is the fixture: before FCC-231 it named a closed `kind` and,
+    """`ear` is the fixture: before this change it named a closed `kind` and,
     two lines later, a region-name example — the same word a term and not a
     term at once."""
     lists = _bare_word_lists(_naming_section(_vocabulary_md()))
@@ -158,7 +158,7 @@ def test_no_prompt_licenses_a_value_outside_a_closed_list():
 def test_core_design_feature_kind_matches_the_prompts_own_list():
     """
     `core.design.FEATURE_KIND` is the closed list `merge()` refuses a `kind`
-    against (ADR-0026, FCC-232); this prompt is what asks the model for it.
+    against; this prompt is what asks the model for it.
     Two independent copies of a closed list is exactly the shape that drifts
     silently, so a test keeps them equal rather than a comment promising it.
     """

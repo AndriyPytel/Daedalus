@@ -1,5 +1,5 @@
 """
-FCC-238: the closed 36-`op` vocabulary (ADR-0026, FCC-233) must be complete
+The closed 36-`op` vocabulary must be complete
 over the FreeCAD classes that build design geometry, not just closed. This
 is the survey `core.lint.OP_TYPEIDS` is checked against.
 
@@ -33,7 +33,7 @@ hidden behind a second table nothing else in the codebase reads:
   circular-sketch `PartDesign::Pocket`, a normal and often more robust
   FreeCAD technique, and was refused before Preflight for it, then retried
   onto `PartDesign::Hole`, which failed at runtime with "No base set, no
-  sketch support either" (FCC-238, this ticket's fix).
+  sketch support either" (this ticket's fix).
 - `PartDesign::Hole` — `hole` and `thread`. Pre-existing, unchanged by this
   ticket: a thread is a Hole feature's own `Threaded` property
   (`language.md`: "A thread is a hole whose prose gives the thread's own
@@ -59,7 +59,7 @@ Two facts about FreeCAD, not two bugs: a Hole feature builds a thread by
 setting its own Threaded property rather than through a distinct TypeId
 (language.md: "A thread is a hole whose prose gives the thread's own
 parameters"), and cutting a hole with a circular-sketch Pocket is a normal
-FreeCAD technique this ticket's defect (FCC-238) found banned. A third
+FreeCAD technique this ticket's defect found banned. A third
 exception should not be added here — at that point the closed vocabulary's
 premise, that a TypeId names one operation, is false often enough that
 injectivity is the wrong property to assert, and this test needs rewriting
@@ -337,14 +337,14 @@ def test_excluded_typeids_are_not_accepted_under_any_op():
 
 def test_hole_accepts_partdesign_pocket_as_well_as_partdesign_hole():
     """
-    FCC-238: session afa0142baef847b0a9cd9139390af993 Step 5 cut a hole with
+    Session afa0142baef847b0a9cd9139390af993 Step 5 cut a hole with
     a circular-sketch PartDesign::Pocket and was refused before Preflight,
     then retried onto PartDesign::Hole, which failed at runtime with "No
     base set, no sketch support either" — a working tool banned, replaced
     with a broken one, two revisions spent on the same operation.
 
-    ADR-0026/FCC-A-53: the TypeId check reads the kernel's own report of
-    what a Step built, not the code that built it (FCC-368).
+    The TypeId check reads the kernel's own report of
+    what a Step built, not the code that built it.
     """
     from core.lint import op_typeid_mismatch
 

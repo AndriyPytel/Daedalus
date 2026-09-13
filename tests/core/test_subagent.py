@@ -1,5 +1,5 @@
 """
-FCC-307: the tree-wide sub-agent supervisor -- depth-1 delegation, and the
+The tree-wide sub-agent supervisor -- depth-1 delegation, and the
 turn/token/concurrency budgets it enforces (wall time stays telemetry).
 """
 import pytest

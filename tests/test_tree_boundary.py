@@ -1,14 +1,14 @@
 """
 The engine -- `core` and `copilot` (the SDK) -- runs with no Qt at all, not
-even a deferred import, and never reaches back into `bridge` or `ui`. FCC-360
-finished what FCC-359 started: `on_main_thread` -- the one PySide import the
-engine still carried, deferred inside a function so headless callers never
-paid for it -- moved to `Mod/bridge/main_thread.py`, so the check below no
-longer needs a module-scope exception.
+even a deferred import, and never reaches back into `bridge` or `ui`:
+`on_main_thread` -- the one PySide import the engine still carried, deferred
+inside a function so headless callers never paid for it -- moved to
+`Mod/bridge/main_thread.py`, so the check below no longer needs a
+module-scope exception.
 
 `Mod` -- `ui`, `CopilotPreferences.py` -- is FreeCAD
 and Qt code, and reaches the engine through `copilot.sdk` alone; `bridge` is
-the one sanctioned exception, the Qt-touching layer FCC-353 built to carry a
+the one sanctioned exception, the Qt-touching layer built to carry a
 `core` setting or a model list across the boundary as a Qt signal.
 """
 import ast
@@ -96,7 +96,7 @@ def test_mod_reaches_the_engine_only_through_the_sdk():
 
 
 def test_initgui_installs_only_the_dock_and_preferences():
-    """FCC-361: the workbench registration is gone; nothing replaces it."""
+    """The workbench registration is gone; nothing replaces it."""
     path = os.path.join(ROOT, "InitGui.py")
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), filename=path)

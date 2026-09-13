@@ -172,10 +172,11 @@ def test_status_runs_as_a_standalone_script_not_only_imported(tmp_path):
 
 def test_baseline_tasks_walk_the_pinned_eight_sheets_twice_as_replicates():
     """
-    FCC-294: the lane walks each of the 8 pinned sheets twice under the same
+    The lane walks each of the 8 pinned sheets twice under the same
     model -- two replicates giving a spread, not an `off`/`on` comparison --
     so its own `--baseline` and `report.py`'s reading of the result cannot
-    drift onto a different set of sheets than FCC-319 measures against.
+    drift onto a different set of sheets than the modelmania comparison
+    run measures against.
     """
     tasks = lane.baseline_tasks()
 

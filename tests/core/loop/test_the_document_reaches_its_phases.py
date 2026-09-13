@@ -1,5 +1,5 @@
 """
-FCC-291: every phase whose `PHASE_CONTRACT` row declares a Document is handed
+Every phase whose `PHASE_CONTRACT` row declares a Document is handed
 one — Execute opens what the Plan was written against, Assertion measures a
 copy of it — and the kernel's answer to a code turn reaches the session log.
 """
@@ -211,7 +211,7 @@ def test_assertion_measures_against_a_copy_of_the_document(monkeypatch, tmp_path
 @pytest.mark.freecad
 def test_a_declared_step_with_no_code_in_the_final_reply_still_reaches_apply_step(kernel, tmp_path):
     """
-    FCC-367 AC1, the regression that shipped: `execute.md` tells the model to
+    The regression that shipped: `execute.md` tells the model to
     end the phase with `{"declare": {"steps": [{"step": 1, "label": "..."}]}}`
     -- no `code` -- because the code already lives in the kernel's
     declarations. `_written` used to read only the reply's own `steps`, so an

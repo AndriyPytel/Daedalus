@@ -1,5 +1,5 @@
 """
-Level 2 -- the replay signature contract (FCC-302) against a real headless
+Level 2 -- the replay signature contract against a real headless
 Preflight worker and a real FreeCAD Document: `run_in_transaction` aborts
 before it commits when what landed does not match what Preflight verified,
 and the allocated-name map crosses from one Step's Preflight into the

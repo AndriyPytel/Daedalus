@@ -1,5 +1,5 @@
 """
-FCC-305: the declared phase-visibility table, and its spawn function.
+The declared phase-visibility table, and its spawn function.
 """
 import os
 import stat

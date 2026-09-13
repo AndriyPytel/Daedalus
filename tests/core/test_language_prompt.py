@@ -1,6 +1,6 @@
 """
 `config/prompts/language.md` is the single home of the vocabulary every
-phase writes and reads (ADR-0026, FCC-234): the closed `kind` and `op`
+phase writes and reads: the closed `kind` and `op`
 lists, the noun-to-verb map, and the rule that an artefact is written in
 English, one heading per closed list. `core.loop.prompt` composes each
 phase from `_PHASE_VOCABULARY`'s sections for it, not the whole file — a
@@ -87,7 +87,7 @@ def test_design_never_names_its_own_artefact_a_model():
 def _reply_skeleton(phase):
     """
     The tail of the prompt showing what a `{"declare": ...}` turn carries
-    (FCC-322 rewrote the reply format from a single JSON reply to this
+    (the reply format was rewritten from a single JSON reply to this
     multi-turn agent's `declare` shape, but the marker check below is the
     same: what the skeleton shows is what a real reply must carry). `## How
     you work` is that section's own heading in every rewritten prompt, so
@@ -100,7 +100,7 @@ def _reply_skeleton(phase):
 
 def test_a_reply_shows_the_marker_language_md_declares_for_its_own_phase():
     """
-    FCC-236: `core.design.merge()`'s closed-kind check fires only when a
+    `core.design.merge()`'s closed-kind check fires only when a
     Design reply carries `"kind_vocabulary": "closed"` — the marker
     `language.md`'s own "Naming from a closed vocabulary" section says
     every reply carries. `plan.md`'s reply skeleton already shows

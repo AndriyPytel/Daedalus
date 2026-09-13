@@ -216,7 +216,7 @@ def test_send_cancelled_stops_the_run_before_it_starts():
     """
     A caller's own `cancelled` reaches `core/loop.py :: run` unchanged, the
     shape the per-run cost ceiling depends on: a `cancelled` that is already
-    `True` never lets Design plan anything (FCC-77), the same boundary
+    `True` never lets Design plan anything, the same boundary
     `test_loop_outcomes.py` proves for `run()` directly.
     """
     from copilot.sdk import Client
@@ -255,7 +255,7 @@ def test_kill_provider_reaches_this_clients_own_llm(monkeypatch):
 
 def test_a_real_runs_transcript_replays_as_the_run_that_wrote_it(tmp_path, kernel):
     """
-    FCC-390's replay tests all wrote their own transcript by hand, so a bug in
+    Earlier replay tests all wrote their own transcript by hand, so a bug in
     `Client.send`'s own path to disk -- as distinct from `EventStream.log_to`
     called directly -- would have passed every one of them. This drives an
     actual headless run and reads back the file `Client` itself wrote.

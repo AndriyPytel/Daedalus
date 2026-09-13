@@ -1,5 +1,5 @@
 """
-Level 2 -- a Step imports the checkout it was run from (FCC-334).
+Level 2 -- a Step imports the checkout it was run from.
 
 Importing FreeCAD prepends the Mod directory the addon is symlinked into, so
 `core` inside the kernel meant the installed copy: a Step importing a module

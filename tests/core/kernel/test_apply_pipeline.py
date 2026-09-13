@@ -4,8 +4,8 @@ Level 1 — the order the apply pipeline does things in, and what the caller see
 Everything is injected: no Qt, no FreeCAD, no worker. What matters here is that
 lint runs before the transaction, the transaction never opens on a Step that
 changed nothing, and none of that is visible from outside — the caller gets
-"applied" or "failed". There is no rehearsal here any more (ADR-0027
-supersedes ADR-0002 in part): the caller hands `apply()` `kernel_result`, what
+"applied" or "failed". There is no rehearsal here any more: the caller hands
+`apply()` `kernel_result`, what
 a real kernel already found running the Step for real, and `FakeWorker` here
 is only `start_run`'s own seed call, untouched by this ticket.
 """
@@ -51,8 +51,8 @@ class FakeWorker:
 def _kernel_result(created=("Box",), modified=(), objects=None, signature=None, **rest):
     """
     A `kernel_result` shaped like what `apply()` now expects a caller to have
-    from the kernel's own run of the Step (FCC-A-53), rather than a
-    rehearsal `apply()` runs itself.
+    from the kernel's own run of the Step, rather than a rehearsal `apply()`
+    runs itself.
     """
     made = list(created)
     return dict(created=made, deleted=[], modified=list(modified),
@@ -131,7 +131,7 @@ def test_a_step_the_kernel_says_changed_nothing_leaves_the_camera_alone(pipeline
 
 def test_a_step_that_only_rewrites_a_sketchs_geometry_still_lands(pipeline):
     """
-    Seen in the wild (FCC-291): a Step deleted a sketch's geometry and drew
+    Seen in the wild: a Step deleted a sketch's geometry and drew
     it again as a clean capsule. `signature_of()` does not see into a
     Sketch's geometry, so it reads unchanged even though the rewrite is
     real. The kernel's own `modified` is enough on its own -- it is not
@@ -210,7 +210,7 @@ def test_an_element_the_user_selected_survives_the_lint(pipeline):
 def test_a_fillet_that_never_says_how_many_edges_never_reaches_the_document(pipeline):
     """
     A filter that finds eight of the marked edges rounds eight of them and
-    reports the Step applied. It fails before the Document sees it. FCC-151.
+    reports the Step applied. It fails before the Document sees it.
     """
     result = pipeline.apply(
         "refs = []\n"
@@ -227,7 +227,7 @@ def test_a_fillet_that_never_says_how_many_edges_never_reaches_the_document(pipe
 
 def test_review_views_reads_the_pipelines_own_document(pipeline, monkeypatch):
     """
-    Review captures the Session's own bound Document (FCC-181), not whichever
+    Review captures the Session's own bound Document, not whichever
     tab is in front — the same Document `apply` just landed the Step on.
     """
     seen = []
@@ -244,7 +244,7 @@ def test_every_document_touch_goes_through_the_dispatcher():
     Every document touch goes through the dispatcher: resolve the Document,
     read what is there before, run the transaction, fit the view, describe
     what is there now. There is no rehearsal copy any more to dispatch a
-    sixth time (ADR-0027 supersedes ADR-0002 in part).
+    sixth time.
 
     The viewport is one of them. A camera moved off the main thread is a Coin
     scene graph touched from a worker, which is the crash the dispatcher exists
@@ -267,8 +267,8 @@ def test_every_document_touch_goes_through_the_dispatcher():
 
 def test_an_op_mismatch_reaches_apply_the_same_way_a_lint_rejection_does(pipeline):
     """
-    ADR-0026/FCC-A-53: whether a Step built the TypeId its `op` promises is
-    read off `kernel_result`'s own `created`/`objects`, checked before the
+    Whether a Step built the TypeId its `op` promises is read off
+    `kernel_result`'s own `created`/`objects`, checked before the
     transaction ever sees the code.
     """
     result = pipeline.apply(

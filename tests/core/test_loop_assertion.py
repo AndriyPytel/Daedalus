@@ -133,7 +133,7 @@ def test_a_gap_the_run_answered_is_not_a_gap_on_the_document():
     the drawing answered two: the profile of the arm cutout, and the width of
     the ring split off the 1 mm and 2 mm callouts either side of it. Both value
     and gap then stood on the description, so the Gate showed a person a value
-    beside a note saying nobody had supplied one (FCC-153).
+    beside a note saying nobody had supplied one.
     """
     document, logged, _ = _the_clamp_as_it_was_read()
     answered = [gap for gap in logged["not_defined"]
@@ -158,7 +158,7 @@ def test_the_evidence_keeps_every_gap_the_reading_held():
     """
     Retiring is not deleting. What nobody had supplied while Design was still
     reading is part of the reading, and the log beside the document is where
-    the whole of it stays (ADR-0019).
+    the whole of it stays.
     """
     document, logged, _ = _the_clamp_as_it_was_read()
 
@@ -226,7 +226,7 @@ def test_a_plan_citing_the_document_it_was_handed_leaves_nothing_unplanned():
     """
     The description and the Acceptance still come off one model, so a Step that
     cites a line of the document it was shown is a Step that covers the entry
-    that line is (ADR-0020). A second Plan turn here would be the coverage check
+    that line is. A second Plan turn here would be the coverage check
     reading a different list from the one Plan was handed.
     """
     result, _, llm, tools = drive([
@@ -267,7 +267,7 @@ def test_an_envelope_of_anything_but_three_plain_sizes_is_not_measured_here():
 
 def test_self_intersection_check_removes_its_temp_file_even_when_export_fails():
     """
-    FCC-256: the `.brep` round-trip opens one temp file per solid
+    The `.brep` round-trip opens one temp file per solid
     (`core/py:SELF_INTERSECTION_CHECK`); a solid whose export raises
     must not leave it behind. Run once, over the whole Document, is proven
     behaviourally by `test_two_separately_valid_solids_that_overlap_each_other_still_hold`
@@ -498,8 +498,8 @@ def test_two_holes_that_disagree_and_nothing_to_settle_them_reach_the_gate():
     Neither now. There is no measurement here saying which of the two is
     misread — nothing was traced round anywhere — so the disagreement is what
     it is: a conflict, in the words of both, settled by nobody, riding to the
-    Gate where a person reads it. ADR-0019's sentence about a model that picks
-    between two disagreeing readings stands (ADR-0022).
+    Gate where a person reads it. The standing rule that a model faced with two
+    disagreeing readings picks and says so still holds.
     """
     result, events, _, tools = drive([
         design_reply(THE_CLAMP_READ_OFF_ONE_VIEW),
@@ -555,10 +555,10 @@ def test_a_run_with_nothing_to_read_writes_no_reading():
 @pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
 def test_a_sheet_is_shown_as_its_views_and_not_as_one_page():
     """
-    The whole point of FCC-102. Sent as one page this sheet arrives at the
-    provider's 143 DPI cap with 14 px of ink in a dimension digit; sent as the
-    layout plus one picture per view it arrives at 279 DPI. A single picture
-    reaching Design means the sheet went out at the resolution that misreads.
+    Sent as one page this sheet arrives at the provider's 143 DPI cap with
+    14 px of ink in a dimension digit; sent as the layout plus one picture
+    per view it arrives at 279 DPI. A single picture reaching Design means
+    the sheet went out at the resolution that misreads.
     """
     needs_drawing(MODEL_MANIA)
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
@@ -567,7 +567,7 @@ def test_a_sheet_is_shown_as_its_views_and_not_as_one_page():
     run("Build this", llm=llm, tools=FakeTools().registry, attachments=[MODEL_MANIA])
 
     shown = _pictures_shown(llm)
-    assert len(shown) > 1, "the sheet went out whole, which is what FCC-102 is about"
+    assert len(shown) > 1, "the sheet must go out as one picture per view, not as a single page"
     assert not [b for b in llm.calls[0][-1]["content"] if b.get("type") == "file"], \
         "the PDF also went out as an opaque file block, at the provider's own DPI"
 
@@ -789,9 +789,10 @@ def test_a_pdf_that_cannot_be_rendered_here_still_goes_out_as_a_file_block():
     """
     The fallback, and the reason PyMuPDF is a package the addon wants rather
     than one it needs. A PDF this cannot open — a stub, a truncated file, no
-    PyMuPDF at all — takes exactly the path it took before FCC-102: the `file`
-    content block LiteLLM carries on /chat/completions, at whatever resolution
-    the provider chooses, with the model saying so if it cannot read it (FCC-89).
+    PyMuPDF at all — takes exactly the path it took before per-view rendering
+    existed: the `file` content block LiteLLM carries on /chat/completions, at
+    whatever resolution the provider chooses, with the model saying so if it
+    cannot read it.
     """
     drawing = _a_real_pdf()
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
@@ -810,7 +811,7 @@ def test_a_pdf_that_cannot_be_rendered_here_still_goes_out_as_a_file_block():
 def test_a_jpeg_reaches_the_provider_labelled_as_a_jpeg():
     """
     `data:image/png;base64` was stamped on every attachment, so a JPEG or a
-    WebP was already going out labelled as a PNG. FCC-89.
+    WebP was already going out labelled as a PNG.
     """
     photo = _a_real_png(suffix=".jpg")
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
@@ -839,7 +840,7 @@ def test_a_pdf_rides_into_review_beside_the_render():
     Whatever carries a PDF to the phase that reads it carries it to Review as
     well, or the judgement is handed a drawing it cannot open — or a block the
     provider rejects, which turns a finished run into a Refusal at the last
-    step. FCC-89.
+    step.
     """
     drawing = _a_real_pdf()
     llm = ScriptedLLMClient([design_reply(A_DATUM), plan_reply("Only"),
@@ -894,7 +895,7 @@ def test_a_run_that_had_an_attachment_says_so_on_the_stream():
     """
     Nothing recorded an attachment at all: the chips came off the bar and the
     per-Session log could not say the run had one, so a replayed transcript
-    could not either. FCC-88.
+    could not either.
     """
     _, events, _, _ = drive([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), suspect_reply(), verdict_reply("pass")],
@@ -909,7 +910,7 @@ def test_a_run_that_had_an_attachment_says_so_on_the_stream():
 def test_the_attachment_is_recorded_even_where_the_file_has_gone():
     """
     A clipboard paste is a temp file the panel deletes when the run ends, so
-    the record has to survive its file — the name is in the event. FCC-88.
+    the record has to survive its file — the name is in the event.
     """
     _, events, _, _ = drive([design_reply(A_DATUM), plan_reply("Only"),
                              code_reply("box()"), suspect_reply(), verdict_reply("pass")],
@@ -931,7 +932,7 @@ def test_the_description_is_an_event_of_its_own_standing_before_the_plan():
     It used to be a field on the Plan event, because Plan produced it. A phase
     of its own emits its own event, and a replayed transcript then shows it in
     the order it was actually produced. It carries the model, so the Session log
-    holds the structure and not somebody's rendering of it. FCC-47, FCC-86.
+    holds the structure and not somebody's rendering of it.
     """
     _, events, _, _ = drive([design_reply(A_PART),
                              plan_reply("Only", satisfies=everything(A_PART)),
@@ -952,7 +953,7 @@ def test_with_nothing_attached_the_part_is_described_from_the_words_alone():
     """
     Design runs whether or not there is a drawing, and the Gate then shows a
     description and the criteria the finished part has to satisfy rather than
-    nothing. FCC-153.
+    nothing.
     """
     _, events, llm, _ = _a_run_with_no_drawing()
 
@@ -984,8 +985,7 @@ def test_a_question_nobody_answered_is_settled_by_design_and_shown_at_the_gate()
     """
     Design asks about what the part cannot be described without, so nobody
     answering cannot leave it out: the model settles every value it asked
-    about, says in `because` what off, and the Gate is handed each of them
-    (ADR-0022).
+    about, says in `because` what off, and the Gate is handed each of them.
     """
     asked = []
 
@@ -1029,7 +1029,6 @@ def test_design_asks_the_user_itself_before_any_plan_exists():
     around the gap, so the question reached the user out of a Plan that had
     already committed to a shape. Design owns the question: it asks for what it
     sees empty in its own model, before Plan, and the answer is merged in.
-    FCC-93.
     """
     asked = []
 
@@ -1069,7 +1068,7 @@ def test_the_description_is_carried_into_execute_as_text():
 def test_the_description_reaches_plan_under_one_key():
     """
     One key, one source. Two were how the 100 mm was lost: the description and
-    the answers arrived separately and Plan preferred the newer. FCC-93.
+    the answers arrived separately and Plan preferred the newer.
     """
     _, _, llm, _ = drive([design_reply(A_PART),
                           plan_reply("Only", satisfies=everything(A_PART)),
@@ -1091,7 +1090,7 @@ def test_execute_is_told_nothing_extra_when_nothing_was_described():
 def test_a_revision_plans_from_the_same_description_and_does_not_read_again():
     """
     The description depends on neither the Snapshot nor the feedback, so a
-    second call at the same picture is a provider call spent on nothing. FCC-86.
+    second call at the same picture is a provider call spent on nothing.
     """
     _, events, llm, _ = drive([
         design_reply(A_PART),
@@ -1196,7 +1195,7 @@ def test_the_verdict_is_surfaced_either_way():
 def test_four_attempts_per_step_then_blocked_with_what_was_tried():
     """
     `revisions=0`: the handback path has its own tests, this one is the
-    budget. FCC-372: the four attempts are rewrites in one kernel session --
+    budget. The four attempts are rewrites in one kernel session --
     four, not three, because a declared Step's first refusal is free, the
     same as a scratch turn that fails, and only the three after it are
     charged against `attempts_per_step`'s default of 3.
@@ -1220,7 +1219,7 @@ def test_the_acceptance_list_rides_with_the_plan_it_belongs_to():
     One list for the whole Plan, not one entry per Step: what is checked is the
     finished Document, and the check runs once the run is over. It reaches the
     Plan Gate through the event, because a criterion the user cannot see is a
-    criterion they cannot correct. FCC-75.
+    criterion they cannot correct.
     """
     _, events, _, _ = drive([
         design_reply(A_PART),
@@ -1240,7 +1239,7 @@ def test_a_run_with_nothing_described_still_plans_and_shows_an_empty_acceptance(
     alone, as it did before there was a list at all. Making it fatal would kill
     runs over a prompt regression, and the one fatal answer stays "no Steps".
     Derived rather than written, it is now the shape of a run with no drawing
-    and no answers — which still plans. FCC-75, FCC-94.
+    and no answers — which still plans.
     """
     result, events, _, _ = drive([
         plan_reply("Add a box"),
@@ -1256,8 +1255,8 @@ def test_no_step_carries_named_parameters_any_more():
     """
     The whole mechanism, gone at every layer it crossed: the Plan event, the
     Execute request and the apply call. `type` plus real FreeCAD property names
-    *is* Plan writing code, which is the level FCC-74 named as the root — the
-    field kept demanding it. FCC-75.
+    *is* Plan writing code, which is the level a Step's parameters were meant
+    to avoid — the field kept demanding it.
     """
     _, events, llm, tools = drive([
         plan_reply({"do": "Pad the base",

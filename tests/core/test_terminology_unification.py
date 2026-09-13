@@ -25,7 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 def _prompt():
     """
     What Design is actually shown: `design.md` composed with the shared
-    vocabulary, `config/prompts/language.md` (ADR-0026, FCC-234) — the
+    vocabulary, `config/prompts/language.md` — the
     closed lists below moved there and are no longer written a second time
     in `design.md` itself.
     """
@@ -169,7 +169,7 @@ class TestReconciliationConflictsRatherThanSupersession:
 
     def test_order_independence_same_result_regardless_of_merge_order(self):
         """
-        ADR-0019: merge() is order-independent. The same two page fragments
+        merge() is order-independent. The same two page fragments
         merged in either order must produce identical features and conflicts,
         though list ordering may differ.
 

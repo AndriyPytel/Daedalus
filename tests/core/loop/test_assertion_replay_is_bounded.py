@@ -1,5 +1,5 @@
 """
-FCC-389: the saved session document replays the Assertion phase under a
+The saved session document replays the Assertion phase under a
 bound measured here, not asserted by eye.
 
 The session `kernel_checkpoint_wggws3z7.FCStd` the ticket measured against is

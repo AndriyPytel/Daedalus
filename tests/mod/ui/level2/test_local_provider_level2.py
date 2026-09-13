@@ -1,5 +1,5 @@
 """
-A local server as a provider, from the Preferences page down to the combo (FCC-50).
+A local server as a provider, from the Preferences page down to the combo.
 
 The endpoint used to be typed into the password-masked "API Key" field and read
 back out of it — so it was kept in secret storage, a server wanting both an

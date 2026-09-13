@@ -1,23 +1,23 @@
 """
 Level 2 -- Preflight refuses a Step that leaves a Body's Shape invalid or
-inverted (FCC-255).
+inverted.
 
-FCC-27's `_bodies_in_pieces` is the only shape check Preflight runs today,
+The `_bodies_in_pieces` check is the only shape check Preflight runs today,
 and it only counts solids per `PartDesign::Body`: it says nothing about
 whether the solid it counted is itself valid, or whether it came out
 inverted. Both defects recompute clean -- FreeCAD reports the feature
 up-to-date and valid -- so nothing short of a dedicated check ever sees
-them (FCC-253 Q4).
+them.
 
 Run against a real headless FreeCAD through the real Preflight Worker, same
 reasoning as `test_preflight_lost_solids_level2.py`: what is being checked
 is what FreeCAD's own `Shape.isValid()` and `Shape.Volume` say, not what a
-fake would agree to (ADR-0007).
+fake would agree to.
 
 SELF_TOUCHING pads an asymmetric figure-eight profile -- two triangular
 lobes of different size sharing one vertex -- which recomputes to a single
 solid of substantial, nonzero volume whose `isValid()` is `False`; the
-asymmetry keeps FCC-96's idle-feature check (net volume near zero) from
+asymmetry keeps the idle-feature check (net volume near zero) from
 being the one that fires instead.
 INVERTED_VOLUME is a `PartDesign::FeaturePython` Tip whose `execute` builds a
 box and reverses it, standing in for "a boss cut instead of added, a profile

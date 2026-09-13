@@ -1,16 +1,16 @@
 """
-FCC-247's own three questions, answered by measurement before any scheduling
-changed, from `tests/recorded/assertion_scheduling_cost.json` (built from `logs/sessions/`
-and `logs/ab-rlm-agentic/`, gitignored, hence the tracked fixture -- FCC-231's
-established substitute; the script that built it is gone).
+This ticket's own three questions, answered by measurement before any
+scheduling changed, from `tests/recorded/assertion_scheduling_cost.json` (built from `logs/sessions/`
+and `logs/ab-rlm-agentic/`, gitignored, hence the tracked fixture -- the
+established substitute for a live log; the script that built it is gone).
 
 **Q1 -- what does an acceptance line cost to evaluate?** Session
-`480b9995421e443d97b439a4f55bc3fe`, the session FCC-247 itself is about:
+`480b9995421e443d97b439a4f55bc3fe`, the session this ticket is about:
 the model's own `cost` event for writing the assertion script costs 485.6 s;
 the `check_assertions` tool call immediately after it, running that already-
 written script against the Document, costs 1.2 s -- a 400x gap. Evaluating a
 line that already has code behind it is cheap. Writing the code is not, and
-that is the whole cost of the phase FCC-247's own ticket measured at "one
+that is the whole cost of the phase this ticket measured at "one
 call and 486 s".
 
 **Q2 -- can a line be evaluated before its own features exist?** Answered by
@@ -38,8 +38,8 @@ that Step's own `satisfies` names (AC 2's design), costs roughly 11.7x what
 it would save, at every cost figure this fixture carries -- because the
 expensive part (Q1) is writing a new check, and a per-Step schedule writes
 one for every qualifying Step, not only the ones that would ever fail. This
-ticket closes on that number, the way FCC-240 and FCC-242 did: the defect
-FCC-247 was raised for is real and already caught, exactly, by the
+ticket closes on that number, the way an earlier measurement closed one
+before it: the defect this ticket was raised for is real and already caught, exactly, by the
 end-of-run `assertion()` phase this ticket leaves unmoved (AC 3).
 """
 import json

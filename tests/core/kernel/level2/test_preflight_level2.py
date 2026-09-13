@@ -3,7 +3,7 @@ Level 2 — the Preflight Worker against a real headless FreeCAD.
 
 This is where a fake would lie. A mocked worker never segfaults, never hangs,
 and always agrees that the API exists — certifying the exact mistakes Preflight
-is built to catch (ADR-0007).
+is built to catch.
 
 The harness is the Preflight Worker itself: part of the product, not
 scaffolding around it.
@@ -28,7 +28,7 @@ def _wait_until(predicate, timeout=2.0, interval=0.01):
     """
     Polls `predicate` instead of a fixed sleep, so the drain thread gets as
     long as it actually needs on a slow CI runner and the test does not pay
-    for time it did not need on a fast one. FCC-284.
+    for time it did not need on a fast one.
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -42,7 +42,7 @@ def test_wait_until_returns_as_soon_as_the_predicate_is_true():
     """
     The predicate this poll is built for (`fresh._stderr_text()` catching up)
     can turn true well inside the old fixed 0.5s — this pins that the loop
-    does not wait out `timeout` regardless. FCC-284.
+    does not wait out `timeout` regardless.
     """
     started = time.monotonic()
 
@@ -117,7 +117,7 @@ def test_a_clean_step_comes_back_ok_with_a_render(warm, tmp_path):
 
 def test_the_workers_render_is_byte_identical_to_preflight_render_directly(warm, tmp_path):
     """
-    FCC-270 — `render` moved out of `preflight_worker` into `preflight_render`
+    `render` moved out of `preflight_worker` into `preflight_render`
     with no change to its body; the worker calls the moved function through the
     same `sys.path` trick `reading` already used for `core.sketch_check`. If the
     child process could not see the new module, `warm.check` below would come
@@ -166,7 +166,7 @@ def test_the_document_copy_is_opened_and_seen(warm, saved_document):
 
 
 def test_the_document_is_reloaded_for_every_preflight(warm, saved_document):
-    """ADR-0002 — no state may survive from one Preflight to the next."""
+    """No state may survive from one Preflight to the next."""
     first = warm.check("doc.addObject('Part::Box', 'Leaked')", document=saved_document)
     assert first.ok, first.traceback
     assert sorted(o["name"] for o in first.objects) == ["ExistingBox", "Leaked"]
@@ -247,7 +247,7 @@ def test_a_recompute_that_leaves_an_object_in_error_is_a_failure(warm):
 def test_a_failed_recompute_names_the_reason_freecad_already_knows(warm):
     """
     A bare list of names tells the next attempt nothing, so it re-spells the
-    same code. FreeCAD keeps the reason on the object. FCC-11.
+    same code. FreeCAD keeps the reason on the object.
 
     The sketch here is empty, so there is nothing for the Pad to pad.
     """
@@ -298,7 +298,7 @@ def test_a_dead_worker_says_what_it_said_on_the_way_out(fresh):
     C++ constructor of Sketcher.Constraint, before any Python-level anything.
     The one line FreeCAD leaves on stderr is all the next attempt has to go on,
     and the message used to be built after restart() had already swapped that
-    stderr for the new worker's empty one. FCC-19.
+    stderr for the new worker's empty one.
     """
     doomed = fresh.pid
 
@@ -342,7 +342,7 @@ def test_a_death_on_the_write_reports_the_dead_workers_stderr(fresh):
 def test_a_step_that_writes_cyrillic_to_stderr_is_read_back_intact(fresh):
     """
     The Worker's stderr is the only diagnostic a later death has to offer, and
-    an object Label, a path or a message is not obliged to be ASCII. FCC-51.
+    an object Label, a path or a message is not obliged to be ASCII.
 
     `_wait_until` is what the drain thread gets to catch up.
     """
@@ -438,9 +438,9 @@ def test_worker_death_is_never_raised_at_the_caller(fresh):
 
 def test_a_body_left_in_pieces_is_still_refused(warm):
     """
-    The floor under a Step, and all of it since FCC-75 took the named-parameter
-    check away: a sketch of disjoint profiles pads into separate lumps and
-    nothing raises, so Preflight is the only phase that objects (FCC-27).
+    The floor under a Step, and all of it since the named-parameter
+    check was taken away: a sketch of disjoint profiles pads into separate lumps and
+    nothing raises, so Preflight is the only phase that objects.
     """
     two_lumps = (
         "body = doc.addObject('PartDesign::Body', 'Body')\n"

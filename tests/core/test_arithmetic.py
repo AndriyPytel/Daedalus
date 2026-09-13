@@ -18,7 +18,7 @@ def test_the_sum_the_recorded_run_never_did():
     The Step claimed an 80.5 mm station put the arm's extreme on the 0 mm
     tangent plane. It puts it at 8.58, which is what Execute worked out for
     itself, twice, after the Plan had reached the Gate and the user had approved
-    it. FCC-127.
+    it.
     """
     wrong = wrong_sums("assume an 80.5 mm station, so the left extreme is at "
                        "65.5 - 80.5 * cos(45°) = 0 mm")

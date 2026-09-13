@@ -89,10 +89,10 @@ from tests.loop_helpers import (
 def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
     """
     The file reached the provider — not that the loader returned a string. The
-    prompts are config, so this reads the config. FCC-3.
+    prompts are config, so this reads the config.
 
     Driven with an attachment, because Design is a turn only where there is
-    something to read (FCC-86); every later phase shifts by one with it.
+    something to read; every later phase shifts by one with it.
     """
     _, _, llm, _ = drive([
         design_reply(A_CUBE),
@@ -135,7 +135,7 @@ def test_the_sketch_construction_rule_reaches_plan_and_execute():
     The method rule is prompt copy, not a trap — it is how to build a Sketch,
     not knowledge about this FreeCAD build. It has to reach both phases that
     author geometry, and Review, which only judges the outcome, does not
-    need it. FCC-20.
+    need it.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -204,13 +204,13 @@ def test_assertion_is_told_what_a_fillet_does_to_the_surface_it_replaced():
 
 def test_execute_is_no_longer_asked_to_assert_inside_a_step():
     """
-    FCC-54 asked Execute to assert an invariant of its own derivation, because
-    at the time there was nowhere else to check a result. There is now: Plan
-    writes the Acceptance list and the Assertion phase measures the finished
-    run (ADR-0017). What the rule actually produced was ten to twenty
+    Execute used to be asked to assert an invariant of its own derivation,
+    because at the time there was nowhere else to check a result. There is
+    now: Plan writes the Acceptance list and the Assertion phase measures the
+    finished run. What the rule actually produced was ten to twenty
     preconditions per Step — `len(bodies) == 1`, `base.TypeId == 'PartDesign::Pad'`
     — and a precondition that does not hold is an `AssertionError` out of the
-    transaction, so it spends one of the Step's three attempts. FCC-83.
+    transaction, so it spends one of the Step's three attempts.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -229,7 +229,7 @@ def test_execute_is_no_longer_asked_to_assert_inside_a_step():
 
 def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup():
     """
-    FCC-205: nowhere named the order a part is planned in, nor why it matters.
+    Nowhere named the order a part is planned in, nor why it matters.
     A boolean — a Pad added to the solid, a Pocket or a Hole cut out of it, a
     Shell hollowing it — does not add to the Shape the Steps before it built,
     it replaces it, so a reference Execute worked out against the geometry
@@ -265,12 +265,11 @@ def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup
 
 def test_the_reading_rules_moved_to_the_design_phase_whole():
     """
-    FCC-59's rules were live in plan.md and did not hold, so FCC-86 moved who
-    reads and when rather than rewriting them a fourth time. They moved again
-    with the file when Reading became Design, and they move as they are: what
-    is asserted is that every one of them survived, that Plan no longer carries
-    any of it, and that Review is still told none of it. FCC-59, FCC-86,
-    FCC-93.
+    An earlier version of these rules was live in plan.md and did not hold,
+    so who reads and when moved instead of rewriting them a fourth time. They
+    moved again with the file when Reading became Design, and they move as
+    they are: what is asserted is that every one of them survived, that Plan
+    no longer carries any of it, and that Review is still told none of it.
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM),
@@ -297,9 +296,9 @@ def test_a_value_carries_a_named_datum_and_a_read_or_assumed_flag():
     Dimensions were read and positions were not: a magnitude arrived without
     what it was measured from, and a position with no named datum degrades into
     "somewhere sensible", which defaults to centred. Prose is what allows it —
-    a sentence carries a number without carrying its datum. FCC-87 demanded the
-    three fields in copy; they are now the shape of the model itself, keyed by
-    the datum the value is measured from. FCC-87, FCC-93.
+    a sentence carries a number without carrying its datum. These three fields
+    used to be demanded in copy; they are now the shape of the model itself,
+    keyed by the datum the value is measured from.
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM),
@@ -321,9 +320,8 @@ def test_a_value_carries_a_named_datum_and_a_read_or_assumed_flag():
 def test_a_value_the_model_settled_says_who_settled_it_and_on_what():
     """
     After decide-then-show, a user's answer and the model's own choice would be
-    the same record on the part — which is the disease ADR-0019 was written
+    the same record on the part — which is the disease this rule was written
     against. So `assumed` carries `because`, the way `derived` carries `from`.
-    ADR-0022.
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM), plan_reply("Add a box"), code_reply("box()"),
@@ -339,13 +337,13 @@ def test_a_value_the_model_settled_says_who_settled_it_and_on_what():
 
 def test_the_nonmetric_defaults_are_named_and_carry_no_number():
     """
-    FCC-206: `Default assumptions` in the text-to-cad doctrine lists both
+    `Default assumptions` in the text-to-cad doctrine lists both
     non-metric conventions — units, base plane, up axis, a body being a
     closed positive volume — and numeric ones — wall thickness, fillet
     radius, clearance. Only the first kind describes the coordinate system
     every reading sits in rather than a value of the part, so only the first
     kind belongs in design.md; a numeric default there would be exactly the
-    "nobody supplied it" FCC-114 already named, dressed up as a convention.
+    "nobody supplied it" gap already named elsewhere, dressed up as a convention.
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM), plan_reply("Add a box"), code_reply("box()"),
@@ -366,7 +364,7 @@ def test_the_nonmetric_defaults_are_named_and_carry_no_number():
 
 def test_a_nonmetric_default_carries_no_flag_and_reaches_no_acceptance_entry():
     """
-    FCC-206: units, the base plane, the up axis and a body being a closed
+    Units, the base plane, the up axis and a body being a closed
     positive volume are conventions of the model, not values read off
     anything, so a description that never names them still carries none of
     them as `assumed` — `entries()` and `decided_for_you()`, which is what
@@ -393,7 +391,7 @@ def test_a_curve_is_not_read_until_its_centre_is_placed():
     be read", and Plan then put the centres at ±10 from the middle: the same
     R30, the same 10 mm web beside it, and the wall curving out instead of in.
     A radius with no centre is two shapes, and no number on the sheet chooses
-    between them. FCC-87.
+    between them.
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM),
@@ -415,7 +413,7 @@ def test_the_views_decide_what_no_dimension_arrow_says():
     shows them outright — hatched where there is material. Which way an arc
     bows, which side is material, whether a cut goes in or a boss stands out:
     none of it is dimensioned on any drawing, and all of it is on the sheet.
-    "Not dimensioned" is not "not defined". FCC-87.
+    "Not dimensioned" is not "not defined".
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM),
@@ -438,7 +436,7 @@ def test_every_callout_printed_on_the_sheet_has_to_be_accounted_for():
     "It often says it cannot see something, and the PDF has everything on it."
     A description written from what the model happened to notice has no way to tell
     that it missed a callout; one written from a sweep of the sheet does, by
-    counting. FCC-87.
+    counting.
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM),
@@ -458,10 +456,10 @@ def test_a_fraction_of_a_named_overall_is_a_value_on_equal_terms_with_millimetre
     """
     A picture with no dimensions on it has no millimetres, only proportions.
     Millimetres-only sends it to `question`, which is the behaviour that burned
-    the run in FCC-85: the model asked about the medium rather than a value and
+    an earlier run: the model asked about the medium rather than a value and
     the answer came back nobody's. One assumed overall is a wrong scale, which
     one number at the Plan Gate corrects; a dozen assumed dimensions is a wrong
-    shape, which nothing corrects. FCC-87.
+    shape, which nothing corrects.
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM),
@@ -479,11 +477,11 @@ def test_a_fraction_of_a_named_overall_is_a_value_on_equal_terms_with_millimetre
 
 def test_the_datum_and_the_flag_reach_the_checks_without_anyone_rewriting_them():
     """
-    FCC-87 asked Plan, in copy, to carry the datum and the flag into every
+    This used to ask Plan, in copy, to carry the datum and the flag into every
     Acceptance entry, and the hole `34.5` and `50.5` came through all the same:
     a rule in a prompt is a rule a phase can miss. There is no rewrite left to
     miss it. Plan is told it does not write the list, and Assertion is told what
-    the entries it is handed are. FCC-87, FCC-94.
+    the entries it is handed are.
     """
     _, _, llm, _ = drive([
         design_reply(A_CUBE),
@@ -508,7 +506,7 @@ def test_the_part_travels_as_a_structure_and_reaches_the_gate_laid_out():
     The structure is the point: it is what the merge can refuse to overwrite,
     and what the Plan Gate can show as datums, an envelope and features rather
     than as paragraphs. It rides the stream as the model and reaches Plan as the
-    document distilled out of it, laid out the same way. FCC-87, FCC-93.
+    document distilled out of it, laid out the same way.
     """
     _, events, llm, _ = drive([
         design_reply(A_PART),
@@ -534,7 +532,7 @@ def test_plan_is_handed_a_finished_description_and_not_the_picture():
     Far too much of the split is invisible in the background otherwise: Plan is
     told plainly that this is a description somebody else produced, that what it
     calls not defined stays not defined, and that nothing arrives beside it to
-    be weighed against it. FCC-86, FCC-93.
+    be weighed against it.
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM),
@@ -558,12 +556,12 @@ def test_a_step_is_an_action_a_user_would_perform_not_a_call():
     write twice at two granularities — which is how one run drew the hexagon in
     Step 1 and again in Steps 3-8. The rule that closes it is the level: the
     action a user would perform, one piece of work per Step, no sub-steps and
-    no restating another Step's work. FCC-74.
+    no restating another Step's work.
 
     The operation is still named, in engineering words rather than the FreeCAD
     spelling of its type.
 
-    Which element a reference resolves to stays Execute's (ADR-0005).
+    Which element a reference resolves to stays Execute's.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -590,7 +588,7 @@ def test_plan_is_told_a_step_that_cannot_fail_alone_takes_the_plan_with_it():
     twenty-two entries behind them. The arm's dimensions contradicted the
     overall length, Execute handed the whole Step back, the seven Steps after it
     were waiting on the pad it never made, and the run ended with an empty
-    Document. Split, the ring and the lug land. FCC-127.
+    Document. Split, the ring and the lug land.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -611,7 +609,7 @@ def test_plan_is_told_to_write_the_sum_and_not_only_the_answer():
     The sum is checked before the Gate, so it has to be there to check: a Step
     that states only the answer states nothing anybody can work out. And the
     remedy for a sum that will not come out is a question, not a third number —
-    which is what the recorded run tried, twice. FCC-127.
+    which is what the recorded run tried, twice.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -633,7 +631,7 @@ def test_design_is_told_to_replace_the_feature_the_later_page_supersedes():
     The rule was already there — one part, not one model of two parts — and the
     run kept the Phase 1 ear beside the Phase 2 arm all the same, because the
     merge will not let a filled field change. `superseded_by` is how a phase
-    that has already written the ear down says it is gone. FCC-127.
+    that has already written the ear down says it is gone.
     """
     _, _, llm, _ = drive([
         design_reply(A_DATUM),
@@ -654,8 +652,8 @@ def test_the_granularity_rules_this_reverses_are_gone_from_plan():
     """
     Asserted as a reversal, because copy is only cancelled when it is absent:
     a newer rule standing beside "three Steps, not one" leaves Plan free to
-    obey either. FCC-58's four sentences go the same way its own reversal of
-    the rules before it went. FCC-74.
+    obey either. An earlier four-sentence rule goes the same way its own
+    reversal of the rules before it went.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -676,11 +674,12 @@ def test_the_granularity_rules_this_reverses_are_gone_from_plan():
 
 def test_plan_names_declared_numbers_and_not_how_a_reference_is_found():
     """
-    FCC-66 asked Plan for links in the same prompt that forbids it writing how
-    a reference is found (ADR-0005), and every Step that attached a sketch then
-    failed Preflight for obeying. FCC-71 took the link back; FCC-75 took the
-    whole field, and what is asserted here is the half of FCC-71 that outlives
-    it — the link is not asked for anywhere.
+    Plan used to be asked for links in the same prompt that forbids it writing
+    how a reference is found, and every Step that attached a sketch then
+    failed Preflight for obeying. That request for links was taken back, then
+    a later change took the whole field, and what is asserted here is the
+    half of the first reversal that outlives it — the link is not asked for
+    anywhere.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -690,7 +689,7 @@ def test_plan_names_declared_numbers_and_not_how_a_reference_is_found():
     _, plan_system, _, _, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
 
     assert "A link is written as the name you gave" not in plan_system, \
-        "plan.md still asks Plan for the link FCC-71 takes back"
+        "plan.md still asks Plan for the link this rule takes back"
     assert '"Profile": "RootProfile"' not in plan_system, \
         "the parameters example still shows a link as a parameter"
 
@@ -699,7 +698,7 @@ def test_the_positive_form_of_the_lint_rules_reaches_execute():
     """
     Lint can only say no. Without the how, the model enumerates workarounds —
     it already answered the one-solid rule with max(solids, key=volume). The
-    prompt carries what to build instead; Review is told neither. FCC-60.
+    prompt carries what to build instead; Review is told neither.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -722,7 +721,6 @@ def test_a_step_that_selects_a_subset_says_how_many_it_expects():
     that asked for the outline could only ever select the eight pocket
     corners — and it applied to those eight and reported success. Plan states
     the count in the Step's prose, Execute checks the selection against it.
-    FCC-151.
     """
     _, _, llm, _ = drive([
         plan_reply("Add a box"),
@@ -743,7 +741,7 @@ def test_the_curve_and_thread_types_are_traps_not_prompt_copy():
     Which types this build offers for a thread and for a free curve is
     knowledge about a specific FreeCAD build, so it lands through TRAPS and
     not in the prompt files. Plan cannot name a feature type it has not been
-    told exists. FCC-58.
+    told exists.
     """
     threads = [trap for trap in TRAPS if "AdditiveHelix" in trap]
     curves = [trap for trap in TRAPS if "BSplineCurve" in trap]
@@ -781,7 +779,7 @@ def test_the_tessellated_bound_box_is_a_trap_not_a_number_in_the_prompt():
 def test_the_constraint_spellings_are_a_trap_not_prompt_copy():
     """
     Which constraint types exist is knowledge about a specific FreeCAD build,
-    so it lives in TRAPS and lands through the placeholder. FCC-20.
+    so it lives in TRAPS and lands through the placeholder.
     """
     spellings = [trap for trap in TRAPS if "no 'Concentric'" in trap]
 
@@ -855,9 +853,9 @@ def test_the_steps_run_in_the_order_the_plan_gave_them():
 def test_a_last_turn_with_neither_code_nor_obsolete_fails_the_step_not_the_run():
     """
     A reply with no code, no `obsolete` and no `unbuildable` fails the
-    attempt, not the run. FCC-8.
+    attempt, not the run.
 
-    `revisions=0` keeps this on the terminal path: since FCC-61 a Step that
+    `revisions=0` keeps this on the terminal path: a Step that
     cannot be built hands back to Plan, and this test is about the attempt, not
     about the handback. One Step total means every one of these is a trailing
     gap, so the first is free (`trailing_gap_retries`'s default of one) and

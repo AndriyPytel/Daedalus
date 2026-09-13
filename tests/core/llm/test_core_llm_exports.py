@@ -1,5 +1,5 @@
 """
-Every name a caller imports from `core.llm` actually resolves (FCC-351).
+Every name a caller imports from `core.llm` actually resolves.
 
 The package used to keep two statements of its own surface: the lazy
 `__getattr__`'s factory names, and a hand-maintained `__all__` list of 27.

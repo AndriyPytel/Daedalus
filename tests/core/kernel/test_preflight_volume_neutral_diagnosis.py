@@ -1,9 +1,9 @@
 """
-Level 1 -- FCC-246's own diagnosis rule, scored against the replay FCC-245
-recorded (tests/recorded/preflight_volume_neutral_failures.json).
+Level 1 -- the kernel's own diagnosis rule, scored against the replay
+recorded in `tests/recorded/preflight_volume_neutral_failures.json`.
 
-FCC-245 replayed all 12 volume-neutral failures by flipping `Reversed` and
-recomputing, and recorded whether the flip changed the volume
+That replay covered all 12 volume-neutral failures by flipping `Reversed`
+and recomputing, and recorded whether the flip changed the volume
 (`reversed_flip_changed_volume`). `_idle_feature_cause` is exactly that
 comparison, called on the fixture's own recorded volumes rather than a live
 FreeCAD recompute, so this test can score the diagnosis without FreeCAD: a

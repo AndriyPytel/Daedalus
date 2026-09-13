@@ -2,7 +2,7 @@
 Level 2 — the dependency list against the imports the addon actually makes.
 
 `core.dependency_manager` imports FreeCAD at module scope, so it cannot be
-read outside a real FreeCAD the way `lint.py` can. FCC-359 took the Qt import
+read outside a real FreeCAD the way `lint.py` can. The Qt import came
 out: the dialogs it used to show through `QMessageBox` are callbacks a GUI
 supplies (`InitGui.py`) instead, so `run_dependency_check` needs no PySide.
 """
@@ -33,7 +33,7 @@ def test_a_missing_package_is_named_by_its_pip_name(dependency_manager, monkeypa
 def test_the_sheet_reader_says_so_rather_than_failing_without_pymupdf():
     """
     The one required package the addon can run without. PyMuPDF is what renders
-    a PDF here instead of leaving the resolution to the provider (FCC-102); with
+    a PDF here instead of leaving the resolution to the provider; with
     it gone `sheet_reader` reports that it cannot read a sheet and the
     attachment goes out whole, the way it did before. A dependency that is
     wanted and a dependency that is load-bearing are different things, and this
@@ -99,7 +99,7 @@ def test_pip_is_told_to_upgrade_rather_than_lay_a_version_beside_the_last(
 
 def test_a_hung_install_times_out_rather_than_freezing_freecad(
         dependency_manager, monkeypatch, tmp_path):
-    """FCC-274: a stalled network must not block InitGui.initialize() forever."""
+    """A stalled network must not block InitGui.initialize() forever."""
     import subprocess as subprocess_module
 
     def timed_out(command, **kwargs):
@@ -115,7 +115,7 @@ def test_a_hung_install_times_out_rather_than_freezing_freecad(
 
 def test_a_permission_error_is_reported_rather_than_left_to_crash_initgui(
         dependency_manager, monkeypatch, tmp_path):
-    """FCC-274: any OSError, not just FileNotFoundError, must return (False, message)."""
+    """Any OSError, not just FileNotFoundError, must return (False, message)."""
     def refused(command, **kwargs):
         raise PermissionError("no write access")
 
@@ -201,8 +201,8 @@ def test_versions_are_compared_as_numbers_not_as_text(dependency_manager, tmp_pa
 
 def test_a_failed_install_does_not_stop_the_rest_from_being_tried(dependency_manager, monkeypatch):
     """
-    FCC-287e: `run_dependency_check` used to `break` out of the install loop
-    on the first failed package, so packages after it were never attempted.
+    `run_dependency_check` must not break out of the install loop on a
+    failed package: every package after it still gets attempted.
     """
     monkeypatch.setattr(dependency_manager, "missing_packages", lambda: ["a", "b", "c"])
     monkeypatch.setattr(dependency_manager, "get_target_directory", lambda: "/tmp/x")

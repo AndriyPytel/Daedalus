@@ -3,8 +3,8 @@ Level 1 — the sheet as evidence, before any provider sees it.
 
 No network and no FreeCAD: everything here is measured off
 `tests/modelmania/mm25-p1-1.pdf`, the sheet from the recorded run that named
-the defect (ADR-0019 — an overall read as 100 where the sheet prints 108, and a
-depth off SECTION B-B that was gone two turns later).
+the defect: an overall read as 100 where the sheet prints 108, and a
+depth off SECTION B-B that was gone two turns later.
 
 The numbers in these tests are measurements, not preferences. 14 px is what a
 dimension digit renders at when the sheet goes out whole; 12.9 pt is what a
@@ -292,7 +292,7 @@ def test_a_leader_is_followed_to_the_feature_its_arrowhead_touches(sheet):
     `(R30)` is printed at the far left of the middle view, its leader starting
     on the left bore's own axis and its arrowhead landing on the wall of the
     central pocket — two different features at two ends of one line, which is
-    exactly the case ADR-0019 warns about and exactly the one that is hopeless
+    exactly the case the defect named above warns about and exactly the one that is hopeless
     to judge on a 14 px hairline. The traced end has to be out at the pocket,
     not back at the text.
     """
@@ -574,7 +574,7 @@ def test_a_second_page_is_said_to_be_a_second_sheet_and_maybe_a_revision(sheet_2
 def test_the_number_that_named_the_defect_is_measured_by_its_own_dimension_line(
         sheet_2023):
     """
-    ADR-0019 as arithmetic. The sheet prints 108 and the run recorded 100.
+    The defect named above, as arithmetic. The sheet prints 108 and the run recorded 100.
 
     Nothing here reads the digits — the string comes out of the text layer, and
     the millimetres come out of the span its own dimension line is drawn
@@ -847,7 +847,7 @@ def test_a_bore_drawn_only_as_pixels_is_measured_in_millimetres(sheet):
 
     Traced, never trusted: this is a second opinion about a number the text
     layer already carries exactly, and it exists to contradict a misreading. It
-    is well inside the 8 mm that ADR-0019 lost and nowhere near able to supply
+    is well inside the 8 mm that same defect lost and nowhere near able to supply
     the 35 itself.
     """
     circles = [entity for view in sheet.drawn for entity in view.entities
@@ -879,7 +879,7 @@ def test_a_bore_called_one_thing_and_drawn_another_is_put_on_the_record():
     agree with themselves, so the disagreement has to be built to be seen.
 
     A callout of Ø25 whose leader ends inside a hole the pixels measure at 34 is
-    9 mm apart, which is the size of the error ADR-0019 lost. It is recorded in
+    9 mm apart, which is the size of the error that same defect lost. It is recorded in
     the words of both, and it is not resolved — that is the Plan Gate's job and
     the user's, not this module's.
     """
@@ -997,7 +997,7 @@ def test_a_view_too_big_for_one_crop_is_still_shown_whole_once(sheet_2023):
     """
     A view cut into three is three pictures holding a third of a projection
     each, and relating a circle in the plan to the two lines in the elevation
-    that are the same hole was being done across them (FCC-113).
+    that are the same hole was being done across them.
     """
     tiled = {crop.name.split(", part ")[0] for crop in sheet_2023.crops
              if ", part " in crop.name}
@@ -1462,7 +1462,7 @@ def test_a_bore_the_pixels_contradict_is_a_conflict_and_never_a_value():
     """
     Outside the band nothing is carried. A callout of \u00d825 whose leader ends
     in a hole the pixels measure at 34 is 9 mm apart, which is the size of the
-    error ADR-0019 lost.
+    error that same defect lost.
     """
     hole = sheet_reader.Entity(kind="circle", source="traced", role="contour",
                                size=34.0, diameter=34.0, centre=(0.0, 0.0))
@@ -1790,7 +1790,7 @@ def test_which_views_are_bodied_by_a_picture_is_the_set_it_was(sheet_2023):
 @needs_pymupdf
 def test_a_number_the_sheet_never_printed_and_never_drew_is_reported(sheet):
     """
-    The other direction, and the shape of ADR-0019. A run read a depth of 100
+    The other direction, and the same shape as the defect named above. A run read a depth of 100
     off SECTION B-B and planned 150 x 50 x 50 two turns later: the 50 was on
     nothing, and every check in the pipeline reads one reading against another.
     """
@@ -1826,7 +1826,7 @@ def test_a_number_the_tracing_measured_is_cited(sheet):
 def test_the_sweep_is_not_what_makes_a_number_cited(sheet):
     """
     `printed_on_the_sheet` is this module's own list written back over the
-    model's paraphrase (FCC-112), so counting it would cite every number by
+    model's paraphrase, so counting it would cite every number by
     having copied it in — the same failure `uncited` was built to avoid.
     """
     invented = sheet_reader.invented(sheet, {
@@ -1979,7 +1979,7 @@ def test_read_registers_its_temp_dir_for_atexit_cleanup(monkeypatch, tmp_path):
     """
     `read()` called with no `into=` makes its own `mkdtemp` directory, and
     nothing else in the repo ever removes an `fcc-sheet-*` directory
-    (`grep -rn rmtree core ui` — FCC-263). The cleanup has to be registered
+    (`grep -rn rmtree core ui`). The cleanup has to be registered
     at creation time, so this patches `atexit.register` to capture the
     callback instead of letting it run at interpreter exit. Read a copy of
     the sheet at a path no other test has used, so `_ALREADY_READ` cannot
@@ -2011,8 +2011,8 @@ def test_a_read_failure_is_logged_once_and_then_cached_quiet(monkeypatch, caplog
     """
     A failing `_read` is caught so one bad sheet does not stop the run (the
     docstring above), but until now nothing said the failure happened
-    (`grep -n "^import\\|^from" core/sheet_reader.py` had no `logging` —
-    FCC-265). The second call with the same key must hit `_ALREADY_READ` and
+    (`grep -n "^import\\|^from" core/sheet_reader.py` had no `logging`).
+    The second call with the same key must hit `_ALREADY_READ` and
     not log again. Reads a copy at a path no other test has used, so the
     cache another test filled cannot hand back a non-exception result.
     """
@@ -2042,7 +2042,7 @@ def test_a_read_failure_is_logged_once_and_then_cached_quiet(monkeypatch, caplog
 @needs_pymupdf
 def test_two_sessions_reading_the_same_sheet_at_once_render_it_once(monkeypatch, tmp_path):
     """
-    FCC-267: two `QThread` sessions (FCC-181) can call `read()` on the same
+    Two `QThread` sessions can call `read()` on the same
     path at the same moment; `_ALREADY_READ` was a plain dict with no lock, so
     both could pass the check before either had written the cache and both
     would render. `_read` is patched to block until both threads are running,
@@ -2088,7 +2088,7 @@ def test_two_sessions_reading_the_same_sheet_at_once_render_it_once(monkeypatch,
 
 def test_evicting_one_stale_key_does_not_wipe_the_other_cached_sheet(monkeypatch, tmp_path):
     """
-    FCC-267: `read()` used to call `_read_cached.cache_clear()` when one
+    `read()` used to call `_read_cached.cache_clear()` when one
     cached sheet's temp images had been swept, wiping the whole 128-entry
     cache instead of the one stale key. Two sheets are cached, one goes
     stale, and re-reading it must not force the other, still-good one to
@@ -2123,7 +2123,7 @@ def test_evicting_one_stale_key_does_not_wipe_the_other_cached_sheet(monkeypatch
 
 def test_the_cache_never_grows_past_128_entries():
     """
-    FCC-267: `_ALREADY_READ` had no upper bound and lived for the process's
+    `_ALREADY_READ` had no upper bound and lived for the process's
     whole life. `_read_cached` bounds `_READ_CACHE` to 128 entries itself
     (`popitem(last=False)` on overflow), so pushing 200 unique keys through
     it must still leave at most 128 held.
@@ -2141,7 +2141,7 @@ def test_the_cache_never_grows_past_128_entries():
 @needs_pymupdf
 def test_a_page_fills_the_accumulator_by_field_name_not_position(tmp_path):
     """
-    FCC-266: `_a_page` used to take nine same-typed `list` accumulators as
+    `_a_page` used to take nine same-typed `list` accumulators as
     positional arguments — two adjacent ones swapped at the call site compiles
     and passes static analysis without a warning. Calling it directly against
     a fresh `_PageAccumulator` and reading each field back by name is the test

@@ -1,6 +1,6 @@
 """
 Level 2 -- Preflight refuses a PartDesign::Fillet whose Base mixes concave
-and convex edges (FCC-388).
+and convex edges.
 
 `A_PLATE_WITH_A_SLOT` pads a plate and pockets a through slot in its centre.
 The slot's own corner edges -- where two of its wall faces meet -- are

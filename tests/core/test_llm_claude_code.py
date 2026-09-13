@@ -581,7 +581,7 @@ def test_stderr_beyond_the_os_pipe_buffer_does_not_block_the_stream():
 
 def test_the_clis_plain_text_noise_survives_as_the_error_detail_once_merged():
     """
-    FCC-273 merged stderr into stdout, so `process.stderr` is `None` and no
+    stderr was merged into stdout, so `process.stderr` is `None` and no
     longer carries the reason a non-zero exit failed -- the CLI's plain-text
     lines, dropped by `_parsed` as noise, are the only trace of it left.
     """

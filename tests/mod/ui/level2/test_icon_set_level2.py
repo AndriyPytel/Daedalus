@@ -10,7 +10,7 @@ Reasoning header flattened.
 Every panel icon has to survive the rasteriser `get_icon` puts it through: a
 24x24 viewBox to scale from, and the literal `currentColor` for the tint to
 replace. A file that parses but carries a baked colour renders black on a dark
-panel, which is the defect ADR-0011 exists about, and it renders without
+panel, which is the defect this guards against, and it renders without
 raising.
 
 The directory also holds the workbench icons (copilot, preferences-freecadcopilot),

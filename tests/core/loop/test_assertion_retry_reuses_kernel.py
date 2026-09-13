@@ -1,4 +1,4 @@
-"""FCC-389: an Assertion retry reuses the kernel and the document it already has."""
+"""An Assertion retry reuses the kernel and the document it already has."""
 import json
 
 from core.events import EventStream

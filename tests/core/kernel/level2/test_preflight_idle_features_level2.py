@@ -1,6 +1,6 @@
 
 """
-Level 2 — Preflight refuses a Step whose feature moved no material (FCC-96).
+Level 2 — Preflight refuses a Step whose feature moved no material.
 
 A Pocket sketched on the face at YMin with its normal pointing into the part
 cuts along -Y, away from the solid, and returns the base shape unchanged.

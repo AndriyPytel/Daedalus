@@ -1,6 +1,6 @@
 """
 Level 2 -- Preflight refuses a Step that leaves a PartDesign feature no
-Body claims (FCC-253 Q4 follow-up: the sonnet sweep's 15-repeat failure).
+Body claims (the sonnet sweep's 15-repeat failure).
 
 `doc.addObject('PartDesign::Pad', ...)` gives the feature its own valid
 Shape -- Pad computes from its Profile regardless of who owns it -- but

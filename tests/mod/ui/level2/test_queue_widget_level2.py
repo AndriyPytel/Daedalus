@@ -1,10 +1,10 @@
 """
-Level 2 -- the Queue widget FCC-172 adds, built for real against FreeCAD's
+Level 2 -- the Queue widget, built for real against FreeCAD's
 own Qt binding, offscreen.
 
 The Queue is a pure renderer (`ui/queue_widget.py`'s own docstring): it is
 told what happened through the small verbs `copilot_panel.py` calls from
-`on_event`, and this is where those verbs are checked against FCC-172's
+`on_event`, and this is where those verbs are checked against its
 Acceptance Criteria. The wiring from a live `core.events.Event` to those
 verbs is `tests/test_panel_level2.py`'s, the same split `test_icon_set_level2.py`
 draws between an asset and the panel that reads it.
@@ -79,7 +79,7 @@ def test_the_wait_for_the_build_button_is_not_plans_time():
 
 def test_start_execute_takes_the_gates_steps_over_what_plan_foresaw():
     """
-    The Plan Gate is edited directly now (FCC-177): if Build changed the
+    The Plan Gate is edited directly now: if Build changed the
     count or the text, the Queue's own foreseen list is the one thing left
     still describing the unedited Plan unless the approved Gate hands its
     Steps to `start_execute` too.
@@ -223,7 +223,7 @@ def test_a_step_whose_attempt_did_not_build_reads_failed_until_one_lands():
 
 def test_the_part_written_down_closes_design_and_starts_plan():
     """
-    `PART` is the one event that means Design is over (FCC-194), and Plan is
+    `PART` is the one event that means Design is over, and Plan is
     already running by the time it lands.
     """
     from ui.queue_widget import DESIGN, DONE, PLAN, RUNNING
@@ -250,7 +250,7 @@ def test_a_design_that_wrote_no_part_is_closed_by_the_plan_that_follows_it():
     """
     `part_file.saved` can return nothing, and then no `PART` is emitted at
     all. Design Running under a Running Plan is a state no run is ever in, so
-    the Plan closes it (FCC-194).
+    the Plan closes it.
     """
     from ui.queue_widget import DESIGN, DONE, PLAN, RUNNING
 

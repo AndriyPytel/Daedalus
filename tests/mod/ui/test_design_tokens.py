@@ -1,9 +1,10 @@
 """
-Level 1 -- the QSS constants FCC-171 hands every later child of FCC-169.
+Level 1 -- the shared QSS constants every later widget in this design
+language builds on.
 
 The values are the ones the AI Elements design language repeats
 (read off the user's own Figma file), and
-the colours ADR-0011 (FCC-A-16) carves out as exceptions to "the panel has no
+the colours carved out as exceptions to "the panel has no
 colours of its own".
 """
 from ui import design_tokens as tokens

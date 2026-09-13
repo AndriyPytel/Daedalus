@@ -1,6 +1,6 @@
 """
 Every file under `config/prompts/` is reachable from code, and every name a
-caller asks `read_prompt` for exists (FCC-346).
+caller asks `read_prompt` for exists.
 
 `core.loop.prompt.prompt()` resolves `phase + ".md"` rather than a literal,
 so the phase names it can ask for are read off `_PHASE_VOCABULARY`'s own

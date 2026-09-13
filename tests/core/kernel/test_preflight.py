@@ -35,7 +35,7 @@ def test_a_reader_that_dies_still_marks_the_end_of_the_stream(unstarted):
     """
     `_pump` owns the only "the worker is gone" signal there is. If it dies
     without sending it, the queue stays empty and `_await_response` waits out
-    its full timeout for a worker that will never speak again. FCC-51.
+    its full timeout for a worker that will never speak again.
     """
     unstarted._process = SimpleNamespace(stdout=_StdoutThatDiesMidStream())
 
@@ -81,7 +81,7 @@ class _AProcessThatTakesTheRequest:
 def test_a_worker_that_cannot_come_back_answers_no_reading_instead_of_raising(
         unstarted, monkeypatch):
     """
-    FCC-126 moved the reading check into the child so a segfaulting solver
+    Moving the reading check into the child means a segfaulting solver
     costs the reading and not the run. A restart that cannot be made was the
     hole in that: `start()` raised out of `reading()`, through
     `_the_geometry_disagrees`, and ended the run at the second death.
@@ -118,7 +118,7 @@ def test_a_truncated_json_line_is_a_dead_worker_not_a_raised_exception(unstarted
     `sys.stdout.write` gets cut off without the trailing newline, most often
     by a segfault inside the FreeCAD core. `_await_response` must treat that
     the same way it treats a dead reader: a result, not a `JSONDecodeError`
-    escaping the "never raises" contract. FCC-275.
+    escaping the "never raises" contract.
     """
     unstarted._lines.put('{"ok": true, "featur')
 
@@ -148,7 +148,7 @@ def test_a_truncated_stdout_line_comes_back_from_check_as_a_dead_worker(unstarte
     """
     The same crash as above, driven through the public `check()` rather than
     `_await_response` directly — the entrypoint the "never raises" contract
-    is actually made to (FCC-275 AC2). No `JSONDecodeError` escapes, and the
+    is actually made to. No `JSONDecodeError` escapes, and the
     dead process is killed rather than left running with a reader thread
     still attached to it.
     """

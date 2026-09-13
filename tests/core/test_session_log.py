@@ -102,7 +102,7 @@ def test_an_attachment_survives_the_round_trip_by_name(tmp_path):
     """
     The whole point of recording it: a Session opened tomorrow can say the run
     had a picture and what it was called, whether or not the file is still
-    there. FCC-88.
+    there.
     """
     path = str(tmp_path / "session.jsonl")
     events = EventStream()
@@ -138,7 +138,7 @@ def _written(path, events):
 
 
 def test_a_session_replays_as_the_events_that_wrote_it(tmp_path):
-    """A restored Session is the same stream, so it renders the same way. FCC-5."""
+    """A restored Session is the same stream, so it renders the same way."""
     path = tmp_path / "session.jsonl"
     written = _written(path, [
         (THOUGHT, {"phase": "plan", "text": "hmm"}),

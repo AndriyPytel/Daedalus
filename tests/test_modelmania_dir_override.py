@@ -1,4 +1,4 @@
-"""Guards the FCC_MODELMANIA_DIR override — FCC-327."""
+"""Guards the FCC_MODELMANIA_DIR override."""
 import os
 import subprocess
 import sys
