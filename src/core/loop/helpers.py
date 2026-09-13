@@ -67,10 +67,10 @@ def _tried(step, attempt):
     return {"step": step, "code": attempt.code, "traceback": attempt.traceback}
 
 
-def _block(events, reason, tried, applied, said=""):
+def _block(events, reason, tried, applied, said="", verdict=None):
     events.emit(BLOCKED, reason=reason, tried=list(tried), provider_said=said)
-    return LoopResult(ok=False, blocked=True, reason=reason, tried=list(tried),
-                      steps_applied=applied)
+    return LoopResult(ok=False, blocked=True, verdict=verdict, reason=reason,
+                      tried=list(tried), steps_applied=applied)
 
 
 def _stopped(events, reason, applied):

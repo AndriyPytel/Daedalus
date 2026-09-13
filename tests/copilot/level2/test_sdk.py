@@ -214,13 +214,13 @@ def test_a_declared_auto_answer_policy_is_its_own_distinct_event(kernel):
 
 def test_send_cancelled_stops_the_run_before_it_starts():
     """
-    A caller's own `cancelled` reaches `core/loop.py :: run` unchanged, the
-    shape the per-run cost ceiling depends on: a `cancelled` that is already
-    `True` never lets Design plan anything, the same boundary
-    `test_loop_outcomes.py` proves for `run()` directly.
+    A caller's own `cancelled` is the automated dollar/time ceiling, not a
+    human's Cancel: a `cancelled` that is already `True` never lets Design
+    plan anything, and the run ends `budget_exhausted`, not `stopped`, the
+    same boundary `test_loop_outcomes.py` proves for `run()` directly.
     """
     from copilot.sdk import Client
-    from core.events import STOPPED
+    from core.events import BUDGET_EXHAUSTED, STOPPED
 
     llm = ScriptedLLMClient(["design"])
     client = Client(kernel=_NoKernel(), llm=llm)
@@ -231,7 +231,10 @@ def test_send_cancelled_stops_the_run_before_it_starts():
 
     assert not result.ok
     assert result.blocked
-    assert STOPPED in [event.kind for event in seen]
+    assert "Stopped by you" not in result.reason
+    kinds = [event.kind for event in seen]
+    assert BUDGET_EXHAUSTED in kinds
+    assert STOPPED not in kinds
     client.close()
 
 
