@@ -83,3 +83,34 @@ def test_a_role_whose_model_no_provider_reports_falls_back_to_the_caller(monkeyp
 
     assert client.for_role("design") is client.caller
     assert client.for_role("execute") is not client.caller
+
+
+def test_client_from_roles_logs_each_roles_resolved_model_and_source(monkeypatch, caplog):
+    """
+    The one place a run's actual model is decided is worth a log line: which
+    role got which model and effort, and whether that came from its own row
+    or fell back to the caller because the row named a model no provider
+    reports.
+    """
+    import logging
+    import types
+
+    from core.llm import factory
+
+    def build(model_id=None, effort=None):
+        if model_id == "gone":
+            raise ValueError("'gone' is not a model any configured provider reports.")
+        return ScriptedLLMClient([model_id or "caller"])
+
+    monkeypatch.setattr(factory, "client_from_settings", build)
+    monkeypatch.setattr(factory.settings, "instance", lambda: types.SimpleNamespace(
+        get_role_table=lambda: [{"role": "design", "model": "claude-sonnet-5", "effort": "high"},
+                                {"role": "execute", "model": "gone", "effort": "medium"}]))
+
+    with caplog.at_level(logging.INFO, logger="core.llm.factory"):
+        factory.client_from_roles()
+
+    design_line = next(r.message for r in caplog.records if "design" in r.message)
+    execute_line = next(r.message for r in caplog.records if "execute" in r.message)
+    assert "claude-sonnet-5" in design_line and "row" in design_line
+    assert "caller-fallback" in execute_line

@@ -364,16 +364,41 @@ def test_picking_a_model_writes_the_orchestrators_row(panel, monkeypatch):
 
 def test_the_model_the_pill_falls_back_to_is_the_model_the_run_gets(panel, monkeypatch):
     """
-    Nothing stored: the pill shows the first model on offer, and a run built
-    from settings must find that same one. Drawn and not stored, the panel
-    names a model the role table does not.
+    Nothing stored: the pill shows the first model on offer, but a display
+    refresh names nothing to the role table — only a pick through the
+    selector does that (`_on_model_selected`).
     """
     table = _mock_role_table(monkeypatch)
 
     panel._refresh_models(_TWO_PROVIDERS)
 
     assert panel._current_model_id == "gpt-4o"
-    assert table[0]["model"] == "gpt-4o"
+    assert table[0]["model"] == ""
+
+
+def test_a_fresh_refresh_does_not_overwrite_a_model_chosen_last_session(panel, monkeypatch):
+    """
+    A stored id already matching a live model must not be touched by a
+    refresh that only recomputes what the pill shows.
+    """
+    table = _mock_role_table(monkeypatch, model="claude-opus-4")
+
+    panel._refresh_models(_TWO_PROVIDERS)
+
+    assert table[0]["model"] == "claude-opus-4"
+
+
+def test_a_background_model_list_refresh_does_not_touch_an_untouched_profile(panel, monkeypatch):
+    """
+    `models_changed` firing in the background, with nothing ever picked in
+    this panel, must not persist the fallback it only displays.
+    """
+    table = _mock_role_table(monkeypatch)
+
+    panel._refresh_models(_TWO_PROVIDERS)
+    panel._refresh_models(_TWO_PROVIDERS)
+
+    assert table[0]["model"] == ""
 
 
 def test_a_picked_model_is_the_shared_fallback_too(panel, monkeypatch):

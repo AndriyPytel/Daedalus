@@ -1122,8 +1122,9 @@ dark theme.
         """Recompute which model the button shows: the stored id once its
         provider confirms it, held bare mid-fetch, else `_retire_model`'s
         fallback once every provider answered and none offers it, else the
-        first model on offer. The pill is the orchestrator's Preferences
-        row; a fallback is stored too, since the run reads the setting.
+        first model on offer. Nothing stored is only shown, never written --
+        a display refresh must not overwrite a choice the run's own fallback
+        would otherwise read honestly.
         """
         if models is None:
             models = provider_manager.instance().get_available_models()
@@ -1143,7 +1144,6 @@ dark theme.
                 entry = next((m for m in models if m["id"] == fallback_id), None)
         if entry is None:
             entry = models[0]
-            self._store_model(entry["id"])
 
         self._set_current_model(entry["id"], entry["display"])
 
