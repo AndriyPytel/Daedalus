@@ -174,6 +174,9 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                                                 "did not land: %s\n\nWrite Step %s again."
                                                 % (message["step"], delivered.get("traceback", ""),
                                                    message["step"])}
+                        if delivered.get("directive"):
+                            drifted["you_have_failed_this_the_same_way_twice"] = \
+                                delivered["directive"]
                         if stream is not None:
                             stream.emit(TOOL_RESULT, name=phase, result=drifted)
                         text = _say(session, llm, json.dumps(drifted), phase=phase, stream=stream)

@@ -209,6 +209,42 @@ def test_one_failure_says_nothing_about_repeating_yourself():
     assert "you_have_failed_this_the_same_way_twice" not in _execute_attempts(llm)[0]
 
 
+def test_the_same_failure_twice_is_told_not_to_write_a_third_variation():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        retried_code_reply("first()", "second()", "third()"),
+        suspect_reply(), verdict_reply("pass"),
+    ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL), None])
+
+    retried = [turn for turn in _turns_of(llm, "execute")
+              if "you_have_failed_this_the_same_way_twice" in turn]
+    said = retried[0]["you_have_failed_this_the_same_way_twice"]
+
+    assert "failed 2 times with the same failure" in said
+    assert "Do not write a third variation" in said
+    assert "Change the *direction* this time" in said
+    assert "Reversed" in said and "ThroughAll" in said
+    assert "SideType" in said and "Midplane" not in said, \
+        "the advice names the property FreeCAD warns on every write to"
+    assert "not the size of the cut" in said
+
+
+def test_the_directive_matches_the_failure_and_not_some_other_one():
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        retried_code_reply("first()", "second()", "third()"),
+        suspect_reply(), verdict_reply("pass"),
+    ], applies=[failed(IN_PIECES), failed(IN_PIECES), None])
+
+    retried = [turn for turn in _turns_of(llm, "execute")
+              if "you_have_failed_this_the_same_way_twice" in turn]
+    said = retried[0]["you_have_failed_this_the_same_way_twice"]
+
+    assert "do not meet" in said
+    assert "share their endpoints" in said
+    assert "Reversed" not in said, "the wrong failure's advice"
+
+
 
 
 
@@ -426,6 +462,37 @@ def test_the_ledger_reaches_plans_request_on_replan():
     assert "already_failed_this_way" in replan_request
     assert "Cut the hooks" in replan_request["already_failed_this_way"]
     assert "def " not in replan_request["already_failed_this_way"]
+
+
+def test_a_lint_rejection_fires_the_same_way_twice():
+    from core.lint import LintResult
+
+    rejected = LintResult(["The code does not parse: invalid syntax (line 3)"]).report()
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        retried_code_reply("first()", "second()", "third()"),
+        suspect_reply(), verdict_reply("pass"),
+    ], applies=[failed(rejected), failed(rejected), None])
+
+    retried = [turn for turn in _turns_of(llm, "execute")
+              if "you_have_failed_this_the_same_way_twice" in turn]
+    said = retried[0]["you_have_failed_this_the_same_way_twice"]
+    assert "not valid Python" in said
+
+
+def test_changed_nothing_fires_the_same_way_twice():
+    from core.freecad_apply import _CHANGED_NOTHING
+
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks"),
+        retried_code_reply("first()", "second()", "third()"),
+        suspect_reply(), verdict_reply("pass"),
+    ], applies=[failed(_CHANGED_NOTHING), failed(_CHANGED_NOTHING), None])
+
+    retried = [turn for turn in _turns_of(llm, "execute")
+              if "you_have_failed_this_the_same_way_twice" in turn]
+    said = retried[0]["you_have_failed_this_the_same_way_twice"]
+    assert "Document is unchanged" in said
 
 
 

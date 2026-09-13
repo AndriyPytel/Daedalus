@@ -257,7 +257,10 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         events.emit(PREFLIGHT_FAILED, step=number, attempt=refused[number],
                     traceback=traceback or "")
         if refused[number] < budgets.attempts_per_step:
-            return {"delivered": False, "traceback": traceback, "retry": True}
+            directive = _the_same_way_twice(
+                [Attempt(code="", traceback=t) for t in tried[number]])
+            return {"delivered": False, "traceback": traceback, "retry": True,
+                    "directive": directive}
         declaration["retries"] = list(tried[number])
         return {"delivered": False, "traceback": traceback}
 
