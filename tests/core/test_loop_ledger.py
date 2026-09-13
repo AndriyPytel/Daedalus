@@ -70,6 +70,7 @@ from tests.loop_helpers import (
     design_reply,
     _first_pass_turns,
     code_reply,
+    retried_code_reply,
     assertion_reply,
     obsolete_reply,
     look_reply,
@@ -179,37 +180,7 @@ def test_a_plan_that_ends_in_a_material_assignment_uses_a_uuid_from_this_build()
 
 
 
-def test_the_same_failure_twice_is_told_not_to_write_a_third_variation():
-    _, _, llm, _ = drive([
-        plan_reply("Cut the hooks"),
-        code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL)])
 
-    third = _execute_attempts(llm)[2]
-    said = third["you_have_failed_this_the_same_way_twice"]
-
-    assert "failed 2 times with the same failure" in said
-    assert "Do not write a third variation" in said
-    assert "Change the *direction* this time" in said
-    assert "Reversed" in said and "ThroughAll" in said
-    assert "SideType" in said and "Midplane" not in said, \
-        "the advice names the property FreeCAD warns on every write to"
-    assert "not the size of the cut" in said
-
-
-def test_the_directive_matches_the_failure_and_not_some_other_one():
-    _, _, llm, _ = drive([
-        plan_reply("Cut the hooks"),
-        code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed(IN_PIECES), failed(IN_PIECES)])
-
-    said = _execute_attempts(llm)[2]["you_have_failed_this_the_same_way_twice"]
-
-    assert "do not meet" in said
-    assert "share their endpoints" in said
-    assert "Reversed" not in said, "the wrong failure's advice"
 
 
 def test_two_different_failures_in_a_row_are_progress_and_are_left_alone():
@@ -241,68 +212,6 @@ def test_one_failure_says_nothing_about_repeating_yourself():
 
 
 
-def test_a_known_symptom_gets_a_repair_reference_on_the_first_failure():
-    _, _, llm, _ = drive([
-        plan_reply("Cut the hooks"),
-        code_reply("first()"), code_reply("second()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed(NO_SUCH_PROPERTY)])
-
-    retry = _execute_attempts(llm)[1]
-
-    assert retry["your_failed_attempts_at_this_step"][0]["traceback"] == NO_SUCH_PROPERTY
-    reference = retry["repair_reference"]
-    assert "describe_type" in reference["the_smallest_responsible_fix"]
-    assert "guessed" in reference["the_smallest_responsible_fix"]
-    assert "own promised properties" in reference["recount_after_it"]
-
-
-def test_a_different_known_symptom_gets_its_own_reference():
-    _, _, llm, _ = drive([
-        plan_reply("Fillet the rim"),
-        code_reply("first()"), code_reply("second()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed(FILLET_RADIUS)])
-
-    reference = _execute_attempts(llm)[1]["repair_reference"]
-
-    assert "wall thickness" in reference["the_smallest_responsible_fix"]
-    assert "face count" in reference["recount_after_it"]
-
-
-def test_an_unknown_symptom_gets_no_repair_reference():
-    _, _, llm, _ = drive([
-        plan_reply("Cut the hooks"),
-        code_reply("first()"), code_reply("second()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed("ZeroDivisionError: division by zero")])
-
-    assert "repair_reference" not in _execute_attempts(llm)[1]
-
-
-def test_a_step_that_has_not_failed_yet_gets_no_repair_reference():
-    _, _, llm, _ = drive([
-        plan_reply("Cut the hooks"),
-        code_reply("first()"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert "repair_reference" not in _turns_of(llm, "execute")[0]
-
-
-def test_a_repair_reference_spends_no_look_and_no_extra_turn():
-    result, _, llm, _ = drive([
-        plan_reply("Cut the hooks"),
-        code_reply("first()"), code_reply("second()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed(NO_SUCH_PROPERTY)])
-
-    assert result.ok, result.reason
-    execute_turns = _execute_attempts(llm)
-    assert len(execute_turns) == 2
-    assert all("look" not in turn for turn in execute_turns)
-
-
 def test_a_failure_nothing_recognises_is_not_given_invented_advice():
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
@@ -314,27 +223,19 @@ def test_a_failure_nothing_recognises_is_not_given_invented_advice():
     assert "you_have_failed_this_the_same_way_twice" not in _execute_attempts(llm)[1]
 
 
-def test_the_directive_offers_leaving_the_step_out_rather_than_repeating():
-    _, _, llm, _ = drive([
-        plan_reply("Cut the hooks"),
-        code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed(NO_MATERIAL), failed(NO_MATERIAL)])
 
-    said = _execute_attempts(llm)[2]["you_have_failed_this_the_same_way_twice"]
-
-    assert "leave this Step out" in said
-    assert "Plan is given this one back" in said
 
 
 def test_a_step_that_never_failed_any_other_way_tells_plan_to_change_the_step():
     """
     Rewording it sends Execute back at the same wall, which is what the
     recorded run did: three identical failures, a replan, and three more.
+    FCC-372: the three failures are rewrites in one kernel session now, not
+    three Execute calls, before Plan hears about any of it.
     """
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
-        code_reply("one()"), code_reply("two()"), code_reply("three()"),
+        retried_code_reply("one()", "two()", "three()"),
         plan_reply("Cut the hooks, differently"),
         code_reply("four()"),
         suspect_reply(), verdict_reply("pass"),
@@ -351,7 +252,7 @@ def test_a_step_that_failed_variously_does_not_tell_plan_to_change_the_step():
     """ Sixty-nine of a hundred and thirty-five minutes of one recorded session were spent waiting at a Plan Gate, against six seconds of FreeCAD. Four of those waits were revisions of a Plan the user had already read and approved: a Step Execute could not build, checks that did not hold, part of the description nothing planned. A standing approval is the user saying "get on with it" — and it covers the Plan and only the Plan."""
     _, _, llm, _ = drive([
         plan_reply("Cut the hooks"),
-        code_reply("one()"), code_reply("two()"), code_reply("three()"),
+        retried_code_reply("one()", "two()", "three()"),
         plan_reply("Cut the hooks, differently"),
         code_reply("four()"),
         suspect_reply(), verdict_reply("pass"),
@@ -527,31 +428,7 @@ def test_the_ledger_reaches_plans_request_on_replan():
     assert "def " not in replan_request["already_failed_this_way"]
 
 
-def test_a_lint_rejection_fires_the_same_way_twice():
-    from core.lint import LintResult
 
-    rejected = LintResult(["The code does not parse: invalid syntax (line 3)"]).report()
-    _, _, llm, _ = drive([
-        plan_reply("Cut the hooks"),
-        code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed(rejected), failed(rejected)])
-
-    said = _execute_attempts(llm)[2]["you_have_failed_this_the_same_way_twice"]
-    assert "not valid Python" in said
-
-
-def test_changed_nothing_fires_the_same_way_twice():
-    from core.freecad_apply import _CHANGED_NOTHING
-
-    _, _, llm, _ = drive([
-        plan_reply("Cut the hooks"),
-        code_reply("first()"), code_reply("second()"), code_reply("third()"),
-        suspect_reply(), verdict_reply("pass"),
-    ], applies=[failed(_CHANGED_NOTHING), failed(_CHANGED_NOTHING)])
-
-    said = _execute_attempts(llm)[2]["you_have_failed_this_the_same_way_twice"]
-    assert "Document is unchanged" in said
 
 
 

@@ -77,6 +77,7 @@ from tests.loop_helpers import (
     everything,
     design_reply,
     code_reply,
+    _MultiTurn,
     assertion_reply,
     question_reply,
     verdict_reply,
@@ -797,12 +798,16 @@ def test_mechanical_revisions_do_not_consume_execution_budget():
     call, so they must not eat the budget for failures only a real attempt
     can surface.
     """
+    step1_then_unbuildable = _MultiTurn()
+    step1_then_unbuildable.append(json.dumps({"code": "step1()", "step": 1, "label": "Step"}))
+    step1_then_unbuildable.append(json.dumps(
+        {"declare": {"unbuildable": "the sketch is overconstrained"}}))
+
     result, events, _, tools = drive([
         design_reply(A_PART),
         plan_reply("Step 1"),
         plan_reply("Step 1 revised", satisfies=everything(A_PART)),
-        code_reply("step1()"),
-        json.dumps({"declare": {"unbuildable": "the sketch is overconstrained"}}),
+        step1_then_unbuildable,
         plan_reply("Step 1 without overconstraint", satisfies=everything(A_PART)),
         code_reply("step1_fixed()"),
         suspect_reply(),

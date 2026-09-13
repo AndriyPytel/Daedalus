@@ -71,6 +71,7 @@ from tests.loop_helpers import (
     design_reply,
     _first_pass_turns,
     code_reply,
+    retried_code_reply,
     assertion_reply,
     verdict_reply,
     suspect_reply,
@@ -364,8 +365,7 @@ def test_a_step_that_only_passed_on_the_retry_is_named_to_the_checks():
     _, _, llm, _ = drive([
         design_reply(A_SPLIT),
         plan_reply("Pocket the split", satisfies=everything(A_SPLIT)),
-        code_reply("split_through()"),
-        code_reply("split_shortened()"),
+        retried_code_reply("split_through()", "split_shortened()"),
         suspect_reply(),
         assertion_reply("assert True, 'the split'"),
         verdict_reply("pass"),
@@ -1166,14 +1166,12 @@ def test_the_verdict_is_surfaced_either_way():
 
 
 def test_three_attempts_per_step_then_blocked_with_what_was_tried():
-    """`revisions=0`: the handback path has its own tests, this one is the budget."""
+    """
+    `revisions=0`: the handback path has its own tests, this one is the
+    budget. FCC-372: the three attempts are rewrites in one kernel session.
+    """
     result, events, _, tools = drive(
-        [
-            plan_reply("Only"),
-            code_reply("try1()"),
-            code_reply("try2()"),
-            code_reply("try3()"),
-        ],
+        [plan_reply("Only"), retried_code_reply("try1()", "try2()", "try3()")],
         applies=[failed("one"), failed("two"), failed("three")],
         budgets=Budgets(revisions=0),
     )
