@@ -2,8 +2,8 @@
 Level 2 — ephemeral sessions write no checkpoint.
 
 Per FCC-341: a fresh-handoff `check(code, document=..., ephemeral=True)` writes
-no checkpoint file, and the measured cost drops to within one saveCopy of a
-continuing-session call.
+no checkpoint file, and costs less than the same fresh handoff without
+`ephemeral=True` to the same document.
 """
 import os
 import time
@@ -52,17 +52,35 @@ def test_an_ephemeral_fresh_handoff_writes_no_checkpoint_file(kernel, tmp_path):
         "ephemeral call wrote a checkpoint file"
 
 
-def test_ephemeral_fresh_handoff_costs_no_more_than_a_continuing_session(kernel, tmp_path):
+def test_ephemeral_fresh_handoff_costs_no_more_than_a_non_ephemeral_one(kernel, tmp_path):
     """
-    The fresh handoff cost two saveCopy operations (baseline + success
-    checkpoint). With ephemeral=True, it should cost no more than a
-    continuing-session call.
+    A fresh handoff (`document=...`) always reopens the document from disk,
+    whether or not `ephemeral=True` -- that open is the same cost either way
+    and is not what FCC-341 touched. What FCC-341 removed is the checkpoint
+    save: a non-ephemeral fresh handoff calls `doc.saveCopy` twice (once for
+    the baseline it opens onto, once for the success checkpoint), ephemeral
+    calls it zero times.
+
+    Comparing ephemeral to a *continuing* session instead confounds that
+    saved cost with the document-open cost a continuing session never pays
+    at all, and which one dominates depends on the machine: measured here,
+    `doc.saveCopy` on a 50-object document costs ~70ms and `FreeCAD.openDocument`
+    on the same file costs ~19ms, so a continuing session (no open, one
+    saveCopy) and an ephemeral fresh handoff (one open, no saveCopy) can land
+    on either side of a 2x bound depending only on which of those two costs
+    is larger that day -- the FCC-387 report saw the open lose, this run
+    sees the saveCopy lose. Comparing two fresh handoffs to the same document
+    holds the open cost fixed and isolates exactly the saveCopy calls
+    ephemeral skips: measured on this machine, ephemeral costs ~20% of the
+    non-ephemeral fresh handoff to the same file, so the bound below (70%)
+    leaves headroom for run-to-run noise while still failing if either
+    saveCopy call comes back.
     """
     doc_path = str(tmp_path / "baseline.FCStd")
-    
+
     baseline = kernel.check("pass", document=None)
     assert baseline.ok
-    
+
     import FreeCAD
     doc = FreeCAD.openDocument(baseline.checkpoint)
     for i in range(50):
@@ -70,18 +88,22 @@ def test_ephemeral_fresh_handoff_costs_no_more_than_a_continuing_session(kernel,
     doc.recompute()
     doc.saveAs(doc_path)
     FreeCAD.closeDocument(doc.Name)
-    
-    warmup = kernel.check("doc.addObject('Part::Box', 'Warmup')")
+
+    warmup = kernel.check("doc.addObject('Part::Box', 'Warmup')", document=doc_path, ephemeral=True)
     assert warmup.ok
-    
-    continuing_times = []
+
+    non_ephemeral_times = []
     for _ in range(3):
         start = time.monotonic()
-        result = kernel.check("doc.addObject('Part::Box', 'Test')")
-        continuing_times.append(time.monotonic() - start)
+        result = kernel.check(
+            "doc.addObject('Part::Box', 'Test')",
+            document=doc_path,
+            ephemeral=False,
+        )
+        non_ephemeral_times.append(time.monotonic() - start)
         assert result.ok
-    continuing_median = sorted(continuing_times)[1]
-    
+    non_ephemeral_median = sorted(non_ephemeral_times)[1]
+
     ephemeral_times = []
     for _ in range(3):
         start = time.monotonic()
@@ -93,6 +115,8 @@ def test_ephemeral_fresh_handoff_costs_no_more_than_a_continuing_session(kernel,
         ephemeral_times.append(time.monotonic() - start)
         assert result.ok
     ephemeral_median = sorted(ephemeral_times)[1]
-    
-    assert ephemeral_median <= continuing_median * 2.0, \
-        f"ephemeral ({ephemeral_median:.3f}s) is still much slower than continuing ({continuing_median:.3f}s)"
+
+    assert ephemeral_median <= non_ephemeral_median * 0.7, \
+        (f"ephemeral fresh handoff ({ephemeral_median:.3f}s) is not clearly cheaper than a "
+         f"non-ephemeral fresh handoff to the same document ({non_ephemeral_median:.3f}s) -- "
+         "the two checkpoint saves ephemeral is meant to skip may be happening anyway")
