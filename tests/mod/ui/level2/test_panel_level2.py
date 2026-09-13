@@ -3778,16 +3778,16 @@ def test_review_duration_is_nonzero(panel, tmp_path):
     Review starts when Assertion ends (ASSERTION event), not when the verdict
     arrives. This test guards against calling both phase_started and
     phase_ended on the same REVIEW_VERDICT event, which leaves Review with
-    zero duration.
+    zero duration. The panel replays a phase's start and end from the
+    event's own `at`, so the guard reads those same timestamps back rather
+    than racing them against a fresh wall-clock read.
     """
     from core.events import EventStream, INTENT, PLAN, GATE, STEP_DECLARED, TOOL_CALL, TOOL_RESULT, APPLIED, ASSERTION, REVIEW_VERDICT
-    import time
 
     log = str(tmp_path / "review-duration.jsonl")
     stream = EventStream()
     stream.log_to(log)
 
-    t0 = time.time()
     stream.emit(INTENT, text="a box")
     stream.emit(PLAN, steps=["Box"], acceptance=[])
     stream.emit(GATE, decision="approve")
@@ -3796,13 +3796,11 @@ def test_review_duration_is_nonzero(panel, tmp_path):
     stream.emit(TOOL_RESULT, name="apply_step", result={"status": "applied"})
     stream.emit(APPLIED, step=1, label="Box", created=["Pad"])
 
-    assertion_time = time.time()
-    stream.emit(ASSERTION, ok=True, confirmed=[], uncovered=[])
+    import time
 
-    time.sleep(0.1)
-
-    verdict_time = time.time()
-    stream.emit(REVIEW_VERDICT, verdict="pass", reason="Good")
+    assertion_event = stream.emit(ASSERTION, ok=True, confirmed=[], uncovered=[])
+    time.sleep(0.01)
+    verdict_event = stream.emit(REVIEW_VERDICT, verdict="pass", reason="Good")
 
     index, _ = panel.chat_sessions.add_new_chat("review-duration")
     panel.chat_sessions.get_session_info(index)["log"] = log
@@ -3817,7 +3815,8 @@ def test_review_duration_is_nonzero(panel, tmp_path):
     assert review_start is not None, "Review should have a start time"
     assert review_end is not None, "Review should have an end time"
     assert review_end > review_start, "Review duration should be non-zero"
-    assert abs((review_end - review_start) - (verdict_time - assertion_time)) < 0.01
+    assert review_start == pytest.approx(assertion_event.at)
+    assert review_end == pytest.approx(verdict_event.at)
 
 
 def test_a_tool_result_still_says_what_came_back_after_it_is_timed(panel):
