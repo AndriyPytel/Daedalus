@@ -1,10 +1,9 @@
-"""The LLM client seam.
-
-Three implementations: LiteLLM (ADR-0004), `claude` CLI (ADR-0025), and a
-scripted client. Everything above this line is testable without a network.
-
-`EFFORTS` default is `medium`: on one sheet through Design `high` spent
-41,704 tokens of thinking against `medium`'s 26,117 and four minutes more.
+"""
+The LLM client seam: three implementations, LiteLLM, `claude` CLI, and a
+scripted client, with everything above this line testable without a
+network. `EFFORTS` default is `medium`: on one sheet through Design `high`
+spent 41,704 tokens of thinking against `medium`'s 26,117 and four minutes
+more.
 """
 
 from core.llm.types import REASONING, TEXT, Chunk

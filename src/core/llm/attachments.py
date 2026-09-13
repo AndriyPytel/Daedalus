@@ -17,15 +17,13 @@ def cache_control_supported(model: str) -> bool:
     """
     Whether a `cache_control` block on a message reaches the wire as a cache
     breakpoint rather than as a key the provider was never asked about.
-
-    ADR-0004's own spike is the evidence, and it is narrower than that
-    ADR's own claim: LiteLLM carries `cache_control` through to
-    `AnthropicConfig.transform_request` for a model routed through Anthropic's
-    own API, which is `model.startswith("anthropic/")` and nothing else here —
-    not the `openai/` gateway, not a bare `api_base` model LiteLLM has never
-    heard of, and not `ClaudeCodeClient`'s subscription CLI, which never spoke
-    to this transform in the first place. Guessing yes for one of those risks
-    nothing on the wire; guessing no costs one field nobody reads.
+    LiteLLM carries `cache_control` through to
+    `AnthropicConfig.transform_request` only for a model routed through
+    Anthropic's own API (`model.startswith("anthropic/")`), never the
+    `openai/` gateway, a bare `api_base` model, or the subscription CLI,
+    which never spoke to this transform at all. Guessing yes for one of
+    those risks nothing on the wire; guessing no costs one field nobody
+    reads.
     """
     return bool(model) and model.startswith("anthropic/")
 

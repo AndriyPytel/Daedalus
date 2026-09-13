@@ -38,25 +38,17 @@ class LiteLLMClient:
 
     def stream(self, messages: list, **overrides) -> Iterator[Chunk]:
         """
-        Stream a reply to *messages*, chunk by chunk.
-
-        The reasoning effort is sent with `allowed_openai_params` because
-        LiteLLM refuses to send a param it has no table entry for, and a
-        gateway's model is exactly what it has no entry for. Usage is asked for
-        on an OpenAI-compatible endpoint because a gateway that is not asked
-        can end a stream without a word about why, and a cut-off reply then
-        looks complete — the same `openai/` gate leaves a bare `api_base`
-        model unpriced too, not because pricing is wrong but because LiteLLM
-        was never asked for usage on that stream.
-
-        `extra_headers` is what a gateway routes a call on rather than reads
-        off the body: OpenCode Go answers a call without `x-opencode-session`
-        with 400 for every model it sells.
-
-        Every raw chunk is kept, on top of whatever the caller already
-        accumulates from the yielded Chunks, so `_priced` can reassemble them
-        once the stream ends cleanly. Negligible for one phase's reply; still a
-        real retention for the call's duration that did not exist before.
+        Stream a reply to *messages*, chunk by chunk. The reasoning effort
+        is sent with `allowed_openai_params`, because LiteLLM refuses to
+        send a param it has no table entry for and a gateway's model is
+        exactly what it has no entry for; usage is asked for on an
+        OpenAI-compatible endpoint, because a gateway not asked can end a
+        stream without a word about why and a cut-off reply then looks
+        complete. `extra_headers` is what a gateway routes a call on
+        rather than reads off the body, since OpenCode Go answers a call
+        without `x-opencode-session` with 400 for every model it sells,
+        and every raw chunk is kept on top of what the caller accumulates
+        so `_priced` can reassemble them once the stream ends cleanly.
         """
         completion = self._completion
         if completion is None:

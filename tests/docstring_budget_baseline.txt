@@ -41,14 +41,11 @@ src/core/llm/attachments.py::accepts_pdf
 src/core/llm/attachments.py::cache_control_supported
 src/core/llm/claude.py::_invocation
 src/core/llm/claude.py::_spawn_claude
-src/core/llm/claude.py::signed_in
-src/core/llm/claude.py::stream
 src/core/llm/claude_stream.py::_blocks
 src/core/llm/claude_stream.py::_said
 src/core/llm/client.py::stream
 src/core/llm/exceptions.py::StreamCutOff
 src/core/llm/factory.py::client_from_settings
-src/core/llm/factory.py::effort_is_honoured
 src/core/llm/stream.py::_translate
 src/core/measure.py::_gate_wait_seconds
 src/core/model_catalog.py::_offerable
