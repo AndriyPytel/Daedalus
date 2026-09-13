@@ -1226,6 +1226,111 @@ def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_t
     assert not built.thread.isRunning(), "the worker thread outlived the panel"
 
 
+def _parked_on_the_main_thread(bundle):
+    """A run of *bundle*'s, blocked inside `bridge.main_thread.on_main_thread`."""
+    import threading
+
+    import bridge.main_thread
+    from conftest import QtCore
+
+    parked = threading.Event()
+
+    def _dispatch_and_block():
+        parked.set()
+        try:
+            bridge.main_thread.on_main_thread(lambda: "the Document")
+        except Exception:
+            pass
+
+    blocked = QtCore.QTimer()
+    blocked.moveToThread(bundle.thread)
+    blocked.setSingleShot(True)
+    blocked.timeout.connect(_dispatch_and_block, QtCore.Qt.DirectConnection)
+    QtCore.QMetaObject.invokeMethod(blocked, "start", QtCore.Qt.QueuedConnection,
+                                    QtCore.Q_ARG(int, 0))
+    assert parked.wait(5), "the run never asked for the main thread"
+    return blocked
+
+
+def test_a_document_closing_releases_a_run_parked_on_the_main_thread(sessions_are_the_tests_own):
+    """
+    FreeCAD deletes its Documents before it emits `aboutToQuit`, so the first
+    teardown a closing FreeCAD runs is `slotDeletedDocument`, not
+    `_cleanup_thread`. A run parked inside `bridge.main_thread.on_main_thread`
+    waits on a job only the GUI event loop can take, and that thread is here,
+    waiting on the run instead.
+
+    Measured before the release was added: 3.0s in `slotDeletedDocument` and
+    then SIGSEGV, from `terminate()` on a thread in the middle of the Document.
+
+    In its own daemon thread: the defect is a wait that does not return, and a
+    test that hangs says nothing to whoever runs the suite.
+    """
+    import threading
+    import time
+
+    import bridge.main_thread
+    from ui.copilot_panel import CopilotPanel
+
+    built = CopilotPanel()
+    bundle = built._worker_for(built._current_log())
+
+    class _Document:
+        Uid = "the one the run was bound to"
+
+    document = _Document()
+    bundle.worker.document = document
+    _parked_on_the_main_thread(bundle)
+    bridge.main_thread._closing.clear()
+
+    done = threading.Event()
+    started = time.time()
+    threading.Thread(target=lambda: (built.slotDeletedDocument(document), done.set()),
+                     daemon=True).start()
+
+    assert done.wait(5), "closing the Document is still waiting on a job in flight"
+    took = time.time() - started
+    assert took < 1, "closing the Document sat out the grace period: %.1fs" % took
+    assert not bundle.thread.isRunning(), "the worker outlived the Document it was bound to"
+    assert not bridge.main_thread._closing.is_set(), \
+        "one Document closing refused the main thread to every other Session"
+    assert bridge.main_thread._stopping == 0, "the teardown left the main thread refused"
+
+
+def test_deleting_a_session_releases_a_run_parked_on_the_main_thread(
+        sessions_are_the_tests_own, monkeypatch):
+    """The same teardown by the other route: the user deleting a Session mid-run."""
+    import threading
+    import time
+
+    import bridge.main_thread
+    from conftest import QtWidgets
+    from ui.copilot_panel import CopilotPanel
+
+    built = CopilotPanel()
+    log = built._current_log()
+    bundle = built._worker_for(log)
+    _parked_on_the_main_thread(bundle)
+    bridge.main_thread._closing.clear()
+
+    monkeypatch.setattr(QtWidgets.QMessageBox, "question",
+                        staticmethod(lambda *a, **k: QtWidgets.QMessageBox.Yes))
+
+    index = built.chat_sessions.stack.currentIndex()
+    done = threading.Event()
+    started = time.time()
+    threading.Thread(target=lambda: (built.delete_session(index), done.set()),
+                     daemon=True).start()
+
+    assert done.wait(5), "deleting the Session is still waiting on a job in flight"
+    took = time.time() - started
+    assert took < 1, "deleting the Session sat out the grace period: %.1fs" % took
+    assert not bundle.thread.isRunning(), "the deleted Session's worker is still running"
+    assert not bridge.main_thread._closing.is_set(), \
+        "one Session deleted refused the main thread to every other Session"
+    assert bridge.main_thread._stopping == 0, "the teardown left the main thread refused"
+
+
 @pytest.mark.parametrize("asker, args, snippet", [
     ("about_missing_values", ({"q": "diameter?"},), "could not find on the drawing"),
     ("about_objects_we_do_not_own", (["Sketch"],), "did not create"),

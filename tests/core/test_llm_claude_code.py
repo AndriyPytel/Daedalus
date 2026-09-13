@@ -519,6 +519,30 @@ def test_a_call_that_never_answers_ends_the_run_rather_than_hanging_it():
 
 
 
+def test_the_ceiling_timer_is_not_a_thread_python_waits_for_on_the_way_out(monkeypatch):
+    """
+    The ceiling runs on a `threading.Timer`, and a non-daemon one is joined by
+    the interpreter on the way out: a call still in flight when FreeCAD closes
+    would hold the process for the rest of the ceiling -- 1500s at `high`. A
+    run whose thread was ended from outside never closes the generator that
+    cancels it, so the cancel is not the guarantee.
+    """
+    made = []
+    real = threading.Timer
+
+    def record(*args, **kwargs):
+        timer = real(*args, **kwargs)
+        made.append(timer)
+        return timer
+
+    monkeypatch.setattr(threading, "Timer", record)
+    client, _ = client_replaying()
+    collect(client.stream(a_turn()))
+
+    assert made, "no ceiling was set on the call"
+    assert all(timer.daemon for timer in made), "the ceiling would outlive FreeCAD"
+
+
 def test_stderr_beyond_the_os_pipe_buffer_does_not_block_the_stream():
     """
     `claude` is started with `--verbose`, so its stderr can carry more than
