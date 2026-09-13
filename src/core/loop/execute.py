@@ -186,12 +186,13 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         moment it declares. A `SignatureMismatch` answers `drift: True`; any
         other refusal answers `retry: True` and rewinds the kernel, with the
         first such refusal per Step free of charge against
-        `budgets.attempts_per_step` whenever `attempts_per_step > 1` -- the
-        same as a scratch turn's failure costs nothing -- bounding the Step
-        at `attempts_per_step + 1` attempts rather than leaving it unbounded.
-        Once the budget is spent the answer is final, `_work_through` hands
-        the Step back, and every non-drift refusal is recorded to `Ledger`
-        here.
+        `budgets.attempts_per_step` whenever `attempts_per_step > 1` --
+        bounding the Step at `attempts_per_step + 1` attempts rather than
+        leaving it unbounded. Recording the Step to `Ledger` is not this
+        function's decision: whether the Step lands or is abandoned is
+        `_work_through`'s to find out, from `declaration["retries"]` alone,
+        so that is where the one `Ledger` entry per abandoned Step is
+        written.
         """
         number = declaration.get("step")
         index = number - 1 if isinstance(number, int) else None
@@ -219,10 +220,6 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         if result.get("drift"):
             return {"delivered": False, "traceback": result.get("traceback"), "drift": True}
         traceback = result.get("traceback")
-        step_prose = steps[index] if (index is not None and 0 <= index < len(steps)) else \
-            declaration.get("label", "")
-        if ledger is not None:
-            ledger.record(step_prose, traceback or "")
         tried.setdefault(number, []).append(traceback or "")
         events.emit(PREFLIGHT_FAILED, step=number, attempt=len(tried[number]),
                     traceback=traceback or "")
