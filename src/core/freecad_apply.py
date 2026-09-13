@@ -488,8 +488,12 @@ TRAPS = [
     "Setting Placement on an attached sketch is silently overridden on recompute.",
     "sketch.Support and sketch.Plane were removed in FreeCAD 1.0. "
     "AttachmentSupport replaces Support.",
-    "PartDesign features must be added to a Body via Body.addObject, not to the "
-    "Document alone, or they will not appear in the feature tree.",
+    "A PartDesign::Pad or Pocket left off the Body via Body.addObject computes its "
+    "own Shape from Profile regardless, and looks completely correct -- Shape.isNull() "
+    "False, a sane Volume -- which is exactly what a check against the feature's own "
+    "Shape misses. Body.Shape stays null until the feature is Body.addObject'd, and "
+    "reading Body.Shape.Volume off it raises 'shape is invalid', not a wrong number. "
+    "Check the Body's Shape, never the feature's own.",
     "There is no active Body outside the GUI. ActiveObject, setActiveObject and "
     "activeView do not exist on App.Document; nothing needs activating, Body.addObject "
     "is what puts a feature in a Body.",
@@ -582,6 +586,11 @@ TRAPS = [
     "FreeCAD only reports it as a plain RuntimeError once the recompute runs, with no "
     "earlier signal. A second piece of geometry that does not touch the first belongs "
     "in its own Body, not a second wire in the same sketch.",
+    "A Step's namespace already binds App and FreeCAD to the FreeCAD module; a bare "
+    "`import App` shadows that binding with an empty PEP 420 namespace package of the "
+    "same name on sys.path, distinct from FreeCAD (App is FreeCAD is False), and every "
+    "attribute after it -- App.Vector, App.Placement -- dies with AttributeError for "
+    "the rest of the Step. Use the App or FreeCAD already bound; never import either.",
 ]
 
 _SNAPSHOT_LIMIT = 200

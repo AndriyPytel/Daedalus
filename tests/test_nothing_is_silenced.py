@@ -61,7 +61,7 @@ ALLOWED_EXCEPT_PASS = {
     ("src/core/events.py", 121),
     ("src/core/freecad_apply.py", 148),
     ("src/core/freecad_apply.py", 482),
-    ("src/core/freecad_apply.py", 604),
+    ("src/core/freecad_apply.py", 613),
     ("src/core/kernel/kernel.py", 185),
     ("src/core/kernel/kernel.py", 204),
     ("src/core/kernel/kernel_worker.py", 177),

@@ -620,7 +620,7 @@ def test_traps_carries_the_seed_taxonomy_classes_not_yet_in_it():
     count so a silent drop or an accidental duplicate fails this test rather
     than reading as a passing run.
     """
-    assert len(TRAPS) == 18
+    assert len(TRAPS) == 19
 
     for substring in (
         "getEnumerationsOfProperty",
