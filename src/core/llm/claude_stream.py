@@ -127,11 +127,12 @@ def _refusal_in(event: dict, model: str):
 
     This route sees none of LiteLLM's exception classes, so `_translate` is no
     use to it: the material is the stream's own `rate_limit_event` and the
-    `result` event's `stop_reason` and `subtype`.
+    `result` event's `stop_reason` and `subtype`. Every `allowed*` status is a
+    window still open -- `allowed_warning` is one filling up, not one spent.
     """
     if event.get("type") == "rate_limit_event":
         limit = event.get("rate_limit_info") or {}
-        if limit.get("status") == "allowed":
+        if str(limit.get("status") or "").startswith("allowed"):
             return None
         return ProviderRefused(
             "%s refused the request: the subscription's %s limit is spent, and it "

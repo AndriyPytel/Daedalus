@@ -359,6 +359,17 @@ def test_an_allowed_rate_limit_event_is_not_a_refusal():
     assert collect(client.stream(a_turn())).text
 
 
+def test_a_warned_rate_limit_event_is_not_a_refusal():
+    """
+    `allowed_warning` is the window filling up, not a window spent: two
+    sessions on 13 Sep died blocked on one reporting 26% of the seven-day
+    window used.
+    """
+    client, _ = client_over(_Process(_rate_limited(MINIMAL, status="allowed_warning")))
+
+    assert collect(client.stream(a_turn())).text
+
+
 def test_a_reply_the_model_was_not_allowed_to_finish_is_a_refusal():
     client, _ = client_over(_Process(_changed(MINIMAL, stop_reason="max_tokens")))
 
