@@ -1,7 +1,7 @@
 """
-Guard for the corruption FCC-252 describes: FreeCAD's whole configuration
-directory, not just the group `SettingsManager` owns inside it, must never
-resolve to the user's real preferences directory during a test run.
+FreeCAD's whole configuration directory, not just the group `SettingsManager`
+owns inside it, must never resolve to the user's real preferences directory
+during a test run.
 `tests/conftest.py` redirects it with `FREECAD_USER_HOME` before FreeCAD is
 ever imported, so nothing in the suite can reach `user.cfg`.
 """

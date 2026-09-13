@@ -132,7 +132,7 @@ def read(value):
 
 
 def settled(value, because):
-    """A value nobody supplied: the model chose it and says what off (ADR-0022)."""
+    """A value nobody supplied: the model chose it and says what off."""
     return {"value": value, "flag": "assumed", "because": because}
 
 
@@ -199,7 +199,7 @@ def design_reply(model=None, question="", thinking=None):
 
     Every turn of the phase has this one shape — the first pass at the sheet, a
     question put back to it, a person's answer being written in — because every
-    one of them ends in a merge into the same model (FCC-93).
+    one of them ends in a merge into the same model.
     """
     body = json.dumps({"declare": {"design": model or {}, "question": question}})
     return {"reasoning": thinking, "text": body} if thinking else body
@@ -214,7 +214,7 @@ def _first_pass_turns(model, attachments, question=""):
     `sheet_reader` cannot read).
 
     Every copy answers alike on purpose: the merge the fan-out ends in is
-    order-independent and idempotent over the same model (ADR-0019), so which
+    order-independent and idempotent over the same model, so which
     of the concurrent group calls a scripted turn happens to land on does not
     change what the run ends up holding, and a test does not have to predict
     the race to script one.
@@ -252,7 +252,7 @@ def code_reply(*codes, label="Step", thinking=None, first=1):
 def retried_code_reply(*codes, step=1, label="Step", thinking=None):
     """
     One Step, refused and rewritten in the same kernel session as many times
-    as *codes* has entries, closed by the turn that declares it (FCC-372):
+    as *codes* has entries, closed by the turn that declares it:
     the Document's own refusal of a code turn does not end the phase, so
     every code here is a turn of the one Execute call this scripts, not a
     fresh call the way `code_reply`'s own turns are for distinct Steps.
@@ -279,7 +279,7 @@ def obsolete_reply(reason):
 
 
 def question_reply(question):
-    """Plan answering that it cannot plan yet, and why (FCC-25)."""
+    """Plan answering that it cannot plan yet, and why."""
     return json.dumps({"declare": {"question": question}})
 
 
@@ -508,7 +508,7 @@ def scripted(turns, attachments=(), resuming=False):
     """
     The provider, turn by turn, with the Design turn every run opens with.
 
-    Design runs on every run, drawing or no drawing (FCC-153), so `llm.calls[0]`
+    Design runs on every run, drawing or no drawing, so `llm.calls[0]`
     is always Design — read a phase's requests with `_turns_of` rather than by
     counting them. A script that opens with something else is given a Design
     turn that describes nothing, which is what a test about Plan or Execute
@@ -516,7 +516,7 @@ def scripted(turns, attachments=(), resuming=False):
     and is left alone, because a Design reply in the wrong shape — the case
     those tests are about — is not one this could recognise.
 
-    `resuming` is a run given a prior Part and no new attachment (FCC-210):
+    `resuming` is a run given a prior Part and no new attachment:
     Design does not run at all, so nothing is inserted ahead of the script.
     """
     turns = _flattened(turns)
@@ -561,8 +561,8 @@ def _turns_of(llm, phase):
     Every request body that phase was sent, in order — one entry per provider call.
 
     Matched by prefix, not equality: Execute's system prompt grows a ledger
-    section past the static file once this run has a failure to carry (FCC-2
-    item 2), and the bare `prompt(phase)` this compares against is always
+    section past the static file once this run has a failure to carry forward,
+    and the bare `prompt(phase)` this compares against is always
     that section's prefix.
     """
     system = prompt(phase)
@@ -666,7 +666,7 @@ RE_MEASURED = [
 def _asked_for_phase_1(reading):
     """
     The same reading under an Intent that asks for Phase 1: the second page's
-    features never become the part, so nothing is superseded (FCC-153).
+    features never become the part, so nothing is superseded.
     """
     replacing = {feature["superseded_by"] for feature in reading["features"]
                  if feature.get("superseded_by")}

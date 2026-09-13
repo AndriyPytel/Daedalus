@@ -1,5 +1,5 @@
 """
-FCC-245: measures the ticket's own premise before building anything, and its
+This ticket measures its own premise before building anything, and its
 own AC 1 kills the ticket -- so this test is the whole deliverable, not a
 prelude to one.
 
@@ -31,7 +31,7 @@ The other 9 fail identically either way: the profile does not overlap the
 solid at all, at either sign of `Reversed` -- a placement error, not a
 direction error. A quarter is a small fraction by the ticket's own "if the
 fraction is small, the ticket is wrong" test: AC 2-4 (a deterministic
-Reversed-flip retry on the FCC-239 path) are not built.
+Reversed-flip retry on the volume-neutral retry path an earlier ticket added) are not built.
 
 **The follow-up this measurement produced, not built here.** The 9 failures
 that do not move under either `Reversed` value still reach the model

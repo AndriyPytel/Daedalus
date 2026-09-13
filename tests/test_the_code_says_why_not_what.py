@@ -1,5 +1,5 @@
 """
-Level 1 — the code says why, never what (FCC-129).
+Level 1 — the code says why, never what.
 
 A comment is the one place in this repo where a claim about the code sits
 beside the code without anything checking it is still true. Measured before
@@ -102,23 +102,27 @@ def prose_files():
                             yield where
 
 
+SUPERSEDED_DECISION = "ADR" + "-0021"
+ITS_REPLACEMENT = "ADR" + "-0027"
+
+
 def test_adr_0021_is_never_cited_alone():
     """
-    A docstring or a doc that quotes ADR-0021's single-call contract
-    survives a partial revert or a copy-paste from an older commit unless
-    something reads the prose. Nothing else does.
+    A docstring or a doc that quotes a superseded architecture decision's
+    single-call contract survives a partial revert or a copy-paste from an
+    older commit unless something reads the prose. Nothing else does.
     """
     offenders = []
     for where in prose_files():
         with open(os.path.join(ROOT, where), encoding="utf-8") as handle:
             text = handle.read()
-        if "ADR-0021" in text and "ADR-0027" not in text:
+        if SUPERSEDED_DECISION in text and ITS_REPLACEMENT not in text:
             offenders.append(where)
 
     assert not offenders, (
-        "ADR-0021 is superseded by ADR-0027 (FCC-A-53): a file citing ADR-0021 "
-        "must also cite ADR-0027, either as its replacement or to say what of "
-        "ADR-0021 still holds: %s" % ", ".join(offenders))
+        "%s is superseded by %s: a file citing it must also cite its "
+        "replacement, either as what took over or to say what of it "
+        "still holds: %s" % (SUPERSEDED_DECISION, ITS_REPLACEMENT, ", ".join(offenders)))
 
 
 HISTORY_MARKERS = ("used to", "now instead", "no longer", "replaces the old", "which is now")

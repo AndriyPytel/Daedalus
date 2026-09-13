@@ -1,4 +1,4 @@
-"""FCC-294: the 8 sheets FCC-294's baseline and FCC-319's comparison must share."""
+"""The 8 sheets the baseline measurement and the comparison run must share."""
 from tests import modelmania_harness
 
 

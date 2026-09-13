@@ -1,6 +1,6 @@
 """
-FCC-283: `pytest_xdist_make_scheduler`'s `_split_scope` override, tested
-directly against real nodeids rather than through a wall-clock `--durations`
+`pytest_xdist_make_scheduler`'s `_split_scope` override, tested directly
+against real nodeids rather than through a wall-clock `--durations`
 run. Deterministic: no worker startup, no PDF parsing, no timing.
 """
 from conftest import pytest_xdist_make_scheduler

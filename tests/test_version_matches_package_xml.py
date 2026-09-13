@@ -1,4 +1,4 @@
-"""Guards Init.py.__version__ against package.xml — FCC-326."""
+"""Guards Init.py.__version__ against package.xml."""
 import importlib.util
 import xml.etree.ElementTree as ET
 from pathlib import Path

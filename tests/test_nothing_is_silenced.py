@@ -1,7 +1,7 @@
 """
-Level 1 — a warning is removed by removing its cause (FCC-24, FCC-28).
+Level 1 — a warning is removed by removing its cause.
 
-`warnings.filterwarnings` was ruled out explicitly at interview FCC-23: a
+`warnings.filterwarnings` was ruled out explicitly at interview: a
 filter is not a fix, it is the same defect with the evidence turned off. This
 is a test rather than a review note because a filter is one line and it comes
 back the moment something is noisy on a deadline.
@@ -55,8 +55,8 @@ EXCEPT_PASS_MARKER = re.compile(r"#\s*except-pass-allowed:\s*(\S.*)")
 
 def test_a_swallowed_exception_is_named_or_carries_its_own_marker():
     """
-    FCC-390: `copilot_panel.py`'s transcript `except Exception: pass` cost
-    five Sessions their whole log with no line anywhere naming why. A handler
+    A swallowed transcript exception once cost five Sessions their whole log
+    with no line anywhere naming why. A handler
     whose entire body is `pass` gets one of two things: a log line, or a
     trailing `# except-pass-allowed: <reason>` comment on the `pass` line
     itself, read here rather than kept as a separate list keyed by line

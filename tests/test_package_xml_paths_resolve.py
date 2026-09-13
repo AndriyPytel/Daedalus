@@ -1,8 +1,8 @@
-"""package.xml names files that exist, and no tracked file hides a Cyrillic homoglyph — FCC-357.
+"""package.xml names files that exist, and no tracked file hides a Cyrillic homoglyph.
 
 The `<license file="LICENSE">` attribute is excluded: no LICENSE file has ever
-been tracked in this checkout, a pre-existing gap unrelated to the Cyrillic
-homoglyph this ticket fixes.
+been tracked in this checkout, a pre-existing gap unrelated to the homoglyph
+check this file runs.
 """
 import re
 import subprocess
@@ -30,7 +30,7 @@ def _tracked_files():
 
 
 def test_package_xml_carries_no_icon():
-    """FCC-361: the workbench icon it pointed at is gone with the workbench."""
+    """The workbench icon package.xml once pointed at is gone with the workbench."""
     root = ET.parse(ROOT / "package.xml").getroot()
     assert root.find(f"{NS}icon") is None
 
