@@ -35,10 +35,9 @@ def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
     Merge is the only way the description grows, so there is never an answer
     standing beside it to be adjudicated (ADR-0019).
 
-    A context of its own, with nothing to build (ADR-0018): Design and Plan
-    used to be one call, and the second pressure spoilt the first — a value
-    was invented not because the model saw badly but because it needed
-    something to plan with.
+    A context of its own, with nothing to build (ADR-0018): a Plan pressure
+    beside it invents a value not because the model saw badly, but because
+    it needed something to plan with.
     """
     evidence = _the_evidence(attachments, views, keep_printed, pictures)
     if evidence and cache_control_supported(getattr(llm, "model", None)):
@@ -76,19 +75,9 @@ _A_GROUP_CONCURRENCY = 4
 
 def _group_tokens(sheet, views, prompt_tokens, _visual_tokens=None):
     """
-    A page-sized turn's own input tokens, estimated the way
-    `tests/test_design_payload.py` prices a whole one: text at four characters
-    to the token, a picture at its pixel count over 750 — the same divisor a
-    provider is measured charging one at (`tests/test_design_payload.py`).
+    A page-sized turn's own input tokens: text at four chars to the token, a picture at pixel count over 750, the divisor a provider is measured charging at (`tests/test_design_payload.py`).
 
-    Read off `_pieces_of` rather than off `_the_evidence`'s finished blocks: a
-    picture is still a path here, not a base64 string decoded a second time
-    just to be measured.
-
-    `_visual_tokens` is `_split_to_budget`'s per-file cache, threaded down its
-    recursion: the same picture sits in more than one candidate group as the
-    split narrows, and without it `Image.open` reruns once per recursion
-    level a view survives into rather than once per file.
+    Read off `_pieces_of`, not `_the_evidence`'s finished blocks, so a picture stays a path rather than a decoded base64 string. `_visual_tokens` caches per file across `_split_to_budget`'s recursion.
     """
     chars = sum(len(piece["say"]) for piece in _pieces_of(sheet, views) if "say" in piece)
     if sheet.printed:
@@ -112,14 +101,11 @@ def _group_tokens(sheet, views, prompt_tokens, _visual_tokens=None):
 
 def _split_to_budget(sheet, views, prompt_tokens, _visual_tokens=None):
     """
-    *views* as one group, or as two smaller ones split at the middle and
-    asked the same question, recursively, until every group prices at or
-    under `_A_GROUP_BUDGET`.
-
-    `_A_GROUP_BUDGET` is 34,000: measured against the two Model Mania sheets a
-    page prices at 23,829-28,352 tokens (`tests/test_design_payload.py`), so
-    the budget clears both with room before a group would grow back toward
-    what the whole sheet used to cost in one call.
+    *views* as one group, or two smaller ones split at the middle and asked
+    the same question, recursively, until every group prices at or under
+    `_A_GROUP_BUDGET`. `_A_GROUP_BUDGET` is 34,000: the two Model Mania
+    sheets price a page at 23,829-28,352 tokens
+    (`tests/test_design_payload.py`), clearing both with room to spare.
     """
     if _visual_tokens is None:
         _visual_tokens = {}
@@ -132,18 +118,9 @@ def _split_to_budget(sheet, views, prompt_tokens, _visual_tokens=None):
 
 def _the_groups(attachments):
     """
-    Every attached, readable sheet as its own page-sized Design calls: one
-    group of view names per page, split further only where `_split_to_budget`
-    says a page outgrew the budget on its own.
+    Every attached, readable sheet as its own page-sized Design calls: one group of view names per page, split further where `_split_to_budget` says a page outgrew the budget.
 
-    A page rather than an arbitrary N of views is the boundary, because a page
-    is one a reader recognises and a run's log can point at ("design: page
-    2") without translating a group id back into what it covers.
-
-    Empty for a run with nothing `sheet_reader` can read — no attachments, a
-    text-only Intent, a format neither PyMuPDF nor Pillow knows — which is
-    `_first_pass`'s own sign to fall back to today's single whole-attachment
-    call rather than page a sheet that was never cut into pages.
+    A page is the boundary since a run's log can point at "design: page 2" without a group id to translate. Empty where `sheet_reader` reads nothing — `_first_pass`'s sign to fall back to one whole-attachment call.
     """
     prompt_tokens = len(prompt(DESIGN_PHASE)) // _CHARS_PER_TOKEN
     groups = []
@@ -177,12 +154,10 @@ def _asked_about_a_group(label, views, intent, llm, events, attachments):
 def _first_pass(intent, llm, events, attachments, cancelled):
     """
     The Design phase's opening move: one call per page-sized group of views,
-    run in parallel, each merged into the same part as it lands (ADR-0019 —
-    grow-only and order-independent is what makes concurrent merges legitimate).
-
-    A group's failure lands on the part as a `conflicts` entry with
-    `kind=A_CHECK_HAZARD`. At most one question crosses the fan-out, the
-    first a group asked in page order: the phase still asks once (ADR-0022).
+    run in parallel, each merged as it lands (ADR-0019 — grow-only and
+    order-independent makes concurrent merges legitimate). A group's failure
+    lands as a `conflicts` entry with `kind=A_CHECK_HAZARD`; at most one
+    question crosses the fan-out, the first asked in page order (ADR-0022).
     """
     groups = _the_groups(attachments)
     if not groups:
@@ -219,11 +194,10 @@ def _first_pass(intent, llm, events, attachments, cancelled):
 def _reconciled(the_part, intent, llm, events, attachments):
     """
     One turn over what the page-sized calls produced, seeing no pictures —
-    every named list `shown()` would draw one beside, as `_words_only` gives
-    it, instead. This is the half of cross-view reading a page cannot do for
-    itself: a page-sized call sees its own view's line work and the sheet's
-    printed callouts, and this is the turn that sees every page's words at
-    once and settles what only the whole sheet can.
+    every named list `shown()` would draw one beside, as `_words_only`
+    gives it instead. The half of cross-view reading a page cannot do
+    itself: it sees every page's words at once and settles what only the
+    whole sheet can.
     """
     return design({"intent": intent, "the_part_as_you_described_it": the_part},
                   llm, events, attachments, pictures=False)

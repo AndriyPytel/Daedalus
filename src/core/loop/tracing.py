@@ -1,4 +1,19 @@
-"""FreeCAD geometry tracing and disagreement detection."""
+"""
+FreeCAD geometry tracing and disagreement detection.
+
+Constraints on `_the_geometry_disagrees`: which of the print and the trace is
+wrong is not something a re-read can decide, so it goes on the part for the
+user to settle at the Gate. A dimension reaches the geometry through the feet
+of its extension lines, so a tracing further out than `sketch_check.A_FOOT`
+has no face to name.
+
+Measured on `tests/modelmania`: 11 printed distances reach a traced outline
+across the four sheets and none becomes a disagreement; a band of a tenth of
+the printed value produces three disagreements of 4.5-4.9 mm on sheets known
+to agree with themselves. The four sheets hold 142 outlines, so `A_READING_
+BUDGET`'s minute reads a child that stopped answering, not a normal reading
+time.
+"""
 import re
 import time
 
@@ -16,20 +31,9 @@ def _the_geometry_disagrees(attachments, events, budget=A_READING_BUDGET):
     """
     What the sheet prints against what the sheet draws, as conflicts.
 
-    Which of the two is wrong — the digit, or a face the tracer took to the
-    inside of its own line — is not something a re-read can decide, so it
-    goes on the part and the user settles it at the Gate.
-
-    Measured on `tests/modelmania`: 11 printed distances reach a traced
-    outline across the four sheets, and none becomes a disagreement.
-
-    A dimension reaches the geometry through the feet of its extension lines,
-    so a tracing further out than `sketch_check.A_FOOT` has no face to name.
-    A band of a tenth of the printed value produces three disagreements of
-    4.5 to 4.9 mm on sheets known to agree with themselves.
-
-    The four sheets contain 142 outlines, so the phase's minute is a child
-    that has stopped answering rather than a normal reading time.
+    Which is wrong is not something a re-read can decide, so it goes on the
+    part and the user settles it at the Gate (module docstring for the
+    measurements behind the timeout and the disagreement band).
     """
     traced = _every_outline_traced(attachments)
     if not traced:
@@ -74,9 +78,8 @@ def _every_outline_traced(attachments):
     Every outline read off every sheet, with the view and the distances it
     belongs to, before any child is started.
 
-    Read first so that a child which never comes up still knows what it was
-    going to be asked about: "nothing was checked" is only sayable by something
-    holding the list of what there was.
+    Read first so a child that never comes up still knows what it was going
+    to be asked about — "nothing was checked" needs the list of what there was.
     """
     traced = []
     for path in attachments:
@@ -93,10 +96,9 @@ def _what_the_solver_said(worker, outline, view, between, unchecked, timeout=Non
     """
     One outline's verdict, as the conflicts it puts on the description.
 
-    A constraint the solver calls redundant reads the same way here as one it
-    calls conflicting: both are a reading nobody in this phase can settle —
-    which of the two printed numbers to drop is not something a re-read can be
-    asked — so both go to the Gate, in the same words.
+    A constraint the solver calls redundant reads the same as one it calls
+    conflicting: both are a reading nobody in this phase can settle, so
+    both go to the Gate in the same words.
     """
     verdict = sketch_check.checked_by(worker, outline, view, between, timeout)
     if verdict is None:

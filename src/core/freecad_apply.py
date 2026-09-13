@@ -102,17 +102,12 @@ def run_in_transaction(doc, code, label="Copilot Step", names=None, expected_sig
     """
     Execute *code* against *doc* as one undoable unit. Main thread only.
 
-    Everything the Step does — including the recompute — is inside the
-    transaction, so one undo takes the whole Step back.
-
-    *names* is the requested-name -> allocated-name map an earlier Step's
-    Preflight built, exposed to this Step's code the same way the kernel's
-    own session exposes it (`core/kernel/kernel_worker.py::run_step`) — built with
-    the same `_NamedDoc` wrapper so a name collision during replay is
-    recorded exactly where the kernel would have recorded it.
-
-    *expected_signature* is what Preflight already verified this code
-    produces; `None` skips the check. A mismatch aborts the transaction.
+    The recompute runs inside the transaction, so one undo takes the whole
+    Step back. *names* is the requested-name -> allocated-name map from an
+    earlier Step's Preflight, exposed through the same `_NamedDoc` wrapper
+    the kernel uses (`core/kernel/kernel_worker.py::run_step`). *expected_signature*
+    is what Preflight verified; `None` skips the check, a mismatch aborts
+    the transaction.
     """
     names = {} if names is None else names
     doc.openTransaction(label)
@@ -142,13 +137,9 @@ def _is_modelling(obj):
     """
     Whether deleting this object takes a piece of the model with it.
 
-    The count is of the steps of the tree a person would name if asked what
-    the part is made of. A sketch is deliberately not one: a Pad and the sketch
-    under it are one change to the part and they go together, so counting both
-    would make every single-feature correction look like a rebuild. The feature
-    is the piece; the sketch is how it was drawn. A Body is one of them,
-    because deleting the Body takes every feature in it and Preflight reports
-    that as a single name.
+    A sketch is not one: a Pad and its sketch are one change and go
+    together, so counting both would call a correction a rebuild. A Body
+    counts as one, since deleting it takes every feature with it.
     """
     derived = getattr(obj, "isDerivedFrom", None)
     if derived is not None:
@@ -192,15 +183,13 @@ def lock_gui(window, locked, chat=CHAT_DOCK):
 class ApplyPipeline:
     """
     Hand it code; it lands as one undoable unit or comes back with a reason.
-
-    Also the keeper of the Session's Owned Objects: it is the only thing that
-    knows what the assistant created. A Step that would delete an object
-    outside that set needs the user's say-so.
+    Also the keeper of the Session's Owned Objects — the only thing that knows
+    what the assistant created; deleting one outside that set needs the user's
+    say-so.
 
     `_names` is the requested-name -> allocated-name map, accumulated across
-    every Step of the run and reset by `start_run`: a later Step's code
-    reaches the object an earlier Step actually created rather than a
-    same-named object already in the Document.
+    every Step and reset by `start_run`, so a later Step reaches what an
+    earlier one created, not a same-named Document object.
     """
 
     def __init__(self, document=None, worker=None, dispatch=None,
@@ -439,10 +428,9 @@ class ApplyPipeline:
         """
         Which of *names* are the model, in the order they are given.
 
-        A PartDesign feature is the part; a sketch, a Measurement, a datum, a
-        spreadsheet or a scratch object is not, and deleting those is not on
-        its own a rebuild. Read through the dispatcher because it touches the
-        Document.
+        A PartDesign feature is the part; a sketch, Measurement, datum,
+        spreadsheet or scratch object is not, and deleting those is not on
+        its own a rebuild. Read through the dispatcher: it touches the Document.
         """
         if not names:
             return []
@@ -470,23 +458,9 @@ class ApplyPipeline:
         """
         Ask before deleting anything the assistant did not create this Session.
 
-        Modification is not asked about: the Plan Gate approved a Step whose
-        prose said the object changes, and asking again per Step is asking twice
-        for the same consent. Deletion is never in that prose — Execute decides
-        it on its own — so it keeps the question.
-
-        The kernel already ran the Step for real, so `deleted` is what the code
-        *did*, not what reading it suggested it might do.
-
-        Asked and answered on the stream, like every other question put to the
-        user. It is the one that does not come through the loop, so it is the
-        one that would otherwise vanish from a replayed Session — leaving a
-        deleted object with nothing anywhere saying it was allowed.
-
-        Only an explicit yes is consent. Whoever asks releases waiting
-        questions somehow when a run is stopped, and the panel releases this
-        one with the Plan Gate's answer — an object, and so truthy. Read as
-        consent, that let Stop delete the user's own work.
+        Asked on the stream, since it does not come through the loop and
+        would vanish from a replayed Session otherwise. Only an explicit yes
+        is consent — the truthy release object Stop uses is not one.
         """
         deletes = sorted(set(deleted) - self.owned)
         if not deletes:
@@ -620,10 +594,9 @@ def _load_geometry_modules():
     """
     Import the geometry modules, so the Document will admit their types.
 
-    `supportedTypes()` only reports types whose module has been imported.
-    Without this, a session where the user never opened PartDesign is told
-    PartDesign::Pad does not exist — introspection reporting a confident, wrong
-    absence.
+    `supportedTypes()` only reports types whose module has been imported —
+    unimported, a session that never opened PartDesign is told PartDesign::Pad
+    does not exist, a confident, wrong absence.
     """
     for module in _GEOMETRY_MODULES:
         try:
@@ -636,15 +609,9 @@ def _selection(dispatch=_direct):
     """
     What the user has selected right now, sub-element names included.
 
-    Element names from a live selection are explicit user input and are the
-    one sanctioned source of an `Edge12` (ADR-0005). Headless has no GUI and
-    therefore no selection.
-
-    Read through *dispatch*, like every other Gui touch: the `snapshot` tool
-    asks for this at the start of a run and again on every Step, and the loop
-    that asks is on the worker thread. The engine carries no Qt of its own,
-    so a live GUI passes its own main-thread marshaller in through
-    `build_registry`; headless callers keep the identity dispatch.
+    The one sanctioned source of an `Edge12` (ADR-0005); headless has no GUI
+    and therefore no selection. Read through *dispatch*, since the worker
+    thread that calls this cannot touch Qt directly.
     """
     try:
         import FreeCADGui
@@ -711,11 +678,10 @@ def _active_view(document=None):
 def _scaffolding(obj):
     """
     Whether *obj* is a Shape past `_SCAFFOLDING` — an Origin plane or axis,
-    almost always — the same test `_measurable` makes for the reporting path,
-    kept separate here because `fit_view` only cares about the oversized
-    case: an object with no `Shape` at all, or one with no `Faces`, is not
-    scaffolding, just not a solid, and hiding it would change what the
-    camera fits to for no reason.
+    almost always. Kept separate from `_measurable`'s same test because
+    `fit_view` only cares about the oversized case: no `Shape` at all, or no
+    `Faces`, is not scaffolding, just not a solid, and hiding it would change
+    what the camera fits to for no reason.
     """
     shape = getattr(obj, "Shape", None)
     if shape is None or shape.isNull():
@@ -741,14 +707,12 @@ def fit_view(document=None):
     """
     Put everything the Document shows back inside the viewport.
 
-    A 3 mm bracket and a 900 mm frame both arrive somewhere off to one side,
-    one of them a few pixels across. The user cannot judge what they are
-    being asked to approve if it is not on screen.
+    A 3 mm bracket and a 900 mm frame both arrive off to one side, a few
+    pixels across — the user cannot judge what to approve unscreened.
 
-    A Body's Origin carries three planes and three axes, each 1e100 mm across.
-    One visible Origin is enough to turn "fit the part" into "fit a plane
-    1e100 mm across", at which point a millimetre-scale part is a speck.
-    Anything past `_SCAFFOLDING` is hidden before `fitAll()` runs.
+    A Body's Origin carries three planes and three axes, each 1e100 mm
+    across; one visible Origin turns "fit the part" into "fit a plane 1e100
+    mm across". Anything past `_SCAFFOLDING` is hidden before `fitAll()` runs.
     """
     view = _active_view(document)
     if view is None:
@@ -784,8 +748,7 @@ def _cavity_center(box, material):
 def _section_plane(document):
     """
     A placement that cuts through the part's real interior, not one of its
-    faces — the one thing a shell, bore or blind pocket needs to become
-    visible that the existing four views cannot give it.
+    faces — what a shell, bore or blind pocket needs to become visible.
 
     The plane sits at the centre of the largest actual void the modelled
     geometry has, not a guess at where a cavity usually sits.
@@ -912,12 +875,9 @@ def _overall_size(doc):
     """
     How big the modelled part is, `[x, y, z]` in mm, or None if nothing is.
 
-    The one dimension a drawing states outright, and the one nothing in the
-    loop reported: Review judged renders and a list of type names, so whether
-    the result came out the right size was not a question it could ask.
-
-    A Body's Origin carries three planes and three axes, each 1e100 across, so
-    a literal union of every bounding box makes any part 2e+100 mm wide.
+    A Body's Origin carries three planes and three axes, each 1e100 across,
+    so a literal union of every bounding box makes any part 2e+100 mm wide;
+    `_measurable` is what keeps this to the modelled geometry.
     """
     box = None
     for obj in doc.Objects:
@@ -938,13 +898,10 @@ def description(doc):
     """
     What the Document now holds, in the two layers Review can judge by.
 
-    The feature tree with its parameters is what the part was asked to be, and
-    it is trustworthy because Lint forces the tree to be genuine PartDesign
-    (ADR-0012). The inventory read off `Shape` is what it came out as — the
-    only one of the two that reports a hole nobody thought to ask about, since
-    the Acceptance list is written before the part exists.
-
-    Both layers read data that was already there; neither is a subsystem.
+    The feature tree with its parameters is trustworthy because Lint forces
+    it to be genuine PartDesign (ADR-0012). The inventory read off `Shape` is
+    what it came out as — the only one that reports a hole nobody thought to
+    ask about, since the Acceptance list is written before the part exists.
     """
     return {"features": [_described(obj) for obj in doc.Objects],
             "geometry": _inventory(doc)}
@@ -965,13 +922,9 @@ def _parameters(obj):
     """
     The named values of one feature, as the property editor would show them.
 
-    Hidden and read-only are FreeCAD's own answer to "is this editable here":
-    a Pad extruded one side marks the other side's length read-only, a Hole
-    cut through marks its depth read-only. It is not a relevance filter — an
-    unthreaded Hole still reports its thread properties, because this build
-    leaves them editable — so what comes out is every value the property
-    editor would let someone type into, and not a curated list. A link, a
-    shape or a placement is not a value to judge by, so those go.
+    Hidden/ReadOnly is FreeCAD's own "is this editable here", not a
+    relevance filter — an unthreaded Hole still reports its thread
+    properties. A link, shape or placement is not a value to judge by.
     """
     parameters = {}
     for prop in getattr(obj, "PropertiesList", ()):
@@ -1003,10 +956,9 @@ def _constraints(obj):
     """
     A sketch's driving, named constraints — and deliberately not its geometry.
 
-    Raw geometry is the form in which a defect is formally present and
-    practically invisible: the coordinates of every LineSegment are the most
-    tokens in the Description for the least judgement. A named constraint is
-    the same dimension, said once, by someone who chose to name it.
+    Raw geometry is a defect formally present and practically invisible: a
+    LineSegment's coordinates are the most tokens for the least judgement. A
+    named constraint is the same dimension, said once, by someone who chose it.
     """
     return {constraint.Name: _dimension(constraint)
             for constraint in getattr(obj, "Constraints", ())
@@ -1029,20 +981,11 @@ def _dimension(constraint):
 
 def _inventory(doc):
     """
-    The geometry as it came out: how much material there is, and one entry per
-    family of surfaces.
+    The geometry as it came out: material total, one entry per surface
+    family. Grouping by kind/diameter/axis keeps identical holes one entry;
+    only top-level objects count, so this is the part as it stands.
 
-    Grouping by kind, diameter and axis is what keeps this a description: on a
-    real part twenty identical holes are one entry with a count, and ungrouped
-    they are twenty. Only what nothing else uses is measured, so this is the
-    part as it stands and not every intermediate feature it was built from.
-
-    Two faces of one bore share a seat on the axis, where six flats share
-    nothing, so a family is counted by its distinct seats where it has them.
-    The volume is how a Step that removed nothing is told from one that worked:
-    a Pocket extruded away from the solid cuts nothing, and every other reading
-    here — the feature tree, the face families, the overall size — comes out
-    identical whether it cut or not.
+    A family counts distinct axis seats — a bore's two faces share one, flats share none — and volume tells apart a cut Pocket from one that missed.
     """
     solids, volume, seats = 0, 0.0, {}
     for obj in doc.Objects:
@@ -1099,17 +1042,9 @@ def _inventoried(obj):
     """
     Every property the object has, as the running FreeCAD reports it.
 
-    Shared by `describe_object` and `describe_type` because the question is the
-    same one — what does this thing actually have — and only where the object
-    came from differs. An enumeration is named where there is one: a property
-    whose value is a choice between spellings is the case where knowing the
-    property exists is not enough, and `'Through all'` for `ThroughAll` is a
-    Preflight failure that no property list would have caught.
-
-    A key whose value is an empty string is a line of the answer that says
-    nothing, and this answer is read by something that pays by the token: a
-    third of one of these listings was `"group": ""` and `"documentation": ""`.
-    What is absent is absent.
+    Shared by `describe_object` and `describe_type`. An enumeration is named
+    where there is one — `'Through all'` for `ThroughAll` is a Preflight
+    failure no property list would catch. An empty-string value is dropped: a third of one listing was `"group": ""` and `"documentation": ""`.
     """
     inventory = []
     for prop in obj.PropertiesList:
@@ -1135,10 +1070,9 @@ def _opaque(value):
     """
     Whether this value tells the reader nothing it could act on.
 
-    `<Shape object at 0x7f8247480>` is the repr of something that has no
-    textual value, and the address changes every run. Knowing the property is
-    there is the whole of what a Shape-valued property has to say, and the
-    entry already says that.
+    `<Shape object at 0x7f8247480>` has no textual value and its address
+    changes every run — knowing the property is there is the whole of what a
+    Shape-valued property has to say, and the entry already says that.
     """
     if value is None or value == "":
         return True
@@ -1378,13 +1312,12 @@ def _register_material(registry):
         """
         The material cards this build has, filtered by name where one is given.
 
-        The 200 cards that ship with FreeCAD 1.1 are the same list every call,
-        so the unfiltered answer is a page of them rather than the lot. A title
-        block says "plain carbon steel" where the cards say "Steel-Generic", so
-        a name that matches nothing whole is matched on a word of itself, and
-        failing that gets the whole shelf: an empty list is the one answer that
-        reads as "this build has no material to assign", and a recorded run
-        spent every revision it had on that reading rather than picking a card.
+        The 200 cards FreeCAD 1.1 ships are the same list every call, so an
+        unfiltered answer is a page of it. A title block says "plain carbon
+        steel" where cards say "Steel-Generic", so an unmatched name is
+        matched on a word of itself, and failing that gets the whole shelf —
+        an empty list read as "no material to assign" once cost a recorded
+        run every revision it had.
         """
         try:
             import Materials

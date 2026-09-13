@@ -114,12 +114,11 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, aborte
         Stamp what is still wrong with the Document, and which Part it was
         built from, onto whatever the run returned.
 
-        Every exit carries both, including the ones that raised: a run stopped
-        halfway leaves the Document exactly as wrong as the last check found
-        it, and reading from the same Part it started from, and that is the
-        state the next run inherits. Done in one place because there are nine
-        ways out of `_run` and the eight that are not the happy one are the
-        ones that matter here.
+        Every exit carries both, including the ones that raised: a run
+        stopped halfway leaves the Document as wrong as the last check found
+        it, reading from the same Part it started from — the state the next
+        run inherits. Done in one place because there are nine ways out of
+        `_run` and eight of them are not the happy one.
         """
         result.unmet = list(progress.unmet)
         result.the_part_path = progress.the_part_path
@@ -258,15 +257,12 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         """
         Rewrite the Plan for *cause*, or stop because the budget is spent.
 
-        Seven unrelated things replan and every one of them does it the same
-        way: spend one unit of the shared ceiling, plan again from a fresh
-        Snapshot, and say on the stream why. Only the cause, the sentence and
-        what had been tried differ, so only those are arguments.
-
-        The Plan being rewritten goes with the complaint. A revision is an
-        amendment of a Plan that exists, and Plan was being asked for one
-        without being shown it — so it wrote from the complaint alone, which
-        names only what was wrong.
+        Seven unrelated things replan the same way: spend one unit of the
+        shared ceiling, plan again from a fresh Snapshot, and say why on the
+        stream — only the cause, sentence and what was tried differ. The
+        Plan being rewritten goes with the complaint: without it, a
+        revision wrote from the complaint alone, which names only what was
+        wrong.
         """
         if revisions.exhausted(budgets, steps, cause):
             raise _OutOfRevisions(
@@ -607,16 +603,9 @@ def _changes_the_shape(step):
 def _not_reached(unbuilt, acceptance):
     """
     The acceptance entries the Steps that were never built were to satisfy.
+    Matched by address, not whole line — a Step cites the address, and the acceptance line carries it with its own value, the allowance `_unconsumed` makes for a Plan copying its line back.
 
-    Matched by address rather than whole, because a Step cites the address and
-    the acceptance carries the address with the value on the same line — the
-    same allowance `_unconsumed` makes for a Plan that copies the line it was
-    handed.
-
-    They are taken off what the checks are asked to measure and reported unmet
-    instead: a check written for a value nobody built fails, and a failed check
-    is a rejection that would send the run back round for a Step it already
-    knows cannot be written.
+    Taken off what the checks measure, since a check for an unbuilt value would fail and send the run back for a Step it knows cannot be written.
     """
     cited = {_as_written(entry).partition(": ")[0]
              for step in unbuilt for entry in step["entries"]}

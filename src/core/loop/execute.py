@@ -121,22 +121,11 @@ class Written:
     What one Execute phase produced: each Step's declared code, keyed by
     number, and why a Step it was asked about has none.
 
-    Keyed by the Step's number in the Plan rather than by position in the
-    reply. A regeneration is asked about a tail, and a reply that leaves a Step
-    out has to leave a hole at that Step — shifting every Step after it onto
-    the wrong code is the silent failure this ticket exists to remove.
-
-    `unbuildable` is why a Step was left out, from a reply that wrote code for
-    the others. A complaint that arrives beside working code is about that Step
-    and no more, and it is the only thing that lets Plan write it differently.
-
-    `said` is what a reply that left a Step without code and without a reason
-    carried instead, rendered by `_said`. It is set whenever a reply could
-    leave a Step uncovered — a reply that numbered some Steps but not all, and
-    the empty reply at the end of a turn that spent its looks — because from
-    here that is the only account of what the model answered: a Step with no
-    code and no `said` is a run that spent a provider call and kept nothing
-    of it.
+    Keyed by Step number, not reply position, so a reply leaving a Step out
+    leaves a hole there instead of shifting later Steps' code. `unbuildable`
+    is why a Step was left out of a reply that coded the rest. `said` is
+    what a reply carried instead of code, when it could leave a Step
+    uncovered — none of either means a call spent for nothing.
     """
 
     steps: dict = field(default_factory=dict)
@@ -406,24 +395,11 @@ _FAILED_THIS_WAY = _classified_failures()
 
 def _the_same_way_twice(attempts):
     """
-    The directive for a Step that has now failed twice for the same reason, or
-    None.
-
-    Only the *last two* attempts, and only where they are the same kind of
-    failure. Two different failures in a row is progress — the first thing was
-    fixed and a second one surfaced — and telling a run that is getting
-    somewhere to change tack would be wrong.
-
-    `_FAILED_THIS_WAY` pairs each failure with what a *different* attempt at it
-    would have to change. It is keyed on a phrase Preflight itself writes, so a
-    failure this build stops reporting stops being classified rather than being
-    classified wrongly. Naming them at all is the answer to a recorded run that
-    failed the same Step three times over with the identical "moved no
-    material" traceback: each rewrite renamed the objects, restructured the
-    loop that built the profiles and changed nothing about the direction of the
-    cut the traceback was describing, then it replanned and did it again. The
-    traceback said what to change; what it did not say was that the answer
-    being tried had already been tried.
+    The directive for a Step that failed twice for the same reason, or None.
+    Only the *last two* attempts, and only the same kind of failure — two
+    different failures in a row is progress, not a reason to change tack.
+    `_FAILED_THIS_WAY` is keyed on a phrase Preflight itself writes, so an
+    unrecognised failure stops being classified, not misclassified.
     """
     if len(attempts) < 2:
         return None
@@ -463,24 +439,9 @@ def _written(declarations, start):
 
 def _said(reply, declarations, start):
     """
-    A reply that could leave a Step undeclared, rendered short enough to
-    travel: what it was, not what it wrote.
+    A reply that could leave a Step undeclared, rendered short enough to travel: what it was, not what it wrote.
 
-    Capped at 300 characters. This same string reaches `PREFLIGHT_FAILED`, then
-    `progress.tried`, then the handback to Plan, and an Execute reply
-    carries the code for a whole Plan — recording it whole would put that code
-    back into the next request and into the transcript, which is the cost this
-    exists to avoid, not to move.
-
-    Three things, in order: the reply's top-level keys, so a reply that had
-    nothing usable says so rather than rendering empty; for `steps`, which
-    Step numbers it named and which of those the kernel actually declared
-    (from `declarations`, not the reply — the reply carries no code to check),
-    since a Step named here and missing from `declarations` is the whole of
-    what a reply that talked about a Step it never ran did; and, for every
-    other key, its value where that value is a short string —
-    `unbuildable`, `obsolete`, or whatever else a model answered with instead
-    of code — truncated with it.
+    Capped at 300 characters — an Execute reply carries a whole Plan's code, so recording it whole puts that code back into the next request. Renders the reply's keys, which `steps` it named against `declarations`, and every other short-string value.
     """
     keys = sorted(reply)
     parts = ["keys: %s" % ", ".join(keys) if keys else "keys: none"]
@@ -511,11 +472,9 @@ def _lookable(tools):
     """
     The Tools Execute may ask with: everything that only reads.
 
-    `apply_step` is not among them — Execute proposes a Step, the loop decides
-    when it runs, and a phase that could apply its own code would be a second,
-    unbudgeted route to the Document. `review_views` is not either: it moves
-    the user's camera, and letting Execute ask for a picture would be a loop
-    inside a phase (ADR-0015).
+    `apply_step` is excluded — the loop decides when a Step runs, and a
+    phase applying its own code is a second, unbudgeted route to the
+    Document. `review_views` moves the camera, a loop inside a phase (ADR-0015).
     """
     return [described for described in tools.describe()
             if described["name"] not in NOT_A_LOOK]
@@ -525,17 +484,10 @@ def _emit_plan(events, kind, planned, reason=None, unanswered=(), decided=(),
                **counted):
     """
     A Plan on the stream, in one place — the panel reads both kinds alike.
-
-    `unanswered` rides with it because a Plan that chose its own values is the
-    only place those choices are correctable, and the Gate cannot show what it
-    was never handed. `decided` is the same argument for the values the
-    model settled before Plan ever saw them: nothing is asked between the
-    attachment and the Gate, so the Gate is where they are read (ADR-0022).
-
-    `counted` is which revision this is, of how many, and what caused it. A
-    revised Plan used to carry the reason alone, so three Revised Plans running
-    into the same wall read as three fresh starts and the run looked like it
-    had stalled for no reason.
+    `unanswered` is the only place a Plan's own choices are correctable —
+    the Gate cannot show what it was never handed. `decided` is the same
+    for values settled before Plan saw them (ADR-0022); `counted` names
+    which revision this is, of how many, and why.
     """
     extra = {"reason": reason} if reason is not None else {}
     events.emit(kind, steps=list(planned.steps), acceptance=list(planned.acceptance),
@@ -545,14 +497,10 @@ def _emit_plan(events, kind, planned, reason=None, unanswered=(), decided=(),
 def _review_views(tools, events):
     """
     The four viewport views for Review, or nothing where there is no GUI.
-
-    Driven by the loop, once per run, because a picture is not something a
-    phase gets to ask for (ADR-0015). A build without the Tool at all — an
-    older registry, a test registry — falls through to the same nothing as a
-    headless one, and Review keeps the Worker's single render.
-
-    A Tool that fails is narrated and then let go: a finished run is not lost
-    over its photograph.
+    Driven by the loop, once per run — a picture is not something a phase
+    gets to ask for (ADR-0015). A missing Tool falls through to the same
+    nothing as a headless build; a failing one is narrated and let go, since
+    a finished run is not lost over its photograph.
     """
     if "review_views" not in tools:
         return []
@@ -594,23 +542,9 @@ def _look(tools, look, events, looks=None):
 def _what_this_build_has(tools):
     """
     The looks nobody should have to spend a turn on, taken before Execute is.
+    Material cards are a build fact taken outside the model's look budget — spending it from there once cost a run its last Step, declared unbuildable for a Tool it was told was unavailable.
 
-    The material cards are a fact about the build: true from the first Step to
-    the last, and the Tool answers off a list FreeCAD already holds. Drawing
-    them from the same allowance as a question about the Document is what left
-    a recorded run with its looks spent at the Step that assigns a material,
-    being told a look now was a failed attempt — so it declared the Step
-    unbuildable and said the Tool was unavailable.
-
-    Unfiltered, because a page of cards is what the request wants to carry: a
-    name to match against was the question in the first place. A budget the
-    model does not have to spend is the only one it cannot run out of at the
-    last Step.
-
-    Not narrated, because nothing asked: this is knowledge the run is handed
-    with the request, not a question anybody put and an answer that came back.
-    A build whose Tools do not hold the cards is handed nothing, which is the
-    case every registry without a `materials` Tool is already in.
+    Unfiltered, since a page of cards is the request's own question; not narrated, since nothing was asked for it.
     """
     looks = Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
     if "materials" in tools:

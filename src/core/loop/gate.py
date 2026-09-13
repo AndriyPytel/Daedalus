@@ -80,12 +80,10 @@ _ABOUT_THE_BUILD = ("material", "materials", "uuid", "uuids", "card", "cards", "
 def _a_question_for_the_build(question):
     """
     Whether a question is about this FreeCAD rather than about the part.
-
-    A dimension, or which of two profiles governs, is a question the drawing
-    can settle. A material card's uuid, a type's name, a property's spelling is
-    not: no sheet prints one, and a recorded run spent every re-read it had
-    putting "the UUID of an installed plain carbon steel material card" to the
-    drawing before ending for want of an answer.
+    A dimension, or which of two profiles governs, is a question the
+    drawing can settle. A material card's uuid, a type's name, a
+    property's spelling is not — no sheet prints one, and a recorded run
+    spent every re-read asking the drawing for a material uuid instead.
     """
     words = re.findall(r"[a-z]+", str(question).lower())
     return any(word in _ABOUT_THE_BUILD for word in words)

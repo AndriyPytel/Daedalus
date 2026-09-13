@@ -11,15 +11,13 @@ class PhaseError(Exception):
 class Budgets:
     """
     What a run may spend, and the ceilings that make it terminate.
-
-    Two separate ceilings: mechanical causes (UNCOVERED, MISCOUNTED) spend their
-    own budget; execution causes (OBSOLETE, UNBUILDABLE, ASSERTED, REJECTED,
-    AMENDED) spend `revisions_ceiling`. Measured: 456 sessions, 43 blocked on
-    revisions, UNCOVERED appeared 1-3 times (ADR-0022).
-
-    `trailing_gap_retries` is the bounded free continuation for a reply that
-    simply stops (`logs/analysis-preflight-rakes.md` section 5): 23 such replies
-    across 13 sessions, 57% within the last two Steps, up to 266s call duration.
+    Two separate ceilings: mechanical causes (UNCOVERED, MISCOUNTED) spend
+    their own budget; execution causes (OBSOLETE, UNBUILDABLE, ASSERTED,
+    REJECTED, AMENDED) spend `revisions_ceiling` (ADR-0022). Measured: 456
+    sessions, 43 blocked on revisions, UNCOVERED appeared 1-3 times.
+    `trailing_gap_retries` bounds the free continuation for a reply that
+    stops: 23 such replies across 13 sessions, 57% within the last two
+    Steps, up to 266s call duration.
     """
 
     attempts_per_step: int = 3
