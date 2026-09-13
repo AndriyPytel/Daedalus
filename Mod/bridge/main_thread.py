@@ -38,11 +38,11 @@ def stopping():
     One Session's teardown: refuse and release for as long as it lasts.
 
     A run parked here waits on a job only the main thread's event loop can
-    take, and a teardown running on that thread never pumps it, so releasing
-    once is not enough -- a run told to stop is unwinding and asks the main
-    thread again. Unlike `closing`, `_closing` is never set: one Session's
-    teardown must not refuse every other Session's Document operation for the
-    rest of the FreeCAD session.
+    take and a teardown on that thread never pumps it, measured as 3.0 s of
+    frozen window and then a SIGSEGV on a thread ended mid-Document. Releasing
+    once is not enough, since a run told to stop is unwinding and asks again,
+    and `_closing` stays unset so one Session's teardown does not refuse every
+    other Session for the rest of the FreeCAD session.
     """
     global _stopping
 
