@@ -552,9 +552,12 @@ def _look(tools, look, events, looks=None):
 def _what_this_build_has(tools):
     """
     The looks nobody should have to spend a turn on, taken before Execute is.
-    Material cards are a build fact taken outside the model's look budget — spending it from there once cost a run its last Step, declared unbuildable for a Tool it was told was unavailable.
-
-    Unfiltered, since a page of cards is the request's own question; not narrated, since nothing was asked for it.
+    Material cards are a build fact taken outside a model turn -- spending
+    one on them once cost a run its last Step, declared unbuildable for a
+    Tool it was told was unavailable. Unfiltered and not narrated, since a
+    page of cards is the request's own question and nothing was asked for
+    it; every describe_type already on disk from an earlier run is carried
+    the same way, so a type asked about once never costs a second turn.
     """
     looks = Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
     if "materials" in tools:
@@ -562,6 +565,8 @@ def _what_this_build_has(tools):
             looks.remember("materials", {}, tools.call("materials", {}))
         except ToolError:
             pass  # except-pass-allowed: materials is optional, its absence here is not the caller's problem
+    for arguments, result in looks.disk_types():
+        looks.remember("describe_type", arguments, result)
     return looks
 
 
