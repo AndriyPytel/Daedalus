@@ -5,7 +5,7 @@ Nothing here needs a FreeCAD. What is checked is the crossing itself: a traced
 outline is a walk of dataclasses in this process, JSON in the pipe, and plain
 objects with the same attribute names in the child — and a point that arrives
 as a list rather than a tuple breaks the reporting rather than the geometry,
-silently, in a `%` format string (FCC-126).
+silently, in a `%` format string.
 """
 import json
 
@@ -109,7 +109,7 @@ def test_a_reading_the_solver_gave_up_on_is_built_again(monkeypatch):
     — three builds in two hundred, measured on a bore given two printed sizes.
     A build it gave up on leaves the geometry where the pixels put it, which is
     what a reading with nothing wrong with it looks like, so the verdict has to
-    come off a solve that converged. FCC-127.
+    come off a solve that converged.
     """
     built = []
 

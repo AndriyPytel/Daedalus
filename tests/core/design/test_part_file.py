@@ -185,7 +185,7 @@ def test_a_missing_pyyaml_is_a_loud_error_not_a_silent_empty_write(monkeypatch, 
     """
     An empty model is a legitimate no-write; a missing PyYAML is not. Losing
     the distinction is how Design's reading silently vanishes on a FreeCAD
-    whose Python lacks the package (FCC-108).
+    whose Python lacks the package.
     """
     monkeypatch.setattr(part_file, "yaml", None)
 
@@ -217,12 +217,10 @@ THE_CLAMP_WITH_MIXED_FINDINGS = dict(
 
 def test_the_evidence_log_stands_the_disagreements_before_the_gaps(sheet, tmp_path):
     """
-    FCC-244, ordering updated by FCC-249: `logged` writes the evidence
-    sidecar through `design.grouped_conflicts` rather than in the order the
-    merge appended it. None of `THE_CLAMP_WITH_MIXED_FINDINGS`' three entries
-    carries `machine_written`, so all three fall in one authorship bucket and
-    keep their arrival order -- the same order this test has always checked,
-    now for a different reason than "grouped by kind".
+    `logged` writes the evidence sidecar through `design.grouped_conflicts`
+    rather than in the order the merge appended it. None of
+    `THE_CLAMP_WITH_MIXED_FINDINGS`' three entries carries `machine_written`,
+    so all three fall in one authorship bucket and keep their arrival order.
     """
     reading_path = str(tmp_path / "parts" / "a-reading.yaml")
     os.makedirs(os.path.dirname(reading_path), exist_ok=True)

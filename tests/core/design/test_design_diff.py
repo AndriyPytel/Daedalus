@@ -1,10 +1,11 @@
 """
-Level 1 — the semantic change-set between two Design versions (FCC-311).
+Level 1 — the semantic change-set between two Design versions.
 
 Plan is handed a moved datum reported as a moved datum, not two unrelated
 lines of a re-serialized YAML file: matched by stable identity — `id` on a
-feature, `name` on a datum — never by position or name text (ADR-0019's
-identity rule, reused here rather than reinvented).
+feature, `name` on a datum — never by position or name text (the same
+identity rule Design's diffing already relies on, reused here rather than
+reinvented).
 """
 from core.design.merge import (
     ADDED,

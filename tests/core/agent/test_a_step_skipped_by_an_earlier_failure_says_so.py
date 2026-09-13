@@ -1,5 +1,5 @@
 """
-FCC-291: a Step declared after an earlier Step failed to apply is not
+A Step declared after an earlier Step failed to apply is not
 silently dropped -- the model is told which Step to fix before it keeps
 declaring Steps that will never land.
 """

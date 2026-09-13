@@ -1,5 +1,5 @@
 """
-FCC-306: the phase-visibility contract (FCC-305's `PHASE_CONTRACT`), pinned as
+The phase-visibility contract (`phase_contract`'s `PHASE_CONTRACT`), pinned as
 a test rather than left a promise the model makes.
 
 Every assertion here reads the table and `spawn()`'s own writers -- nothing
