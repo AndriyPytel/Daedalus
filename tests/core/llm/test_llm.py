@@ -711,6 +711,20 @@ def test_scripted_client_accepts_explicit_chunks():
     assert collect(client.stream([])).text == "ab"
 
 
+def test_scripted_client_refuses_a_turn_shape_it_does_not_understand():
+    """
+    A bare list of strings is what an unflattened `_MultiTurn` looks like once
+    a script runs dry and the queue lands on the next phase's turn instead —
+    silently replaying it as Chunks once turned that mistake into a crash
+    three frames away, on whichever chunk's `.kind` was read first.
+    """
+    client = ScriptedLLMClient(["first", ["not", "a", "turn"]])
+    collect(client.stream([]))
+
+    with pytest.raises(TypeError, match=r"call 2 is a list.*not.*str.*dict.*Chunk"):
+        collect(client.stream([]))
+
+
 def test_scripted_client_running_dry_is_a_loud_test_failure():
     client = ScriptedLLMClient([])
 
