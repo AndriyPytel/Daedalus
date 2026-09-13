@@ -10,9 +10,9 @@ and the only thing the panel asks of the loop is to start.
 import ast
 import os
 
-from core.events import CHANGE_SET, DESIGN, KINDS
+from core.events import CHANGE_SET, CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED, DESIGN, KINDS
 
-WRITTEN_NOT_SHOWN = {DESIGN, CHANGE_SET}
+WRITTEN_NOT_SHOWN = {DESIGN, CHANGE_SET, CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED}
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 PANEL = os.path.join(ROOT, "Mod", "ui", "copilot_panel.py")

@@ -3,7 +3,7 @@ import json
 from dataclasses import dataclass, field
 
 from core.design.core import UNDER
-from core.events import ASSERTION, TOOL_CALL, TOOL_RESULT
+from core.events import ASSERTION, CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED, TOOL_CALL, TOOL_RESULT
 
 import tempfile
 
@@ -131,13 +131,33 @@ class _LazyKernel:
             self._real.kill()
 
 
+def _consulted_design(description, events):
+    """
+    The one bounded read Assertion gets of Design's own prose: `description`
+    is already `core.design.report.distilled`'s output, the merged `the_part`
+    dict Plan reads too, with the sheets, the evidence and every re-read
+    Design ran to arrive at it already stripped -- never a live turn with
+    Design, and never a second question. Costs no call of its own: it only
+    logs, once, what this run is about to hand the phase kernel as its
+    read-only `design` artifact (`core/agent/phase_contract.py`).
+    """
+    if not description:
+        return description
+    events.emit(CONSULT_DESIGN)
+    events.emit(CONSULT_DESIGN_ANSWERED, description=description)
+    return description
+
+
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
-              after_a_retry=(), supervisor=None, kernel=None):
+              after_a_retry=(), supervisor=None, kernel=None, description=None):
     """
     Writes and runs acceptance checks against the finished Document,
-    read-only, once per run. A context of its own -- Review is
-    deliberately not told how the result was produced. Measured (warm
-    worker): ~0.3s first solid, then ~0.7ms/solid marginal.
+    read-only, once per run, given `description` -- Design's own prose,
+    never `described`'s rendering of what Execute built -- since the
+    acceptance list already flattens the one and the built Document only
+    shows the other. A context of its own -- Review is deliberately not
+    told how the result was produced. Measured (warm worker): ~0.3s first
+    solid, then ~0.7ms/solid marginal.
     """
     budgets = budgets or Budgets()
     request = {"acceptance": list(acceptance),
@@ -165,6 +185,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     if not acceptance:
         return None
 
+    design_source = _consulted_design(description, events)
     attempts = []
     working_kernel = kernel or _LazyKernel()
     try:
@@ -183,9 +204,9 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                                  "stream": events, "system": prompt(ASSERTION_PHASE)}
                     if attempt == 0:
                         run_kwargs["document"] = document
+                    sources = {"design": design_source} if design_source else {}
                     declared, session, declarations = run_phase(
-                        pc.ASSERTION, working_dir, {"design": described}, llm, task,
-                        **run_kwargs)
+                        pc.ASSERTION, working_dir, sources, llm, task, **run_kwargs)
 
                 reply = declared if isinstance(declared, dict) else {}
                 code = str(reply.get("code") or "").strip()
