@@ -32,6 +32,20 @@ MACHINE_READABLE = ("# type:", "# noqa", "# pragma:", "# pylint:", "# flake8:",
 
 TICKETS = ("FCC-", "ADR-")
 
+TESTS = os.path.join(ROOT, "tests")
+
+
+def suite_sources():
+    """`(path relative to ROOT, source text)` for every module the suite itself carries."""
+    for path, dirnames, names in os.walk(TESTS):
+        dirnames[:] = [d for d in dirnames if d != "__pycache__"]
+        for name in sorted(names):
+            if not name.endswith(".py"):
+                continue
+            full = os.path.join(path, name)
+            with open(full, encoding="utf-8") as handle:
+                yield os.path.relpath(full, ROOT).replace(os.sep, "/"), handle.read()
+
 
 def comments():
     for where, source in sources():
@@ -112,13 +126,17 @@ HISTORY_MARKERS = ("used to", "now instead", "no longer", "replaces the old", "w
 DOCUMENTED = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 
 
-def docstrings():
-    for where, source in sources():
+def docstrings_in(source_iter):
+    for where, source in source_iter:
         for node in ast.walk(ast.parse(source, filename=where)):
             if isinstance(node, DOCUMENTED):
                 doc = ast.get_docstring(node)
                 if doc:
                     yield where, getattr(node, "lineno", 1), node, doc
+
+
+def docstrings():
+    yield from docstrings_in(sources())
 
 
 SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
@@ -139,6 +157,19 @@ def test_no_docstring_holds_more_than_three_sentences():
 def test_no_docstring_carries_a_ticket_or_adr_id():
     offenders = ["%s::%s %s" % (where, getattr(node, "name", "module"), match.group())
                  for where, line, node, doc in docstrings()
+                 for match in [TICKET_ID.search(doc)]
+                 if match]
+
+    assert not offenders, (
+        "an id is not an explanation, it sends the reader elsewhere to learn "
+        "what the docstring in front of them means -- say the constraint "
+        "itself, in words: %s" % ", ".join(offenders))
+
+
+def test_no_test_docstring_carries_a_ticket_or_adr_id():
+    """A test is read more often than the code it covers -- the same rule holds here."""
+    offenders = ["%s::%s %s" % (where, getattr(node, "name", "module"), match.group())
+                 for where, line, node, doc in docstrings_in(suite_sources())
                  for match in [TICKET_ID.search(doc)]
                  if match]
 
