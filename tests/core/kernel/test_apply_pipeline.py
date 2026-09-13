@@ -110,6 +110,20 @@ def test_a_step_that_lands_puts_the_part_back_in_the_viewport(pipeline, monkeypa
     assert fitted == [pipeline.document]
 
 
+def test_a_step_that_lands_shows_the_built_result(pipeline, monkeypatch):
+    """
+    A run cut off mid-Step can leave the built geometry hidden behind
+    PartDesign's own consumption behaviour, with nothing to correct it —
+    `apply()` shows the landed Step's own result every time, not only on the
+    run's last Step.
+    """
+    shown = []
+    monkeypatch.setattr("core.freecad_apply._show_tip", lambda doc: shown.append(doc))
+
+    assert pipeline.apply("doc.recompute()", kernel_result=_kernel_result()).ok
+    assert shown == [pipeline.document]
+
+
 def test_a_step_the_kernel_says_changed_nothing_leaves_the_camera_alone(pipeline, monkeypatch):
     """
     Seen in the wild: a Step that defined a function to build the sketch and
@@ -242,9 +256,9 @@ def test_review_views_reads_the_pipelines_own_document(pipeline, monkeypatch):
 def test_every_document_touch_goes_through_the_dispatcher():
     """
     Every document touch goes through the dispatcher: resolve the Document,
-    read what is there before, run the transaction, fit the view, describe
-    what is there now. There is no rehearsal copy any more to dispatch a
-    sixth time.
+    read what is there before, run the transaction, show the landed Step's
+    result, fit the view, describe what is there now. There is no rehearsal
+    copy any more to dispatch a sixth time.
 
     The viewport is one of them. A camera moved off the main thread is a Coin
     scene graph touched from a worker, which is the crash the dispatcher exists
@@ -262,7 +276,7 @@ def test_every_document_touch_goes_through_the_dispatcher():
 
     pipeline.apply("doc.recompute()", kernel_result=_kernel_result())
 
-    assert len(dispatched) == 5
+    assert len(dispatched) == 6
 
 
 def test_an_op_mismatch_reaches_apply_the_same_way_a_lint_rejection_does(pipeline):
