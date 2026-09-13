@@ -32,9 +32,14 @@ function, class or module it belongs to. That is where someone looking for it
 goes, and it is what `help()` prints.
 
 Never in a comment, and never anywhere: the story of the change (`used to be`,
-`had been`, `now also`), the statistics of the run that produced it, or a
-ticket id. The commit message and the ticket hold those, and they are the two
-places that stay true.
+`had been`, `now also`), the statistics of the run that produced it, a ticket
+id, or an ADR number. The commit message and the ticket hold those, and they
+are the two places that stay true. An id is not an explanation: it sends the
+reader somewhere else to learn what the line in front of them means. Say the
+constraint itself, in words, or say nothing.
+
+A docstring is three sentences at most. What does not fit in three sentences is
+not a docstring — it is a design document, and it belongs in the knowledge base.
 
 Machine-readable pragmas — `# type:`, `# noqa:`, a shebang, an encoding line —
 are not prose and are exempt.
