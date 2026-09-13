@@ -217,6 +217,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     asking = _Asking()
     ledger = Ledger(_FAILED_THIS_WAY)
     geometry_baseline = {}
+    exploration = {}
 
     def replan(feedback=None, revising=()):
         planned, part.the_part = _plan_once_it_knows_enough(
@@ -353,7 +354,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part.the_part), looks,
                                 planned.acceptance, planned.cites, ledger,
-                                start=carried, ops=planned.ops, kernel=kernel)
+                                start=carried, ops=planned.ops, kernel=kernel,
+                                exploration=exploration)
         last_pass.steps, last_pass.applied = steps, outcome["applied_here"]
         applied = progress.applied
 
@@ -451,13 +453,14 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
-                  start=0, ops=(), kernel=None):
+                  start=0, ops=(), kernel=None, exploration=None):
     """
     One pass over the Plan: written by one Execute phase, applied one Step at a
     time. `budgets.attempts_per_step` bounds one Step; a spent Step hands back
     to Plan, and `ops[i]` rides onto `apply_step` as `op` so `core/lint.py`
     checks the TypeId. `exploration` carries `agent.py`'s undeclared-turn count
-    across a same-Step regeneration, and `outcome.apply_failed` here is
+    across a same-Step regeneration and, threaded in by `_run` across its own
+    replan loop, across a Plan revision too; `outcome.apply_failed` here is
     exhausted from retrying in place.
     """
     if cancelled():
@@ -470,7 +473,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     retried = set()
     retried_names = set()
     unbuilt = []
-    exploration = {}
+    exploration = {} if exploration is None else exploration
     looks = looks if looks is not None else Looks(cache_path=TYPE_CACHE_PATH, freecad_version=_freecad_version())
     probe, probed_step = _step_exploration(exploration, steps, start)
     written = execute(steps, tools, llm, events, start, budgets=budgets,
