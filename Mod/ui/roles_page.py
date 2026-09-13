@@ -1,14 +1,12 @@
 """
-RolesPage -- "Role -> Model" preference sub-page (FCC-312).
-
-One row per role `core.llm.ROLES` names, seeded with
-`core.llm.DEFAULT_ROLE_TABLE` (FCC-293's values) and editable here. A role's
-Provider and Effort are picked from a fixed list; its Model is picked from
-what that provider offers, and stays typable, because that list is fetched
-over the network per API key (`bridge.provider_manager`) and a role may name
-a model this session has no key to reach -- a seeded row, or a provider whose
-fetch has not answered yet. `models_changed` is what refills the lists when
-it does.
+RolesPage -- "Role -> Model" preference sub-page: one row per role
+`core.llm.ROLES` names, seeded with `core.llm.DEFAULT_ROLE_TABLE`'s values
+and editable here. A role's Provider and Effort are picked from a fixed
+list; its Model is picked from what that provider offers and stays typable,
+since that list is fetched over the network per API key
+(`bridge.provider_manager`) and a role may name a model this session has no
+key to reach -- a seeded row, or a provider whose fetch has not answered
+yet. `models_changed` is what refills the lists when it does.
 """
 try:
     from PySide2 import QtCore, QtWidgets

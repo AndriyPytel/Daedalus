@@ -1,16 +1,12 @@
 """
-ChatSessionManager — the stack of chat areas, one per Session.
-
-The Sessions themselves are `core.sessions.Sessions`: the durable index, the
-names, the pruning, whose transcript is due. None of that needs Qt, and it used
-to be trapped in here behind one, which is why the tests that covered it had to
-build a dock and reach into record dicts by hand.
-
-What is left here is the half that is genuinely a widget. The stack holds one
-chat area per Session, at the same positions, and this turns what changed into
-signals. A restored Session's chat area is built empty and filled the first
-time it is shown, so opening the panel with a hundred Sessions in history costs
-nothing until one is read.
+ChatSessionManager is the stack of chat areas, one per Session. The
+Sessions themselves are `core.sessions.Sessions`, the durable index with
+the names, the pruning and whose transcript is due, none of which needs Qt;
+what is left here is the half that is genuinely a widget, the stack holding
+one chat area per Session at the same positions and turning what changed
+into signals. A restored Session's chat area is built empty and filled the
+first time it is shown, so opening the panel with a hundred Sessions in
+history costs nothing until one is read.
 """
 from copilot.sdk import Sessions
 from ui.design_tokens import SPACE_MD, SPACE_SM
@@ -48,40 +44,28 @@ class ChatSessionManager(QtWidgets.QWidget):
     @staticmethod
     def _make_list() -> QtWidgets.QScrollArea:
         """
-        One scrolling column for a Session's transcript.
-
-        The column ends in a stretch rather than being laid out with AlignTop:
-        an aligned item is given its sizeHint and nothing else, and a wrapped
-        label's sizeHint is a guess made at a width this column does not have,
-        so every message comes out short of its own text, clipped, with the
-        reserved space left blank.
-
-        The view follows the run only from the bottom, so a user scrolled back
-        to read keeps their place. "At the bottom" is measured against the
-        range the user last saw, not the one the new message just created.
-
-        The scroll animation is held on the scroll area because nothing else
-        references it and Qt would otherwise collect it mid-flight.
-
-        Kinetic scrolling is not grabbed on the viewport: a QScroller holding
-        the left button takes the press before the labels do, so a drag over a
-        message pans the column instead of selecting its text, and it pans
-        sideways as well -- far enough that the Gate's Build button leaves the
-        panel and only another drag brings it back. The wheel and the bar
-        scroll this column.
-
-        The gutter belongs to this column, not to each widget in it: SPACE_MD
-        on all four sides, the way AI Elements' Conversation carries the
-        padding its messages fill. Set on the widgets instead, the two add up
-        wherever a card follows a message, and a widget that forgets sits edge
-        to edge beside one that does not.
-
-        The gap between them is the default SPACE_SM rather than the SPACE_MD
-        that design language puts between two turns: a turn there is one
-        widget holding its own sub-blocks, and here a turn is a dozen rows
-        added to this column one at a time, so the gap between turns would be
-        the gap between every line of one.
-        """
+        One scrolling column for a Session's transcript: it ends in a stretch
+rather than being laid out with `AlignTop`, since an aligned item is given
+only its sizeHint and a wrapped label's sizeHint is a guess made at a width
+this column does not have, which would leave every message clipped short of
+its own text with the reserved space blank; the view follows the run only
+from the bottom, measured against the range the user last saw rather than
+the one the new message just created, so a user scrolled back keeps their
+place; and the scroll animation is held on the scroll area because nothing
+else references it and Qt would otherwise collect it mid-flight. Kinetic
+scrolling is not grabbed on the viewport, since a `QScroller` holding the
+left button takes the press before the labels do, so a drag over a message
+pans the column instead of selecting its text, panning sideways far enough
+that the Gate's Build button leaves the panel until another drag brings it
+back, while the wheel and the bar scroll this column normally. The gutter
+belongs to this column rather than to each widget in it, `SPACE_MD` on all
+four sides the way AI Elements' Conversation carries the padding its
+messages fill (set on the widgets instead, the two would add up wherever a
+card follows a message), and the gap between them is the default `SPACE_SM`
+rather than the `SPACE_MD` between two turns, since here a turn is a dozen
+rows added to this column one at a time and that gap would otherwise repeat
+between every line of one.
+"""
         scroll = QtWidgets.QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
@@ -163,13 +147,11 @@ class ChatSessionManager(QtWidgets.QWidget):
 
     def clear_page(self, position: int):
         """
-        Empty a Session's page back to nothing, in place.
-
-        For a Session resynced from its transcript after running while it was
-        not on screen (FCC-181): the page already carries whatever it showed
-        the last time it was open, and replaying into it unemptied would land
-        the whole transcript a second time after that.
-        """
+        Empty a Session's page back to nothing, in place, for a Session resynced
+from its transcript after running while it was not on screen: the page
+already carries whatever it showed the last time it was open, and replaying
+into it unemptied would land the whole transcript a second time after that.
+"""
         container = self.stack.widget(position)
         if container is None or container.layout() is None:
             return

@@ -1,22 +1,17 @@
 """
-The Queue: the run's five macro-phases, Execute's foreseen Steps nested
-beneath it (FCC-169, FCC-172).
-
-Purely a renderer, in `PlanWidget`'s shape: told what happened and never asks
-the loop anything. The five phase keys are `core.loop`'s own DESIGN_PHASE /
-PLAN_PHASE / EXECUTE_PHASE / ASSERTION_PHASE / REVIEW_PHASE, reached through
-`copilot.sdk` the way every other `core` value this widget's neighbours need
-is -- never `core` directly.
-
-No `phase_started`/`phase_ended` event reaches the wire (`core/events.py`), so
-every transition here is read off a structural event that already carries the
-fact: `PART` says Design finished and Plan has started, `PLAN`/`PLAN_REVISED`
-closes a Design that wrote no part file, an approved `GATE` says Plan
-finished, a Step's own terminal event (`APPLIED`/`UNBUILT`) at the last index
-says Execute finished, `ASSERTION` says Assertion finished, `REVIEW_VERDICT`
-says Review finished. Each of those doubles as the *next* phase's Running
-mark, since nothing else announces one starting. Preflight is not a sixth
-row -- it runs per-Step inside Execute alongside Apply.
+The Queue renders the run's five macro-phases, Execute's foreseen Steps
+nested beneath it, purely as a renderer in `PlanWidget`'s shape: told what
+happened and never asking the loop anything, with the five phase keys
+reached through `copilot.sdk` rather than `core` directly. No
+`phase_started`/`phase_ended` event reaches the wire, so every transition
+here is read off a structural event that already carries the fact: `PART`
+says Design finished and Plan started, `PLAN`/`PLAN_REVISED` closes a
+Design that wrote no part file, an approved `GATE` says Plan finished, a
+Step's own terminal event at the last index says Execute finished,
+`ASSERTION` says Assertion finished, and `REVIEW_VERDICT` says Review
+finished, each doubling as the next phase's Running mark since nothing else
+announces one starting. Preflight is not a sixth row, since it runs per-
+Step inside Execute alongside Apply.
 """
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
@@ -135,12 +130,11 @@ def _row(layout, text, size, step=False):
 
 
 def _paint(icon_label, text_label, state, size):
-    """The state of one row, put on its mark and on the weight of its text.
-
-    Not on the text's colour: this design language swaps the glyph
-    beside it rather than repainting it -- a failed row gets a cross,
-    not a red row. ADR-0011's two colours go on the glyph, not the text.
-    """
+    """The state of one row is put on its mark and on the weight of its text, not
+on the text's colour: this design language swaps the glyph beside it rather
+than repainting it, so a failed row gets a cross, not a red row. The two
+semantic colours go on the glyph, not the text.
+"""
     icon_label.setPixmap(
         UIHelpers.get_icon(_ICON[state], size=size, on=text_label,
                            colour=_MARK_COLOUR.get(state)).pixmap(size, size))
@@ -166,15 +160,14 @@ def _format_time(seconds):
 
 
 class QueueWidget(QtWidgets.QFrame):
-    """Where the run is, pinned above the composer: one row per phase,
-    Execute's foreseen Steps nested under its row.
-
-    Folded, two lines -- the phase running, and what is happening inside
-    it: the Step being applied, or that the run waits on the user.
-    Unfolded, the five phases and every foreseen Step, more than fits
-    above a composer, so it is capped and scrolls. A phase already
-    `FAILED` never moves again: every method below leaves it as is.
-    """
+    """Where the run is, pinned above the composer: one row per phase, Execute's
+foreseen Steps nested under its row. Folded, two lines show the phase
+running and what is happening inside it, the Step being applied or that the
+run waits on the user; unfolded, the five phases and every foreseen Step
+show, more than fits above a composer, so it is capped and scrolls. A phase
+already `FAILED` never moves again, since every method below leaves it as
+is.
+"""
 
     CEILING = 0.4
 
@@ -426,14 +419,13 @@ class QueueWidget(QtWidgets.QFrame):
 
     def start_execute(self, steps=None, at=None):
         """
-        The Plan is approved: Plan is done, Execute is running.
-
-        The foreseen Steps are only built here, not at `start_plan` -- a Plan
-        still open for editing has not foreseen anything yet. *steps*
-        overrides what `start_plan` foresaw with what the Gate actually
-        approved, when the two differ (FCC-177: the Plan Gate is edited
-        directly, so what runs is not always what `start_plan` was shown).
-        """
+        The Plan is approved: Plan is done, Execute is running. The foreseen Steps
+are only built here, not at `start_plan`, since a Plan still open for
+editing has not foreseen anything yet, and *steps* overrides what
+`start_plan` foresaw with what the Gate actually approved when the two
+differ, because the Plan Gate is edited directly, so what runs is not
+always what `start_plan` was shown.
+"""
         self._timed(at, PLAN, EXECUTE)
         if self._states[PLAN] != FAILED:
             self._states[PLAN] = DONE
@@ -476,15 +468,14 @@ class QueueWidget(QtWidgets.QFrame):
             self.start_assertion(at=at)
 
     def step_failed(self, index, at=None):
-        """1-based. An attempt at *index* did not build, and the loop retries:
-        the Step is marked failed and nothing else moves.
-
-        A Step retried three times behind an unchanged Queue is a stalled run
-        from the outside -- two failed attempts on Step 4 once left a Queue
-        still showing it running. The loop does not re-announce a retried
-        Step, so the mark stays failed until `step_applied` turns it Done if
-        an attempt lands: a Step that recovers does not stay red.
-        """
+        """1-based: an attempt at *index* did not build and the loop retries, so the
+Step is marked failed and nothing else moves. A Step retried three times
+behind an unchanged Queue is a stalled run from the outside, since two
+failed attempts on Step 4 once left a Queue still showing it running. The
+loop does not re-announce a retried Step, so the mark stays failed until
+`step_applied` turns it Done if an attempt lands, meaning a Step that
+recovers does not stay red.
+"""
         self._timed(at)
         self._set_step_state(index - 1, FAILED)
 
@@ -549,11 +540,10 @@ class QueueWidget(QtWidgets.QFrame):
 
     def showEvent(self, event):
         """
-        Icons are tinted once the widget is on screen.
-
-        A widget carries the global stylesheet's colour only after Qt has
-        polished it; asked in `__init__` it still answers with the OS
-        palette, which is black under every FreeCAD dark theme (ADR-0011).
+        Icons are tinted once the widget is on screen: a widget carries the global
+stylesheet's colour only after Qt has polished it, and asked in `__init__`
+it still answers with the OS palette, which is black under every FreeCAD
+dark theme.
         """
         super().showEvent(event)
         self._repaint_phases()
@@ -726,12 +716,11 @@ class QueueWidget(QtWidgets.QFrame):
 
     def _repaint_step(self, position):
         """
-        Repaint one Step row with current state and elapsed time.
-
-        A RUNNING step shows live elapsed time from STEP_STARTED. A completed
-        step (APPLIED or UNBUILT) shows its total duration. Times are from
-        event.at deltas.
-        """
+        Repaint one Step row with current state and elapsed time: a RUNNING step
+shows live elapsed time from `STEP_STARTED`, and a completed step,
+`APPLIED` or `UNBUILT`, shows its total duration. Times are from `event.at`
+deltas.
+"""
         label_text = str(self._foreseen[position]) if position < len(self._foreseen) else ""
         state = self._step_states[position]
         step_num = position + 1

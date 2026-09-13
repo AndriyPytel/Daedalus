@@ -11,20 +11,17 @@ from ui.ui_helpers import UIHelpers
 
 class HistoryItem(QtWidgets.QFrame):
     """
-    A single row in the history list with selectable title and delete button.
-
-    The list is scanned by name, so the name takes the room and the time is
-    what gives way — see resizeEvent. The time is dimmed by an effect rather
-    than a colour: the theme decides what the text is, and this only says the
-    time is worth less than the name (ADR-0011).
-
-    Name and time read `LABEL` and `CAPTION` off FCC-171's type scale, and
-    the hover wash reads `RADIUS_CONTROL`/`WASH` off the same module — the pair
-    `ModelSelectorRow` already hovers a popup row with (FCC-175), reused
-    rather than a second version of the same idea. Figma names no Session
-    Picker component of its own (FCC-180's Solution Notes), so this is a
-    design-language translation, not a component the spec hands over.
-    """
+    A single row in the history list with selectable title and delete button:
+the list is scanned by name, so the name takes the room and the time gives
+way, see `resizeEvent`, and the time is dimmed by an opacity effect rather
+than a colour of its own, since the theme decides what the text is and this
+only says the time is worth less than the name. Name and time read `LABEL`
+and `CAPTION` off the type scale, and the hover wash reads
+`RADIUS_CONTROL`/`WASH` off the same module, the pair `ModelSelectorRow`
+already hovers a popup row with, reused rather than a second version of the
+same idea. Figma names no Session Picker component of its own, so this is a
+design-language translation, not a component the spec hands over.
+"""
     selected = QtCore.Signal(int)
     deleted = QtCore.Signal(int)
 
@@ -86,11 +83,10 @@ class HistoryItem(QtWidgets.QFrame):
 
     def showEvent(self, event):
         """
-        The trash is tinted once the row is on screen, like every other icon.
-
-        Asked in __init__ the button still answers with the OS palette, which
-        is light under every FreeCAD dark theme (ADR-0011).
-        """
+        The trash is tinted once the row is on screen, like every other icon: asked
+in `__init__` the button still answers with the OS palette, which is light
+under every FreeCAD dark theme.
+"""
         super().showEvent(event)
         self.del_btn.setIcon(UIHelpers.get_icon("trash", size=14, on=self.del_btn))
 
@@ -118,21 +114,17 @@ class HistoryItem(QtWidgets.QFrame):
 
 class HistoryPopup(QtWidgets.QFrame):
     """
-    Antigravity-style floating popup with session list.
-
     ``PopupContainer`` is opaque and carries no border: a translucent wash
-    composites onto whatever a bare top-level window is handed rather than
-    the dock this popup floats over, which is white regardless of FreeCAD's
-    own theme, and the user asked twice for no border around a popup like
-    this. `drop_from_the_dock` resolves the fill against the dock itself,
-    the one widget always at hand there, once FreeCAD's global stylesheet
-    has painted it (`UIHelpers.surface_colour`, ADR-0011's one exception).
-
-    `CEILING` caps the popup the way `QueueWidget` caps its own open list —
-    sized to its content up to a fraction of the dock's own height, so a
-    short session list is a short popup rather than the fixed 400px box this
-    used to be, empty room and an oversized scrollbar included.
-    """
+composites onto whatever bare top-level window it is handed rather than the
+dock this popup floats over, which is white regardless of FreeCAD's own
+theme, and the user asked twice for no border around a popup like this.
+`drop_from_the_dock` resolves the fill against the dock itself, the one
+widget always at hand there, once FreeCAD's global stylesheet has painted
+it. `CEILING` caps the popup the way `QueueWidget` caps its own open list,
+sized to its content up to a fraction of the dock's own height, so a short
+session list is a short popup rather than a fixed 400px box with empty room
+and an oversized scrollbar.
+"""
     CEILING = 0.6
 
     session_selected = QtCore.Signal(int)
@@ -186,13 +178,12 @@ class HistoryPopup(QtWidgets.QFrame):
 
     def populate(self, rows: list):
         """
-        Rebuild the list from `(position, session)` pairs.
-
-        The position is given rather than counted, because the picker shows a
-        subset — only the Sessions that have had an Intent — and the row it
-        emits has to name the Session in the manager, not the row in this list
-        (FCC-42). Counting was how a filter would open the wrong Session.
-        """
+        Rebuild the list from `(position, session)` pairs: the position is given
+rather than counted, because the picker shows a subset -- only the Sessions
+that have had an Intent -- and the row it emits has to name the Session in
+the manager, not the row in this list. Counting was how a filter would open
+the wrong Session.
+"""
         while self.list_layout.count() > 1:
             item = self.list_layout.takeAt(0)
             if item.widget():
@@ -239,14 +230,12 @@ class HistoryPopup(QtWidgets.QFrame):
 
     def drop_from_the_dock(self):
         """
-        Down from the top of the copilot dock, exactly as wide as it is, and
-        tall enough for its content up to `CEILING` of the dock's own height
-        -- never the fixed 400px box a two-row history used to open as.
-
-        The fill is resolved against *area* -- the dock's own widget, already
-        painted by FreeCAD's global stylesheet -- rather than the search
-        input or a row, neither of which carries a background of its own to
-        read back (ADR-0011; `UIHelpers.surface_colour`).
+        Down from the top of the copilot dock, exactly as wide as it is, and tall
+enough for its content up to `CEILING` of the dock's own height, never a
+fixed 400px box regardless of a two-row history. The fill is resolved
+against *area* -- the dock's own widget, already painted by FreeCAD's
+global stylesheet -- rather than the search input or a row, neither of
+which carries a background of its own to read back.
         """
         dock = self.parentWidget()
         area = dock.widget() or dock

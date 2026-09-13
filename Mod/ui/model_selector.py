@@ -1,22 +1,16 @@
 """
-The Model Selector: a popup that picks a model in two steps, provider then
-that provider's models replacing it in place (FCC-175, FCC-169).
-
-Not the design-exact ``ModelSelectorContent`` — one dialog with search and
-every provider's models grouped inside it — but the sequential flow the epic
-settled on instead: the popup's own content is swapped, provider list for
-model list, rather than nesting one inside the other. It always opens back on
-the provider step; nothing here remembers which provider was picked last, so
-a reopen after choosing a model shows providers again, not that model's list.
-
-Its rows read the same ``[{id, display, provider}]`` shape
-``ProviderManager.get_available_models`` hands the picker it replaces, so a
-provider with no configured key never reaches it either.
-
-FCC-169's user verdict on the first cut of this: no frame around it, and it
-must open *upward*. The trigger sits at the bottom of a narrow docked panel
-(the composer's tool strip), so a popup that always drops down runs off the
-bottom of the screen — see ``_reflow``.
+The Model Selector is a popup that picks a model in two steps, provider
+then that provider's models replacing it in place, swapping the popup's own
+content rather than nesting one list inside the other as a single dialog
+with search would; it always opens back on the provider step, since nothing
+here remembers which provider was picked last, so a reopen after choosing a
+model shows providers again. Its rows read the same `[{id, display,
+provider}]` shape `ProviderManager.get_available_models` hands the picker
+it replaces, so a provider with no configured key never reaches it either.
+The verdict on the first cut of this was no frame around it and that it
+must open upward, since the trigger sits at the bottom of a narrow docked
+panel and a popup that always drops down runs off the bottom of the screen,
+see `_reflow`.
 """
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
@@ -73,12 +67,12 @@ def _laid_out(layout) -> QtCore.QSize:
 
 
 class _Row(QtWidgets.QFrame):
-    """One selectable line: a label, a hover wash instead of a colour of
-    its own (ADR-0011, the same wash `HistoryItem` uses), and for the
-    active model row a trailing check, not a recolour (state is never a
-    repaint). Nothing leads the label -- this addon ships no brand
-    marks, and one glyph for all of them would say only a mark exists.
-    """
+    """One selectable line: a label, a hover wash instead of a colour of its own,
+the same wash `HistoryItem` uses, and for the active model row a trailing
+check rather than a recolour, since state is never a repaint. Nothing leads
+the label, since this addon ships no brand marks and one glyph for all of
+them would say only a mark exists.
+"""
 
     clicked = QtCore.Signal()
 
@@ -108,11 +102,10 @@ class _Row(QtWidgets.QFrame):
 
     def showEvent(self, event):
         """
-        The check is tinted once the row is on screen, like every other icon in
-        the addon — asked any earlier it still answers with the OS palette,
-        not the one FreeCAD's global stylesheet has since painted it with
-        (ADR-0011).
-        """
+        The check is tinted once the row is on screen, like every other icon in the
+addon: asked any earlier it still answers with the OS palette, not the one
+FreeCAD's global stylesheet has since painted it with.
+    """
         super().showEvent(event)
         if self._checked:
             self._check_icon.setPixmap(
@@ -126,32 +119,19 @@ class _Row(QtWidgets.QFrame):
 
 class _ListPopup(QtWidgets.QFrame):
     """
-    A floating, opaque list that closes itself the moment something is picked
-    or the user clicks outside it (``Qt.Popup``).
-
-    ``PopupContainer`` reads as a floating surface the way the visual
-    grammar's separation-strategy level 4 does elsewhere in this addon
-    (`InputContainer`, `PlanCard`), minus the hairline: a top-level
-    ``Qt.Popup`` has nothing behind it, so a hairline is the one edge this
-    surface can still afford to skip and the fill is what has to carry the
-    whole of it — the user asked twice for no border around this picker. The
-    fill itself is resolved when the popup opens, not here: it has to be
-    `UIHelpers.surface_colour(anchor)`, the anchor's own theme, not a wash
-    that composites onto whatever a bare top-level window is handed, which is
-    white regardless of FreeCAD's own dark theme. Radius stays
-    `RADIUS_SURFACE`: the grammar's own `ModelSelectorContent` uses a 14px
-    radius this design system has no token for, and every other floating card
-    in this addon already uses `RADIUS_SURFACE` (10), which reads as "this
-    addon's popovers" more than one borrowed number would.
-    `Qt.Popup | Qt.FramelessWindowHint` drops the OS window frame so the fill
-    and its radius are the only edge this popup has.
-
-    ``visible_rows`` is the clickable rows on it, in order — a heading is
-    never one of them, so a list's own title does not count as a choice. The
-    rows sit in a scroll area capped by `_reflow` to whatever room was
-    measured above or below the trigger, so a long list scrolls in place
-    rather than growing the popup past the screen.
-    """
+    A floating, opaque list (``Qt.Popup``) that closes itself the moment
+something is picked or the user clicks outside it, with no hairline since a
+top-level popup has nothing behind it and the fill alone has to carry the
+edge, resolved when the popup opens as `UIHelpers.surface_colour(anchor)`
+rather than a wash that would read white regardless of FreeCAD's own theme.
+Radius stays `RADIUS_SURFACE` (10) rather than the 14px this design system
+has no token for, so it reads as this addon's own popovers, and `Qt.Popup |
+Qt.FramelessWindowHint` drops the OS window frame so the fill and its
+radius are the only edge the popup has. `visible_rows` is the clickable
+rows on it in order, never a heading, sitting in a scroll area capped by
+`_reflow` to whatever room was measured above or below the trigger, so a
+long list scrolls in place rather than growing the popup past the screen.
+"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -189,33 +169,25 @@ class _ListPopup(QtWidgets.QFrame):
 
     def _reflow(self):
         """
-        Sizes and places the popup against `self._anchor`, never off-screen.
-
-        Measures the room above and below the trigger on its own screen
-        first, picks whichever side has more of it — above by default, below
-        only when that measurement says below actually has more room, per
-        FCC-169 — then caps the scroll area to that room so a long list
-        scrolls inside the popup instead of growing it past the screen edge.
-
-        `self._container` and `self._scroll` are positioned with an explicit
-        `setGeometry` rather than a `QVBoxLayout` wrapping them: a popup this
-        method repositions on every step change needs a `QLayout` on a
-        *top-level* widget to never react on its own, and it does not — a
-        layout invalidated by a child (here, `self._scroll` growing from the
-        provider step's two rows to a longer model list) schedules a
-        deferred re-layout of its own that lands after this method returns
-        and silently overwrites the size just computed, back to the size the
-        popup had before this call. `inset` is `SPACE_XS`, the fill's own
-        padding and nothing else now the hairline border is gone, measured by
-        hand for the same reason: reading it back off a layout's sizeHint is
-        exactly the read this method exists to avoid.
-
-        The list is measured off its own rows rather than by asking the
-        container how big it wants to be. A row added or removed posts a
-        layout request answered a turn of the event loop later, and until it
-        is answered the container answers with the size it had before the step
-        change -- or with zero, for one built into a popup never yet shown.
-        """
+        Sizes and places the popup against `self._anchor`, never off-screen:
+measures the room above and below the trigger on its own screen first,
+picks whichever side has more, above by default and below only when that
+measurement says below actually has more room, then caps the scroll area to
+that room so a long list scrolls inside the popup instead of growing it
+past the screen edge. `self._container` and `self._scroll` are positioned
+with an explicit `setGeometry` rather than a `QVBoxLayout`, since a popup
+this method repositions on every step change needs a layout on a top-level
+widget to never react on its own, and a layout invalidated by a growing
+child schedules a deferred re-layout that lands after this method returns
+and silently overwrites the size just computed; `inset` is `SPACE_XS`, the
+fill's own padding now the hairline border is gone, measured by hand for
+the same reason, since reading it back off a layout's sizeHint is exactly
+the read this method exists to avoid. The list is measured off its own rows
+rather than by asking the container how big it wants to be, since a row
+added or removed posts a layout request answered a turn of the event loop
+later, and until then the container answers with the size it had before the
+step change, or with zero for a popup never yet shown.
+"""
         if self._anchor is None:
             return
 
@@ -340,15 +312,13 @@ class ModelSelectorPopup(_ListPopup):
 
 
 class EffortPopup(_ListPopup):
-    """How hard the model is asked to think, in one flat list.
-
-    A second picker, not a dialog setting: the same kind of choice as
-    the model, made at the same moment, changed to compare one run
-    against the next. Levels are the routes' own: `--effort` for the
-    Claude Code CLI, `reasoning_effort` for LiteLLM (`core.llm`). A
-    model that cannot reason is never offered the choice -- a picker
-    that changes nothing is a picker that lies.
-    """
+    """How hard the model is asked to think, in one flat list: a second picker,
+not a dialog setting, the same kind of choice as the model, made at the
+same moment and changed to compare one run against the next. Levels are the
+routes' own, `--effort` for the Claude Code CLI and `reasoning_effort` for
+LiteLLM. A model that cannot reason is never offered the choice, since a
+picker that changes nothing is a picker that lies.
+"""
 
     effort_chosen = QtCore.Signal(str)
 

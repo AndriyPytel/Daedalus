@@ -1,15 +1,11 @@
 """
-The Copilot chat as a fixture of the main window.
-
-It used to be the workbench's: built on `Activated`, hidden on `Deactivated`,
-so the chat was only there while the user was standing in the Copilot
-workbench. A conversation about the part being modelled is not a reason to
-leave the workbench the part is modelled in — so the dock is installed on the
-main window at startup, like Tasks, and every workbench has it. Which one is
-active stops being a question anybody asks.
-
-One panel per FreeCAD: it holds the Sessions, the worker thread and the
-Preflight process, and a second of those is a second of all three.
+The Copilot chat is a fixture of the main window, installed at startup like
+Tasks rather than built on the workbench's `Activated` and hidden on
+`Deactivated`, since a conversation about the part being modelled is not a
+reason to leave the workbench the part is modelled in. Every workbench has
+it, so which one is active stops being a question anybody asks. One panel
+per FreeCAD holds the Sessions, the worker thread and the Preflight
+process, and a second of those is a second of all three.
 """
 try:
     from PySide2 import QtCore, QtGui, QtWidgets

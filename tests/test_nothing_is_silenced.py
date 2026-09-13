@@ -51,12 +51,12 @@ def test_no_module_turns_python_warnings_off_through_the_environment():
 
 ALLOWED_EXCEPT_PASS = {
     ("Mod/bridge/logger.py", 42),
-    ("Mod/ui/accordion_widget.py", 190),
-    ("Mod/ui/copilot_panel.py", 664),
-    ("Mod/ui/ui_helpers.py", 148),
-    ("Mod/ui/ui_helpers.py", 171),
-    ("Mod/ui/ui_helpers.py", 185),
-    ("Mod/ui/upload_widget.py", 280),
+    ("Mod/ui/accordion_widget.py", 179),
+    ("Mod/ui/copilot_panel.py", 635),
+    ("Mod/ui/ui_helpers.py", 136),
+    ("Mod/ui/ui_helpers.py", 159),
+    ("Mod/ui/ui_helpers.py", 173),
+    ("Mod/ui/upload_widget.py", 273),
     ("src/core/dependency_manager.py", 97),
     ("src/core/events.py", 103),
     ("src/core/freecad_apply.py", 135),
