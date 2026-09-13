@@ -1,4 +1,17 @@
-"""Findings about whether a placement or a conflict is settled -- by a feature, by nothing, or by the tracing that ran over it."""
+"""Findings about whether a placement or a conflict is settled -- by a
+feature, by nothing, or by the tracing that ran over it.
+
+`twice_over` closes a gap `config/prompts/design.md`'s reconciliation
+turn already asks the model for ("same kind, overlapping position
+datums ... if all values match, add superseded_by ... if any value
+differs, raise a conflicts entry") but `kind` being prose left
+unchecked: four such pairs stood in 47 recorded models
+(`slot-arm`/`cutout-web`, `slot`/`cutout-blend`, `bore-upper`/
+`hole-boss`, `left-mounting-hole`/`phase2-left-mounting-slot`), past
+the old proxy (`placed_by_nothing`) because `bore-upper` and
+`hole-boss` both carry a filled `position`, framed off two different
+datums pinning the same point.
+"""
 
 
 import re
@@ -27,13 +40,12 @@ def placement(model) -> list:
     """
     A feature with a size in a direction and nothing placing it in that one.
 
-    Silence had to stop being an option: a placement nobody recorded owns no
+    Silence had to stop being an option: an unrecorded placement owns no
     check, so a run can go green on a part wrong in the way the drawing is
-    loudest about. A direction is attributed through the datum a position is
-    keyed by, which is why a datum says which direction it fixes.
+    loudest about. Direction is attributed through the datum a position is keyed by.
 
-    A depth or thickness on a feature with an axis runs along the feature's
-    own axis, not the part's; that is `direction`'s concern, not this one's.
+    A depth/thickness on a feature with an axis runs along the feature's
+    own axis, not the part's -- `direction`'s concern, not this one's.
     """
     fixed = _which_way_each_datum_fixes(model)
 
@@ -95,28 +107,14 @@ def placed_by_nothing(model) -> list:
 
 def twice_over(model) -> list:
     """
-    Two features of the same `kind`, placed against a shared datum, and not
-    already reconciled by `superseded_by` — one physical feature read twice.
+    Two features of the same `kind`, placed against a shared datum, and
+    not already reconciled by `superseded_by` -- one physical feature read twice.
 
-    `config/prompts/design.md`'s reconciliation turn already asks the model
-    for exactly this arithmetic: "same kind, overlapping position datums ...
-    if all values match, add superseded_by ... if any value differs, raise a
-    conflicts entry" — a rule the prompt could ask for and this module could
-    not check, because `kind` was prose and no two readings of it were ever
-    equal. Four such pairs stand in 47 recorded models — `slot-arm`/`cutout-web`, `slot`/`cutout-blend`,
-    `bore-upper`/`hole-boss`, `left-mounting-hole`/`phase2-left-mounting-slot`
-    — none caught before this ticket because the only check written was an
-    empty `position` (`placed_by_nothing`), which is a proxy the sheet does
-    not always leave: `bore-upper` and `hole-boss` both carry a filled
-    `position`, framed off two different datums that pin the same point.
-
-    `kind` equality is exact — the enum this ticket closes it into — never a
-    substring search of `id`/`kind`/`topology` the way the rest of this module
-    reads what a feature is elsewhere (ADR-0026: "no substring search, and no
-    proxy standing in for a check that could not be written"). Values at a
-    shared datum are not required to agree: agreement is a plain duplicate,
-    disagreement is `unsafe_supersession`'s territory once `superseded_by`
-    names the pair — this finding is what points the model at declaring it.
+    `kind` equality is exact, never a substring search (ADR-0026): the
+    enum this closes it into is what the rest of this module's prose
+    matching cannot rely on here. Shared-datum values need not agree --
+    agreement is a duplicate, disagreement is `unsafe_supersession`'s
+    territory once `superseded_by` names the pair.
     """
     features = [feature for feature in _features(model) if not feature.get("superseded_by")]
 
@@ -153,17 +151,12 @@ def settled_by_nothing(model) -> list:
     """
     An entry that does not say what settled its value.
 
-    `assumed` carries `because` and `derived` carries `from` — one line each
-    saying who settled the value and on what (ADR-0022). Both requirements were
-    written in `config/prompts/design.md` and in nothing that runs, so the
-    section the Plan Gate shows a user rested on the model doing as it was told:
-    `decided_for_you` fell back to prose saying nobody supplied the value and
-    nothing said what settled it, which is a value nobody can check.
+    `assumed` carries `because`, `derived` carries `from` -- one line each
+    saying who settled the value and on what (ADR-0022,
+    config/prompts/design.md). `decided_for_you` falls back to prose when
+    nothing said what settled the value, which nobody can then check.
 
-    One rule rather than two, because it is one defect: the entry is incomplete,
-    and which field is missing follows from the flag. A gap and not a refusal,
-    like every other reading defect — the run carries on and the user settles
-    it at the Gate.
+    One rule, not two: a gap, not a refusal -- the run carries on.
     """
     found = []
     for path, node in _each_value(model, ""):
@@ -189,14 +182,12 @@ def settled_by_the_tracing(model) -> list:
     """
     Every conflict of whose two readings one was measured off the view.
 
-    The central pocket was stated 40 mm wide by 30 mm high against a profile
-    traced at 40 by 25, and the Plan used neither: it took the stated height,
-    kept the R30 centres on the end-bore axes, and built a pocket 48.038476 mm
-    wide, agreeing with nothing on the sheet.
+    Recorded case: a pocket stated 40 mm wide by 30 mm high against a
+    profile traced at 40 by 25; the Plan took the stated height, kept the
+    R30 centres on the end-bore axes, and built 48.038476 mm wide.
 
-    Where one of the readings came off the picture, that one governs. Both
-    sides talking about a tracing, or neither, is a conflict nobody measured
-    and it rides to the Gate.
+    Where one reading came off the picture, that one governs; both or
+    neither is a conflict nobody measured, and it rides to the Gate.
     """
     found = []
     for conflict in model.get("conflicts") or []:

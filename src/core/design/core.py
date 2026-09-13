@@ -124,11 +124,9 @@ def _which_kind_it_is(conflict):
     """
     Which of `KINDS` an entry is, and `A_CONFLICT` for one that does not say.
 
-    Read off the entry and never off its prose. Two readings that cannot both
-    be true is what the section is for, what the prompt asks the model for and
-    what the merge writes, so an entry nobody typed is that one; a check that
-    finds a value nobody supplied or an outline nobody could ask about says so
-    where it is found.
+    Read off the entry, never its prose: two readings that cannot both be
+    true is what this section is for, so an entry nobody typed is that
+    one -- a value nobody supplied or an outline nobody could ask about.
     """
     said = _named(conflict, ("kind",))
     return said if said in KINDS else A_CONFLICT
