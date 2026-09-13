@@ -4035,6 +4035,7 @@ def _unhandled_kinds(all_kinds, method_sources, allowlist):
 
 PANEL_DISPATCH_ALLOWLIST = {
     "QUESTION", "ANSWER", "DESIGN", "OUTSTANDING", "REVIEW_SUSPECTED", "ROUTED",
+    "CONSULT_DESIGN", "CONSULT_DESIGN_ANSWERED",
 }
 
 

@@ -22,6 +22,7 @@ def test_every_specced_event_kind_exists():
         "review_suspected", "review_verdict", "blocked", "stopped", "call_started", "cost",
         "error", "change_set", "routed", "completed", "aborted", "budget_exhausted", "failed",
         "sub_agent_spawned", "sub_agent_answered", "sub_agent_refused",
+        "consult_design", "consult_design_answered",
     }
 
 
