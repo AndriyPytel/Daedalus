@@ -258,6 +258,21 @@ def introspect(exc, doc=None):
         return ""
 
 
+def _features_not_wired_to_a_body(doc):
+    """
+    Every PartDesign feature the Document holds that no Body's Group claims.
+
+    `doc.addObject('PartDesign::Pad', ...)` computes the feature's own
+    Shape from its Profile regardless of who owns it, so it looks correct
+    and Up-to-date; only the Body it was meant to extend is left with
+    `Tip` unset and its own `Shape.Volume` raising "shape is invalid".
+    """
+    wired = {member.Name for obj in doc.Objects if obj.TypeId == "PartDesign::Body"
+             for member in obj.Group}
+    return [obj.Name for obj in doc.Objects
+            if obj.isDerivedFrom("PartDesign::Feature") and obj.Name not in wired]
+
+
 def _bodies_in_pieces(doc):
     """
     Every PartDesign Body whose result is more than one solid.
@@ -831,6 +846,16 @@ def _run_step_body(doc, namespace, touched, request):
 
     if _features_that_moved_no_material(doc, touched.created):
         raise RuntimeError(_IDLE_HEADLINE)
+
+    orphaned = _features_not_wired_to_a_body(doc)
+    if orphaned:
+        raise RuntimeError(
+            "this Step created a feature no Body claims:\n" + "\n".join(orphaned)
+            + "\nA feature added with doc.addObject computes its own Shape from its "
+              "Profile and looks correct on its own, but the Body it was meant to extend "
+              "still has none -- its own Shape.Volume raises 'shape is invalid' until the "
+              "feature is wired in with body.addObject(feature) and body.Tip = feature, "
+              "the same way the Body's other features were added.")
 
     scattered = _bodies_in_pieces(doc)
     if scattered:

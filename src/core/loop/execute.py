@@ -288,6 +288,14 @@ def _classified_failures():
          "their endpoints so the outline closes as one loop, or build each piece as "
          "its own feature on the solid that is already there.",
          "sketch profiles left the Body split into separate solids"),
+        ("shape is invalid",
+         "a feature was created with doc.addObject but never wired into a Body -- its "
+         "own Shape computes and looks correct, but reading the Body's Shape (or a "
+         "feature that depends on it) raises this because the Body's own Shape comes "
+         "from Body.Tip and stays unset. Call body.addObject(feature) and set "
+         "body.Tip = feature, the same way the Body's other features were added; the "
+         "same unwired addObject under another name fails identically.",
+         "created a PartDesign feature without wiring it into a Body"),
         ("recompute left these objects in error",
          "the Document does not rebuild. The object named in the traceback is the one "
          "to fix, and it is fixed by changing what it references or what it is given "
