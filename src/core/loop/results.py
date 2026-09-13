@@ -9,17 +9,11 @@ class LoopResult:
     """
     How a run ended, and what it leaves behind.
 
-    `unmet` is what the acceptance checks said did not hold when the run ended,
-    whatever the run ended as. A run the user took as it is still leaves these
-    wrong in the Document, and the next run is entitled to know -- `ok=True`
-    beside a non-empty `unmet` is exactly that: taken as it is, not passed. A
-    saved Part carries nothing else saying so (logs/analysis-mm2023-defects.md:
-    a failing pocket and lug, unrecorded anywhere), which is why both of
-    `_run`'s ACCEPT returns set `unmet` from the same acceptance list every
-    other ending already reads.
-
-    `the_part_path` is the Part reading this run planned from: the one it
-    wrote, or the one it was handed and skipped Design to read instead. Empty where neither happened. A run that inherits it and gets
+    `unmet` is what the acceptance checks said did not hold when the run
+    ended: `ok=True` beside a non-empty `unmet` means taken as it is, not
+    passed, and the next run inherits it since a saved Part carries nothing
+    else saying so. `the_part_path` is the Part this run planned from, empty
+    where neither writing nor reading one happened; an inheriting run with
     no new attachment reads the same Part rather than describing it again.
     """
 

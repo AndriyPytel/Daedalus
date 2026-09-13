@@ -60,11 +60,9 @@ def _not_english(prose):
     """
     True where Cyrillic outnumbers Latin in a Step's prose — a whole Step
     written in Ukrainian, not a Latin sentence carrying one Cyrillic proper
-    noun a user typed into the Intent (a label, a part name). Counting
-    rather than merely detecting one Cyrillic character is what tells
-    `\"Pad the profile 6.5 mm, label it \u041f\u0440\u043e\u0444\u0456\u043b\u044c\"`
-    apart from a Step actually written in Ukrainian: refusing the first
-    would cost a Plan that was fine over a name it did not invent.
+    noun (a label, a part name). Counting rather than detecting one Cyrillic
+    character tells the two apart: refusing the second would cost a Plan
+    that was fine over a name it did not invent.
     """
     cyrillic = len(_CYRILLIC.findall(prose))
     return cyrillic > 0 and cyrillic > len(_LATIN_LETTER.findall(prose))
@@ -200,12 +198,9 @@ def _off_the_sheet(attachments, the_part):
     """
     The numbers every sheet of this run says are on no sheet.
 
-    `invented` is asked of one sheet, which is the right level for it: a sheet
-    either prints a number or does not. Over several attachments the answers
-    intersect — a number printed on the second sheet is on a sheet, and the
-    first sheet not printing it is what a two-sheet drawing looks like.
-    `_uncited` unions instead, because every callout on every sheet has to be
-    accounted for by the one description.
+    `invented` is asked per sheet; answers intersect across attachments — a
+    number on the second sheet is on a sheet, even if the first sheet lacks
+    it. `_uncited` unions: every callout on every sheet must be accounted for.
     """
     said = [set(sheet_reader.invented(sheet, the_part))
             for sheet in _sheets(attachments)]
@@ -231,15 +226,9 @@ def _the_directions_are_the_drawings(the_part, intent, attachments, llm, events,
     """
     A direction read off the wrong view put back to the drawing.
 
-    The run was stopped by four findings, and all four were the check's own
-    fault: two judged a saw cut and cutout as though round, two held the Ø42
-    bore to account for a view whose circle the tracer had in pieces.
-
-    The finding is put back to Design with what the sheet measures — the view
-    each circle was traced in and at what width. What the drawing does not
-    settle, `_every_direction_settled` settles off the same measurement
-    (ADR-0022). A re-read may overrule, which nothing else may do — filled
-    stays filled, so a wrong axis cannot be talked out of itself.
+    Put back to Design with what the sheet measures — the view each circle
+    was traced in and at what width. A re-read may overrule, which nothing
+    else may: filled stays filled, so a wrong axis cannot talk itself out.
     """
     round_here = _round_evidence(attachments)
     found = read_off_the_wrong_view(the_part, round_here)
@@ -269,22 +258,11 @@ def _the_directions_are_the_drawings(the_part, intent, attachments, llm, events,
 
 def _left_as_assumed(the_part, found):
     """
-    A direction still contradicted after every re-read and every tracing, kept
-    at the value it was read at with `flag: assumed`.
-
-    Nothing here corrects a value — reaching this point means nobody had a
-    measurement to correct it with, which is exactly what `_the_directions_are_
-    the_drawings` could not settle. What changes is the confidence the part
-    claims for it: a `read` a check has caught contradicting itself is not a
-    reading any more, and carrying it as one hides a guess inside a fact the
-    Plan and the Gate would otherwise trust without question. The `because` is
-    the conflict itself — the words `stands` already holds — so what shows
-    above the Steps is why it is a guess, not only that it is one.
-
-    The whole entry travels, not just its `value`: `round_in` is what
-    `grounded` and `crosswise` read a feature's direction by, and a write that
-    dropped it would settle this finding by blinding the next check to it,
-    which is not the same as settling it.
+    A direction still contradicted after re-read and tracing, kept at the
+    value it was read at with `flag: assumed`.
+    Changes confidence, not value: a `read` a check caught contradicting
+    itself is not a reading any more. The whole entry travels, not just
+    `value` — dropping `round_in` blinds `grounded`/`crosswise` to it.
     """
     for finding in found:
         address = where_the_direction_is(the_part, str(finding.get("about") or ""))
@@ -298,23 +276,11 @@ def _left_as_assumed(the_part, found):
 
 def _corrected_by(the_part, grew, found, round_here):
     """
-    The re-read written where the directions the findings are about live, and
-    nowhere else.
-
-    Every other field of the fragment goes through the ordinary merge and fills
-    only what is empty. These were named by a check that measured the sheet, so
-    a different answer at one of them is the correction that was asked for
-    rather than a second opinion arriving late.
-
-    The address a finding carries is not always the one the answer belongs at,
-    which is `where_the_direction_is`. Written at the position `pointing`
-    addresses, a direction lands on a field the prompt never asked about, the
-    axis stands, the merge drops the reply for being filled already, and the
-    re-read ends having changed nothing at all.
-
-    What earns the overrule is the measurement, not the finding's account of
-    the reading it stands against — the trace where there is one, and where
-    there is none the finding is all the evidence there is.
+    The re-read written only where the findings' directions live, and
+    nowhere else — everything else merges normally, filling only what is
+    empty. The address is `where_the_direction_is`, not the finding's own:
+    at `pointing` a direction lands where nothing asked and merge drops it.
+    The overrule is earned by the trace, not the finding's own account.
     """
     for finding in found:
         address = where_the_direction_is(the_part, str(finding.get("about") or ""))
@@ -363,13 +329,9 @@ def _the_tracing_governs(the_part):
     """
     A conflict one of whose readings was traced, written into the feature.
 
-    `settled_by_the_tracing` says which conflicts those are and where they
-    point; this is the write, through `corrected`, so the reading it displaces
-    stays on the model under `was` and the Plan Gate shows both (ADR-0022). The
-    value is `assumed`, because a tracing is what the model settled the
-    disagreement on and not what the sheet dimensioned, and its `because` is
-    the conflict — which stays where it is, in the words of both, for the user
-    to overrule at the Gate.
+    Written through `corrected`, so the displaced reading stays under `was`
+    and the Gate shows both (ADR-0022). Value is `assumed` since a tracing
+    settled it, not the sheet's dimension; `because` is the conflict itself.
     """
     for finding in settled_by_the_tracing(the_part):
         the_part = corrected(the_part, finding["about"],
@@ -437,16 +399,11 @@ def _how_it_was_read(sheet):
 def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
                             cancelled):
     """
-    The one finding a run may not walk past: the shape of the part is nobody's.
-
-    The finding stood in `conflicts` saying "no feature carries the outer
-    contour" — the Gate showed eight Steps, the user approved them, and the
-    Plan padded a profile it invented. A conflict settled by nobody is a
-    conflict that decided for itself.
-
-    The defect was never that a profile was chosen, it was that the Plan
-    chose one invisibly (ADR-0022). This is the only conflict that says the
-    *outside* is missing, and the only one no later phase can notice.
+    The one finding a run may not walk past: the shape of the part is
+    nobody's. Unsettled, this once let the Plan pad an invented profile and
+    the Gate approve it — a conflict settled by nobody decided for itself.
+    The defect was the Plan choosing invisibly (ADR-0022): the only conflict
+    no later phase can notice.
     """
     why = nobody_carries_the_outside(the_part)
     looked = 0
@@ -498,24 +455,11 @@ def _the_outer_profile(why):
 def _every_callout_accounted_for(the_part, intent, attachments, llm, events, budgets,
                                  cancelled):
     """
-    The sweep of the sheet, checked against the sheet instead of against itself.
-
-    The description is required to account for every callout printed on the
-    drawing — each one becomes a value or is named in `not_defined` with a
-    reason — and until now the list it was checked against was the model's own
-    list of what it had noticed. That check cannot fail in the one way that
-    matters: a callout nobody saw is missing from the sweep and from the part,
-    and counting one against the other finds nothing wrong.
-
-    Held against the text layer it does fail, and it fails naming the number.
-    What comes back goes through the same merge as everything else, so a value
-    already read stays read and this can only fill what was empty.
-
-    Only where there is a text layer. A raster attachment supplies no list, and
-    this then does nothing at all rather than inventing something to check.
-
-    The re-reading stops where it stops finding fewer: a look that changed
-    nothing will not change anything.
+    The sweep of the sheet, checked against the sheet instead of against
+    itself. Held against the text layer, a missed callout fails naming the
+    number, where counting the sweep against its own list never would. Only
+    where there is a text layer — a raster attachment invents nothing to
+    check — and re-reading stops once it stops finding fewer.
     """
     missed = _uncited(attachments, the_part)
     looked = 0
@@ -546,16 +490,11 @@ def _uncited(attachments, the_part):
 
 def _views_of(attachments, missed):
     """
-    The views `missed`'s callouts are printed in, or `None` where that is not
-    knowable — a callout `sheet_reader.dimensions` cannot place on a named
-    view, or one this sweep does not find at all, most often because it is
-    printed on a second attached sheet the loop over `_sheets` has not reached
-    yet when it does.
-
-    A miss here costs the part — the very failure `_every_callout_accounted_for`
-    exists to catch — so `None` keeps the whole sheet in play rather than
-    narrow to a guess: a false alarm on the narrowing costs one extra view's
-    worth of pictures, and a wrong narrowing hides the one the model needs.
+    The views `missed`'s callouts are printed in, or `None` where that is
+    not knowable — unplaceable, or printed on a sheet `_sheets` has not
+    reached yet. A miss here costs the part, the very failure
+    `_every_callout_accounted_for` exists to catch, so `None` keeps the whole
+    sheet in play: a false narrowing hides the view the model needs.
     """
     wanted = set(missed)
     views = set()

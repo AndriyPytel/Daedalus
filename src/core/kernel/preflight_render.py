@@ -39,11 +39,9 @@ def _is_modelled(shape):
     """
     True for a shape that is part of the part, rather than of the scaffolding.
 
-    A Body carries an Origin: three `App::Line` axes and three `App::Plane`
-    datums, each of them 1e100 across. They have no surface to shade and their
-    edges are not edges of anything, but taken literally they would set the
-    framing for the whole render and put the part in one pixel. The viewport
-    does not draw them either.
+    A Body's Origin (three `App::Line` axes, three `App::Plane` datums,
+    each 1e100 across) has no real surface or edges, but taken literally
+    would frame the render around one pixel of part.
     """
     if shape is None or shape.isNull() or not shape.Faces:
         return False
@@ -83,11 +81,9 @@ def _fill_triangle(colour, zbuffer, xy, z, rgb):
     """
     One flat-shaded triangle, per pixel, against the depth buffer.
 
-    The depth test is what the mean-depth sort could not do: a triangle that
-    interpenetrates another is in front over part of itself and behind over the
-    rest, and only a per-pixel comparison can say which part is which.
-
-    A triangle of no area is edge-on and has no pixels of its own.
+    Only a per-pixel comparison can tell which part of two
+    interpenetrating triangles is in front, which mean-depth sort
+    cannot. A zero-area triangle is edge-on and has no pixels.
     """
     import numpy as np
 
@@ -123,14 +119,9 @@ def _draw_edge(colour, zbuffer, points, depths, bias):
     """
     One projected polyline, depth-tested so hidden edges stay hidden.
 
-    Edges are the larger half of why the render did not look like the viewport:
-    two adjacent faces of a similar shade merge into one blob without them.
-
-    An edge lies exactly on the faces it bounds, so it loses a strict depth
-    test to its own surface; the bias against that is a fraction of the scene's
-    depth range, which makes it independent of the part's size. The sampling is
-    capped, so that a segment running far off-screen is sampled for the part
-    that can land somewhere rather than along its whole length.
+    Two adjacent faces of similar shade merge without edges drawn. An
+    edge lies on the faces it bounds, so the depth bias is a fraction of
+    the scene's depth range; sampling is capped so a far off-screen segment lands somewhere.
     """
     import numpy as np
 
@@ -159,14 +150,12 @@ def render(doc, path, size=(800, 600)):
     """
     Isometric render of every shape in the Document.
 
-    Software-rasterised on purpose: a headless FreeCAD has no GL context, so
-    Coin's offscreen renderer cannot produce a pixel here.
+    Software-rasterised on purpose: a headless FreeCAD has no GL
+    context, so Coin's offscreen renderer cannot produce a pixel here.
 
-    A per-pixel depth buffer and the shapes' own edges, because Review judges
-    by this file and the painter's-algorithm version did not resemble the
-    viewport it is compared against. Anti-aliasing, per-object colour
-    and perspective are deliberately still absent: Review does not judge by
-    those, and the render is not trying to be a screenshot.
+    A per-pixel depth buffer and real edges, because Review judges by
+    this file and painter's-algorithm didn't resemble the viewport.
+    Anti-aliasing, per-object colour and perspective stay deliberately absent.
     """
     import numpy as np
     from PIL import Image

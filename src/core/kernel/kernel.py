@@ -69,14 +69,12 @@ class KernelResult:
         """
         A worker's reply, as the result callers see.
 
-        The wire shape is read here and nowhere else. It used to be spelled out
-        again at the one call site, which is how a field the worker starts
-        sending arrives at the parent and stops there -- the two halves are
-        separate processes and nothing links their spellings but this.
+        The wire shape is read here and nowhere else -- a field the worker
+        starts sending arrives at the parent through one spelling, since the
+        two halves are separate processes and nothing else links them.
 
-        `held` and `failed` are read on both branches: an Assertion check's
-        `AssertionError` is exactly the branch where they carry the measured
-        lists, not only the `ok` one.
+        `held` and `failed` are read on both branches -- an `AssertionError`
+        carries the measured lists too, not only the `ok` branch.
         """
         held, failed = response.get("held"), response.get("failed")
         checkpoint = response.get("checkpoint")
@@ -257,14 +255,9 @@ class Kernel:
         """
         One request down the pipe, one reply back, and a dead kernel replaced.
 
-        Hands back the reply, or None and the sentence saying why there is
-        none -- which the caller phrases as whatever its own result is. Never
-        raises: a child that will not come up at all is one more reason for no
-        reply, not an exception for a caller who asked a question.
-
-        A kernel can die between the liveness check and the write, so its
-        last words are read before the restart replaces them with a live
-        kernel's silence.
+        Hands back the reply, or None with why -- never raises: a child that
+        won't come up is one more reason for no reply, not an exception. Read
+        the kernel's last words before the restart replaces them with silence.
         """
         if not self.alive:
             try:
@@ -298,10 +291,9 @@ class Kernel:
         """
         Forward tagged responses; FreeCAD's own banner on stdout is noise.
 
-        The None put on the queue at the end is the only "the kernel is gone"
-        signal there is. It is sent from a finally so that a reader dying is a
-        prompt visible failure rather than every pending request waiting out
-        its timeout.
+        The None put on the queue at the end is the only "kernel is gone"
+        signal there is, sent from a finally so a dead reader is a visible
+        failure rather than every pending request timing out.
         """
         process = self._process
         lines = self._lines
@@ -336,9 +328,9 @@ class Kernel:
         """
         What the kernel said on the way out.
 
-        The drain thread bound this kernel's stderr when it started and only
-        returns at EOF, which death is; without the join the last line is lost
-        to a race instead of to the reset it used to be lost to.
+        The drain thread bound this kernel's stderr at start and returns only
+        at EOF (death); without the join, the last line is lost to a race
+        rather than cleanly to the reset.
         """
         if not self.alive and self._draining is not None:
             self._draining.join(timeout=1.0)

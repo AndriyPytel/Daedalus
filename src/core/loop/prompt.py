@@ -104,13 +104,9 @@ def _ask(llm, events, phase, system, user):
     """
     One phase's turn: stream it, surface the reasoning as it forms, parse the reply.
 
-    A reply carrying no object is asked once more as a second turn: kimi-k3
-    replied to Execute with prose that was a *look*, which is a key of the
-    object — the model had the answer and wrote it as a sentence. One re-ask
-    costs a turn; the alternative cost the run, ten approved Steps into it.
-
-    Of the last 20 sessions, 11 touched Design and 8 of those died here,
-    70-640 s in — one more turn is worth trying before the phase fails.
+    A reply with no object is asked once more as a second turn: kimi-k3
+    replied to Execute with prose whose only object-key was a `look`. Of the
+    last 20 sessions, 11 touched Design and 8 died here, 70-640 s in.
     """
     body, thought, reasoning = _streamed(llm, events, phase, system, user)
     if not isinstance(_object_of(body), dict):
@@ -129,10 +125,9 @@ def _streamed(llm, events, phase, system, user, prior=()):
     """
     One turn, as the text it wrote, whether it reasoned, and the reasoning.
 
-    A stream the provider closed mid-reply is sent again. Of seven long
+    A stream the provider closed mid-reply is sent again: of seven long
     streams measured against the opencode gateway four were cut and three
-    finished, so the second attempt usually lands. Three attempts, because a
-    gateway that cuts all three is down rather than unlucky.
+    finished. Three attempts, since a gateway that cuts all three is down.
     """
     for attempt in range(_CUT_OFF_ATTEMPTS):
         try:
@@ -188,19 +183,11 @@ _ASKED_AGAIN = read_prompt("asked_again.md")
 
 def _asked_again(body, reasoning):
     """
-    The retry as a second turn of the same conversation: the model's own last
-    reply, handed back as its own assistant message, then a short nudge asking
-    for the object — not the original `user` sent again with a directive
-    stapled on. The evidence a phase like Design carries is in that original
-    `user`, once, and a retry that resent it was a second prefill of the same
-    tens of thousands of tokens for the sake of one sentence at the end.
-
-    `reasoning` stands in for `body` when there is no reply to hand back — a
-    turn spent entirely on thought and nothing after it. There is no promise
-    the tail of a chain of thought reads as an answer; there is a promise it
-    reads as *something*, which a blank assistant turn does not, and which is
-    what a retry needs to be a turn of this conversation rather than a demand
-    into empty air.
+    The retry as a second turn: the model's last reply handed back as its own
+    assistant message, then a nudge for the object — not the original `user`
+    resent, which would prefill tens of thousands of tokens again for one
+    sentence. `reasoning` stands in for `body` when a turn was all thought and
+    nothing after it, since it still reads as *something* to answer against.
     """
     said = (body or reasoning or "").strip() or "(nothing was said)"
     return [{"role": "assistant", "content": said},
@@ -209,16 +196,11 @@ def _asked_again(body, reasoning):
 
 def _as_image(path):
     """
-    Read a file as the content block the provider takes for it.
-
-    A path is meaningless to the model — it cannot open files. Returns None if
+    Read a file as the content block the provider takes for it. None when
     there is nothing to show, which a sketch-only Step produces.
 
-    The mime comes off the file rather than being stamped `image/png` on
-    everything, which is how a JPEG went out labelled as a PNG. A PDF
-    is a `file` block rather than an `image_url` one — the same path with a
-    different envelope, and no page rendering on our side. The renders we write
-    ourselves are PNGs, so that path is unchanged.
+    The mime comes off the file rather than a stamped `image/png` — that once
+    mislabelled a JPEG. A PDF is a `file` block, not `image_url`, unrendered.
     """
     if not path or not os.path.isfile(path):
         return None
@@ -237,17 +219,9 @@ def _as_image(path):
 def _as_json(text, phase):
     """
     The reply as the object it carries, wherever in the reply that object is.
+    A reply can answer correctly and still lose the run if the whole reply must parse — Design once did, then added a paragraph explaining itself.
 
-    A phase that answered correctly and then explained itself used to end the
-    run. Measured on `logs/sessions/6fbd31e98fb540818086611841fa9aff.jsonl`:
-    Design replied `{"design": {}, "question": ""}` and then a paragraph saying
-    why the two strings it was asked about are the item numbers of a notes list
-    and not dimensions — a right answer, a useful explanation, and a dead run,
-    because the whole reply had to parse or none of it did.
-
-    So the fence is tried, then the whole reply, then the first balanced object
-    in it. Only an object: a reply with no JSON in it at all is still a phase
-    that did not do its job, and it still says so quoting what was said.
+    So the fence is tried, then the whole reply, then the first balanced object in it.
     """
     parsed = _object_of(text)
     if parsed is None:
@@ -273,10 +247,9 @@ def _the_object_in(text):
     """
     The first balanced `{...}` in a reply, parsed, or None.
 
-    Balanced rather than greedy: the last `}` in the reply belongs to whatever
-    the model wrote last, which on a reply that ends in prose is a sentence with
-    a brace quoted in it. Strings are stepped over so a brace inside one does
-    not close the object.
+    Balanced rather than greedy: the last `}` belongs to whatever the model
+    wrote last, which on a reply ending in prose is a brace quoted in a
+    sentence. Strings are stepped over so a brace inside one does not close it.
     """
     start = text.find("{")
     while start != -1:
@@ -316,10 +289,9 @@ def _the_evidence(attachments, views=None, keep_printed=False, pictures=True):
     """
     What Design is shown: the sheet cut up and its text layer extracted.
 
-    A drawing used to go out whole at 143 DPI for an 11 x 8.5 in sheet, which
-    puts 14 px of ink in a dimension digit and misreads it occasionally
-    rather than reliably. It now goes out as one picture per view at the DPI
-    its own callouts ask for.
+    Sent as one picture per view at the DPI its own callouts ask for — a
+    whole 11 x 8.5 in sheet at 143 DPI puts 14 px of ink in a dimension digit
+    and misreads it occasionally rather than reliably.
     """
     shown = []
     for path in attachments:
@@ -357,10 +329,9 @@ def _words_only(sheet):
     """
     Every named list `shown()` draws a picture beside, as words alone.
 
-    `_reconciled` is the turn that settles what only the whole sheet can
-    settle, and it does that off what is printed, leadered, measured between
-    two points and drawn — not off a picture, because the page-sized turns
-    that came before it have already looked at every picture there is.
+    `_reconciled` settles what only the whole sheet can, off what is
+    printed, leadered, measured between two points and drawn — not off a
+    picture, since the page-sized turns before it already looked at every one.
     """
     parts = []
     if sheet.printed:
@@ -377,13 +348,9 @@ def _words_only(sheet):
 def _wanted_paths(sheet, views):
     """
     The picture paths a narrowed turn keeps: the sheet overview, always, and
-    the whole/crop pictures of the named `views` — or `None`, meaning every
-    picture, when `views` itself is `None`.
-
-    Read off `sheet`'s own fields rather than off `shown()`'s prose, so this
-    does not depend on how a view is announced, only on which picture belongs
-    to it — `sheet_reader.shown(sheet)`'s signature is the only promise this
-    makes use of.
+    the whole/crop pictures of `views` — or `None`, every picture, when
+    `views` is `None`. Read off `sheet`'s own fields, not `shown()`'s prose,
+    so this depends only on `sheet_reader.shown(sheet)`'s signature.
     """
     if views is None:
         return None
@@ -400,12 +367,9 @@ def _narrowed(told, paths):
     """
     *told* kept down to `paths` — or all of it, when `paths` is `None`.
 
-    A `say` that introduces a picture is kept exactly when that picture is; a
-    `say` with no picture after it is one of the sheet-wide lists (the printed
-    callouts, the leaders, the notes) and is dropped on a narrowed turn along
-    with the pictures — what a narrowed turn asks about has already named the
-    callout it wants, in the question, so the sheet's own account of every
-    callout is not needed again to answer it.
+    A `say` introducing a picture is kept exactly when that picture is; a
+    `say` with none after it is a sheet-wide list and drops with the
+    pictures — a narrowed turn's question already names the callout it wants.
     """
     if paths is None:
         return told

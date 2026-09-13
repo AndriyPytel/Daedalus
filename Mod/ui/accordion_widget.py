@@ -1,24 +1,24 @@
 # type: ignore  # PySide2 imported via FreeCAD shim – static analyser can't resolve it
-"""
-One collapsible row in the transcript.
+"""One collapsible row in the transcript.
 
-Thinking, tool calls and errors all take this shape: a toggle line and, under
-it, wrapped text laid out in the column itself. What it used to be — a
-QTextEdit inside the chat's own scroll area, animated to a magic 1000 — is what
-truncated long thinking and what stole the mouse wheel from the chat (ADR-0011).
+Thinking, tool calls and errors all take this shape: a toggle line and,
+under it, wrapped text laid out in the column itself. A QTextEdit
+animated to a magic 1000 inside the chat's own scroll area truncates
+long thinking and steals the mouse wheel from the chat (ADR-0011),
+which this shape avoids.
 
-Code in a row is coloured by one pass of one regex over the string rather than
-by a `QSyntaxHighlighter`: a highlighter needs a `QTextDocument` and this row
-is a `QLabel`. `pygments` would do it better and is not something an addon may
-assume is importable inside FreeCAD. The colours are read from FreeCAD's own
-editor parameters, never chosen here.
+Code in a row is coloured by one pass of one regex over the string
+rather than by a `QSyntaxHighlighter`: a highlighter needs a
+`QTextDocument` and this row is a `QLabel`. `pygments` would do it
+better and is not importable inside FreeCAD. Colours are read from
+FreeCAD's own editor parameters, never chosen here.
 
-Boxed or not, by what the row is. Reasoning and a folded list carry nothing of
-their own and rely on the column for their edges, which is the cheapest way
-this design language separates anything. A call the run made is the one shape
-Figma's Tool card gives a border to: a hairline and no fill, so that a
-transcript of a dozen calls stays a column of outlines rather than a stack of
-filled slabs.
+Boxed or not, by what the row is. Reasoning and a folded list carry
+nothing of their own and rely on the column for their edges, the
+cheapest way this design language separates anything. A call the run
+made is the one shape Figma's Tool card gives a border to: a hairline
+and no fill, so a transcript of a dozen calls stays a column of
+outlines rather than a stack of filled slabs.
 """
 import json
 import keyword
@@ -84,29 +84,14 @@ _TOGGLE_RULE = ("QPushButton { text-align: left; padding: %dpx 0px; border: none
 
 
 class AccordionWidget(QtWidgets.QFrame):
-    """
-    A toggle row with text that shows and hides beneath it.
+    """A toggle row with text that shows and hides beneath it.
 
-    The content is plain text unless the row is a code row, which is rich text
-    so that it can be coloured. Everything a code row shows goes through
-    `_as_markup` first: a traceback says `<module>`, and QLabel reads that as a
-    tag it does not know and drops it.
-
-    A QFrame rather than a plain widget because a plain one paints neither a
-    border nor a background from the stylesheet, whatever the rule says.
-
-    The mark is fixed to `ICON` and the title is `Ignored` horizontally, which
-    is what makes the row a row. A QLabel left to its own policy took half the
-    header's spare width -- 178px of it beside a 16px pixmap -- and the words
-    started in the middle of the panel. A QPushButton neither wraps nor
-    elides, so a narration long enough to fold was also long enough to push
-    the transcript's column past its viewport, and that column does not scroll
-    sideways: what did not fit was unreachable rather than scrolled to.
-
-    The content is `Ignored` for the same reason. A wrapping QLabel still asks
-    for the width of its longest unbreakable word, and a line of Python is one
-    such word: an open code row asked for 565px in a 360px dock, and the
-    column widened to it, taking the Gate's Build button off the panel.
+    Content is plain text; a code row is rich text through `_as_markup`
+    first (a traceback's `<module>` else reads as an unknown tag). A
+    QFrame paints border/background from the stylesheet, a plain widget
+    would not. `toggle_button`/`content_area` use `Ignored` sizing:
+    unpolicied, a QLabel took 178px beside a 16px pixmap and a wrapping
+    button let a 565px line widen a 360px dock past the Gate's Build.
     """
 
     def __init__(self, title: str = "Thinking...", code: bool = False,
@@ -164,16 +149,14 @@ class AccordionWidget(QtWidgets.QFrame):
         self._paint_chevron()
 
     def append_text(self, text: str):
-        """
-        Appends by straight concatenation: reasoning arrives as fragments and
+        """Appends by straight concatenation: reasoning arrives as fragments and
         carries its own newlines, so a paragraph break per call would break a
         streamed sentence across a dozen lines.
 
         `content_area` has word-wrap on, so `setText` relays out everything
-        accumulated so far, not just the new fragment. Buffering here and
-        flushing once per event-loop turn (`QTimer.singleShot(0, ...)`)
-        coalesces a whole burst of streamed deltas into one relayout instead
-        of one per delta.
+        accumulated so far. Buffering and flushing once per event-loop turn
+        (`QTimer.singleShot(0, ...)`) coalesces a whole burst of streamed
+        deltas into one relayout instead of one per delta.
         """
         self._buffer += text
         if not self._flush_pending:
@@ -225,20 +208,14 @@ class AccordionWidget(QtWidgets.QFrame):
         self.toggle_button.setCursor(QtCore.Qt.ArrowCursor)
 
     def mark_as_reasoning(self):
-        """
-        The brain Figma's Reasoning header carries, and text that reads
+        """The brain Figma's Reasoning header carries, and text that reads
         subdued next to an answer.
 
         Subdued the way `HistoryItem` dims its timestamp: an opacity effect
-        rather than a colour of its own, since the theme still decides what
-        the text is (ADR-0011, Figma's Chain of Thought component).
-
-        The brain is `ICON` and the chevron beside it `ICON_DENSE`, which is
-        what those two names are for: 16 is the mark that says what the row is
-        and sits beside its words, 12 is the disclosure mark inline in them.
-        The transcript carries one other kind of row that opens, and telling a
-        phase of reasoning from a call the run made has to survive a glance
-        down a column of them.
+        rather than a colour of its own, since the theme decides the text
+        (ADR-0011, Figma's Chain of Thought component). The brain is `ICON`
+        and the chevron beside it `ICON_DENSE`: 16 marks what the row is, 12
+        is the disclosure mark inline in its words.
         """
         self.mark.setPixmap(
             UIHelpers.get_icon("brain", size=ICON, on=self.toggle_button)
@@ -249,18 +226,14 @@ class AccordionWidget(QtWidgets.QFrame):
         self.content_area.setGraphicsEffect(effect)
 
     def start_pulsing(self):
-        """
-        The 'still working' signal — the one animation worth keeping — and,
+        """The 'still working' signal -- the one animation worth keeping -- and,
         beside the title, how long it has been working.
 
-        A pulse says the run is alive; it does not say whether this has been
-        going for ten seconds or for six minutes, and that is the question
-        the user asks a panel that has said nothing for a while. Nothing on
-        any route can say how long the model will take (no provider reports a
-        budget or a remaining time mid-stream), so the panel says the one
-        thing that is true and useful: how long it has already been. The
-        count stays on the row once it stops, because "that phase took four
-        minutes" is worth keeping in the transcript.
+        A pulse says the run is alive, not for how long: no provider reports
+        a budget or remaining time mid-stream, so the panel says the one
+        thing true and useful, how long it has already been. The count stays
+        on the row once it stops, since "that phase took four minutes" is
+        worth keeping in the transcript.
         """
         self._title = self.toggle_button.text()
         self._since = time.monotonic()
@@ -305,14 +278,11 @@ class AccordionWidget(QtWidgets.QFrame):
         self._paint_chevron()
 
     def _paint_chevron(self):
-        """
-        The disclosure mark, from the icon set rather than from the two
-        triangles the font happens to carry.
+        """The disclosure mark, from the icon set rather than the two triangles
+        the font happens to carry.
 
-        `chevron_down` is drawn once and rotated for the closed state: the set
-        has the one shape, and a glyph is not a shape -- it is whatever the
-        user's font decided, at whatever weight, and it does not take the
-        icon tint the rest of the panel is drawn with.
+        `chevron_down` is drawn once and rotated for the closed state: a
+        glyph is whatever the user's font decided and takes no icon tint.
         """
         icon = UIHelpers.get_icon("chevron_down", size=ICON_DENSE, on=self.toggle_button)
         if not self._is_expanded:

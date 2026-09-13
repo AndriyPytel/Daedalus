@@ -70,15 +70,11 @@ def distilled(model) -> dict:
     """
     The part, without the evidence Design gathered to settle it.
 
-    A projection of the model, so there is no second structure to hold an order
-    the drawing never showed (ADR-0019, ADR-0024). The description and the
-    criteria still come off one model (ADR-0020).
-
-    A disagreement goes whole: Plan is handed the part and nothing that argues
-    about it. A gap nobody answered survives whole (ADR-0019). A datum goes
-    with the feature it belonged to, and every live value measured from a dead
-    one is re-measured from the datum that takes over. `because` stays: the
-    one thing the user can overrule, read through `decided_for_you` (ADR-0022).
+    A projection of the model -- no second structure to hold an order the
+    drawing never showed (ADR-0019, ADR-0024); description and criteria
+    come off one model (ADR-0020). A disagreement goes whole, unargued; a
+    gap nobody answered survives whole; a dead datum's values are
+    re-measured from the one that takes over; `because` stays (ADR-0022).
     """
     taken_over = _which_datum_takes_over(model)
     document = {section: _re_measured(_without_the_evidence(value), taken_over)
@@ -116,12 +112,11 @@ def each_disagreement_once(model) -> dict:
 
 def _grouped_by_kind(conflicts):
     """
-    *conflicts*, one list per member of `KINDS`, in `KINDS`' own order —
-    disagreements, then gaps, then check hazards — each list keeping the
-    order its entries arrived in.
+    *conflicts*, one list per `KINDS` member in `KINDS`' own order --
+    disagreements, then gaps, then check hazards -- entries kept in
+    arrival order.
 
-    `_under_each_kind` and `grouped_conflicts` both need this grouping, so it
-    is pulled out once.
+    Pulled out once because `_under_each_kind` and `grouped_conflicts` both need it.
     """
     return {kind: [conflict for conflict in conflicts if _which_kind_it_is(conflict) == kind]
             for kind in KINDS}

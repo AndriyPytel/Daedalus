@@ -34,14 +34,11 @@ MODEL_STEP = "model"
 
 
 def _screen_for(widget) -> QtGui.QScreen:
-    """
-    The screen *widget* is currently on, however this Qt binding can say so.
-
-    ``QWidget.screen()`` only exists from Qt 5.14 — FreeCAD's own PySide
-    shim has it (it re-exports PySide6), but a bare PySide2 might not, so
-    this falls back to asking the application which screen owns the
-    widget's global position, and falls back again to the primary screen for
-    a widget that is not on screen yet (``screenAt`` can return ``None``).
+    """The screen *widget* is on, however this Qt binding says so.
+    ``QWidget.screen()`` exists only from Qt 5.14 -- FreeCAD's PySide
+    shim has it (re-exports PySide6) but a bare PySide2 might not, so
+    this falls back to the application's screen-at-position lookup, then
+    to the primary screen when that returns ``None`` (widget not yet shown).
     """
     getter = getattr(widget, "screen", None)
     if callable(getter):
@@ -53,15 +50,11 @@ def _screen_for(widget) -> QtGui.QScreen:
 
 
 def _laid_out(layout) -> QtCore.QSize:
-    """
-    How much room *layout*'s widgets need, read off the widgets themselves.
-
-    A widget pinned with `setFixedHeight` keeps the size hint it had before
-    the pin -- the pin is a minimum and a maximum, and a hint is neither --
-    so the larger of the two is what the layout will actually give it. A row
-    is asked to work its own layout out first, since one built and measured
-    in the same turn of the event loop has not done it yet and answers with a
-    default that fits none of its text.
+    """How much room *layout*'s widgets need, read off the widgets themselves.
+    A widget pinned with `setFixedHeight` keeps its prior size hint -- the
+    pin is a min/max, the hint neither -- so the larger wins. A row works
+    out its own layout first, since one built and measured in the same
+    event-loop turn answers with a default fitting none of its text.
     """
     margins = layout.contentsMargins()
     width = height = 0
@@ -80,16 +73,11 @@ def _laid_out(layout) -> QtCore.QSize:
 
 
 class _Row(QtWidgets.QFrame):
-    """
-    One selectable line: a label, a hover wash instead of a colour of its own
-    (ADR-0011) — the same wash `HistoryItem` hovers with — and, for the model
-    row that is the one currently active, a trailing check rather than a
-    recolour (rule 1 of the visual grammar's ten: state is never a repaint).
-
-    Nothing leads the label. The design puts a brand mark there and this
-    addon ships none, and the one glyph that could stand in for all of them
-    stands for nothing: the same mark against every row says only that there
-    is a mark. The check is `circle_check`, the only checkmark in the set.
+    """One selectable line: a label, a hover wash instead of a colour of
+    its own (ADR-0011, the same wash `HistoryItem` uses), and for the
+    active model row a trailing check, not a recolour (state is never a
+    repaint). Nothing leads the label -- this addon ships no brand
+    marks, and one glyph for all of them would say only a mark exists.
     """
 
     clicked = QtCore.Signal()
@@ -306,21 +294,14 @@ class ModelSelectorPopup(_ListPopup):
         self.step = PROVIDER_STEP
 
     def open_at(self, models: list, anchor: QtWidgets.QWidget):
-        """
-        Opens on the provider step, against *anchor* — above it when there is
-        more room above than below, below it otherwise (`_reflow`), sized to
+        """Opens on the provider step, against *anchor* -- above it when there
+        is more room above than below, below otherwise (`_reflow`), sized to
         its content up to whatever room that measurement found.
-
-        The current model is read off *anchor*'s own label (`_set_current_model`
-        already put it there) rather than as a new parameter: the public API
-        this popup keeps for `copilot_panel.py` is `open_at(models, button)`,
-        unchanged since FCC-175, and the button's text is the one place this
-        call already carries that information.
-
-        The fill is resolved here too, against the same *anchor*, rather than
-        once at construction: the anchor is not known until a caller opens the
-        popup against one, and the theme it carries can change between one
-        open and the next.
+        The current model is read off *anchor*'s own label
+        (`_set_current_model` put it there), not a new parameter: the public
+        `open_at(models, button)` API `copilot_panel.py` keeps already
+        carries it in the button's text. The fill resolves here too, against
+        the same *anchor*, since its theme can change between opens.
         """
         self._models = list(models)
         self._dress(anchor)
@@ -359,19 +340,14 @@ class ModelSelectorPopup(_ListPopup):
 
 
 class EffortPopup(_ListPopup):
-    """
-    How hard the model is asked to think, in one flat list.
+    """How hard the model is asked to think, in one flat list.
 
-    A second picker rather than a setting in a dialog because it is the same
-    kind of choice as the model and is made at the same moment -- the user
-    changes it to compare one run against the next, which is the whole reason
-    it exists. The levels are the routes' own, not names of ours: what the
-    Claude Code CLI takes as `--effort` and what LiteLLM normalises as
-    `reasoning_effort` (see `core.llm`).
-
-    A model that cannot reason at all is not offered the choice: the trigger
-    says so and never opens this list, since a picker that changes nothing is
-    a picker that lies.
+    A second picker, not a dialog setting: the same kind of choice as
+    the model, made at the same moment, changed to compare one run
+    against the next. Levels are the routes' own: `--effort` for the
+    Claude Code CLI, `reasoning_effort` for LiteLLM (`core.llm`). A
+    model that cannot reason is never offered the choice -- a picker
+    that changes nothing is a picker that lies.
     """
 
     effort_chosen = QtCore.Signal(str)

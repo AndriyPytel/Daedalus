@@ -1,4 +1,21 @@
-"""Findings about a value nothing on the part supplies, and the write-up `decided_for_you` hands back for one the model settled on its own."""
+"""Findings about a value nothing on the part supplies, and the write-up
+`decided_for_you` hands back for one the model settled on its own.
+
+`_answered` retires the conservative way round: a retirement missed
+leaves an untidy but harmless gap, while a gap wrongly retired removes
+the views a user needs to spot the miss.
+
+`_re_measured` example: the 108 mm the 2023 clamp is long was measured
+from a lug the second page replaces with an arm at 45 degrees, and no
+overall to the arm's free end is printed anywhere.
+
+`_which_datum_takes_over` example: the left-lug-hole axis is the
+hole's own datum; the ear's tangent plane, fixing the length direction,
+passes to the arm at 45 degrees that replaces it there.
+
+An `assumed` value with no `because` is what `settled_by_nothing`
+raises at the merge -- `_NOBODY_SAID` is what that model reads as.
+"""
 
 
 import re
@@ -58,18 +75,9 @@ def _answered(document, gap):
     """
     Whether *document* carries a value at what *gap* says is missing.
 
-    A gap is prose and an address is not, so what the two share is words: every
-    step of the address is named in the entry, and the innermost of them — the
-    field — is named ahead of what carries it. That order is what tells "the
-    width of the ring split", which the split's own width answers, from "the
-    lengthwise position from the left mounting-hole axis", which the hole's
-    axis does not: the second names the datum the missing value would be
-    measured from, and a datum is not what the entry lacks.
-
-    The conservative way round deliberately. A retirement missed leaves a gap
-    on the list that something has answered, which is untidy; a gap retired
-    that nobody answered goes off the Gate taking with it the views it was
-    looked in, and those are what let a user point at the view that was missed.
+    Matched by address, every step named in the entry, with the innermost
+    (the field) named ahead of what carries it -- so a field answers for
+    itself but a datum it's measured from does not.
     """
     said = _in_the_same_words(_named(gap, ("what",)) or "")
     return bool(said) and any(_named_ahead(said, at.split(UNDER)[1:] or [at])
@@ -98,10 +106,10 @@ def measured_from_what_is_gone(document, evidence) -> list:
     """
     The values *document* measures from a datum that went with its feature.
 
-    The invariant a discarded feature leaves behind: once something has
-    discarded a feature, that feature can no longer be what another value is
-    measured from. Left standing, the datum is a face the drawing deleted and
-    every value keyed by it is a criterion the finished part cannot meet.
+    The invariant a discarded feature leaves behind: once a feature is
+    discarded, it cannot be what another value is measured from. Left
+    standing, the datum is a face the drawing deleted and every value
+    keyed by it is a criterion the finished part cannot meet.
     """
     taken_over = _which_datum_takes_over(evidence)
     found = []
@@ -115,17 +123,11 @@ def measured_from_what_is_gone(document, evidence) -> list:
 
 def _which_datum_takes_over(model):
     """
-    Datum name → the datum that takes its place, for every datum that went with
-    the feature it belonged to.
+    Datum name -> the datum that takes its place, for the feature it belonged to.
 
-    A feature owns a datum two ways, and both are read off the model rather
-    than out of its prose. It owns the one named after it — `the left-lug-hole
-    axis` is the hole's, and the slot that replaces the hole brings its own in
-    the same words. And it owns the one it was placed at in a direction the
-    feature replacing it is placed in too: the ear was where the length began
-    and the arm at 45° is, so the arm's free end face takes over from the ear's
-    tangent plane. A datum fixing two directions at once names no single one
-    and is left where it is, which is `_which_way_each_datum_fixes`'s own rule.
+    A feature owns a datum by name, or by direction if it's placed where
+    the replaced feature was. A datum fixing two directions at once is
+    left alone -- `_which_way_each_datum_fixes`'s own rule.
     """
     fixes = _which_way_each_datum_fixes(model)
     features = [feature for feature in (model or {}).get("features") or ()
@@ -182,18 +184,11 @@ def _the_datum_that_is_gone(said, taken_over):
 
 def _re_measured(node, taken_over):
     """
-    A value measured from a datum that is gone, measured from the one that took
-    over — and the magnitude not carried across with it.
+    A value measured from a datum that is gone, measured from the one
+    that took over -- magnitude not carried across.
 
-    The two are different faces, so the number the sheet gave from one is not
-    the number from the other, and a projection may not work out the one it was
-    never given: the 108 mm the 2023 clamp is long was measured from a lug the
-    second page replaces with an arm at 45°, and no overall to the arm's free
-    end is printed anywhere. So the value says it is to be read again, keeps
-    what it said under `was`, and is `assumed` with a `because` — which is what
-    puts all seven of them in front of a person at the Gate, where a number
-    silently kept would have been checked on the finished part and failed
-    (ADR-0022).
+    Recorded so a person checks it at the Gate rather than the number
+    being silently kept and failing on the finished part (ADR-0022).
     """
     if isinstance(node, dict):
         written = {}
@@ -233,17 +228,11 @@ def carried_by_no_source(document, evidence, intent) -> list:
     """
     The numbers the document states that neither the log nor the Intent does.
 
-    The boundary the distiller is held to. Its mechanical half cannot cross it,
-    since a projection states no number the model it came from did not; its
-    other half is a model deciding identity and inconsistency in prose, and a
-    model free to decide those is free to write a value no source ever carried,
-    which is the failure the phase exists to prevent (ADR-0019). So it is
-    checked rather than asked for: a number in the document was printed on the
-    sheet, measured off it, worked out from something that was, or said in the
-    Intent, and there is no fifth place for one to come from.
-
-    `tests/test_loop.py` runs it over the recorded reading of the 2023 pipe
-    clamp, and over the same document with one number added to it.
+    The distiller's boundary: its mechanical half states no number the
+    model didn't give it; its prose half could invent one, which this
+    phase exists to prevent (ADR-0019). Checked against four sources only:
+    printed on the sheet, measured off it, worked out from something that
+    was, or said in the Intent. `tests/test_loop.py` runs it over the 2023 pipe clamp.
     """
     return sorted(numbers_in(document) - numbers_in(evidence) - numbers_in(intent))
 
@@ -262,25 +251,12 @@ def decided_for_you(model) -> list:
     """
     Every value on this part that nobody supplied, said in one line each.
 
-    Walked off the model and never accumulated beside it: a list kept for the
-    run is `you_asked_and_were_answered` rebuilt, which is what downstream
-    started preferring over the description itself (ADR-0019, ADR-0022). The
-    same walk therefore reads the file a user opens tomorrow and the section the
-    Plan Gate showed them today.
+    Walked off the model each time, not accumulated (ADR-0019, ADR-0022).
+    Holds two kinds: a chosen value (`assumed`, with `because` saying why)
+    and an overruled reading (the old value under `was`); `read`/`derived`
+    values are nobody's decision and are excluded.
 
-    Two kinds are in it and they are the two the model may settle: a value it
-    chose, which is `assumed` and says in `because` what it chose it off, and a
-    reading it overruled, which carries the displaced value under `was`. What
-    the sheet gave — `read`, `derived` — is nobody's decision and is not here.
-
-    Who settled it is read off the line and not off a filter: `because` says it,
-    and every `assumed` is here, including the one a person answered at Design's
-    surviving question. Sniffing that prose for the word "user" would be a
-    guess, and the section is honest either way — these are the values the sheet
-    did not give. An `assumed` value with no `because` at all is a Design turn
-    that did not do its job, and `settled_by_nothing` raises it at the merge —
-    so `_NOBODY_SAID` is what a model that never went through one reads as, and
-    not what a user is shown at the Gate.
+    An `assumed` with no `because` is a Design turn that skipped its job.
     """
     return [_the_decision(path, node) for path, node in _each_value(model, "")
             if _filled(node.get("was")) or node.get("flag") == "assumed"]
@@ -307,10 +283,9 @@ def _each_value(node, path):
     """
     Every value on the model, with the address it sits under.
 
-    Nothing of a feature a later page replaced: the Model Mania run kept the
-    Phase 1 mounting ear beside the Phase 2 arm that deletes it, and so a
-    bore the drawing had deleted was planned and a revision spent being told
-    it had been dropped.
+    Nothing from a feature a later page replaced: the Model Mania run kept
+    a Phase 1 mounting ear beside the Phase 2 arm deleting it, so a bore
+    the drawing removed was still planned and had to be walked back.
     """
     if _a_value(node):
         return [(path, node)]
@@ -332,11 +307,9 @@ def _written(held, offered, path, conflicts):
     """
     *offered* grown into *held* at *path*, a node at a time.
 
-    A value and its flag are one thing: there is no half-filling a value, and
-    20 mm read disagreeing with 20 mm assumed is a disagreement worth showing.
-
-    `not_defined` -> a value is the one exception: `not_defined` records that
-    nothing supplied a value, so a later pass supplying one closes the gap.
+    A value and its flag are one thing -- 20 mm read disagreeing with
+    20 mm assumed is a real disagreement. `not_defined` is the one
+    exception: it records that nothing supplied a value, so a later pass can fill it.
     """
     if isinstance(held, dict) and isinstance(offered, dict) \
             and not (_a_value(held) or _a_value(offered)):
@@ -367,10 +340,9 @@ def _alongside(held, offered, path, conflicts):
     """
     Two lists of the same things, matched by what makes an entry that thing.
 
-    By `id`, never by position: a fragment that names one feature must not land
-    on whichever one happens to be first. An entry with no identity at all — a
-    view a feature was seen in, a gap nobody has closed — is appended if it is
-    not already there.
+    By `id`, never by position -- a fragment naming one feature must not
+    land on whichever happens to be first. An entry with no identity (a
+    view, a gap) is appended if not already there.
     """
     grown = list(held)
     for entry in offered:
