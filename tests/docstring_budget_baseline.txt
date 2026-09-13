@@ -89,9 +89,9 @@ src/core/lint.py::_uncounted_selection
 src/core/llm/attachments.py::accepts_pdf
 src/core/llm/attachments.py::cache_control_supported
 src/core/llm/claude.py::_answered
-src/core/llm/claude.py::_blocks
+src/core/llm/claude_stream.py::_blocks
 src/core/llm/claude.py::_invocation
-src/core/llm/claude.py::_said
+src/core/llm/claude_stream.py::_said
 src/core/llm/claude.py::_spawn_claude
 src/core/llm/claude.py::signed_in
 src/core/llm/claude.py::stream
