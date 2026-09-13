@@ -1,23 +1,15 @@
 """
 The Design -> Plan -> Execute -> Assertion -> Review visibility contract, as
-one declared table -- not five hand-written spawn cases.
-
-ADR-0003's fixed five-phase pipeline is a visibility contract, not a tool
-format: Plan sees only Design; Execute sees Plan and Design; Assertion sees
-only Design and a read-only Document, never an Execute artifact; Review is
-isolated exactly as today, seeing intent and outcome and nothing that would
-let it grade its own work. The orchestrator alone sees everything, because it
-is what hands each phase its slice of it.
-
-This is enforced structurally: a phase's kernel is spawned with a working
-directory `spawn()` builds from `PHASE_CONTRACT` alone, containing exactly
-the artefacts that phase's row declares and nothing a caller happens to pass
-beside them. A row is `{artifact: mode}`, `mode` one of `RO`/`RW`; an
-artefact this module does not know how to write, `_WRITERS` does not cover,
-raises rather than silently dropping it, the way an unknown phase does.
-
-Adding a new phase's visibility rule is editing `PHASE_CONTRACT`; `spawn()`
-itself never changes for it.
+one declared table rather than five hand-written spawn cases: Plan sees only
+Design; Execute sees Plan and Design; Assertion sees only Design and a
+read-only Document, never an Execute artifact; Review sees intent and
+outcome and nothing that would let it grade its own work; the orchestrator
+alone sees everything. This is enforced structurally -- a phase's kernel is
+spawned with a working directory `spawn()` builds from `PHASE_CONTRACT`
+alone, containing exactly what that phase's row declares, and an artefact
+`_WRITERS` does not cover raises rather than dropping silently. Adding a
+phase's visibility rule means editing `PHASE_CONTRACT`; `spawn()` itself
+never changes for it.
 """
 import json
 import os
@@ -74,19 +66,12 @@ def _made_read_only(path):
 
 def spawn(phase, working_dir, **sources):
     """
-    A phase's kernel working directory, built from `PHASE_CONTRACT` alone.
-
-    `sources` is whatever the caller has on hand -- intent, design, plan,
-    execute, document, outcome -- keyed by `ARTIFACTS`' own names. Only the
-    ones `PHASE_CONTRACT[phase]` declares are ever written; a source passed
-    for an artefact the phase's row omits (an Execute artifact handed to
-    Assertion's spawn, say) is silently not written, which is what keeps the
-    contract structural rather than a promise the caller keeps.
-
-    A `RO` artefact is made read-only on disk once written; `RW` is left
-    writable. Raises `KeyError` for a phase `PHASE_CONTRACT` does not name.
-
-    Returns `working_dir`, created if it does not exist yet.
+    A phase's kernel working directory, built from `PHASE_CONTRACT` alone;
+    `sources` is whatever the caller has on hand, keyed by `ARTIFACTS`' own
+    names, and only the ones `PHASE_CONTRACT[phase]` declares are ever
+    written. A `RO` artefact is made read-only on disk once written, `RW` is
+    left writable, and an unnamed phase raises `KeyError`. Returns
+    `working_dir`, created if it does not exist yet.
     """
     row = PHASE_CONTRACT[phase]
     os.makedirs(working_dir, exist_ok=True)

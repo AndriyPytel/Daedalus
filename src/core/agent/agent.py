@@ -1,19 +1,12 @@
 """
-The multi-turn phase agent: a phase's conversation with its own kernel.
-
-A turn is read for the object it carries, by the routes `core.loop.prompt`
-reads a phase's reply by. Read one way only — the fence, else the whole text,
-then `json.loads` — this path lost the turns the model got right. Measured on
-`logs/sessions/123a8f44549a46b5a2ff1f78ab661dba.jsonl`: 5 of that run's 27
-turns, every one in Execute, every one carrying the object it meant. One wrote
-a sentence and then the object; three wrote the object, a stray
-`</parameter></invoke>`, and a second object; one wrote a truncated object
-before the whole one. Each cost a turn on `contract_correction`, and Execute
-never reached `declare` — the run had a Design and a Plan and made no part.
-
-`_feedback` carries `volume` on both branches. What a feature moved is the
-number the model's own failing assert was about, so a failed Step is exactly
-the reply worth having it on.
+The multi-turn phase agent: a phase's conversation with its own kernel, a
+turn read one way only -- the fenced block if present, else the whole text,
+then `json.loads`. Measured on one run's 27 Execute turns: 5 carried the
+object the model meant but wrapped in a stray sentence, a duplicate object,
+or a truncation, each costing a turn on `contract_correction` while Execute
+never reached `declare`. `_feedback` carries `volume` on both branches,
+because what a feature moved is the number a failed Step's own assert was
+about.
 """
 import json
 import os
@@ -50,13 +43,10 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               on_declaration=None):
     """
     Run *phase* as a multi-turn agent against its own kernel. *on_declaration*,
-    called the moment a Step is declared, answers `{"delivered": True}`,
-    `{"delivered": False, "retry": True, ...}` (`drift` is the same shape,
-    kept for SignatureMismatch), or `{"delivered": False, "traceback": ...}`
-    (FCC-A-53, FCC-372). Either `retry` flavour rewinds the kernel to the
-    last checkpoint and asks again in this session; a plain
-    `{"delivered": False}` is final, for `_work_through`'s handback (FCC-61).
-    Returns `(declared, session, declarations)`.
+    called the moment a Step is declared, answers `{"delivered": True}`, a
+    retry shape that rewinds the kernel to the last checkpoint and asks again
+    in this session, or a final `{"delivered": False}` for the caller's
+    handback. Returns `(declared, session, declarations)`.
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)

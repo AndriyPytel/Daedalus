@@ -32,13 +32,8 @@ Mod/ui/ui_helpers.py::get_icon
 Mod/ui/ui_helpers.py::surface_colour
 Mod/ui/upload_widget.py::FileChip
 Mod/ui/upload_widget.py::UploadWidget
-src/core/agent/phase_contract.py::spawn
 src/core/agent/subagent.py::delegate
-src/core/arithmetic.py::wrong_sums
-src/core/dependency_manager.py::install_package
-src/core/dependency_manager.py::prune_superseded
 src/core/dependency_manager.py::run_dependency_check
-src/core/events.py::module
 src/core/lint.py::_counted_selections
 src/core/lint.py::_swallowed
 src/core/lint.py::_uncounted_selection
