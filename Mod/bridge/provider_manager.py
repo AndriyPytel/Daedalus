@@ -44,24 +44,14 @@ class _FetchThread(QThread):
 
 class _ProviderManager(QObject):
     """
-    Internal singleton implementation.
-
-    ``models_changed`` carries the whole list of ``{display, id, provider}``
-    dicts.
-
-    The fetched lists are a session-lifetime cache, keyed by provider; a disk
-    cache with a TTL is the upgrade path if one fetch per provider per session
-    becomes noticeable. ``_threads`` maps a provider to its running
-    ``_FetchThread`` and doubles as the "asked already" mark. ``_fetched_with``
-    records the ``(api_key, base_url)`` each list was fetched with, so a key
-    change can clear the one provider it invalidated rather than all of them.
-    ``_resolved`` maps a model id to the ``(provider, display)`` that last
-    reported it and survives a cleared fetch: between a key change and the new
-    list landing it is the only thing that can resolve a fetched-only model,
-    and ``get_model_entry`` runs on the Step thread and cannot ask.
-
-    An address change invalidates a fetched list exactly as a key change does,
-    so both signals arrive at the same slot.
+    Internal singleton implementation. ``models_changed`` carries the whole
+    list of ``{display, id, provider}`` dicts, from a session-lifetime cache
+    keyed by provider (a disk cache with a TTL is the upgrade path once one
+    fetch per provider per session is noticeable). ``_resolved`` maps a model
+    id to the ``(provider, display)`` that last reported it and survives a
+    cleared fetch, because between a key change and the new list landing it
+    is the only thing that can resolve a model for ``get_model_entry``, which
+    runs on the Step thread and cannot itself ask.
     """
 
     models_changed = Signal(list)
@@ -81,13 +71,11 @@ class _ProviderManager(QObject):
 
     def _configured(self, provider: str) -> tuple:
         """
-        (api_key, base_url) when *provider* is usable at all, else None.
-
-        A local server is configured by its address and may want no token; a
-        hosted provider is configured by its key and has no address to give.
-        A provider that holds its own credential is configured by having the
-        CLI signed in, which is nothing this page stores — so it is always
-        usable here, and its Test button is what says whether it really is.
+        (api_key, base_url) when *provider* is usable at all, else None. A
+        local server is configured by its address and may want no token; a
+        hosted provider is configured by its key. A provider that holds its
+        own credential is configured by having the CLI signed in, which this
+        page never stores, so its Test button is what says whether it really is.
         """
         from core import model_catalog
         from bridge import settings_manager
@@ -136,14 +124,10 @@ class _ProviderManager(QObject):
     def _remember(self, provider: str, models: list):
         """
         Where each of these models came from, kept past the next key change.
-
-        ponytail: a model the provider stops reporting stays remembered, so a
-        run against it fails at the provider rather than here. Dropping it
-        would need the fetch that has not landed yet, which is the whole
-        problem — and the provider's own error is the honest one anyway.
-
-        Also recorded on `core.model_registry`, which `core.settings` reads
-        instead of reaching back into this Qt-touching cache (FCC-359).
+        A model the provider stops reporting stays remembered, so a run
+        against it fails at the provider rather than here. Also recorded on
+        `core.model_registry`, which `core.settings` reads instead of
+        reaching back into this Qt-touching cache.
         """
         from core import model_registry
 
@@ -178,12 +162,10 @@ class _ProviderManager(QObject):
 
     def _on_keys_changed(self, _changed):
         """
-        Drop the lists the change actually invalidated, and no others.
-
-        A key change invalidates the list that key entitled you to. Clearing
-        every provider threw away answers that were still true, and the signal
-        carries the whole map rather than which entry moved — so the check is
-        against what each list was fetched with (FCC-53).
+        Drop the lists the change actually invalidated, and no others. A key
+        change invalidates only the list that key entitled you to, and the
+        signal carries the whole map rather than which entry moved, so the
+        check is against what each list was fetched with.
         """
         for provider in list(self._providers):
             if self._fetched_with.get(provider) == self._configured(provider):
@@ -221,14 +203,11 @@ class _ProviderManager(QObject):
 
     def get_model_entry(self, model_id: str) -> dict | None:
         """
-        Find a model entry by its ``id`` across all providers.
-
-        Falls back to what the provider last reported. A model that resolved
-        once keeps its provider until a fetch says otherwise — without that,
-        every fetched-only model is unresolvable between a key change and the
-        new list landing, and the run ends in a crash report (FCC-53).
-
-        Deliberately does not trigger a fetch: this runs on the Step thread.
+        Find a model entry by its ``id`` across all providers, falling back to
+        what a provider last reported. A model that resolved once keeps its
+        provider until a fetch says otherwise, so a fetched-only model stays
+        resolvable between a key change and the new list landing. Deliberately
+        does not trigger a fetch: this runs on the Step thread.
         """
         for provider in self._providers:
             for m in self._known(provider):
@@ -251,15 +230,11 @@ class _ProviderManager(QObject):
 
     def test_connection(self, provider: str, api_key: str, base_url: str = "") -> tuple:
         """
-        Synchronous connection test — the same request that fetches the model
-        list, so a passing test guarantees a populated combo.  Returns
-        (success: bool, message: str).  Call from a QThread to avoid blocking
-        the UI.
-
-        A provider with no key has no such request to make: its model list is
-        three aliases and costs nothing to be wrong about. What is worth
-        proving there is which account the CLI is signed in as, and on which
-        plan — and asking spends no call.
+        Synchronous connection test, the same request that fetches the model
+        list, so a passing test guarantees a populated combo. Returns
+        (success: bool, message: str); call from a QThread to avoid blocking
+        the UI. A provider with no key has no such request to make, so the
+        test instead proves which account the CLI is signed in as.
         """
         from core import model_catalog
         if model_catalog.needs_no_key(provider):

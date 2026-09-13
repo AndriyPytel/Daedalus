@@ -1,23 +1,17 @@
 """
-The kernel: a persistent headless FreeCAD, checkpointed rather than reopened.
-
-The parent half. Owns one long-lived headless FreeCAD, feeds it work over
-stdin, and enforces the timeout. Worker death is an expected outcome, not an
-incident -- a crash or a timeout restarts the process silently and comes back
-as a traceback the assistant can correct against (ADR-0002).
-
-A Step's code runs directly against the kernel's live Document. A Step that
-succeeds is checkpointed (`saveCopy`, no reopen); a Step that fails leaves
-the Document exactly as it was, by reopening the checkpoint. `check` called
-with no `document` argument at all continues the kernel's running session,
-resuming on the last checkpoint rather than the blank Document a restart
-brings up, or refusing where no checkpoint exists yet (ADR-0027); handing it
-a `document` -- a path, or explicit `None` -- is always a fresh handoff.
-
-Nothing here imports FreeCAD. The parent is the addon's process; the only
+The kernel: a persistent headless FreeCAD, checkpointed rather than
+reopened, owned by the parent half that feeds it work over stdin and
+enforces the timeout; worker death is an expected outcome, not an
+incident, a crash or a timeout restarts the process silently and comes
+back as a traceback the assistant can correct against. A Step's code
+runs directly against the kernel's live Document: a Step that succeeds
+is checkpointed (`saveCopy`, no reopen), a Step that fails leaves the
+Document exactly as it was by reopening the checkpoint, and `check`
+called with no `document` argument continues the kernel's running
+session, resuming on the last checkpoint or refusing where none exists
+yet, while handing it a `document` is always a fresh handoff. Nothing
+here imports FreeCAD: the parent is the addon's process, and the only
 FreeCAD in play is the child's.
-
-Smoke check: `src/tools/kernel_smoke.py`.
 """
 import json
 import os
@@ -188,14 +182,13 @@ class Kernel:
 
     def restart(self):
         """
-        Silent by design -- the user is never told the kernel died, and silent
-        about not coming back either.
-
-        A replacement that cannot be started is a request without an answer,
-        not an exception thrown at a caller who asked for a Step: the Step
-        may cost a Step and never the run. The kernel stays dead and the next
-        request tries again. `_needs_resume` marks the replacement as blank,
-        for `check()` to resume from checkpoint rather than continue onto it.
+        Silent by design -- the user is never told the kernel died, and
+        silent about not coming back either. A replacement that cannot be
+        started is a request without an answer, not an exception thrown at
+        a caller who asked for a Step: the Step may cost a Step and never
+        the run, the kernel stays dead and the next request tries again.
+        `_needs_resume` marks the replacement as blank, for `check()` to
+        resume from checkpoint rather than continue onto it.
         """
         self.kill()
         self._needs_resume = True
@@ -214,13 +207,12 @@ class Kernel:
     def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None,
               ephemeral=False):
         """
-        Run *code* as one Step in the kernel.
-
-        `document` not given: continues the kernel's own session, resuming
-        on the last checkpoint if the worker restarted since (ADR-0027) --
-        or refusing if no checkpoint exists yet to resume onto.
-        `document` given: fresh handoff from that path, always honoured.
-        Returns a KernelResult. Never raises for anything the code did.
+        Run *code* as one Step in the kernel. `document` not given
+        continues the kernel's own session, resuming on the last
+        checkpoint if the worker restarted since, or refusing if no
+        checkpoint exists yet to resume onto; `document` given is a fresh
+        handoff from that path, always honoured. Returns a KernelResult,
+        never raising for anything the code did.
         """
         if document is _CONTINUE and self._needs_resume:
             if self._checkpoint is None:

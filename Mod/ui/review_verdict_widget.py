@@ -1,21 +1,16 @@
 """
-The Review verdict card: Review's own evidence, above Approve / Reject /
-Start Over (FCC-178).
-
-Figma's Confirmation page names only the two primary actions literally --
-`_ConfirmationActions` (node 4346:15375) is a bordered button beside a filled
-one, no icon, no third button. Start Over is the epic's own addition
-(FCC-169's Solution Notes: "a third, less prominent action alongside
-Approve/Reject"), so it reuses `PillButton`'s own chrome rather than a shape
-Figma never drew, subdued the way `AccordionWidget.mark_as_reasoning` subdues
-reasoning -- an opacity effect, not a colour of its own (ADR-0011).
-
+The Review verdict card shows Review's own evidence above Approve / Reject
+/ Start Over: Figma's Confirmation page names only the two primary actions
+literally, a bordered button beside a filled one with no icon and no third
+button, so Start Over reuses `PillButton`'s own chrome rather than a shape
+Figma never drew, subdued the way `AccordionWidget.mark_as_reasoning`
+subdues reasoning, an opacity effect rather than a colour of its own.
 `_THUMBNAIL` sizes the four viewport screenshots to a row across the panel:
-Figma's Confirmation page gives no screenshot size of its own, so this reads
-`copilot_panel.ATTACHMENT_WIDTH` (320px, "wide enough to recognise the
-drawing, narrow enough that it is not the whole transcript") as the panel's
-own idea of a picture's width instead of inventing a second one, split four
-ways with `SPACE_SM` gaps between.
+Figma's Confirmation page gives no screenshot size of its own, so this
+reads `copilot_panel.ATTACHMENT_WIDTH` (320px, wide enough to recognise the
+drawing and narrow enough that it is not the whole transcript) as the
+panel's own idea of a picture's width, split four ways with `SPACE_SM` gaps
+between.
 """
 try:
     from PySide2 import QtCore, QtGui, QtWidgets

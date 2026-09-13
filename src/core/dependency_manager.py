@@ -1,23 +1,13 @@
 """
-The Python packages the addon needs, installed into FreeCAD's own directory for
-user-installed packages.
-
-pymupdf is what makes a PDF a drawing rather than an opaque attachment: the page
-is rendered at the DPI its own callouts ask for, and its text layer is the exact
-list of what is printed on it. Without it `sheet_reader` says so and the sheet
-is sent whole. PyYAML is what the part Design is written down as; litellm
-already pulls it in, so it is here to be named rather than to be new — a reading
-that silently stopped being written because a transitive dependency moved would
-otherwise be discovered by its absence, months later.
-
-`pip install --target` without `--upgrade` refuses to overwrite a file that is
-already there but writes the new dist-info anyway: installing six 1.15.0 and
-then six 1.16.0 leaves `six-1.16.0.dist-info` beside `six-1.15.0.dist-info`, and
-`six.py` still reporting `__version__ = "1.15.0"`. That is how two pydantic and
-two pydantic_core versions come to sit side by side, and how a pydantic can end
-up not matching its pydantic_core. `--upgrade` fixes the code, but it does not
-remove the superseded dist-info, so the metadata still describes two installs
-where there is one — which is what `prune_superseded` is for.
+The Python packages the addon needs, installed into FreeCAD's own directory
+for user-installed packages. pymupdf renders a PDF page at the DPI its own
+callouts ask for and gives an exact text layer, without which `sheet_reader`
+sends the sheet whole; PyYAML is pinned here explicitly, though litellm
+already pulls it in, so a reading does not silently stop being written months
+after a transitive dependency moves it. `pip install --target` without
+`--upgrade` writes new dist-info beside a file it refuses to overwrite,
+leaving two installs' metadata describing what is now one install, which
+`prune_superseded` repairs.
 """
 import csv
 import FreeCAD
@@ -83,15 +73,12 @@ def _recorded_files(dist_info):
 
 def prune_superseded(target_directory):
     """
-    Leave one version of each distribution: the newest.
-
-    A superseded install's files are removed only where the surviving version
-    does not claim them too — `--upgrade` has already overwritten the shared
-    ones, and deleting those would break the install this is repairing. A path
-    a RECORD claims outside the target directory is left alone: a RECORD is not
-    a licence to delete elsewhere.
-
-    Returns the dist-info directory names removed.
+    Leave one version of each distribution: the newest. A superseded
+    install's files are removed only where the surviving version does not
+    claim them too, since `--upgrade` has already overwritten the shared
+    ones and deleting those would break the install this is repairing, and a
+    path a RECORD claims outside the target directory is left alone. Returns
+    the dist-info directory names removed.
     """
     removed = []
     for versions in installed_distributions(target_directory).values():
@@ -132,16 +119,13 @@ def missing_packages():
 
 def install_package(package_name, target_directory):
     """
-    Installs a Python package using pip, targeting a specific directory.
-    This function uses the robust `freecad.utils.get_python_exe()` to ensure
-    the correct Python interpreter is used, which is critical in packaged
-    environments like Flatpak or AppImage.
-
-    `InitGui.py:26` calls this synchronously, before the dock and the
-    preference pages load, so a `pip install` that hangs on the network
-    freezes FreeCAD before any of it appears. The 120 s ceiling is pip's own
-    default connect/read timeout doubled, room for a slow mirror without
-    leaving a stalled one to block the whole startup indefinitely.
+    Installs a Python package using pip, targeting a specific directory,
+    through `freecad.utils.get_python_exe()` so the right interpreter is used
+    inside a packaged environment like Flatpak or AppImage. Called
+    synchronously before the dock and preference pages load, so a hung `pip
+    install` freezes FreeCAD before any of it appears. The 120s ceiling is
+    pip's own default connect/read timeout doubled, room for a slow mirror
+    without leaving a stalled one to block startup indefinitely.
     """
     try:
         from freecad.utils import get_python_exe
@@ -185,23 +169,16 @@ def install_package(package_name, target_directory):
 
 def run_dependency_check(confirm=None, on_install_error=None, on_finished=None):
     """
-    The main function to check for and install missing dependencies.
-    It identifies missing packages, asks the user for permission to install,
-    and then proceeds with the installation, recommending a restart upon completion.
-
-    Superseded versions are pruned before the missing check rather than after
-    it: a directory that already has everything is exactly the one an earlier
-    layered install left behind, and returning early would never repair it.
-    Caches are invalidated after each install, or the import system does not
-    see the package that was just put there.
-
-    *confirm* asks whether to install the *missing* packages and returns a
-    bool; a GUI wraps this in a Yes/No dialog (`InitGui.py`), and the default
-    declines since there is nothing here to ask through (FCC-359: this module
-    has no Qt import, so `core` can run with no Qt at all). *on_install_error*
-    takes ``(package, error_message)`` for a package that failed to install,
-    and *on_finished* takes ``all_successful``; both default to a no-op, and a
-    GUI supplies the dialogs they used to be.
+    Checks for and installs missing dependencies: identifies missing
+    packages, asks the user for permission, installs them, and recommends a
+    restart when done. Superseded versions are pruned before the missing
+    check, because a directory that already has everything is exactly the
+    one an earlier layered install left behind and returning early would
+    never repair it; caches are invalidated after each install so the import
+    system sees the new package. *confirm* asks whether to install *missing*
+    and returns a bool, defaulting to decline since this module has no Qt
+    import; *on_install_error* takes `(package, error_message)` and
+    *on_finished* takes `all_successful`, both defaulting to a no-op.
     """
     if confirm is None:
         confirm = lambda missing: False

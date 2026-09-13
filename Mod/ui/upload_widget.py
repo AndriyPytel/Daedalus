@@ -37,22 +37,18 @@ def _cut_to_fit(name: str) -> str:
 
 class FileChip(QtWidgets.QWidget):
     """
-    [📄 filename ×] or [🖼 filename ×] chip, removable while it is still an
-    attachment and fixed once it is a record of one.
-
-    The chip is a translucent grey rather than a colour, so it works over any
-    theme (ADR-0011).
-
-    The transcript shows the same chip for a file it could not draw -- a PDF
-    has no thumbnail, and the name of the drawing a run was given is worth more
-    than the paperclip character that stood there. Nothing in a transcript is
-    taken back, so that one carries no remove button at all. It is the one file
-    shape the design has, so the document a run writes wears it too.
-
-    Clicking one opens the file where the desktop opens it. The addon has no
-    viewer of its own and a drawing is looked at again in the middle of a run;
-    `core.sheet_reader` renders a page, but it is the evidence pipeline rather
-    than a thumbnailer and would run its whole analysis on the GUI thread.
+    A [📄 filename ×] or [🖼 filename ×] chip, removable while it is still an
+attachment and fixed once it is a record of one, translucent grey rather
+than a colour so it works over any theme. The transcript shows the same
+chip for a file it could not draw, since a PDF has no thumbnail and the
+name of the drawing a run was given is worth more than the paperclip
+character that stood there; nothing in a transcript is taken back, so that
+one carries no remove button at all, and it is the one file shape the
+design has, so the document a run writes wears it too. Clicking one opens
+the file where the desktop opens it, since the addon has no viewer of its
+own and `core.sheet_reader` renders a page as part of the evidence pipeline
+rather than as a thumbnailer, which would run its whole analysis on the GUI
+thread.
     """
 
     remove_requested = QtCore.Signal(str)
@@ -188,19 +184,16 @@ class FileChipBar(QtWidgets.QWidget):
 
 class UploadWidget(QtWidgets.QWidget):
     """
-    A minimal "+" icon button that opens a file dialog.
-    Chips are rendered by the FileChipBar (owned by copilot_panel).
-
-    It is the dense control height, not the full one the header uses: it sits
-    in the composer's tool strip beside the model pill, and a row of controls
-    that are two different heights reads as a misalignment rather than as a
-    hierarchy.
-
-    Its width is the icon plus one 4, not the square the height would make it.
-    A square hit target puts 4 px of empty button either side of a 16 px glyph
-    that has nothing beside it to balance, and the strip reads as a gap before
-    the pickers rather than as a control. The height is the token, because that
-    is what the row aligns on; the width is not, because nothing aligns on it.
+    A minimal "+" icon button that opens a file dialog; chips are rendered by
+the `FileChipBar`, owned by `copilot_panel`. It uses the dense control
+height, not the full one the header uses, since it sits in the composer's
+tool strip beside the model pill and a row of controls at two different
+heights reads as a misalignment rather than as a hierarchy. Its width is
+the icon plus one 4, not the square the height would make, since a square
+hit target puts 4px of empty button either side of a 16px glyph with
+nothing beside it to balance and the strip would read as a gap before the
+pickers rather than as a control; the height is the token because that is
+what the row aligns on, the width is not because nothing aligns on it.
     """
 
     file_attached = QtCore.Signal(str)

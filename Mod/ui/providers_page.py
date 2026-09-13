@@ -1,13 +1,8 @@
 """
-ProvidersPage – "API & Providers" preference sub-page.
-
-Two-panel layout:
-  Left  – QListWidget of LLM providers (OpenAI, Google, Anthropic, etc.)
-  Right – API Key editor for the selected provider.
-
-Uses SVG icons for visibility toggle and status indicators.
-Dynamic provider management allows for future extension.
-
+ProvidersPage is the "API & Providers" preference sub-page: a two-panel
+layout, a `QListWidget` of LLM providers (OpenAI, Google, Anthropic, etc.)
+on the left and an API key editor for the selected provider on the right,
+using SVG icons for the visibility toggle and status indicators.
 ``_STATUS_STYLE`` is carried alongside the semantic colours, which replace
 rather than extend a stylesheet.
 """
@@ -215,12 +210,10 @@ class ProvidersPage(QtWidgets.QWidget):
 
     def showEvent(self, event):
         """
-        Re-tint once Qt has polished the page (ADR-0011).
-
-        Only the first show: rebuilding the list is what re-tints its item
-        icons, and doing that on every show would reset the selection and
-        throw away a key the user had typed but not saved.
-        """
+        Re-tint once Qt has polished the page, only the first show: rebuilding the
+list is what re-tints its item icons, and doing that on every show would
+reset the selection and throw away a key the user had typed but not saved.
+"""
         super().showEvent(event)
         if self._tinted:
             return
@@ -429,16 +422,14 @@ class ProvidersPage(QtWidgets.QWidget):
 
     def saveSettings(self):
         """
-        Persist the page.
-
-        The combos are read before anything is written. ``set_api_keys`` emits
-        ``api_keys_changed``; the provider manager answers it by clearing its
-        fetched lists and emitting ``models_changed``; this page answers that by
-        rebuilding these very combos and re-selecting them from the settings as
-        they still are — all of it synchronous, inside this call. A choice read
-        afterwards would be the old stored value, and the user's pick would be
-        destroyed by the save meant to persist it.
-        """
+        Persist the page: the combos are read before anything is written, since
+`set_api_keys` emits `api_keys_changed`, the provider manager answers by
+clearing its fetched lists and emitting `models_changed`, and this page
+answers that by rebuilding these very combos and re-selecting them from the
+settings as they still are, all of it synchronous inside this call. A
+choice read afterwards would be the old stored value, and the user's pick
+would be destroyed by the save meant to persist it.
+"""
         from bridge import settings_manager
         sm = settings_manager.instance()
         

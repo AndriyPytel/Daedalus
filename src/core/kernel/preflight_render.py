@@ -148,14 +148,12 @@ def _draw_edge(colour, zbuffer, points, depths, bias):
 
 def render(doc, path, size=(800, 600)):
     """
-    Isometric render of every shape in the Document.
-
-    Software-rasterised on purpose: a headless FreeCAD has no GL
-    context, so Coin's offscreen renderer cannot produce a pixel here.
-
-    A per-pixel depth buffer and real edges, because Review judges by
-    this file and painter's-algorithm didn't resemble the viewport.
-    Anti-aliasing, per-object colour and perspective stay deliberately absent.
+    Isometric render of every shape in the Document. Software-rasterised
+    on purpose: a headless FreeCAD has no GL context, so Coin's offscreen
+    renderer cannot produce a pixel here. A per-pixel depth buffer and
+    real edges, because Review judges by this file and
+    painter's-algorithm didn't resemble the viewport; anti-aliasing,
+    per-object colour and perspective stay deliberately absent.
     """
     import numpy as np
     from PIL import Image

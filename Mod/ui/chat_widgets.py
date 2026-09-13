@@ -9,26 +9,22 @@ from ui.typography import BODY, css
 
 class _BubbleLabel(QtWidgets.QLabel):
     """
-    A wrapped label as wide as its own words, up to a share of the column.
-
-    `QLabel.sizeHint` stops meaning anything once the label wraps: it is an
-    internal compromise made at no width in particular, and it comes back
-    smaller the more room the label is given -- 119px for four words that need
-    145px on one line, and 83px for the same four once a 400px maximum was
-    set. Under the bubble's `Maximum` size policy that guess is a ceiling
-    nothing can pass, which is how a four-word message wrapped into four lines
-    in a dock wide enough for forty.
-
-    `QFontMetrics` is not the answer either: it measures a string, and the
-    label lays out a paragraph. "Зроби модель з першої фази" advances 195px
-    and the padding is 32, but the label needs 234 before it will keep the
-    sentence on one line -- 7px more than the metrics say, so the last word
-    wrapped and a 445px panel showed a 225px bubble. The width is asked of the
-    label instead: the narrowest one that costs no more lines than the cap
-    does, found by bisection because `heightForWidth` only ever falls as the
-    width rises. The metrics stay as the floor, because a single unbreakable
-    word never costs a second line and the search would otherwise run to 1px.
-    """
+    A wrapped label as wide as its own words, up to a share of the column:
+`QLabel.sizeHint` stops meaning anything once the label wraps, since it
+comes back smaller the more room the label is given -- 119px for four words
+that need 145px on one line, and 83px for the same four once a 400px
+maximum is set -- and under `Maximum` size policy that guess is a ceiling
+nothing can pass, wrapping a four-word message into four lines in a dock
+wide enough for forty. `QFontMetrics` is not the answer either, since it
+measures a string while the label lays out a paragraph: "Зроби модель з
+першої фази" advances 195px, the padding is 32, but the label needs 234
+before it keeps the sentence on one line, 7px more than the metrics say, so
+a 445px panel showed a 225px bubble. The width asked of the label is
+instead the narrowest one that costs no more lines than the cap, found by
+bisection since `heightForWidth` only falls as width rises, with the
+metrics kept as the floor because a single unbreakable word never costs a
+second line and the search would otherwise run to 1px.
+"""
 
     def __init__(self, text: str = ""):
         super().__init__(text)
@@ -59,16 +55,14 @@ class _BubbleLabel(QtWidgets.QLabel):
 
 class TextMessageWidget(QtWidgets.QWidget):
     """
-    A chat bubble for user text, hugging the right edge.
-
-    The bubble is a translucent grey rather than a colour: it darkens a light
-    theme and lightens a dark one. It is pushed right and left short of the
-    full width because that is what tells a reader, without a label, which
-    turns in the transcript are theirs -- everything the run says is flush
-    left and unboxed. It is the one message shape in the design system given a
-    surface of its own, and it is padded the way a surface is.
-
-    The margins are the scrolling column's; this widget adds none.
+    A chat bubble for user text, hugging the right edge: it is translucent grey
+    rather than a colour, so it darkens a light theme and lightens a dark one,
+    and it is pushed right and left short of the full width because that is
+    what tells a reader, without a label, which turns in the transcript are
+    theirs, while everything the run says stays flush left and unboxed. It is
+    the one message shape in the design system given a surface of its own, and
+    it is padded the way a surface is. The margins are the scrolling column's;
+    this widget adds none.
     """
 
     SHORT_OF_THE_COLUMN = 0.78

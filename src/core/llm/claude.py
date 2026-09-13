@@ -1,13 +1,11 @@
 """
-ClaudeCodeClient: streams from a Claude Max subscription through one `claude`
-process a call.
-
-Constraints: every CLI flag is a measurement, not a taste — `--disallowed-tools`
-naming every reported tool cuts the preamble 29,213 to 2,385 tokens; `--safe-mode`
-(not `--bare`) keeps subscription auth from being forced onto ANTHROPIC_API_KEY.
-`last_cost` is the one fact besides Chunks that crosses this seam, cleared as each
-call starts. Timeout follows `--effort`: 52s/429s/668s measured at low/medium/high;
-`_CEILING` is twice each, rounded up to five minutes.
+ClaudeCodeClient: streams from a Claude Max subscription through one
+`claude` process a call. Every CLI flag is a measurement, not a taste --
+`--disallowed-tools` naming every reported tool cuts the preamble 29,213 to
+2,385 tokens, and `--safe-mode` (not `--bare`) keeps subscription auth from
+being forced onto ANTHROPIC_API_KEY. Timeout follows `--effort`:
+52s/429s/668s measured at low/medium/high, and `_CEILING` is twice each,
+rounded up to five minutes.
 """
 import collections
 import json
@@ -132,17 +130,14 @@ def find_claude() -> str:
 
 def signed_in(run: Callable = None) -> tuple:
     """
-    Who the CLI is signed in as, as (it worked, one sentence).
-
-    The Test button's proof for a provider with no key. Every other provider's
-    is the model list fetched with the key (`provider_manager ::
-    test_connection`); there is no key here and the model list is three
-    aliases, so what is left to prove is the account and the plan — and
-    `claude auth status` answers that spending no call at all.
-
-    `authMethod` is in the sentence because a CLI holding an API key answers
-    this too, and a run on one is billed by the token under a label that says
-    subscription.
+    Who the CLI is signed in as, as (it worked, one sentence): the Test
+    button's proof for a provider with no key. Every other provider's Test
+    is the model list fetched with the key; here there is no key and the
+    model list is three aliases, so what is left to prove is the account
+    and the plan, and `claude auth status` answers that spending no call
+    at all. `authMethod` is in the sentence because a CLI holding an API
+    key answers this too, and a run on one is billed by the token under a
+    label that says subscription.
     """
     if run is None:
         run = subprocess.run
@@ -165,14 +160,14 @@ def signed_in(run: Callable = None) -> tuple:
 
 
 class ClaudeCodeClient:
-    """Streams from a Claude Max subscription through one `claude` process a call.
-
-    Constraints: every CLI flag is a measurement, not a taste — `--disallowed-tools` naming every
-    reported tool cuts the preamble 29,213 to 2,385 tokens; `--safe-mode` (not `--bare`) keeps
-    subscription auth from being forced onto ANTHROPIC_API_KEY.
-    `last_cost` is the one fact besides Chunks that crosses this seam, cleared as each call starts.
-    Timeout follows `--effort`: 52s/429s/668s measured at low/medium/high; `_CEILING` is twice each,
-    rounded up to five minutes.
+    """
+    Streams from a Claude Max subscription through one `claude` process a
+    call. Every CLI flag is a measurement, not a taste -- `--disallowed-tools`
+    naming every reported tool cuts the preamble 29,213 to 2,385 tokens, and
+    `--safe-mode` (not `--bare`) keeps subscription auth from being forced
+    onto ANTHROPIC_API_KEY. Timeout follows `--effort`: 52s/429s/668s
+    measured at low/medium/high, and `_CEILING` is twice each, rounded up
+    to five minutes.
     """
 
     def __init__(self, model: str, spawn: Callable = None,
@@ -186,18 +181,14 @@ class ClaudeCodeClient:
 
     def stream(self, messages: list, **overrides) -> Iterator[Chunk]:
         """
-        Stream a reply to *messages*, chunk by chunk.
-
-        The system prompt goes as a file because Windows caps a whole command
-        line at 32,767 characters and `config/prompts/design.md` is more than
-        that on its own, where `ARG_MAX` on macOS is 1,048,576: argv survives
-        here and not there, and FreeCAD ships to both. The file lives in a
-        temporary directory the process is started in, which settles the
-        working directory at the same time — no repository's `CLAUDE.md` sits
-        beside it.
-
-        `overrides` are LiteLLM's per-call knobs and the CLI takes none of
-        them; the signature is the seam's.
+        Stream a reply to *messages*, chunk by chunk. The system prompt
+        goes as a file because Windows caps a whole command line at
+        32,767 characters and `config/prompts/design.md` is more than
+        that on its own, where `ARG_MAX` on macOS is 1,048,576, so argv
+        survives here and not there and FreeCAD ships to both. The file
+        lives in a temporary directory the process is started in, which
+        settles the working directory at the same time, and `overrides`
+        are LiteLLM's per-call knobs the CLI takes none of.
         """
         spawn = self._spawn or _spawn_claude
         self.last_cost = None
@@ -279,17 +270,15 @@ class ClaudeCodeClient:
 
 def _spawn_claude(argv: list, cwd: str):
     """
-    One `claude` per call, with its own pipes and no key in its environment.
-
-    The pipes are decoded as UTF-8 rather than by the locale: inside FreeCAD.app
-    neither LANG nor LC_ALL is set, so the locale resolves to ascii and the
-    first non-ASCII byte kills the read.
-
-    stderr is merged into stdout: `claude` runs with `--verbose`, and an
-    undrained stderr pipe fills its OS buffer and deadlocks the write, taking
-    the stdout read loop down with it. `_parsed` already drops any line that
-    is not the expected JSON, so the merged CLI noise is skipped rather than
-    mistaken for an event.
+    One `claude` per call, with its own pipes and no key in its
+    environment. The pipes are decoded as UTF-8 rather than by the locale,
+    because inside FreeCAD.app neither LANG nor LC_ALL is set, so the
+    locale resolves to ascii and the first non-ASCII byte kills the read.
+    stderr is merged into stdout, since `claude` runs with `--verbose` and
+    an undrained stderr pipe fills its OS buffer and deadlocks the write,
+    taking the stdout read loop down with it; `_parsed` already drops any
+    line that is not the expected JSON, so the merged noise is skipped
+    rather than mistaken for an event.
     """
     return subprocess.Popen(
         argv,
@@ -320,18 +309,14 @@ def _environment() -> dict:
 def _invocation(model: str, system_prompt: str, effort: str) -> list:
     """
     The command line one call is made with, in the order it was measured.
-
-    *effort* is the client's own resolved dial, because on this route it is
-    the one thing that changes the answer and the one the panel offers: the
-    low end exists against a model circling invisibly in its own reasoning,
-    and here the circling streams and the call is bounded. A run split into
-    profiles sends each phase's own client's effort here, not one dial shared
-    by both.
-
-    `--include-partial-messages` is what makes it a stream at all: without it
-    the CLI answers with the finished `assistant` message and the `result`, no
-    `content_block_delta` arrives, and a phase reading deltas gets an empty
-    reply from a call that succeeded and was paid for.
+    *effort* is the client's own resolved dial, because on this route it
+    is the one thing that changes the answer and the one the panel offers,
+    and a run split into profiles sends each phase's own client's effort
+    here, not one dial shared by both. `--include-partial-messages` is
+    what makes it a stream at all: without it the CLI answers with the
+    finished `assistant` message and the `result`, no `content_block_delta`
+    arrives, and a phase reading deltas gets an empty reply from a call
+    that succeeded and was paid for.
     """
     return [
         find_claude(), "-p",

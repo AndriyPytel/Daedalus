@@ -10,13 +10,13 @@ class PhaseError(Exception):
 @dataclass
 class Budgets:
     """
-    What a run may spend, and the ceilings that make it terminate.
-    Two separate ceilings: mechanical causes (UNCOVERED, MISCOUNTED) spend
+    What a run may spend, and the ceilings that make it terminate. Two
+    separate ceilings: mechanical causes (UNCOVERED, MISCOUNTED) spend
     their own budget; execution causes (OBSOLETE, UNBUILDABLE, ASSERTED,
-    REJECTED, AMENDED) spend `revisions_ceiling` (ADR-0022). Measured: 456
-    sessions, 43 blocked on revisions, UNCOVERED appeared 1-3 times.
+    REJECTED, AMENDED) spend `revisions_ceiling`. Measured: 456 sessions,
+    43 blocked on revisions, UNCOVERED appeared 1-3 times, and
     `trailing_gap_retries` bounds the free continuation for a reply that
-    stops: 23 such replies across 13 sessions, 57% within the last two
+    stops -- 23 such replies across 13 sessions, 57% within the last two
     Steps, up to 266s call duration.
     """
 
@@ -41,7 +41,7 @@ def revisions_ceiling(budgets, steps) -> int:
 
 
 class _Revisions:
-    """How many times the Plan has been rewritten, and why (ADR-0026)."""
+    """How many times the Plan has been rewritten, and why."""
 
     UNCOVERED = "uncovered"
     MISCOUNTED = "miscounted"
@@ -107,13 +107,11 @@ class _Revisions:
 
     def block_reason(self, budgets, steps, cause: str, refused: str) -> str:
         """
-        Why the run stopped, and what the budget went on.
-
-        A ceiling of nought is a run that may not replan at all, and it has no
-        breakdown to give. Where one cause spent the lot the breakdown has
-        already named it, so the refusal is not repeated after it.
-
-        Names the ceiling that was hit: mechanical_revisions when a mechanical
+        Why the run stopped, and what the budget went on. A ceiling of
+        nought is a run that may not replan at all, and it has no
+        breakdown to give; where one cause spent the lot the breakdown has
+        already named it, so the refusal is not repeated after it. Names
+        the ceiling that was hit: mechanical_revisions when a mechanical
         cause blocked, revisions_ceiling when an execution cause blocked.
         """
         if not self._causes_spent():

@@ -1,10 +1,9 @@
-"""The sums a Step states about itself, worked out.
-
-Counter-example (`logs/sessions/4fca495a...`): 73 mm arm at 45°, 65.5 mm
-extreme — 73 * cos(45°) is 51.6, not 65.5. Two of three revisions went on a
-multiplication nobody performed, Document stayed empty.
-
-A claim is `<sum> = <number>`. Trigonometry is in degrees.
+"""
+The sums a Step states about itself, worked out; a claim is
+`<sum> = <number>`, and trigonometry is in degrees. Counter-example: a 73 mm
+arm at 45 degrees claimed 65.5 mm, but 73 * cos(45 degrees) is 51.6, and two
+of three revisions were spent on a multiplication nobody had performed while
+the Document stayed empty.
 """
 import ast
 import math
@@ -32,25 +31,14 @@ _FUNCTIONS = {
 
 def wrong_sums(prose) -> list:
     """
-    Every sum in *prose* that does not come out, one line each.
-
-    Silent about everything else. A sum with a name in it, a division by zero, a
-    power too big to evaluate — none of them is a Step that is wrong, and a Plan
-    handed back over a sentence nobody can correct is worse than the sentence.
-
-    A chain is one claim, however many `=` it is written with. `11 / (2 *
-    cos(30°)) = 5.5 / 0.86603 = 6.351` states the working as well as the answer,
-    and every stretch of it is worked out against the *last* number rather than
-    against the one it happens to be written in front of. Read the other way the
-    Plan is refused for the working it showed: in the recorded run
-    (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`, the 2023 pipe
-    clamp) the hexagon Step wrote its circumradius that way twice, was told
-    `= 5.5, and it is 6.35` twice over a number it had right from the first
-    Plan, and the two revisions that went on the punctuation were the two the
-    run had left when the cutout came back unbuildable.
-
-    One line per chain, naming the first stretch that disagrees: the rest of a
-    chain is the same disagreement written again.
+    Every sum in *prose* that does not come out, one line each, naming the
+    first stretch that disagrees. Silent about everything else -- a named
+    sum, a division by zero, or an oversized power is not a Step that is
+    wrong, and a Plan handed back over a sentence nobody can correct is worse
+    than the sentence. A chain is one claim however many `=` it is written
+    with, each stretch worked out against the *last* number rather than the
+    one it is written in front of, because a Plan refused for its punctuation
+    once cost a recorded run the two revisions it had left.
     """
     wrong = []
     for claim in _CLAIM.finditer(str(prose or "")):

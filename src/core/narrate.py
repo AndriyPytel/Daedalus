@@ -1,22 +1,13 @@
 """
-What an event says to a person.
-
-The stream is narrated in two places — the Qt panel and `run.py` —
-and they used to be two `if/elif` chains over the same sixteen kinds. The second
-one drifted: it still read the description off the `plan` event months after
-ADR-0018 gave it an event of its own, so the slice runner silently stopped
-narrating it and never learned `attached`, `assertion`, `question` or `answer`
-either. Nothing failed, because prose that only exists inside a
-`QDockWidget` has nothing to test it.
-
-So the wording lives here, once, with no Qt in sight. What is left to each
-narrator is where a line goes — a chat bubble, a collapsible row, a status
-line, stdout — and the shapes that are not prose at all: the Steps of a Plan,
-a block of code, a picture.
-
-The Plan Gate's three answers are written out here as well. The words are
-`core.loop`'s, but importing the loop in order to narrate it would point the
-dependency the wrong way.
+What an event says to a person, said once here rather than in the Qt panel's
+and `run.py`'s own separate chains, which drifted apart until one silently
+stopped narrating several kinds -- nothing failed, because prose inside a
+`QDockWidget` has nothing to test it. What is left to each narrator is where
+a line goes -- a chat bubble, a collapsible row, a status line, stdout --
+and the shapes that are not prose at all: the Steps of a Plan, a block of
+code, a picture. The Plan Gate's three answers are written out here too, in
+`core.loop`'s own words, because importing the loop in order to narrate it
+would point the dependency the wrong way.
 """
 from dataclasses import dataclass
 
@@ -38,21 +29,15 @@ _GATE_SAID = {
 @dataclass(frozen=True)
 class Narration:
     """
-    One event, in words.
-
-    `line` is the sentence that belongs in the transcript. `title` and `body`
-    are the detail that folds away under it — a traceback, what the last run
-    left wrong, the attempts behind a block. `status` is the one-line progress
-    note that replaces itself; an event carrying only a status says nothing
-    permanent.
-
-    A `blocked` event is the one that needs both a line and a folded body, so
-    the title is a field rather than the line doing double duty.
-
-    All empty means the event is not prose: a Plan is its Steps, a tool call is
-    its code, an attachment is its picture, reasoning is a stream rather than a
-    sentence, and the description is a file, said by the path the part event
-    carries.
+    One event, in words: `line` is the sentence that belongs in the
+    transcript, `title` and `body` are the detail that folds away under it,
+    and `status` is the one-line progress note that replaces itself, so an
+    event carrying only a status says nothing permanent. A `blocked` event
+    needs both a line and a folded body, so the title is a field rather than
+    the line doing double duty. All empty means the event is not prose: a
+    Plan is its Steps, a tool call is its code, an attachment is its
+    picture, reasoning is a stream rather than a sentence, and the
+    description is a file, said by the path the part event carries.
     """
 
     line: str = ""
@@ -66,27 +51,17 @@ _NOTHING = Narration()
 
 def narrate(event) -> Narration:
     """
-    What *event* says. Never raises on an unknown kind — it just says nothing.
-
-    Several kinds say less than they carry. The user's own answer is already in
-    the transcript, so what is worth saying is that nobody gave one — or that
-    nobody had to, because the drawing answered it. The description is not said
-    at all: it is a document, and what a document gets is a path. A part is
-    given by that path, because the file is the point — a description long
-    enough to be worth distilling is not read in a transcript wherever it is
-    put, it is corrected by opening the file the run is planned from, and one
-    run is compared with the last by diffing two of them. The Gate is a
-    status rather than a line, since the panel already puts the question in a
-    card of its own and the run is only waiting; except where nobody was asked,
-    because a standing approval is a decision the user made once and is having
-    applied again, and it says so rather than looking like a Gate that was
-    skipped. A revision names which one it is of how many and what caused it,
-    because the reason alone never said that the same wall had been hit three
-    times. The acceptance checks get a line of their own and never the Review
-    verdict's, because the checks are code and Review deliberately never sees
-    code. A Step that was not built says what was not reached and that the run
-    carried on regardless, because a blocked run and a run with an unmet entry
-    are different things and the transcript must not spell them the same.
+    What *event* says; never raises on an unknown kind, it just says
+    nothing. Several kinds say less than they carry: the user's own answer
+    is already in the transcript, so only the fact that nobody answered, or
+    didn't need to, is worth saying, and a description is said by its path
+    rather than distilled, because a document is corrected by opening it,
+    not read in a transcript. The Gate is a status rather than a line since
+    the panel already puts the question in its own card, except a standing
+    approval, which says so rather than looking like a skipped Gate; a Step
+    not built says what was not reached, because a blocked run and an
+    unmet-entry run are different things the transcript must not spell the
+    same.
     """
     data = event.data
     kind = event.kind

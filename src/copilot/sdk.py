@@ -1,19 +1,12 @@
 """
-The one assembly the addon panel and an external caller both use.
-
-`Client` owns a Session (`core.llm.Session`, FCC-309/FCC-310), a Kernel
-(FCC-296) and a Document, and turns a prompt into whichever of Design, a run
-question, or a control instruction the routing orchestrator (FCC-313) names.
-A script drives it exactly as `ui/copilot_panel.py`'s Qt panel will once
-FCC-317 repoints the panel onto this same object -- no Qt application, no
-`FreeCADGui`, because `ApplyPipeline`'s own `dispatch` and `confirm` are
-plain callables here rather than the main-thread marshaller a GUI needs
-(`Mod/bridge/main_thread.py :: on_main_thread`).
-
-This is what `run.py` and `lane.py`, the two surviving scripts in the
-harness directory, drive to start a run, replacing the hand-assembled
-scripts they took over from: both a second copy of this same wiring, one
-call behind the loop's own `run()` signature.
+The one assembly the addon panel and an external caller both use. `Client`
+owns a Session, a Kernel and a Document, and turns a prompt into whichever of
+Design, a run question, or a control instruction the routing orchestrator
+names; a script drives it with no Qt application and no `FreeCADGui`, because
+`ApplyPipeline`'s own `dispatch` and `confirm` are plain callables here
+rather than the main-thread marshaller a GUI needs. `run.py` and `lane.py`,
+the two surviving scripts in the harness directory, drive this same object to
+start a run.
 """
 from core import events, model_catalog
 from core import settings as _settings
@@ -162,11 +155,10 @@ class Client:
     *document* is a path to open, `None` for a fresh one, or an already-open
     FreeCAD Document object (live-document mode, so the panel binds to the
     Document it already has). *llm* and *kernel* default to a real provider
-    and a real headless kernel; a test hands in its own. Pass *kernel* as
-    `NO_KERNEL` to run in-process without a subprocess (the panel does this
-    against the live GUI Document). Without an *answer* callback `send` pauses
-    in a blocked, resumable `needs-answer` state rather than guessing, and
-    *confirm* and *dispatch* set the corresponding `ApplyPipeline` callables.
+    and a real headless kernel, a test hands in its own, and `NO_KERNEL` runs
+    in-process without a subprocess. Without an *answer* callback `send`
+    pauses in a blocked, resumable `needs-answer` state rather than guessing,
+    and *confirm* and *dispatch* set the corresponding `ApplyPipeline` callables.
     """
 
     def __init__(self, document=None, llm=None, kernel=None, answer=None,

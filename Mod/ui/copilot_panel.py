@@ -1,23 +1,18 @@
-"""The panel: a renderer of the event stream.
-
-It does not drive the loop: it sends one Intent, then renders whatever
-the loop emits -- `CopilotPanel.on_event` is a switch over event kinds
-and nothing else -- so the same stream is the session log, and a frozen
-UI is impossible since the loop runs on a worker thread and only emits.
-
-The panel has no colours: FreeCAD paints its UI with one global
-stylesheet and leaves QPalette at whatever the OS handed over, so
-`palette(base)` was a light-theme value painted over a dark theme
-(ADR-0011); what is left in the stylesheet is geometry and typography.
-
-`RESTORE_CHUNK` bounds events replayed per event-loop turn when a
-Session opens; `ATTACHMENT_WIDTH` bounds an attached picture's width;
-`OPEN_AT_MOST` bounds entries beside the Plan that stand open (see
-`_render_plan`); `FOLDS_OVER` is how long a narrated line may be before
-it folds into a row, `TITLE_KEPT` how much of its sentence titles it
-(see `_say`). The SDK reaches `core`, which imports FreeCAD's Qt
-bindings not yet guaranteed to exist at import time, so every
-`copilot.sdk` import is deferred to the method that needs it.
+"""The panel is a renderer of the event stream: it does not drive the loop, it
+sends one Intent then renders whatever the loop emits,
+`CopilotPanel.on_event` a switch over event kinds and nothing else, so the
+same stream is the session log and a frozen UI is impossible since the loop
+runs on a worker thread and only emits. The panel has no colours, since
+FreeCAD paints its UI with one global stylesheet and leaves QPalette at
+whatever the OS handed over, so what is left in the stylesheet is geometry
+and typography. `RESTORE_CHUNK` bounds events replayed per event-loop turn
+when a Session opens, `ATTACHMENT_WIDTH` bounds an attached picture's
+width, `OPEN_AT_MOST` bounds entries beside the Plan that stand open,
+`FOLDS_OVER` is how long a narrated line may be before it folds into a row
+and `TITLE_KEPT` how much of its sentence titles it, while every
+`copilot.sdk` import is deferred to the method that needs it since the SDK
+reaches `core`, which imports FreeCAD's Qt bindings not yet guaranteed to
+exist at import time.
 """
 import threading
 
@@ -48,34 +43,22 @@ from ui.ui_helpers import UIHelpers
 
 def _build_qss() -> str:
     """
-    The panel stylesheet: geometry and typography, and nothing else.
-
-    Every colour that used to be here asked `palette(...)` for it, and under
-    FreeCAD's dark theme the palette still holds the OS's light values — so the
-    input card was a white rectangle in a dark panel (ADR-0011). Leaving colour out
-    hands these widgets to FreeCAD's global stylesheet, including themes that
-    did not exist when this was written.
-
-    The rules follow AI Elements' own grammar, read off the user's Figma
-    file. Three of its rules decide most of what is
-    below. Separation takes the cheapest form that still reads: nothing, then a
-    one-pixel hairline with no fill, then a wash, and a filled surface only for
-    the handful of things meant to be taken for a panel of their own — the
-    composer, the Plan, a results card. State is never a repaint: a control
-    keeps its fill and swaps its icon, which is why nothing here has a
-    `:disabled` or an error colour. And exactly one control on screen carries
-    the accent fill — Send, or the primary answer to whatever is being asked.
-
-    Where the keyboard is is the one exception, and it is not a state of the
-    control: a field that does not say it has focus is a field the user cannot
-    tell they are typing into. It is drawn in the accent, since that is what
-    the accent is for, and on the hairline the composer already has, so it
-    costs no layout.
-
-    Where a rule pins a dimension it also resets padding and border: Qt's
-    min/max-width size the content rect, and the theme's padding is added on
-    top of them.
-    """
+    The panel stylesheet holds only geometry and typography, since every colour
+asking `palette(...)` came back a light-theme value under FreeCAD's dark
+theme, so leaving colour out hands these widgets to FreeCAD's global
+stylesheet including themes that did not exist when this was written. Three
+rules off the user's Figma file decide most of it: separation takes the
+cheapest form that still reads, nothing, then a one-pixel hairline with no
+fill, then a wash, then a filled surface only for the composer, the Plan,
+and a results card; state is never a repaint, so a control keeps its fill
+and swaps its icon and nothing here has a `:disabled` or an error colour;
+and exactly one control on screen carries the accent fill, Send or the
+primary answer to whatever is being asked, with the keyboard focus as the
+one exception, drawn in the accent on the hairline the composer already has
+so it costs no layout. Where a rule pins a dimension it also resets padding
+and border, since Qt's min/max-width size the content rect and the theme's
+padding is added on top of them.
+"""
     return f"""
         /* Panel root */
         QWidget {{
@@ -394,14 +377,14 @@ class EventBridge(QtCore.QObject):
 
 
 class AskTheUser(QtCore.QObject):
-    """Blocks the worker thread until the user answers, on the GUI thread.
-    Four questions go through here: the Plan Gate, the Owned Object rule,
-    missing Plan values, and what to do about a failed result. All are
-    asked from the loop's thread and answered by a person, so the signal
-    crosses to the GUI thread and the worker waits on an Event.
-    A run parked here waits on a person who may be away, so `_ask` pages
-    them through FreeCAD's Notification Area before blocking.
-    """
+    """Blocks the worker thread until the user answers, on the GUI thread: four
+questions go through here, the Plan Gate, the Owned Object rule, missing
+Plan values, and what to do about a failed result, all asked from the
+loop's thread and answered by a person, so the signal crosses to the GUI
+thread and the worker waits on an Event. A run parked here waits on a
+person who may be away, so `_ask` pages them through FreeCAD's Notification
+Area before blocking.
+"""
 
     plan_gate = QtCore.Signal(object)
     owned_objects = QtCore.Signal(object)
@@ -433,12 +416,11 @@ class AskTheUser(QtCore.QObject):
 
     def about_missing_values(self, question):
         """
-        The values Plan has not been given. An empty answer means "you choose".
-
-        `abandon` releases every waiting question with an Approval, which is
-        the Plan Gate's answer and not one of these — anything that is not
-        text is nobody answering.
-        """
+        The values Plan has not been given: the question itself is already in the
+transcript, since it arrived as an event, and this is only the card that
+takes the answer, taking it from the composer the same way Amend does.
+Enter is the only route to Send here, the button being hidden mid-run.
+"""
         answer = self._ask(self.missing_values, question,
                            "FreeCAD Copilot needs a value it could not find on the drawing.")
         return answer if isinstance(answer, str) else ""
@@ -462,25 +444,20 @@ class AskTheUser(QtCore.QObject):
 
     def _ask(self, signal, payload, notify):
         """
-        Emit the question, then block until someone answers it.
-
-        A receiver in this object's own thread answers inside `emit`, so the
-        Event is already set and the wait returns at once. A receiver anywhere
-        else answers later, over a queued connection, and the wait is what
-        holds the worker until it does.
-
-        The third case is the dangerous one: asked from this object's own
-        thread with nobody to answer inline. The queued answer can only be
-        delivered by an event loop this very thread is now blocked out of, so
-        `wait()` never returns and the process deadlocks with no traceback and
-        no CPU to show for it. Refusing to wait names the fault instead.
-
-        *notify* reaches FreeCAD's own Notification Area (`bridge.logger ::
-        notify_user`) once it is clear the wait is real -- an answer already
-        sitting in `_answered` (the same-thread case above, and a test's
-        direct connection) is not a person walking away from a two-hour run,
-        and does not need paging back.
-        """
+        Emit the question, then block until someone answers it: a receiver in this
+object's own thread answers inside `emit`, so the Event is already set and
+the wait returns at once, while a receiver anywhere else answers later,
+over a queued connection, and the wait is what holds the worker until it
+does. The dangerous case is asked from this object's own thread with nobody
+to answer inline, since the queued answer can only be delivered by an event
+loop this very thread is now blocked out of, so `wait()` never returns and
+the process deadlocks with no traceback and no CPU to show for it; refusing
+to wait names the fault instead. *notify* reaches FreeCAD's own
+Notification Area once it is clear the wait is real, since an answer
+already sitting in `_answered`, the same-thread case above and a test's
+direct connection, is not a person walking away from a two-hour run and
+does not need paging back.
+"""
         self._answered.clear()
         self._answer = None
         signal.emit(payload)
@@ -510,28 +487,23 @@ class AskTheUser(QtCore.QObject):
 
 class LoopWorker(QtCore.QObject):
     """
-    Runs one Intent through the loop on a worker thread.
-
-    It never reports progress itself — the event stream does that. All this
-    signals is that the run is over.
-
-    `finished` carries the transcript the run belongs to, so the panel can
-    connect a bound method of its own rather than a lambda closing over it.
-    This object lives on the worker thread, and Qt uses the *sender* as the
-    context of a connection made to a plain callable — so an `AutoConnection`
-    to a lambda compares the worker thread against itself, resolves to a
-    direct call, and runs the panel's slot on the worker thread. That is a
-    widget tree and a QTimer built off the GUI thread, measured as sixteen
-    `QObject::setParent: ... different thread` warnings, one
-    `QObject::killTimer: ... another thread`, and a segfault inside
-    `queue_widget.py :: _Elided.set_full`. A bound method of a main-thread
-    QObject gives Qt that QObject as the context instead, which is what makes
-    the hop queued. `Qt.QueuedConnection` on the lambda does not help: it
-    still posts to the context's thread, and the context is still this object.
-
-    The client is held rather than built per run, and is dropped so that the
-    next run rebuilds it from settings when the model changes.
-    """
+    Runs one Intent through the loop on a worker thread: it never reports
+progress itself, the event stream does that, and all this signals is that
+the run is over, with `finished` carrying the transcript the run belongs to
+so the panel can connect a bound method of its own rather than a lambda
+closing over it. This object lives on the worker thread, and Qt uses the
+*sender* as the context of a connection made to a plain callable, so an
+`AutoConnection` to a lambda compares the worker thread against itself,
+resolves to a direct call, and runs the panel's slot on the worker thread,
+measured as sixteen `QObject::setParent` (different thread) warnings, one
+`QObject::killTimer` (another thread) warning, and a segfault inside
+`queue_widget.py :: _Elided.set_full`; a bound method of a main-thread
+QObject gives Qt that QObject as the context instead, which is what makes
+the hop queued, and `Qt.QueuedConnection` on the lambda does not help since
+it still posts to the context's thread, which is still this object. The
+client is held rather than built per run, and is dropped so that the next
+run rebuilds it from settings when the model changes.
+"""
 
     finished = QtCore.Signal(object, str)
     document_named = QtCore.Signal(str, str, str)
@@ -625,15 +597,14 @@ class LoopWorker(QtCore.QObject):
     @QtCore.Slot(str, object, str, object, str)
     def do_work(self, intent: str, attachments: list, transcript: str,
                 outstanding: list = None, the_part_path: str = ""):
-        """Runs one Intent and emits the result.
-        A missing transcript log must not cost the user their run, nor must
-        a Session that cannot be named after its Document, so both fail
-        quietly. A model that cannot be resolved is a known outcome and
-        belongs in the transcript as a sentence, not a traceback.
-        `the_part_path` is the Session's last run's read/written part,
-        forwarded here unless a new attachment replaces it; empty means
-        describe the part from `attachments` alone.
-        """
+        """Runs one Intent and emits the result: a missing transcript log must not
+cost the user their run, nor must a Session that cannot be named after its
+Document, so both fail quietly, and a model that cannot be resolved is a
+known outcome that belongs in the transcript as a sentence, not a
+traceback. `the_part_path` is the Session's last run's read/written part,
+forwarded here unless a new attachment replaces it; empty means describe
+the part from `attachments` alone.
+"""
         from copilot.sdk import events as ev, EventStream, build_registry
         from bridge.logger import generate_crash_report, logger
 
@@ -714,33 +685,26 @@ PICKER_SHARE = 0.35
 
 class _SessionWorker(QtCore.QObject):
     """
-    One Session's own `LoopWorker`, on its own `QThread`.
-
-    Standing up one of these per Session — instead of the single global worker
-    this panel used to hold — is what makes two open Documents genuinely
-    parallel: each Session's Tool calls and Apply are bound to its own
-    `worker.document` (set once, from whichever Document is in focus when the
-    Session's first Intent is sent) rather than to `FreeCAD.ActiveDocument` at
-    the moment of the call, which is whichever Document the user happens to be
-    looking at right then. A Preflight Worker comes along for free: it lives on
-    `worker.pipeline`, and that pipeline is this Session's own.
-
-    `running`, `outstanding` and `sent_attachments` are what used to be the
-    panel's own single set of instance attributes — carried here instead, so a
-    Session backgrounded mid-run keeps its own state rather than sharing the
-    one the panel happens to be looking at. `the_part_path` is the same idea
-    for the Part a run last read or wrote: forwarded into the next Intent so a
-    follow-up plans from it instead of asking Design to describe the drawing
-    again, unless a new attachment arrives to replace it. `dirty` is
-    set when an event lands for this Session while it is not the one on
-    screen, so the panel knows to resync from the transcript rather than trust
-    stale widgets the next time it is shown. `pending_question` is the one
-    live Ask this Session is blocked on, if any, so switching back to a
-    Session parked at its Plan Gate puts the same card up again instead of
-    losing it. One file, one Intent: a second Intent while `running` is
-    already `True` is refused at the composer (`CopilotPanel._document_busy`),
-    never queued here.
-    """
+    One Session's own `LoopWorker`, on its own `QThread`: standing up one of
+these per Session, rather than a single global worker, is what makes two
+open Documents genuinely parallel, since each Session's Tool calls and
+Apply are bound to its own `worker.document`, set once from whichever
+Document is in focus when the Session's first Intent is sent, rather than
+to `FreeCAD.ActiveDocument` at the moment of the call, which is whichever
+Document the user happens to be looking at right then; a Preflight Worker
+comes along for free, living on `worker.pipeline`, this Session's own.
+`running`, `outstanding` and `sent_attachments` are carried here so a
+Session backgrounded mid-run keeps its own state rather than sharing the
+one the panel happens to be looking at; `the_part_path` is the same idea
+for the Part a run last read or wrote, forwarded into the next Intent
+unless a new attachment replaces it; `dirty` is set when an event lands for
+this Session while it is not the one on screen, so the panel resyncs from
+the transcript rather than trusting stale widgets; `pending_question` is
+the one live Ask this Session is blocked on, if any, so switching back to a
+Session parked at its Plan Gate puts the same card up again. One file, one
+Intent: a second Intent while `running` is already `True` is refused at the
+composer, never queued here.
+"""
 
     request_work = QtCore.Signal(str, object, str, object, str)
 
@@ -773,15 +737,15 @@ class _SessionWorker(QtCore.QObject):
 
 
 class CopilotPanel(QtWidgets.QDockWidget):
-    """The dock: the panel's widgets, its worker thread, and the event
-    stream rendered into a transcript. Carries an object name since
-    `QMainWindow::saveState()` drops unnamed docks, losing the panel's
-    restored position. The status line sits outside the transcript's
-    scroll area, so an unbreakable Step widens the dock and Qt never
-    gives it back. One `_SessionWorker` per Session in `self._workers`,
-    keyed by its stable log path; `outstanding` and the Part path live
-    there too, since both belong to the Session.
-    """
+    """The dock is the panel's widgets, its worker thread, and the event stream
+rendered into a transcript, carrying an object name since
+`QMainWindow::saveState()` drops unnamed docks, losing the panel's restored
+position. The status line sits outside the transcript's scroll area, so an
+unbreakable Step widens the dock and Qt never gives it back. One
+`_SessionWorker` per Session lives in `self._workers`, keyed by its stable
+log path, with `outstanding` and the Part path living there too since both
+belong to the Session.
+"""
 
     _ON_EVENT_DISPATCH = None
     _QUEUE_DISPATCH = None
@@ -1093,12 +1057,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._input_card.style().polish(self._input_card)
 
     def _fit_composer_to_text(self):
-        """The composer is one row empty and grows with typing, up to ~40% of
-        the panel, after which it scrolls.
-        A percentage, not a row count: a height comfortable at one dock
-        width wraps to nonsense at another. Frozen at three rows, anything
-        past the third was unreachable (ADR-0011).
-        """
+        """The composer is one row empty and grows with typing, up to ~40% of the
+panel, after which it scrolls: a percentage, not a row count, since a
+height comfortable at one dock width wraps to nonsense at another, unlike a
+fixed three rows where anything past the third was unreachable.
+"""
         document = self.user_input.document()
         document.setTextWidth(self.user_input.viewport().width())
         padding = 2 * SPACE_COMPOSER
@@ -1127,12 +1090,11 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def showEvent(self, event):
         """
-        Icons are tinted once the panel is on screen.
-
-        A widget carries the global stylesheet's colour only after Qt has
-        polished it; asked in __init__ it still answers with the OS palette,
-        which is black under every FreeCAD dark theme (ADR-0011).
-        """
+        Icons are tinted once the panel is on screen: a widget carries the global
+stylesheet's colour only after Qt has polished it, and asked in `__init__`
+it still answers with the OS palette, which is black under every FreeCAD
+dark theme.
+"""
         super().showEvent(event)
         for button, icon, size in ((self.new_btn, "plus", ICON),
                                    (self.history_btn, "history", ICON),
@@ -1185,25 +1147,21 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _fit_the_model_pill(self):
         """
-        The model's name is elided to `PICKER_SHARE` of the panel's width, and
-        the name in full moves to the tooltip.
-
-        The pill sizes itself to its own text, and a provider's name for a
-        model is not a name -- `claude-sonnet-4-5-20250929` and
-        `gemini-2.5-flash-preview-05-20` are the ids the OpenAI-shaped routes
-        hand back where a display name is missing. At that length the pill and
-        the effort pill beside it are the whole strip, and Send is pushed to
-        the edge of a docked panel; the attach button that sets the idiom for
-        that row is 28 pixels wide. A share of the panel rather than a fixed
-        ceiling because the panel is dockable and floats at any width, so a
-        ceiling comfortable at one width is either wasteful or useless at the
-        other.
-
-        The share is of the whole pill, not of its text: the chevron beside
-        the name and the stylesheet's padding are what the strip actually
-        loses, so the button is asked what its own chrome costs rather than
-        told, and the number left over is what the name is elided to.
-        """
+        The model's name is elided to `PICKER_SHARE` of the panel's width, the name
+in full moving to the tooltip: the pill sizes itself to its own text, and a
+provider's name for a model is not a name, `claude-sonnet-4-5-20250929` and
+`gemini-2.5-flash-preview-05-20` being the ids the OpenAI-shaped routes
+hand back where a display name is missing, at which length the pill and the
+effort pill beside it are the whole strip and Send is pushed to the edge of
+a docked panel; the attach button that sets the idiom for that row is 28
+pixels wide. It is a share of the panel rather than a fixed ceiling,
+because the panel is dockable and floats at any width, so a ceiling
+comfortable at one width is either wasteful or useless at the other. The
+share is of the whole pill, not of its text, since the chevron beside the
+name and the stylesheet's padding are what the strip actually loses, so the
+button is asked what its own chrome costs rather than told, and the number
+left over is what the name is elided to.
+"""
         metrics = QtGui.QFontMetrics(self.model_button.font())
         self.model_button.setText(self._model_display)
         chrome = (self.model_button.sizeHint().width()
@@ -1477,12 +1435,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._replay_chunk(index, events, 0, truncated)
 
     def _replay_chunk(self, index: int, events: list, start: int, truncated: bool):
-        """Replay a batch, then hand the event loop a turn before the next one.
-        Replaying hundreds of Steps in one pass on the GUI thread froze the
-        panel for as long as it took. The first batch is still synchronous,
-        so a short Session is on screen by the time this returns. A Session
-        already switched away from is abandoned rather than rendered.
-        """
+        """Replay a batch, then hand the event loop a turn before the next one:
+replaying hundreds of Steps in one pass on the GUI thread froze the panel
+for as long as it took, and the first batch is still synchronous, so a
+short Session is on screen by the time this returns. A Session already
+switched away from is abandoned rather than rendered.
+"""
         if self.chat_sessions.stack.currentIndex() != index:
             return
 
@@ -1727,15 +1685,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     @QtCore.Slot(object)
     def on_event(self, event):
-        """The whole panel is this method.
-        What an event *says* is `core.narrate`'s; what is left here is where a line goes and what shape it takes: Plan Steps, a code block, a
-        picture, streaming reasoning, or the document path as a link. No
-        calls back into the loop. `_ON_EVENT_DISPATCH` maps every
-        `core.events.KINDS` member to a `_oe_*` method (True ends here, False
-        falls through); an unmapped kind reaches `_report_unknown_kind`
-        rather than being skipped. `INTENT` takes the user's bubble, so a
-        restored Session's prompt shows once.
-        """
+        """The whole panel is this method: what an event *says* is `core.narrate`'s,
+what is left here is where a line goes and what shape it takes, Plan Steps,
+a code block, a picture, streaming reasoning, or the document path as a
+link, with no calls back into the loop. `_ON_EVENT_DISPATCH` maps every
+`core.events.KINDS` member to a `_oe_*` method, True ending here and False
+falling through, and an unmapped kind reaches `_report_unknown_kind` rather
+than being skipped. `INTENT` takes the user's bubble, so a restored
+Session's prompt shows once.
+"""
         from copilot.sdk import events as ev
         from copilot.sdk import narrate
 
@@ -1856,10 +1814,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
     def _oe_step_declared(self, event, data):
         """
         Highlights the Step the moment it is declared, not once `_work_through`
-        gets to it -- a Step lands against the Document inline with its own
-        declaration (FCC-368), so waiting for the trailing `step_started`
-        would highlight it as running only after it already shows `applied`.
-        """
+gets to it, since a Step lands against the Document inline with its own
+declaration, so waiting for the trailing `step_started` would highlight it
+as running only after it already shows `applied`.
+"""
         self._the_thinking_stops()
         self._current_step = data["step"]
         if self._plan_widget:
@@ -2135,12 +2093,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self._one_row_per_turn("Writing (%s)…" % phase, ("writing", phase), text)
 
     def _one_row_per_turn(self, title, turn, text, reasoning=False):
-        """One accordion per turn of a phase, opened on its first chunk.
-        Design fans out one call per page, streamed interleaved, so a single
-        live row is claimed by whichever page spoke last -- once showing
-        `Thinking (design: page 1)... 0:01` for a page that thought 3:03. A
-        turn ends at its own `COST`, letting the phase open a fresh row next.
-        """
+        """One accordion per turn of a phase, opened on its first chunk: Design fans
+out one call per page, streamed interleaved, so a single live row is
+claimed by whichever page spoke last, once showing "Thinking (design: page
+1)" for 0:01 on a page that thought 3:03. A turn ends at its own `COST`,
+letting the phase open a fresh row next.
+"""
         row = self._live_rows.get(turn)
         if row is None:
             row = self._live_rows[turn] = AccordionWidget(title)
@@ -2179,12 +2137,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
         row.append_text(reason)
 
     def _render_attachments(self, files):
-        """What the run was shown, in the chat beside the Intent.
-        The picture itself, not a filename: the chips come off the bar on
-        Send. A restored Session decides the shape -- a clipboard paste is a
-        temp file deleted when the run ends, so the record outlives its
-        file. Gone means the name, never a broken image or a raised exception.
-        """
+        """What the run was shown, in the chat beside the Intent: the picture itself,
+not a filename, since the chips come off the bar on Send. A restored
+Session decides the shape, a clipboard paste being a temp file deleted when
+the run ends so the record outlives its file, and gone means the name,
+never a broken image or a raised exception.
+"""
         for attached in files:
             name = attached.get("name") or ""
             picture = QtGui.QPixmap(attached.get("path") or "")
@@ -2208,33 +2166,26 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _render_plan(self, steps, title, acceptance=(), unanswered=(), decided=()):
         """
-        The Plan's Steps, with what surrounds them at the Gate.
-
-        Values the model settled for itself stand above the Steps: nothing is
-        asked between the attachment and the Gate, so such a value is read
-        here or it is not read at all, and it is read before the Steps built
-        on it (ADR-0022). The questions nobody answered stand above the
-        acceptance criteria, since those Steps carry values the Plan chose for
-        itself and the Gate is the only place to overrule them. The criteria
-        stand under the Steps for the same reason: the Gate is the only place
-        a wrong criterion is correctable.
-
-        Each of the three says in its heading how many it holds, and each
-        stands open while it is short enough to be read where it stands.
-        `OPEN_AT_MOST` is where that stops: the session this was measured
-        against decided 22 values and set 40 acceptance criteria, each a
-        sentence long, and opened those two alone are some four screens of
-        dense text between the user and the Build button -- a Gate nobody
-        scrolls to the bottom of is not read either. Past that the row folds
-        and the count carries it: "40 criteria" is the part that has to be
-        seen, and the click is for the reader who wants the forty.
-
-        Few is not the same as short: the four values that run settled for
-        itself are four paragraphs of a conflict it could not resolve, 1,900
-        characters between the user and the Plan. A list stands open while it
-        is both short in entries and short in words, `FOLDS_OVER` being the
-        second budget.
-        """
+        Values the model settled for itself stand above the Steps, since nothing is
+asked between the attachment and the Gate, so such a value is read here or
+not at all, and it is read before the Steps built on it; the questions
+nobody answered stand above the acceptance criteria, since those Steps
+carry values the Plan chose for itself and the Gate is the only place to
+overrule them, and the criteria stand under the Steps for the same reason,
+the Gate being the only place a wrong criterion is correctable. Each of the
+three says in its heading how many it holds and stands open while short
+enough to be read where it stands; `OPEN_AT_MOST` is where that stops,
+since the session this was measured against decided 22 values and set 40
+acceptance criteria, each a sentence long, and opening those two alone is
+some four screens of dense text between the user and the Build button that
+nobody scrolls to the bottom of, so past that the row folds and the count
+carries it, "40 criteria" being the part that has to be seen while the
+click is for the reader who wants the forty. Few is not the same as short,
+since the four values a run settled for itself were four paragraphs of a
+conflict it could not resolve, 1,900 characters between the user and the
+Plan, so a list stands open only while it is both short in entries and
+short in words, `FOLDS_OVER` being the second budget.
+"""
         self._the_thinking_stops()
         def beside_the_steps(heading, entries):
             if not entries:
@@ -2253,12 +2204,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
         beside_the_steps("What it has to satisfy", acceptance)
 
     def _render_tool_call(self, name, arguments, event_time):
-        """A call takes one collapsible shape in the stream, not three
-        (ADR-0011), naming its Step. Open, four Steps of code fill the whole
-        panel and the run reads idle between them; closed, the scrolling
-        line says what is running and the code stays one click away.
-        Duration is added at TOOL_RESULT, from event.at deltas.
-        """
+        """A call takes one collapsible shape in the stream, not three, naming its
+Step: open, four Steps of code fill the whole panel and the run reads idle
+between them, while closed, the scrolling line says what is running and the
+code stays one click away. Duration is added at `TOOL_RESULT`, from
+`event.at` deltas.
+"""
         self._the_thinking_stops()
         title = ("Step %d — %s" % (self._current_step, name) if self._current_step
                  else name)
@@ -2289,15 +2240,13 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     @QtCore.Slot(object)
     def on_plan_gate(self, steps):
-        """The Plan Gate. One approval covers every Step; there is no per-Step
-        approval, so this appears once per Plan and the run waits on it. A
-        revised Plan is a new Plan and gets its own card.
-
-        One answer now, not four: the Plan is edited directly on
-        `self._plan_widget`, and Build reads whatever it holds when pressed,
-        locking the widget in the same breath so nothing typed after Build
-        changes what already ran.
-        """
+        """The Plan Gate: one approval covers every Step, there is no per-Step
+approval, so this appears once per Plan and the run waits on it, and a
+revised Plan is a new Plan and gets its own card. One answer now, not four,
+since the Plan is edited directly on `self._plan_widget`, and Build reads
+whatever it holds when pressed, locking the widget in the same breath so
+nothing typed after Build changes what already ran.
+"""
         from copilot.sdk import APPROVE, Approval
 
         plan_widget = self._plan_widget
@@ -2319,15 +2268,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     @QtCore.Slot(object)
     def on_revision(self, failure):
-        """What to do about a result that did not pass, before a revision may
-        wipe it. Three answers, not the Gate's three: REJECT stops a run
-        without licensing a restart, so "start over" needs its own word.
-        Whether Review ran tells the two askers behind this signal apart:
-        acceptance checks can fail and stop the run before Review is asked
-        anything, and `_last_review_verdict_event` is `None` for that case.
-        Review having run puts up the Confirmation card (Approve, Reject,
-        Start Over); without one this stays the plain question.
-        """
+        """What to do about a result that did not pass, before a revision may wipe it:
+three answers, not the Gate's three, since REJECT stops a run without
+licensing a restart, so "start over" needs its own word. Whether Review ran
+tells the two askers behind this signal apart, since acceptance checks can
+fail and stop the run before Review is asked anything and
+`_last_review_verdict_event` is `None` for that case; Review having run
+puts up the Confirmation card, Approve, Reject, Start Over, and without one
+this stays the plain question.
+"""
         from copilot.sdk import ACCEPT, REVISE, START_OVER
 
         applied = failure.get("applied", 0)
@@ -2372,12 +2321,10 @@ class CopilotPanel(QtWidgets.QDockWidget):
     @QtCore.Slot(object)
     def on_missing_values(self, question):
         """
-        The values Plan has not been given.
-
-        The question itself is already in the transcript \u2014 it arrived as an
-        event. This is only the card that takes the answer, and it takes it
-        from the composer, the same way Amend does. Enter is the only route to
-        Send here, the button being hidden mid-run.
+        The values Plan has not been given: the question itself is already in the
+transcript, since it arrived as an event, and this is only the card that
+takes the answer, taking it from the composer the same way Amend does.
+Enter is the only route to Send here, the button being hidden mid-run.
         """
         def send():
             return self._from_composer("Give the values, then press Send\u2026",
@@ -2394,13 +2341,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     @QtCore.Slot(object)
     def on_owned_objects(self, kinds):
-        """The Owned Object rule. Deletion only -- a modification is covered
-        by the Plan Gate, which approved a Step that said the object changes.
-
-        The same card as every other question, not a modal box, so it stays
-        inside the transcript rather than outside it. What is said about it,
-        before and after, is on the stream from `ApplyPipeline`.
-        """
+        """The Owned Object rule: deletion only, since a modification is covered by
+the Plan Gate, which approved a Step that said the object changes. The same
+card as every other question, not a modal box, so it stays inside the
+transcript rather than outside it, with what is said about it, before and
+after, on the stream from `ApplyPipeline`.
+"""
         deletes = list(kinds.get("delete") or ())
 
         self._put_the_question(
@@ -2414,32 +2360,24 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _put_the_question(self, waiting_for, prompt, note, choices, enter=None):
         """
-        Ask the user the one way this panel asks anything.
-
-        Four questions reach here \u2014 the Plan Gate, what to do about a result
-        that did not pass, the values Plan was not given, and permission to
-        delete the user\u2019s own object. They were four bespoke cards, three of
-        them the same forty lines with different words and the fourth a modal
-        box that answered outside the transcript entirely.
-
-        A `choice` is a label and a callable returning the answer to hand back
-        to the worker thread, which is blocked waiting for it. Returning None
-        leaves the card up \u2014 that is how a composer with nothing in it nags
-        instead of answering.
-
-        `enter` is the choice the composer's Enter key takes, where there is
-        one. Only the question that is answered by typing has it: Enter at the
-        Plan Gate would amend a Plan the user was reading, not approving.
-
-        The first choice is the one the card is asking for, so it is drawn as
-        the panel's one filled button and laid out last: the buttons are right
-        aligned and read outwards from the corner the eye ends at, which is
-        where a confirmation puts what it wants pressed.
-
-        The question is asked without a card of its own -- the design system's
-        own Confirmation is plain rows and two buttons. What marks it out is
-        the filled button, which is the only one on screen while it is up.
-        """
+        Ask the user the one way this panel asks anything: four questions reach
+here, the Plan Gate, what to do about a result that did not pass, the
+values Plan was not given, and permission to delete the user's own object,
+once four bespoke cards, three the same forty lines with different words
+and the fourth a modal box that answered outside the transcript entirely. A
+`choice` is a label and a callable returning the answer to hand back to the
+worker thread, which is blocked waiting for it, and returning `None` leaves
+the card up, which is how a composer with nothing in it nags instead of
+answering; `enter` is the choice the composer's Enter key takes where there
+is one, only the question answered by typing having it, since Enter at the
+Plan Gate would amend a Plan the user was reading, not approve it. The
+first choice is the one the card is asking for, so it is drawn as the
+panel's one filled button and laid out last, the buttons right aligned
+reading outwards from the corner the eye ends at, and the question is asked
+without a card of its own, since the design system's own Confirmation is
+plain rows and two buttons, marked out only by the filled button, the one
+on screen while it is up.
+"""
         self._queue_widget.now(waiting_for)
 
         card = QtWidgets.QFrame()
@@ -2475,12 +2413,12 @@ class CopilotPanel(QtWidgets.QDockWidget):
         self.add_chat_widget(card)
 
     def _answer_with(self, decide):
-        """Close the card on an answer; leave it up when there is not one yet.
-        An answered card is spent: the accent leaves (one control wears it),
-        subdued by an opacity effect, not a colour (ADR-0011). Demotion is
-        an `objectName` change and repolish, since a stylesheet rule
-        outranks Qt's disabled palette.
-        """
+        """Close the card on an answer; leave it up when there is not one yet. An
+answered card is spent, the accent leaving (one control wears it), subdued
+by an opacity effect rather than a colour, and demotion is an `objectName`
+change and repolish, since a stylesheet rule outranks Qt's disabled
+palette.
+"""
         answer = decide()
         if answer is None:
             return
@@ -2521,15 +2459,15 @@ class CopilotPanel(QtWidgets.QDockWidget):
         return into(said)
 
     def on_run_finished(self, result, log: str):
-        """Ends the run and carries its unmet acceptance checks and Part path
-        forward, whatever the run ended as. A passed run clears the
-        acceptance list; the Part path is what the run read or wrote.
-        `ok=True` covers two endings: Review passed, or the user took a build
-        whose own checks had failed -- `result.unmet` tells the two apart, so
-        only a genuinely clean pass gets the blank status line. *log* names
-        which Session finished; its worker keeps running regardless, so only
-        the widgets are guarded behind "is this the Session on screen".
-        """
+        """Ends the run and carries its unmet acceptance checks and Part path forward,
+whatever the run ended as: a passed run clears the acceptance list, and the
+Part path is what the run read or wrote. `ok=True` covers two endings,
+Review passed or the user took a build whose own checks had failed,
+`result.unmet` telling the two apart so only a genuinely clean pass gets
+the blank status line; *log* names which Session finished, its worker keeps
+running regardless, so only the widgets are guarded behind "is this the
+Session on screen".
+"""
         bundle = self._workers.get(log)
         if bundle is None:
             return
@@ -2577,36 +2515,29 @@ class CopilotPanel(QtWidgets.QDockWidget):
 
     def _cleanup_thread(self):
         """
-        Stop every Session's worker, whatever each is in the middle of.
-
-        `quit()` only asks a thread's event loop to end, and a run is not
-        waiting for events — it is inside a call: parked on a question, or on
-        a request in flight. Waiting on that without first releasing the
-        question is FreeCAD hanging on exit, with no window left to answer
-        from. The headless FreeCAD behind each Session's own Preflight Worker
-        is this panel's child process and goes with it.
-
-        A question is not the only thing a run parks on. A Step in flight is
-        inside `bridge.main_thread.on_main_thread`, waiting on a job only this thread's
-        event loop can take — and this thread is here, not pumping it. Nothing
-        would take that job, so `bridge.main_thread.closing()` comes first: it releases
-        every dispatch already waiting and refuses the ones the unwinding run
-        makes on its way out. Without it the wait below expires and a thread in
-        the middle of the Document is ended from outside.
-
-        Every worker is told to stop before any thread is waited on: a Session parked on a question blocks its own thread until
-        released, and waiting on one before releasing the next would serialise
-        what should be a handful of independent, already-blocked threads.
-
-        `SHUTDOWN_GRACE_MS` is what a run in flight is given to notice it was
-        stopped before the thread is ended from outside, long enough for a
-        request already sent to unwind.
-
-        A `_TitleThread` in `self._title_threads` has no stop flag to set —
-        `core.session_title.generate` is one blocking call, not a loop — so
-        the grace period here is the only chance it gets to finish on its
-        own before this panel stops tracking it.
-        """
+        Stop every Session's worker, whatever each is in the middle of: `quit()`
+only asks a thread's event loop to end, and a run is not waiting for
+events, it is inside a call, parked on a question or a request in flight,
+so waiting on that without first releasing the question hangs FreeCAD on
+exit with no window left to answer from, while the headless FreeCAD behind
+each Session's own Preflight Worker is this panel's child process and goes
+with it. A Step in flight is inside `bridge.main_thread.on_main_thread`,
+waiting on a job only this thread's event loop can take, and since this
+thread is here, not pumping it, nothing would take that job, so
+`bridge.main_thread.closing()` comes first, releasing every dispatch
+already waiting and refusing the ones the unwinding run makes on its way
+out, since without it the wait below expires and a thread in the middle of
+the Document is ended from outside; every worker is told to stop before any
+thread is waited on, since a Session parked on a question blocks its own
+thread until released and waiting on one before releasing the next would
+serialise what should be a handful of independent, already-blocked threads.
+`SHUTDOWN_GRACE_MS` is what a run in flight is given to notice it was
+stopped before the thread is ended from outside, long enough for a request
+already sent to unwind, and a `_TitleThread` in `self._title_threads` has
+no stop flag to set, since `core.session_title.generate` is one blocking
+call, not a loop, so the grace period here is the only chance it gets to
+finish on its own before this panel stops tracking it.
+"""
         from bridge.main_thread import closing
 
         closing()
@@ -2643,14 +2574,14 @@ class CopilotPanel(QtWidgets.QDockWidget):
                 del self._workers[log]
 
     def slotActivateDocument(self, document):
-        """The MDI tab the user brought forward in FreeCAD moves the panel too.
-        The Document's `Uid` matches against every Session's recorded
-        `"document_id"`, last one first, so a Document worked on by more
-        than one Session resolves to whichever ran most recently. A
-        Document no Session has worked on leaves the panel where it was.
-        `Uid`, not `Name`: FreeCAD calls every unsaved Document "Unnamed", so
-        matching on the name opened a new Document's chat onto an older one.
-        """
+        """The MDI tab the user brought forward in FreeCAD moves the panel too: the
+Document's `Uid` matches against every Session's recorded `"document_id"`,
+last one first, so a Document worked on by more than one Session resolves
+to whichever ran most recently, and a Document no Session has worked on
+leaves the panel where it was. `Uid`, not `Name`, since FreeCAD calls every
+unsaved Document "Unnamed", so matching on the name opened a new Document's
+chat onto an older one.
+"""
         identity = str(getattr(document, "Uid", "") or "")
         if not identity:
             return

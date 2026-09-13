@@ -1,25 +1,14 @@
 #!/usr/bin/env python
 """
-The automatic sweep: every sheet against every model, resumable run by run.
-
-Each run is `tools/run.py`, spawned as its own subprocess -- so a run that
-goes quiet is one process to kill and restart, not the whole lane, and this
-module never touches `ApplyPipeline`, `build_registry` or `Kernel` itself.
-State is written to `state.json` after every run, keyed `label/model`;
-`--resume` reads it back and skips what is already `done`.
-
-A run writes a `thought` event roughly every minute while it is alive (the
-old `ab_watchdog.sh` rule): if its log has not grown for `--hang-seconds`
-(default 1800, the wall-clock silence `ab_watchdog.sh` used), the run is
-killed and retried rather than left to rot the lane overnight.
-
-One sweep is one provider; two are two sweeps into one `--out`.
-
-`--status` prints `core.measure.compare`'s table over the logs a lane run
-already wrote, without starting anything -- two models compare directly the
-way `tools/measure_session.py --baseline/--experiment` did; any other count
-falls back to that CLI's other form, one `core.measure.measure` report per
-log, so neither of its two real functions is lost.
+The automatic sweep: every sheet against every model, resumable run by run,
+each run `tools/run.py` spawned as its own subprocess so a run that goes
+quiet is one process to kill and restart, not the whole lane. State is
+written to `state.json` after every run, keyed `label/model`, `--resume`
+reads it back and skips what is already `done`, and a run whose log has not
+grown for `--hang-seconds` (default 1800) is killed and retried rather than
+left to rot the lane overnight. `--status` prints `core.measure.compare`'s
+table over the logs a lane run already wrote, without starting anything,
+and any other count falls back to one `core.measure.measure` report per log.
 """
 import argparse
 import glob

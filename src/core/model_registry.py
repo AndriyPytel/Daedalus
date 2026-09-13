@@ -1,13 +1,11 @@
 """
-Where a model id last resolved to a provider.
-
-`core.settings.get_llm_credentials` needs this once a model has been chosen
-but no live fetch is running to name it again. FCC-359 moved it out of
-`bridge.provider_manager`'s Qt-signal cache so `core` could read it without
-reaching back into the Qt-touching layer; `provider_manager` still owns the
-actual fetch and records everything it learns here as well as in its own
-cache, so a model that resolved once keeps its provider even after a key
-change clears the fetch that named it (FCC-53).
+Where a model id last resolved to a provider, kept outside
+`bridge.provider_manager`'s Qt-signal cache so `core` can read it without
+reaching back into the Qt-touching layer. `core.settings.get_llm_credentials`
+needs this once a model has been chosen but no live fetch is running to name
+it again; `provider_manager` still owns the actual fetch and records
+everything it learns here too, so a model that resolved once keeps its
+provider even after a key change clears the fetch that named it.
 """
 _resolved = {}
 

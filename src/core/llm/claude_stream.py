@@ -96,21 +96,17 @@ def _withheld_thinking(event: dict) -> bool:
 
 def _said(event: dict) -> Iterator[Chunk]:
     """
-    The text one event carries.
-
-    Deltas only: the `assistant` event repeats the whole reply once it is
-    complete, and taking both would send every phase its answer twice.
-
-    `signature_delta` arrives beside the thinking and is dropped: it signs a
-    thinking block for a later turn, and every call here is a turn of its own.
-
-    Thinking that arrives without its words yields nothing. `sonnet` and `opus`
-    on this route stream `thinking_delta` carrying `""` and a rising
-    `estimated_tokens`, and the words never come; `haiku` streams the words
-    through this same branch. A count is not a reason: reporting it filled a
-    45-minute session's transcript with 1506 lines of `thinking… ~N tokens`,
-    which says how much was spent and nothing about why the run concluded what
-    it did. Where the words are withheld the panel says the phase is running
+    The text one event carries, deltas only: the `assistant` event repeats
+    the whole reply once complete, and taking both would send every phase
+    its answer twice, while `signature_delta` is dropped since it signs a
+    thinking block for a later turn and every call here is a turn of its
+    own. Thinking that arrives without its words yields nothing: `sonnet`
+    and `opus` stream `thinking_delta` carrying `""` and a rising
+    `estimated_tokens` with the words never coming, while `haiku` streams
+    the words through this same branch, and reporting a count instead once
+    filled a 45-minute session's transcript with 1506 lines of
+    `thinking… ~N tokens` that said how much was spent and nothing about
+    why. Where the words are withheld the panel says the phase is running
     and stays quiet about the rest.
     """
     if event.get("type") != "stream_event":

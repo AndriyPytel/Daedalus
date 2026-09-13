@@ -192,10 +192,11 @@ class LastPass:
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
          decide=revise_by_default, outstanding=(), the_part_path=None, kernel=None):
-    """The run itself: describe the part, plan it, gate it, build it, judge it.
-    Design runs once per run, growing what it read (ADR-0018, ADR-0019). A handback
-    with nothing applied since the last one stops the run; any other handback
-    replans on a fresh Snapshot (ADR-0013).
+    """
+    The run itself: describe the part, plan it, gate it, build it, judge
+    it. Design runs once per run, growing what it read. A handback with
+    nothing applied since the last one stops the run; any other handback
+    replans on a fresh Snapshot.
     """
     if cancelled():
         raise Stopped()
@@ -451,11 +452,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
                   start=0, ops=(), kernel=None):
-    """One pass over the Plan: written by one Execute phase, applied one Step at a time.
-    `budgets.attempts_per_step` bounds one Step; a spent Step hands back to Plan (ADR-0013).
-    `ops[i]` rides onto `apply_step` as `op` so `core/lint.py` checks the TypeId (ADR-0026);
-    `outcome.apply_failed` is exhausted already (FCC-372). `exploration` carries
-    `agent.py`'s undeclared-turn count across a same-Step regeneration (FCC-A-53).
+    """
+    One pass over the Plan: written by one Execute phase, applied one Step at a
+    time. `budgets.attempts_per_step` bounds one Step; a spent Step hands back
+    to Plan, and `ops[i]` rides onto `apply_step` as `op` so `core/lint.py`
+    checks the TypeId. `exploration` carries `agent.py`'s undeclared-turn count
+    across a same-Step regeneration, and `outcome.apply_failed` here is
+    exhausted from retrying in place.
     """
     if cancelled():
         raise Stopped()

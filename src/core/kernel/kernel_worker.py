@@ -1,24 +1,17 @@
 """
 The child half of the kernel: a headless FreeCAD child process started by
 `core/kernel/kernel.py`, one JSON request per stdin line and one tagged
-response per stdout line.
-
-Constraints: `SENTINEL` (imported by kernel.py) and `step_namespace`
-(imported by core/freecad_apply.py) must import without starting the
-server, so `freecadcmd`'s renamed `__name__` is checked before serving
-starts. A crash here is a normal outcome the parent restarts from, with
-no shutdown message, because the parent kills rather than asks (ADR-0002).
-The kernel holds one live Document across many Steps: a failed Step
-reopens the last checkpoint rather than continuing on a Document a
-following Step should never have seen.
-
-Measured: 45 of 152 kernel calls failed across the FCC-291 review sessions
-of 2026-09-10 (logs/review/rlm-execute-cost-audit.md) -- 15 on the Step's
-own volume assert, 10 on a None deref -- so a failing Step is handed
-`volume`, the idle-feature diagnosis and the Document's own objects, not
-only the traceback.
-
-`introspect`'s `obj` is None either with no object info or a dereferenced `None`; *doc* answers the latter.
+response per stdout line. `SENTINEL` and `step_namespace` must import
+without starting the server, so `freecadcmd`'s renamed `__name__` is
+checked before serving starts, and a crash here is a normal outcome the
+parent restarts from, with no shutdown message, because the parent kills
+rather than asks; the kernel holds one live Document across many Steps, a
+failed Step reopens the last checkpoint rather than continuing on a
+Document a following Step should never have seen. Measured: 45 of 152
+kernel calls failed across one review's sessions -- 15 on the Step's own
+volume assert, 10 on a None deref -- so a failing Step is handed `volume`,
+the idle-feature diagnosis and the Document's own objects, not only the
+traceback.
 """
 import contextlib
 import difflib
@@ -159,14 +152,13 @@ STEP_MODULES = ("Part", "Sketcher", "PartDesign", "Materials")
 
 def step_namespace(doc):
     """
-    What a Step's code runs with, built identically by the kernel and the
-    GUI's replay or they run different programs (ADR-0002).
-
-    Part carries sketch geometry, so leaving it out turns correct code into
-    a NameError answered by an invented Sketcher.Circle. FreeCAD's own
-    Mod/Mesh/App directory shares the name `App` on sys.path, so a Step's
-    bare `import App` finds an empty namespace package unless sys.modules
-    holds the real module first.
+    What a Step's code runs with, built identically by the kernel and the GUI's
+    replay or they run different programs. Sketch geometry lives outside
+    Sketcher in every FreeCAD version, so leaving Part out turns correct code
+    into a NameError answered by an invented Sketcher.Circle. FreeCAD's own
+    Mod/Mesh/App directory shares the name `App` on sys.path, so a Step's bare
+    `import App` finds an empty namespace package unless sys.modules holds the
+    real module first.
     """
     import FreeCAD
 
@@ -241,14 +233,12 @@ def _what_the_document_holds(doc, name):
 
 def introspect(exc, doc=None):
     """
-    Answer an AttributeError with what the object actually has.
-
-    FreeCAD names only the missing attribute, so a second guess burns
-    Step budget; introspection answers it here rather than hoping the
-    assistant asks first (ADR-0006, ADR-0008).
-
-    PropertiesList suits a DocumentObject (`dir()` is eighty names of
-    plumbing); a module/class gets the unbound descriptor instead.
+    Answer an AttributeError with what the object actually has. FreeCAD
+    names only the missing attribute, so a second guess burns Step
+    budget; introspection answers it here rather than hoping the
+    assistant asks first. PropertiesList suits a DocumentObject (`dir()`
+    is eighty names of plumbing); a module/class gets the unbound
+    descriptor instead.
     """
     obj, name = getattr(exc, "obj", None), getattr(exc, "name", None)
     if not name:
@@ -890,13 +880,12 @@ def _run_step_body(doc, namespace, touched, request):
 
 def run_step(request):
     """
-    Run one Step against the kernel's live Document.
-
-    A `document` in *request* is a fresh handoff: the session starts over
-    from that path, with a name map seeded from *request*'s own `names`.
-    `ephemeral=True` skips checkpoint writes. Pass: checkpoint is written.
-    Fail: the last checkpoint is reopened only when `_Touched.touched()`
-    says the Step actually changed the Document -- a read-only probe that
+    Run one Step against the kernel's live Document. A `document` in
+    *request* is a fresh handoff: the session starts over from that path,
+    with a name map seeded from *request*'s own `names`, and
+    `ephemeral=True` skips checkpoint writes. Pass writes the checkpoint;
+    fail reopens the last checkpoint only when `_Touched.touched()` says
+    the Step actually changed the Document, since a read-only probe that
     raises leaves it exactly as it was.
     """
     ephemeral = request.get("ephemeral", False)

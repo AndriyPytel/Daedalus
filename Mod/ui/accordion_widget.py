@@ -1,24 +1,14 @@
 # type: ignore  # PySide2 imported via FreeCAD shim – static analyser can't resolve it
-"""One collapsible row in the transcript.
-
-Thinking, tool calls and errors all take this shape: a toggle line and,
-under it, wrapped text laid out in the column itself. A QTextEdit
-animated to a magic 1000 inside the chat's own scroll area truncates
-long thinking and steals the mouse wheel from the chat (ADR-0011),
-which this shape avoids.
-
-Code in a row is coloured by one pass of one regex over the string
-rather than by a `QSyntaxHighlighter`: a highlighter needs a
-`QTextDocument` and this row is a `QLabel`. `pygments` would do it
-better and is not importable inside FreeCAD. Colours are read from
-FreeCAD's own editor parameters, never chosen here.
-
-Boxed or not, by what the row is. Reasoning and a folded list carry
-nothing of their own and rely on the column for their edges, the
-cheapest way this design language separates anything. A call the run
-made is the one shape Figma's Tool card gives a border to: a hairline
-and no fill, so a transcript of a dozen calls stays a column of
-outlines rather than a stack of filled slabs.
+"""One collapsible row in the transcript: a toggle line with wrapped text laid
+out in the column itself, since a QTextEdit sized to 1000px inside the
+chat's own scroll area truncates long thinking and steals the mouse wheel
+from the chat. Code in a row is coloured by one regex pass over the string,
+not a QSyntaxHighlighter, since that needs a QTextDocument and this row is
+a QLabel, and never by pygments, which is not importable inside FreeCAD;
+colours come from FreeCAD's own editor parameters. Reasoning and a folded
+list carry no border of their own and rely on the column for their edges;
+only a tool call gets a hairline-and-no-fill border, so a transcript of
+calls stays outlines rather than filled slabs.
 """
 import json
 import keyword
@@ -84,14 +74,13 @@ _TOGGLE_RULE = ("QPushButton { text-align: left; padding: %dpx 0px; border: none
 
 
 class AccordionWidget(QtWidgets.QFrame):
-    """A toggle row with text that shows and hides beneath it.
-
-    Content is plain text; a code row is rich text through `_as_markup`
-    first (a traceback's `<module>` else reads as an unknown tag). A
-    QFrame paints border/background from the stylesheet, a plain widget
-    would not. `toggle_button`/`content_area` use `Ignored` sizing:
-    unpolicied, a QLabel took 178px beside a 16px pixmap and a wrapping
-    button let a 565px line widen a 360px dock past the Gate's Build.
+    """A toggle row with text that shows and hides beneath it. Content is plain
+    text; a code row is rich text through `_as_markup` first, since a
+    traceback's `<module>` else reads as an unknown tag. A QFrame paints
+    border/background from the stylesheet, where an unpolicied QLabel took
+    178px beside a 16px pixmap and a wrapping button let a 565px line widen a
+    360px dock past the Gate's Build, so `toggle_button`/`content_area` use
+    `Ignored` sizing.
     """
 
     def __init__(self, title: str = "Thinking...", code: bool = False,
@@ -208,14 +197,11 @@ class AccordionWidget(QtWidgets.QFrame):
         self.toggle_button.setCursor(QtCore.Qt.ArrowCursor)
 
     def mark_as_reasoning(self):
-        """The brain Figma's Reasoning header carries, and text that reads
-        subdued next to an answer.
-
-        Subdued the way `HistoryItem` dims its timestamp: an opacity effect
-        rather than a colour of its own, since the theme decides the text
-        (ADR-0011, Figma's Chain of Thought component). The brain is `ICON`
-        and the chevron beside it `ICON_DENSE`: 16 marks what the row is, 12
-        is the disclosure mark inline in its words.
+        """The brain icon Figma's Reasoning header carries, with text that reads
+        subdued next to an answer, the way `HistoryItem` dims its timestamp: an
+        opacity effect rather than a colour of its own, since the theme decides the
+        text. The brain is `ICON` and the chevron beside it `ICON_DENSE`: 16 marks
+        what the row is, 12 is the disclosure mark inline in its words.
         """
         self.mark.setPixmap(
             UIHelpers.get_icon("brain", size=ICON, on=self.toggle_button)

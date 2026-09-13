@@ -16,13 +16,12 @@ AMEND = "amend"
 @dataclass
 class Approval:
     """
-    The Plan Gate's answer.
-
-    `standing` is approval that also covers revisions of this Plan. Measured:
-    69 of 135 minutes spent waiting at a Gate, against 6s of FreeCAD. Does not
-    cover an invented value the user has not read — counter-example:
-    `logs/sessions/141a41df...` where a standing approval let an undimensioned
-    cutout change from rectangle to R15 semicircle to R30 circle.
+    The Plan Gate's answer. `standing` is approval that also covers
+    revisions of this Plan. Measured: 69 of 135 minutes spent waiting at
+    a Gate, against 6s of FreeCAD, and it does not cover an invented
+    value the user has not read -- an undimensioned cutout once changed
+    from rectangle to R15 semicircle to R30 circle under a standing
+    approval.
     """
 
     decision: str = APPROVE

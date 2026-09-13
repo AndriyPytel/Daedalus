@@ -1,31 +1,17 @@
 """
-Structured Assertion results (FCC-179), rebuilt to Figma's `TestResults`
-anatomy (FCC-169, Figma component B8):
-a header (summary left, a derived fact right), a proportional progress
-track, then one row per check.
-
-The card itself is a surface -- `QFrame#AssertionResultsCard` already gets
-its WASH fill, `HAIRLINE` border and `RADIUS_SURFACE` corners from the
-panel's own stylesheet (`copilot_panel.py :: _build_qss`) -- so this module
-only lays out what sits inside it.
-
-The checks run as one Python script, asserting every acceptance entry
-together (`core/loop.py` :: `assertion`), so there is one `code` to show,
-not one per entry -- every row's expansion shows the same script. A failed
-run's rows are its `unmet` entries only: the script fails or passes as a
-whole, so `confirmed` is always empty exactly when there is anything in
-`unmet` to show, and there is no per-entry "skipped" mark here -- `uncovered`
-entries are Review's to judge, not a third status this card invents one for.
-`ASSERTION` fires once, after the checks already finished, so there is no
-duration to print in the header's secondary slot -- the percent passed is
-shown there instead, since it is the one fact this card can derive rather
-than invent.
-
-Rule 1 of the ten in AI Elements' visual grammar:
-state is never a repaint. A row keeps its background in every state; only
-the leading icon (tinted `SUCCESS`/`FAIL`) and the trailing status word
-change. The word itself carries no colour -- if it did, the row would be
-recolouring itself by another name.
+Structured assertion results, laid out as a header (summary left, a derived
+fact right), a proportional progress track, then one row per check; the
+surface's fill, border and corner styling come from the panel's own
+stylesheet, so this module only lays out what sits inside it. The checks
+run as one script that asserts every acceptance entry together, so there is
+one `code` to show and every row's expansion is that same script; a failed
+run's rows are its `unmet` entries only, `confirmed` is empty exactly when
+`unmet` has entries, and `uncovered` entries are Review's to judge rather
+than a third status here. Assertion fires once after the checks finish, so
+the header's secondary slot shows percent passed instead of a duration, and
+state is never a repaint: a row keeps its background in every state, only
+the icon tint and status word change, and the word itself carries no
+colour.
 """
 import re
 

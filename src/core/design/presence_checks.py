@@ -20,14 +20,13 @@ from core.design.core import (
 
 def unsafe_supersession(model) -> list:
     """
-    Features marked superseded_by that carry values differing from canonical.
-
-    Reconciliation drops a superseded feature's values; if they differ from
-    canonical, that is a silent reading loss elevated to a conflict for the
-    user to settle at the Plan Gate. Envelope and datum values are never
-    lost to `superseded_by` -- only features are filtered this way.
-
-    Order-independent per ADR-0019: conflicts name features in sorted order.
+    Features marked superseded_by that carry values differing from
+    canonical. Reconciliation drops a superseded feature's values; if they
+    differ from canonical, that is a silent reading loss elevated to a
+    conflict for the user to settle at the Plan Gate, and envelope and
+    datum values are never lost to `superseded_by`, only features are
+    filtered this way. Conflicts are returned in sorted order, so the
+    result is order-independent.
     """
     features = (model or {}).get("features") or []
     by_id = {f.get("id"): f for f in features
@@ -140,13 +139,11 @@ def _axis_direction(feature):
 def twice_placed(model) -> list:
     """
     Two features with the same axis direction, agreeing at one datum and
-    differing at another -- one placement described twice.
-
-    Requires all three: axes match, one shared datum agrees, another
-    differs. Without the third, agreeing everywhere makes them synonym
-    candidates (superseded_by), not conflicts.
-
-    Returns conflicts in sorted order (ADR-0019 order-independence).
+    differing at another -- one placement described twice. Requires all
+    three: axes match, one shared datum agrees, another differs; without
+    the third, agreeing everywhere makes them synonym candidates
+    (superseded_by), not conflicts. Returns conflicts in sorted order, so
+    the result is order-independent.
     """
     features = [feature for feature in _features(model)
                 if not feature.get("superseded_by")]
@@ -342,11 +339,10 @@ def _what_it_is(feature):
 
 def _is_one_of(feature, closed_members, prose_words):
     """
-    Whether *feature*'s `kind` matches an ADR-0026 *closed_members* value
-    outright, or a substring of *prose_words* as fallback.
-
-    The closed marker appears on about a third of replies (3 of 9); `bore`
-    reads as prose but is never one of the 22, refused before `kind` can be "bore".
+    Whether *feature*'s `kind` matches a closed *closed_members* value
+    outright, or a substring of *prose_words* as fallback. The closed
+    marker appears on about a third of replies (3 of 9); `bore` reads as
+    prose but is never one of the 22, refused before `kind` can be "bore".
     """
     kind = _what_it_is(feature)
     if kind in FEATURE_KIND:

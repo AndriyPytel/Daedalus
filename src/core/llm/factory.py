@@ -24,14 +24,12 @@ def effort() -> str:
 def effort_is_honoured(model_id: str = None) -> bool:
     """
     Whether asking *model_id* to think harder changes anything at all.
-
-    The subscription route always honours it -- `--effort` is the CLI's own
-    flag -- and so does Anthropic on a key, where the dial moves the thinking
-    budget. Anywhere else it is LiteLLM's table that knows, and the table
-    lives behind an import that costs seconds: the panel asks this while it is
-    being built, so the question is only put to LiteLLM when something else
-    has already paid to load it. Unknown means yes, the same benefit of the
-    doubt `_may_reason` gives a gateway's own model.
+    The subscription route always honours it, since `--effort` is the
+    CLI's own flag, and so does Anthropic on a key, where the dial moves
+    the thinking budget; anywhere else it is LiteLLM's table that knows,
+    asked only when something else has already paid to load it. Unknown
+    means yes, the same benefit of the doubt `_may_reason` gives a
+    gateway's own model.
     """
     from core.llm.client import _may_reason
 
@@ -60,20 +58,16 @@ def _gateway_headers(provider: str) -> dict | None:
 
 def client_from_settings(model_id: str = None, effort: str = None):
     """
-    Build a client from the provider settings page and stored keys.
-
-    A local server's address is a setting of its own rather than the key field,
-    and a gateway's is fixed and the catalog knows it. LiteLLM wants a key even
-    where the local server ignores it — and has no route at all to a
-    subscription, which is why one provider is answered by a client of its own
-    before any of that is read.
-
-    *effort* is the level the role's row names; left `None` the client falls
-    back to the single stored dial.
-
-    A gateway that routes on a session header gets one for the whole process:
-    OpenCode Go answers a call without `x-opencode-session` with 400 for every
-    model it sells, and one addon run is one session to route.
+    Build a client from the provider settings page and stored keys. A
+    local server's address is a setting of its own rather than the key
+    field, and a gateway's is fixed and the catalog knows it; LiteLLM
+    wants a key even where the local server ignores it, and has no route
+    at all to a subscription, which is why one provider is answered by a
+    client of its own before any of that is read. *effort* is the level
+    the role's row names, falling back to the single stored dial when
+    `None`, and a gateway that routes on a session header gets one for the
+    whole process, since OpenCode Go answers a call without
+    `x-opencode-session` with 400 for every model it sells.
     """
     from core.llm.client import LiteLLMClient
     from core.llm.claude import ClaudeCodeClient

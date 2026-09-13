@@ -1,19 +1,16 @@
 """
-The Plan: editable until Build locks it, then a read-only progress display.
-
-Editing happens directly on the Steps (FCC-177), not through a typed
-amendment: clicking a Step's text edits it in place, "+ Add Step" appends one
-already open for editing, the trash icon on a row removes it, and dragging a
-row -- `QListWidget`'s own InternalMove, the base component rather than a
-hand-rolled drag -- reorders the Plan. `steps()` is what a Build click reads
-to answer the Gate with.
-
-`lock()` ends all of that -- called from the Gate's Build button, and called
-again for safety by `highlight()`/`mark()` themselves, since a restored or
-already-finished Session replays straight to those without a Build click ever
-happening. From there this is what the widget was before FCC-177: one row per
-Step, `highlight()` moves the running marker forward, `mark()` sets one row's
-state directly, and both take the same 1-based index the event stream does.
+The Plan is editable until Build locks it, then a read-only progress
+display: editing happens directly on the Steps rather than through a typed
+amendment, clicking a Step's text edits it in place, "+ Add Step" appends
+one already open for editing, the trash icon on a row removes it, and
+dragging a row, `QListWidget`'s own InternalMove, reorders the Plan, with
+`steps()` what a Build click reads to answer the Gate with. `lock()` ends
+all of that, called from the Gate's Build button and called again by
+`highlight()`/`mark()` themselves, since a restored or already-finished
+Session replays straight to those without a Build click ever happening.
+From there it is one row per Step: `highlight()` moves the running marker
+forward, `mark()` sets one row's state directly, and both take the same
+1-based index the event stream does.
 """
 try:
     from PySide2 import QtCore, QtGui, QtWidgets
@@ -176,10 +173,9 @@ class PlanWidget(QtWidgets.QFrame):
 
     def showEvent(self, event):
         """
-        Icons are tinted once the widget is on screen, matching `QueueWidget`
-        (FCC-172): a widget only carries the global stylesheet's colour once
-        Qt has polished it.
-        """
+        Icons are tinted once the widget is on screen, matching `QueueWidget`: a
+widget only carries the global stylesheet's colour once Qt has polished it.
+"""
         super().showEvent(event)
         if self.locked:
             for position in range(len(self._states)):
@@ -219,17 +215,15 @@ class PlanWidget(QtWidgets.QFrame):
 
     def _paint(self, position):
         """
-        The state goes on the mark, not on the row: this design language
-        reports by swapping a glyph and never by repainting what it is
-        reporting on, so a failed Step is a Step with a cross in front of it
-        rather than a red paragraph (`ui/queue_widget.py` marks the same way).
-
-        Pending and done carry no colour at all -- the icon already says
-        which, and a colour of our own is a light-theme value under a dark
-        theme (ADR-0011). Failed carries the one semantic red ADR-0011 keeps,
-        and running `palette(highlight)`, the one role FreeCAD's themes keep
-        meaningful.
-        """
+        The state goes on the mark, not on the row: this design language reports by
+swapping a glyph and never by repainting what it is reporting on, so a
+failed Step is a Step with a cross in front of it rather than a red
+paragraph, the same way `ui/queue_widget.py` marks. Pending and done carry
+no colour at all, since the icon already says which and a colour of our own
+would be a light-theme value under a dark theme. Failed carries the one
+semantic red this design system keeps, and running uses
+`palette(highlight)`, the one role FreeCAD's themes keep meaningful.
+"""
         icon_label, text_label = self._rows[position]
         state = self._states[position]
         icon_label.setPixmap(

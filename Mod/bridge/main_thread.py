@@ -1,17 +1,12 @@
 """
-Marshals a callable onto the Qt main thread and blocks until it returns.
-
-The engine's `ApplyPipeline` calls Document operations through an injected
-`dispatch` callable rather than owning this itself: `core` runs
-with no Qt at all, and this is the one place a live GUI's Document mutations
-are actually marshalled -- the Mod side wires it in, a headless caller such
-as `copilot.sdk.Client` never does.
-
-A queued signal to an object living in the main thread is the mechanism.
-`QTimer.singleShot(0, func)` -- what the old core fell back to -- creates the
-timer in the *calling* thread, so on a worker thread with its own event loop
-it fires there instead. That is a Document mutation off the main thread,
-which is how FreeCAD gets taken down.
+Marshals a callable onto the Qt main thread and blocks until it returns; the
+engine's `ApplyPipeline` reaches Document operations through an injected
+`dispatch` callable so `core` itself never touches Qt. The mechanism is a
+queued signal to an object living in the main thread, not
+`QTimer.singleShot(0, func)`, which creates its timer in the calling thread
+and fires there instead on a worker thread with its own event loop. Firing on
+the wrong thread is a Document mutation off the main thread, which is how
+FreeCAD gets taken down.
 """
 import threading
 
@@ -50,13 +45,12 @@ def _qt():
 
 class _Dispatcher:
     """
-    Runs a callable on the Qt main thread and blocks until it returns.
-
-    A queued signal to an object living in the main thread is the mechanism.
-    `QTimer.singleShot(0, func)` — what the old core fell back to — creates the
-    timer in the *calling* thread, so on a worker thread with its own event
-    loop it fires there instead. That is a Document mutation off the main
-    thread, which is how FreeCAD gets taken down.
+    Runs a callable on the Qt main thread and blocks until it returns. The
+    mechanism is a queued signal to an object living in the main thread, not
+    `QTimer.singleShot(0, func)`, which creates its timer in the calling
+    thread and fires there instead on a worker thread with its own event
+    loop -- a Document mutation off the main thread, which is how FreeCAD
+    gets taken down.
     """
 
     def __init__(self):

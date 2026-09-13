@@ -36,12 +36,11 @@ from core.design.presence_checks import (
 
 def direction(model) -> list:
     """
-    A feature that has a direction and no field carrying it.
-
-    A hole, bore, slot or pocket carries `axis`; a profile, arc or rounded end
-    carries `plane`. Where one is missing this is a gap, settled the same way
-    every gap is. What a feature *is* is read off `kind` alone, never off `id`
-    or `topology`.
+    A feature that has a direction and no field carrying it. A hole, bore,
+    slot or pocket carries `axis`; a profile, arc or rounded end carries
+    `plane`, and where one is missing this is a gap, settled the same way
+    every gap is. What a feature *is* is read off `kind` alone, never off
+    `id` or `topology`.
     """
     found = []
     for feature in _features(model):

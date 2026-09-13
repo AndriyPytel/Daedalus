@@ -1,24 +1,16 @@
 """
-The part Design read off the sheet, as a file on disk.
-
-Design produces the one thing every later phase depends on -- what the
-part is -- and until this module nothing recorded it: it went out as
-prose in a Plan request and as one transcript event, neither openable,
-diffable or correctable.
-
-One reading is two files: the document Design distilled (the reading),
-and beside it what Design gathered to arrive at it -- kept for whoever
-asks tomorrow where a number came from. A second reading is a second
-file beside the first, named by the sheet's digest and the time taken,
-sortable to the microsecond (a counter would not: `-1` sorts before
-`.yaml`), plus its schema.
-
-Readings live beside the transcripts, in the addon's own directory
-unless the caller says otherwise -- rebindable so a test suite does
-not fill the directory a user reads.
-
-What is in the file is the requirement: a user's edit changes what
-the run must satisfy, unmerged with what the provider said.
+The part Design read off the sheet, as a file on disk: until this module
+nothing recorded what the part is, it went out as prose in a Plan request
+and as one transcript event, neither openable, diffable or correctable.
+One reading is two files, the document Design distilled and beside it what
+Design gathered to arrive at it, kept for whoever asks tomorrow where a
+number came from; a second reading is a second file beside the first,
+named by the sheet's digest and the time taken, sortable to the
+microsecond. Readings live beside the transcripts, in the addon's own
+directory unless the caller says otherwise, rebindable so a test suite
+does not fill the directory a user reads, and what is in the file is the
+requirement -- a user's edit changes what the run must satisfy, unmerged
+with what the provider said.
 """
 import datetime
 import hashlib
@@ -68,14 +60,12 @@ _ASKED_FOR = "what_was_asked_for"
 
 def saved(model, source, into=None, read_from=None, asked_for=None) -> str:
     """
-    *model* written as one reading of *source*. The path, or "" if there
-    is nothing to write.
-
-    A Design turn that described nothing writes nothing, rather than a
-    file to mistake for a reading later. An empty *source* means read off
-    no sheet, not off a drawing that does not exist.
-
-    `asked_for` (the Intent read under) is written first, the other half of holding the run to it.
+    *model* written as one reading of *source*, returning the path, or ""
+    if there is nothing to write. A Design turn that described nothing
+    writes nothing, rather than a file to mistake for a reading later; an
+    empty *source* means read off no sheet, not off a drawing that does
+    not exist. `asked_for` (the Intent read under) is written first, the
+    other half of holding the run to it.
     """
     if not model:
         return ""

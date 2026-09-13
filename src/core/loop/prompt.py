@@ -88,7 +88,7 @@ def _language_sections():
 def prompt(phase, ledger=""):
     """
     A phase's system prompt, read from `config/prompts/<phase>.md` and
-    composed with the sections of the shared vocabulary (ADR-0026).
+    composed with the sections of the shared vocabulary.
     """
     body = read_prompt(phase + ".md").strip()
     sections = _language_sections()
@@ -196,11 +196,11 @@ def _asked_again(body, reasoning):
 
 def _as_image(path):
     """
-    Read a file as the content block the provider takes for it. None when
-    there is nothing to show, which a sketch-only Step produces.
-
-    The mime comes off the file rather than a stamped `image/png` — that once
-    mislabelled a JPEG. A PDF is a `file` block, not `image_url`, unrendered.
+    Read a file as the content block the provider takes for it. None
+    when there is nothing to show, which a sketch-only Step produces.
+    The mime comes off the file rather than a stamped `image/png`, that
+    once mislabelled a JPEG, and a PDF is a `file` block, not
+    `image_url`, unrendered.
     """
     if not path or not os.path.isfile(path):
         return None

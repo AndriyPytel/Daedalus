@@ -1,33 +1,15 @@
-"""The typed event stream — the loop emits, the panel renders, and a run can be inspected from this
-stream alone without reproducing it.
-
-Constraints:
-The loop has no idea a UI exists; the stream is an output, asserted on and never substituted.
-`intent` stands first, before anything is read, so a transcript can be judged against the request
-that opened it.
-`part` carries the path the reading Design settled on; `outstanding` carries what an earlier run's
-checks found wrong and nobody fixed, emitted once at the top of the run that inherits it.
-`unbuilt` is a Step nothing was waiting on — a run that ends with one is not a blocked run.
-`call_started` pairs with `cost`; one with no matching `cost` after it is a call that died without
-answering.
-`cost.usd` is present only when the client reported a price — a subscription route emits none.
-`cost.reasoning_tokens` is the reasoning share of `completion_tokens` where the provider breaks it
-out; `cost.usage_unavailable` marks a truncated call whose provider reported no usage at all,
-rather than the cost event carrying nothing.
-`change_set` is what a new Design version changed since the one Plan last saw, so a
-re-plan's reason is on the stream without a reader re-deriving it from two `design` events.
-`routed` is the orchestrator's own decision, separate from the text it was handed alongside.
-`sub_agent_spawned`/`_answered`/`_refused` are a worker's whole visible life: only the
-answer reaches the phase agent's conversation, the transcript stays inspectable.
-`stopped` is the user's own Stopped reaching the loop boundary, not a `blocked` — which is why
-`core/measure.py`'s blocked rate excludes it. A run ends one of six ways and those rates may never
-merge two: `completed` a genuine ok, `blocked` a real impasse, `budget_exhausted` the
-run's own ceiling of revisions,
-`stopped` the user's Stop with the in-flight Step left to checkpoint, `aborted` the user's Abort
-with that Step discarded, `failed` everything that ended without a decision behind it.
-
-Measured: 22.4 of a recorded run's 23.6 minutes of provider time fell after the last `thought` of
-every call — most of the wait is the reply, not the reasoning.
+"""
+The typed event stream: the loop emits, the panel renders, and a run can be
+inspected from this stream alone without reproducing it, with the loop
+itself asserting on it and never substituting for it. A run ends one of six
+ways that a rate over the stream may never merge: `completed`, `blocked`,
+`budget_exhausted`, `stopped` (the user's Stop, in-flight Step checkpointed),
+`aborted` (the user's Abort, that Step discarded), or `failed`. Measured: 22.4
+of a recorded run's 23.6 minutes of provider time fell after the last
+`thought` of every call, so most of the wait is the reply, not the reasoning;
+`cost.usd` is present only when the client reported a price, and
+`cost.usage_unavailable` marks a truncated call whose provider reported no
+usage at all.
 """
 import json
 import time

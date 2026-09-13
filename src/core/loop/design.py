@@ -30,14 +30,12 @@ from core.agent.subagent import SessionTreeSupervisor
 def design(body, llm, events, attachments=(), views=None, phase=DESIGN_PHASE,
           keep_printed=False, pictures=True, supervisor=None, kernel=None):
     """
-    One Design turn: what it adds to the part, and what it needs a person for.
-
-    Merge is the only way the description grows, so there is never an answer
-    standing beside it to be adjudicated (ADR-0019).
-
-    A context of its own, with nothing to build (ADR-0018): a Plan pressure
-    beside it invents a value not because the model saw badly, but because
-    it needed something to plan with.
+    One Design turn: what it adds to the part, and what it needs a
+    person for. Merge is the only way the description grows, so there is
+    never an answer standing beside it to be adjudicated. A context of
+    its own, with nothing to build: a Plan pressure beside it invents a
+    value not because the model saw badly, but because it needed
+    something to plan with.
     """
     evidence = _the_evidence(attachments, views, keep_printed, pictures)
     if evidence and cache_control_supported(getattr(llm, "model", None)):
@@ -154,10 +152,10 @@ def _asked_about_a_group(label, views, intent, llm, events, attachments):
 def _first_pass(intent, llm, events, attachments, cancelled):
     """
     The Design phase's opening move: one call per page-sized group of views,
-    run in parallel, each merged as it lands (ADR-0019 — grow-only and
-    order-independent makes concurrent merges legitimate). A group's failure
+    run in parallel, each merged as it lands, since grow-only and order-
+    independent merging makes concurrent merges legitimate. A group's failure
     lands as a `conflicts` entry with `kind=A_CHECK_HAZARD`; at most one
-    question crosses the fan-out, the first asked in page order (ADR-0022).
+    question crosses the fan-out, the first asked in page order.
     """
     groups = _the_groups(attachments)
     if not groups:

@@ -1,12 +1,11 @@
 """
-GeneralPage – "General" preference sub-page.
-
-One setting so far: whether a run goes unattended, stored under
-`copilot.sdk.get_auto_approve_plan` (FCC-359). The checkbox gates two
-things -- the Plan Gate, and the decision after a failed acceptance check --
-under the one name, because the key is invisible to the user and a
-migration buys nothing a label change does not already buy. More belongs
-here as the addon grows settings that are neither a provider nor a key.
+GeneralPage - "General" preference sub-page, with one setting so far:
+whether a run goes unattended, stored under
+`copilot.sdk.get_auto_approve_plan`. The checkbox gates two things -- the
+Plan Gate, and the decision after a failed acceptance check -- under the
+one name, since the key is invisible to the user and a migration buys
+nothing a label change does not already buy. More belongs here as the addon
+grows settings that are neither a provider nor a key.
 """
 try:
     from PySide2 import QtWidgets

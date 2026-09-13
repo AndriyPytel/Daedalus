@@ -1,28 +1,11 @@
 """
-Session-aware logging for FreeCAD Copilot.
-
-Features
---------
-- One timestamped log file per FreeCAD session  (addon_YYYYMMDD_HHMMSS.log)
-- Keeps the latest MAX_LOG_FILES session files; deletes older ones on startup
-- log_exception(exc, context)   – writes full stack trace to file + console
-- generate_crash_report(exc)    – summarised crash string for the chat UI
-
-Every `FreeCAD.Console` write in this module is marshalled onto the Qt main
-thread. `LoopWorker.do_work` (`ui/copilot_panel.py`) runs on a QThread and
-logs an ERROR event from it; a run that hit `ToolError: There is no open
-Document` printed the line, then:
-
-    QObject::setParent: Cannot set parent, new parent is in a different thread   <- x16
-    QObject::killTimer: Timers cannot be stopped from another thread
-    zsh: segmentation fault  /Applications/FreeCAD.app/Contents/MacOS/FreeCAD
-
-FreeCAD's console observers are Qt: the Report View and, on 1.0+, the
-Notification Area, which builds a widget tree and an auto-hide QTimer per
-message. Built on a non-GUI thread, that is the sixteen `setParent` warnings
-(one per widget in the tree) and the `killTimer` warning, and then the
-segfault. The `FileHandler` needs none of this — it is plain file I/O, no Qt
-object involved — so only the two `FreeCAD.Console` routes below are guarded.
+Session-aware logging for FreeCAD Copilot: one timestamped file per session,
+capped at MAX_LOG_FILES, plus log_exception and generate_crash_report for the
+chat UI. Every `FreeCAD.Console` write here is marshalled onto the Qt main
+thread, because FreeCAD's console observers (Report View, Notification Area)
+build Qt widgets and crash FreeCAD when invoked off the GUI thread. The
+`FileHandler` is plain file I/O with no Qt involved, so only the two
+`FreeCAD.Console` routes below are guarded.
 """
 import FreeCAD
 import logging
@@ -40,40 +23,15 @@ _session_log_file: str = ""
 
 def _console(write, msg) -> None:
     """
-    Call a `FreeCAD.Console.Print*` method without ever running it off the
-    Qt main thread — see the module docstring for what happens if it does.
-
-    `on_main_thread` (`Mod.bridge.main_thread`) raises `RuntimeError` when there is no
-    Qt application at all — Level 1, headless, `freecadcmd` — and there is no
-    GUI there to corrupt, so *write* just runs directly.
-
-    Imported locally so a monkeypatched `Mod.bridge.main_thread.on_main_thread` (as
-    `tests/mod/bridge/test_main_thread_dispatch.py` does) reaches this call: a
-    module-level binding here would freeze the reference at import time.
-
-    LOG_DISPATCH_TIMEOUT is 5s, not the 60s `Mod.bridge.main_thread.DISPATCH_TIMEOUT`
-    gives a Document mutation: a log line is one `PrintError` call, not a
-    boolean operation, it fires far more often than a Step, and blocking it
-    for a minute would make logging itself look like the hang it exists to
-    report.
-
-    A line the main thread never comes back for is dropped rather than
-    written from here. `CopilotPanel.shut_down` waits on the worker thread
-    from the main one, and the worker emits `blocked` on its way out of a
-    Stop — so the one moment the marshalling cannot complete is the one
-    moment a line is most likely to be logged, and writing it anyway is the
-    segfault this exists to prevent. The `FileHandler` already has it.
-
-    Everything else the dispatch can raise is dropped for the same reason,
-    and dropped here rather than at `_FreeCADHandler.emit`: `on_main_thread`
-    re-raises whatever `write` raised on the main thread verbatim, and `_qt`
-    raises `ImportError` when neither PySide binding resolves. Neither is a
-    `RuntimeError` or a `TimeoutError`, `logging.Handler.emit` is not called
-    inside a try in `Logger.callHandlers`, and the one `logger.error` this
-    addon makes outside `EventStream.emit`'s own guard is `log_exception`,
-    reached from `generate_crash_report` while `LoopWorker.do_work` is already
-    handling a crash — so an escape there loses `finished`, and the panel
-    never learns the run ended.
+    Call a `FreeCAD.Console.Print*` method only through the Qt main thread;
+    on a headless run with no Qt application, `on_main_thread` raises
+    `RuntimeError` and *write* runs directly instead. `LOG_DISPATCH_TIMEOUT`
+    is 5s rather than `Mod.bridge.main_thread.DISPATCH_TIMEOUT`'s 60s, because
+    a log line fires far more often than a Document mutation and cannot hold
+    up the main thread that long. Any exception the dispatch raises,
+    including a timeout while the panel is already shutting down, is
+    swallowed rather than logged, since writing it risks the same off-thread
+    crash this function exists to prevent.
     """
     from bridge.main_thread import on_main_thread
 

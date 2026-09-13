@@ -1,18 +1,14 @@
 """
-FreeCAD geometry tracing and disagreement detection.
-
-Constraints on `_the_geometry_disagrees`: which of the print and the trace is
-wrong is not something a re-read can decide, so it goes on the part for the
-user to settle at the Gate. A dimension reaches the geometry through the feet
-of its extension lines, so a tracing further out than `sketch_check.A_FOOT`
-has no face to name.
-
-Measured on `tests/modelmania`: 11 printed distances reach a traced outline
-across the four sheets and none becomes a disagreement; a band of a tenth of
-the printed value produces three disagreements of 4.5-4.9 mm on sheets known
-to agree with themselves. The four sheets hold 142 outlines, so `A_READING_
-BUDGET`'s minute reads a child that stopped answering, not a normal reading
-time.
+FreeCAD geometry tracing and disagreement detection, where which of the
+print and the trace is wrong is not something a re-read can decide, so it
+goes on the part for the user to settle at the Gate. A dimension reaches
+the geometry through the feet of its extension lines, so a tracing
+further out than `sketch_check.A_FOOT` has no face to name. Measured on
+`tests/modelmania`'s four sheets (142 outlines): 11 printed distances
+reach a traced outline and none becomes a disagreement, while a band of a
+tenth of the printed value produces three disagreements of 4.5-4.9 mm on
+sheets known to agree with themselves, so `A_READING_BUDGET`'s minute
+reads a child that stopped answering, not a normal reading time.
 """
 import re
 import time
