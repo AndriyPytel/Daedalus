@@ -301,6 +301,23 @@ def test_a_step_that_failed_variously_does_not_tell_plan_to_change_the_step():
     assert "Rewording it" not in json.dumps(_turns_of(llm, "plan")[1])
 
 
+def test_a_step_that_lands_within_its_budget_leaves_no_mark_for_the_next_step():
+    """
+    Step 1's first refusal is free and Step 1 lands on the retry, so it never
+    reaches `refused[number] >= attempts_per_step` -- the only place a Step
+    is recorded to `Ledger`. Step 2's own Execute prompt must not carry a
+    lesson from a Step that recovered on its own.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Cut the hooks", "Fillet the edges"),
+        retried_code_reply("bad()", "good()", step=1),
+        code_reply("edge()", first=2),
+        suspect_reply(), verdict_reply("pass"),
+    ], applies=[failed(NO_MATERIAL), None, None])
+
+    for system in _system_messages(llm):
+        assert "cut moved no material because the extrusion ran the wrong direction" \
+            not in system, "a Step that landed within budget left a mark on a later prompt"
 
 
 def test_ledger_dedupes_the_same_classified_failure():

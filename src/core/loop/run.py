@@ -457,11 +457,12 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     """
     One pass over the Plan: written by one Execute phase, applied one Step at a
     time. `budgets.attempts_per_step` bounds one Step; a spent Step hands back
-    to Plan, and `ops[i]` rides onto `apply_step` as `op` so `core/lint.py`
-    checks the TypeId. `exploration` carries `agent.py`'s undeclared-turn count
-    across a same-Step regeneration and, threaded in by `_run` across its own
-    replan loop, across a Plan revision too; `outcome.apply_failed` here is
-    exhausted from retrying in place.
+    to Plan with its one `Ledger` entry written here, and `ops[i]` rides onto
+    `apply_step` as `op` so `core/lint.py` checks the TypeId. `exploration`
+    carries `agent.py`'s undeclared-turn count across a same-Step regeneration
+    and, threaded in by `_run` across its own replan loop, across a Plan
+    revision too; `outcome.apply_failed` here is exhausted from retrying in
+    place.
     """
     if cancelled():
         raise Stopped()
@@ -539,6 +540,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                                  for t in outcome.retries] or \
                 [Attempt(code=outcome.code or "", traceback=outcome.apply_failed)]
             progress.tried = [_tried(step, a) for a in declared_attempts]
+            if ledger is not None:
+                ledger.record(step, outcome.apply_failed)
             return {
                 "handback": "Step %d of %d could not be built after %d attempts: %s\n"
                             "The last traceback was:\n%s%s"
