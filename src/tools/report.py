@@ -62,6 +62,7 @@ _SUMMARY_ROWS = (
     ("review fail rate", lambda ms: _average(ms, lambda m: m.review_fail_rate), "{:.1%}"),
     ("avg cost (USD)", lambda ms: _average(ms, lambda m: m.cost_usd), "{:.4f}"),
     ("avg working (s)", lambda ms: _average(ms, lambda m: m.working_seconds), "{:.1f}"),
+    ("avg questions", lambda ms: _average(ms, lambda m: m.question_count), "{:.1f}"),
 )
 
 
@@ -93,7 +94,7 @@ def _verdict(events, m):
 def _detail_table(rows):
     header = ["model", "sheet", "verdict", "reason", "confirmed/unmet",
              "steps started/applied", "preflight fails", "cost (USD)",
-             "working (s)", "truncated"]
+             "working (s)", "questions", "truncated"]
     lines = [_row(header), _row(["---"] * len(header))]
     for model, label, events, m in rows:
         confirmed, unmet = _assertion_counts(events)
@@ -101,7 +102,8 @@ def _detail_table(rows):
                 "%d/%d" % (confirmed, unmet),
                 "%d/%d" % (m.steps_started, m.steps_applied),
                 str(m.preflight_failures), "{:.4f}".format(m.cost_usd),
-                "{:.1f}".format(m.working_seconds), "yes" if m.truncated else "no"]
+                "{:.1f}".format(m.working_seconds), str(m.question_count),
+                "yes" if m.truncated else "no"]
         lines.append(_row(cells))
     return "\n".join(lines)
 
