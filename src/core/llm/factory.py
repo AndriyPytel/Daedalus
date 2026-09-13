@@ -1,9 +1,11 @@
 """Factory functions that build clients from settings."""
+import logging
 import sys
 import uuid
 
 from core import model_catalog, settings
 
+_LOG = logging.getLogger(__name__)
 _GATEWAY_SESSION = {"OpenCode Go": "fcc-%s" % uuid.uuid4().hex}
 from core.llm.effort_policy import EFFORTS, _SUBSCRIPTION_EFFORT
 from core.llm.attachments import litellm_model_name
@@ -97,15 +99,22 @@ def client_from_roles():
 
     A row naming a model no configured provider reports is dropped, not
     raised: the table is seeded with defaults nobody chose, and the role then
-    answers from the caller's own model, as a missing row already does.
+    answers from the caller's own model, as a missing row already does. Each
+    row's outcome is logged, so which model and effort a role actually got,
+    and whether that came from its own row or the caller fallback, is
+    readable from the log without auditing settings by hand.
     """
     from core.llm.roles import RoleClient
 
     sm = settings.instance()
+    caller = client_from_settings()
     roles = {}
     for row in sm.get_role_table():
+        role, model, effort = row["role"], row["model"], row.get("effort")
         try:
-            roles[row["role"]] = client_from_settings(row["model"], row.get("effort"))
+            roles[role] = client_from_settings(model, effort)
+            _LOG.info("role %s: model=%s effort=%s source=row", role, model, effort)
         except ValueError:
-            continue
-    return RoleClient(roles=roles, caller=client_from_settings())
+            _LOG.info("role %s: model=%s effort=%s source=caller-fallback",
+                       role, getattr(caller, "model", None), effort)
+    return RoleClient(roles=roles, caller=caller)
