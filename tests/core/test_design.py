@@ -506,7 +506,8 @@ def test_a_feature_with_no_size_in_a_direction_is_asked_for_no_position_in_it():
     """
     grown = merge({}, {
         "datums": [{"name": "the ring axis", "is": "the axis of the Ø42 bore",
-                    "fixes": "the length and the height"}],
+                    "fixes": "the length and the height",
+                    "proves": "21 mm to the outer rim, matching the 42 mm bore radius"}],
         "features": [{"id": "ring-bore", "kind": "Ø42 bore through the ring",
                       "axis": _read("along the ring axis, front to rear"),
                       "diameter": _read("42 mm")}],
@@ -517,8 +518,10 @@ def test_a_feature_with_no_size_in_a_direction_is_asked_for_no_position_in_it():
 
 A_BLIND_POCKET_DESCRIBED_WHOLE = {
     "datums": [
-        {"name": "the left end face", "is": "the flat face at the left", "fixes": "the length"},
-        {"name": "the top face", "is": "the flat face at the top", "fixes": "the height"},
+        {"name": "the left end face", "is": "the flat face at the left", "fixes": "the length",
+         "proves": "80 mm to the right end face, matching the overall length"},
+        {"name": "the top face", "is": "the flat face at the top", "fixes": "the height",
+         "proves": "20 mm to the bottom face, matching the overall height"},
     ],
     "envelope": {"length": _read("80 mm"), "height": _read("20 mm")},
     "features": [
@@ -547,12 +550,16 @@ def test_a_size_running_along_the_features_own_axis_raises_nothing():
 
 A_THROUGH_HOLE_PLACED_ALONG_ITS_OWN_AXIS = {
     "datums": [
-        {"name": "the left end face", "is": "the flat face at the left", "fixes": "the length"},
-        {"name": "the top face", "is": "the flat face at the top", "fixes": "the height"},
+        {"name": "the left end face", "is": "the flat face at the left", "fixes": "the length",
+         "proves": "80 mm to the right end face, matching the overall length"},
+        {"name": "the top face", "is": "the flat face at the top", "fixes": "the height",
+         "proves": "20 mm to the bottom face, matching the overall height"},
         {"name": "the front face", "is": "one of the two outer faces",
-         "fixes": "the depth front to rear"},
+         "fixes": "the depth front to rear",
+         "proves": "30 mm to the rear face, matching the overall depth front to rear"},
         {"name": "the longitudinal centre plane", "is": "the plane through the centreline",
-         "fixes": "the depth front to rear"},
+         "fixes": "the depth front to rear",
+         "proves": "15 mm to the front face, half the 30 mm overall depth"},
     ],
     "envelope": {"length": _read("80 mm"), "height": _read("20 mm"),
                  "depth front to rear": _read("30 mm")},
@@ -602,9 +609,11 @@ def test_a_feature_placed_twice_over_along_its_own_axis_is_a_conflict():
     described = {
         "datums": [
             {"name": "the front face", "is": "one of the two outer faces",
-             "fixes": "the depth front to rear"},
+             "fixes": "the depth front to rear",
+             "proves": "30 mm to the rear face, matching the overall depth front to rear"},
             {"name": "the rear face", "is": "the face opposite the front face",
-             "fixes": "the depth front to rear"},
+             "fixes": "the depth front to rear",
+             "proves": "30 mm to the front face, matching the overall depth front to rear"},
         ],
         "features": [
             {"id": "cutout-1", "kind": "central cutout", "topology": "open at the bottom",
@@ -632,7 +641,8 @@ def test_an_axis_that_names_no_single_direction_places_nothing():
     """
     described = {
         "datums": [{"name": "the ring axis", "is": "the axis through the ring",
-                    "fixes": "the length and the height"}],
+                    "fixes": "the length and the height",
+                    "proves": "21 mm to the outer rim, matching the 42 mm bore radius"}],
         "features": [
             {"id": "split-1", "kind": "split slot", "topology": "through",
              "axis": _read("perpendicular to the ring axis"),
@@ -990,6 +1000,44 @@ def test_a_cavity_the_drawing_places_raises_nothing():
          "axis": _read("perpendicular to the top face"),
          "position": {"the left end face": _read("20 mm")},
          "seen_in": ["top view"]}]})
+
+    assert "conflicts" not in grown
+
+
+A_DATUM_WITH_NO_PROOF = {
+    "datums": [{"name": "the underside face", "is": "the flat face under the plate",
+                "fixes": "the height"}],
+}
+
+
+def test_a_datum_fixing_a_direction_with_no_proof_is_a_gap():
+    """
+    The 2024 Model Mania run named "the underside face" for the whole
+    vertical chain and it was the top of the plate: the base is guessed
+    correctly as often as not, and an envelope check that comes out right
+    either way cannot catch it. A datum with no `proves` — no independent
+    measured distance to a neighbouring known surface, matched against a
+    known dimension — is a gap, not a silent read.
+    """
+    grown = merge({}, A_DATUM_WITH_NO_PROOF)
+
+    said = [conflict for conflict in grown["conflicts"]
+            if conflict["about"] == "datums \u2192 the underside face \u2192 proves"]
+    assert said, [conflict["about"] for conflict in grown["conflicts"]]
+    assert said[0]["kind"] == core.A_GAP
+
+
+def test_a_datum_that_names_no_direction_needs_no_proof():
+    grown = merge({}, {"datums": [{"name": "the ring axis", "is": "the bore axis"}]})
+
+    assert "conflicts" not in grown
+
+
+def test_a_proven_datum_raises_nothing():
+    grown = merge({}, {"datums": [
+        {"name": "the underside face", "is": "the top of the plate",
+         "fixes": "the height",
+         "proves": "5.16 mm to the lowest face, matching the plate thickness of 5 mm"}]})
 
     assert "conflicts" not in grown
 

@@ -969,7 +969,9 @@ def test_a_reading_with_no_sheet_to_name_it_after_is_still_written_down():
     """
     What the run is planned, checked and built from is the file, drawing or no
     drawing, so a description written from words is written down like any
-    other — named after what it was read off, there being no sheet.
+    other — named after what it was read off, there being no sheet. The file
+    holds the part distilled, so what proves a datum is in the log beside it
+    and not in what Plan reads.
     """
     _, events, _, _ = _a_run_with_no_drawing()
 
@@ -977,7 +979,7 @@ def test_a_reading_with_no_sheet_to_name_it_after_is_still_written_down():
     assert len(events.of(PART)) == 1
     assert os.path.dirname(written) == part_file.WHERE
     assert os.path.basename(written).startswith(part_file.WITHOUT_A_SHEET)
-    assert part_file.read(written) == events.first(DESIGN).data["model"]
+    assert part_file.read(written) == distilled(events.first(DESIGN).data["model"])
     assert "sheet" not in part_file.provenance(written)
 
 
