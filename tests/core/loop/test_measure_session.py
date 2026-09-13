@@ -480,3 +480,26 @@ def test_a_session_log_tells_all_six_outcome_kinds_apart(tmp_path):
         seen.update(event.kind for event in stream)
 
     assert seen - {INTENT} == set(kinds)
+
+
+def test_a_run_counts_the_questions_it_asked(tmp_path):
+    """
+    FCC-294: pass rate, cost and wall time already have a field on
+    `Measurement`; question count did not, so the report FCC-294/FCC-319
+    are gated on could not say how many questions a run needed to finish.
+    """
+    from core.events import ANSWER, EventStream, QUESTION
+
+    events = EventStream()
+    events.emit(QUESTION, text="Which hole pattern?")
+    events.emit(ANSWER, text="4x M6, 90 degrees apart")
+    events.emit(QUESTION, text="Material?")
+    events.emit(ANSWER, text="6061-T6")
+
+    log_path = str(tmp_path / "run.jsonl")
+    with open(log_path, "w", encoding="utf-8") as handle:
+        handle.write(events.as_log())
+
+    result = measure(log_path)
+
+    assert result.question_count == 2

@@ -1,12 +1,12 @@
 {
   "sheets": [
-    "tests/modelmania/phases/mm2023-phase1.pdf",
-    "tests/modelmania/phases/mm2023-phase2.pdf",
-    "tests/modelmania/phases/mm2024-phase1.pdf",
-    "tests/modelmania/phases/mm2024-phase2.pdf",
-    "tests/modelmania/phases/mm2025-phase1.pdf",
-    "tests/modelmania/phases/mm2025-phase2.pdf",
-    "tests/modelmania/model-mania-2024.pdf",
-    "tests/modelmania/model-mania_-in-person-2023.pdf"
+    "phases/mm2023-phase1.pdf",
+    "phases/mm2023-phase2.pdf",
+    "phases/mm2024-phase1.pdf",
+    "phases/mm2024-phase2.pdf",
+    "phases/mm2025-phase1.pdf",
+    "phases/mm2025-phase2.pdf",
+    "model-mania-2024.pdf",
+    "model-mania_-in-person-2023.pdf"
   ]
 }

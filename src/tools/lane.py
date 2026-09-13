@@ -19,6 +19,8 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.dirname(ROOT))
 HANG_SECONDS = 1800
 
 
@@ -97,6 +99,19 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
     return subprocess.Popen(cmd)
 
 
+def baseline_tasks():
+    """
+    The 8 sheets pinned in `manual/modelmania/baseline_sheets.json`, each
+    walked twice: two replicates of the one architecture on the stack today,
+    reported as a spread rather than as an off/on comparison.
+    """
+    from tests import modelmania_harness
+
+    return [("%s-rep%d" % (sheet.stem, rep), str(sheet))
+            for sheet in modelmania_harness.baseline_sheets()
+            for rep in (1, 2)]
+
+
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
           resume, provider, run_seconds):
     state_path = os.path.join(out, "state.json")
@@ -167,6 +182,8 @@ def main():
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--status", action="store_true",
                         help="Print the comparison table for --out and exit")
+    parser.add_argument("--baseline", action="store_true",
+                        help="Sweep the 8 pinned baseline sheets, 2 replicates each, over --model")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
@@ -174,9 +191,14 @@ def main():
         status(args.out)
         return 0
 
-    tasks = [t.split("=", 1) for t in args.task]
-    if not tasks or not args.model:
-        raise SystemExit("--status, or --model and --task, each at least once")
+    if args.baseline:
+        if len(args.model) != 1:
+            raise SystemExit("--baseline takes exactly one --model, run twice as its own replicate")
+        tasks = baseline_tasks()
+    else:
+        tasks = [t.split("=", 1) for t in args.task]
+        if not tasks or not args.model:
+            raise SystemExit("--status, or --model and --task, each at least once")
 
     os.makedirs(args.out, exist_ok=True)
     sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from core.events import (
-    APPLIED, ASSERTION, BLOCKED, COST, GATE, PLAN_REVISED, PREFLIGHT_FAILED,
+    APPLIED, ASSERTION, BLOCKED, COST, GATE, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
     REVIEW_VERDICT, STEP_DECLARED, STEP_STARTED, replay,
 )
 
@@ -30,6 +30,7 @@ class Measurement:
     truncated: bool
     assertion_fail_rate: float
     review_fail_rate: float
+    question_count: int
 
 
 def _fail_rate(events, is_failure) -> float:
@@ -99,6 +100,7 @@ def measure(path: str) -> Measurement:
         truncated=truncated,
         assertion_fail_rate=_checks_fail_rate(assertions),
         review_fail_rate=_fail_rate(verdicts, lambda event: event.data.get("verdict") == "fail"),
+        question_count=sum(1 for event in events if event.kind == QUESTION),
     )
 
 
@@ -138,6 +140,7 @@ _ROWS = (
     ("avg wall time (s)", lambda ms: _average(ms, lambda m: m.wall_clock_seconds), "{:.1f}"),
     ("assertion fail rate", lambda ms: _average(ms, lambda m: m.assertion_fail_rate), "{:.1%}"),
     ("review fail rate", lambda ms: _average(ms, lambda m: m.review_fail_rate), "{:.1%}"),
+    ("avg question count", lambda ms: _average(ms, lambda m: m.question_count), "{:.1f}"),
 )
 
 

@@ -67,3 +67,20 @@ def test_no_logs_reports_that_plainly(tmp_path):
     text = report.report(str(tmp_path))
 
     assert "no sweep logs found" in text
+
+
+def test_question_count_is_summed_in_summary_and_shown_in_detail(tmp_path):
+    _write(str(tmp_path / "haiku" / "mm25.jsonl"), [
+        (1, "question", {"text": "Which hole pattern?"}),
+        (2, "answer", {"text": "4x M6"}),
+        (3, "question", {"text": "Material?"}),
+        (4, "answer", {"text": "6061-T6"}),
+        (5, "review_verdict", {"verdict": "pass", "reason": "ok"}),
+    ])
+
+    text = report.report(str(tmp_path))
+    summary = text.split("## Summary")[1].split("## Detail")[0]
+    detail = text.split("## Detail")[1]
+
+    assert "2.0" in summary
+    assert "questions" in detail

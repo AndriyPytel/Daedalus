@@ -8,6 +8,7 @@ HERE = Path(__file__).parent
 MANUAL_DIR = HERE.parent / "manual"
 MODELMANIA_DIR = Path(os.environ.get("FCC_MODELMANIA_DIR", MANUAL_DIR / "modelmania"))
 RECORDED_DIR = MANUAL_DIR / "recorded"
+BASELINE_SHEETS_FILE = MANUAL_DIR / "modelmania" / "baseline_sheets.json"
 SHEETS = {
     "mm25-p1-1.pdf": MODELMANIA_DIR / "mm25-p1-1.pdf",
     "mm25-p2.pdf": MODELMANIA_DIR / "mm25-p2.pdf",
@@ -22,6 +23,18 @@ READING_2023 = RECORDED_DIR / "reading_2023_clamp.json"
 def read_sheets(read_sheet):
     """Read each distinct drawing once, through the caller's sheet cache."""
     return {name: read_sheet(str(path)) for name, path in SHEETS.items()}
+
+
+def baseline_sheets():
+    """
+    The 8 sheets a baseline run and its later comparison are both pinned to.
+    Which 8 files is a repo fact read from the tracked
+    `manual/modelmania/baseline_sheets.json`; where their bytes live today is
+    an environment fact, so each name still resolves through `MODELMANIA_DIR`.
+    """
+    with BASELINE_SHEETS_FILE.open(encoding="utf-8") as reading:
+        names = json.load(reading)["sheets"]
+    return [MODELMANIA_DIR / name for name in names]
 
 
 def described_numbers():

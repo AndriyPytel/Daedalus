@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 
+import pytest
+
 from tests import modelmania_harness
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -143,3 +145,56 @@ def test_a_run_that_never_stops_is_killed_on_the_wall_clock():
 
     assert outcome == "over time"
     assert process.returncode == -9
+
+
+def test_status_runs_as_a_standalone_script_not_only_imported(tmp_path):
+    """
+    `lane.py --status` shells out to `core.measure` without a `sys.path`
+    bootstrap, so invoking it the way `--baseline` and a human both would --
+    `python src/tools/lane.py ...` from the repo root -- raised
+    `ModuleNotFoundError: No module named 'core'` before this fixed it.
+    """
+    fixtures = modelmania_harness.RECORDED_DIR / "sessions"
+    model_dir = tmp_path / "haiku"
+    model_dir.mkdir()
+    with open(os.path.join(fixtures, "reached_verdict.jsonl")) as src:
+        (model_dir / "mm25.jsonl").write_text(src.read())
+
+    lane_path = os.path.join(ROOT, "src", "tools", "lane.py")
+    result = subprocess.run(
+        [sys.executable, lane_path, "--status", "--out", str(tmp_path)],
+        capture_output=True, text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "ModuleNotFoundError" not in result.stderr
+
+
+def test_baseline_tasks_walk_the_pinned_eight_sheets_twice_as_replicates():
+    """
+    FCC-294: the lane walks each of the 8 pinned sheets twice under the same
+    model -- two replicates giving a spread, not an `off`/`on` comparison --
+    so its own `--baseline` and `report.py`'s reading of the result cannot
+    drift onto a different set of sheets than FCC-319 measures against.
+    """
+    tasks = lane.baseline_tasks()
+
+    labels = [label for label, _sheet in tasks]
+    assert len(tasks) == 16
+    assert sorted(labels) == sorted(
+        "%s-rep%d" % (stem, rep)
+        for stem in ("mm2023-phase1", "mm2023-phase2", "mm2024-phase1", "mm2024-phase2",
+                     "mm2025-phase1", "mm2025-phase2", "model-mania-2024",
+                     "model-mania_-in-person-2023")
+        for rep in (1, 2)
+    )
+    assert len(set(labels)) == 16
+
+
+def test_baseline_needs_exactly_one_model(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", [
+        "lane.py", "--baseline", "--model", "sonnet", "--model", "opus", "--out", "/tmp/x",
+    ])
+
+    with pytest.raises(SystemExit):
+        lane.main()
