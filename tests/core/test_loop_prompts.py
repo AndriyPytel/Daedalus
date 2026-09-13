@@ -263,6 +263,47 @@ def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup
     assert "where a Step stands in the order is not" in execute_system
 
 
+
+def test_design_is_told_a_chamfer_names_the_two_surfaces_it_joins():
+    """
+    "R2 TYP on all red edges" gives a radius, never a set. The doctrine
+    change is prompt copy, not a trap, so it belongs to Design the same
+    way the outer-contour rule does.
+    """
+    _, _, llm, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Add a box", satisfies=everything(A_CUBE)),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        suspect_reply(),
+        assertion_reply("assert True, 'the length'"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG])
+    design_system = " ".join(_system_messages(llm)[0].split())
+
+    assert "A fillet or a chamfer names the two surfaces it joins" in design_system
+    assert "`joins`" in design_system
+    assert "it never" in design_system and "covers more than one edge" in design_system
+
+
+def test_plan_is_told_each_joins_entry_is_its_own_step():
+    """
+    Design now enumerates one feature per edge; Plan's job over a `TYP`
+    callout shrinks to the ordinary one-entry-one-Step rule, and a Step
+    the phase refuses to build is a recorded disagreement, not prose.
+    """
+    _, _, llm, _ = drive([
+        plan_reply("Add a box"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
+        suspect_reply(), verdict_reply("pass"),
+    ])
+    _, plan_system, execute_system, _, _, _ = (" ".join(text.split()) for text in _system_messages(llm))
+
+    assert "Each `joins` entry is its own Step, never a predicate over a set" \
+        in plan_system
+    assert "A Step a phase refuses to build is a `conflict` or a `question`, " \
+        "never prose folded into another Step" in plan_system
+
+
 def test_the_reading_rules_moved_to_the_design_phase_whole():
     """
     An earlier version of these rules was live in plan.md and did not hold,

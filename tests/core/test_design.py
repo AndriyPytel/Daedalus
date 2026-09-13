@@ -279,6 +279,38 @@ def test_the_finding_does_not_pile_up_over_a_run():
 
     assert len(grown["conflicts"]) == len(merge({}, THE_CAPSULE_SAID_IN_PASSING)["conflicts"])
 
+def test_a_blanket_chamfer_note_is_a_conflict():
+    """
+    "R2 TYP on all red edges" gives a radius, never a set. A chamfer or a
+    fillet covering more than one edge in one entry, with no `joins` naming
+    the two surfaces each edge sits between, is the defect this check
+    exists to catch.
+    """
+    grown = merge({}, {"features": [
+        {"id": "rib-rounds", "kind": "chamfer",
+         "region": "R2 TYP on all red edges", "radius": _read("2 mm")}]})
+
+    about = [conflict["about"] for conflict in grown["conflicts"]]
+    assert "features → rib-rounds" in about
+
+
+def test_a_chamfer_naming_its_joins_raises_nothing():
+    """The fix the conflict asks for: one entry, two named surfaces, one radius."""
+    grown = merge({}, {"features": [
+        {"id": "rib-plate-chamfer", "kind": "chamfer",
+         "joins": ["the rib's side face", "the plate's top face"],
+         "radius": _read("2 mm")}]})
+
+    assert "conflicts" not in grown
+
+
+def test_a_hole_carrying_typ_in_its_prose_is_not_a_blanket_chamfer():
+    """The check reads `kind`, never every feature's prose for the word "typ"."""
+    grown = merge({}, {"features": [
+        {"id": "bore-typ", "kind": "Ø40 hole typ.", "topology": "through",
+         "axis": _read("perpendicular to the top face")}]})
+
+    assert "conflicts" not in grown
 
 def test_a_conflict_the_merge_did_not_see_is_still_not_a_criterion():
     """It holds two readings of which neither is settled, the same as any other."""

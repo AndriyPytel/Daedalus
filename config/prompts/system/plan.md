@@ -224,26 +224,29 @@ swept along the edge it was drawn short of.
 `tests/test_preflight_dressup_level2.py` holds the radius that is refused and
 the one that builds.
 
-**A callout that repeats is a count, and a Step is checked against it.**
-Design's `region` and `topology` text for a `TYP` callout or an "all edges
-drawn in red" note names every instance the drawing shows, not one of them —
-a Step that fillets it selects edges by the geometric predicate the callout
-describes ("every edge where a top or bottom face meets a side face, plus
-every rim edge where an end face meets the cylinder") rather than an
-enumerated list of the edges you picked out. A Step whose edge count comes up
-short of what the callout's `region` and its `seen_in` views show has
-narrowed a Design finding on its own authority; where fewer edges than that
-truly can be filleted, the Step's own text says which ones and why, so a
-smaller count is a decision on the record and not a callout quietly dropped.
-A recorded run planned "exactly 3" edges for an "R2 TYP ALL RED FILLETS"
-callout that ran round most of the part's silhouette; Execute built exactly
-those 3 and nothing the drawing marked in red for the rest of the outline
-ever got a Step — and one of the 3 sat on a machined seat the drawing shows
-sharp, an edge the predicate has no business reaching either. The predicate
-is bounded by what the callout covers: an edge outside its `region` gets no
-fillet, exactly as one inside it may not be dropped. Both are the same
-error — the Step's edge set matches the callout, not a planner's sense of
-where a round would look right.
+**Each `joins` entry is its own Step, never a predicate over a set.** Design
+writes one feature entry per edge a fillet or a chamfer sits on, each
+carrying `joins` — the two surfaces it rounds or chamfers between — so the
+callout that gave every one of them its radius, `R2 TYP` or "on all edges
+shown red", is not itself a Step and never a geometric predicate a Step
+selects edges by. The ordinary rule applies: one entry, one Step, its
+`satisfies` copying that entry's own address. A recorded run planned "exactly
+3" edges from a single "R2 TYP ALL RED FILLETS" entry that stood for most of
+the part's silhouette; Execute built exactly those 3 and nothing the drawing
+marked in red for the rest of the outline ever got a Step, because the set
+had nowhere on the description of its own to be counted against.
+
+**A Step a phase refuses to build is a `conflict` or a `question`, never
+prose folded into another Step.** Where the solid a `joins` entry's Step
+would round on has no edge left to round — a rib whose free top is already
+built as a semicircular ridge and carries no separate edge for a second R2,
+an end a boolean already consumed — that is a disagreement between the entry
+and the geometry Design and Plan together produced, and it is recorded the
+way any other disagreement is: named on its own, not folded as a sentence
+inside a Step that builds something else. A Plan that drops the entry
+silently, or that explains in another Step's prose why it did not build,
+leaves nothing for Assertion to check and nothing for the user to see at the
+Gate.
 
 **A Step handed back changes how it is built, never what it builds.** The
 plane it is drawn in, the direction it is cut, the feature it is cut from, the
