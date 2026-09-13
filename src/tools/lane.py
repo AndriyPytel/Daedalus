@@ -8,7 +8,9 @@ reads it back and skips what is already `done`, and a run whose log has not
 grown for `--hang-seconds` (default 1800) is killed and retried rather than
 left to rot the lane overnight. `--status` prints `core.measure.compare`'s
 table over the logs a lane run already wrote, without starting anything,
-and any other count falls back to one `core.measure.measure` report per log.
+and any other count falls back to one `core.measure.measure` report per
+log; `--report` prints the fuller Markdown document `report()` builds over
+the same logs, one summary row per model and one detail row per run.
 """
 import argparse
 import glob
@@ -22,6 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.dirname(ROOT))
 HANG_SECONDS = 1800
+REASON_WIDTH = 60
 
 
 def rotate(stem):
@@ -164,6 +167,128 @@ def status(out):
                 print("  %s: %s" % (field, getattr(reading, field)))
 
 
+def _logs(out):
+    """(model, label, path), one per sweep log -- a rotated attempt is not the run."""
+    models = sorted(d for d in os.listdir(out) if os.path.isdir(os.path.join(out, d)))
+    for model in models:
+        for path in sorted(glob.glob(os.path.join(out, model, "*.jsonl"))):
+            if ".attempt" in os.path.basename(path):
+                continue
+            yield model, os.path.basename(path)[: -len(".jsonl")], path
+
+
+def _assertion_counts(events):
+    from core.events import ASSERTION
+
+    confirmed = sum(len(e.data.get("confirmed") or ()) for e in events if e.kind == ASSERTION)
+    unmet = sum(len(e.data.get("unmet") or ()) for e in events if e.kind == ASSERTION)
+    return confirmed, unmet
+
+
+def _short(text):
+    """One line, short enough not to break a Markdown table row."""
+    text = " ".join(str(text).split())
+    return text if len(text) <= REASON_WIDTH else text[:REASON_WIDTH - 1] + "..."
+
+
+def _reason(events, m):
+    from core.events import REVIEW_VERDICT
+
+    verdicts = [e for e in events if e.kind == REVIEW_VERDICT]
+    if verdicts:
+        return _short(verdicts[-1].data.get("reason") or "")
+    if m.blocked_reason:
+        return _short(m.blocked_reason)
+    return ""
+
+
+def _rows(out):
+    """(model, label, events, Measurement), one per sweep log under *out*."""
+    from core.events import replay
+    from core.measure import measure
+
+    for model, label, path in _logs(out):
+        events, _truncated = replay(path)
+        yield model, label, events, measure(path)
+
+
+def _summary_rows():
+    from core.measure import _average, _pass_rate, _rate
+
+    return (
+        ("pass rate", _pass_rate, "{:.1%}"),
+        ("blocked rate", lambda ms: _rate(ms, lambda m: m.blocked_reason is not None), "{:.1%}"),
+        ("avg steps applied", lambda ms: _average(ms, lambda m: m.steps_applied), "{:.1f}"),
+        ("assertion fail rate", lambda ms: _average(ms, lambda m: m.assertion_fail_rate), "{:.1%}"),
+        ("review fail rate", lambda ms: _average(ms, lambda m: m.review_fail_rate), "{:.1%}"),
+        ("avg cost (USD)", lambda ms: _average(ms, lambda m: m.cost_usd), "{:.4f}"),
+        ("avg working (s)", lambda ms: _average(ms, lambda m: m.working_seconds), "{:.1f}"),
+        ("avg questions", lambda ms: _average(ms, lambda m: m.question_count), "{:.1f}"),
+    )
+
+
+def _row(cells):
+    return "| %s |" % " | ".join(cells)
+
+
+def _summary_table(by_model):
+    from core.measure import _pass_rate
+
+    summary_rows = _summary_rows()
+    header = ["model"] + [name for name, _, _ in summary_rows] + ["runs", "truncated"]
+    lines = [_row(header), _row(["---"] * len(header))]
+    ranked = sorted(by_model.items(), key=lambda kv: -_pass_rate(kv[1]))
+    for model, measurements in ranked:
+        cells = [model] + [fmt.format(compute(measurements)) for _, compute, fmt in summary_rows]
+        cells += [str(len(measurements)), str(sum(1 for m in measurements if m.truncated))]
+        lines.append(_row(cells))
+    return "\n".join(lines)
+
+
+def _verdict(events, m):
+    if not events:
+        return "failed to start"
+    if m.verdict:
+        return m.verdict
+    if m.blocked_reason:
+        return "blocked"
+    return "-"
+
+
+def _detail_table(rows):
+    header = ["model", "sheet", "verdict", "reason", "confirmed/unmet",
+             "steps started/applied", "preflight fails", "cost (USD)",
+             "working (s)", "questions", "truncated"]
+    lines = [_row(header), _row(["---"] * len(header))]
+    for model, label, events, m in rows:
+        confirmed, unmet = _assertion_counts(events)
+        cells = [model, label, _verdict(events, m), _reason(events, m),
+                "%d/%d" % (confirmed, unmet),
+                "%d/%d" % (m.steps_started, m.steps_applied),
+                str(m.preflight_failures), "{:.4f}".format(m.cost_usd),
+                "{:.1f}".format(m.working_seconds), str(m.question_count),
+                "yes" if m.truncated else "no"]
+        lines.append(_row(cells))
+    return "\n".join(lines)
+
+
+def report(out):
+    """The whole Markdown document for the lane directory *out*."""
+    rows = list(_rows(out))
+    by_model = {}
+    for model, _label, _events, m in rows:
+        by_model.setdefault(model, []).append(m)
+    if not by_model:
+        return "# %s\n\nno sweep logs found\n" % out
+    return "\n\n".join([
+        "# %s" % out,
+        "## Summary",
+        _summary_table(by_model),
+        "## Detail",
+        _detail_table(rows),
+    ]) + "\n"
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", action="append", default=[],
@@ -182,6 +307,9 @@ def main():
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--status", action="store_true",
                         help="Print the comparison table for --out and exit")
+    parser.add_argument("--report", action="store_true",
+                        help="Print the Markdown report for --out and exit")
+    parser.add_argument("--save", help="Also write --report's Markdown to this path")
     parser.add_argument("--baseline", action="store_true",
                         help="Sweep the 8 pinned baseline sheets, 2 replicates each, over --model")
     parser.add_argument("--out", required=True)
@@ -191,6 +319,14 @@ def main():
         status(args.out)
         return 0
 
+    if args.report:
+        text = report(args.out)
+        print(text)
+        if args.save:
+            with open(args.save, "w", encoding="utf-8") as handle:
+                handle.write(text)
+        return 0
+
     if args.baseline:
         if len(args.model) != 1:
             raise SystemExit("--baseline takes exactly one --model, run twice as its own replicate")
@@ -198,7 +334,7 @@ def main():
     else:
         tasks = [t.split("=", 1) for t in args.task]
         if not tasks or not args.model:
-            raise SystemExit("--status, or --model and --task, each at least once")
+            raise SystemExit("--status, --report, or --model and --task, each at least once")
 
     os.makedirs(args.out, exist_ok=True)
     sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,

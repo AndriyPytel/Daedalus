@@ -198,3 +198,77 @@ def test_baseline_needs_exactly_one_model(monkeypatch, capsys):
 
     with pytest.raises(SystemExit):
         lane.main()
+
+
+def _write_events(path, events):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        for at, kind, data in events:
+            handle.write(json.dumps({"kind": kind, "at": at, "data": data}) + "\n")
+
+
+def test_report_marks_a_log_with_no_events_failed_to_start(tmp_path):
+    _write_events(str(tmp_path / "haiku" / "mm25.jsonl"), [])
+
+    text = lane.report(str(tmp_path))
+
+    assert "failed to start" in text
+
+
+def test_report_marks_an_unparseable_log_failed_to_start(tmp_path):
+    path = tmp_path / "haiku" / "mm25.jsonl"
+    os.makedirs(path.parent)
+    path.write_text("{not json\n")
+
+    text = lane.report(str(tmp_path))
+
+    assert "failed to start" in text
+
+
+def test_report_sums_assertion_counts_across_events(tmp_path):
+    _write_events(str(tmp_path / "haiku" / "mm25.jsonl"), [
+        (1, "assertion", {"confirmed": ["a", "b"], "unmet": ["c"]}),
+        (2, "assertion", {"confirmed": ["d"], "unmet": []}),
+        (3, "review_verdict", {"verdict": "pass", "reason": "ok"}),
+    ])
+
+    text = lane.report(str(tmp_path))
+
+    assert "3/1" in text
+
+
+def test_report_sorts_models_by_pass_rate_descending(tmp_path):
+    _write_events(str(tmp_path / "weak" / "mm25.jsonl"), [
+        (1, "review_verdict", {"verdict": "fail", "reason": "no"}),
+    ])
+    _write_events(str(tmp_path / "strong" / "mm25.jsonl"), [
+        (1, "review_verdict", {"verdict": "pass", "reason": "ok"}),
+    ])
+
+    text = lane.report(str(tmp_path))
+    summary = text.split("## Summary")[1].split("## Detail")[0]
+
+    assert summary.index("strong") < summary.index("weak")
+
+
+def test_report_with_no_logs_says_so_plainly(tmp_path):
+    text = lane.report(str(tmp_path))
+
+    assert "no sweep logs found" in text
+
+
+def test_report_sums_question_count_in_summary_and_shows_it_in_detail(tmp_path):
+    _write_events(str(tmp_path / "haiku" / "mm25.jsonl"), [
+        (1, "question", {"text": "Which hole pattern?"}),
+        (2, "answer", {"text": "4x M6"}),
+        (3, "question", {"text": "Material?"}),
+        (4, "answer", {"text": "6061-T6"}),
+        (5, "review_verdict", {"verdict": "pass", "reason": "ok"}),
+    ])
+
+    text = lane.report(str(tmp_path))
+    summary = text.split("## Summary")[1].split("## Detail")[0]
+    detail = text.split("## Detail")[1]
+
+    assert "2.0" in summary
+    assert "questions" in detail
