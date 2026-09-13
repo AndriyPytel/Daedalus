@@ -44,6 +44,7 @@ from core.loop.assertion import (
 from core.loop.budgets import Budgets, PhaseError, _Revisions, revisions_ceiling
 from core.loop.describe import _DECIDED, _RAN_OUT_OF_ROOM, _describe_the_part
 from core.loop.execute import (
+    OP_VERBS,
     Attempt,
     Looks,
     TYPE_CACHE_PATH,
@@ -503,7 +504,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
 
         outcome = written.for_step(index + 1)
         if not outcome.code and written.unbuildable:
-            if not _changes_the_shape(step):
+            if not _changes_the_shape(step, op=ops[index] if index < len(ops) else None):
                 cited = list(cites[index]) if index < len(cites) else []
                 unbuilt.append({"step": step, "why": written.unbuildable,
                                 "entries": cited})
@@ -604,13 +605,16 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             "retried_names": sorted(retried_names)}
 
 
-def _changes_the_shape(step):
+def _changes_the_shape(step, op=None):
     """
-    Whether the part depends on *step* — read off the words the Step is in.
+    Whether the part depends on *step*, preferring the closed nomenclature.
 
-    Conservative: a Step is geometry unless it plainly names a property of the
-    Document that no geometry depends on. Unrecognised operations stay geometry.
+    *op* is `ops[index]`, one of `OP_VERBS` or `None`; a verb settles the
+    question outright, and `None` falls back to the same conservative word
+    reading of the Step's prose as before.
     """
+    if op is not None:
+        return op in OP_VERBS
     said = str(step).lower()
     return not (any(word in said for word in _A_PROPERTY_OF_THE_DOCUMENT)
                 and not any(word in said for word in _SHAPES_THE_PART))
