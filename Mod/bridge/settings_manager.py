@@ -1,12 +1,11 @@
 """
-SettingsManager – Qt-signal wrapper around `core.settings`'s persistence.
-
-All components (Preferences UI, Chat Panel, Agents) talk to this class instead
-of calling FreeCAD.ParamGet directly.  Qt signals let the Chat UI react to
-preference changes in real-time without restarting FreeCAD. The persistence
-itself -- every read and most writes -- lives in `core.settings`, which has no
-`PySide` import; this class only adds the emit on top of the four writes a
-signal is connected to.
+SettingsManager -- Qt-signal wrapper around `core.settings`'s persistence,
+so every component (Preferences UI, Chat Panel, Agents) talks to this class
+instead of calling FreeCAD.ParamGet directly. Its signals let the Chat UI
+react to preference changes in real time without restarting FreeCAD. The
+persistence itself -- every read and most writes -- lives in `core.settings`,
+which has no `PySide` import; this class only adds the emit on top of the
+writes a signal is connected to.
 """
 from functools import lru_cache
 
@@ -17,15 +16,11 @@ from core import settings as _settings
 
 class _SettingsManager(QObject):
     """
-    Internal singleton implementation.  Access via ``settings_manager.instance()``.
-
-    ``api_keys_changed`` is emitted after any key add, remove or edit;
-    ``base_urls_changed`` after a local server's address changes;
-    ``default_model_changed`` when the default model preference changes; and
-    ``last_model_changed`` when the chat UI's last-used model changes.
-
-    Every other read and write is `core.settings.Settings`'s own method,
-    reached here through `__getattr__` since it carries no signal to emit.
+    Internal singleton implementation, reached via ``settings_manager.instance()``.
+    ``api_keys_changed``, ``base_urls_changed``, ``default_model_changed`` and
+    ``last_model_changed`` each fire after their matching write, and every
+    other read and write is `core.settings.Settings`'s own method, reached
+    here through `__getattr__` since it carries no signal to emit.
     """
 
     api_keys_changed    = Signal(list)

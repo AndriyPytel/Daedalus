@@ -1,13 +1,7 @@
 Mod/bridge/logger.py::_console
-Mod/bridge/logger.py::module
 Mod/bridge/logger.py::notify_user
 Mod/bridge/main_thread.py::_Dispatcher
 Mod/bridge/provider_manager.py::_ProviderManager
-Mod/bridge/provider_manager.py::_configured
-Mod/bridge/provider_manager.py::_on_keys_changed
-Mod/bridge/provider_manager.py::_remember
-Mod/bridge/provider_manager.py::test_connection
-Mod/bridge/settings_manager.py::_SettingsManager
 Mod/ui/assertion_results_widget.py::_progress_fractions
 Mod/ui/assertion_results_widget.py::module
 Mod/ui/chat_widgets.py::TextMessageWidget

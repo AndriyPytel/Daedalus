@@ -50,7 +50,7 @@ def test_no_module_turns_python_warnings_off_through_the_environment():
 
 
 ALLOWED_EXCEPT_PASS = {
-    ("Mod/bridge/logger.py", 84),
+    ("Mod/bridge/logger.py", 42),
     ("Mod/ui/accordion_widget.py", 190),
     ("Mod/ui/copilot_panel.py", 664),
     ("Mod/ui/ui_helpers.py", 148),
