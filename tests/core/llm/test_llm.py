@@ -210,7 +210,7 @@ def test_being_out_of_credit_is_named_as_a_billing_problem():
 def test_a_model_that_cannot_accept_images_says_so_and_names_itself():
     """
     An attachment on a text-only model must read as "switch models", not as a
-    crash. FCC-4.
+    crash.
     """
     import litellm
 
@@ -329,7 +329,7 @@ def test_thinking_budget_is_requested_when_configured():
 def test_a_reasoning_model_is_told_how_hard_to_think():
     """
     Uncapped, kimi-k3 spent ten minutes circling one dimension and never left
-    its own reasoning (FCC-108). What it is told is the dial, which is
+    its own reasoning. What it is told is the dial, which is
     `medium` until the user moves it.
     """
     client, completion = client_replaying(openai_chunks())
@@ -372,7 +372,7 @@ def test_a_caller_s_own_reasoning_effort_wins():
 
 
 def test_a_reply_gets_an_output_cap_even_where_no_thinking_budget_is_configured():
-    """A reasoning model with no cap spends the gateway default on thought alone (FCC-108)."""
+    """A reasoning model with no cap spends the gateway default on thought alone."""
     client, completion = client_replaying(openai_chunks())
 
     collect(client.stream([{"role": "user", "content": "hi"}]))
@@ -781,7 +781,6 @@ def test_a_pdf_on_a_model_that_reads_pdfs_is_usable(tmp_path):
     """
     Drawings arrive as PDFs, and `IMAGE_SUFFIXES` turned every one of them away
     before the run started while the chip icon dressed them as attachable.
-    FCC-89.
     """
     assert unusable_attachments([_a_pdf(tmp_path)], "anthropic/claude-3-7-sonnet-20250219") \
         == []
@@ -791,7 +790,7 @@ def test_a_model_that_cannot_read_a_pdf_is_named_before_the_run(tmp_path):
     """
     The case that is now possible: the model takes images and not PDFs. It has
     to be named before anything is sent, in the same voice as the sentences
-    beside it — the provider's own complaint arrives too late (FCC-14). Grok 2
+    beside it — the provider's own complaint arrives too late. Grok 2
     Vision is such a model: it sees, and it does not read a PDF.
     """
     model = "xai/grok-2-vision-1212"

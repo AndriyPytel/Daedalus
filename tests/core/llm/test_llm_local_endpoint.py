@@ -88,7 +88,7 @@ def test_how_hard_to_think_reaches_a_model_litellm_has_no_entry_for(local_endpoi
     """
     The gateway model kimi-k3 runs on is one LiteLLM has never heard of, and it
     drops unknown params rather than sending them. What the server received is
-    the only proof the effort was not dropped on the way out (FCC-108).
+    the only proof the effort was not dropped on the way out.
     """
     server, base = local_endpoint
     client = LiteLLMClient(model="openai/local-model", api_key="not-needed", api_base=base)
