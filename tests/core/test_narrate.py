@@ -113,7 +113,7 @@ def test_the_description_is_not_said_and_the_file_it_went_to_is():
     """
     The description is a document, and a document is opened rather than said:
     what the transcript carries is the path it was written to, which is the
-    file a misreading is corrected in and the run is planned from (FCC-108).
+    file a misreading is corrected in and the run is planned from.
     """
     assert narrate(an_event(DESIGN)) == Narration()
     assert narrate(an_event(PART)).line == \
@@ -128,7 +128,7 @@ def test_the_users_own_answer_is_not_repeated_back_at_them():
 def test_an_answer_off_the_drawing_says_so():
     """
     A value read off the sheet is read, not assumed, so it may not fall through
-    to "No values given" (FCC-90).
+    to "No values given".
     """
     event = Event(kind=ANSWER, data={"text": "the pockets go through", "by": "drawing"})
 

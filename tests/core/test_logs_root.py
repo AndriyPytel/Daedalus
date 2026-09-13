@@ -1,4 +1,4 @@
-"""Run-evidence paths derive from one root, never the process's cwd — FCC-358."""
+"""Run-evidence paths derive from one root, never the process's cwd."""
 import importlib
 from pathlib import Path
 

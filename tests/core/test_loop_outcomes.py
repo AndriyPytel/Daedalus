@@ -1,10 +1,11 @@
 """
-Level 1 — a run ends one of six distinct ways (FCC-303), and none of them is
+Level 1 — a run ends one of six distinct ways, and none of them is
 folded into another when `core/loop.py` maps what happened to what the event
 stream says.
 
-`test_measure_session.py`'s FCC-292 tests already prove `stopped` is not
-`blocked`; these extend the same proof to `aborted` and `budget_exhausted`.
+The `stopped`-versus-`blocked` tests in `test_measure_session.py` already
+prove `stopped` is not `blocked`; these extend the same proof to `aborted`
+and `budget_exhausted`.
 """
 from core.events import (
     ABORTED, BLOCKED, BUDGET_EXHAUSTED, COMPLETED, FAILED, STOPPED, EventStream,
@@ -18,7 +19,7 @@ def test_stopping_before_planning_is_recorded_as_stopped_not_aborted():
     """
     Stop lets the in-flight Step finish: `aborted` is never asked to say
     otherwise, so the default (never) applies and the run ends `stopped`.
-    `cancelled()` is checked before anything is planned (FCC-77), so an empty
+    `cancelled()` is checked before anything is planned, so an empty
     script never has to answer.
     """
     llm = ScriptedLLMClient([])
@@ -39,7 +40,7 @@ def test_stopping_before_planning_is_recorded_as_stopped_not_aborted():
 def test_aborting_at_the_same_boundary_is_recorded_as_aborted_not_stopped():
     """
     Same `cancelled()` reaching the same `Stopped` boundary in `run` — what
-    tells the two apart is the `aborted` callable alone (FCC-303): killing
+    tells the two apart is the `aborted` callable alone: killing
     the kernel is the panel's job, not the loop's, so this is exercised at
     the boundary the loop actually owns.
     """

@@ -108,10 +108,10 @@ from tests.loop_helpers import (
 
 def test_looks_per_turn_and_its_bounded_loop_are_gone():
     """
-    FCC-304: the Look budget goes away because reading the Document is
-    ordinary code inside a Step now that the kernel namespace is open
-    (FCC-299) — `looks_per_turn` and the turn loop that spent it must not
-    come back under this or any other name.
+    The Look budget goes away because reading the Document is ordinary code
+    inside a Step now that the kernel namespace is open — `looks_per_turn`
+    and the turn loop that spent it must not come back under this or any
+    other name.
     """
     assert not hasattr(Budgets(), "looks_per_turn")
     loop_dir = os.path.dirname(loop_execute_module.__file__)
@@ -266,7 +266,7 @@ def test_a_step_that_never_failed_any_other_way_tells_plan_to_change_the_step():
     """
     Rewording it sends Execute back at the same wall, which is what the
     recorded run did: three identical failures, a replan, and three more.
-    FCC-372: the failures are rewrites in one kernel session now, not
+    The failures are rewrites in one kernel session now, not
     separate Execute calls, before Plan hears about any of it. `zero()` is a
     fourth, free attempt ahead of the three charged ones -- a declared
     Step's first refusal costs nothing against `attempts_per_step`, the same
@@ -540,7 +540,7 @@ def test_a_standing_approval_is_not_asked_again_when_the_plan_is_revised():
 
 
 def test_without_a_standing_approval_every_plan_still_reaches_the_gate():
-    """FCC-68 unchanged: this is opt-in, and the default is what it always was."""
+    """This is opt-in, and the default is what it always was."""
     gate = gate_that()
 
     result, _, _, _ = driven_through(gate, [
@@ -639,7 +639,7 @@ def test_a_standing_approval_still_lets_the_user_be_asked_about_the_result():
 
 def test_a_standing_approval_does_not_cover_an_assumption_the_user_has_not_read():
     """
-    FCC-101, corrected. The value nobody supplied is the one thing a standing
+    The value nobody supplied is the one thing a standing
     approval cannot stand over: it is remade from nothing on every revision,
     and the Step's prose is the only place it is visible before the geometry.
 
@@ -667,8 +667,8 @@ def test_a_standing_approval_does_not_cover_an_assumption_the_user_has_not_read(
 
 def test_a_standing_approval_still_covers_a_revision_that_assumes_nothing_new():
     """
-    What stands is approval of the path, and FCC-101 is the whole reason it
-    stands: a revision that only rewrites how the part is built asks nobody.
+    What stands is approval of the path, not any assumed value: a revision
+    that only rewrites how the part is built asks nobody.
     """
     from core.loop.gate import APPROVE, Approval
 
@@ -780,8 +780,7 @@ def test_a_shape_the_drawing_will_not_say_is_settled_and_shown_at_the_gate():
     Neither the box the block replaced nor the block itself. Where the sheet
     will not say what the outer contour is, Design is told to settle it and to
     write down what it settled it off — and the choice stands above the Steps,
-    where FCC-96's actual defect was that a padded profile was invisible
-    (ADR-0022).
+    where an earlier defect was that a padded profile was invisible.
     """
     said_in_passing = {
         "envelope": {"length between the end faces": read("150 mm")},
@@ -1064,7 +1063,7 @@ def test_what_the_correction_displaced_is_kept_in_the_reading():
 
 def test_a_re_read_that_settles_nothing_no_longer_stops_the_run():
     """
-    The stop is gone (ADR-0022). A finding the drawing would not settle and no
+    The stop is gone. A finding the drawing would not settle and no
     measurement can settle either is a conflict the Gate is shown, not a block
     telling the user to hand-edit `logs/parts/*.yaml`.
     """
@@ -1089,7 +1088,7 @@ def test_a_re_read_that_settles_nothing_no_longer_stops_the_run():
 def test_a_sheet_that_contradicts_its_own_tracing_says_so_on_the_part(
         tmp_path, monkeypatch):
     """
-    The whole of FCC-116 to FCC-121 arriving somewhere. `100` printed across a
+    Several separate fixes arriving somewhere. `100` printed across a
     plate the pixels measure at 98.2 is two things that cannot both be true, and
     that is a conflict — not a correction, because which of the two is wrong is
     exactly what this cannot know.
@@ -1127,7 +1126,7 @@ def test_a_geometric_conflict_names_both_points_it_is_about(tmp_path, monkeypatc
 def test_a_redundant_constraint_reaches_the_part_in_the_words_of_a_conflict(
         tmp_path, monkeypatch):
     """
-    FCC-122 asked for a conflicting *or redundant* constraint index and the
+    A conflicting *or redundant* constraint index was asked for and the
     sweep carried the first only. A reading the solver is told the same thing
     about twice is as unsettled as one it is told two contradicting things
     about — neither is something a re-read can be asked — so it arrives at the
