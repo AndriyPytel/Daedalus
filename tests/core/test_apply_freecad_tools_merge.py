@@ -1,4 +1,4 @@
-"""Guards the apply/freecad_tools merge — FCC-330.
+"""Guards the apply/freecad_tools merge.
 
 `core/freecad/freecad_tools.py` does not exist as a compatibility shim: every
 call site was rewritten to `core.freecad_apply` in the same commit. The former

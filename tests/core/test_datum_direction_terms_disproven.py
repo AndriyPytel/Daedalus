@@ -1,9 +1,10 @@
 """
-FCC-242's own measurement, kept as a test because it is the reason the ticket
-closed `wontfix` rather than delivering a Gate check.
+The datum-name comparison ticket's own measurement, kept as a test because it
+is the reason that ticket closed `wontfix` rather than delivering a Gate
+check.
 
-The premise was: a datum name is a term now that FCC-234 (`config/prompts/
-language.md`, landed 2026-08-27) closed the vocabulary, so two claims naming
+The premise was: a datum name is a term now that `config/prompts/
+language.md` (landed 2026-08-27) closed the vocabulary, so two claims naming
 different datums for the same thing can be compared by term rather than by
 prose similarity. The evidence was session `480b9995421e443d97b439a4f55bc3fe`
 Step 8, which cites `hole-right -> axis` (the acceptance line reads "...from

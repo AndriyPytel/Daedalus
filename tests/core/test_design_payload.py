@@ -18,7 +18,7 @@ multi-view sheet no longer takes that call at all.
 `FIRST_PASS_CEILING_RATIO` is measured, not chosen: it is the smallest ratio
 that passes the current baselines. Raising it requires re-measurement and a
 stated reason. The current value (1.69) is what Design's own call is
-charged for the shared vocabulary it actually uses (ADR-0026, FCC-234):
+charged for the shared vocabulary it actually uses:
 `core.prompt` composes each phase from the sections of `config/prompts/
 language.md` that phase reads, not the whole file, so Design carries the
 closed-naming section and the English-only rule — it neither writes nor
@@ -34,9 +34,9 @@ buys is the attribution the feet decide — a run that read the 7 and the 14 of
 the 2023 bottom view off the tile they are legible in gave both to a feature
 it invented, and rebuilt the part around it.
 
-The ratio moved again to 1.71 when `design.md` gained FCC-322's own "How you
+The ratio moved again to 1.71 when `design.md` gained a "How you
 work" section, stating the multi-turn `{"code"}`/`{"delegate"}`/`{"declare"}`
-contract FCC-321's agent loop actually runs on — every page-sized call is
+contract the agent loop actually runs on — every page-sized call is
 Design's own composed prompt plus that page's evidence, so a section every
 call carries prices in on every one of them, not once.
 """
@@ -97,7 +97,7 @@ def _design_prompt_tokens():
     """
     What Design's own system prompt actually costs per call: `core.loop.
     prompt`'s composed text (`design.md` plus the shared vocabulary,
-    `language.md`, since FCC-234), not `design.md` read on its own — a first
+    `language.md`), not `design.md` read on its own — a first
     pass that leaves `language.md` out of its own cost is undercounted
     against the calls it is really measuring.
     """

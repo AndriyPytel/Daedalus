@@ -52,7 +52,7 @@ def test_a_name_that_merely_looks_like_one_is_not_an_element():
 
 
 def test_only_the_three_kinds_adr_0005_names_are_rejected():
-    """ADR-0005 names Edge/Face/Vertex. 'Solid1' is a perfectly good Label."""
+    """Only Edge/Face/Vertex are the checked kinds. 'Solid1' is a perfectly good Label."""
     assert lint("obj.Label = 'Solid1'").ok
     assert lint("name = 'Wire2'").ok
     assert lint("name = 'Shell3'").ok
@@ -154,7 +154,7 @@ def test_document_only_code_passes():
 def test_a_constraint_type_that_does_not_exist_is_rejected(code):
     """
     Not a wrong answer — a SIGSEGV inside the C++ constructor, with no
-    traceback for the next attempt to correct against. FCC-19.
+    traceback for the next attempt to correct against.
     """
     result = lint(code)
 
@@ -199,7 +199,7 @@ def test_a_real_constraint_signature_passes(code):
     "Sketcher.Constraint('Distance', 0, 1, **options)",
 ])
 def test_a_call_lint_cannot_read_passes(code):
-    """The rule never rejects code it has not actually read. FCC-19."""
+    """The rule never rejects code it has not actually read."""
     assert lint(code).ok, lint(code).report()
 
 
@@ -260,7 +260,7 @@ def test_a_part_feature_may_still_be_given_a_shape():
     """
     The rule is about passing a raw shape off as a PartDesign feature, not
     about Part. A Step that legitimately builds a Part shape outside any Body
-    still runs. FCC-60.
+    still runs.
     """
     code = (
         "cut = base.Shape.cut(tool.Shape)\n"
@@ -308,8 +308,8 @@ def test_a_handler_that_does_something_is_accepted():
 def test_the_element_reason_no_longer_points_at_shape():
     """
     Told to find the edge from `.Shape`, the assistant computes an index and
-    has nowhere to put it but an assembled 'Face%d'. Carried in from FCC-26,
-    closed wontfix: a message fix, not a new rule.
+    has nowhere to put it but an assembled 'Face%d'. The fix here is a
+    message fix, not a new rule.
     """
     reason = lint("fillet.Base = (box, ['Edge12'])").report()
 
@@ -348,7 +348,7 @@ def test_the_recorded_runs_r2_fillet_is_rejected_for_never_saying_how_many():
     The Step asked for the outline of an obround pad, whose profile meets the
     end faces in one smooth loop and has no longitudinal edge at all. The
     filter could only ever find the eight pocket corners, it found them, and
-    the run reported the fillet applied. FCC-151.
+    the run reported the fillet applied.
     """
     result = lint(THE_RECORDED_R2_FILLET)
 
@@ -463,7 +463,7 @@ def test_reading_midplane_is_untouched():
 
 def test_addobject_typeid_matching_the_steps_op_is_accepted():
     """
-    ADR-0026/FCC-A-53: the TypeId check is now `op_typeid_mismatch`, read off
+    The TypeId check is now `op_typeid_mismatch`, read off
     the kernel's own report of what a Step built rather than parsed out of
     the code — `lint()` no longer holds an opinion on `op` at all.
     """
@@ -504,8 +504,8 @@ def test_scaffolding_typeids_are_accepted_under_any_op():
 
 def test_no_op_given_skips_the_typeid_check():
     """Legacy code, applied without a declared `op`, is not held to the
-    allow-list at all — `core/lint.py` gained this check under FCC-233 and
-    every recorded run before it never named one."""
+    allow-list at all — `core/lint.py` gained this check after runs began
+    naming an `op`, and every recorded run before that never named one."""
     from core.lint import op_typeid_mismatch
 
     created, objects = ["Pad"], [{"name": "Pad", "type": "Part::Extrusion"}]
@@ -524,7 +524,7 @@ def test_an_op_off_the_36_list_skips_the_typeid_check():
 
 def test_a_literal_name_lookup_of_an_object_this_step_just_created_is_rejected():
     """
-    FCC-302's own reproduction: FreeCAD renames a new object on a name
+    This reproduces FreeCAD renaming a new object on a name
     collision, so a Step that re-fetches by the literal string it just
     handed to addObject is not guaranteed to reach the object it made.
     """

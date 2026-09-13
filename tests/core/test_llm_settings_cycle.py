@@ -1,4 +1,4 @@
-"""Guards the settings/llm separation — FCC-337.
+"""Guards the settings/llm separation.
 
 `core/settings.py` must not import anything from `core/llm` at all: reading
 one setting should not load the whole LLM stack. The role-table defaults live
