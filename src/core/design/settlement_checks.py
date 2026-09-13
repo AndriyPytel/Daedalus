@@ -1,16 +1,11 @@
-"""Findings about whether a placement or a conflict is settled -- by a
-feature, by nothing, or by the tracing that ran over it.
-
-`twice_over` closes a gap `config/prompts/design.md`'s reconciliation
-turn already asks the model for ("same kind, overlapping position
-datums ... if all values match, add superseded_by ... if any value
-differs, raise a conflicts entry") but `kind` being prose left
-unchecked: four such pairs stood in 47 recorded models
-(`slot-arm`/`cutout-web`, `slot`/`cutout-blend`, `bore-upper`/
-`hole-boss`, `left-mounting-hole`/`phase2-left-mounting-slot`), past
-the old proxy (`placed_by_nothing`) because `bore-upper` and
-`hole-boss` both carry a filled `position`, framed off two different
-datums pinning the same point.
+"""
+Findings about whether a placement or a conflict is settled -- by a
+feature, by nothing, or by the tracing that ran over it. `twice_over`
+closes a gap the reconciliation prompt already asks the model for but
+`kind` being prose left unchecked: four such pairs stood in 47 recorded
+models, past the old proxy (`placed_by_nothing`), because both features in
+a pair can carry a filled `position` framed off two different datums
+pinning the same point.
 """
 
 
@@ -38,14 +33,13 @@ from core.design.gaps import _each_value
 
 def placement(model) -> list:
     """
-    A feature with a size in a direction and nothing placing it in that one.
-
-    Silence had to stop being an option: an unrecorded placement owns no
-    check, so a run can go green on a part wrong in the way the drawing is
-    loudest about. Direction is attributed through the datum a position is keyed by.
-
-    A depth/thickness on a feature with an axis runs along the feature's
-    own axis, not the part's -- `direction`'s concern, not this one's.
+    A feature with a size in a direction and nothing placing it in that
+    one. Silence had to stop being an option: an unrecorded placement owns
+    no check, so a run can go green on a part wrong in the way the drawing
+    is loudest about; direction is attributed through the datum a position
+    is keyed by. A depth/thickness on a feature with an axis runs along the
+    feature's own axis, not the part's -- `direction`'s concern, not this
+    one's.
     """
     fixed = _which_way_each_datum_fixes(model)
 
@@ -75,11 +69,10 @@ _A_CAVITY = ("cutout", "cut-out", "cut out", "slot", "pocket", "recess",
 def placed_by_nothing(model) -> list:
     """
     A cavity nothing places, built wherever the profile happens to allow.
-
-    The one cavity in the web was described twice: `slot-arm`, 30 mm long, and
-    `cutout-web` with `position: {}` — nothing at all. Plan built a slot 8 mm
-    wide it invented, and an R10 circle it invented, and the circle cut the
-    Body into two solids and ended the run (ADR-0026).
+    The one cavity in the web was described twice: `slot-arm`, 30 mm long,
+    and `cutout-web` with `position: {}`, nothing at all. Plan built a slot
+    8 mm wide it invented, and an R10 circle it invented, and the circle
+    cut the Body into two solids and ended the run.
     """
     cavities = [feature for feature in _features(model)
                 if any(word in _what_it_is(feature) for word in _A_CAVITY)]
@@ -107,14 +100,13 @@ def placed_by_nothing(model) -> list:
 
 def twice_over(model) -> list:
     """
-    Two features of the same `kind`, placed against a shared datum, and
-    not already reconciled by `superseded_by` -- one physical feature read twice.
-
-    `kind` equality is exact, never a substring search (ADR-0026): the
-    enum this closes it into is what the rest of this module's prose
-    matching cannot rely on here. Shared-datum values need not agree --
-    agreement is a duplicate, disagreement is `unsafe_supersession`'s
-    territory once `superseded_by` names the pair.
+    Two features of the same `kind`, placed against a shared datum, and not
+    already reconciled by `superseded_by` -- one physical feature read
+    twice. `kind` equality is exact, never a substring search: the enum
+    this closes it into is what the rest of this module's prose matching
+    cannot rely on here. Shared-datum values need not agree -- agreement
+    is a duplicate, disagreement is `unsafe_supersession`'s territory once
+    `superseded_by` names the pair.
     """
     features = [feature for feature in _features(model) if not feature.get("superseded_by")]
 
@@ -149,14 +141,11 @@ _SAYS_WHAT_SETTLED_IT = {"assumed": "because", "derived": "from"}
 
 def settled_by_nothing(model) -> list:
     """
-    An entry that does not say what settled its value.
-
-    `assumed` carries `because`, `derived` carries `from` -- one line each
-    saying who settled the value and on what (ADR-0022,
-    config/prompts/design.md). `decided_for_you` falls back to prose when
-    nothing said what settled the value, which nobody can then check.
-
-    One rule, not two: a gap, not a refusal -- the run carries on.
+    An entry that does not say what settled its value. `assumed` carries
+    `because`, `derived` carries `from`, one line each saying who settled
+    the value and on what; `decided_for_you` falls back to prose when
+    nothing said what settled the value, which nobody can then check. One
+    rule, not two: a gap, not a refusal, the run carries on.
     """
     found = []
     for path, node in _each_value(model, ""):

@@ -93,11 +93,10 @@ def _section_diff(section, before, after):
 
 def merge(held, offered):
     """
-    *offered* written into *held*, filling only what is empty.
-
-    A value that is already on the model stays, whatever a later pass believes
-    it saw. What is empty is filled, what is new is added, and what disagrees
-    is appended to `conflicts`. A fragment that is not a model at all leaves
+    *offered* written into *held*, filling only what is empty. A value that
+    is already on the model stays, whatever a later pass believes it saw,
+    what is empty is filled, what is new is added, and what disagrees is
+    appended to `conflicts`. A fragment that is not a model at all leaves
     the part exactly as it was.
     """
     if not isinstance(offered, dict):
@@ -116,10 +115,9 @@ def merge(held, offered):
 def _refused_kinds(offered):
     """
     Features in *offered* naming a `kind` off `FEATURE_KIND`, checked only
-    when *offered* carries `"kind_vocabulary": "closed"` (ADR-0026).
-
-    Rejects the enforce-everywhere alternative ADR-0026 measured at 14.9%
-    compliance; a banned prose synonym (`round` onto `fillet`) names the kind.
+    when *offered* carries `"kind_vocabulary": "closed"`. Rejects the
+    enforce-everywhere alternative, measured at 14.9% compliance; a banned
+    prose synonym (`round` onto `fillet`) names the kind.
     """
     if not isinstance(offered, dict) or offered.get("kind_vocabulary") != CLOSED_KIND_VOCABULARY:
         return []
@@ -163,10 +161,9 @@ CONFLICT_ENTRY_FIELDS = ("about", "stands", "was_also_said")
 def _refused_conflicts(offered):
     """
     Entries of `conflicts` missing one of `CONFLICT_ENTRY_FIELDS`, checked
-    only under `kind_vocabulary: closed` (ADR-0026).
-
-    A reply invented four conflict shapes in one session, 44 of 46 entries
-    with no `what` at all -- refused whole, travels on in `was_also_said`.
+    only under `kind_vocabulary: closed`. A reply invented four conflict
+    shapes in one session, 44 of 46 entries with no `what` at all -- refused
+    whole, travels on in `was_also_said`.
     """
     if not isinstance(offered, dict) or offered.get("kind_vocabulary") != CLOSED_KIND_VOCABULARY:
         return []

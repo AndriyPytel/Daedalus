@@ -68,13 +68,12 @@ _THE_PROOF = ("from", "seen_in", "round_in")
 
 def distilled(model) -> dict:
     """
-    The part, without the evidence Design gathered to settle it.
-
-    A projection of the model -- no second structure to hold an order the
-    drawing never showed (ADR-0019, ADR-0024); description and criteria
-    come off one model (ADR-0020). A disagreement goes whole, unargued; a
-    gap nobody answered survives whole; a dead datum's values are
-    re-measured from the one that takes over; `because` stays (ADR-0022).
+    The part, without the evidence Design gathered to settle it. A
+    projection of the model, no second structure to hold an order the
+    drawing never showed; description and criteria come off one model. A
+    disagreement goes whole, unargued; a gap nobody answered survives
+    whole; a dead datum's values are re-measured from the one that takes
+    over; `because` stays.
     """
     taken_over = _which_datum_takes_over(model)
     document = {section: _re_measured(_without_the_evidence(value), taken_over)
@@ -101,10 +100,9 @@ def _without_the_evidence(node):
 
 def each_disagreement_once(model) -> dict:
     """
-    The reading with what nobody agrees on said once, each entry saying which
-    of `KINDS` it is.
-
-    Plan is handed the part and nothing that argues about it (ADR-0019).
+    The reading with what nobody agrees on said once, each entry saying
+    which of `KINDS` it is. Plan is handed the part and nothing that argues
+    about it.
     """
     standing = _one_to_an_address((model or {}).get("conflicts") or ())
     return dict(model, conflicts=standing) if standing else model

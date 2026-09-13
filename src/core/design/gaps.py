@@ -1,20 +1,11 @@
-"""Findings about a value nothing on the part supplies, and the write-up
+"""
+Findings about a value nothing on the part supplies, and the write-up
 `decided_for_you` hands back for one the model settled on its own.
-
-`_answered` retires the conservative way round: a retirement missed
-leaves an untidy but harmless gap, while a gap wrongly retired removes
-the views a user needs to spot the miss.
-
-`_re_measured` example: the 108 mm the 2023 clamp is long was measured
-from a lug the second page replaces with an arm at 45 degrees, and no
-overall to the arm's free end is printed anywhere.
-
-`_which_datum_takes_over` example: the left-lug-hole axis is the
-hole's own datum; the ear's tangent plane, fixing the length direction,
-passes to the arm at 45 degrees that replaces it there.
-
-An `assumed` value with no `because` is what `settled_by_nothing`
-raises at the merge -- `_NOBODY_SAID` is what that model reads as.
+`_answered` retires the conservative way round: a missed retirement leaves
+an untidy but harmless gap, while a gap wrongly retired removes the views a
+user needs to spot the miss. An `assumed` value with no `because` is what
+`settled_by_nothing` raises at the merge, read by that model as
+`_NOBODY_SAID`.
 """
 
 
@@ -43,10 +34,9 @@ from core.design.orientation_checks import (
 
 def _one_to_an_address(conflicts):
     """
-    The disagreements, one to an address, each saying which of the three it is.
-
-    The first entry at an address is the one that stands: it is the earliest
-    reading, and the later one is what the merge goes on holding (ADR-0019).
+    The disagreements, one to an address, each saying which of the three it
+    is. The first entry at an address is the one that stands: it is the
+    earliest reading, and the later one is what the merge goes on holding.
     """
     kinds = {}
     for conflict in conflicts:
@@ -184,11 +174,10 @@ def _the_datum_that_is_gone(said, taken_over):
 
 def _re_measured(node, taken_over):
     """
-    A value measured from a datum that is gone, measured from the one
-    that took over -- magnitude not carried across.
-
-    Recorded so a person checks it at the Gate rather than the number
-    being silently kept and failing on the finished part (ADR-0022).
+    A value measured from a datum that is gone, measured from the one that
+    took over -- magnitude not carried across. Recorded so a person checks
+    it at the Gate rather than the number being silently kept and failing
+    on the finished part.
     """
     if isinstance(node, dict):
         written = {}
@@ -226,22 +215,20 @@ _WENT_WITH_THE_FEATURE = "%s went with the feature the later page deleted, " \
 
 def carried_by_no_source(document, evidence, intent) -> list:
     """
-    The numbers the document states that neither the log nor the Intent does.
-
-    The distiller's boundary: its mechanical half states no number the
-    model didn't give it; its prose half could invent one, which this
-    phase exists to prevent (ADR-0019). Checked against four sources only:
-    printed on the sheet, measured off it, worked out from something that
-    was, or said in the Intent. `tests/test_loop.py` runs it over the 2023 pipe clamp.
+    The numbers the document states that neither the log nor the Intent
+    does. The distiller's boundary: its mechanical half states no number
+    the model didn't give it; its prose half could invent one, which this
+    phase exists to prevent. Checked against four sources only: printed on
+    the sheet, measured off it, worked out from something that was, or said
+    in the Intent.
     """
     return sorted(numbers_in(document) - numbers_in(evidence) - numbers_in(intent))
 
 
 def entries(model) -> list:
     """
-    Every value the part carries, addressed by where it sits and said in words.
-
-    One enumeration doing two jobs (ADR-0020): Acceptance checks this list, and
+    Every value the part carries, addressed by where it sits and said in
+    words. One enumeration doing two jobs: Acceptance checks this list, and
     Plan coverage is this list with citations taken away.
     """
     return _addressed(model, "")
@@ -249,14 +236,12 @@ def entries(model) -> list:
 
 def decided_for_you(model) -> list:
     """
-    Every value on this part that nobody supplied, said in one line each.
-
-    Walked off the model each time, not accumulated (ADR-0019, ADR-0022).
-    Holds two kinds: a chosen value (`assumed`, with `because` saying why)
-    and an overruled reading (the old value under `was`); `read`/`derived`
-    values are nobody's decision and are excluded.
-
-    An `assumed` with no `because` is a Design turn that skipped its job.
+    Every value on this part that nobody supplied, said in one line each,
+    walked off the model each time, not accumulated. Holds two kinds: a
+    chosen value (`assumed`, with `because` saying why) and an overruled
+    reading (the old value under `was`); `read`/`derived` values are
+    nobody's decision and are excluded. An `assumed` with no `because` is a
+    Design turn that skipped its job.
     """
     return [_the_decision(path, node) for path, node in _each_value(model, "")
             if _filled(node.get("was")) or node.get("flag") == "assumed"]
