@@ -219,6 +219,7 @@ class ClaudeCodeClient:
             process.kill()
 
         ceiling = threading.Timer(self.timeout, give_up)
+        ceiling.daemon = True
         ceiling.start()
         self.run.register(process)
         try:

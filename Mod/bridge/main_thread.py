@@ -8,6 +8,7 @@ and fires there instead on a worker thread with its own event loop. Firing on
 the wrong thread is a Document mutation off the main thread, which is how
 FreeCAD gets taken down.
 """
+import contextlib
 import threading
 
 from core.freecad_apply import Closing
@@ -17,7 +18,42 @@ DISPATCH_TIMEOUT = 60.0
 _dispatcher = None
 _dispatcher_lock = threading.Lock()
 _closing = threading.Event()
+_stopping = 0
+_stopping_lock = threading.Lock()
 _waiting = set()
+
+
+def _refusing():
+    return _closing.is_set() or bool(_stopping)
+
+
+def _release():
+    for done in list(_waiting):
+        done.set()
+
+
+@contextlib.contextmanager
+def stopping():
+    """
+    One Session's teardown: refuse and release for as long as it lasts.
+
+    A run parked here waits on a job only the main thread's event loop can
+    take, and a teardown running on that thread never pumps it, so releasing
+    once is not enough -- a run told to stop is unwinding and asks the main
+    thread again. Unlike `closing`, `_closing` is never set: one Session's
+    teardown must not refuse every other Session's Document operation for the
+    rest of the FreeCAD session.
+    """
+    global _stopping
+
+    with _stopping_lock:
+        _stopping += 1
+    try:
+        _release()
+        yield
+    finally:
+        with _stopping_lock:
+            _stopping -= 1
 
 
 def closing():
@@ -31,8 +67,7 @@ def closing():
     is FreeCAD hanging on exit.
     """
     _closing.set()
-    for done in list(_waiting):
-        done.set()
+    _release()
 
 
 def _qt():
@@ -76,12 +111,18 @@ class _Dispatcher:
         self._relay = Relay()
 
     def on_main_thread(self, func, timeout=DISPATCH_TIMEOUT):
+        """
+        The caller is registered as waiting before it is refused, not after.
+
+        A teardown beginning between the refusal check and the registration
+        would find nothing to release, and this caller would wait out
+        *timeout* instead: registering first closes that race, since the
+        empty `outcome` a release leaves behind is what turns it into
+        `Closing`.
+        """
         QtCore = self._qtcore
         if QtCore.QThread.currentThread() == self._app.thread():
             return func()
-
-        if _closing.is_set():
-            raise Closing("The Document operation was abandoned: FreeCAD is closing.")
 
         outcome = {}
         done = threading.Event()
@@ -96,6 +137,8 @@ class _Dispatcher:
 
         _waiting.add(done)
         try:
+            if _refusing():
+                raise Closing("The Document operation was abandoned: FreeCAD is closing.")
             self._relay.job.emit(run)
             if not done.wait(timeout):
                 raise TimeoutError(

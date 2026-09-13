@@ -725,15 +725,29 @@ composer, never queued here.
         self.thread.start()
 
     def shut_down(self, grace_ms: int):
-        """Stop the run, whatever it is in the middle of, and end the thread."""
-        self.worker.stop()
-        if self.worker.pipeline is not None:
-            self.worker.pipeline.shutdown()
-        if self.thread.isRunning():
-            self.thread.quit()
-            if not self.thread.wait(grace_ms):
-                self.thread.terminate()
-                self.thread.wait(1000)
+        """
+        Stop the run, whatever it is in the middle of, and end the thread.
+
+        A Step in flight is parked inside `bridge.main_thread.on_main_thread`,
+        waiting on a job only the main thread's event loop can take -- and
+        this runs on that thread, not pumping it, so `bridge.main_thread.stopping`
+        hands the run back its own thread for as long as this teardown lasts,
+        since a run unwinding asks the main thread again after the release.
+        FreeCAD deletes its Documents before it emits `aboutToQuit`, so this is
+        the first teardown a closing FreeCAD reaches, through
+        `slotDeletedDocument`, not the panel's `_cleanup_thread`.
+        """
+        from bridge.main_thread import stopping
+
+        with stopping():
+            self.worker.stop()
+            if self.worker.pipeline is not None:
+                self.worker.pipeline.shutdown()
+            if self.thread.isRunning():
+                self.thread.quit()
+                if not self.thread.wait(grace_ms):
+                    self.thread.terminate()
+                    self.thread.wait(1000)
 
 
 class CopilotPanel(QtWidgets.QDockWidget):
