@@ -147,11 +147,22 @@ def _drain(manager, timeout_turns=400):
     The tests above save addresses nothing is listening on, so their fetches
     fail late. Clearing `_threads` hides such a thread instead of waiting for
     it, and its warning then lands in whichever test is recording at the time.
+
+    A worker thread posts its `fetched`/`failed` signal with a queued
+    connection and then returns, so `isRunning()` can go false before that
+    posted event is dispatched. Returning the instant it does would hand the
+    caller back before the event lands, so quiescence has to be seen twice
+    in a row before it is trusted.
     """
+    quiet = 0
     for _ in range(timeout_turns):
         QT_APP.processEvents()
         if not any(thread.isRunning() for thread in manager._threads.values()):
-            return
+            quiet += 1
+            if quiet >= 2:
+                return
+        else:
+            quiet = 0
         QT_APP.thread().msleep(5)
 
 
@@ -204,31 +215,38 @@ def test_no_address_means_no_fetch_and_nothing_said(settings_are_the_tests_own, 
         "an empty address was reported as a failure: %s" % warnings
 
 
+def _refused(provider, api_key, base_url=None):
+    raise ConnectionRefusedError("[Errno 61] Connection refused")
+
+
 def test_an_unreachable_address_names_itself_and_leaves_the_rest_working(
         settings_are_the_tests_own, monkeypatch):
     """
     An unreachable server warns and names the address that could not be reached.
     The panel keeps working after the failure: asking again is still answerable.
+
+    The fetch is faked to fail outright rather than dialled for real: a real
+    connect to a closed loopback port answers on the kernel's own schedule,
+    which varies enough under load to flip which of this file's tests sees
+    the warning land.
     """
     import FreeCAD
     from bridge import provider_manager
+    from core import model_catalog
 
     manager = provider_manager.instance()
     _drain(manager)
 
     warnings = []
     monkeypatch.setattr(FreeCAD.Console, "PrintWarning", warnings.append)
+    monkeypatch.setattr(model_catalog, "fetch", _refused)
 
     manager._fetched.clear()
     manager._threads.clear()
     settings_are_the_tests_own.set_base_url_for_provider(LOCAL, "http://127.0.0.1:1")
 
     manager.get_available_models()
-    for _ in range(400):
-        QT_APP.processEvents()
-        if warnings:
-            break
-        QT_APP.thread().msleep(5)
+    _drain(manager)
 
     assert warnings, "an unreachable server failed silently"
     assert "127.0.0.1:1" in " ".join(warnings), \
