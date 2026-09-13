@@ -39,6 +39,11 @@ work" section, stating the multi-turn `{"code"}`/`{"delegate"}`/`{"declare"}`
 contract the agent loop actually runs on — every page-sized call is
 Design's own composed prompt plus that page's evidence, so a section every
 call carries prices in on every one of them, not once.
+
+The ratio moved again to 1.72 when `design.md` gained the rule that a
+fillet or a chamfer names the two surfaces it joins and never covers more
+than one edge in one entry — the same per-call cost as every other section,
+paid on every page-sized call and the reconciling call alike.
 """
 import json
 import os
@@ -68,24 +73,24 @@ SINGLE_CALL_BASELINE = {
     "model-mania-2024.pdf": 39970,
 }
 
-FIRST_PASS_CEILING_RATIO = 1.71
+FIRST_PASS_CEILING_RATIO = 1.72
 
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 23919},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 24657},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 24151},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 24889},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 20386},
-        "total": 68962,
+        "reconcile": {"total_chars": 40545, "input_tokens": 20618},
+        "total": 69658,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 22254},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 25138},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 22486},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 25370},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 20593},
-        "total": 67985,
+        "reconcile": {"total_chars": 41375, "input_tokens": 20825},
+        "total": 68681,
     },
 }
 

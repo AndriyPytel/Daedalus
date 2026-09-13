@@ -81,6 +81,20 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   the axis is checked against: two features drawn round in two different views
   cannot have been drilled the same way, and that is arithmetic rather than an
   opinion.
+- **A fillet or a chamfer names the two surfaces it joins, and it never
+  covers more than one edge.** An edge is where two surfaces meet; a fillet
+  or a chamfer is a feature built on one edge, and the two are not the same
+  thing — an edge with nothing built on it stays sharp. So each one is its
+  own entry, carrying `joins`, the two surfaces (or a surface and a contour,
+  where one side is the outer profile) it sits between, named the way the
+  drawing names them, and its own `radius` or `angle`. A callout covering a
+  set — `R2 TYP`, "on all edges shown red" — gives every one of those entries
+  the radius it reads from; it is never itself an entry, and it does not
+  stand in for the enumeration. Where the drawing shows the same treatment
+  on the rib/plate join and the rib/boss join, that is two entries, not one
+  written "rib rounds" and left to be read as however many edges the
+  callout's colour reaches.
+
 - **`conflicts`** is where two things that cannot both be true are recorded,
   one entry per disagreement, always `{"about": "...", "stands": "...",
   "was_also_said": "..."}` — record them, and leave them there.

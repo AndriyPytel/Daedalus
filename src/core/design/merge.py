@@ -23,6 +23,7 @@ from core.design.core import (
     _under,
 )
 from core.design.presence_checks import (
+    blanket_edge_treatment,
     silhouette,
     twice_placed,
     unsafe_supersession,
@@ -225,7 +226,8 @@ def _with_the_findings(model):
     found = (silhouette(model) + direction(model) + pointing(model)
              + crosswise(model) + placement(model) + placed_by_nothing(model)
              + twice_over(model) + settled_by_nothing(model)
-             + unsafe_supersession(model) + twice_placed(model))
+             + unsafe_supersession(model) + twice_placed(model)
+             + blanket_edge_treatment(model))
     if found:
         model["conflicts"] = _appended(model.get("conflicts"), found)
     return model

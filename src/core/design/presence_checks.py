@@ -13,6 +13,7 @@ from core.design.core import (
     _A_DIRECTION,
     _conflict,
     _features,
+    _named,
     _said,
     _under,
 )
@@ -354,3 +355,40 @@ def _carries_the_outside(feature):
     """Whether this feature *is* the rounded outside, rather than talking about it."""
     text = " ".join(str(feature.get(key) or "") for key in ("id", "kind", "topology")).lower()
     return any(word in text for word in _ROUNDED_OUTSIDE)
+
+
+_EDGE_TREATMENT_KIND = ("fillet", "chamfer")
+
+
+_BLANKET_MARKER = ("typ", "all edges", "all red", "every edge", "each edge",
+                    "all around", "typical")
+
+
+def blanket_edge_treatment(model) -> list:
+    """
+    A fillet or a chamfer whose text names a whole set of edges at once and
+    carries no `joins`, elevated to a conflict.
+
+    "R2 TYP on all red edges" is where the radius comes from, never the
+    set of edges it applies to: the set is missing until each edge is its
+    own feature entry naming the two surfaces -- or a surface and a
+    contour -- it sits between. `joins` is what design.md now asks for on
+    every such entry, so a feature of this `kind` carrying none is read as
+    the blanket note standing in for the enumeration.
+    """
+    found = []
+    for feature in _features(model):
+        if _what_it_is(feature) not in _EDGE_TREATMENT_KIND or feature.get("joins"):
+            continue
+        text = " ".join(str(feature.get(key) or "") for key in
+                        ("kind", "region", "topology")).lower()
+        marker = next((word for word in _BLANKET_MARKER if word in text), None)
+        if not marker:
+            continue
+        where = _under("features", _named(feature, ("id", "name")) or "an edge treatment")
+        found.append(_conflict(
+            where,
+            "no `joins` names the two surfaces this rounds or chamfers between, "
+            "and the text reads as a set of edges rather than one",
+            "%r" % (feature.get("region") or feature.get("kind") or marker)))
+    return found
