@@ -21,6 +21,10 @@ def test_the_ceiling_follows_each_clients_own_effort_and_not_one_global_dial():
 
 
 def test_an_explicit_effort_reaches_the_cli_flag_per_client():
+    import os
+    import sys
+
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
     from test_llm_claude_code import client_replaying, a_turn
     from conftest import collect
 
