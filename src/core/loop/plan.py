@@ -273,26 +273,9 @@ def _two_directions_in_one_step(planned):
     """
     A Step whose own citations disagree about which way it is building.
 
-    A Step is one sketch in one plane, extruded one way. So the entries it says
-    it satisfies have to agree about that plane — and where they do not, the
-    Step is wrong before it is written, without anybody having to run it or
-    know which plane of the part is which.
-
-    Step 1 of the recorded run
-    (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`) cites
-    `features → outer-profile → plane: the plane of the length and the height`
-    and `features → right-mounting-lug → plane: the plane of the length and the
-    depth` in the one Step, and built both in the elevation. The R12.5 rounded
-    end belongs to the plan view; drawn in the elevation it turned the flat
-    30 mm end face at 108 into a round nose, made the lug 25 mm tall where the
-    Step's own prose says 30, and destroyed the datum every right-hand
-    dimension on the part is measured from.
-
-    `_A_DIRECTION_FIELD` is the two fields of an entry that name a direction
-    rather than a distance: an address ends in one of them, and what follows
-    the colon is the direction itself, in the description's own words. A Step
-    may cite an entry by its address alone or with the value written out, so
-    the direction is looked up in the acceptance, which carries both.
+    Constraint: a Step is one plane; disagreeing citations are wrong before
+    anyone runs it.
+    Measured: a recorded run's Step 1 ruined the part's own datum this way.
     """
     of = _addressed(planned.acceptance)
 

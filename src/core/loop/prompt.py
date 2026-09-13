@@ -147,24 +147,9 @@ def _one_call(llm, events, phase, system, user, prior=()):
     """
     The turn itself, priced whether it answered or the connection went.
 
-    Every phase's call passes through here, which is what makes this the seam
-    a per-phase client is chosen at: `for_phase` is asked for the client this
-    phase is answered by, and a client that has none answers all five itself.
-    Design reading a drawing and Execute writing the code for a Step it has
-    already been given are not the same demand, and one dial over both is
-    paid at the rate of the more expensive on every call of the cheaper.
-
-    The reply reaches the stream as it forms, the way the reasoning before it
-    does. Until it did, a phase went silent from its last `thought` to its
-    `cost` — 22.4 minutes of a recorded run's 23.6 minutes of provider time,
-    and 25.6 of 53.7 in another — and a panel with nothing to show reads as a
-    run that has hung.
-
-    `cost` carries whatever the client reported spending: `usd` when a price
-    is known, and `prompt_tokens`/`completion_tokens`/`cached_tokens` when the
-    provider counted them, both routes do. A client that answers
-    with neither — `ScriptedLLMClient` — still gets a `cost` with `seconds`
-    alone, because the wait is a real one.
+    Constraint: `for_phase` picks this call's client, so one price never
+    covers Design's reading and Execute's code at the costlier rate.
+    Measured: a phase went silent 22.4 of 23.6 minutes before streaming.
     """
     llm = llm.for_phase(phase) if hasattr(llm, "for_phase") else llm
     ceiling = getattr(llm, "timeout", None)

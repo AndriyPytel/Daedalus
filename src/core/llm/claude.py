@@ -217,26 +217,9 @@ class ClaudeCodeClient:
         """
         One process's reply, under the wall-clock ceiling.
 
-        The ceiling kills the process rather than watching the clock between
-        lines: a `claude` that writes nothing is read with a blocking loop, and
-        nothing arrives to check the time against. The kill is what ends that
-        loop, and `overdue` is what says the end was ours.
-
-        Thinking whose words the provider withholds is reported once per call,
-        as one wordless chunk. That the model reasoned is a fact worth the
-        panel's row -- a phase that takes four minutes has to say it is doing
-        something -- and it is the only fact this route gives: `sonnet` and
-        `opus` stream the thinking as an empty string and a rising token
-        count, and the words never follow. One chunk rather than one per
-        delta, because the count was reported before and 1506 lines of it
-        filled a 45-minute session with a number nobody can act on.
-
-        `noise` keeps the last lines `_parsed` dropped as not-JSON: since
-        stderr is merged into stdout (`_spawn_claude`), that is where the CLI's
-        plain-text error lands on a failing exit, and it is the only detail
-        left to report once `process.stderr` is `None`. `process.stderr` is
-        still read when `noise` is empty, for a `process` that keeps it
-        separate rather than merged.
+        Constraint: killed on timeout since a silent `claude` gives nothing to
+        check time against; thinking reported once per call, not per delta.
+        Measured: 1506 per-delta chunks once buried a session in an unusable count.
         """
         overdue = threading.Event()
 

@@ -25,27 +25,10 @@ class Checked:
     """
     What the Assertion phase made of the finished Document.
 
-    `failed` is a model that did not meet its acceptance list; `traceback` is
-    what Plan is told. A check that could not be written is neither passed nor
-    failed — `confirmed` is empty, `failed` is False, and Review judges the
-    whole list alone.
-
-    `confirmed` is what the check script itself measured and found true, read
-    back out of its own `held` list rather than inferred as everything the
-    model did not name `uncovered` — so it is not only the success branch's:
-    a run whose checks failed on some entries and held on others carries both
-    a non-empty `confirmed` and a non-empty `unmet`.
-
-    `unmet` is the entries that did not hold, named one by one. The traceback
-    says the same thing in prose, and prose is what Plan reads; this is what
-    survives the end of the run.
-
-    `geometry` is the per-feature fingerprint `check_assertions` measured
-    alongside whatever it was asked to check — Volume and BoundBox,
-    read back off `KernelResult` the same way `confirmed` reads `held`.
-    Empty wherever no `check_assertions` call ran, which the fingerprint
-    comparison at the call site reads as "nothing to compare yet" rather than
-    "everything moved".
+    Constraint: `confirmed` is read back from the check script's own `held`
+    list, not inferred as everything not `uncovered`, so a run can carry both
+    a non-empty `confirmed` and a non-empty `unmet`. `geometry` is empty
+    wherever no `check_assertions` call ran.
     """
 
     failed: bool = False
@@ -58,35 +41,14 @@ class Checked:
 
 def the_envelope_measured(acceptance):
     """
-    The check nobody had to write: the part's three overall sizes.
+    The check nobody had to write: the part's three overall sizes, sorted
+    against sorted so it never has to know which way the part was built.
 
-    Preflight measures topology — objects in error, a feature that moved no
-    material, a Body in pieces — and never a dimension, so a lug built 25 mm
-    tall where the drawing says 30, and a split that stops 16 mm short of the
-    end face it has to reach, both came back as success
-    (`logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl`).
-
-    Sorted against sorted, deliberately. Which way round the part was built is
-    not something anything in this codebase knows — the description names its
-    directions in words and the Document has X, Y and Z — and a check that had
-    to know would be a check that guessed. What it can say without guessing is
-    that a part 108 x 30 x 30 has been built and not one 108 x 30 x 50, which
-    is the failure worth catching and the one an assertion written by a
-    provider is least likely to cover.
-
-    Empty where the envelope does not carry three plain sizes: a part described
-    in two directions, or in words with no millimetres in them, is not one this
-    can measure, and inventing a third would fail every run that has one.
-
-    `_A_SIZE` is what a size looks like in the words the envelope writes them
-    in, and `_TRUE_TO` is how close a built one has to be: half a millimetre,
-    because a drawing this reads is dimensioned to a tenth and the fillets on
-    an outer contour move a bounding box by less than that.
-
-    `_ENVELOPE_CHECK` is written out rather than built up, because it is read
-    by whoever reads a failed run. It measures `optimalBoundingBox`, since a
-    triangulated one lands inside the true extreme on a curved face, which is
-    the whole of ADR-0022's argument.
+    Measured: a lug built 25mm tall for 30 drawn passed Preflight
+    (logs/sessions/549e6232c9e04b659e5a2d536354bd7a.jsonl).
+    Constraints: `_TRUE_TO` is 0.5mm, since `optimalBoundingBox` -- not
+    triangulated -- lands inside the true extreme on a curved face
+    (ADR-0022); guessing orientation from geometry was rejected.
     """
     sizes = []
     for address, value in _addressed(acceptance).items():

@@ -1,4 +1,10 @@
-"""Describe the part by reading the drawings multiple times."""
+"""
+Describe the part by reading the drawings multiple times.
+
+Constraints: ADR-0024 splits the phase into gather-then-distil, and
+`DESIGN` is emitted from a `finally` around the reconcile so a raise
+mid-phase does not cost the log the part it already understood.
+"""
 import re
 import time
 from dataclasses import dataclass, field
@@ -113,31 +119,9 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
     """
     The part as Design has it, before anything is planned.
 
-    Design owns the question (ADR-0019), and this is the one that survives
-    (ADR-0022): where its own model says a value is not merely empty but
-    unknowable from the sheet, it asks, once, before any Step has been drafted.
-    The run waits, because it is the only question left and so it may afford
-    to. Unanswered it is not fatal — the model settles the value like every
-    other, and the choice rides to the Gate.
-
-    Design runs whether or not there is a drawing. With nothing to look at it
-    describes the part from the words of the Intent alone and asks for what
-    those words do not carry, so a text-only run reaches the Gate with a
-    description, an Acceptance list and a reading on disk rather than with
-    nothing at all.
-
-    It ends in two steps: gather every piece of evidence there is, then distil
-    it (ADR-0024). What leaves the phase is the document — what the part is —
-    and the evidence that settled it stays in the log beside the file, with
-    what nobody agrees on standing there one entry to an address, so every
-    phase after this one is handed the part rather than the reading of it.
-    `tests/test_loop.py` measures both against the recorded run of the 2023
-    pipe clamp.
-
-    `DESIGN` is emitted from a `finally` around the reconcile and the two
-    checks that follow it, not after them: a real description already sits
-    in `the_part` once gathering starts, and a raise partway through must not
-    cost the log the only record of what the run understood the part to be.
+    Constraints: ADR-0019 asks once before any Step is drafted; ADR-0022 lets
+    it ride unanswered to the Gate instead of blocking the run.
+    Measured: tests/test_loop.py, against the 2023 pipe clamp run.
     """
     the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled)
     the_part = merge({}, the_part)

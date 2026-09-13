@@ -152,33 +152,13 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             looks=None, entries=(), ledger=None, supervisor=None, kernel=None, ops=()):
     """
     Run every Step from `start` to the end of the Plan as one agent phase,
-    against one kernel it holds open for the whole call (FCC-A-53/ADR-0027).
+    against one kernel held open for the whole call (FCC-A-53/ADR-0027).
 
-    The agent writes and runs a Step's code itself, sees the kernel's answer
-    and declares the Step once it is the code that built it; `run_phase`
-    hands back its `declarations` in build order, each with the Step's own
-    number, label, code and checkpoint, and that -- not the reply's own
-    `steps` -- is what `Written` is built from. The reply's `steps` carry
-    only a summary, `{step, label}`, because the code it declares already
-    lives in the kernel.
-
-    A regeneration is the same call with `start` at the Step that failed,
-    against a fresh Snapshot of the Document as the Steps before it left it:
-    the code for a Step after it may have assumed objects the failed Step was
-    going to create, so it is written again along with everything after it.
-
-    `entries` is the description addressed. In the run that named this the
-    lookup was missing and the values were invented from the geometry to hand:
-    `arm_z = sum((g.StartPoint.y + g.EndPoint.y) * 0.5 for g in arm_lines) /
-    len(arm_lines)` for a hole the description places on the centre plane.
-
-    A reply that wrote code is not a verdict on the Plan: voiding the whole
-    Plan is how a recorded run threw away Steps nobody had attempted and
-    replanned three times over with nothing applied.
-
-    The kernel's saved copy of each Step stays readable in `working_dir` for
-    as long as this call is reading the declarations that name it; every
-    exit -- a return or a raise -- removes it once that reading is done.
+    Constraints: `Written` comes from `run_phase`'s own `declarations`, in
+    build order, not the reply's `steps` summary -- the code already lives
+    in the kernel. A reply that writes code is not a verdict on the Plan;
+    voiding it discards Steps nobody attempted. A regeneration replays from
+    `start` against a fresh Snapshot.
     """
     budgets = budgets or Budgets()
     request = {"steps": [{"step": number, "do": prose}
@@ -298,27 +278,11 @@ _SKIPPED_A_STEP = "skipped a Step it could have written"
 
 def _classified_failures():
     """
-    (phrase, directive, label) for every rejection a different attempt could
-    actually fix, keyed on a substring Preflight, lint or apply itself writes
-    — or, for `_RAN_OUT_OF_ROOM` and `_SKIPPED_A_STEP`, that `_work_through`'s
-    own missing-code message writes, so a trailing gap and an interior gap
-    stay two Ledger lines rather than deduping into the one this table had no
-    entry for before them.
+    (phrase, directive, label) for every rejection a different attempt
+    could fix, keyed on a substring Preflight, lint or apply writes.
 
-    `directive` is the paragraph `_the_same_way_twice` hands Execute the
-    second time this exact phrase recurs; `label` is the one line `Ledger`
-    (`core/ledger.py`) keeps of the same classification once the code and the
-    traceback themselves are gone.
-
-    Two rejections a real run can hit are deliberately absent. "There is no
-    open Document to apply this Step to" is not a Step to write differently —
-    there is no Document open, which no code change fixes. And the wrapper
-    "The Step passed Preflight but failed against the real Document, so it
-    was rolled back" carries whatever underlying exception the transaction
-    raised appended after it — if that exception is one of the phrases below,
-    it already matches on its own text; the wrapper's fixed words say nothing
-    about *what* to change, so giving it its own entry would be advice with
-    nothing behind it.
+    Constraint: no-open-Document and the rolled-back wrapper are absent on
+    purpose -- both already match on their own exception text.
     """
     return (
         ("neither removed nor added any material",
