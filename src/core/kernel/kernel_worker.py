@@ -1,45 +1,22 @@
 """
-The child half of the kernel. Runs inside a headless FreeCAD started by
-`core/kernel/kernel.py`, as a bare script -- so it may import the standard library
-and FreeCAD, and nothing of the addon's own.
+The child half of the kernel: a headless FreeCAD child process started by
+`core/kernel/kernel.py`, one JSON request per stdin line and one tagged
+response per stdout line.
 
-Two things are imported *out* of it, by name: `SENTINEL` by `core/kernel/kernel.py`,
-and `step_namespace` by `core/freecad_apply.py`, so that the kernel and the GUI's
-own transaction replay cannot build different namespaces for the same Step.
-`reading` imports `core.sketch_check`; `run_step` imports `render` off
-`core.kernel.preflight_render`. Both cost a `sys.path` entry and buy the one thing
-this process exists for -- the solver runs where its death is survivable
-(ADR-0002).
+Constraints: `SENTINEL` (imported by kernel.py) and `step_namespace`
+(imported by core/freecad_apply.py) must import without starting the
+server, so `freecadcmd`'s renamed `__name__` is checked before serving
+starts. A crash here is a normal outcome the parent restarts from, with
+no shutdown message, because the parent kills rather than asks (ADR-0002).
+The kernel holds one live Document across many Steps: a failed Step
+reopens the last checkpoint rather than continuing on a Document a
+following Step should never have seen.
 
-One JSON request per line on stdin, one tagged JSON response per line on
-stdout. FreeCAD writes its own banner to stdout, so responses carry a
-sentinel prefix and the parent ignores everything else.
-
-The kernel owns one live Document across many Steps. A Step whose code (and
-whose checks, below) succeed gets a checkpoint written to disk and the live
-Document keeps running -- no reopen. A Step that fails is undone by closing
-the live Document and reopening the last checkpoint, so the Document a
-following Step sees is exactly what it would have been had the failed Step
-never run. A request that hands a `document` path is a fresh handoff: the
-session (Document, checkpoint and name map) starts over from that path, or
-from an empty Document where no path is given.
-
-Death is a normal outcome here. If the code under test takes the C++ core
-down, this process goes with it and the parent restarts a new one -- which is
-the entire point of the arrangement (ADR-0002). That is also why there is no
-shutdown message: the parent kills the process rather than asking it to go.
-
-What a failure hands back is measured. Across the five FCC-291 sessions of
-2026-09-10 (logs/review/rlm-execute-cost-audit.md) 45 of 152 kernel calls
-failed: 15 on the Step's own volume assert, which raises before any check here
-runs, and 10 on dereferencing a lookup that returned None. One Pocket took 35
-of its session's 53 calls to find the sign of its own direction by hand. So a
-failing Step is handed `volume`, the idle-feature diagnosis and the Document's
-own objects, not only the traceback.
-
-`freecadcmd` runs a script with `__name__` set to its basename rather than
-"__main__", and importing this module as `core.kernel.kernel_worker` for its
-`SENTINEL` must not start serving, so both names are named at the foot.
+Measured: 45 of 152 kernel calls failed across the FCC-291 review sessions
+of 2026-09-10 (logs/review/rlm-execute-cost-audit.md) -- 15 on the Step's
+own volume assert, 10 on a None deref -- so a failing Step is handed
+`volume`, the idle-feature diagnosis and the Document's own objects, not
+only the traceback.
 """
 import contextlib
 import difflib
@@ -450,26 +427,9 @@ def _why_a_dressup_failed(obj):
     """
     What a fillet or a chamfer will not say for itself.
 
-    A PartDesign dressup OCC refuses says either nothing at all --
-    `getStatusString()` is the empty string, and `Fillet_R2
-    (PartDesign::Fillet): ` was the whole of the failure Execute was handed
-    (`logs/sessions/069d21dbac10416392533fe7c06b62d4.jsonl`) -- or `BRep_API:
-    command not done`, which names no edge and no size either. Both leave one
-    thing to change, how the selection is written, and it is rarely the thing
-    that is wrong: Execute rewrote the selection twice and then wrote nothing.
-
-    The exception survives one level down, so the same selection is built again
-    on the base feature's own shape, where `Standard_ConstructionError` is what
-    comes back. Two questions follow it, and both are answered by building it
-    again rather than by reasoning about it: which of the selected edges is the
-    one the set cannot carry, and whether the size is what will not fit. An
-    edge named and a radius that works are what tell Plan whether to change the
-    selection or the number.
-
-    `_SMALLER` is what to try instead: three quarters of the size asked for, a
-    half and a quarter. Three builds are what a Step that has already failed can
-    afford, and a size that fits nowhere in that range is a selection to change
-    rather than a number.
+    Constraint: a refused dressup names no edge and no size, so the
+    selection is rebuilt on the base feature to find which and whether the
+    size fits, tried at `_SMALLER` -- three quarters, a half, a quarter.
     """
     how = _A_DRESSUP.get(obj.TypeId)
     base = getattr(obj, "Base", None)
