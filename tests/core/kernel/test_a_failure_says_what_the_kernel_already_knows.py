@@ -8,7 +8,7 @@ failure it was written for, and `introspect` answered a dereference of `None`
 with nothing at all, because its guard cannot tell "no object information on
 the exception" from "the object is None".
 
-The two numbers this pins, read off the five FCC-291 kernel sessions of
+The two numbers this pins, read off the five kernel sessions of
 2026-09-10 (logs/review/rlm-execute-cost-audit.md): 15 of 45 kernel failures
 are the model's own volume assert, 10 of 45 are a dereference of a lookup that
 returned None. One recorded Pocket took 35 kernel calls to find the sign of

@@ -1,5 +1,5 @@
 """
-Level 2 -- the kernel namespace is open (FCC-299).
+Level 2 -- the kernel namespace is open.
 
 `ToolRegistry` stops being the only door to the Document: a Step's code runs
 directly against the live Document and FreeCAD's own modules, with a Tool

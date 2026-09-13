@@ -1,6 +1,6 @@
 """
 Level 2 -- a proposed Trap's claim proved or disproved in a real throwaway
-kernel, per FCC-314's own TESTING STRATEGY.
+kernel, per this feature's own TESTING STRATEGY.
 """
 import pytest
 

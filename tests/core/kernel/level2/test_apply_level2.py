@@ -78,7 +78,7 @@ def test_a_step_lands_in_the_document(pipeline, doc, worker):
 
 def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline, doc, worker):
     """
-    An Apply now answers with the part rather than a picture of it (FCC-81):
+    An Apply now answers with the part rather than a picture of it:
     the feature with its parameters, and the geometry read off the Shape.
     """
     result = pipeline.apply(BOX, kernel_result=_kernel_result(worker, doc, BOX))
@@ -92,7 +92,7 @@ def test_a_step_brings_back_a_description_of_what_is_now_there(pipeline, doc, wo
 
 def test_the_headless_fallback_still_draws_the_document_once(pipeline, doc, worker):
     """
-    The Worker's rasteriser survives as the fallback, so FCC-46's per-pixel
+    The Worker's rasteriser survives as the fallback, so the render's per-pixel
     depth test and edges are not thrown away — called once at the end of a run
     rather than once per Step.
     """
@@ -123,9 +123,9 @@ def test_a_provider_that_answers_none_beats_freecads_active_document(doc, worker
 
 def test_a_step_can_assign_a_material_the_way_the_trap_describes(pipeline, doc, worker):
     """
-    The Step that burned all three attempts of FCC-30 rung 1. It has to survive
-    Preflight — a separate process building its own namespace — and Apply, or
-    the two are running different programs (ADR-0002).
+    The Step that burned all three attempts of the CSWA-bracket model run. It
+    has to survive Preflight — a separate process building its own namespace —
+    and Apply, or the two are running different programs.
     """
     registry = build_registry(doc)
     aluminium = [card for card in registry.call("materials", {"name": "alumin"})["materials"]
@@ -210,9 +210,8 @@ def test_run_in_transactions_own_exec_frame_is_cut_from_the_traceback(doc):
 
 def test_apply_step_is_a_tool_and_carries_the_kernels_own_result(doc, worker, tmp_path):
     """
-    There is no rehearsal behind this Tool any more (ADR-0027 supersedes
-    ADR-0002 in part): the loop already ran the Step through the kernel and
-    hands its result straight through.
+    There is no rehearsal behind this Tool any more: the loop already ran the
+    Step through the kernel and hands its result straight through.
     """
     pipeline = ApplyPipeline(document=doc, worker=worker,
                              dispatch=lambda func, timeout=None: func(),
@@ -234,7 +233,7 @@ def test_the_read_only_registry_has_no_apply_step(doc):
 
 def test_a_lint_rejected_step_never_reaches_the_kernels_checkpoint(pipeline, worker):
     """
-    FCC-298 AC1: a Step that fails one of lint's rules never spends a
+    A Step that fails one of lint's rules never spends a
     checkpoint -- it never reaches the kernel at all. Established against a
     real checkpoint file's mtime, not the kernel's own claim about itself.
     """
@@ -354,7 +353,7 @@ def test_the_users_own_object_is_protected_end_to_end(doc, worker, tmp_path):
 
 
 def test_modifying_the_users_own_object_needs_no_permission(doc, worker, tmp_path):
-    """The Plan Gate approved the Step that says the object changes. FCC-10."""
+    """The Plan Gate approved the Step that says the object changes."""
     users_box = doc.addObject("Part::Box", "UsersBox")
     users_box.Length = 12
     doc.recompute()

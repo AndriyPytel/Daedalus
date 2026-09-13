@@ -1,6 +1,6 @@
 
 """
-Level 2 -- FCC-246: the message names the measured cause, not the trap
+Level 2 -- the message names the measured cause, not the trap
 (the existing level2 case in test_preflight_idle_features_level2.py already
 covers the direction-fixable Pocket; this covers its opposite, the profile
 that misses the solid at either sign of Reversed).

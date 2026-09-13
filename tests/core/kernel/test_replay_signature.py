@@ -1,5 +1,5 @@
 """
-Level 1 -- the replay signature contract (FCC-302), the ApplyPipeline half:
+Level 1 -- the replay signature contract, the ApplyPipeline half:
 how the allocated-name map crosses from one Step's Preflight into the next
 Step's replay. Everything injected, same as `test_apply_pipeline.py` --
 `run_in_transaction` itself needs a real FreeCAD Document
@@ -35,7 +35,7 @@ class FakeMainWindow:
 
 
 class FakeWorker:
-    """Records what it was asked, including the name map (FCC-302)."""
+    """Records what it was asked, including the name map."""
 
     def __init__(self, result=None):
         self.result = result

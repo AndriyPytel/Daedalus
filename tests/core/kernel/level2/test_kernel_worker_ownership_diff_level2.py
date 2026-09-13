@@ -1,6 +1,6 @@
 """
 Level 2 -- ownership observed by a PropertiesList diff, against a real kernel
-and a real Document (FCC-300).
+and a real Document.
 
 Complements `tests/test_kernel_worker_ownership_diff.py`'s Level 1 diff-shape
 tests and `tests/test_kernel_open_namespace.py`'s AC1 (a raw FreeCAD call, no

@@ -1,5 +1,5 @@
 """
-Level 2 — Preflight refuses a Step that leaves a Body in pieces (FCC-27).
+Level 2 — Preflight refuses a Step that leaves a Body in pieces.
 
 A sketch of two disjoint profiles pads into two separate lumps and nothing
 raises: the feature reports itself up-to-date and valid. Preflight judged by
@@ -8,7 +8,7 @@ Review — at the end of the Plan, from a render.
 
 Run against a real headless FreeCAD through the real Preflight Worker, because
 what is being checked is what FreeCAD does rather than what a fake would agree
-to (ADR-0007).
+to.
 
 DISJOINT pads two circles 30 mm apart, which never meet; OVERLAPPING pads two
 that fuse into one solid; SINGLE pads one.

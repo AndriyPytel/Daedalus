@@ -1,4 +1,4 @@
-"""FCC-389 AC3: a read-only Assertion turn runs no document-wide recompute."""
+"""A read-only Assertion turn runs no document-wide recompute."""
 import pytest
 
 from core.kernel import kernel_worker
