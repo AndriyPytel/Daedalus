@@ -3,7 +3,7 @@ Level 1 — the Plan Gate.
 
 The single point at which the user approves a Plan. Approval covers every Step
 in it; there is no per-Step approval. Nothing runs before it. A revised Plan is
-a new Plan and has its own Gate — which is still one Gate per Plan (FCC-68).
+a new Plan and has its own Gate — which is still one Gate per Plan.
 
 THE_NUT defines what the user said the nut is. Every value is assumed, so there
 is an Acceptance to fail and no entry a Step is obliged to cite — the coverage
@@ -103,7 +103,7 @@ def test_approval_covers_every_step_so_there_is_no_per_step_approval():
 def test_a_review_driven_revision_goes_back_to_the_gate():
     """
     Rewritten from user story 17, which said a revision is *told*, not asked
-    again. FCC-68 reversed it: the user approved 18 Steps and a different set
+    again. That got reversed: the user approved 18 Steps and a different set
     ran, learned about after the fact. A revised Plan is a new Plan, and every
     Plan has its own Gate — which is still one Gate per Plan, not per Step.
 
@@ -123,7 +123,7 @@ def test_a_review_driven_revision_goes_back_to_the_gate():
 
 
 def test_an_obsolete_driven_revision_goes_back_to_the_gate():
-    """The other half of user story 17, reversed the same way. FCC-68."""
+    """The other half of user story 17, reversed the same way."""
     gate = Gate(Approval(APPROVE), Approval(APPROVE))
 
     _, events, _ = drive([
@@ -219,8 +219,7 @@ def test_the_amendment_reaches_plan():
 def test_a_replan_after_an_amendment_may_ask_rather_than_planning_blind():
     """
     The third re-plan site, and it had the same hole as the other two. What its
-    question gets back is "choose it yourself", never a person (FCC-67,
-    ADR-0022).
+    question gets back is "choose it yourself", never a person.
     """
     asked = []
     gate = Gate(Approval(AMEND, "Use PartDesign, not Part primitives"), Approval(APPROVE))
@@ -436,7 +435,7 @@ def test_accepting_does_not_spend_a_review_on_a_result_already_judged():
     """
     Taking a result that failed its checks ends the run there. Review is not
     asked: the user has judged it, and a verdict nobody will act on is a
-    provider call spent on nothing. FCC-77.
+    provider call spent on nothing.
     """
     decide = Decider(ACCEPT)
 
@@ -452,7 +451,7 @@ def test_stopping_while_the_decision_is_open_is_recorded_as_stopped():
     """
     Stop must not read as "the user took the result": the panel answers with
     something unrecognised, that falls to the default, and the loop asks
-    `cancelled()` before it plans anything. FCC-77.
+    `cancelled()` before it plans anything.
 
     "released-by-abandon" is what the panel sends on Stop.
     """
@@ -603,7 +602,6 @@ def test_amending_over_a_decision_replans_without_asking_it_again():
     The Gate is the single point of interaction now, so rejecting a decision the
     model made for the user has to be a re-plan carrying that rejection — and
     the decision is on the description, so nothing asks for it a second time.
-    ADR-0022.
     """
     settled = {"features": [{"id": "outer-profile", "kind": "obround outer profile",
                              "radius": {"value": "25 mm", "flag": "assumed",
@@ -634,7 +632,7 @@ def test_amending_over_a_decision_replans_without_asking_it_again():
 
 def test_approving_with_edited_steps_builds_the_edited_plan_not_the_generated_one():
     """
-    FCC-177: the Plan Gate is edited directly now, not amended through the
+    The Plan Gate is edited directly now, not amended through the
     model. Build hands back whatever `PlanWidget` holds at the moment it is
     pressed, and that is what Execute runs against — not what Plan wrote.
     """
@@ -650,7 +648,7 @@ def test_approving_with_edited_steps_builds_the_edited_plan_not_the_generated_on
 
 
 def test_approving_with_no_edited_steps_builds_the_plan_as_generated():
-    """Empty `Approval.steps` means unedited — nothing changes from before FCC-177."""
+    """Empty `Approval.steps` means unedited — nothing changes from before."""
     gate = Gate(Approval(APPROVE, steps=()))
 
     _, _, tools = drive(
@@ -661,7 +659,7 @@ def test_approving_with_no_edited_steps_builds_the_plan_as_generated():
 
 def test_the_gate_event_carries_the_plan_that_was_actually_approved():
     """
-    The Queue mirrors this Plan's Steps too (FCC-172); if Build edited the
+    The Queue mirrors this Plan's Steps too; if Build edited the
     count, the Queue is reading a stale one unless the approved `GATE` event
     carries the Steps that will actually run.
     """
@@ -713,7 +711,7 @@ def test_auto_mode_skips_the_gate_entirely_on_the_first_plan(monkeypatch):
 
 def test_auto_mode_auto_approves_an_unread_assumption_too(monkeypatch):
     """
-    Manual standing approval still stops for a new assumption (FCC-101); auto
+    Manual standing approval still stops for a new assumption; auto
     mode's whole point is that nothing stops the run, so it does not.
     """
     _auto_approve(monkeypatch)

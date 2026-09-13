@@ -92,7 +92,7 @@ class GuiDocument:
 
 
 class BoundDocument:
-    """A Session's own bound Document (FCC-181) — just enough for `.Name`."""
+    """A Session's own bound Document — just enough for `.Name`."""
 
     def __init__(self, name):
         self.Name = name
@@ -204,7 +204,7 @@ def test_review_with_no_3d_view_leaves_the_rasteriser_to_it(gui, tmp_path):
 
 def test_review_captures_a_fifth_section_view_alongside_the_existing_four(gui, tmp_path):
     """
-    FCC-261: the section/cutaway mode is a fifth capture, not a replacement —
+    The section/cutaway mode is a fifth capture, not a replacement —
     the existing four keep their count and framing (untouched entries in
     `REVIEW_VIEWS`), so this is the one new thing the mode adds.
     """
@@ -246,7 +246,7 @@ def test_the_camera_is_restored_after_a_section_capture_too(gui, tmp_path):
 
 def test_the_clip_plane_comes_off_even_when_the_section_capture_raises(gui, tmp_path):
     """
-    The camera-restore guarantee (FCC-261) names the clip plane in the same
+    The camera-restore guarantee names the clip plane in the same
     breath as the camera, but `saveImage` can raise mid-section — a bad
     path is exactly what a Preflight run can hit. A `finally` that only
     calls `view.setCamera` leaves the plane on for the rest of the user's
@@ -272,7 +272,7 @@ def test_the_clip_plane_comes_off_even_when_the_section_capture_raises(gui, tmp_
 
 def test_fit_view_moves_the_bound_documents_camera_not_the_focused_tabs(two_documents_open):
     """
-    A Session bound to a Document (FCC-181) fits that Document's own view
+    A Session bound to a Document fits that Document's own view
     through `FreeCADGui.getDocument(name)`, even while a different Document is
     the one actually in front.
     """

@@ -3,7 +3,7 @@ Level 1 — the short call that names a Session from its first Intent.
 
 The fallback is the interesting half: a Session is never called "Chat 3" and
 never sits under an empty name, so something readable has to exist before the
-call returns and has to survive the call failing. FCC-44.
+call returns and has to survive the call failing.
 """
 from core.llm import ProviderRefused, ScriptedLLMClient
 from core.session_title import LIMIT, fallback, generate
@@ -75,7 +75,7 @@ def test_a_model_that_cannot_be_resolved_is_no_title_rather_than_a_crash(monkeyp
     `client_from_settings` raises ValueError when the model id is in no
     provider's list — which happens whenever a key change clears the fetched
     lists. Built outside the try, that escaped `_TitleThread.run` unhandled and
-    the Session was then silently never named (FCC-44).
+    the Session was then silently never named.
     """
     import core.llm
     from core.session_title import generate

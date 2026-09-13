@@ -54,7 +54,7 @@ def _with_an_intent(sessions, name):
 def test_a_session_with_no_intent_is_not_in_the_index(sessions, index):
     """
     It has nothing to show in the picker and nothing to be named after, and
-    every launch would otherwise add one (FCC-42).
+    every launch would otherwise add one.
     """
     sessions.add("New Chat")
 
@@ -111,7 +111,7 @@ def test_a_session_that_never_ran_has_no_document_id(sessions):
 
 
 def test_the_session_bound_holds_without_a_restart(sessions, index, monkeypatch):
-    """Creating a Session prunes too, so a FreeCAD left open stays bounded. FCC-17."""
+    """Creating a Session prunes too, so a FreeCAD left open stays bounded."""
     monkeypatch.setattr(sessions_module, "KEEP", 3)
     logs = []
     for n in range(5):
@@ -144,8 +144,8 @@ def test_begin_says_which_positions_it_pruned(sessions, monkeypatch):
 
 def test_a_launch_with_no_intent_prunes_nothing(sessions, index, monkeypatch):
     """
-    FCC-17 prunes when a Session is created; FCC-42 stopped writing Sessions
-    that never had an Intent. Counting those against the bound would evict a
+    Pruning happens when a Session is created; a separate change stopped
+    writing Sessions that never had an Intent. Counting those against the bound would evict a
     real Session, transcript included, on every launch where nobody typed.
     """
     monkeypatch.setattr(sessions_module, "KEEP", 3)
@@ -238,7 +238,7 @@ def test_naming_the_document_is_written_down(sessions, index):
 
 
 def test_indexed_carries_the_position_not_a_fresh_count(sessions):
-    """A filtered list numbered from zero would open its neighbour (FCC-42)."""
+    """A filtered list numbered from zero would open its neighbour."""
     sessions.add("never used")
     used = _with_an_intent(sessions, "A 20-tooth gear")
 
