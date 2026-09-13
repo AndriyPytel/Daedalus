@@ -319,3 +319,54 @@ def test_a_declaration_resets_the_turns_counted_against_the_limit(kernel, tmp_pa
     assert declared == {"step": "done"}
     assert len(declarations) == 1
     assert len(llm.calls) == 6
+
+
+def test_a_delivered_steps_next_step_is_the_plans_number_not_step_plus_one(kernel, tmp_path):
+    """AC1: a Plan whose Steps are 1, 3, 5 answers next_step 3 once Step 1
+    lands -- Step 2 does not exist -- and answers no next_step once the
+    Plan's own last Step, 5, lands."""
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()",
+                    "step": 1, "label": "first"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box2'); doc.recompute()",
+                    "step": 5, "label": "last"}),
+        json.dumps({"declare": {"step": "done"}}),
+    ])
+    plan = [{"step": 1, "do": "first"}, {"step": 3, "do": "third"},
+            {"step": 5, "do": "fifth"}]
+
+    _, session, _ = run_phase(
+        pc.EXECUTE, str(tmp_path / "execute"), {"plan": plan}, llm, "build in gaps",
+        kernel=kernel, on_declaration=lambda declaration: {"delivered": True},
+    )
+
+    first_feedback = json.loads(session.messages[3]["content"])
+    last_feedback = json.loads(session.messages[5]["content"])
+
+    assert first_feedback["next_step"] == 3
+    assert "next_step" not in last_feedback
+
+
+def test_a_delegate_answered_after_the_demand_is_given_a_code_turn(kernel, tmp_path, monkeypatch):
+    """AC2: a phase demanded a declaration that delegates and gets an answer
+    is given the code turn that answer was for, not ended on it -- a run of
+    demand -> delegate -> code."""
+    monkeypatch.setattr(agent, "_DECLARATION_LIMIT", 1)
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "print('probe 1')"}),
+        json.dumps({"code": "print('probe 2')"}),
+        json.dumps({"delegate": "what shape is the base?"}),
+        "a rectangle.",
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()",
+                    "step": 1, "label": "box"}),
+        json.dumps({"declare": {"step": "done"}}),
+    ])
+
+    declared, session, declarations = run_phase(
+        pc.EXECUTE, str(tmp_path / "execute"), {}, llm, "pad a box",
+        kernel=kernel, supervisor=SessionTreeSupervisor(),
+        on_declaration=lambda declaration: {"delivered": True},
+    )
+
+    assert declared == {"step": "done"}
+    assert len(declarations) == 1
