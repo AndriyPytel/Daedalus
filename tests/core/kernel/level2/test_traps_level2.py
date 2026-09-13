@@ -4,7 +4,7 @@ kernel, per FCC-314's own TESTING STRATEGY.
 """
 import pytest
 
-from core.freecad_apply import TRAPS
+from core.freecad_apply import RETIRED_TRAPS, SEED_TRAPS, TRAPS
 from core.kernel import find_freecadcmd
 from core.freecad_traps import Trap, verify_seed_traps, verify_trap
 
@@ -59,12 +59,35 @@ def test_a_trap_with_no_script_is_marked_unverified_not_dropped():
 
 
 def test_every_seed_trap_gets_a_result_none_silently_skipped():
-    """AC3: verified-pass, verified-fail or unverified for each of the 15+ seed traps."""
+    """AC2: verified-pass or verified-fail for each seed trap, one result per trap held."""
     results = verify_seed_traps()
 
-    assert len(results) == len(TRAPS)
-    assert all(r.status in ("verified-pass", "verified-fail", "unverified") for r in results)
-    assert all(r.status == "unverified" for r in results), (
-        "the seed traps are prose, not scripts -- this run is their first exercise, "
-        "not a claim that they were reproduced"
+    assert len(results) == len(SEED_TRAPS)
+    assert all(r.status in ("verified-pass", "verified-fail") for r in results), (
+        "a seed trap came back unverified -- every seed trap carries a script or is "
+        "retired, so this run should never see the third label"
     )
+
+
+def test_every_seed_trap_carries_a_script():
+    """AC1: a seed trap without a script belongs in RETIRED_TRAPS, not here."""
+    assert all(trap.script for trap in SEED_TRAPS)
+
+
+def test_a_retired_trap_carries_the_reason_it_was_dropped():
+    """AC1: a trap whose script could not be written is retired with why, not silently gone."""
+    assert RETIRED_TRAPS
+    for claim, reason in RETIRED_TRAPS:
+        assert claim not in TRAPS
+        assert reason
+
+
+def test_the_fillet_trap_reproduces_the_fcc_388_mixed_rim_case():
+    """AC4: a selection mixing a plate's outer rim and a hole's inner rim, which the
+    old normals/length/plane heuristic cannot tell apart and Preflight refuses."""
+    fillet_trap = next(trap for trap in SEED_TRAPS if "UseAllEdges" in trap.claim)
+
+    evidence = verify_trap(fillet_trap)
+
+    assert evidence.status == "verified-fail"
+    assert "mixes concavities" in evidence.result.traceback

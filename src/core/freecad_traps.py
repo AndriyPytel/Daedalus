@@ -45,6 +45,6 @@ def verify_trap(trap, kernel_factory=Kernel):
 
 
 def verify_seed_traps():
-    """Run verification against every seed trap in `core.freecad_apply.TRAPS`."""
-    from core.freecad_apply import TRAPS
-    return [verify_trap(Trap(claim=text)) for text in TRAPS]
+    """Run verification against every seed trap in `core.freecad_apply.SEED_TRAPS`."""
+    from core.freecad_apply import SEED_TRAPS
+    return [verify_trap(trap) for trap in SEED_TRAPS]
