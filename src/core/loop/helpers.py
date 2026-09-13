@@ -25,24 +25,9 @@ def _still_wrong(outstanding):
 
 def _carried_over(previous, steps, applied):
     """
-    How many Steps at the head of a revised Plan are already standing in the
-    Document, and so must not be written or applied again.
+    How many Steps at the head of a revised Plan are already standing in the Document, and so must not be written or applied again.
 
-    `_run` keeps the Steps of the pass it just worked through and how many of
-    them landed. A revision is a new Plan (`_run`'s own docstring), but where
-    it opens with the same prose as Steps that already applied, those Steps
-    describe nothing Execute has not already built — asking for their code
-    again is asking for the same Document twice. Matched to a recorded run
-    (`logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl`): an 11-Step Plan
-    revised three times produced 28 `step_started` events over what should
-    have been 11, because every revision restarted Execute at Step 1 no
-    matter how much of the Plan it left untouched.
-
-    The count is the longest run of identical prose from the head of both
-    Plans, capped at how many Steps of `previous` actually landed: a Step
-    that was never reached is not carried just because a revision kept its
-    words, and a Step a revision changed is never carried past where it
-    changed.
+    Matched to a recorded run: an 11-Step Plan revised three times produced 28 `step_started` events over the expected 11, since every revision restarted Execute at Step 1. Counted as the longest identical prefix, capped at how many Steps of `previous` actually landed.
     """
     if previous is None:
         return 0
@@ -58,11 +43,9 @@ def _also_check(acceptance, outstanding):
     """
     The acceptance list, with anything an earlier run left wrong added to it.
 
-    A second drawing describes the part it wants and says nothing about what
-    the run before it got wrong, so its acceptance list cannot see the six
-    entries that were already failing. Adding them is what makes the checks at
-    the end of this run an answer about the whole Document rather than about
-    the changes it happened to make.
+    A second drawing says nothing about what the run before it got wrong, so
+    its own acceptance list cannot see those entries. Adding them makes the
+    checks answer for the whole Document, not just the changes made now.
     """
     listed = list(acceptance)
     known = set(listed)
@@ -71,13 +54,10 @@ def _also_check(acceptance, outstanding):
 
 def _trailing_gap(written, number, total):
     """
-    Whether Step `number`'s missing code leaves nothing coded after it either,
-    up to `total` — a trailing gap, the reply running out of room before it
-    got there — as opposed to a Step after `number` landing code in the same
-    reply, an interior gap where the model wrote past a Step it skipped.
-
-    Only meaningful where Step `number` itself has no code; the last Step of
-    the range has nothing after it to check and is always a trailing gap.
+    Whether Step `number`'s missing code leaves nothing coded after it
+    either, up to `total` — a trailing gap, the reply running out of room —
+    as opposed to a later Step landing code, an interior gap where the model
+    wrote past a Step it skipped. Only meaningful where `number` has no code.
     """
     return not any(written.for_step(later).code for later in range(number + 1, total + 1))
 
@@ -107,14 +87,11 @@ def _stopped(events, reason, applied):
 
 def _aborted(events, reason, applied):
     """
-    A user `Aborted` this run -- the same `Stopped` exception as a
-    plain Stop, told apart at `run`'s own boundary by the `aborted` callable
-    it was handed.
-
-    `blocked`/`awaiting_user` hold for the same reason `_stopped`'s do: an
-    aborted run is stopped and waiting, not failed and finished, and the
-    event stream is what says which of `stopped`, `aborted` and `blocked`
-    actually happened here.
+    A user `Aborted` this run -- the same `Stopped` exception as a plain
+    Stop, told apart at `run`'s own boundary by the `aborted` callable it
+    was handed. `blocked`/`awaiting_user` hold for the reason `_stopped`'s
+    do: stopped and waiting, not failed and finished, and the event stream
+    says which of `stopped`, `aborted` and `blocked` happened.
     """
     events.emit(ABORTED, reason=reason)
     return LoopResult(ok=False, blocked=True, reason=reason, steps_applied=applied)

@@ -237,20 +237,9 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 def _unmet_in(traceback):
     """
     The acceptance entries a failed check named, one per entry.
+    Fallback for a failure the worker's own `failed` list did not cover — the envelope check, or a script that raised outside assertion.md's shape.
 
-    The fallback for a failure the worker's own `failed` list did not cover —
-    the envelope check, which never builds one, and a check script that
-    raised without following the assertion.md shape at all. Where a script
-    did build `failed`, the caller reads that directly, off the same
-    namespace `held` comes off; this is what is left for the traceback string
-    that stands in for it, parsed rather than returned as data because that
-    string is what a broken or older script leaves behind.
-
-    The checks end in a single assert whose message lists every entry that did
-    not hold, separated by semicolons — the Assertion prompt specifies that
-    shape, so this reads it rather than guessing at one. A Document that does
-    not recompute has no entry list at all: nothing was measured, so nothing
-    can be named, and the caller falls back to the whole list.
+    The checks end in one assert listing every failed entry by semicolons, per that prompt's spec; no recompute means no entry list, and the caller falls back to the whole list.
     """
     for line in traceback.strip().splitlines():
         if _DID_NOT_HOLD not in line:
@@ -263,17 +252,10 @@ def _unmet_in(traceback):
 def _the_model_failed(traceback):
     """
     Whether this traceback is about the part or about the code that checked it.
-
-    Two ways the part is at fault. An `AssertionError` is an entry of the list
-    that did not hold. A Document the copy cannot recompute is a part already
-    broken before anything was measured — that one has to read differently in
-    the feedback, or Plan is told a dimension is wrong when the model is in
-    error.
-
-    Any line rather than the last one, because the checks now end in a single
-    assert naming every entry that failed, and a message listing forty of them
-    is not going to stay on one line. A traceback's own frames are indented, so
-    the only line that can begin with the exception name is the exception.
+    An `AssertionError` names a failed entry; a Document that will not
+    recompute is a part broken before anything was measured, and needs
+    different feedback. Any line, not the last: the assert can list forty
+    failed entries across lines, but only the exception line is unindented.
     """
     if _MODEL_IS_INVALID in traceback:
         return True
@@ -301,25 +283,11 @@ def _geometry_close(before, now):
 
 def _geometry_regressions(baseline, geometry, retried_names):
     """
-    Features whose geometry moved since the last Assertion pass that held,
-    and are not one of the exact Names a retried Step actually touched.
-
-    `core/apply.py` and Preflight track only the names a Step declared
-    touching, never whether some other feature's geometry moved underneath a
-    repair Step — `config/prompts/assertion.md` already documents the result:
-    a slot shortened until it passes an acceptance check, a clamp that no
-    longer opens. `retried_names` is the exact per-Step `created`/`modified`
-    Names `apply_step` already measures (`core/apply.py`), carried out of
-    `_work_through` for every Step an attempt retried — an exact match against
-    FreeCAD `Object.Name`, not a substring against Acceptance citation prose:
-    a prefix relationship between two Names ("Slot" of "SlotChamfer", or
-    FreeCAD's own auto-numbered "Fillet" of "Fillet001") never excuses one for
-    the other.
-
-    `baseline` is a snapshot from the last Assertion pass that held (built by
-    the caller, one entry per feature Volume and BoundBox). An empty baseline
-    has nothing to compare against and reports nothing moved, which is the
-    invariant that makes the very first Assertion pass of a run a no-op here.
+    Features whose geometry moved since the last held Assertion pass, and
+    are not one of the exact Names a retried Step actually touched.
+    `retried_names` matches FreeCAD `Object.Name` exactly, never a prefix or
+    substring — "Slot" never excuses "SlotChamfer". `baseline` is empty on
+    the first Assertion pass of a run, which reports nothing moved.
     """
     touched = set(retried_names or ())
     moved = []

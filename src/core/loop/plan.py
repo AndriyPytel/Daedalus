@@ -61,26 +61,12 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     """
     Produce an ordered list of Steps from the Intent and a Snapshot.
 
-    Plan never sees the picture. It is handed the part Design describes instead,
-    under one key and in the words the user approved at the Plan Gate, and told
-    plainly that is what it is (ADR-0019).
-
-    One key, because two were how the 100 mm was lost: the description and the
-    answers to Plan's own questions used to arrive separately and Plan
-    consistently preferred the newer, so a value read off SECTION B-B vanished
-    without ever being overruled.
-
-    Beside the rendering, the same description entry by entry, addressed (ADR-0020).
-
-    A revision is handed the Plan it is rewriting. Without it a revision is
-    written from nothing but the complaint, and a complaint names only what was
-    missing: a recorded run answered "these entries are unplanned" with a
-    two-Step Plan dropping the nine Steps that covered the rest, was told the
-    nine were unplanned, wrote them again and dropped the two, and spent the
-    whole revision budget swapping halves without a Step ever running.
-
-    `tried` is every classified failure since the run began, so a revision does
-    not ask for a shape that has already failed the same way more than once.
+    Plan never sees the picture; it is handed the part Design describes, one
+    key and the user's own words (ADR-0019) — two keys once let the newer
+    always win and lost a value read off SECTION B-B. Addressed entry by
+    entry beside the rendering (ADR-0020). A revision is handed the Plan it
+    rewrites, or it drops Steps a bare complaint never named. `tried` is
+    every classified failure so far, so a revision does not repeat one.
     """
     request = {"intent": intent, "document": snapshot}
     if revising:
@@ -135,16 +121,9 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
 
 def _steps_of(planned, op_vocabulary=None):
     """
-    The prose of each Step, the entries the Plan cites, the operation each
-    kept Step declared, and the Steps refused outright.
+    The prose of each Step, the entries the Plan cites, the operation each kept Step declared, and the Steps refused outright.
 
-    What a Step satisfies goes into its own prose: a reader who cannot tell
-    from the Gate which part a Step is for cannot tell that one physical
-    cavity has been planned three times.
-
-    `op` is checked against `OP_VERBS` (ADR-0026) only where *planned* carries
-    `"op_vocabulary": "closed"`. Checking one against the list without the
-    marker is what ADR-0026 measured at 14.9% and rejected by name.
+    What a Step satisfies goes into its own prose, so the Gate can tell one physical cavity planned three times. `op` is checked against `OP_VERBS` (ADR-0026) only where `"op_vocabulary": "closed"` — unmarked, ADR-0026 measured that check at 14.9% and rejected it.
     """
     steps, satisfies, cites, ops, unbuildable = [], [], [], [], []
     closed = op_vocabulary == OP_VOCABULARY
@@ -206,16 +185,9 @@ def _unconsumed(the_part, satisfies, standing=()):
     """
     The entries of the description that no Step of the Plan accounts for.
 
-    A recorded run was told sixteen entries were unplanned, every one of them
-    satisfied by a feature standing in the Document at that moment, and spent
-    a revision on a Plan that restated all eight Steps, four of which Execute
-    then applied nothing for.
-
-    The mechanical catch for the defect the epic is named after: the revised
-    Plan dropped the 100 mm front to rear and no rule noticed.
-
-    Only what the drawing fixes — `read` or `derived`. A Plan may not be
-    refused for failing to build a number nobody supplied.
+    The mechanical catch for a Plan that dropped a dimension no rule noticed.
+    Only what the drawing fixes — `read` or `derived` — counts: a Plan may
+    not be refused for failing to build a number nobody supplied.
     """
     cited = {_as_written(entry) for entry in list(satisfies) + list(standing)}
     return [entry["about"] for entry in entries(the_part)

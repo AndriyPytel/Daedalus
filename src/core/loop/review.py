@@ -12,12 +12,11 @@ from core.loop.prompt import REVIEW_PHASE, REVIEW_SUSPECT_PHASE, _as_image, prom
 
 def _review_content(request, views, attachments):
     """
-    A Review request's content blocks — the views, named for the prose, then
-    whatever the user attached to the Intent.
+    A Review request's content blocks — the views, named for the prose,
+    then whatever the user attached to the Intent.
 
-    Both Review calls send this shape; only what they put in `request` before
-    calling this differs, and neither is told how the result was produced
-    (ADR-0003).
+    Both Review calls send this shape; only what they put in `request`
+    differs, and neither is told how the result was produced (ADR-0003).
     """
     content = [{"type": "text", "text": json.dumps(request, indent=2, default=str)}]
 
