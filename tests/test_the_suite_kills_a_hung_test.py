@@ -1,18 +1,13 @@
 """
-Test for the suite-wide guarantee that a test which never returns fails
-loudly instead of hanging the whole run.
+A test that never returns must fail the suite loudly instead of hanging it.
 
-Written first, against the fix `pytest.ini` adds: `faulthandler_timeout`
-only dumps a traceback and lets a wedged test keep running forever
-(verified directly against a planted, genuinely unblockable wait), so under
-`pytest-xdist` the worker sitting on it never crashes and the controller
-waits on its report with nothing to time it out -- the silent, whole-suite
-hang FCC-197 reports. `pytest-timeout` with the thread method force-exits
-the wedged worker, which xdist then reports as a named, attributed crash
-instead of silence. The planted test carries its own short `timeout` marker,
-and the run caps xdist's worker-restart retries, so this proves the
-mechanism without waiting on the suite's real 300-second ceiling or on
-xdist's full retry budget.
+`faulthandler_timeout` only dumps a traceback and lets a wedged test keep
+waiting, so under `pytest-xdist` its worker never dies and the controller
+waits forever on a report that never comes; `pytest-timeout` with the thread
+method force-exits that worker, which xdist reports as a named crash. The
+planted test carries its own short `timeout` marker and the run caps the
+worker-restart retries, so the mechanism is proven without waiting on the
+suite's real 300-second ceiling.
 """
 import subprocess
 import sys

@@ -44,6 +44,14 @@ The ratio moved again to 1.72 when `design.md` gained the rule that a
 fillet or a chamfer names the two surfaces it joins and never covers more
 than one edge in one entry — the same per-call cost as every other section,
 paid on every page-sized call and the reconciling call alike.
+
+The ratio moved again to 1.74 when `design.md` gained `proves`: a datum
+carries a measured distance to a neighbouring named surface and the printed
+dimension it matches, and an envelope is never that proof. 1,108 characters,
+277 tokens on every one of the five calls. What it buys is a base that can
+be caught when it is wrong — the 2024 plate's whole vertical chain was read
+off the top face named as the underside, and every overall size still
+agreed.
 """
 import json
 import os
@@ -73,24 +81,24 @@ SINGLE_CALL_BASELINE = {
     "model-mania-2024.pdf": 39970,
 }
 
-FIRST_PASS_CEILING_RATIO = 1.72
+FIRST_PASS_CEILING_RATIO = 1.74
 
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 24151},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 24889},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 24428},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 25166},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 20618},
-        "total": 69658,
+        "reconcile": {"total_chars": 40545, "input_tokens": 20895},
+        "total": 70489,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 22486},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 25370},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 22763},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 25647},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 20825},
-        "total": 68681,
+        "reconcile": {"total_chars": 41375, "input_tokens": 21102},
+        "total": 69512,
     },
 }
 
