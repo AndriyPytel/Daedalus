@@ -2,7 +2,7 @@
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
   <name>FreeCadCopilot</name>
   <description>Kernel/sub-agent AI architecture for FreeCAD</description>
-  <version>0.291.12</version>
+  <version>0.291.13</version>
   <maintainer email="pytelandriy@gmail.com">Maui</maintainer>
   <license file="LICENSE">AGPLv3.0</license>
   <url type="repository" branch="master">https://github.com/AndriyPytel/FreeCadCopilot</url>

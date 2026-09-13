@@ -36,7 +36,7 @@ def test_package_xml_carries_no_icon():
 
 
 def test_package_xml_carries_no_workbench_entry():
-    """FCC-361: the dock lives on the main window, so package.xml declares no workbench."""
+    """The dock lives on the main window, so package.xml declares no workbench."""
     root = ET.parse(ROOT / "package.xml").getroot()
     assert root.find(f"{NS}content") is None
 
