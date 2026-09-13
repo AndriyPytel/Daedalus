@@ -245,16 +245,20 @@ def test_a_step_that_cannot_be_built_returns_to_plan():
     Execute has one escape today and it is narrow: `obsolete` means the Step no
     longer makes sense. "I cannot build this" was not handled at all — the run
     died with whatever had already been applied left in the Document. FCC-61.
+
+    Four attempts, not three: a declared Step's first refusal is free, the
+    same as a scratch turn's, so `attempts_per_step`'s default of 3 only
+    starts charging from the second one.
     """
     result, events, _, tools = drive(
         [
             plan_reply("Impossible"),
-            retried_code_reply("nope1()", "nope2()", "nope3()"),
+            retried_code_reply("nope1()", "nope2()", "nope3()", "nope4()"),
             plan_reply("Possible"),
             code_reply("yes()"),
             suspect_reply(), verdict_reply("pass"),
         ],
-        applies=[failed("one"), failed("two"), failed("three")],
+        applies=[failed("one"), failed("two"), failed("three"), failed("four")],
     )
 
     assert result.ok
@@ -262,19 +266,22 @@ def test_a_step_that_cannot_be_built_returns_to_plan():
     assert revised is not None
     assert revised.data["steps"] == ["Possible"]
     assert "could not be built" in revised.data["reason"]
-    assert "three" in revised.data["reason"]
+    assert "four" in revised.data["reason"]
 
 
 def test_the_replan_after_a_handback_reads_the_document_as_it_is():
     """
     The Steps already applied are not repeated: the revision is planned from a
     fresh Snapshot, the same path `obsolete` already takes. FCC-61.
+
+    Four `nope`s, not three: the first refusal of a declared Step is free.
     """
     turns = _MultiTurn()
     turns.append(json.dumps({"code": "first()", "step": 1, "label": "Step"}))
     turns.append(json.dumps({"code": "nope1()", "step": 2, "label": "Step"}))
     turns.append(json.dumps({"code": "nope2()", "step": 2, "label": "Step"}))
     turns.append(json.dumps({"code": "nope3()", "step": 2, "label": "Step"}))
+    turns.append(json.dumps({"code": "nope4()", "step": 2, "label": "Step"}))
     turns.append(json.dumps({"declare": {"steps": [{"step": 1, "label": "Step"}]}}))
 
     _, _, _, tools = drive(
@@ -285,15 +292,15 @@ def test_the_replan_after_a_handback_reads_the_document_as_it_is():
             code_reply("yes()"),
             suspect_reply(), verdict_reply("pass"),
         ],
-        applies=[None, failed("one"), failed("two"), failed("three")],
+        applies=[None, failed("one"), failed("two"), failed("three"), failed("four")],
     )
 
     last_failure = max(index for index, (name, args) in enumerate(tools.calls)
-                       if name == "apply_step" and args["code"] == "nope3()")
+                       if name == "apply_step" and args["code"] == "nope4()")
     after = [name for name, _ in tools.calls[last_failure:]]
     assert "snapshot" in after, "the revision was planned without re-reading the Document"
     assert tools.applied_codes() == [
-        "first()", "nope1()", "nope2()", "nope3()", "yes()"]
+        "first()", "nope1()", "nope2()", "nope3()", "nope4()", "yes()"]
 
 
 def test_a_step_handed_back_twice_with_nothing_applied_stops_the_run():

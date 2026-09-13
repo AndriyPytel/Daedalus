@@ -204,19 +204,21 @@ def test_a_replan_after_a_handback_may_ask_rather_than_planning_blind():
     and no Steps, and the loop took `planned.steps` blind: the question was
     dropped and the revised Plan was empty. It may still ask; what it gets back
     is "choose it yourself", and the Plan that follows is a Plan. FCC-67.
+
+    Four `nope`s, not three: a declared Step's first refusal is free.
     """
     asked = []
 
     result, events, _, _ = drive(
         [
             plan_reply("Impossible"),
-            retried_code_reply("nope1()", "nope2()", "nope3()"),
+            retried_code_reply("nope1()", "nope2()", "nope3()", "nope4()"),
             question_reply(MISSING),
             plan_reply("Possible, assumed module 2"),
             code_reply("yes()"),
             suspect_reply(), verdict_reply("pass"),
         ],
-        applies=[failed("one"), failed("two"), failed("three")],
+        applies=[failed("one"), failed("two"), failed("three"), failed("four")],
         ask=lambda question: asked.append(question) or "module 2, 20 teeth",
     )
 

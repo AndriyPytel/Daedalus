@@ -1165,23 +1165,26 @@ def test_the_verdict_is_surfaced_either_way():
     assert verdict.data["reason"] == "That is a 10mm box."
 
 
-def test_three_attempts_per_step_then_blocked_with_what_was_tried():
+def test_four_attempts_per_step_then_blocked_with_what_was_tried():
     """
     `revisions=0`: the handback path has its own tests, this one is the
-    budget. FCC-372: the three attempts are rewrites in one kernel session.
+    budget. FCC-372: the four attempts are rewrites in one kernel session --
+    four, not three, because a declared Step's first refusal is free, the
+    same as a scratch turn that fails, and only the three after it are
+    charged against `attempts_per_step`'s default of 3.
     """
     result, events, _, tools = drive(
-        [plan_reply("Only"), retried_code_reply("try1()", "try2()", "try3()")],
-        applies=[failed("one"), failed("two"), failed("three")],
+        [plan_reply("Only"), retried_code_reply("try1()", "try2()", "try3()", "try4()")],
+        applies=[failed("one"), failed("two"), failed("three"), failed("four")],
         budgets=Budgets(revisions=0),
     )
 
     assert not result.ok
-    assert tools.applied_codes() == ["try1()", "try2()", "try3()"]
+    assert tools.applied_codes() == ["try1()", "try2()", "try3()", "try4()"]
     blocked = events.first(BUDGET_EXHAUSTED)
     assert blocked is not None
-    assert len(blocked.data["tried"]) == 3
-    assert [t["traceback"] for t in blocked.data["tried"]] == ["one", "two", "three"]
+    assert len(blocked.data["tried"]) == 4
+    assert [t["traceback"] for t in blocked.data["tried"]] == ["one", "two", "three", "four"]
 
 
 def test_the_acceptance_list_rides_with_the_plan_it_belongs_to():
