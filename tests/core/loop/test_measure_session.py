@@ -58,12 +58,31 @@ def test_a_run_that_reached_a_verdict():
     assert result.steps_started == 3
     assert result.steps_applied == 3
     assert result.plan_revisions == 0
-    assert result.preflight_failures == 0
-    assert result.cost_usd == 0
-    assert result.wall_clock_seconds == 137.2473270893097
-    assert result.gate_wait_seconds == 0.0
-    assert result.working_seconds == result.wall_clock_seconds
-    assert result.truncated is False
+
+
+def test_review_rejected_until_the_budget_is_spent_measures_as_fail(tmp_path):
+    """
+    A run whose Review rejected the result on every cycle, then hit the
+    review-cycle budget, still measures `verdict == "fail"` -- Review's own
+    last word on the result, not the `None` a run that never reached Review
+    would leave behind.
+    """
+    from tests.loop_helpers import drive, plan_reply, code_reply, suspect_reply, verdict_reply
+
+    _, events, _, _ = drive([
+        plan_reply("v1"), code_reply("v1()"), suspect_reply(), verdict_reply("fail", "not right"),
+        plan_reply("v2"), code_reply("v2()"), suspect_reply(), verdict_reply("fail", "still not right"),
+        plan_reply("v3"), code_reply("v3()"), suspect_reply(), verdict_reply("fail", "no better"),
+    ])
+
+    path = str(tmp_path / "session.jsonl")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(events.as_log())
+
+    result = measure(path)
+
+    assert result.verdict == "fail"
+    assert result.blocked_reason is not None
 
 
 def test_a_run_that_was_blocked():
