@@ -13,7 +13,7 @@ So the replacement is tested for the property that actually matters: the
 callable runs on the main thread, no matter which thread asked.
 
 MAKES_A_DOCUMENT enumerates every module of `core` that calls `newDocument`,
-and the process it calls it in. Two are the Preflight child (ADR-0002); the
+and the process it calls it in. Two are the Preflight child; the
 third probes a type in a hidden, temporary Document and is recorded here
 rather than fixed, so that it is not rediscovered as a surprise.
 """
@@ -294,7 +294,7 @@ def _core_sources():
 MAKES_A_DOCUMENT = {
     "kernel_worker.py": "is the child",
     "sketch_check.py": "runs in the child",
-    "freecad_apply.py": "hidden=True, temp=True, and known — FCC-126",
+    "freecad_apply.py": "hidden=True, temp=True, and known",
 }
 
 
@@ -302,8 +302,8 @@ def test_only_the_child_makes_a_document():
     """
     The rule `core/freecad_apply.py` states, checked against the source rather than
     trusted: a Document mutation off the main thread is how FreeCAD gets taken
-    down, and the loop's phases all run on the worker thread. FCC-122 added
-    `sketch_check` to `_describe_the_part` and the window disappeared mid-run.
+    down, and the loop's phases all run on the worker thread. Adding
+    `sketch_check` to `_describe_the_part` once made the window disappear mid-run.
 
     An allowlist, so a new caller has to come and argue with this test.
     """

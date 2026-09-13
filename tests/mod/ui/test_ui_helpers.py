@@ -1,5 +1,5 @@
 """
-`UIHelpers._icon_svg` caches SVG markup per icon name (FCC-281): the file is
+`UIHelpers._icon_svg` caches SVG markup per icon name: the file is
 static for the life of the FreeCAD session, so a second call for the same
 name must not touch disk again. `get_icon`'s rasterisation stays outside
 that cache -- colour and size are per-call, so the markup cache must not be
@@ -31,7 +31,7 @@ def test_icon_svg_reads_disk_once_per_name():
 
 
 def test_get_icon_still_returns_a_correct_icon_per_name_and_colour():
-    """FCC-281 AC2: caching the markup must not break `get_icon` itself."""
+    """Caching the markup must not break `get_icon` itself."""
     if QT_APP is None:
         pytest.skip(NO_QT)
 
@@ -44,7 +44,7 @@ def test_get_icon_still_returns_a_correct_icon_per_name_and_colour():
 
 
 def test_get_icons_rasterisation_stays_uncached(monkeypatch):
-    """FCC-281 AC3: only the SVG markup is cached, never the rasterised pixmap."""
+    """Only the SVG markup is cached, never the rasterised pixmap."""
     if QT_APP is None:
         pytest.skip(NO_QT)
     from ui import ui_helpers

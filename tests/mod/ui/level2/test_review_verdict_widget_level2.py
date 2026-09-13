@@ -1,5 +1,5 @@
 """
-Level 2 -- the Review verdict widget FCC-178 adds, built for real against
+Level 2 -- the Review verdict widget, built for real against
 FreeCAD's own Qt binding, offscreen.
 
 A pure renderer (`ui/review_verdict_widget.py`'s own docstring): three

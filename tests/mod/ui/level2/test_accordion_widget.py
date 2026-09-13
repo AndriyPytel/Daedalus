@@ -1,5 +1,5 @@
 """
-Level 2 -- `AccordionWidget.append_text` coalescing (FCC-282), built for real
+Level 2 -- `AccordionWidget.append_text` coalescing, built for real
 against FreeCAD's own Qt binding, offscreen.
 
 `content_area` has `setWordWrap(True)`, so every `setText` is a relayout of

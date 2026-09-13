@@ -1,8 +1,8 @@
 """
-Level 1 -- the type scale FCC-171 reads off the FCC-167 Figma spec.
+Level 1 -- the type scale read off the Figma spec.
 
 Every text node the spec records sets Geist at one of four
-(size, weight) pairs; ADR-0011 (FCC-A-16) keeps the family a system font, so
+(size, weight) pairs; the family stays a system font, so
 only the size and the weight travel from Figma.
 """
 from ui import typography

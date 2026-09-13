@@ -1,5 +1,5 @@
 """
-Level 1 -- the role-to-model table (FCC-312), stored beside every other
+Level 1 -- the role-to-model table, stored beside every other
 setting `_SettingsManager` owns.
 """
 import pytest
