@@ -238,6 +238,7 @@ class Client:
             return run(message, llm=self.llm, tools=tools, events=stream,
                        cancelled=is_cancelled,
                        aborted=lambda: self._abort,
+                       budget_exceeded=lambda: bool(cancelled and cancelled()),
                        attachments=list(attachments), gate=gate, ask=answered_by,
                        decide=decide,
                        outstanding=list(outstanding),

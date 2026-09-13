@@ -60,6 +60,29 @@ def test_aborting_at_the_same_boundary_is_recorded_as_aborted_not_stopped():
     assert BLOCKED not in kinds
 
 
+def test_an_automated_ceiling_is_recorded_as_budget_exhausted_not_stopped():
+    """
+    The same `cancelled()` boundary, but `budget_exceeded` says an automated
+    dollar/time ceiling fired it, not a human's Cancel — the run ends
+    `budget_exhausted` and its reason names the ceiling, never "Stopped by
+    you", so a reader cannot mistake the harness's own limit for a decision.
+    """
+    llm = ScriptedLLMClient([])
+    tools = FakeTools()
+    events = EventStream()
+
+    result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=events,
+                 cancelled=lambda: True, budget_exceeded=lambda: True)
+
+    assert not result.ok
+    assert result.blocked
+    assert "Stopped by you" not in result.reason
+    kinds = [event.kind for event in events]
+    assert BUDGET_EXHAUSTED in kinds
+    assert STOPPED not in kinds
+    assert ABORTED not in kinds
+
+
 def test_a_completed_run_emits_completed_and_nothing_else_terminal():
     """A genuine `ok=True` return is `completed`, and only that."""
     result, events, _, _ = drive(

@@ -7,7 +7,9 @@ from typing import List
 @dataclass
 class LoopResult:
     """
-    How a run ended, and what it leaves behind.
+    How a run ended, and what it leaves behind: `verdict` is `None` where
+    Review never ran, `"fail"` where it ran and rejected the result, and
+    `"pass"` where it passed or the user accepted one that did not.
 
     `unmet` is what the acceptance checks said did not hold when the run
     ended: `ok=True` beside a non-empty `unmet` means taken as it is, not

@@ -102,8 +102,8 @@ class _Asking:
 
 
 def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, aborted=None,
-        attachments=(), gate=auto_approve, ask=nobody_to_ask, decide=revise_by_default,
-        outstanding=(), the_part_path=None, kernel=None) -> LoopResult:
+        budget_exceeded=None, attachments=(), gate=auto_approve, ask=nobody_to_ask,
+        decide=revise_by_default, outstanding=(), the_part_path=None, kernel=None) -> LoopResult:
     """Turn an Intent into changes to the Document."""
     events = events if events is not None else EventStream()
     events.emit(INTENT, text=intent)
@@ -128,6 +128,7 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, aborte
         return result
 
     aborted = aborted or (lambda: False)
+    budget_exceeded = budget_exceeded or (lambda: False)
     try:
         return outcome(_run(intent, llm, tools, events, budgets,
                             cancelled or (lambda: False), gate, progress, attachments,
@@ -137,6 +138,11 @@ def run(intent, *, llm, tools, events=None, budgets=None, cancelled=None, aborte
             return outcome(_aborted(events, "Aborted. The Step in flight was discarded; "
                                             "everything applied before it is still in the "
                                             "Document.", progress.applied))
+        if budget_exceeded():
+            return outcome(_budget_exhausted(
+                events, "An automated dollar/time ceiling stopped this run, not you. "
+                        "Everything applied so far is still in the Document; undo it "
+                        "Step by Step if you want it gone.", progress.tried, progress.applied))
         return outcome(_stopped(events, "Stopped by you. Everything applied so far is still in "
                                         "the Document; undo it Step by Step if you want it "
                                         "gone.", progress.applied))
@@ -441,7 +447,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                     events,
                     "Review rejected the result %d times; the budget of %d Review cycles per Plan "
                     "is spent." % (rejections, budgets.review_cycles),
-                    outcome["tried"] + [{"review": reason}], applied,
+                    outcome["tried"] + [{"review": reason}], applied, verdict="fail",
                 )
 
             planned = rewrite(_Revisions.REJECTED, "Review has rejected the result again.",

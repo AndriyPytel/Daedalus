@@ -420,6 +420,7 @@ def test_two_review_cycles_per_plan_then_blocked():
     ])
 
     assert not result.ok
+    assert result.verdict == "fail"
     assert len(events.of(REVIEW_VERDICT)) == 3
     blocked = events.first(BLOCKED)
     assert "review" in blocked.data["reason"].lower()
@@ -471,6 +472,7 @@ def test_a_refused_execute_ends_blocked_with_the_provider_s_reason():
 
     assert result.blocked and result.awaiting_user
     assert "quota" in result.reason and "26s" in result.reason
+    assert result.verdict is None
     assert events[-1].kind == BLOCKED
     assert events.of(ERROR) == [], "a refusal was reported as a crash"
 
