@@ -55,6 +55,7 @@ from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, prompt
 from core.loop.run import run
 from core.tools import ToolError, ToolRegistry
 from tests import modelmania_harness
+from core.loop.design import _the_groups
 from tests.loop_helpers import (
     _a_real_png,
     _a_real_pdf,
@@ -82,6 +83,7 @@ from tests.loop_helpers import (
     _turns_of,
     needs_drawing,
     MODEL_MANIA,
+    THE_2023_SHEET,
     THE_2023_CLAMP,
     _the_clamp_as_it_was_read,
     ANSWERED_BEFORE_IT_DISTILLED,
@@ -736,6 +738,32 @@ def test_a_replayed_session_says_what_was_asked_before_it_says_what_was_read(tmp
     assert kinds.count(INTENT) == 1
     assert kinds.index(INTENT) < kinds.index(DESIGN)
     assert replayed[0].data["text"] == intent
+
+
+def test_a_run_over_a_genuinely_multi_group_sheet_reaches_design():
+    """
+    A single-group scripted reply never enters `_first_pass`'s
+    `ThreadPoolExecutor` fan-out, so it cannot catch a bug that only shows up
+    there. `THE_2023_SHEET` is two pages, which `_the_groups` turns into two
+    concurrent Design calls plus the reconciling one -- the shape a run over
+    a real multi-page sheet takes and a synthetic single-group script never
+    does.
+    """
+    needs_drawing(THE_2023_SHEET)
+    groups = _the_groups([THE_2023_SHEET])
+    assert len(groups) > 1, "this sheet stopped forcing the fan-out this test exists to cover"
+
+    events = EventStream()
+    llm = scripted([*_first_pass_turns(A_CUBE, [THE_2023_SHEET]), design_reply({}),
+                    plan_reply("Only", satisfies=everything(A_CUBE)),
+                    code_reply("box()"), suspect_reply(), verdict_reply("pass")],
+                   attachments=[THE_2023_SHEET])
+
+    run("Build the pipe clamp on this sheet.", llm=llm, tools=FakeTools().registry,
+        events=events, attachments=[THE_2023_SHEET])
+
+    assert DESIGN in [event.kind for event in events], \
+        "the run over a genuinely multi-group sheet never reached Design"
 
 
 @pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
