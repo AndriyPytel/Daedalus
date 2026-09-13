@@ -35,10 +35,13 @@ def test_package_xml_carries_no_icon():
     assert root.find(f"{NS}icon") is None
 
 
-def test_package_xml_carries_no_workbench_entry():
-    """The dock lives on the main window, so package.xml declares no workbench."""
+def test_package_xml_declares_the_workbench_content():
+    """FreeCAD's addon loader reads the addon's subdirectory off this entry."""
     root = ET.parse(ROOT / "package.xml").getroot()
-    assert root.find(f"{NS}content") is None
+    workbench = root.find(f"{NS}content/{NS}workbench")
+    assert workbench is not None
+    assert workbench.findtext(f"{NS}classname") == "FreeCadCopilot"
+    assert workbench.findtext(f"{NS}subdirectory") == "./"
 
 
 def test_no_tracked_file_carries_a_cyrillic_homoglyph():
