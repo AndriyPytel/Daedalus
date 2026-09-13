@@ -1095,14 +1095,16 @@ def _capture_view(view, name, path, document, size):
     """
     Write one of Review's views to *path*, or say there was none to write.
 
-    The camera and the clip plane are put back before this returns, whichever
-    way it goes: nothing of the user's outlives one capture, so the opposite
-    isometric turns to isometric itself rather than inheriting it.
+    Scaffolding past `_SCAFFOLDING` is hidden for the `fitAll()` this makes,
+    the same as `fit_view`, so an Origin plane never frames the shot in the
+    part's place. The camera, the clip plane and that visibility are all put
+    back before this returns, whichever way it goes.
     """
     import FreeCAD
 
     camera = view.getCamera()
     sectioned = False
+    hidden = _hide_scaffolding(document) if document is not None and hasattr(document, "Objects") else []
     try:
         if name == _OPPOSITE_ISOMETRIC:
             view.viewIsometric()
@@ -1122,6 +1124,8 @@ def _capture_view(view, name, path, document, size):
         if sectioned:
             view.toggleClippingPlane(0)
         view.setCamera(camera)
+        for view_object in hidden:
+            view_object.Visibility = True
     return True
 
 
