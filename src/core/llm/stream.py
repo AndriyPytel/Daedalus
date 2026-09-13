@@ -153,6 +153,10 @@ def _billed(model, chunks, messages):
         cached = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", None)
         if cached:
             tokens["cached_tokens"] = cached
+        reasoning = getattr(getattr(usage, "completion_tokens_details", None),
+                            "reasoning_tokens", None)
+        if reasoning:
+            tokens["reasoning_tokens"] = reasoning
 
     try:
         cost = litellm.completion_cost(completion_response=built, model=model)

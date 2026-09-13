@@ -307,7 +307,7 @@ def _one_turn(session, llm, content, phase=None, stream=None):
             spent = getattr(llm, "last_cost", None) or {}
             paid = {"phase": phase, "seconds": time.time() - start,
                     "model": spent.get("model", model)}
-            for key in ("usd", "prompt_tokens", "completion_tokens", "cached_tokens"):
+            for key in ("usd", "prompt_tokens", "completion_tokens", "cached_tokens", "reasoning_tokens", "usage_unavailable"):
                 if key in spent:
                     paid[key] = spent[key]
             stream.emit(COST, **paid)

@@ -88,13 +88,13 @@ class LiteLLMClient:
         self.last_cost = None
         chunks = []
         finished = False
+        cap_hit = False
         try:
             for raw in completion(**kwargs):
                 chunks.append(raw)
                 for chunk in _deltas(raw):
                     yield chunk
-                if _stopped_for_length(raw):
-                    raise _truncated(self.model, kwargs.get("max_tokens"))
+                cap_hit = cap_hit or _stopped_for_length(raw)
                 finished = finished or _finished(raw)
         except ProviderRefused:
             raise
@@ -104,16 +104,15 @@ class LiteLLMClient:
                 raise
             raise refusal from exc
 
+        if cap_hit:
+            self.last_cost = _priced(self.model, chunks, messages) or \
+                {"model": self.model, "usage_unavailable": True}
+            raise _truncated(self.model, kwargs.get("max_tokens"))
+
         if openai_compatible and not finished:
             raise _cut_off(self.model)
 
-        cost, tokens = _billed(self.model, chunks, messages)
-        if cost is not None or tokens is not None:
-            self.last_cost = {"model": self.model}
-            if cost is not None:
-                self.last_cost["usd"] = cost
-            if tokens is not None:
-                self.last_cost.update(tokens)
+        self.last_cost = _priced(self.model, chunks, messages)
 
 
 def _may_reason(model) -> bool:
@@ -148,3 +147,16 @@ def _output_cap(model, wanted) -> int:
     except Exception:
         known = None
     return min(wanted, known) if known else wanted
+
+
+def _priced(model, chunks, messages):
+    """*model*'s cost and token counts off *chunks*, or None where the stream carried neither."""
+    cost, tokens = _billed(model, chunks, messages)
+    if cost is None and tokens is None:
+        return None
+    priced = {"model": model}
+    if cost is not None:
+        priced["usd"] = cost
+    if tokens is not None:
+        priced.update(tokens)
+    return priced

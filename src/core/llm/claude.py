@@ -243,17 +243,19 @@ class ClaudeCodeClient:
                     if line.strip():
                         noise.append(line.strip())
                     continue
+                if event.get("total_cost_usd") is not None:
+                    self.last_cost = {"usd": event["total_cost_usd"], "model": self.model}
+                    self.last_cost.update(_tokens_of(event.get("usage") or {}))
                 refusal = _refusal_in(event, self.model)
                 if refusal is not None:
+                    if self.last_cost is None and event.get("stop_reason") == "max_tokens":
+                        self.last_cost = {"model": self.model, "usage_unavailable": True}
                     raise refusal
                 if _withheld_thinking(event) and not said_it_was_thinking:
                     said_it_was_thinking = True
                     yield Chunk(REASONING, "")
                 for chunk in _said(event):
                     yield chunk
-                if event.get("total_cost_usd") is not None:
-                    self.last_cost = {"usd": event["total_cost_usd"], "model": self.model}
-                    self.last_cost.update(_tokens_of(event.get("usage") or {}))
 
             code = process.wait()
             if overdue.is_set():

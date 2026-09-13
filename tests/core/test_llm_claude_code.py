@@ -368,6 +368,36 @@ def test_a_reply_the_model_was_not_allowed_to_finish_is_a_refusal():
     assert "ran out of output tokens" in str(refusal.value)
 
 
+def test_a_truncated_call_still_records_what_the_result_event_reported():
+    """
+    The `result` event that carries `stop_reason: max_tokens` is the same one
+    that carries `total_cost_usd` and `usage` -- both belong to one truncated
+    call, not to a call that never happened.
+    """
+    client, _ = client_over(_Process(_changed(MINIMAL, stop_reason="max_tokens")))
+
+    with pytest.raises(ProviderRefused):
+        collect(client.stream(a_turn()))
+
+    usage = _result(MINIMAL)["usage"]
+    assert client.last_cost == {
+        "usd": _result(MINIMAL)["total_cost_usd"], "model": MODEL,
+        "prompt_tokens": usage["input_tokens"],
+        "completion_tokens": usage["output_tokens"],
+        "cached_tokens": usage["cache_read_input_tokens"],
+    }
+
+
+def test_a_truncated_call_with_no_usage_at_all_says_so_rather_than_nothing():
+    client, _ = client_over(_Process(_changed(
+        MINIMAL, stop_reason="max_tokens", total_cost_usd=None, usage=None)))
+
+    with pytest.raises(ProviderRefused):
+        collect(client.stream(a_turn()))
+
+    assert client.last_cost == {"model": MODEL, "usage_unavailable": True}
+
+
 def test_the_cut_off_reply_does_not_tell_the_user_to_raise_a_cap():
     """
     `modelUsage` reports `maxOutputTokens: 64000` and the CLI takes no flag

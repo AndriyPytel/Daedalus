@@ -2,7 +2,7 @@
 
 EFFORTS = ("low", "medium", "high")
 
-_OUTPUT_BUDGET = 8192
+_OUTPUT_BUDGET = 16384
 
 _REASONING_EFFORT = "low"
 

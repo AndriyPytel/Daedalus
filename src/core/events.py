@@ -11,6 +11,9 @@ checks found wrong and nobody fixed, emitted once at the top of the run that inh
 `call_started` pairs with `cost`; one with no matching `cost` after it is a call that died without
 answering.
 `cost.usd` is present only when the client reported a price — a subscription route emits none.
+`cost.reasoning_tokens` is the reasoning share of `completion_tokens` where the provider breaks it
+out; `cost.usage_unavailable` marks a truncated call whose provider reported no usage at all,
+rather than the cost event carrying nothing.
 `change_set` is what a new Design version changed since the one Plan last saw, so a
 re-plan's reason is on the stream without a reader re-deriving it from two `design` events.
 `routed` is the orchestrator's own decision, separate from the text it was handed alongside.

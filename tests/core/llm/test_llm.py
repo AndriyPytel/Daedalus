@@ -398,6 +398,86 @@ def test_a_caller_s_own_output_cap_wins():
     assert completion.kwargs["max_tokens"] == 64
 
 
+def truncated_chunks_with_usage():
+    """
+    A cap-hit stream whose trailing usage chunk still arrives, as
+    `stream_options: {"include_usage": True}` asks for on every OpenAI-compatible
+    stream this route makes -- a gateway that answers that flag sends usage after
+    `finish_reason: length` exactly as after `stop`.
+    """
+    from litellm.types.utils import ModelResponseStream, Usage
+
+    return truncated_chunks() + [ModelResponseStream(
+        choices=[], usage=Usage(prompt_tokens=17205, completion_tokens=32768,
+                                completion_tokens_details={"reasoning_tokens": 30000}))]
+
+
+def test_a_truncated_reply_still_records_the_usage_the_provider_sent():
+    """
+    A call that hit the output cap is priced from whatever usage travelled with
+    it, not left at `seconds` alone -- the gap that made a whole sweep price at
+    $0.00 while it burned tens of thousands of tokens.
+    """
+    client, _ = client_replaying(truncated_chunks_with_usage())
+    client.model = "openai/kimi-k3"
+
+    with pytest.raises(ProviderRefused):
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert client.last_cost["prompt_tokens"] == 17205
+    assert client.last_cost["completion_tokens"] == 32768
+    assert client.last_cost["reasoning_tokens"] == 30000
+
+
+def test_a_truncated_reply_with_no_usage_at_all_says_so_rather_than_nothing(monkeypatch):
+    """
+    `_billed` itself has nothing to reassemble a price or a token count from --
+    checked directly, LiteLLM's `stream_chunk_builder` still estimates prompt
+    tokens off the sent `messages` even where a truncated reply carries no
+    usage of its own, so the one way a truncated call ends up with neither is
+    the reassembly itself failing.
+    """
+    import core.llm.client as client_module
+
+    monkeypatch.setattr(client_module, "_billed", lambda model, chunks, messages: (None, None))
+    client, _ = client_replaying(truncated_chunks())
+    client.model = "openai/kimi-k3"
+
+    with pytest.raises(ProviderRefused):
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert client.last_cost == {"model": "openai/kimi-k3", "usage_unavailable": True}
+
+
+def test_a_clean_reply_still_reports_reasoning_tokens_separately():
+    """
+    Reasoning is billed as completion tokens and counted against the same cap
+    as the rest of the reply, but priced separately so it can be told apart
+    from a run that used its whole budget on the final answer.
+    """
+    client, _ = client_replaying(anthropic_chunks())
+    client.model = "claude-3-7-sonnet-20250219"
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert client.last_cost["reasoning_tokens"] == 18
+
+
+def test_the_default_output_cap_is_65536_for_a_model_litellm_has_no_ceiling_for():
+    """
+    kimi-k2.7-code, mimo-v2.5 and deepseek-v4-flash-vision-exp all died at the
+    old 32768-token cap doing genuine, non-repeating drawing analysis
+    (logs/model-sweep-20260913/analysis-thinking-tokens.md) -- none of them is
+    a model LiteLLM has a ceiling on file for, so the default is what they get.
+    """
+    client, completion = client_replaying(openai_chunks())
+    client.model = "openai/kimi-k2.7-code"
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert completion.kwargs["max_tokens"] == 65536
+
+
 def test_an_openai_compatible_gateway_is_asked_to_report_what_it_spent():
     """Without usage the gateway's stream ends silently and a cut-off looks complete."""
     client, completion = client_replaying(openai_chunks())
@@ -479,7 +559,7 @@ def test_a_priced_streaming_call_sets_last_cost():
 
     assert client.last_cost == {
         "usd": 0.004521, "model": "claude-3-7-sonnet-20250219",
-        "prompt_tokens": 1066, "completion_tokens": 37,
+        "prompt_tokens": 1066, "completion_tokens": 37, "reasoning_tokens": 18,
     }
 
 
