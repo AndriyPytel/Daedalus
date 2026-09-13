@@ -160,6 +160,72 @@ def test_execute_is_handed_the_material_cards_without_asking():
     assert cards[0]["result"]["materials"][0]["uuid"] == "b9b3a6ff-1c8e"
 
 
+def test_disk_cache_hit_is_remembered():
+    """
+    A describe_type answer read off disk must land in still_true() the same
+    as one just fetched, or the next Step pays for the same question again.
+    """
+    from core.loop.execute import Looks
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cache_path = os.path.join(tmp, "type_cache.json")
+        with open(cache_path, "w", encoding="utf-8") as handle:
+            json.dump({"1.0:{\"type_id\": \"PartDesign::Hole\"}":
+                       {"properties": ["DepthType"]}}, handle)
+
+        looks = Looks(cache_path=cache_path, freecad_version="1.0")
+        arguments = {"type_id": "PartDesign::Hole"}
+
+        first = looks.answer("describe_type", arguments)
+        assert first == {"properties": ["DepthType"]}
+
+        carried = [look for look in looks.still_true() if look["tool"] == "describe_type"]
+        assert carried, "a disk hit never landed in still_true()"
+        assert carried[0]["arguments"] == arguments
+
+
+def test_what_this_build_has_prefetches_the_disk_type_cache():
+    """
+    `type_cache.json` already answers every describe_type this build asked
+    before; those answers belong in the first request, not behind a fresh
+    look at the same type.
+    """
+    from core.loop.execute import _what_this_build_has
+
+    with tempfile.TemporaryDirectory() as tmp:
+        cache_path = os.path.join(tmp, "type_cache.json")
+        version = loop_execute_module._freecad_version()
+        key = "%s:%s" % (version, json.dumps({"type_id": "PartDesign::Hole"}, sort_keys=True))
+        with open(cache_path, "w", encoding="utf-8") as handle:
+            json.dump({key: {"properties": ["DepthType"]}}, handle)
+
+        old_path = loop_execute_module.TYPE_CACHE_PATH
+        loop_execute_module.TYPE_CACHE_PATH = cache_path
+        try:
+            looks = loop_execute_module._what_this_build_has(ToolRegistry())
+        finally:
+            loop_execute_module.TYPE_CACHE_PATH = old_path
+
+        carried = [look for look in looks.still_true() if look["tool"] == "describe_type"]
+        assert carried, "the disk cache never made it into the initial Looks"
+        assert carried[0]["result"] == {"properties": ["DepthType"]}
+
+
+def test_materials_answer_ignores_the_filter_it_was_never_asked_with():
+    """
+    `materials` is prefetched once, unfiltered; the model asks it filtered by
+    name, and the filtered arguments must still resolve to that same answer.
+    """
+    from core.loop.execute import Looks
+
+    looks = Looks()
+    unfiltered = {"materials": [{"uuid": "b9b3a6ff-1c8e", "name": "steel"}]}
+    looks.remember("materials", {}, unfiltered)
+
+    assert looks.answer("materials", {"name": "steel"}) == unfiltered
+    assert looks.answer("materials", {"name": "carbon"}) == unfiltered
+
+
 def test_a_plan_that_ends_in_a_material_assignment_uses_a_uuid_from_this_build():
     result, _, llm, tools = drive([
         plan_reply("Pad the profile", "Assign the material"),

@@ -75,6 +75,26 @@ class Looks:
         args_str = json.dumps(arguments, sort_keys=True, default=str)
         return "%s:%s" % (self._freecad_version, args_str)
 
+    def disk_types(self):
+        """
+        Every describe_type answer this FreeCAD version already has on disk,
+        as (arguments, result) pairs -- a build fact from a previous run.
+
+        An entry from a different FreeCAD version is skipped: its properties
+        may not hold on this one.
+        """
+        prefix = "%s:" % self._freecad_version
+        entries = []
+        for key, result in self._disk_cache.items():
+            if not key.startswith(prefix):
+                continue
+            try:
+                arguments = json.loads(key[len(prefix):])
+            except json.JSONDecodeError:
+                continue
+            entries.append((arguments, result))
+        return entries
+
     def a_step_landed(self):
         """A Step applied, so what was read off the Document may have moved."""
         self._step += 1
@@ -97,14 +117,22 @@ class Looks:
         What this run already knows about this exact look, or None.
 
         Only where it is still true: an answer read off a Document two Steps
-        ago is not an answer about this one.
-
-        describe_type reads from disk first, then from this run's memory.
+        ago is not an answer about this one. describe_type reads from disk
+        first, remembering a hit the same as a fresh call; materials
+        answers from whatever arguments it was last remembered with,
+        since it is one unfiltered list regardless of how it is asked.
         """
         if name == "describe_type" and self._cache_path:
             disk_key = self._disk_cache_key(arguments)
             if disk_key in self._disk_cache:
-                return self._disk_cache[disk_key]
+                result = self._disk_cache[disk_key]
+                self.remember(name, arguments, result)
+                return result
+
+        if name == "materials":
+            for taken in reversed(self._taken):
+                if taken["tool"] == "materials":
+                    return taken["result"]
 
         key = self._key(name, arguments)
         current = self._current(name)
