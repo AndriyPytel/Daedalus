@@ -22,6 +22,7 @@ Read with `tokenize` rather than `ast`: comments are not in the tree.
 import ast
 import io
 import os
+import re
 import tokenize
 
 from tests.source_tree import ROOT, sources, tracked
@@ -120,6 +121,33 @@ def docstrings():
                 doc = ast.get_docstring(node)
                 if doc:
                     yield where, getattr(node, "lineno", 1), node, doc
+
+
+SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+TICKET_ID = re.compile(r"(ADR|FCC)-\d+")
+
+
+def test_no_docstring_holds_more_than_three_sentences():
+    offenders = ["%s::%s (%d sentences)" % (where, getattr(node, "name", "module"), count)
+                 for where, line, node, doc in docstrings()
+                 for count in [len(SENTENCE_END.findall(doc.strip()))]
+                 if count > 3]
+
+    assert not offenders, (
+        "a docstring over three sentences is a design document, and belongs "
+        "in the knowledge base instead: %s" % ", ".join(offenders))
+
+
+def test_no_docstring_carries_a_ticket_or_adr_id():
+    offenders = ["%s::%s %s" % (where, getattr(node, "name", "module"), match.group())
+                 for where, line, node, doc in docstrings()
+                 for match in [TICKET_ID.search(doc)]
+                 if match]
+
+    assert not offenders, (
+        "an id is not an explanation, it sends the reader elsewhere to learn "
+        "what the docstring in front of them means -- say the constraint "
+        "itself, in words: %s" % ", ".join(offenders))
 
 
 BASELINE_FILE = os.path.join(ROOT, "tests", "docstring_budget_baseline.txt")
