@@ -1,4 +1,10 @@
-"""Patch the held model with newly-offered evidence: diff two models, merge one into the other, and correct or resolve one address at a time."""
+"""Patch the held model with newly-offered evidence: diff two models,
+merge one into the other, and correct or resolve one address at a time.
+
+`diff` hands Plan a change-set of the part and what it disagrees about,
+not the sweep of what the sheet never said -- the full document still
+carries all of it to Assertion and Review, unchanged by `diff` existing.
+"""
 
 
 from core.design.core import (
@@ -51,19 +57,12 @@ def diff(previous, current):
     """
     The semantic change-set from *previous* to *current*.
 
-    Objects are matched by their stable identity — `id` on a feature, `name`
-    on a datum, `about` on a conflict, the same `_HEADED_BY` rule `merge`
-    already dedupes conflicts by — so a moved datum is one `changed` entry
-    against that identity, not a `removed` and an `added` pair a text diff
-    over the re-serialized YAML would produce, and a conflict the growth
-    raised reaches Plan by the address it is about rather than being lost
-    because it carries neither an `id` nor a `name`.
+    Matched by stable identity (`id`, `name`, `about`), so a moved datum is
+    one `changed` entry, not a `removed`/`added` pair a text diff over
+    re-serialized YAML would produce, and a conflict reaches Plan by the
+    address it's about rather than being lost for lacking `id` or `name`.
 
-    `envelope` and `not_defined` are not compared: an envelope entry is a
-    value under a key, not an object with an identity to match by, and this
-    hands Plan a change-set of the part and what it disagrees about, not the
-    sweep of what the sheet never said — the full document still carries
-    all of it to Assertion and Review, unchanged by this function existing.
+    `envelope` and `not_defined` are not compared: values under a key, not objects with an identity.
     """
     changes = []
     for section in _DIFFED_SECTIONS:
@@ -119,10 +118,8 @@ def _refused_kinds(offered):
     Features in *offered* naming a `kind` off `FEATURE_KIND`, checked only
     when *offered* carries `"kind_vocabulary": "closed"` (ADR-0026).
 
-    Enforcing the closed list against every recorded reading is the
-    alternative ADR-0026 rejects — measured at 14.9% compliance. The reason
-    named is actionable: a banned prose synonym (`round` onto `fillet`,
-    `recess` onto `counterbore`) names that kind.
+    Rejects the enforce-everywhere alternative ADR-0026 measured at 14.9%
+    compliance; a banned prose synonym (`round` onto `fillet`) names the kind.
     """
     if not isinstance(offered, dict) or offered.get("kind_vocabulary") != CLOSED_KIND_VOCABULARY:
         return []
@@ -165,12 +162,11 @@ CONFLICT_ENTRY_FIELDS = ("about", "stands", "was_also_said")
 
 def _refused_conflicts(offered):
     """
-    Entries of `conflicts` missing one of `CONFLICT_ENTRY_FIELDS`, checked only
-    under the `kind_vocabulary: closed` marker (ADR-0026).
+    Entries of `conflicts` missing one of `CONFLICT_ENTRY_FIELDS`, checked
+    only under `kind_vocabulary: closed` (ADR-0026).
 
-    A reply invented four different conflict shapes across one session, 44 of
-    46 entries carrying no `what` at all — entries in that many shapes cannot
-    be rendered or compared. Refused whole and travels on in `was_also_said`.
+    A reply invented four conflict shapes in one session, 44 of 46 entries
+    with no `what` at all -- refused whole, travels on in `was_also_said`.
     """
     if not isinstance(offered, dict) or offered.get("kind_vocabulary") != CLOSED_KIND_VOCABULARY:
         return []
@@ -200,14 +196,12 @@ def corrected(model, address, value, because):
     """
     The one write that overrules what is already on the model.
 
-    A check that finds something wrong has exactly two moves — say nothing,
-    or stop the run. The run stopped for four findings, of which four were
-    wrong, and the loop had no third move to make.
+    A check finding something wrong has two moves -- say nothing, or stop
+    the run; four findings stopped it and four were wrong, so this is the
+    third move.
 
-    So there is one, and it is narrow. A correction lands at one address
-    which a check has named; it carries *because*, which is the evidence off
-    the drawing; and it leaves the displaced value behind under `was`. A
-    caller with nothing measured to cite has nothing to pass here.
+    Narrow: lands at the address a check named, carries *because* (the
+    evidence off the drawing), and leaves the displaced value under `was`.
     """
     if not address or not _filled(value):
         return model

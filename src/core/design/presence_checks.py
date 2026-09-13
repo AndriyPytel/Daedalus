@@ -1,4 +1,10 @@
-"""Findings about whether a value is present at all, once -- superseded features that still disagree, the same placement said twice, and an outside no feature carries."""
+"""Findings about whether a value is present at all, once -- superseded
+features that still disagree, the same placement said twice, and an
+outside no feature carries.
+
+`_differing_feature_values` never compares `axis` (design.md:497-500
+and crosswise()'s own axis rules).
+"""
 
 
 import re
@@ -14,24 +20,14 @@ from core.design.core import (
 
 def unsafe_supersession(model) -> list:
     """
-    Features marked superseded_by that carry values differing from the canonical.
+    Features marked superseded_by that carry values differing from canonical.
 
-    When reconciliation marks a feature superseded_by another, _features()
-    filters it out and its values are lost. If those values differ from the
-    canonical feature's values, that is a silent reading loss — worse than
-    the loud conflict it should be. This check catches such cases and raises
-    them as conflicts so the user settles them at the Plan Gate.
+    Reconciliation drops a superseded feature's values; if they differ from
+    canonical, that is a silent reading loss elevated to a conflict for the
+    user to settle at the Plan Gate. Envelope and datum values are never
+    lost to `superseded_by` -- only features are filtered this way.
 
-    Only features are covered. Envelope entries and datums are not filtered by
-    superseded_by — envelope values stay in entries() because _a_value() returns
-    True before _superseded() is checked, and datums have no values to lose.
-
-    Order-independence: the detection runs on the final merged model, comparing
-    the values on two features that both already exist. The conflict entry names
-    them in sorted (alphabetical) order, so the same pair produces the same
-    conflict regardless of which page landed first or which feature carries the
-    superseded_by marker. ADR-0019 requires this: merge() is order-independent,
-    and this finding must be too.
+    Order-independent per ADR-0019: conflicts name features in sorted order.
     """
     features = (model or {}).get("features") or []
     by_id = {f.get("id"): f for f in features
@@ -65,16 +61,9 @@ def _differing_feature_values(superseded, canonical):
     """
     The first position value where superseded and canonical disagree, or None.
 
-    Compares ONLY the value content of position entries, never provenance keys
-    (flag, round_in, seen_in, from, because, was). Two entries with the same
-    value but read from different views are NOT a conflict.
-
-    Does NOT compare axis (design.md:497-500 and crosswise() own axis rules),
-    and skips position comparisons where values have different units (mm vs °)
-    since those are different physical quantities, not conflicting readings.
-
-    Returns a dict mapping each feature id to its value at the differing field,
-    suitable for the conflict message, or None if values agree.
+    Compares only value content, never provenance keys, and skips fields
+    whose units differ (mm vs deg) since those aren't comparable readings.
+    Returns each id's value at the differing field, or None if they agree.
     """
     sup_id = superseded.get("id") or "unknown"
     can_id = canonical.get("id") or "unknown"
@@ -103,12 +92,9 @@ def _numeric_value(text):
     """
     The numeric part of a measurement, or None if the text is not a number.
 
-    Extracts the first number from strings like "25 mm", "0 mm (origin)",
-    "42.5 mm (reference: ...)", but returns None for non-numeric placeholders
-    like "to be read again off the later page".
-
-    Two features agreeing on a non-numeric placeholder is not evidence they
-    describe the same placement — only agreement on actual measurements counts.
+    Extracts the first number from strings like "25 mm" or "42.5 mm
+    (reference: ...)", but returns None for non-numeric placeholders --
+    agreement on a placeholder is not evidence of the same placement.
     """
     if not text:
         return None
@@ -127,16 +113,9 @@ def _axis_direction(feature):
     """
     The direction (length/width/height/depth/thickness) an axis runs along, or None.
 
-    Classifies the axis value by the words it uses: "along the depth",
-    "perpendicular to the front face", "parallel to the height", etc.
-    Returns one of _A_DIRECTION or None if the axis is missing or does not
-    name a direction from that vocabulary.
-
-    Features whose axis is described through faces ("perpendicular to the top
-    and bottom faces") rather than a direction word are invisible to this
-    check — they have no direction the check can classify, so they are excluded
-    from comparison. This is a known limitation: the check sees only features
-    whose axis is named by a direction word.
+    Classifies by direction words ("along the depth", "parallel to the
+    height"); features described through faces instead are invisible
+    here -- a known limitation, not a bug.
     """
     axis_val = feature.get("axis")
     if not axis_val:
@@ -161,12 +140,11 @@ def _axis_direction(feature):
 def twice_placed(model) -> list:
     """
     Two features with the same axis direction, agreeing at one datum and
-    differing at another — one placement described twice.
+    differing at another -- one placement described twice.
 
-    The rule requires all three: (1) axes point the same way, (2) at least
-    one shared datum where numeric values agree, (3) at least one shared
-    datum where numeric values differ. Without (3), two features agreeing
-    everywhere are synonym candidates (superseded_by), not conflicts.
+    Requires all three: axes match, one shared datum agrees, another
+    differs. Without the third, agreeing everywhere makes them synonym
+    candidates (superseded_by), not conflicts.
 
     Returns conflicts in sorted order (ADR-0019 order-independence).
     """
@@ -283,17 +261,12 @@ def nobody_carries_the_outside(model) -> str:
     """
     The standing finding that the outside of the part is nobody's, or "".
 
-    `THE_OUTSIDE` is what that conflict is about, and it is named rather than
-    left to the prose because the loop has to recognise this one finding: it is
-    the only one that says the *shape* of the part is nobody's, and a run that
-    goes on past it builds a box.
+    `THE_OUTSIDE` is named because the loop must recognise this one
+    finding: the only one saying the part's *shape* is nobody's.
 
-    A conflict is settled by the user at the Plan Gate — that is what the
-    docstrings here have said since the finding existed, and what the recorded
-    run (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`) showed nobody
-    doing. It stood in `conflicts`, the Gate showed the Steps, the Plan padded
-    the profile it had, and the part came out the wrong shape. So the loop asks
-    this before it plans, and this is the question it asks with.
+    Settled by the user at the Plan Gate -- recorded run
+    (`logs/sessions/e76b61d5bc7143699b451549c90433f7.jsonl`) shows what
+    happens when nobody does: it stood in `conflicts` and the part came out wrong.
     """
     for finding in silhouette(model):
         if finding["about"] == THE_OUTSIDE:
@@ -305,16 +278,12 @@ def silhouette(model) -> list:
     """
     The outside of the part described in words and carried by nothing.
 
-    An `envelope` is three distances between named faces; a rectangular prism
-    satisfies them exactly as well as an obround plate. So where the model
-    calls the outside rounded and no feature owns that contour, that is a
-    conflict. Ownership is looked for only in a feature's `id`, `kind` and
-    `topology` — a fillet whose edge-selection prose mentions a capsule is
-    what this exists to catch.
+    An `envelope` is three distances between named faces -- a rectangular
+    prism satisfies them as well as an obround plate -- so a rounded
+    outside with no owning feature is a conflict, looked for only in
+    `id`, `kind` and `topology`.
 
-    The second finding is the datum that says the same face is flat — the
-    merge cannot see it because neither was ever written under the same
-    address.
+    A datum saying the same face is flat is a separate finding merge can't see.
     """
     said = _said(model, "")
     rounded = [(path, text) for path, text in said
@@ -362,27 +331,22 @@ _LIES_IN_A_PLANE = ("profile", "arc", "rounded", "radiused")
 
 def _what_it_is(feature):
     """
-    `kind`, and `kind` alone — the one field the closed vocabulary lives in.
+    `kind`, and `kind` alone -- the one field the closed vocabulary lives in.
 
-    `id` is a label the model chooses and is never checked against anything,
-    and `topology` says what a feature runs into, not what it is: a fillet
-    whose edge-selection prose mentions "cutout and slot" was flagged as an
-    unplaced cavity, because those words sat in its `topology`.
+    `id` is a label never checked against anything; `topology` says what a
+    feature runs into, not what it is -- a fillet whose topology mentioned
+    "cutout and slot" was flagged as an unplaced cavity for exactly that.
     """
     return str(feature.get("kind") or "").strip().lower()
 
 
 def _is_one_of(feature, closed_members, prose_words):
     """
-    Whether *feature*'s `kind` names one of *closed_members* of ADR-0026's
-    22, read whole where `kind` is one of them, or a substring of
-    *prose_words* where it is not.
+    Whether *feature*'s `kind` matches an ADR-0026 *closed_members* value
+    outright, or a substring of *prose_words* as fallback.
 
-    The closed marker is sent on roughly a third of Design replies (3 of 9),
-    so most `kind` fields are still the prose grammar this reads as a
-    fallback. `bore` reads a prose `kind` but is never checked as one of the
-    22, because it is not one — a compliant reply is refused before `kind`
-    can be `"bore"`.
+    The closed marker appears on about a third of replies (3 of 9); `bore`
+    reads as prose but is never one of the 22, refused before `kind` can be "bore".
     """
     kind = _what_it_is(feature)
     if kind in FEATURE_KIND:

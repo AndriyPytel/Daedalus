@@ -1,37 +1,24 @@
 """
 The part Design read off the sheet, as a file on disk.
 
-Design produces the one thing every later phase depends on — what the part is —
-and until this module it left nothing behind: the description went out as prose
-in the Plan request and into the transcript as one event, and neither can be
-opened, diffed or corrected. The reading is the part of the pipeline that is
-wrong most often and it was the only part with no record of its own.
+Design produces the one thing every later phase depends on -- what the
+part is -- and until this module nothing recorded it: it went out as
+prose in a Plan request and as one transcript event, neither openable,
+diffable or correctable.
 
-One reading is two files: the document Design distilled, which is the reading,
-and beside it the whole of what Design gathered to arrive at it. Downstream
-opens the first and nothing opens the second — the proof of a number is worth
-nothing once the number is settled, and worth having for the person who asks
-tomorrow where it came from.
+One reading is two files: the document Design distilled (the reading),
+and beside it what Design gathered to arrive at it -- kept for whoever
+asks tomorrow where a number came from. A second reading is a second
+file beside the first, named by the sheet's digest and the time taken,
+sortable to the microsecond (a counter would not: `-1` sorts before
+`.yaml`), plus its schema.
 
-A second reading of the same sheet is a second file beside the first, named by
-when it was taken, so "what did the reading change"
-is a diff rather than an afternoon with two transcripts. The name carries the
-sheet, enough of its digest to tell two drawings of the same name apart and not
-so much that the name stops being readable, and the time the reading was taken:
-sortable, so a sheet's readings list in the order they were taken, and down to
-the microsecond, so that two taken inside one second are still two names and the
-sort still holds. A counter would not — `-1` sorts before `.yaml`. The file also
-says what schema it is, so one written by an older addon can be told apart from
-one this code understands.
+Readings live beside the transcripts, in the addon's own directory
+unless the caller says otherwise -- rebindable so a test suite does
+not fill the directory a user reads.
 
-Readings live beside the transcripts, in the addon's own directory, which is
-where a user already goes to find a run, unless the caller says where. That
-default is rebindable, because a suite that wrote its fixtures there would fill
-the very directory a user reads.
-
-What is in the file is the requirement. A user who opens it and changes an axis
-has changed what the run must satisfy, and nothing here merges their edit with
-what the provider said or warns them off it.
+What is in the file is the requirement: a user's edit changes what
+the run must satisfy, unmerged with what the provider said.
 """
 import datetime
 import hashlib
@@ -81,18 +68,14 @@ _ASKED_FOR = "what_was_asked_for"
 
 def saved(model, source, into=None, read_from=None, asked_for=None) -> str:
     """
-    *model* written as one reading of *source*. The path, or "" if there is
-    nothing to write.
+    *model* written as one reading of *source*. The path, or "" if there
+    is nothing to write.
 
-    A Design turn that described nothing wrote nothing down, and a file saying
-    so is a file to mistake for a reading later. An empty *source* is not that
-    case: a part described from the Intent alone was read off no sheet, and the
-    name and the provenance say so rather than naming a drawing that does not
-    exist.
+    A Design turn that described nothing writes nothing, rather than a
+    file to mistake for a reading later. An empty *source* means read off
+    no sheet, not off a drawing that does not exist.
 
-    `asked_for` is the Intent the reading was taken under, and it is written
-    first: a reading says what it was read off, and what it was read for is the
-    other half of holding the run to it.
+    `asked_for` (the Intent read under) is written first, the other half of holding the run to it.
     """
     if not model:
         return ""

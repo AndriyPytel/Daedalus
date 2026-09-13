@@ -17,6 +17,8 @@ of 2026-09-10 (logs/review/rlm-execute-cost-audit.md) -- 15 on the Step's
 own volume assert, 10 on a None deref -- so a failing Step is handed
 `volume`, the idle-feature diagnosis and the Document's own objects, not
 only the traceback.
+
+`introspect`'s `obj` is None either with no object info or a dereferenced `None`; *doc* answers the latter.
 """
 import contextlib
 import difflib
@@ -77,13 +79,9 @@ def _comparable(obj, prop):
     """
     Whether *prop* is worth diffing by value.
 
-    `ShapeMaterial` (`Materials::PropertyMaterial`) hands back a freshly
-    built wrapper object on every read, with no value equality of its own --
-    two reads of the same untouched property compare unequal, which would
-    read as a modification on every single Step of a Document that has one.
-    It is excluded by its FreeCAD property type rather than by name, so the
-    same trap does not reopen under a different Tool's own material-typed
-    property.
+    `ShapeMaterial` hands back a fresh wrapper on every read with no
+    value equality, so two untouched reads compare unequal -- excluded
+    by FreeCAD property type, not name, so no other Tool reopens the trap.
     """
     try:
         return "Material" not in obj.getTypeIdOfProperty(prop)
@@ -163,19 +161,12 @@ def step_namespace(doc):
     """
     What a Step's code runs with.
 
-    The kernel and the GUI's own replay (`core/freecad_apply.py::run_in_transaction`)
-    must build this identically or they are running different programs
-    (ADR-0002), so both call this rather than each spelling it out.
+    The kernel and the GUI's replay must build this identically or they
+    run different programs (ADR-0002).
 
-    Sketch geometry is spelled Part.Circle and Part.LineSegment in every
-    version of FreeCAD and the Sketcher module holds none of it, so leaving
-    Part out turns correct code into a NameError, which the assistant reads as
-    "Part does not exist here" and answers by inventing Sketcher.Circle.
-    Materials is here for the same reason: ShapeMaterial accepts only a
-    Materials.Material and the one source of those is
-    Materials.MaterialManager, so left out the correct code is a NameError and
-    the assistant answers by inventing an App.Material that has no Name or
-    Density.
+    Sketch geometry (Part.Circle, Part.LineSegment) lives outside Sketcher
+    in every FreeCAD version; leaving Part out turns correct code into a
+    NameError the assistant answers by inventing Sketcher.Circle.
     """
     import FreeCAD
 
@@ -190,17 +181,11 @@ def step_namespace(doc):
 
 class _NamedDoc:
     """
-    The live Document, wrapped so `doc.addObject(type, name)` records the name
-    FreeCAD actually allocated under the name the Step asked for.
+    The live Document, wrapped so `doc.addObject` records the name
+    FreeCAD actually allocated.
 
-    The two differ exactly when an earlier Step, or a hand-edit already in the
-    Document, holds that name first -- FreeCAD renames the new object rather
-    than raising, and a later Step addressing it by the literal string it
-    asked for reaches the wrong object, silently. `names` is what a later
-    Step reaches through instead: `doc.getObject(names['Box'])`.
-
-    Every other attribute passes straight through: this is not a new
-    Document API, only the one seam a Step's code creates objects through.
+    FreeCAD renames rather than raises when a name is taken; a Step
+    reaching for its own string gets the wrong object silently.
     """
 
     def __init__(self, doc, names):
@@ -256,21 +241,12 @@ def introspect(exc, doc=None):
     """
     Answer an AttributeError with what the object actually has.
 
-    FreeCAD names the attribute that is missing and nothing else, so the
-    assistant guesses a second spelling of the same wrong idea and the Step
-    budget goes on one dead end. Introspection is the answer to API knowledge
-    here as everywhere (ADR-0006) -- this just applies it at the moment the
-    guess fails, rather than hoping the assistant asks first (ADR-0008).
+    FreeCAD names only the missing attribute, so a second guess burns
+    Step budget; introspection answers it here rather than hoping the
+    assistant asks first (ADR-0006, ADR-0008).
 
-    PropertiesList is the sharp answer for a DocumentObject, where `dir()` is
-    eighty names of mostly plumbing; on a module or a class it is the unbound
-    descriptor, which is neither, hence the isinstance rather than a truth
-    test. A hint is never worth losing the traceback it was meant to explain,
-    so anything that goes wrong here gives back nothing.
-
-    `obj` is None both when the exception carries no object information and
-    when the object dereferenced was `None` itself; *doc* is what the second
-    case is answered with.
+    PropertiesList suits a DocumentObject (`dir()` is eighty names of
+    plumbing); a module/class gets the unbound descriptor instead.
     """
     obj, name = getattr(exc, "obj", None), getattr(exc, "name", None)
     if not name:
@@ -722,15 +698,11 @@ def _printed(said):
 
 def _measured(namespace):
     """
-    An assertion script's own `held` and `failed` lists, read back out of
-    the namespace it ran in rather than parsed from a traceback string.
+    An assertion script's own `held`/`failed` lists, read from the
+    namespace it ran in, not parsed from a traceback.
 
-    `None`, not `[]`, for a name the script never defined -- a Step's code has
-    no reason to define either, and an older or deviant check script may not
-    either, so absent has to read differently from "measured, and empty". Only
-    a list or a tuple counts: a Step happens to be free to call a local
-    variable `held` or `failed` for its own purposes, and whatever that is
-    must not be handed to the caller as an acceptance-entry list.
+    `None`, not `[]`, for a name never defined -- absent must read
+    differently from "measured, and empty"; only a list or tuple counts.
     """
     held = namespace.get("held")
     failed = namespace.get("failed")
@@ -767,24 +739,11 @@ def trimmed_traceback(exc):
 
 def _recompute_scope(doc, touched):
     """
-    What a Step's own recompute should touch: this Step's own writes,
-    resolved back to live objects, plus everything downstream of them.
-
-    `doc.recompute(objs)` recomputes exactly *objs* and their own
-    dependencies -- it does not walk `InList` the way the argument-free form
-    does, so a Step that edits an existing feature rather than only
-    appending a new one at the tip would leave every feature built on it
-    `Touched` with a stale `Shape`, not `Invalid`: the failure scan right
-    after (`"Invalid" in o.State`) would not see it, and the check would pass
-    a Step silently on the wrong shape. Following `InList` out to its whole
-    closure is what keeps this scoped recompute as correct as the bare
-    `doc.recompute()` it replaces, while still bounded to what this Step
-    could actually have affected rather than the whole Document.
-
-    `None` asks the caller for the ordinary full recompute -- a Step that
-    only deleted something leaves nothing of its own to target, and the
-    Document's dependency graph is what has to catch the consequences of a
-    deletion, not a list of names.
+    What a Step's own recompute should touch: its writes, resolved to
+    live objects, plus everything downstream via `InList` -- unlike
+    `doc.recompute(objs)` alone, which skips it and would leave an edited
+    feature stale (not `Invalid`) past the failure scan. `None` asks for
+    the full recompute instead.
     """
     names = touched.created | touched.modified()
     roots = [o for o in (doc.getObject(name) for name in names) if o is not None]
