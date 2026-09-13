@@ -82,7 +82,7 @@ def _console(write, msg) -> None:
     except RuntimeError:
         write(msg)
     except Exception:
-        pass
+        pass  # except-pass-allowed: no channel left to report the failure to
 
 
 def _setup_session_log() -> str:

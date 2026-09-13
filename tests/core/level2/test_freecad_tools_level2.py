@@ -616,11 +616,11 @@ def test_traps_carries_the_seed_taxonomy_classes_not_yet_in_it():
     tracebacks) named three failure classes no seed trap already covers: an
     enum property rejecting a spelling nothing lists in advance, a fillet
     that fails with no diagnostic tying it to its own radius, and a Pad or
-    Pocket whose sketch has more than one disjoint wire. `TRAPS` fixes its
-    count so a silent drop or an accidental duplicate fails this test rather
-    than reading as a passing run.
+    Pocket whose sketch has more than one disjoint wire. `TRAPS` grows as new
+    traps are seeded, so this checks for an accidental duplicate rather than
+    an exact count that would have to move with it.
     """
-    assert len(TRAPS) == 19
+    assert len(TRAPS) == len(set(TRAPS)), "a trap was duplicated"
 
     for substring in (
         "getEnumerationsOfProperty",

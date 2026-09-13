@@ -146,7 +146,7 @@ class UIHelpers:
             if font:
                 return font
         except Exception:
-            pass
+            pass  # except-pass-allowed: falls back to the default font below
         return '"SF Mono", Monaco, Menlo, Consolas, "Liberation Mono", "Courier New", monospace'
 
     @staticmethod
@@ -169,7 +169,7 @@ class UIHelpers:
             packed = {name: parameters.GetUnsigned(name, value)
                       for name, value in packed.items()}
         except Exception:
-            pass
+            pass  # except-pass-allowed: keeps the caller's own defaults on lookup failure
         return {name: QtGui.QColor((value >> 24) & 0xFF, (value >> 16) & 0xFF,
                                    (value >> 8) & 0xFF).name()
                 for name, value in packed.items()}
@@ -183,5 +183,5 @@ class UIHelpers:
             if font:
                 return font
         except Exception:
-            pass
+            pass  # except-pass-allowed: falls back to the default font below
         return "'Inter', 'Segoe UI', Roboto, sans-serif"

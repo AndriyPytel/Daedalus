@@ -146,7 +146,7 @@ def _is_modelling(obj):
         try:
             return bool(derived(_MOVES_MATERIAL) or derived(_A_BODY))
         except Exception:
-            pass
+            pass  # except-pass-allowed: falls through to the TypeId check below
     type_id = getattr(obj, "TypeId", "") or ""
     return type_id == _A_BODY or type_id.startswith("PartDesign::")
 
@@ -480,7 +480,7 @@ def _discard(path):
     try:
         os.remove(path)
     except OSError:
-        pass
+        pass  # except-pass-allowed: best-effort delete, already-gone is fine
 
 
 TRAPS = [
@@ -606,7 +606,7 @@ def _load_geometry_modules():
         try:
             __import__(module)
         except ImportError:
-            pass
+            pass  # except-pass-allowed: an unavailable workbench is not installed, not an error
 
 
 def _selection(dispatch=_direct):

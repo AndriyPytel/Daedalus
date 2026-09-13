@@ -1143,9 +1143,12 @@ def test_an_unmarked_reply_takes_the_legacy_path_for_language_too():
 
 
 def test_the_op_vocabulary_is_36_verbs_the_32_reachable_plus_four():
+    """
+    Count checked in test_op_vocabulary.py::test_core_loop_op_verbs_matches_the_prompts_own_list
+    (full equality against the prompt), not repeated here as a copy.
+    """
     from core.loop.plan import OP_VERBS
 
-    assert len(OP_VERBS) == 36
     for verb in ("thread", "extend", "trim", "offset"):
         assert verb in OP_VERBS
 

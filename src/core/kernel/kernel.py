@@ -183,7 +183,7 @@ class Kernel:
             self._process.kill()
             self._process.wait(timeout=5)
         except Exception:
-            pass
+            pass  # except-pass-allowed: the process may already be gone
         self._process = None
 
     def restart(self):
@@ -202,7 +202,7 @@ class Kernel:
         try:
             self.start()
         except Exception:
-            pass
+            pass  # except-pass-allowed: check() retries from the checkpoint, this attempt need not succeed
 
     def __enter__(self):
         self.start()

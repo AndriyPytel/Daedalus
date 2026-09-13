@@ -278,7 +278,7 @@ class UploadWidget(QtWidgets.QWidget):
             try:
                 os.remove(path)
             except OSError:
-                pass
+                pass  # except-pass-allowed: already removed from tracking, the file itself may be gone
 
     def discard_temporary(self):
         """Every clipboard image still unaccounted for — the panel is closing."""

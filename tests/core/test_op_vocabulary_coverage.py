@@ -297,11 +297,11 @@ def test_survey_owned_and_excluded_partition_the_134_surveyed_typeids_with_no_ov
 
 
 def test_every_op_the_survey_uses_is_one_of_the_36_read_from_language_md():
+    """Count checked in test_op_vocabulary.py against language.md's own heading; not copied here."""
     ops = _op_vocabulary()
 
     used = set(SURVEYED_TYPEID_TO_OP.values())
     assert used <= set(ops)
-    assert len(ops) == 36
 
 
 def test_every_surveyed_owned_typeid_is_accepted_under_its_op_in_op_typeids():

@@ -27,7 +27,7 @@ import tokenize
 from tests.source_tree import ROOT, sources, tracked
 
 MACHINE_READABLE = ("# type:", "# noqa", "# pragma:", "# pylint:", "# flake8:",
-                    "# fmt:", "# -*-", "#!")
+                    "# fmt:", "# -*-", "#!", "# except-pass-allowed:")
 
 TICKETS = ("FCC-", "ADR-")
 

@@ -662,7 +662,7 @@ class LoopWorker(QtCore.QObject):
                                      str(tools.call("snapshot").get("document") or ""),
                                      str(getattr(self._document, "Uid", "") or ""))
         except Exception:
-            pass
+            pass  # except-pass-allowed: the panel may already be closing, nothing needs the signal
 
         sdk_client.pipeline.start_run()
         try:

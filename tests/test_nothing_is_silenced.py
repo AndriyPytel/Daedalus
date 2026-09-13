@@ -10,6 +10,7 @@ Checked by parsing, so a filter written in a module that needs FreeCAD to
 import is caught just the same.
 """
 import ast
+import re
 
 from tests.source_tree import sources
 
@@ -49,47 +50,31 @@ def test_no_module_turns_python_warnings_off_through_the_environment():
     assert not offenders, "PYTHONWARNINGS is set in: %s" % ", ".join(offenders)
 
 
-ALLOWED_EXCEPT_PASS = {
-    ("Mod/bridge/logger.py", 84),
-    ("Mod/ui/accordion_widget.py", 190),
-    ("Mod/ui/copilot_panel.py", 664),
-    ("Mod/ui/ui_helpers.py", 148),
-    ("Mod/ui/ui_helpers.py", 171),
-    ("Mod/ui/ui_helpers.py", 185),
-    ("Mod/ui/upload_widget.py", 280),
-    ("src/core/dependency_manager.py", 110),
-    ("src/core/events.py", 124),
-    ("src/core/freecad_apply.py", 148),
-    ("src/core/freecad_apply.py", 482),
-    ("src/core/freecad_apply.py", 609),
-    ("src/core/kernel/kernel.py", 185),
-    ("src/core/kernel/kernel.py", 204),
-    ("src/core/kernel/kernel_worker.py", 177),
-    ("src/core/loop/execute.py", 553),
-    ("src/core/loop/looks.py", 67),
-    ("src/core/loop/looks.py", 70),
-    ("src/core/sessions.py", 35),
-}
+EXCEPT_PASS_MARKER = re.compile(r"#\s*except-pass-allowed:\s*(\S.*)")
 
 
-def test_a_swallowed_exception_is_named_or_on_the_shrinking_allowlist():
+def test_a_swallowed_exception_is_named_or_carries_its_own_marker():
     """
     FCC-390: `copilot_panel.py`'s transcript `except Exception: pass` cost
     five Sessions their whole log with no line anywhere naming why. A handler
     whose entire body is `pass` gets one of two things: a log line, or a
-    place on this list. The list is exact, not a ceiling — fixing one without
-    deleting its entry here fails this test, the same way adding a new one
-    without either fixing it or listing it does.
+    trailing `# except-pass-allowed: <reason>` comment on the `pass` line
+    itself, read here rather than kept as a separate list keyed by line
+    number — a table an unrelated edit above it silently shifts stale.
     """
-    offenders = set()
+    offenders = []
     for path, source in sources():
+        lines = source.splitlines()
         tree = ast.parse(source, path)
         for node in ast.walk(tree):
-            if isinstance(node, ast.ExceptHandler):
-                if len(node.body) == 1 and isinstance(node.body[0], ast.Pass):
-                    offenders.add((path, node.lineno))
+            if not (isinstance(node, ast.ExceptHandler)
+                    and len(node.body) == 1 and isinstance(node.body[0], ast.Pass)):
+                continue
+            line = lines[node.body[0].lineno - 1]
+            matched = EXCEPT_PASS_MARKER.search(line)
+            if not matched or not matched.group(1).strip():
+                offenders.append("%s:%d" % (path, node.body[0].lineno))
 
-    assert offenders == ALLOWED_EXCEPT_PASS, (
-        "a silent except:pass appeared, or one already fixed is still listed: "
-        "new=%s fixed=%s" % (offenders - ALLOWED_EXCEPT_PASS,
-                             ALLOWED_EXCEPT_PASS - offenders))
+    assert not offenders, (
+        "a silent except:pass with no log line and no "
+        "'# except-pass-allowed: <reason>' marker: %s" % ", ".join(offenders))

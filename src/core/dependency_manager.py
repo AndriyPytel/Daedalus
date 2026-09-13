@@ -108,7 +108,7 @@ def prune_superseded(target_directory):
                 try:
                     os.remove(path)
                 except OSError:
-                    pass
+                    pass  # except-pass-allowed: best-effort cleanup, rmtree after covers the rest
             shutil.rmtree(superseded, ignore_errors=True)
             removed.append(os.path.basename(superseded))
     return removed

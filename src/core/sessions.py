@@ -33,7 +33,7 @@ def discard(path):
     try:
         os.remove(path)
     except OSError:
-        pass
+        pass  # except-pass-allowed: a log already missing is fine
 
 
 def _wants_a_title(session) -> bool:

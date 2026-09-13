@@ -551,7 +551,7 @@ def _what_this_build_has(tools):
         try:
             looks.remember("materials", {}, tools.call("materials", {}))
         except ToolError:
-            pass
+            pass  # except-pass-allowed: materials is optional, its absence here is not the caller's problem
     return looks
 
 

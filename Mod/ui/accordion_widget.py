@@ -188,7 +188,7 @@ class AccordionWidget(QtWidgets.QFrame):
             else:
                 self.content_area.setText(shown)
         except RuntimeError:
-            pass
+            pass  # except-pass-allowed: the Qt widget was already deleted, nothing to update
 
     def opens_onto_nothing(self):
         """

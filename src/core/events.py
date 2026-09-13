@@ -122,7 +122,7 @@ class EventStream:
             try:
                 subscriber(event)
             except Exception:
-                pass
+                pass  # except-pass-allowed: one subscriber's failure must not break the others
         return event
 
     def __iter__(self):

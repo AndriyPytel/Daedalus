@@ -159,21 +159,14 @@ STEP_MODULES = ("Part", "Sketcher", "PartDesign", "Materials")
 
 def step_namespace(doc):
     """
-    What a Step's code runs with.
+    What a Step's code runs with, built identically by the kernel and the
+    GUI's replay or they run different programs (ADR-0002).
 
-    The kernel and the GUI's replay must build this identically or they
-    run different programs (ADR-0002).
-
-    Sketch geometry (Part.Circle, Part.LineSegment) lives outside Sketcher
-    in every FreeCAD version; leaving Part out turns correct code into a
-    NameError the assistant answers by inventing Sketcher.Circle.
-
-    FreeCAD ships its own `Mod/Mesh/App` directory on `sys.path`, an
-    unrelated PEP 420 namespace package that shares the name `App`; a bare
-    `import App` inside a Step finds that instead unless `sys.modules["App"]`
-    is already populated, since the import system checks the cache first.
-    Registering it here, once, makes `import App` and the pre-bound name the
-    same object rather than asking every Step never to write the import.
+    Part carries sketch geometry, so leaving it out turns correct code into
+    a NameError answered by an invented Sketcher.Circle. FreeCAD's own
+    Mod/Mesh/App directory shares the name `App` on sys.path, so a Step's
+    bare `import App` finds an empty namespace package unless sys.modules
+    holds the real module first.
     """
     import FreeCAD
 
@@ -184,7 +177,7 @@ def step_namespace(doc):
         try:
             namespace[module] = __import__(module)
         except ImportError:
-            pass
+            pass  # except-pass-allowed: an optional Step module not installed in this build
     return namespace
 
 

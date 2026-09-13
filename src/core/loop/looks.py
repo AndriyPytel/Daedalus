@@ -65,10 +65,10 @@ class Looks:
                 try:
                     os.remove(tmp_path)
                 except OSError:
-                    pass
+                    pass  # except-pass-allowed: best-effort tmp file cleanup before re-raising
                 raise
         except OSError:
-            pass
+            pass  # except-pass-allowed: the disk cache is an optimization, a write failure is not fatal
 
     def _disk_cache_key(self, arguments):
         """Cache key for describe_type: (version, type_id)."""
