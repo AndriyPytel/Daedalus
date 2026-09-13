@@ -69,6 +69,8 @@ from tests.loop_helpers import (
     acceptance_of,
     design_reply,
     code_reply,
+    retried_code_reply,
+    _MultiTurn,
     assertion_reply,
     obsolete_reply,
     look_reply,
@@ -231,107 +233,64 @@ def test_each_step_still_gets_its_own_started_event():
     assert [e.data["step"] for e in events.of(APPLIED)] == [1, 2]
 
 
-def test_a_regeneration_asks_for_the_failed_step_and_everything_unapplied():
+def test_a_refused_step_is_rewritten_in_place_and_not_regenerated():
     """
-    Steps 2 and 3 were both declared and checkpointed inside the same kernel
-    session that landed Step 1 (FCC-A-53) -- but Step 2 never applied, and
-    Step 3's code was written in the kernel on top of objects Step 2 was
-    going to leave in the user's Document and never did. Discarding both and
-    asking for them again is correct, not merely cheap: nothing after the
-    failed Step has premises that survived it.
+    FCC-372: Step 2's own refusal used to discard the kernel session Step 1
+    already landed in and ask Plan-side Execute for the whole tail again,
+    against a fresh Snapshot. It is rewritten in the same call instead --
+    one Execute call for the whole Plan, one `snapshot` Tool call, and the
+    Step that follows still sees what Step 2 actually left behind.
     """
+    turns = _MultiTurn()
+    turns.append(json.dumps({"code": "first()", "step": 1, "label": "Step"}))
+    turns.append(json.dumps({"code": "second_bad()", "step": 2, "label": "Step"}))
+    turns.append(json.dumps({"code": "second_good()", "step": 2, "label": "Step"}))
+    turns.append(json.dumps({"code": "third()", "step": 3, "label": "Step"}))
+    turns.append(json.dumps({"declare": {"steps": [
+        {"step": number, "label": "Step"} for number in (1, 2, 3)]}}))
+
     result, _, llm, tools = drive(
-        [
-            plan_reply("First", "Second", "Third"),
-            code_reply("first()", "second()", "third()"),
-            code_reply("second_again()", "third_again()", first=2),
-            suspect_reply(), verdict_reply("pass"),
-        ],
+        [plan_reply("First", "Second", "Third"), turns, suspect_reply(), verdict_reply("pass")],
         applies=[None, failed("AttributeError: no Length on this")],
     )
 
     assert result.ok
-    assert tools.applied_codes() == ["first()", "second()", "second_again()", "third_again()"]
+    assert tools.applied_codes() == ["first()", "second_bad()", "second_good()", "third()"]
+    assert len(_execute_attempts(llm)) == 1, \
+        "a Step's own refusal started a second Execute phase"
 
-    regeneration = _execute_attempts(llm)[1]
-    assert [s["step"] for s in regeneration["steps"]] == [2, 3], \
-        "the tail after the failing Step was not written again"
-    assert regeneration["your_failed_attempts_at_this_step"] == [
-        {"code": "second()", "traceback": "AttributeError: no Length on this"}]
-    assert "Step 2" in regeneration["what_to_do_now"]
-
-
-def test_the_regeneration_is_written_against_the_document_as_it_stands():
-    """
-    Not against the Plan's assumption of it: the Steps before the failure are
-    applied and the failing one is not, and the Snapshot is re-read so the code
-    is written over what is actually there. FCC-95.
-    """
-    _, _, llm, tools = drive(
-        [
-            plan_reply("First", "Second"),
-            code_reply("first()", "second()"),
-            code_reply("second_again()", first=2),
-            suspect_reply(), verdict_reply("pass"),
-        ],
-        applies=[None, failed("boom")],
-    )
-
-    regeneration = _execute_attempts(llm)[1]
-    assert regeneration["document"]["objects"] == [{"name": "Box"}]
-    assert regeneration["document"]["object_count"] == 1
-
-    last_failure = max(index for index, (name, args) in enumerate(tools.calls)
-                       if name == "apply_step" and args["code"] == "second()")
-    assert "snapshot" in [name for name, _ in tools.calls[last_failure:]]
+    refusal = next(i for i, (name, args) in enumerate(tools.calls)
+                   if name == "apply_step" and args["code"] == "second_bad()")
+    retry = next(i for i, (name, args) in enumerate(tools.calls)
+                if name == "apply_step" and args["code"] == "second_good()")
+    assert "snapshot" not in [name for name, _ in tools.calls[refusal:retry]], \
+        "the retry re-read the Document instead of writing on in the same session"
 
 
 def test_a_failure_at_every_step_costs_no_more_than_it_costs_today():
     """
-    The worst case degrades to the old shape and no further: one call up front,
-    then one per failure. Six Steps that each fail once is seven Execute calls,
-    where the per-Step loop spent twelve. FCC-95.
+    FCC-372: a Step the Document refuses is rewritten where it stands, so
+    three Steps that each fail once and land on the retry still cost one
+    Execute call -- the phase a failure used to spend is gone, not merely
+    cheaper.
     """
+    turns = _MultiTurn()
+    for step, (bad, good) in enumerate((("a1()", "a2()"), ("b1()", "b2()"), ("c1()", "c2()")),
+                                       start=1):
+        turns.append(json.dumps({"code": bad, "step": step, "label": "Step"}))
+        turns.append(json.dumps({"code": good, "step": step, "label": "Step"}))
+    turns.append(json.dumps({"declare": {"steps": [
+        {"step": step, "label": "Step"} for step in (1, 2, 3)]}}))
+
     _, _, llm, _ = drive(
-        [
-            plan_reply("First", "Second", "Third"),
-            code_reply("a1()", "b1()", "c1()"),
-            code_reply("a2()", "b2()", "c2()"),
-            code_reply("b3()", "c3()", first=2),
-            code_reply("c4()", first=3),
-            suspect_reply(), verdict_reply("pass"),
-        ],
+        [plan_reply("First", "Second", "Third"), turns, suspect_reply(), verdict_reply("pass")],
         applies=[failed("a"), None, failed("b"), None, failed("c"), None],
     )
 
-    assert len(_execute_attempts(llm)) == 4
+    assert len(_execute_attempts(llm)) == 1
 
 
-def test_a_step_that_applied_carries_none_of_its_failures_into_the_next_writing():
-    """
-    `your_failed_attempts_at_this_step` is the failures of the Step being
-    written again, and a Step that applied has none. What used to keep Step 2
-    from seeing Step 1's traceback was that they were different calls; what
-    keeps it now is that the attempts reset when a Step lands. FCC-95.
-    """
-    _, _, llm, _ = drive(
-        [
-            plan_reply("First", "Second"),
-            code_reply("first_bad()", "second()"),
-            code_reply("first_good()", "second()"),
-            code_reply("second_good()", first=2),
-            suspect_reply(), verdict_reply("pass"),
-        ],
-        applies=[failed("AttributeError: no Length on this"), None, failed("a different boom")],
-    )
 
-    retry_of_first, retry_of_second = _execute_attempts(llm)[1:]
-
-    assert "AttributeError: no Length on this" in json.dumps(retry_of_first)
-    assert "AttributeError: no Length on this" not in json.dumps(retry_of_second), \
-        "Step 2 was shown Step 1's failure"
-    assert retry_of_second["your_failed_attempts_at_this_step"] == [
-        {"code": "second()", "traceback": "a different boom"}]
 
 
 def test_a_step_the_reply_left_out_fails_that_step_and_not_the_run():
@@ -492,35 +451,27 @@ def test_a_step_that_lands_is_unaffected_by_what_the_reply_said():
 
 def test_the_reason_a_recompute_failed_reaches_the_next_attempts_request():
     """
-    The reason has to be in the request, not merely on the event stream — a
-    causeless message is what made every attempt a re-spelling. FCC-11.
+    The reason has to reach the model, not merely the event stream — a
+    causeless message is what made every attempt a re-spelling. FCC-11,
+    FCC-372: the reply is the same-session retry now, not a fresh request.
     """
     _, _, llm, _ = drive(
         [
             plan_reply("Add a pad"),
-            code_reply("pad_one()"),
-            code_reply("pad_two()"),
+            retried_code_reply("pad_one()", "pad_two()"),
             suspect_reply(), verdict_reply("pass"),
         ],
         applies=[failed("Pad (PartDesign::Pad): Linked shape object is empty"), None],
     )
 
-    retry = _execute_attempts(llm)[1]
-
-    assert retry["your_failed_attempts_at_this_step"] == [
-        {"code": "pad_one()",
-         "traceback": "Pad (PartDesign::Pad): Linked shape object is empty"},
-    ]
+    retried = [turn for turn in _turns_of(llm, "execute") if "traceback" in turn][0]
+    assert "Pad (PartDesign::Pad): Linked shape object is empty" in retried["traceback"]
 
 
 def test_a_failed_attempt_is_surfaced_before_the_retry():
     _, events, _, _ = drive(
-        [
-            plan_reply("Only"),
-            code_reply("bad()"),
-            code_reply("good()"),
-            suspect_reply(), verdict_reply("pass"),
-        ],
+        [plan_reply("Only"), retried_code_reply("bad()", "good()"),
+         suspect_reply(), verdict_reply("pass")],
         applies=[failed("ValueError: nope"), None],
     )
 
@@ -718,7 +669,7 @@ def test_an_unbuildable_reply_on_a_retry_hands_back_instead_of_being_asked_again
     """
     result, events, llm, tools = drive([
         plan_reply("Fillet the root edges of the lug"),
-        code_reply("fillet_root()"),
+        json.dumps({"code": "fillet_root()", "step": 1, "label": "Step"}),
         json.dumps({"declare": {"unbuildable": "the fillet radius exceeds the material at "
                                    "the root edge; there is nothing left to round."}}),
         plan_reply("Fillet the root edges at a smaller radius"),
@@ -728,13 +679,12 @@ def test_an_unbuildable_reply_on_a_retry_hands_back_instead_of_being_asked_again
 
     assert result.ok
     assert tools.applied_codes() == ["fillet_root()", "fillet_root_smaller()"]
-    first_plan, retry, after_replan = _execute_attempts(llm)
+    first_plan, after_replan = _execute_attempts(llm)
     assert "your_failed_attempts_at_this_step" not in first_plan
-    assert retry["your_failed_attempts_at_this_step"] == [
-        {"code": "fillet_root()",
-         "traceback": "Fillet (Part::Fillet): FilletId is not part of the shape"}]
     assert "your_failed_attempts_at_this_step" not in after_replan, \
         "handed back after the second reply, not asked a third time within the same Plan"
+    retried = [turn for turn in _turns_of(llm, "execute") if "traceback" in turn][0]
+    assert "Fillet (Part::Fillet): FilletId is not part of the shape" in retried["traceback"]
     assert len(events.of(PREFLIGHT_FAILED)) == 1, "the real failure was the only attempt spent"
     revised = events.first(PLAN_REVISED)
     assert "nothing left to round" in revised.data["reason"]
@@ -1314,32 +1264,30 @@ def test_the_four_that_named_what_ended_the_run_stand_under_conflict():
     assert "In conflict" not in _turns_of(llm, "plan")[0]["what_the_part_is"]
 
 
-def test_the_retry_request_does_not_lie_about_the_step_being_missing_and_carries_last_passing_code():
+def test_a_step_the_real_document_rejects_after_the_kernel_took_it_is_retried_in_place():
     """
-    A Step whose code the kernel accepted, then the real Document rejected
-    (FCC-291's incident: a name collision on replay), used to be told flatly
-    "is not in the Document" -- false when the kernel session and the real
-    Document had already drifted apart -- and the code that passed was
-    dropped the moment a second, worse rewrite replaced it as "the last
-    attempt".
+    FCC-372: a Step the kernel accepted but the real Document rolled back
+    (FCC-291's name-collision incident) is rewritten in the same session
+    now, so the "is not in the Document" lie a fresh regeneration used to
+    tell, and the passing code a second rewrite used to bury, cannot
+    happen -- there is no second request to carry either.
     """
-    _, _, llm, _ = drive(
-        [
-            plan_reply("First", "Second"),
-            code_reply("first()", "second_v1()"),
-            code_reply("second_v2()", first=2),
-            code_reply("second_v3()", first=2),
-            suspect_reply(), verdict_reply("pass"),
-        ],
+    turns = _MultiTurn()
+    turns.append(json.dumps({"code": "first()", "step": 1, "label": "Step"}))
+    turns.append(json.dumps({"code": "second_v1()", "step": 2, "label": "Step"}))
+    turns.append(json.dumps({"code": "second_v2()", "step": 2, "label": "Step"}))
+    turns.append(json.dumps({"declare": {"steps": [
+        {"step": number, "label": "Step"} for number in (1, 2)]}}))
+
+    result, _, llm, tools = drive(
+        [plan_reply("First", "Second"), turns, suspect_reply(), verdict_reply("pass")],
         applies=[None,
                  failed("The Step passed the kernel but failed against the real "
-                        "Document, so it was rolled back:\n\nboom"),
-                 failed("AttributeError: no Length on this")],
+                        "Document, so it was rolled back:\n\nboom")],
     )
 
-    first_retry, second_retry = _execute_attempts(llm)[1:3]
-
-    assert "is not in the Document" not in first_retry["what_to_do_now"]
-    assert first_retry["code_that_already_passed_the_kernel"] == "second_v1()"
-    assert second_retry["code_that_already_passed_the_kernel"] == "second_v1()", \
-        "the code that passed the kernel was lost behind a later, worse rewrite"
+    assert result.ok
+    assert tools.applied_codes() == ["first()", "second_v1()", "second_v2()"]
+    assert len(_execute_attempts(llm)) == 1
+    retried = [turn for turn in _turns_of(llm, "execute") if "traceback" in turn][0]
+    assert "is not in the Document" not in retried["traceback"]

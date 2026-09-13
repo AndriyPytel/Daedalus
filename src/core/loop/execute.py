@@ -6,7 +6,7 @@ import tempfile
 from dataclasses import dataclass, field
 
 from core.design.gaps import entries
-from core.events import APPLIED, TOOL_CALL, TOOL_RESULT
+from core.events import APPLIED, PREFLIGHT_FAILED, TOOL_CALL, TOOL_RESULT
 from core.loop.document import copied
 from core.tools import ToolError
 
@@ -100,6 +100,10 @@ class ExecuteOutcome:
     The code for one Step, the name its undo entry gets, and what it
     delivered -- or, if `on_declaration` rejected it for a reason that was
     not drift, `apply_failed` carries what it said instead (FCC-368).
+
+    `retries` is every traceback from the in-place rewrites `on_declaration`
+    ran before `apply_failed` reached its budget (FCC-372); `retried` marks
+    that same in-place rewriting on a Step that went on to land.
     """
 
     code: str = None
@@ -107,6 +111,8 @@ class ExecuteOutcome:
     description: dict = None
     created: list = field(default_factory=list)
     apply_failed: str = None
+    retries: list = field(default_factory=list)
+    retried: bool = False
 
 
 @dataclass
@@ -196,12 +202,6 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         again = _the_same_way_twice(attempts)
         if again:
             request["you_have_failed_this_the_same_way_twice"] = again
-        reference = _repair_reference(attempts)
-        if reference:
-            request["repair_reference"] = reference
-        passed = _last_code_that_passed_the_kernel(attempts)
-        if passed:
-            request["code_that_already_passed_the_kernel"] = passed
 
     looked = looks.still_true() if looks is not None else []
     if looked:
@@ -209,17 +209,18 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
 
     supervisor = supervisor or SessionTreeSupervisor()
     task = json.dumps(request, indent=2, default=str)
-    
+    refused = {}
+    tried = {}
+
     def on_declaration(declaration):
         """
-        Replay one declared Step into the live Document the moment it is
-        declared (ADR-0027) — the loop's `apply_step` Tool, carrying the
-        kernel's own `kernel_result` rather than a Preflight rehearsal.
-        Returns `{"delivered": False, "drift": True, "traceback": ...}` only
-        on a `SignatureMismatch`, so `run_phase` reverts the kernel and
-        retries in place; any other rejection answers `{"delivered": False,
-        "traceback": ...}` and is recorded to `Ledger` here, because
-        `_work_through` never sees a failure resolved before this returns.
+        Replay one declared Step into the live Document via `apply_step`
+        the moment it declares (ADR-0027). A `SignatureMismatch` answers
+        `drift: True`; any other refusal answers `retry: True` while
+        `refused[step]` stays under `budgets.attempts_per_step` (FCC-372)
+        -- both rewind the kernel and retry in this session. Once spent
+        the answer is final, `_work_through` hands the Step back, and every
+        non-drift refusal is recorded to `Ledger` here.
         """
         number = declaration.get("step")
         index = number - 1 if isinstance(number, int) else None
@@ -241,14 +242,27 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                         created=result.get("created", []))
             declaration["description"] = result.get("description")
             declaration["created"] = result.get("created", [])
+            if tried.get(number):
+                declaration["retried"] = True
             return {"delivered": True}
         if result.get("drift"):
             return {"delivered": False, "traceback": result.get("traceback"), "drift": True}
+        traceback = result.get("traceback")
+        step_prose = steps[index] if (index is not None and 0 <= index < len(steps)) else \
+            declaration.get("label", "")
         if ledger is not None:
-            step_prose = steps[index] if (index is not None and 0 <= index < len(steps)) else \
-                declaration.get("label", "")
-            ledger.record(step_prose, result.get("traceback", ""))
-        return {"delivered": False, "traceback": result.get("traceback")}
+            ledger.record(step_prose, traceback or "")
+        refused[number] = refused.get(number, 0) + 1
+        tried.setdefault(number, []).append(traceback or "")
+        events.emit(PREFLIGHT_FAILED, step=number, attempt=refused[number],
+                    traceback=traceback or "")
+        if refused[number] < budgets.attempts_per_step:
+            directive = _the_same_way_twice(
+                [Attempt(code="", traceback=t) for t in tried[number]])
+            return {"delivered": False, "traceback": traceback, "retry": True,
+                    "directive": directive}
+        declaration["retries"] = list(tried[number])
+        return {"delivered": False, "traceback": traceback}
 
     working_dir = tempfile.mkdtemp()
     try:
@@ -426,71 +440,6 @@ def _classified_failures():
 _FAILED_THIS_WAY = _classified_failures()
 
 
-_REPAIR_REFERENCE = (
-    ("has no such property",
-     "The Step set a property the object type doesn't carry — a guessed name, not a "
-     "real one. Ask `describe_type` for what the object actually has and set one of "
-     "those; a second guessed spelling fails the identical way.",
-     "any check on this Step's own promised properties: the value never landed, so a "
-     "check that already passed against the object as it stood before this Step ran "
-     "has not yet measured what this Step was meant to change."),
-    ("BRep_API: command not done",
-     "PartDesign::Fillet fails this way on a radius the material can't carry — check "
-     "the radius against the Body's wall thickness at the edge being rounded (a full "
-     "round needs less than half of it) and set one the wall can carry, rather than "
-     "rewriting the same call.",
-     "any check that measured a face count or a bounding dimension off the "
-     "un-filleted Body: a radius that now fits changes both."),
-)
-
-
-def _last_code_that_passed_the_kernel(attempts):
-    """
-    The most recent attempt whose own traceback says it passed the kernel
-    and failed only against the real Document (FCC-291) -- lost otherwise
-    the moment a later, kernel-rejected rewrite pushes it out of
-    `your_failed_attempts_at_this_step`'s view of "what to try next".
-    """
-    for attempt in reversed(attempts):
-        if "passed the kernel" in (attempt.traceback or ""):
-            return attempt.code
-    return None
-
-
-def _repair_reference(attempts):
-    """
-    The repair layer's own addition to a retry request: a
-    reference entry for a *known* symptom, keyed on a phrase read off the
-    latest attempt's own traceback the way `_FAILED_THIS_WAY` and
-    `_the_same_way_twice` already are — but consulted on the *first*
-    failure rather than the second, since a repair record names a fix for
-    the symptom just seen, not a warning that a Step keeps failing the same
-    way twice. Where the traceback names no symptom this table recognises,
-    nothing is added and the request is exactly what it is without this
-    function: the traceback, and nothing else.
-
-    Two layers, on purpose, not one: `core/apply.py :: TRAPS` is
-    prevention, read into every prompt before a Step is written, full and
-    unconditional; this is repair, read only after a Step has already
-    failed, and stays narrow — one entry for the symptom in hand, not the
-    whole table. Merging them would force a choice between the two, since
-    prevention has to stay complete and repair has to stay narrow.
-
-    Riding beside `your_failed_attempts_at_this_step` rather than replacing
-    it, so a retry always still sees the traceback it names. Nothing here spends a `look` or asks for anything:
-    the table is read before the request is built, not through a Tool call
-    — a repair layer that cost Execute one of its own bounded turns would
-    spend the very budget it exists to protect (ADR-0009).
-    """
-    if not attempts:
-        return None
-    traceback = attempts[-1].traceback or ""
-    for phrase, fix, recheck in _REPAIR_REFERENCE:
-        if phrase in traceback:
-            return {"the_smallest_responsible_fix": fix, "recount_after_it": recheck}
-    return None
-
-
 def _the_same_way_twice(attempts):
     """
     The directive for a Step that has now failed twice for the same reason, or
@@ -543,7 +492,8 @@ def _written(declarations, start):
         written[number if isinstance(number, int) else position] = ExecuteOutcome(
             code=str(entry["code"]), label=str(entry.get("label") or "Copilot Step"),
             description=entry.get("description"), created=list(entry.get("created") or ()),
-            apply_failed=entry.get("traceback") if entry.get("delivered") is False else None)
+            apply_failed=entry.get("traceback") if entry.get("delivered") is False else None,
+            retries=list(entry.get("retries") or ()), retried=bool(entry.get("retried")))
     return written
 
 

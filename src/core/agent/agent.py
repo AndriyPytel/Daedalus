@@ -51,12 +51,12 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     """
     Run *phase* as a multi-turn agent against its own kernel. *on_declaration*,
     called the moment a Step is declared, answers `{"delivered": True}`,
-    `{"delivered": False, "drift": True, ...}`, or `{"delivered": False,
-    "traceback": ...}` (FCC-A-53). Only `drift` rewinds the kernel and
-    retries the Step in place; anything else is left for `_work_through`'s
-    attempts/Ledger/handback path (FCC-61) -- apply happens strictly in Step
-    order, so once a Step fails that way, `on_declaration` runs for no later
-    Step this call. Returns `(declared, session, declarations)`.
+    `{"delivered": False, "retry": True, ...}` (`drift` is the same shape,
+    kept for SignatureMismatch), or `{"delivered": False, "traceback": ...}`
+    (FCC-A-53, FCC-372). Either `retry` flavour rewinds the kernel to the
+    last checkpoint and asks again in this session; a plain
+    `{"delivered": False}` is final, for `_work_through`'s handback (FCC-61).
+    Returns `(declared, session, declarations)`.
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)
@@ -67,6 +67,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     delivered_steps = set()
     first_step = True
     declared_failure = None
+    pending_retry = None
     last_call = False
     since_declaration = 0
     declaration_demanded = False
@@ -75,7 +76,11 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
         while True:
             message = _parsed(text)
             if "declare" in message:
-                return message["declare"], session, declarations
+                declared = message["declare"]
+                if pending_retry is not None and not (
+                        declared.get("unbuildable") or declared.get("obsolete")):
+                    declarations.append(pending_retry)
+                return declared, session, declarations
             if "delegate" in message:
                 if supervisor is None:
                     raise AgentGaveUp("%s tried to delegate with no supervisor" % phase)
@@ -157,25 +162,33 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         continue
                     delivered = (on_declaration(declaration) if on_declaration is not None
                                 else {"delivered": True})
-                    if delivered.get("drift"):
+                    if delivered.get("drift") or delivered.get("retry"):
                         working_kernel.check("pass", document=(
                             declarations[-1]["checkpoint"] if declarations
                             else (document if isinstance(document, str) else None)))
+                        declaration["delivered"] = False
+                        declaration["traceback"] = delivered.get("traceback", "")
+                        pending_retry = declaration
                         drifted = {"ok": False, "status": "failed",
                                   "traceback": "Step %s replayed against the Document and "
                                                 "did not land: %s\n\nWrite Step %s again."
                                                 % (message["step"], delivered.get("traceback", ""),
                                                    message["step"])}
+                        if delivered.get("directive"):
+                            drifted["you_have_failed_this_the_same_way_twice"] = \
+                                delivered["directive"]
                         if stream is not None:
                             stream.emit(TOOL_RESULT, name=phase, result=drifted)
                         text = _say(session, llm, json.dumps(drifted), phase=phase, stream=stream)
                         continue
                     elif not delivered.get("delivered"):
+                        pending_retry = None
                         declaration["delivered"] = False
                         declaration["traceback"] = delivered.get("traceback", "")
                         declarations.append(declaration)
                         declared_failure = message["step"]
                     else:
+                        pending_retry = None
                         declarations.append(declaration)
                         delivered_steps.add(message["step"])
                         delivered_step = message["step"]

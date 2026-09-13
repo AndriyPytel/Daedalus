@@ -249,6 +249,23 @@ def code_reply(*codes, label="Step", thinking=None, first=1):
     return turns
 
 
+def retried_code_reply(*codes, step=1, label="Step", thinking=None):
+    """
+    One Step, refused and rewritten in the same kernel session as many times
+    as *codes* has entries, closed by the turn that declares it (FCC-372):
+    the Document's own refusal of a code turn does not end the phase, so
+    every code here is a turn of the one Execute call this scripts, not a
+    fresh call the way `code_reply`'s own turns are for distinct Steps.
+    """
+    turns = _MultiTurn()
+    for position, code in enumerate(codes):
+        body = json.dumps({"code": code, "step": step, "label": label})
+        turns.append({"reasoning": thinking, "text": body}
+                     if thinking and position == 0 else body)
+    turns.append(json.dumps({"declare": {"steps": [{"step": step, "label": label}]}}))
+    return turns
+
+
 def assertion_reply(code, uncovered=None):
     """The Assertion phase's turn: the checks it wrote, and what it could not check."""
     reply = {"code": code}

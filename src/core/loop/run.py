@@ -458,7 +458,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     """One pass over the Plan: written by one Execute phase, applied one Step at a time.
     `budgets.attempts_per_step` bounds one Step; a spent Step hands back to Plan (ADR-0013).
     `ops[i]` rides onto `apply_step` as `op` so `core/lint.py` checks the TypeId (ADR-0026).
-    A regeneration is a new Execute phase, against its own fresh kernel (FCC-A-53).
+    A regeneration (a fresh Execute phase, FCC-A-53) is for a Step nobody wrote code for;
+    `outcome.apply_failed` here is already exhausted from retrying in place (FCC-372).
     """
     if cancelled():
         raise Stopped()
@@ -516,7 +517,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         if outcome.code and not outcome.apply_failed:
             progress.applied += 1
             progress.satisfied.extend(cites[index] if index < len(cites) else ())
-            if attempts:
+            if attempts or outcome.retried:
                 retried.add(index)
                 retried_names.update(outcome.created)
             described = outcome.description or described
@@ -527,23 +528,34 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             free_trailing_gaps = 0
             continue
 
-        ran_dry = False
         if outcome.apply_failed:
-            traceback = outcome.apply_failed
+            declared_attempts = [Attempt(code=outcome.code or "", traceback=t)
+                                 for t in outcome.retries] or \
+                [Attempt(code=outcome.code or "", traceback=outcome.apply_failed)]
+            progress.tried = [_tried(step, a) for a in declared_attempts]
+            return {
+                "handback": "Step %d of %d could not be built after %d attempts: %s\n"
+                            "The last traceback was:\n%s%s"
+                            % (index + 1, len(steps), len(declared_attempts), step,
+                               outcome.apply_failed, _always_the_same_way(declared_attempts)),
+                "tried": [_tried(step, a) for a in declared_attempts],
+                "obsolete": None, "description": described,
+                "applied_here": index,
+            }
+
+        ran_dry = _trailing_gap(written, index + 1, len(steps))
+        if ran_dry:
+            no_code = ("You replied with no code for Step %d, and nothing after it "
+                      "either — you %s. Write Step %d and every Step after it, "
+                      "shorter this time: no restated Step prose, no comments, "
+                      "straight to the calls." % (index + 1, _RAN_OUT_OF_ROOM, index + 1))
         else:
-            ran_dry = _trailing_gap(written, index + 1, len(steps))
-            if ran_dry:
-                no_code = ("You replied with no code for Step %d, and nothing after it "
-                          "either — you %s. Write Step %d and every Step after it, "
-                          "shorter this time: no restated Step prose, no comments, "
-                          "straight to the calls." % (index + 1, _RAN_OUT_OF_ROOM, index + 1))
-            else:
-                no_code = ("You replied with no code for Step %d, but wrote code for a "
-                          "Step after it — you %s. Write Step %d and every Step after it."
-                          % (index + 1, _SKIPPED_A_STEP, index + 1))
-            if written.said:
-                no_code = "%s\n%s" % (no_code, written.said)
-            traceback = no_code
+            no_code = ("You replied with no code for Step %d, but wrote code for a "
+                      "Step after it — you %s. Write Step %d and every Step after it."
+                      % (index + 1, _SKIPPED_A_STEP, index + 1))
+        if written.said:
+            no_code = "%s\n%s" % (no_code, written.said)
+        traceback = no_code
         attempts.append(Attempt(code=outcome.code or "", traceback=traceback))
         progress.tried = [_tried(step, a) for a in attempts]
         events.emit(PREFLIGHT_FAILED, step=index + 1, attempt=len(attempts),

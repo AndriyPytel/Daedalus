@@ -126,7 +126,6 @@ src/core/loop/execute.py::Written
 src/core/loop/execute.py::_classified_failures
 src/core/loop/execute.py::_emit_plan
 src/core/loop/execute.py::_lookable
-src/core/loop/execute.py::_repair_reference
 src/core/loop/execute.py::_review_views
 src/core/loop/execute.py::_said
 src/core/loop/execute.py::_the_same_way_twice

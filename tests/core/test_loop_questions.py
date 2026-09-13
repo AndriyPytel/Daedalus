@@ -67,6 +67,7 @@ from tests.loop_helpers import (
     everything,
     design_reply,
     code_reply,
+    retried_code_reply,
     assertion_reply,
     question_reply,
     look_reply,
@@ -209,7 +210,7 @@ def test_a_replan_after_a_handback_may_ask_rather_than_planning_blind():
     result, events, _, _ = drive(
         [
             plan_reply("Impossible"),
-            code_reply("nope1()"), code_reply("nope2()"), code_reply("nope3()"),
+            retried_code_reply("nope1()", "nope2()", "nope3()"),
             question_reply(MISSING),
             plan_reply("Possible, assumed module 2"),
             code_reply("yes()"),
@@ -534,8 +535,7 @@ def test_a_feature_named_in_what_a_retry_touched_does_not_fail_a_later_assertion
         assertion_reply("assert True, 'the split'"),
         verdict_reply("fail", "still off"),
         plan_reply("Pocket the split again", satisfies=everything(A_SPLIT)),
-        code_reply("split_through_2()"),
-        code_reply("split_shortened()"),
+        retried_code_reply("split_through_2()", "split_shortened()"),
         suspect_reply(),
         assertion_reply("assert True, 'the split'"),
         verdict_reply("pass"),

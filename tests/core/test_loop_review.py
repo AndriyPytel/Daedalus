@@ -67,6 +67,8 @@ from tests.loop_helpers import (
     everything,
     design_reply,
     code_reply,
+    retried_code_reply,
+    _MultiTurn,
     assertion_reply,
     obsolete_reply,
     question_reply,
@@ -247,7 +249,7 @@ def test_a_step_that_cannot_be_built_returns_to_plan():
     result, events, _, tools = drive(
         [
             plan_reply("Impossible"),
-            code_reply("nope1()"), code_reply("nope2()"), code_reply("nope3()"),
+            retried_code_reply("nope1()", "nope2()", "nope3()"),
             plan_reply("Possible"),
             code_reply("yes()"),
             suspect_reply(), verdict_reply("pass"),
@@ -268,11 +270,17 @@ def test_the_replan_after_a_handback_reads_the_document_as_it_is():
     The Steps already applied are not repeated: the revision is planned from a
     fresh Snapshot, the same path `obsolete` already takes. FCC-61.
     """
+    turns = _MultiTurn()
+    turns.append(json.dumps({"code": "first()", "step": 1, "label": "Step"}))
+    turns.append(json.dumps({"code": "nope1()", "step": 2, "label": "Step"}))
+    turns.append(json.dumps({"code": "nope2()", "step": 2, "label": "Step"}))
+    turns.append(json.dumps({"code": "nope3()", "step": 2, "label": "Step"}))
+    turns.append(json.dumps({"declare": {"steps": [{"step": 1, "label": "Step"}]}}))
+
     _, _, _, tools = drive(
         [
             plan_reply("First", "Impossible"),
-            code_reply("first()", "nope1()"),
-            code_reply("nope2()", first=2), code_reply("nope3()", first=2),
+            turns,
             plan_reply("Possible"),
             code_reply("yes()"),
             suspect_reply(), verdict_reply("pass"),
@@ -378,14 +386,16 @@ def test_the_revisions_ceiling_is_computed_from_the_plans_length():
 
 
 def test_the_attempt_budget_is_per_step_not_per_run():
+    turns = _MultiTurn()
+    turns.append(json.dumps({"code": "a1()", "step": 1, "label": "Step"}))
+    turns.append(json.dumps({"code": "a2()", "step": 1, "label": "Step"}))
+    turns.append(json.dumps({"code": "b1()", "step": 2, "label": "Step"}))
+    turns.append(json.dumps({"code": "b2()", "step": 2, "label": "Step"}))
+    turns.append(json.dumps({"declare": {"steps": [
+        {"step": n, "label": "Step"} for n in (1, 2)]}}))
+
     result, _, _, tools = drive(
-        [
-            plan_reply("First", "Second"),
-            code_reply("a1()", "b1()"),
-            code_reply("a2()", "b1()"),
-            code_reply("b2()", first=2),
-            suspect_reply(), verdict_reply("pass"),
-        ],
+        [plan_reply("First", "Second"), turns, suspect_reply(), verdict_reply("pass")],
         applies=[failed("a"), None, failed("b"), None],
     )
 
@@ -640,12 +650,12 @@ def test_the_event_stream_of_a_retried_run():
     """
     The self-intersection check (FCC-256) still runs after `applied`,
     unconditionally. `bad()` still gets its own `tool_call`/`tool_result`
-    pair the moment it is declared -- it is refused, not retried in place,
-    because refusal is not drift -- and only the regenerated `good()` ever
-    reaches `applied` (FCC-368).
+    pair the moment it is declared, refused there as `preflight_failed`,
+    and rewritten in the same Execute session -- only the rewritten
+    `good()` ever reaches `applied` (FCC-372).
     """
     _, events, _, _ = drive(
-        [plan_reply("Only"), code_reply("bad()"), code_reply("good()"), suspect_reply(), verdict_reply("pass")],
+        [plan_reply("Only"), retried_code_reply("bad()", "good()"), suspect_reply(), verdict_reply("pass")],
         applies=[failed("boom"), None],
     )
 
@@ -654,12 +664,11 @@ def test_the_event_stream_of_a_retried_run():
         CALL_STARTED, WRITING, COST,
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
         CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED,
-        TOOL_CALL, TOOL_RESULT, TOOL_RESULT,
-        CALL_STARTED, WRITING, COST,
-        STEP_STARTED, PREFLIGHT_FAILED,
+        TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, TOOL_RESULT,
         CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED,
         TOOL_CALL, TOOL_RESULT, APPLIED, TOOL_RESULT,
         CALL_STARTED, WRITING, COST,
+        STEP_STARTED,
         CALL_STARTED, WRITING, COST, REVIEW_SUSPECTED,
         TOOL_CALL, TOOL_RESULT,
         CALL_STARTED, WRITING, COST, REVIEW_VERDICT,
@@ -671,8 +680,9 @@ def test_the_event_stream_of_a_blocked_run():
     """
     `x()` is declared and delivered against the Document -- `tool_call`/
     `tool_result` fire right after `step_declared` -- before Execute ever
-    finds out the budget is spent; the refusal is what trips
-    `budget_exhausted`, not the other way round (FCC-368).
+    finds out the budget is spent; the refusal fires `preflight_failed` and,
+    with `attempts_per_step` already spent, `budget_exhausted` inside the
+    same session, without a second Execute phase (FCC-372).
     """
     _, events, _, _ = drive(
         [plan_reply("Only"), code_reply("x()")],
@@ -685,10 +695,10 @@ def test_the_event_stream_of_a_blocked_run():
         CALL_STARTED, WRITING, COST,
         CALL_STARTED, WRITING, COST, PLAN, GATE, GATE,
         CALL_STARTED, WRITING, COST, TOOL_CALL, STEP_DECLARED,
-        TOOL_CALL, TOOL_RESULT, TOOL_RESULT,
+        TOOL_CALL, TOOL_RESULT, PREFLIGHT_FAILED, TOOL_RESULT,
         CALL_STARTED, WRITING, COST,
         STEP_STARTED,
-        PREFLIGHT_FAILED, BUDGET_EXHAUSTED,
+        BUDGET_EXHAUSTED,
     ]
 
 
