@@ -64,6 +64,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     first_step = True
     declared_failure = None
     pending_retry = None
+    last_landed_checkpoint = None
     last_call = False
     exploration = {} if exploration is None else exploration
     since_declaration = exploration.get("turns", 0)
@@ -161,7 +162,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                                 else {"delivered": True})
                     if delivered.get("drift") or delivered.get("retry"):
                         working_kernel.check("pass", document=(
-                            declarations[-1]["checkpoint"] if declarations
+                            last_landed_checkpoint
+                            if last_landed_checkpoint is not None
                             else (document if isinstance(document, str) else None)))
                         declaration["delivered"] = False
                         declaration["traceback"] = delivered.get("traceback", "")
@@ -190,6 +192,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         delivered_steps.add(message["step"])
                         delivered_step = message["step"]
                         declared_failure = None
+                        last_landed_checkpoint = checkpoint
                 answer = _feedback(result)
                 if delivered_step is not None:
                     answer["step"] = delivered_step

@@ -242,7 +242,7 @@ class Client:
                        attachments=list(attachments), gate=gate, ask=answered_by,
                        decide=decide,
                        outstanding=list(outstanding),
-                       the_part_path=the_part_path)
+                       the_part_path=the_part_path, kernel=self.kernel)
 
         def run_question(message, decision):
             return "".join(chunk.text for chunk in self.session.turn(self.llm, message)
