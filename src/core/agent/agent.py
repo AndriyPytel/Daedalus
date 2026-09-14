@@ -189,7 +189,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     else:
                         pending_retry = None
                         declarations.append(declaration)
-                        delivered_steps.add(message["step"])
+                        if message["step"] is not None:
+                            delivered_steps.add(message["step"])
                         delivered_step = message["step"]
                         declared_failure = None
                         last_landed_checkpoint = checkpoint
