@@ -383,16 +383,17 @@ def test_a_run_out_of_revisions_stops_and_names_handbacks_not_amendments():
 
 def test_the_revisions_ceiling_is_computed_from_the_plans_length():
     """
-    A four-Step Plan and a forty-Step Plan cannot have the same allowance —
-    a long Plan has more places to hand back from, and every handback spends
-    one. The configured value is the floor.
+    Each Step already has its own `budgets.revisions` allowance
+    (`_Revisions.exhausted`); this is only the whole-run backstop, sized so
+    it never binds before every Step has spent that allowance -- one
+    Step's worth of replans times how many Steps there are.
     """
-    assert revisions_ceiling(Budgets(), ["s"] * 4) == 3
-    assert revisions_ceiling(Budgets(), ["s"] * 6) == 3
-    assert revisions_ceiling(Budgets(), ["s"] * 14) == 3
-    assert revisions_ceiling(Budgets(), ["s"] * 15) == 3
-    assert revisions_ceiling(Budgets(), ["s"] * 40) == 8
-    assert revisions_ceiling(Budgets(revisions=10), ["s"] * 4) == 10
+    assert revisions_ceiling(Budgets(), ["s"] * 4) == 12
+    assert revisions_ceiling(Budgets(), ["s"] * 6) == 18
+    assert revisions_ceiling(Budgets(), ["s"] * 14) == 42
+    assert revisions_ceiling(Budgets(), ["s"] * 15) == 45
+    assert revisions_ceiling(Budgets(), ["s"] * 40) == 120
+    assert revisions_ceiling(Budgets(revisions=10), ["s"] * 4) == 40
 
 
 def test_the_attempt_budget_is_per_step_not_per_run():
@@ -1423,3 +1424,81 @@ def test_the_same_question_twice_is_listed_once_and_does_not_end_the_run():
     assert events.of(ERROR) == []
     assert events.first(PLAN).data["unanswered"] == ["q1"]
     assert tools.applied_codes() == ["a()"]
+
+
+def test_a_step_gets_its_own_revision_allowance_not_the_whole_runs():
+    """
+    Direct proof at the seam: a Step that has spent nothing is not refused
+    for what a different Step already spent, and a Step that has spent its
+    own `budgets.revisions` is refused regardless of how little the run's
+    shared total has used.
+    """
+    from core.loop.budgets import _Revisions
+
+    revisions = _Revisions()
+    budgets = Budgets()
+    steps = ["s"] * 2
+
+    for _ in range(budgets.revisions):
+        assert not revisions.exhausted(budgets, steps, _Revisions.UNBUILDABLE, step=0)
+        revisions.spend(_Revisions.UNBUILDABLE, step=0)
+
+    assert revisions.exhausted(budgets, steps, _Revisions.UNBUILDABLE, step=0)
+    assert not revisions.exhausted(budgets, steps, _Revisions.UNBUILDABLE, step=1), (
+        "a Step that has spent nothing still gets its own allowance")
+
+
+def test_one_wedged_step_no_longer_starves_the_step_after_it():
+    """
+    The Model Mania run this replays: one Step spent all 3 of its own 3
+    replans before it finally built, and the Step after it still needed a
+    replan of its own -- the old shared ceiling had nothing left to give it.
+    """
+    result, events, llm, tools = drive(
+        [
+            plan_reply("First", "Second"),
+            obsolete_reply("first stalls 1"),
+            plan_reply("First", "Second"),
+            obsolete_reply("first stalls 2"),
+            plan_reply("First", "Second"),
+            obsolete_reply("first stalls 3"),
+            plan_reply("First", "Second"),
+            code_reply("first()"),
+            obsolete_reply("second stalls"),
+            plan_reply({"do": "Second"}),
+            code_reply("second()"),
+            suspect_reply(), verdict_reply("pass"),
+        ],
+    )
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["first()", "second()"]
+    assert len(events.of(PLAN_REVISED)) == 4
+
+
+def test_a_budget_exhausted_run_names_the_steps_that_landed_and_the_ones_never_attempted():
+    """
+    Exhaustion is not a wipe: the block text says what the Document already
+    holds and which Steps were never even tried, in the same reason
+    `_Revisions.block_reason` already writes.
+    """
+    result, events, llm, tools = drive(
+        [
+            plan_reply("First", "Second"),
+            code_reply("first()"),
+            obsolete_reply("second is obsolete 1"),
+            plan_reply({"do": "Second"}),
+            obsolete_reply("second is obsolete 2"),
+            plan_reply({"do": "Second"}),
+            obsolete_reply("second is obsolete 3"),
+            plan_reply({"do": "Second"}),
+            obsolete_reply("second is obsolete 4"),
+        ],
+        budgets=Budgets(revisions=3),
+    )
+
+    assert not result.ok
+    assert result.blocked
+    assert tools.applied_codes() == ["first()"]
+    assert "1 of 2 Steps are in the Document" in result.reason
+    assert "Steps 2-2 were never attempted" in result.reason

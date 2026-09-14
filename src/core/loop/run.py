@@ -262,27 +262,29 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     from core import settings
     auto_approve = settings.instance().get_auto_approve_plan()
 
-    def rewrite(cause, refused, feedback, tried, reason=None):
+    def rewrite(cause, refused, feedback, tried, reason=None, step=None):
         """
         Rewrite the Plan for *cause*, or stop because the budget is spent.
 
         Seven unrelated things replan the same way: spend one unit of the
-        shared ceiling, plan again from a fresh Snapshot, and say why on the
-        stream — only the cause, sentence and what was tried differ. The
-        Plan being rewritten goes with the complaint: without it, a
-        revision wrote from the complaint alone, which names only what was
-        wrong.
+        ceiling *step* caused if the cause is attributable to one Step, plan
+        again from a fresh Snapshot, and say why on the stream — only the
+        cause, sentence and what was tried differ. The Plan being rewritten
+        goes with the complaint: without it, a revision wrote from the
+        complaint alone, which names only what was wrong.
         """
-        if revisions.exhausted(budgets, steps, cause):
+        if revisions.exhausted(budgets, steps, cause, step=step):
             raise _OutOfRevisions(
-                revisions.block_reason(budgets, steps, cause, refused), tried)
-        revisions.spend(cause)
+                revisions.block_reason(budgets, steps, cause, refused, progress.applied,
+                                       step=step), tried)
+        revisions.spend(cause, step=step)
         revised = replan(feedback, revising=list(steps))
         _emit_plan(events, PLAN_REVISED, revised, reason=reason or feedback,
                    unanswered=asking.unanswered,
                    decided=decided_for_you(part.the_part),
                    revision=revisions.spent_total(),
-                   of=revisions_ceiling(budgets, steps), because=revisions.named(cause))
+                   of=(budgets.revisions if step is not None else revisions_ceiling(budgets, steps)),
+                   because=revisions.named(cause))
         return revised
 
     while True:
@@ -381,7 +383,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                 cause, feedback = _Revisions.UNBUILDABLE, outcome["handback"]
                 refused = outcome["handback"]
 
-            planned = rewrite(cause, refused, feedback, outcome["tried"])
+            planned = rewrite(cause, refused, feedback, outcome["tried"],
+                              step=outcome["applied_here"])
             continue
 
         described = outcome["description"] or described

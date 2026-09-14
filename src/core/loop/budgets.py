@@ -12,9 +12,11 @@ class Budgets:
     """
     What a run may spend, and the ceilings that make it terminate. Two
     separate ceilings: mechanical causes (UNCOVERED, MISCOUNTED) spend
-    their own budget; execution causes (OBSOLETE, UNBUILDABLE, ASSERTED,
-    REJECTED, AMENDED) spend `revisions_ceiling`. Measured: 456 sessions,
-    43 blocked on revisions, UNCOVERED appeared 1-3 times, and
+    their own whole-run budget; execution causes (OBSOLETE, UNBUILDABLE,
+    ASSERTED, REJECTED, AMENDED) spend at most `revisions` replans against
+    the Step that caused them, and `revisions_ceiling` overall -- a
+    19-Step Plan whose three replans all went on one wedged Step left 14
+    Steps standing before the run died, six fillets never attempted.
     `trailing_gap_retries` bounds the free continuation for a reply that
     stops -- 23 such replies across 13 sessions, 57% within the last two
     Steps, up to 266s call duration.
@@ -30,18 +32,21 @@ class Budgets:
 
 def revisions_ceiling(budgets, steps) -> int:
     """
-    How many replans this Plan is allowed, from how long it is.
+    The whole-run backstop on execution replans, over every Step combined.
 
-    A four-Step Plan and a forty-Step Plan cannot have the same allowance: a
-    long Plan has more places to hand back from, and every Execute -> Plan
-    handback spends one. Still a single ceiling over all seven causes, for the
-    reason recorded on `Budgets`; only its size is computed.
+    Each Step is already capped at `budgets.revisions` replans of its own
+    (`_Revisions.exhausted`); the smallest backstop that never binds
+    before every Step has spent that ceiling is one Step's worth of
+    replans times how many Steps there are. Anything smaller would have
+    blocked the recorded run this replaced, where one Step spent all 3 of
+    its 3 replans and the other 18 Steps of that 19-Step Plan still
+    needed room to spend their own.
     """
-    return max(budgets.revisions, len(steps) // 5)
+    return len(steps) * budgets.revisions
 
 
 class _Revisions:
-    """How many times the Plan has been rewritten, and why."""
+    """How many times the Plan has been rewritten, and why -- in total, and per Step."""
 
     UNCOVERED = "uncovered"
     MISCOUNTED = "miscounted"
@@ -67,9 +72,12 @@ class _Revisions:
 
     def __init__(self):
         self._spent = {cause: 0 for cause, _ in self._SAID}
+        self._step_spent = {}
 
-    def spend(self, cause):
+    def spend(self, cause, step=None):
         self._spent[cause] += 1
+        if step is not None:
+            self._step_spent[step] = self._step_spent.get(step, 0) + 1
 
     def spent_total(self) -> int:
         return sum(self._spent.values())
@@ -80,14 +88,19 @@ class _Revisions:
     def execution_spent(self) -> int:
         return sum(self._spent[cause] for cause in self._spent if cause not in self.MECHANICAL_CAUSES)
 
+    def step_spent(self, step) -> int:
+        return self._step_spent.get(step, 0)
+
     def named(self, cause) -> str:
         """The cause in words, without the count `breakdown` puts on it."""
         return (dict(self._SAID)[cause] % "").strip()
 
-    def exhausted(self, budgets, steps, cause=None) -> bool:
+    def exhausted(self, budgets, steps, cause=None, step=None) -> bool:
         if cause in self.MECHANICAL_CAUSES:
             return self.mechanical_spent() >= budgets.mechanical_revisions
         if cause is not None and cause not in self.MECHANICAL_CAUSES:
+            if step is not None and self.step_spent(step) >= budgets.revisions:
+                return True
             return self.execution_spent() >= revisions_ceiling(budgets, steps)
         return (self.mechanical_spent() >= budgets.mechanical_revisions or
                 self.execution_spent() >= revisions_ceiling(budgets, steps))
@@ -105,21 +118,42 @@ class _Revisions:
             return said[0]
         return ", ".join(said[:-1]) + " and " + said[-1]
 
-    def block_reason(self, budgets, steps, cause: str, refused: str) -> str:
+    def _what_landed(self, steps, applied) -> str:
+        """
+        What the Document holds when the run stops, and what it never tried.
+
+        `steps` is the latest revision's own Steps, not the whole Plan --
+        an applied Step is carried rather than restated (`_carried_over`),
+        so the total this run ever had is what already landed plus what
+        the latest revision still lists.
+        """
+        total = applied + len(steps)
+        if not steps:
+            return " All %d Steps are in the Document." % applied if applied else ""
+        return (" %d of %d Steps are in the Document; Steps %d-%d were never attempted."
+               % (applied, total, applied + 1, total))
+
+    def block_reason(self, budgets, steps, cause: str, refused: str, applied: int,
+                     step=None) -> str:
         """
         Why the run stopped, and what the budget went on. A ceiling of
         nought is a run that may not replan at all, and it has no
         breakdown to give; where one cause spent the lot the breakdown has
         already named it, so the refusal is not repeated after it. Names
-        the ceiling that was hit: mechanical_revisions when a mechanical
-        cause blocked, revisions_ceiling when an execution cause blocked.
+        the ceiling that was hit -- mechanical_revisions for a mechanical
+        cause, a Step's own `revisions` for an execution cause that wedged
+        one Step, `revisions_ceiling` for the whole-run backstop -- and
+        always says which Steps landed and which never ran.
         """
         if not self._causes_spent():
-            return "The Plan may not be rewritten in this run. " + refused
+            return "The Plan may not be rewritten in this run. " + refused + self._what_landed(steps, applied)
 
         if cause in self.MECHANICAL_CAUSES:
             ceiling_hit = budgets.mechanical_revisions
             ceiling_name = "the mechanical ceiling"
+        elif step is not None and self.step_spent(step) >= budgets.revisions:
+            ceiling_hit = budgets.revisions
+            ceiling_name = "Step %d's own ceiling" % (step + 1)
         else:
             ceiling_hit = revisions_ceiling(budgets, steps)
             ceiling_name = "the whole budget"
@@ -134,4 +168,4 @@ class _Revisions:
         if self._spent[self.UNBUILDABLE] or cause == self.UNBUILDABLE:
             reason += (" A Step Execute cannot build is a Step Plan has to write "
                        "differently; the tracebacks are in what was tried.")
-        return reason
+        return reason + self._what_landed(steps, applied)
