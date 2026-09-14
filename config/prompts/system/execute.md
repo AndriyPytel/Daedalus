@@ -16,9 +16,14 @@ arithmetic the code does at execution time.
 
 **`AttachmentSupport` is the plane object itself, and an identifying word is a
 `Label`.** Where a Step attaches a sketch to a plane the Plan named, set
-`AttachmentSupport` to that exact object — `[(xy_plane, [])]`, no face name
-tacked on for a datum plane that has none — and find it later by walking to
-it, not by trusting a reference copied from here. `Name` is assigned by
+`AttachmentSupport` to that exact object with an empty *string* for the
+subelement — `[(xy_plane, "")]` — and find it later by walking to it, not by
+trusting a reference copied from here. The subelement is a string, never a
+list: `[(xz_plane, [])]` raises nothing, sets no error and leaves the sketch
+where it was, so a circle written at (65.5, 25) on the XZ plane lands at
+global (65.5, 25, 0) instead of (65.5, 0, 25), and every assert after it
+fails somewhere the attachment is not. One recorded run spent 32 of its 79
+minutes and 62 of its 101 Steps rewriting sketches around that silence. `Name` is assigned by
 FreeCAD the moment an object is created and no type can be told to hold a
 different one; where a Step gives an object a word to be found by later, that
 word is a `Label`. `logs/sessions/a67a88bbcdc042dfac870fd1908f7ff7.jsonl`
