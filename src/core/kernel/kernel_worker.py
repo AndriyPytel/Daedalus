@@ -150,6 +150,43 @@ _HINT_LIMIT = 60
 STEP_MODULES = ("Part", "Sketcher", "PartDesign", "Materials")
 
 
+def edges_between(shape, a, b):
+    """
+    The edges of *shape* where a face matching predicate *a* meets a face
+    matching predicate *b*, each a function from one `Part.Face` to
+    True/False, matched by `Edge.isSame` rather than by a literal `Edge12`/
+    `Face3` name. An edge counts only where its two adjacent faces split one
+    to *a* and the other to *b* -- a face answering both never pairs with
+    itself.
+    """
+    import Part
+
+    if not callable(a) or not callable(b):
+        raise TypeError(
+            "edges_between wants two predicates over Shape.Faces, each a function "
+            "from one Face to True/False -- got %r and %r" % (a, b))
+    a_faces = [face for face in shape.Faces if a(face)]
+    b_faces = [face for face in shape.Faces if b(face)]
+    if not a_faces:
+        raise ValueError("edges_between's first predicate matched no face of the shape")
+    if not b_faces:
+        raise ValueError("edges_between's second predicate matched no face of the shape")
+
+    names = []
+    for at, edge in enumerate(shape.Edges, start=1):
+        adjacent = shape.ancestorsOfType(edge, Part.Face)
+        if len(adjacent) != 2:
+            continue
+        one, other = adjacent
+        a_then_b = (any(face.isSame(one) for face in a_faces)
+                    and any(face.isSame(other) for face in b_faces))
+        b_then_a = (any(face.isSame(other) for face in a_faces)
+                    and any(face.isSame(one) for face in b_faces))
+        if a_then_b or b_then_a:
+            names.append("Edge%d" % at)
+    return names
+
+
 def step_namespace(doc):
     """
     What a Step's code runs with, built identically by the kernel and the GUI's
@@ -164,7 +201,8 @@ def step_namespace(doc):
 
     sys.modules["App"] = FreeCAD
 
-    namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__"}
+    namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__",
+                 "edges_between": edges_between}
     for module in STEP_MODULES:
         try:
             namespace[module] = __import__(module)

@@ -69,7 +69,12 @@ and for which side of the solid you are on, and `Shape.optimalBoundingBox()`
 where a box is genuinely what you want.
 
 `doc`, `App`, `Part`, `Sketcher` and `PartDesign` are already in scope; you do
-not need to import them. The code must be a pure function of the Document:
+not need to import them. So is `edges_between(shape, a, b)`, which gives the
+element names of the edges where a face answering predicate `a` meets a face
+answering predicate `b` — `edges_between(body.Shape, lambda f: planar_at_z(f,
+15), lambda f: cylinder_of(f, 25))` is the whole of a fillet's selection, and
+a predicate that matches nothing raises there and then rather than filleting
+the wrong junction. The code must be a pure function of the Document:
 no Gui.*, no reading the live selection, and no literal element names such as
 Edge12 — compute references from the geometry at execution time instead.
 
