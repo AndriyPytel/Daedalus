@@ -7,7 +7,9 @@ retry/`state.json` bookkeeping move to `tools/lane.py`, the one caller that
 walks more than one of these. `run_slice.py`'s `--allow-user-objects` survives
 as the same flag here, answering the Owned Object prompt yes -- safe only
 because a script pointed at a scratch Document is the only caller that
-should ever say so.
+should ever say so, and `nobody_to_ask` answers a question the loop raises,
+since nobody is watching a headless run and declining is what sends it down
+the decide-for-yourself path.
 
     .venv/bin/python src/tools/run.py --intent "Build the Phase 1 model" \
         --attach tests/modelmania/mm25-p1-1.pdf --budget-usd 20
@@ -68,6 +70,7 @@ def main():
 
     from copilot.sdk import Client
     from core.events import COST
+    from core.loop import nobody_to_ask
 
     llm = client_for(args.provider, args.model, args.effort) if args.model else None
     client = Client(llm=llm, confirm=lambda kinds: args.allow_user_objects is True)
@@ -82,7 +85,8 @@ def main():
     client.watch(track)
 
     cancelled = (lambda: spent["usd"] >= args.budget_usd) if args.budget_usd is not None else None
-    result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled)
+    result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled,
+                         ask=nobody_to_ask)
 
     print("ok            :", result.ok)
     print("verdict       :", result.verdict, "-", result.reason)
