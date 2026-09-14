@@ -614,3 +614,78 @@ def test_a_name_from_an_uncounted_source_comprehension_is_still_rejected():
 
     assert not result.ok
     assert "how many" in result.report()
+
+
+@pytest.mark.parametrize("code", [
+    "sk.AttachmentSupport = [(xz_plane, [])]",
+    "sk.AttachmentSupport = [(xz_plane, []), (yz_plane, ['Face1'])]",
+])
+def test_an_empty_list_attachment_subelement_is_rejected(code):
+    """
+    Measured on freecadcmd 1.1.3: `AttachmentSupport = [(plane, [])]` plus
+    `MapMode = 'FlatFace'` raises nothing and leaves Placement identity --
+    the attachment silently does not happen.
+    """
+    result = lint(code)
+
+    assert not result.ok
+    assert "empty list literal" in result.report()
+    assert 'Write `""`' in result.report()
+
+
+@pytest.mark.parametrize("code", [
+    "sk.AttachmentSupport = [(xz_plane, '')]",
+    "sk.AttachmentSupport = [(xz_plane, [''])]",
+])
+def test_a_non_empty_attachment_subelement_is_accepted(code):
+    assert lint(code).ok, lint(code).report()
+
+
+def test_a_non_empty_list_of_element_names_is_the_elements_rule_business():
+    """
+    The literal-element rule already governs `Face1`; this rule is only
+    about the list being empty, not about what it names.
+    """
+    result = lint("sk.AttachmentSupport = [(xz_plane, ['Face1'])]")
+
+    assert "empty list literal" not in result.report()
+
+
+def test_an_unrelated_empty_list_is_untouched():
+    assert lint("edges = []").ok
+    assert lint("fillet.Base = (box, [])").ok
+
+
+@pytest.mark.parametrize("code", [
+    "assert abs(shape.BoundBox.ZMax - 50.0) < 1e-6",
+    "bb = shape.BoundBox\nassert abs(bb.ZMax - 50.0) < 1e-6",
+    "if shape.BoundBox.ZMax != 50.0:\n    raise RuntimeError('wrong height')",
+    "bb = shape.BoundBox\nif bb.Center.z != 25.0:\n    raise RuntimeError('off centre')",
+])
+def test_a_step_that_guards_on_boundbox_is_rejected(code):
+    """
+    The recorded run's `assert abs(bb.ZMax - 50.0) < 1e-6` failed Preflight
+    at 49.872 on a tangent cylinder -- the BoundBox lands inside the true
+    extreme, not on it.
+    """
+    result = lint(code)
+
+    assert not result.ok
+    assert "Shape.BoundBox" in result.report()
+    assert "Surface.Position" in result.report()
+
+
+@pytest.mark.parametrize("code", [
+    "print(shape.BoundBox)",
+    "bb = shape.BoundBox\nprint(bb.ZMax)",
+    "length = shape.BoundBox.XLength",
+    "sign = 1 if shape.BoundBox.ZMax > 0 else -1",
+    "assert abs(shape.Surface.Position.z - 50.0) < 1e-6",
+]) 
+def test_reading_or_signing_off_boundbox_is_untouched(code):
+    """
+    Printing it for information, or reading a value into a name nothing
+    asserts or raises on, stays legal -- the rule is about a number a Step
+    acts on, not the property existing.
+    """
+    assert lint(code).ok, lint(code).report()

@@ -1,0 +1,1 @@
+%s writes an empty list literal as the AttachmentSupport subelement. Nothing raises: `MapMode` runs against no sub-shape at all and the Placement stays identity, so the sketch silently does not attach while the Step reports itself applied. Write `""` for a whole-shape attachment instead -- an empty string attaches, and a non-empty list of element names still works.

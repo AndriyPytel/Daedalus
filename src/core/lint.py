@@ -4,9 +4,12 @@ failures a traceback can't teach a way out of. No literal Edge12/Face3/Vertex7,
 since topological naming makes them silently wrong; no Gui.*/live selection,
 because Preflight and Apply run headless; nothing may be made active, since
 no headless active-object API exists; no raw .Shape/addProperty disguised as
-a PartDesign feature. A computed selection must assert its own length, no
-bare except/pass swallows a Step's failure, and no literal-name lookup of an
-object this Step just allocated, since a collision would rename it silently.
+a PartDesign feature; no empty-list AttachmentSupport subelement, since it
+attaches nothing without raising; no guard comparing a BoundBox attribute,
+since a BoundBox lands inside the true extreme it claims to report. A
+computed selection must assert its own length, no bare except/pass swallows a
+Step's failure, and no literal-name lookup of an object this Step just
+allocated, since a collision would rename it silently.
 """
 import ast
 import re
@@ -118,6 +121,14 @@ _ACTIVATION_REASON = read_prompt("lint_activation.md")
 
 _ALLOCATED_NAME_REASON = read_prompt("lint_allocated_name.md")
 
+_ATTACHMENT_SUPPORT_REASON = read_prompt("lint_attachment_support_empty_list.md")
+_BOUNDBOX_GUARD_REASON = read_prompt("lint_boundbox_guard.md")
+
+_BOUNDBOX_ATTRS = frozenset((
+    "XMin", "XMax", "YMin", "YMax", "ZMin", "ZMax",
+    "Center", "XLength", "YLength", "ZLength",
+))
+
 
 @dataclass
 class LintResult:
@@ -166,6 +177,7 @@ def lint(code: str, selection=None) -> LintResult:
     features = _partdesign_features(tree)
     counted = _counted_selections(tree)
     allocated = _names_allocated_here(tree)
+    boundbox_names = _boundbox_names(tree)
     problems = []
     seen = set()
 
@@ -173,6 +185,11 @@ def lint(code: str, selection=None) -> LintResult:
         if message not in seen:
             seen.add(message)
             problems.append(message)
+
+    for test in _guard_tests(tree):
+        guarded = _boundbox_guard(test, boundbox_names)
+        if guarded:
+            complain(_BOUNDBOX_GUARD_REASON % guarded)
 
     def _on_constant(node):
         if not isinstance(node.value, str):
@@ -203,6 +220,9 @@ def lint(code: str, selection=None) -> LintResult:
         uncounted = _uncounted_selection(node, counted)
         if uncounted:
             complain(_UNCOUNTED_SELECTION_REASON % uncounted)
+        empty_attachment = _attachment_support_empty_list(node)
+        if empty_attachment:
+            complain(_ATTACHMENT_SUPPORT_REASON % empty_attachment)
 
     def _on_call(node):
         disguised = _added_property(node, features)
@@ -324,6 +344,21 @@ def op_typeid_mismatch(op, created, objects):
     return None
 
 
+def _guard_tests(tree):
+    """
+    The test of every guard a Step can fail on: an `if` that ends in a
+    `raise`, and an `assert`, and no other shape. `_counted_selections` and
+    the BoundBox rule both read a guard's test for what it checks, not
+    whether it fires.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assert):
+            yield node.test
+        elif isinstance(node, ast.If) and any(isinstance(inner, ast.Raise)
+                                              for inner in ast.walk(node)):
+            yield node.test
+
+
 def _counted_selections(tree) -> set:
     """
     Variables whose length this Step checks against a number, and raises on:
@@ -337,14 +372,7 @@ def _counted_selections(tree) -> set:
     carries the count too.
     """
     counted = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assert):
-            test = node.test
-        elif isinstance(node, ast.If) and any(isinstance(inner, ast.Raise)
-                                              for inner in ast.walk(node)):
-            test = node.test
-        else:
-            continue
+    for test in _guard_tests(tree):
         if not any(isinstance(inner, ast.Constant) and isinstance(inner.value, int)
                    for inner in ast.walk(test)):
             continue
@@ -373,6 +401,48 @@ def _counted_selections(tree) -> set:
     return counted
 
 
+def _boundbox_names(tree) -> set:
+    """Variables assigned straight from `<geometry>.BoundBox`, so `bb.ZMax`
+    is read as the same reference as `shape.BoundBox.ZMax`."""
+    names = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and isinstance(node.value, ast.Attribute) and node.value.attr == "BoundBox"):
+            names.add(node.targets[0].id)
+    return names
+
+
+def _is_boundbox_reference(node, boundbox_names: set) -> bool:
+    if isinstance(node, ast.Attribute) and node.attr == "BoundBox":
+        return True
+    if isinstance(node, ast.Name) and node.id in boundbox_names:
+        return True
+    if isinstance(node, ast.Attribute) and node.attr in _BOUNDBOX_ATTRS:
+        value = node.value
+        if isinstance(value, ast.Attribute) and value.attr == "BoundBox":
+            return True
+        if isinstance(value, ast.Name) and value.id in boundbox_names:
+            return True
+    return False
+
+
+def _boundbox_guard(test, boundbox_names: set):
+    """
+    The offending expression in a guard's test that reads a BoundBox
+    attribute inside a comparison, or None. Printing a BoundBox, or reading
+    one into a name nothing asserts or raises on, never reaches here --
+    only a `Compare` inside an assert's test or a raising `if`'s test does.
+    """
+    for node in ast.walk(test):
+        if not isinstance(node, ast.Compare):
+            continue
+        for inner in ast.walk(node):
+            if _is_boundbox_reference(inner, boundbox_names):
+                return ast.unparse(node)
+    return None
+
+
 def _uncounted_selection(node: ast.Assign, counted: set):
     """
     The `x.Base = (obj, elements)` whose element list nothing counted, or
@@ -397,6 +467,26 @@ def _uncounted_selection(node: ast.Assign, counted: set):
             if not all(isinstance(gen.iter, ast.Name) and gen.iter.id in counted
                        and not gen.ifs for gen in elements.generators):
                 return ast.unparse(target)
+    return None
+
+
+def _attachment_support_empty_list(node: ast.Assign):
+    """
+    The unparsed assignment where `.AttachmentSupport` is given an empty
+    list literal as a subelement, or None. FreeCAD 1.1.3 raises nothing for
+    `AttachmentSupport = [(plane, [])]`: MapMode runs against no sub-shape
+    at all and the sketch's Placement is left at identity.
+    """
+    for target in node.targets:
+        if not (isinstance(target, ast.Attribute) and target.attr == "AttachmentSupport"):
+            continue
+        value = node.value
+        if not isinstance(value, ast.List):
+            continue
+        for entry in value.elts:
+            if (isinstance(entry, ast.Tuple) and len(entry.elts) == 2
+                    and isinstance(entry.elts[1], ast.List) and not entry.elts[1].elts):
+                return ast.unparse(node)
     return None
 
 
