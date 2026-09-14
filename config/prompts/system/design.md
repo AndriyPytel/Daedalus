@@ -109,6 +109,21 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
   written "rib rounds" and left to be read as however many edges the
   callout's colour reaches.
 
+- **The junction also carries how many edges the drawing shows there, not
+  only which two surfaces meet.** Two surfaces can meet more than once — a
+  rib against a plate on both sides of a boss is one `joins`, named once,
+  and two edges — and a `joins` that stops at the two surfaces leaves the
+  count for Plan to invent. So the entry carries `edges` beside `joins`, a
+  count in the same `{"value": ..., "flag": ...}` shape as any other value:
+  `read` where the view draws each edge as its own line and you counted
+  them, `derived` where the loop the contour closes into settles it,
+  `assumed` with `because` where the two surfaces are certain and the count
+  is not, and `not_defined` only where no view shows the junction at all. A
+  recorded run over `mm2023-phase1.pdf` named all eight `R2 TYP` fillets'
+  two surfaces and nothing past them; Plan spent its budget inventing the
+  edge count for every one, three arcs at a time, that this entry exists to
+  settle once.
+
 - **`conflicts`** is where two things that cannot both be true are recorded,
   one entry per disagreement, always `{"about": "...", "stands": "...",
   "was_also_said": "..."}` — record them, and leave them there.
@@ -529,6 +544,19 @@ on any drawing:
 Every one of these is a feature with its `topology`, its datum and its flag, the
 same as a length. They are read off the shapes in the views, and a view is
 evidence, not decoration.
+
+**An outline is read off the view that draws it at true shape, not off a
+section through it.** A section says what is solid and how deep — hatched
+where there is material, cut away where there is not — and that is all it
+says; the boundary of an opening is drawn, at size, in whatever view looks
+straight at it, and a section through the same opening shows only the slice
+its cutting plane happens to take. A recorded run over `mm2023-phase1.pdf`
+read `cutout-left`'s shape off SECTION A-A's blend into the collar and
+called it obround, tapering to a cylinder; the view drawn to show that same
+opening face-on draws a square with rounded corners. Take the outline from
+the view that draws it. Only where no other view draws the opening at all
+does the section become evidence for its shape, and then it is `derived` at
+best, `assumed` where the slice alone cannot fix it, with `because` saying so.
 
 **Where two readings satisfy the same numbers, say which one the view shows.** A
 drawing leaving that choice to the views is the ordinary case, not a fault in

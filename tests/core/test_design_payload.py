@@ -52,6 +52,16 @@ dimension it matches, and an envelope is never that proof. 1,108 characters,
 be caught when it is wrong — the 2024 plate's whole vertical chain was read
 off the top face named as the underside, and every overall size still
 agreed.
+
+The ratio moved again to 1.78 when `design.md` gained two rules: a fillet or
+a chamfer also states how many edges its junction is, `read`, `derived` or
+`assumed` like any other value; and an outline is read off the view that
+draws it at true shape, a section being evidence for one only where no other
+view draws it. 1,880 characters, 470 tokens on every call the first pass
+makes. What it buys is the edge count and the shape Plan no longer invents —
+a recorded run named eight fillets' surfaces and none of their edge counts,
+and read a square opening as obround off a section instead of the view that
+draws it.
 """
 import json
 import os
@@ -81,24 +91,24 @@ SINGLE_CALL_BASELINE = {
     "model-mania-2024.pdf": 39970,
 }
 
-FIRST_PASS_CEILING_RATIO = 1.74
+FIRST_PASS_CEILING_RATIO = 1.78
 
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 24428},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 25166},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 24898},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 25636},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 20895},
-        "total": 70489,
+        "reconcile": {"total_chars": 40545, "input_tokens": 21365},
+        "total": 71899,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 22763},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 25647},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23233},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26117},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 21102},
-        "total": 69512,
+        "reconcile": {"total_chars": 41375, "input_tokens": 21572},
+        "total": 70922,
     },
 }
 
