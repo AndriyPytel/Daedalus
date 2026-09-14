@@ -839,18 +839,20 @@ A_READING_THAT_PROVOKES_EVERY_RE_READ = {
 
 def _a_run_that_reads_the_sheet_every_way(sheet, intent):
     """
-    One run that reaches all eight Design turns.
+    One run that reaches all nine Design turns.
 
-    The first pass at the sheet, the person's answer written in, the five
-    re-reads this reading provokes — a callout nobody used, the outer contour
-    asked and then settled, an axis pointing along the direction it is placed
-    in, a 777 mm nothing prints — and the question Plan puts back to the
-    drawing. `rereads=1` is what fires each of them exactly once: every one of
-    them looks again until it stops finding fewer.
+    The first pass at the sheet, the re-read Design puts its own question
+    back to before a person, the person's answer written in once that comes
+    back empty, the five re-reads this reading provokes — a callout nobody
+    used, the outer contour asked and then settled, an axis pointing along
+    the direction it is placed in, a 777 mm nothing prints — and the
+    question Plan puts back to the drawing. `rereads=1` is what fires each
+    of them exactly once: every one of them looks again until it stops
+    finding fewer.
     """
     return drive([design_reply(A_READING_THAT_PROVOKES_EVERY_RE_READ,
                                question="How thick is the pad under the arm?")]
-                 + [design_reply({})] * 6
+                 + [design_reply({})] * 7
                  + [question_reply("Which end does the slot open at?"),
                     design_reply({}),
                     plan_reply("Build it",

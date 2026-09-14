@@ -1084,14 +1084,16 @@ def test_plan_can_ask_instead_of_planning():
 
 def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan():
     """
-    A person's answer — Design's own surviving question, the only one left —
-    goes back through Design and lands in the same model by the same merge, so
-    what Plan is handed next is the description grown, never an answer standing
-    beside it, which is the arrangement that lost the 100 mm. The user supplied
-    it, so it is `assumed`.
+    A person's answer — Design's own surviving question, the sheet has
+    already been asked and answered nothing — goes back through Design and
+    lands in the same model by the same merge, so what Plan is handed next
+    is the description grown, never an answer standing beside it, which is
+    the arrangement that lost the 100 mm. The user supplied it, so it is
+    `assumed`.
     """
     llm = ScriptedLLMClient([
         design_reply({}, question=MISSING),
+        design_reply(),
         design_reply(GEAR_AS_TOLD),
         plan_reply("Sketch a 20-tooth module-2 blank"), code_reply("a()"),
         suspect_reply(), verdict_reply("pass"),
@@ -1101,11 +1103,11 @@ def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan
     run(GEAR, llm=llm, tools=tools.registry, attachments=[RENDER_PNG],
         ask=lambda _: "module 2, 20 teeth, 10 thick, ⌀8 bore")
 
-    told = json.loads(llm.calls[1][-1]["content"][-1]["text"])
+    told = json.loads(llm.calls[2][-1]["content"][-1]["text"])
     assert told["the_question"] == MISSING
     assert told["the_answer_you_were_given"] == "module 2, 20 teeth, 10 thick, ⌀8 bore"
 
-    described = json.loads(llm.calls[2][-1]["content"])
+    described = json.loads(llm.calls[3][-1]["content"])
     assert "20 teeth (assumed)" in described["what_the_part_is"]
     assert "you_asked_and_were_answered" not in described
 

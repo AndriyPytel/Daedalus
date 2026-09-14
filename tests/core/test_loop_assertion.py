@@ -689,7 +689,7 @@ def test_the_second_look_is_bounded_by_the_re_read_ceiling():
 @pytest.mark.skipif(not sheet_reader.available(), reason="PyMuPDF is not installed")
 def test_every_design_turn_of_a_run_is_told_what_the_run_was_asked_for():
     """
-    Eight call sites, one run, and the Intent on every one of them. It is the
+    Nine call sites, one run, and the Intent on every one of them. It is the
     scope of the run — what is expected on the output — so a turn that reads
     the sheet without it reads for nothing in particular.
     """
@@ -698,7 +698,7 @@ def test_every_design_turn_of_a_run_is_told_what_the_run_was_asked_for():
     _, _, llm, _ = _a_run_that_reads_the_sheet_every_way(MODEL_MANIA, intent)
 
     turns = _asked_of_design(llm)
-    assert len(turns) == 8, "the run did not drive all eight Design call sites"
+    assert len(turns) == 9, "the run did not drive all nine Design call sites"
     assert [turn for turn in turns if turn.get("intent") == intent] == turns
 
 
@@ -1029,13 +1029,15 @@ def test_design_asks_the_user_itself_before_any_plan_exists():
     The recorded run closed its first description with "Exact coordinate
     dimensions for the Ø35 hole … not defined" and then let Plan draft Steps
     around the gap, so the question reached the user out of a Plan that had
-    already committed to a shape. Design owns the question: it asks for what it
-    sees empty in its own model, before Plan, and the answer is merged in.
+    already committed to a shape. Design owns the question: it asks for what
+    it sees empty in its own model, before Plan, and only where the sheet
+    itself cannot settle it does the answer come from a person.
     """
     asked = []
 
     _, events, llm, _ = drive([
         design_reply(A_PART, question="Where are the Ø40 and Ø35 hole axes?"),
+        design_reply(),
         design_reply({"features": [{"id": "hole-35", "kind": "Ø35 hole",
                                     "position": {"the left end face":
                                                  {"value": "25 mm", "flag": "assumed"}}}]}),
@@ -1047,7 +1049,7 @@ def test_design_asks_the_user_itself_before_any_plan_exists():
     assert kinds.index(QUESTION) < kinds.index(DESIGN) < kinds.index(PLAN), \
         "the question reached the user after a Plan had been drafted"
 
-    shown = json.loads(llm.calls[2][-1]["content"])["what_the_part_is"]
+    shown = json.loads(llm.calls[3][-1]["content"])["what_the_part_is"]
     assert "the left end face: 25 mm (assumed)" in shown
     assert "the left end face: 15 mm (read)" in shown
 

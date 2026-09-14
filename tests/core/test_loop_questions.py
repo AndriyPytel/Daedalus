@@ -100,7 +100,33 @@ from tests.loop_helpers import (
     MIXED_TRACEBACK,
     assertion_mixed,
     STILL_WRONG,
+    _asked_of_design,
 )
+
+
+def test_designs_own_first_pass_question_goes_back_to_the_sheet_before_a_person():
+    """
+    A question Design raises about its own first pass is put back to the
+    sheet with `the_question` alone, exactly as Plan's own question already
+    is. Answered, it is merged in and the stream says the drawing answered
+    it; nobody is asked.
+    """
+    asked = []
+
+    _, events, llm, _ = drive([
+        design_reply(A_PART, question="Where are the Ø40 and Ø35 hole axes?"),
+        design_reply({"features": [{"id": "hole-35", "kind": "Ø35 hole",
+                                    "position": {"the left end face": read("25 mm")}}]}),
+        plan_reply("Only", satisfies=everything(A_PART)), code_reply("box()"),
+        suspect_reply(), verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "should never be called")
+
+    assert asked == [], "the sheet answered; a person was asked anyway"
+    assert events.of(ANSWER)[0].data["by"] == "drawing"
+
+    re_read = _asked_of_design(llm)[1]
+    assert re_read["the_question"] == "Where are the Ø40 and Ø35 hole axes?"
+    assert "the_answer_you_were_given" not in re_read
 
 
 def test_the_questions_nobody_answered_are_shown_beside_the_plan():
@@ -1066,7 +1092,7 @@ def test_a_run_with_no_attachment_still_plans_and_still_shows_an_acceptance():
     told = {"envelope": {"length": {"value": "150 mm", "flag": "assumed"}}}
 
     result, events, _, tools = drive(
-        [design_reply(told, question=MISSING), design_reply(),
+        [design_reply(told, question=MISSING), design_reply(), design_reply(),
          plan_reply("Pad it 150 mm", satisfies=everything(told)), code_reply("pad()"),
          suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
         attachments=[RENDER_PNG], ask=lambda _: "150 mm long")

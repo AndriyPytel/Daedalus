@@ -30,13 +30,14 @@ from core.design.settlement_checks import settled_by_the_tracing
 from core.design.report import (
     distilled,
     each_disagreement_once,
+    render,
 )
 from core.events import ANSWER, DESIGN, PART, QUESTION
 from core.sheets import sheet_reader
 
 from core.loop.design import _first_pass, _reconciled, design
 from core.loop.gate import ACCEPT, DECIDE_FOR_ME, REVISE, START_OVER
-from core.loop.prompt import _sheets
+from core.loop.prompt import _pictures, _sheets
 from core.loop.results import Stopped
 from core.loop.tracing import (
     A_READING_TIMEOUT,
@@ -113,9 +114,9 @@ def _settle_it(question):
 
 def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments):
     """
-    The part as Design has it, before anything is planned. It asks once
-    before any Step is drafted, and lets a question ride unanswered to the
-    Gate instead of blocking the run.
+    The part as Design has it, before anything is planned. A first-pass
+    question goes back to the sheet once before it goes to a person, and
+    only what the sheet cannot settle reaches the Gate unanswered.
     """
     the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled)
     the_part = merge({}, the_part)
@@ -124,9 +125,17 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
         if cancelled():
             raise Stopped()
         events.emit(QUESTION, text=question)
-        the_part, _ = _written_in(the_part, intent, question,
-                                  _answered(question, ask, events), llm, events,
-                                  attachments)
+        grew = {}
+        if budgets.rereads and _pictures(attachments):
+            grew, _ = design({"intent": intent, "the_part_as_you_described_it": the_part,
+                              "the_question": question}, llm, events, attachments)
+        if grew:
+            the_part = merge(the_part, grew)
+            events.emit(ANSWER, text=render(grew), by="drawing")
+        else:
+            the_part, _ = _written_in(the_part, intent, question,
+                                      _answered(question, ask, events), llm, events,
+                                      attachments)
 
     try:
         if grouped:
