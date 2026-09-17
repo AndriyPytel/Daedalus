@@ -23,7 +23,7 @@ _DEFAULT_BASE = {
     "Custom/Local": "",
 }
 
-_VENDORS = ("OpenAI", "Anthropic", "Google")
+_VENDORS = ("OpenAI", "Anthropic", "Google", "OpenRouter")
 
 _ALIASES = ("opus", "sonnet", "haiku")
 

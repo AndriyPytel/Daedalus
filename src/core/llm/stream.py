@@ -56,7 +56,8 @@ def _truncated(model, cap) -> ProviderRefused:
 
 _RETRY_AFTER = re.compile(
     r"retry[-_ ]?(?:delay|after)\"?\s*[:=]?\s*\"?(\d+(?:\.\d+)?\s*[smh]?)", re.I)
-_OUT_OF_CREDIT = ("insufficient_quota", "credit balance", "out of credit", "billing_hard_limit")
+_OUT_OF_CREDIT = ("insufficient_quota", "credit balance", "out of credit",
+                  "billing_hard_limit", "requires more credits")
 _OUT_OF_QUOTA = ("quota", "resource_exhausted", "resource has been exhausted")
 _USED_UP = ("usage limit", "monthly limit", "limit reached", "spend limit",
             "spending limit")
@@ -118,6 +119,10 @@ def _translate(exc, model):
         return ProviderRefused(
             "Could not reach %s: the connection failed. This is a transport failure, not a "
             "limit on your account — check the endpoint is running and reachable." % model, said)
+    if any(word in low for word in _OUT_OF_CREDIT):
+        return ProviderRefused(
+            refused + ": the account cannot afford this call. Top the account up, or pick a "
+            "model with a smaller output cap. The provider said: %s" % said, said)
     if isinstance(exc, litellm.BadRequestError) and any(word in low for word in _NO_IMAGES):
         return ProviderRefused(
             refused + ": this model cannot accept images. Send the Intent without the "

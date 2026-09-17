@@ -380,6 +380,47 @@ def test_a_provider_that_keeps_timing_out_refuses_rather_than_retrying_forever()
     assert len(calls) == 3
 
 
+def test_a_retry_says_so_where_the_user_is_watching():
+    """A silent retry is a panel that looks dead for as long as three timeouts last."""
+    from litellm.exceptions import MidStreamFallbackError
+
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise MidStreamFallbackError(
+                message="Provider timed out after 311814ms", llm_provider="openai",
+                model="openrouter/stealth/union-alpha")
+        return iter(openai_chunks())
+
+    client = LiteLLMClient(model="m", api_key="k", completion=completion)
+
+    said = [chunk.text for chunk in client.stream([{"role": "user", "content": "hi"}])
+            if chunk.kind == REASONING]
+
+    assert any("again" in text for text in said), said
+
+
+def test_an_account_that_cannot_afford_the_output_cap_is_told_what_to_do():
+    """
+    OpenRouter refuses the whole call rather than trimming: "This request
+    requires more credits, or fewer max_tokens. You requested up to 65536
+    tokens, but can only afford 16000."
+    """
+    import litellm
+
+    client = client_refused_by(litellm.APIError(
+        status_code=402, message="This request requires more credits, or fewer max_tokens. "
+        "You requested up to 65536 tokens, but can only afford 16000.",
+        llm_provider="openrouter", model="openrouter/x-ai/grok-4.1"))
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "credit" in str(refusal.value)
+
+
 def test_a_failure_that_is_not_the_provider_refusing_is_left_alone():
     client = client_refused_by(ZeroDivisionError("a bug in our own mapping"))
 
@@ -559,6 +600,16 @@ def test_an_openai_compatible_gateway_is_asked_to_report_what_it_spent():
     assert completion.kwargs["stream_options"] == {"include_usage": True}
 
 
+def test_openrouter_is_asked_for_usage_and_watched_for_a_cut_stream_too():
+    """Its route is the OpenAI shape as much as a gateway's, terminal chunk and all."""
+    client, completion = client_replaying(openai_chunks())
+    client.model = "openrouter/stealth/union-alpha"
+
+    collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert completion.kwargs["stream_options"] == {"include_usage": True}
+
+
 def test_a_gateway_that_closes_the_stream_mid_reply_says_so():
     """
     Measured against the opencode gateway with raw HTTP and no LiteLLM in the
@@ -722,7 +773,7 @@ def test_cache_control_is_only_claimed_supported_on_the_route_the_spike_measured
     ("Google", "gemini-2.5-pro", "gemini/gemini-2.5-pro"),
     ("Custom/Local", "llama3", "openai/llama3"),
     ("OpenCode Go", "kimi-k3", "openai/kimi-k3"),
-    ("OpenRouter", "x-ai/grok-4.1", "openai/x-ai/grok-4.1"),
+    ("OpenRouter", "x-ai/grok-4.1", "openrouter/x-ai/grok-4.1"),
     ("Anthropic", "anthropic/claude-3-opus-20240229", "anthropic/claude-3-opus-20240229"),
     ("Something The User Typed", "vendor/model", "vendor/model"),
 ])

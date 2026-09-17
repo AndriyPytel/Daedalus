@@ -8,7 +8,7 @@ that ends without a price would be billed the previous call's number.
 """
 from typing import Callable, Iterator
 
-from core.llm.types import Chunk
+from core.llm.types import REASONING, Chunk
 from core.llm.exceptions import ProviderRefused
 from core.llm.effort_policy import _OUTPUT_BUDGET, _resolved_effort
 from core.llm.stream import _deltas, _finished, _stopped_for_length, _cut_off, _truncated, _translate, _billed
@@ -73,7 +73,7 @@ class LiteLLMClient:
             kwargs.setdefault("allowed_openai_params", ["reasoning_effort"])
         kwargs.setdefault("max_tokens",
                           _output_cap(self.model, (self.thinking_budget or _OUTPUT_BUDGET) * 4))
-        openai_compatible = self.model.startswith("openai/")
+        openai_compatible = self.model.startswith(("openai/", "openrouter/"))
         if openai_compatible:
             kwargs.setdefault("stream_options", {"include_usage": True})
 
@@ -96,6 +96,8 @@ class LiteLLMClient:
                 raise
             except Exception as exc:
                 if not spoke and attempt < _ATTEMPTS - 1 and _worth_another_try(exc):
+                    yield Chunk(REASONING, "\n%s did not answer in time. Trying again (%d of %d).\n"
+                                % (self.model, attempt + 2, _ATTEMPTS))
                     continue
                 refusal = _translate(exc, self.model)
                 if refusal is None:

@@ -267,8 +267,9 @@ def test_openrouter_is_configured_by_a_key_alone():
     assert needs_no_key("OpenRouter") is False
 
 
-def test_openrouter_is_reached_at_its_published_endpoint():
-    assert api_base_for("OpenRouter") == "https://openrouter.ai/api/v1"
+def test_openrouter_is_litellms_own_route_and_needs_no_address():
+    """LiteLLM carries the endpoint, the per-model output ceiling and the price."""
+    assert api_base_for("OpenRouter") is None
 
 
 def test_openrouter_lists_what_it_sells_under_its_own_ids(provider_endpoint):
