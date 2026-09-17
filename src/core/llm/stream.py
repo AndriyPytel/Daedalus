@@ -110,7 +110,7 @@ def _translate(exc, model):
         return ProviderRefused(
             refused + ": you are being rate limited — too many requests too quickly.%s Wait "
             "and send the Intent again." % _retry_hint(said), said)
-    if isinstance(exc, litellm.Timeout):
+    if isinstance(exc, (litellm.Timeout, litellm.ServiceUnavailableError)):
         return ProviderRefused(
             refused + ": the provider did not answer in time. Try again, or pick a faster "
             "model.", said)

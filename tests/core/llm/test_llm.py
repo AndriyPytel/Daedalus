@@ -309,6 +309,29 @@ def test_a_refusal_halfway_through_a_stream_is_still_a_refusal():
         collect(client.stream([{"role": "user", "content": "hi"}]))
 
 
+def test_a_provider_that_times_out_mid_stream_is_a_refusal_not_a_traceback():
+    """
+    OpenRouter gave up on a stealth model after 311814ms and LiteLLM raised
+    `MidStreamFallbackError`, a `ServiceUnavailableError` rather than a
+    `Timeout`, so it reached the panel as a traceback.
+    """
+    import litellm
+    from litellm.exceptions import MidStreamFallbackError
+
+    client = client_refused_by(MidStreamFallbackError(
+        message="Provider timed out after 311814ms", llm_provider="openai",
+        model="openai/stealth/union-alpha",
+        original_exception=litellm.APIConnectionError(
+            message="Provider timed out", llm_provider="openai",
+            model="openai/stealth/union-alpha")),
+        after=openai_chunks()[:2])
+
+    with pytest.raises(ProviderRefused) as refusal:
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert "did not answer in time" in str(refusal.value)
+
+
 def test_a_failure_that_is_not_the_provider_refusing_is_left_alone():
     client = client_refused_by(ZeroDivisionError("a bug in our own mapping"))
 
