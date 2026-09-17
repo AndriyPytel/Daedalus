@@ -332,6 +332,54 @@ def test_a_provider_that_times_out_mid_stream_is_a_refusal_not_a_traceback():
     assert "did not answer in time" in str(refusal.value)
 
 
+def test_a_provider_that_times_out_before_a_word_is_tried_again():
+    """
+    A cloaked model on OpenRouter times out at the gateway's own 300s ceiling
+    with nothing sent yet, and the whole run is lost to a wait the user was
+    willing to sit through. Nothing has reached the caller, so the call can be
+    made again without repeating text.
+    """
+    from litellm.exceptions import MidStreamFallbackError
+
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise MidStreamFallbackError(
+                message="Provider timed out after 311814ms", llm_provider="openai",
+                model="openai/stealth/union-alpha")
+        return iter(openai_chunks())
+
+    client = LiteLLMClient(model="m", api_key="k", completion=completion)
+
+    text = "".join(chunk.text for chunk in client.stream([{"role": "user", "content": "hi"}])
+                   if chunk.kind == TEXT)
+
+    assert len(calls) == 2
+    assert text
+
+
+def test_a_provider_that_keeps_timing_out_refuses_rather_than_retrying_forever():
+    from litellm.exceptions import MidStreamFallbackError
+
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        raise MidStreamFallbackError(
+            message="Provider timed out after 311814ms", llm_provider="openai",
+            model="openai/stealth/union-alpha")
+        yield
+
+    client = LiteLLMClient(model="m", api_key="k", completion=completion)
+
+    with pytest.raises(ProviderRefused):
+        collect(client.stream([{"role": "user", "content": "hi"}]))
+
+    assert len(calls) == 3
+
+
 def test_a_failure_that_is_not_the_provider_refusing_is_left_alone():
     client = client_refused_by(ZeroDivisionError("a bug in our own mapping"))
 

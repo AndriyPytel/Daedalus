@@ -78,23 +78,29 @@ class LiteLLMClient:
             kwargs.setdefault("stream_options", {"include_usage": True})
 
         self.last_cost = None
-        chunks = []
-        finished = False
-        cap_hit = False
-        try:
-            for raw in completion(**kwargs):
-                chunks.append(raw)
-                for chunk in _deltas(raw):
-                    yield chunk
-                cap_hit = cap_hit or _stopped_for_length(raw)
-                finished = finished or _finished(raw)
-        except ProviderRefused:
-            raise
-        except Exception as exc:
-            refusal = _translate(exc, self.model)
-            if refusal is None:
+        for attempt in range(_ATTEMPTS):
+            chunks = []
+            finished = False
+            cap_hit = False
+            spoke = False
+            try:
+                for raw in completion(**kwargs):
+                    chunks.append(raw)
+                    for chunk in _deltas(raw):
+                        spoke = True
+                        yield chunk
+                    cap_hit = cap_hit or _stopped_for_length(raw)
+                    finished = finished or _finished(raw)
+                break
+            except ProviderRefused:
                 raise
-            raise refusal from exc
+            except Exception as exc:
+                if not spoke and attempt < _ATTEMPTS - 1 and _worth_another_try(exc):
+                    continue
+                refusal = _translate(exc, self.model)
+                if refusal is None:
+                    raise
+                raise refusal from exc
 
         if cap_hit:
             self.last_cost = _priced(self.model, chunks, messages) or \
@@ -152,3 +158,21 @@ def _priced(model, chunks, messages):
     if tokens is not None:
         priced.update(tokens)
     return priced
+
+
+_ATTEMPTS = 3
+
+
+def _worth_another_try(exc) -> bool:
+    """
+    Whether the call is worth making again rather than refusing.
+
+    A gateway that gave up waiting on the model behind it says so as a timeout
+    or as `ServiceUnavailableError` — OpenRouter answered a cloaked model with
+    `Provider timed out after 311814ms` — and the next call often lands; a
+    rejected key or a spent quota says the same thing however many times it is
+    asked.
+    """
+    import litellm
+
+    return isinstance(exc, (litellm.Timeout, litellm.ServiceUnavailableError))
