@@ -158,17 +158,22 @@ class Client:
     and a real headless kernel, a test hands in its own, and `NO_KERNEL` runs
     in-process without a subprocess. Without an *answer* callback `send`
     pauses in a blocked, resumable `needs-answer` state rather than guessing,
-    and *confirm* and *dispatch* set the corresponding `ApplyPipeline` callables.
+    and *confirm* and *dispatch* set the corresponding `ApplyPipeline` callables,
+    *dispatch* also carrying the open or create of the Document itself, since
+    `FreeCAD.newDocument` on a worker thread has the GUI instantiate an MDI
+    window off the main thread and macOS aborts FreeCAD for it.
     """
 
     def __init__(self, document=None, llm=None, kernel=None, answer=None,
                  confirm=None, dispatch=None):
         import FreeCAD
 
+        self.dispatch = dispatch or (lambda func, timeout=None: func())
+
         if document is None:
-            self.document = FreeCAD.newDocument()
+            self.document = self.dispatch(FreeCAD.newDocument)
         elif isinstance(document, str):
-            self.document = FreeCAD.openDocument(document)
+            self.document = self.dispatch(lambda: FreeCAD.openDocument(document))
         else:
             self.document = document
 
@@ -182,7 +187,6 @@ class Client:
         self._llm = llm
         self.events = EventStream()
         self.session = Session()
-        self.dispatch = dispatch or (lambda func, timeout=None: func())
         self.pipeline = ApplyPipeline(
             document=self.document,
             worker=self.kernel,

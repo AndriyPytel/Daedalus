@@ -279,3 +279,26 @@ def test_a_real_runs_transcript_replays_as_the_run_that_wrote_it(tmp_path, kerne
     assert [event.kind for event in restored] == live_kinds
     assert COMPLETED in live_kinds
     client.close()
+
+
+def test_a_fresh_document_is_created_through_dispatch_not_on_this_thread():
+    """
+    With nothing open, the panel's worker thread is where `Client` is built,
+    and `FreeCAD.newDocument` there makes the GUI build an MDI window off the
+    main thread: macOS answers that with `NSWindow should only be instantiated
+    on the main thread!` and aborts FreeCAD outright.
+    """
+    from copilot.sdk import Client
+
+    marshalled = []
+
+    def dispatch(func, timeout=None):
+        marshalled.append(func)
+        return func()
+
+    client = Client(kernel=_NoKernel(), llm=ScriptedLLMClient(["control"]), dispatch=dispatch)
+    try:
+        assert client.document is not None
+        assert marshalled, "the new Document was built without going through dispatch"
+    finally:
+        client.close()
