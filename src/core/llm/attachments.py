@@ -6,6 +6,7 @@ _PREFIX = {
     "Google": "gemini",
     "Anthropic": "anthropic",
     "OpenCode Go": "openai",
+    "OpenRouter": "openai",
     "Custom/Local": "openai",
 }
 

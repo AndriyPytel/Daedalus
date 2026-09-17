@@ -651,6 +651,7 @@ def test_cache_control_is_only_claimed_supported_on_the_route_the_spike_measured
     ("Google", "gemini-2.5-pro", "gemini/gemini-2.5-pro"),
     ("Custom/Local", "llama3", "openai/llama3"),
     ("OpenCode Go", "kimi-k3", "openai/kimi-k3"),
+    ("OpenRouter", "x-ai/grok-4.1", "openai/x-ai/grok-4.1"),
     ("Anthropic", "anthropic/claude-3-opus-20240229", "anthropic/claude-3-opus-20240229"),
     ("Something The User Typed", "vendor/model", "vendor/model"),
 ])

@@ -19,6 +19,7 @@ _DEFAULT_BASE = {
     CLAUDE: "",
     "Google": "https://generativelanguage.googleapis.com/v1beta",
     "OpenCode Go": "https://opencode.ai/zen/go/v1",
+    "OpenRouter": "https://openrouter.ai/api/v1",
     "Custom/Local": "",
 }
 
@@ -124,7 +125,7 @@ def fetch(provider: str, api_key: str, base_url: str | None = None,
     base = (base_url or _DEFAULT_BASE.get(provider, "")).rstrip("/")
     params = {}
 
-    if provider in ("OpenAI", "OpenCode Go"):
+    if provider in ("OpenAI", "OpenCode Go", "OpenRouter"):
         headers = {"Authorization": "Bearer %s" % api_key}
     elif provider == "Anthropic":
         headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
