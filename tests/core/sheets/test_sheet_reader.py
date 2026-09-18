@@ -709,6 +709,52 @@ def test_the_sign_is_shown_against_the_number_it_was_drawn_against(sheet):
     assert "\u00d835" in said
 
 
+DIAMETER_COUNTS = {
+    "mm2023-phase1.pdf": 7,
+    "mm2023-phase2.pdf": 3,
+    "mm2024-phase1.pdf": 5,
+    "mm2024-phase2.pdf": 4,
+    "mm2025-phase1.pdf": 2,
+    "mm2025-phase2.pdf": 2,
+}
+
+
+@needs_pymupdf
+def test_every_diameter_on_the_six_modelmania_phase_sheets_is_extracted_as_one():
+    """
+    `DIAMETER_COUNTS` is a hand count against the rendered page of each sheet,
+    not a sample: every `\u00d8` the draughtsman drew, and nothing a radius or
+    a reference dimension printed. `R2 TYP`, `(R30)`, `R12.5`, `R8`, `R20` and
+    every `°` angle on these six sheets carry no sign at all and must stay that
+    way — a false positive here is as wrong as a miss.
+    """
+    _skip_unless_present(*modelmania_harness.PHASES.values())
+    for name, count in DIAMETER_COUNTS.items():
+        read = sheet_reader.read(str(modelmania_harness.PHASES[name]))
+        diameters = [entry for entry in read.printed if entry.notation == "\u00d8"]
+        assert len(diameters) == count, (name, [entry.text for entry in diameters])
+        assert not [entry for entry in read.printed
+                    if entry.notation and entry.text.upper().lstrip("(").startswith("R")]
+
+
+@needs_pymupdf
+def test_a_raster_bodied_view_still_carries_its_diameter_signs(sheet_2023):
+    """
+    The middle centre view of `sheet_2023` is a placed picture
+    (`test_a_view_whose_body_is_a_picture_says_so_rather_than_passing_off_its_dimensions`);
+    its `\u00d850` and `\u00d842` callouts are printed beside it on the same
+    page, in the same vector content, so a raster body changes nothing about
+    what the sign is matched against.
+    """
+    elevation = [view for view in sheet_2023.drawn
+                 if view.view.startswith("the middle centre")][0]
+    assert elevation.from_a_picture
+    signed = {entry.text for entry in sheet_2023.printed
+              if entry.notation == "\u00d8"
+              and entry.seen_in.startswith("the middle centre")}
+    assert signed == {"50", "42"}
+
+
 @needs_pymupdf
 def test_the_printed_list_carries_the_callouts_and_not_the_title_block(sheet_2023):
     """

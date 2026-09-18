@@ -18,6 +18,15 @@ SHEETS = {
     "model-mania_-in-person-2023 copy.pdf": (
         MODELMANIA_DIR / "model-mania_-in-person-2023 copy.pdf"),
 }
+PHASES_DIR = MODELMANIA_DIR / "phases"
+PHASES = {
+    "mm2023-phase1.pdf": PHASES_DIR / "mm2023-phase1.pdf",
+    "mm2023-phase2.pdf": PHASES_DIR / "mm2023-phase2.pdf",
+    "mm2024-phase1.pdf": PHASES_DIR / "mm2024-phase1.pdf",
+    "mm2024-phase2.pdf": PHASES_DIR / "mm2024-phase2.pdf",
+    "mm2025-phase1.pdf": PHASES_DIR / "mm2025-phase1.pdf",
+    "mm2025-phase2.pdf": PHASES_DIR / "mm2025-phase2.pdf",
+}
 DESCRIBED = RECORDED_DIR / "described_numbers.json"
 READING_2023 = RECORDED_DIR / "reading_2023_clamp.json"
 

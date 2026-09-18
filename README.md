@@ -105,10 +105,11 @@ Held against the file, a dropped dimension comes back to Design naming the numbe
 what comes back goes through the same merge as everything else — bounded by the same
 re-read ceiling as a question put to the sheet.
 
-**The extracted list is numerals, not notation.** Measured on the same sheet: `Ø` is drawn
-as geometry and is not in the text layer at all, so a bore printed `Ø35 THRU` extracts as
-`35 THRU`. `R` survives, `(R30)` survives whole. The numbers are exact and what they
-*mean* is still read off the views — which is the boundary this whole phase is built on.
+**The extracted list carries notation, not bare numerals.** Measured on the six
+modelmania sheets: `Ø` is drawn as geometry and is not in the text layer, so it is matched
+against a numeral's own bounding box and put back — 23 of 23 diameters, no false positives,
+`(R30)` left alone. `R`, `°` and `±` are typed characters and survive as printed. What
+still has to be read off the views is what the far end of a leader *is*, not what a numeral means.
 
 **A leader is followed by arithmetic.** In a vector PDF the hairline is a list of
 endpoints, so where a callout's leader ends is computed rather than judged on a 14 px
