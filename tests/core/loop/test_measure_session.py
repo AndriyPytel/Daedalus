@@ -524,6 +524,54 @@ def test_a_run_counts_the_questions_it_asked(tmp_path):
     assert result.question_count == 2
 
 
+def test_not_defined_and_conflicted_counts_read_off_the_last_design_event(tmp_path):
+    """
+    The two per-mode counts, `not_defined` and `conflicts` on the settled
+    part, read off the last `design` event rather than a second pass over
+    the sheet, so a mid-run `design` (Plan asking a question) is not what
+    gets counted once the part is later reconciled.
+    """
+    from core.events import DESIGN, EventStream
+
+    events = EventStream()
+    events.emit(DESIGN, model={"conflicts": [{"about": "a"}], "not_defined": []})
+    events.emit(DESIGN, model={"conflicts": [{"about": "a"}, {"about": "b"}],
+                              "not_defined": [{"what": "c"}]})
+
+    log_path = str(tmp_path / "run.jsonl")
+    with open(log_path, "w", encoding="utf-8") as handle:
+        handle.write(events.as_log())
+
+    result = measure(log_path)
+
+    assert result.conflicted_count == 2
+    assert result.not_defined_count == 1
+
+
+def test_not_defined_and_conflicted_counts_are_zero_with_no_design_event():
+    result = measure(_fixture("blocked.jsonl"))
+
+    assert result.not_defined_count == 0
+    assert result.conflicted_count == 0
+
+
+def test_compare_reports_the_not_defined_and_conflicted_counts(tmp_path):
+    from core.events import DESIGN, EventStream
+
+    off = EventStream()
+    off.emit(DESIGN, model={"conflicts": [], "not_defined": []})
+    on = EventStream()
+    on.emit(DESIGN, model={"conflicts": [{"about": "a"}], "not_defined": [{"what": "b"}]})
+
+    table = compare(
+        [_write(tmp_path, "off.jsonl", off)], [_write(tmp_path, "on.jsonl", on)],
+        baseline_label="off", experiment_label="on",
+    )
+
+    assert _cells(table, "avg not_defined count") == ["0.0", "1.0"]
+    assert _cells(table, "avg conflicted count") == ["0.0", "1.0"]
+
+
 def test_score_spread_is_none_under_two_scored_runs():
     from core.measure import Measurement, score_spread
 

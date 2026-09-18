@@ -93,13 +93,15 @@ def _section_diff(section, before, after):
     return changes
 
 
-def merge(held, offered):
+def merge(held, offered, record_conflicts=True):
     """
     *offered* written into *held*, filling only what is empty. A value that
     is already on the model stays, whatever a later pass believes it saw,
     what is empty is filled, what is new is added, and what disagrees is
     appended to `conflicts`. A fragment that is not a model at all leaves
-    the part exactly as it was.
+    the part exactly as it was; *record_conflicts* false is the append-only
+    model's off arm, where the later reading overwrites the disagreement
+    instead.
     """
     if not isinstance(offered, dict):
         return _with_the_findings(dict(held or {}))
@@ -108,7 +110,7 @@ def merge(held, offered):
     if conflicts:
         offered = _without_refused_kinds(offered)
         offered = _without_refused_conflicts(offered)
-    merged = _written(dict(held or {}), offered, "", conflicts)
+    merged = _written(dict(held or {}), offered, "", conflicts, record_conflicts)
     if conflicts:
         merged["conflicts"] = _appended(merged.get("conflicts"), conflicts)
     return _with_the_findings(merged)

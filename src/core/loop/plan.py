@@ -323,7 +323,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                           "the_question": planned.question},
                                          llm, events, attachments)
             if from_the_drawing:
-                before, grown = grown, merge(grown, from_the_drawing)
+                before, grown = grown, merge(grown, from_the_drawing, budgets.record_conflicts)
                 if grown != before:
                     change_set = diff(before, grown)
                     events.emit(CHANGE_SET, changes=change_set)

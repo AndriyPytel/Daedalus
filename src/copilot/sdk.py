@@ -214,11 +214,13 @@ class Client:
 
     def send(self, prompt, gate=auto_approve, ask=None, decide=revise_by_default,
              attachments=(), cancelled=None, outstanding=(), the_part_path=None,
-             route_first=True, events=None):
+             route_first=True, events=None, budgets=None):
         """
         Run *prompt* through the loop, blocking until done. *route_first*
         classifies via the orchestrator first (default); `False` skips straight
-        to design. *events* overrides this Client's stream for this run only.
+        to design. *events* overrides this Client's stream for this run only,
+        *budgets* (`core.loop.budgets.Budgets`) is a harness affordance for
+        measuring the loop itself that the panel never passes.
         """
         stream = events if events is not None else self.events
         self.pipeline.events = stream
@@ -246,7 +248,7 @@ class Client:
                        attachments=list(attachments), gate=gate, ask=answered_by,
                        decide=decide,
                        outstanding=list(outstanding),
-                       the_part_path=the_part_path, kernel=self.kernel)
+                       the_part_path=the_part_path, kernel=self.kernel, budgets=budgets)
 
         def run_question(message, decision):
             return "".join(chunk.text for chunk in self.session.turn(self.llm, message)

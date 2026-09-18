@@ -59,6 +59,9 @@ def main():
     parser.add_argument("--save", default="")
     parser.add_argument("--allow-user-objects", action="store_true",
                         help="Answer yes to the Owned Object prompt instead of refusing")
+    parser.add_argument("--conflicts", choices=("on", "off"), default="on",
+                        help="The append-only model's own A/B toggle: 'off' sets readings=1 "
+                             "and turns off merge's own conflict recording, last reading wins")
     args = parser.parse_args()
 
     for lib in ("/Applications/FreeCAD.app/Contents/Resources/lib",):
@@ -71,6 +74,7 @@ def main():
     from copilot.sdk import Client
     from core.events import COST
     from core.loop import nobody_to_ask
+    from core.loop.budgets import Budgets
 
     llm = client_for(args.provider, args.model, args.effort) if args.model else None
     client = Client(llm=llm, confirm=lambda kinds: args.allow_user_objects is True)
@@ -84,9 +88,10 @@ def main():
 
     client.watch(track)
 
+    budgets = Budgets(readings=1, record_conflicts=False) if args.conflicts == "off" else None
     cancelled = (lambda: spent["usd"] >= args.budget_usd) if args.budget_usd is not None else None
     result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled,
-                         ask=nobody_to_ask)
+                         ask=nobody_to_ask, budgets=budgets)
 
     print("ok            :", result.ok)
     print("verdict       :", result.verdict, "-", result.reason)

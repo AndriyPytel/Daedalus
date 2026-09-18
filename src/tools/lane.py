@@ -85,12 +85,13 @@ def watch(process, log, hang_seconds, run_seconds=None, poll_seconds=5,
 
 
 def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
-            python=sys.executable):
+            python=sys.executable, conflicts=None):
     """
     One run of one sheet, as a subprocess of `tools/run.py`.
 
     A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone,
     which is what a part named by a standard rather than drawn on a page is.
+    *conflicts* is `tools/run.py --conflicts`, unset runs its default ("on").
     """
     save = log[: -len(".jsonl")] + ".step" if log.endswith(".jsonl") else log + ".step"
     cmd = [python, os.path.join(ROOT, "tools", "run.py"),
@@ -100,6 +101,8 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
         cmd += ["--attach", sheet]
     if budget_usd is not None:
         cmd += ["--budget-usd", str(budget_usd)]
+    if conflicts is not None:
+        cmd += ["--conflicts", conflicts]
     return subprocess.Popen(cmd)
 
 
@@ -150,7 +153,13 @@ leaving `--budget-usd` unset and risking an unbounded overnight spend.
 
 
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
-          resume, provider, run_seconds):
+          resume, provider, run_seconds, conflicts=None):
+    """
+    *conflicts* ("on"/"off"/`None`) is the append-only model's own A/B arm:
+    set, it suffixes every task's label the way `logs/ab-rlm-agentic`
+    already names an arm (`mm23-off`) and is passed on to
+    `tools/run.py --conflicts`.
+    """
     state_path = os.path.join(out, "state.json")
     state = load_state(state_path) if resume else {"runs": {}}
 
@@ -158,17 +167,20 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
         model_dir = os.path.join(out, model)
         os.makedirs(model_dir, exist_ok=True)
         for label, sheet in tasks:
-            key = "%s/%s" % (label, model)
+            arm_label = "%s-%s" % (label, conflicts) if conflicts else label
+            key = "%s/%s" % (arm_label, model)
             if state["runs"].get(key, {}).get("status") == "done":
                 print("SKIP %s: already done" % key, flush=True)
                 continue
 
-            stem = os.path.join(model_dir, label)
+            stem = os.path.join(model_dir, arm_label)
             log = stem + ".jsonl"
             outcome = "hung"
             for attempt in range(1, retries + 1):
                 rotate(stem)
-                process = run_one(label, sheet, model, effort, budget_usd, log, intent, provider)
+                kwargs = {"conflicts": conflicts} if conflicts is not None else {}
+                process = run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
+                                  **kwargs)
                 outcome = watch(process, log, hang_seconds, run_seconds)
                 if outcome == "exited" and process.returncode == 0:
                     break
@@ -251,7 +263,7 @@ def _exemplar_for(label):
     """
     import re as _re
 
-    stem = _re.sub(r"-rep\d+$", "", label)
+    stem = _re.sub(r"-rep\d+(-on|-off)?$", "", label)
     exemplar = os.path.join(EXEMPLAR_DIR, stem + ".step")
     return exemplar if os.path.isfile(exemplar) else None
 
@@ -351,10 +363,15 @@ def _detail_table(rows):
 
 
 def _sheet_stem(label):
-    """The sheet a repeat's label names, e.g. `mm2025-phase1-rep2` -> `mm2025-phase1`."""
+    """
+    The sheet a repeat's label names, e.g. `mm2025-phase1-rep2` -> `mm2025-phase1`.
+    An A/B arm suffix (`mm2025-phase1-rep2-off`) survives the strip
+    (`mm2025-phase1-off`), so the noise floor is measured within one arm's
+    own repeats and never conflated with the difference the arms exist to show.
+    """
     import re as _re
 
-    return _re.sub(r"-rep\d+$", "", label)
+    return _re.sub(r"-rep\d+(-on|-off)?$", r"\1", label)
 
 
 def _noise_floor_section(rows):
@@ -432,6 +449,9 @@ def main():
                         help="Sweep the 6 pinned phase sheets, 3 repeats each, over --model")
     parser.add_argument("--smoke", action="store_true",
                         help="Sweep 1 sheet, 1 repeat, over --model")
+    parser.add_argument("--conflicts", choices=("on", "off"), default=None,
+                        help="The conflict-recording A/B arm; unset runs tools/run.py's own "
+                             "default (on)")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
@@ -469,7 +489,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,
          args.out, args.hang_seconds, args.retries, args.resume, args.provider,
-         args.run_seconds)
+         args.run_seconds, args.conflicts)
     return 0
 
 

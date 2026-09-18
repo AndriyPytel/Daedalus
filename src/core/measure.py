@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from core.events import (
-    APPLIED, ASSERTION, BLOCKED, COST, GATE, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
-    REVIEW_VERDICT, STEP_DECLARED, STEP_STARTED, replay,
+    APPLIED, ASSERTION, BLOCKED, COST, DESIGN, GATE, PLAN_REVISED, PREFLIGHT_FAILED,
+    QUESTION, REVIEW_VERDICT, STEP_DECLARED, STEP_STARTED, replay,
 )
 
 
@@ -32,6 +32,8 @@ class Measurement:
     review_fail_rate: float
     question_count: int
     score: Optional[float] = None
+    not_defined_count: int = 0
+    conflicted_count: int = 0
 
 
 def _fail_rate(events, is_failure) -> float:
@@ -65,6 +67,25 @@ def _gate_wait_seconds(events) -> float:
     return total
 
 
+def _the_part(events):
+    """
+    The settled part from this run's last `design` event, or `{}` where
+    Design never emitted one -- `not_defined_count`/`conflicted_count` read
+    `not_defined` and `conflicts` off this same document, not a second pass
+    over the sheet.
+    """
+    designs = [event for event in events if event.kind == DESIGN]
+    return (designs[-1].data.get("model") or {}) if designs else {}
+
+
+def _not_defined_count(the_part) -> int:
+    return len(the_part.get("not_defined") or ())
+
+
+def _conflicted_count(the_part) -> int:
+    return len(the_part.get("conflicts") or ())
+
+
 def _checks_fail_rate(assertions) -> float:
     """
     The fraction of individually named checks that did not hold, across
@@ -89,6 +110,7 @@ def measure(path: str, score: Optional[float] = None) -> Measurement:
     verdicts = [event for event in events if event.kind == REVIEW_VERDICT]
     blocks = [event for event in events if event.kind == BLOCKED]
     assertions = [event for event in events if event.kind == ASSERTION]
+    the_part = _the_part(events)
     wall_clock_seconds = (events[-1].at - events[0].at) if len(events) >= 2 else 0.0
     gate_wait_seconds = _gate_wait_seconds(events)
     return Measurement(
@@ -103,6 +125,8 @@ def measure(path: str, score: Optional[float] = None) -> Measurement:
         wall_clock_seconds=wall_clock_seconds,
         gate_wait_seconds=gate_wait_seconds,
         working_seconds=wall_clock_seconds - gate_wait_seconds,
+        not_defined_count=_not_defined_count(the_part),
+        conflicted_count=_conflicted_count(the_part),
         truncated=truncated,
         assertion_fail_rate=_checks_fail_rate(assertions),
         review_fail_rate=_fail_rate(verdicts, lambda event: event.data.get("verdict") == "fail"),
@@ -165,6 +189,8 @@ _ROWS = (
     ("assertion fail rate", lambda ms: _average(ms, lambda m: m.assertion_fail_rate), "{:.1%}"),
     ("review fail rate", lambda ms: _average(ms, lambda m: m.review_fail_rate), "{:.1%}"),
     ("avg question count", lambda ms: _average(ms, lambda m: m.question_count), "{:.1f}"),
+    ("avg not_defined count", lambda ms: _average(ms, lambda m: m.not_defined_count), "{:.1f}"),
+    ("avg conflicted count", lambda ms: _average(ms, lambda m: m.conflicted_count), "{:.1f}"),
     ("avg score", _score_average, "{:.4f}"),
 )
 

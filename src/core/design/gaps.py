@@ -298,29 +298,34 @@ def _each_value(node, path):
     return []
 
 
-def _written(held, offered, path, conflicts):
+def _written(held, offered, path, conflicts, record_conflicts=True):
     """
-    *offered* grown into *held* at *path*, a node at a time.
-
-    A value and its flag are one thing -- 20 mm read disagreeing with
-    20 mm assumed is a real disagreement. `not_defined` is the one
-    exception: it records that nothing supplied a value, so a later pass can fill it.
+    *offered* grown into *held* at *path*, a node at a time. A value and its
+    flag are one thing -- 20 mm read disagreeing with 20 mm assumed is a
+    real disagreement, except `not_defined`, which records that nothing
+    supplied a value so a later pass can fill it. *record_conflicts* false
+    overwrites with the later reading instead of standing beside the first
+    as a conflict.
     """
     if isinstance(held, dict) and isinstance(offered, dict) \
             and not (_a_value(held) or _a_value(offered)):
         grown = dict(held)
         for key, value in offered.items():
-            grown[key] = (_written(grown[key], value, _under(path, key), conflicts)
+            grown[key] = (_written(grown[key], value, _under(path, key), conflicts,
+                                   record_conflicts)
                           if _filled(grown.get(key)) else value)
         return grown
 
     if isinstance(held, list) and isinstance(offered, list):
-        return _alongside(held, offered, path, conflicts)
+        return _alongside(held, offered, path, conflicts, record_conflicts)
 
     if held == offered:
         return held
 
     if _stood_not_defined(held) and _a_value(offered) and not _stood_not_defined(offered):
+        return offered
+
+    if not record_conflicts:
         return offered
 
     conflicts.append({"about": path, "stands": held, "was_also_said": offered})
@@ -331,7 +336,7 @@ def _stood_not_defined(value):
     return isinstance(value, dict) and value.get("flag") == "not_defined"
 
 
-def _alongside(held, offered, path, conflicts):
+def _alongside(held, offered, path, conflicts, record_conflicts=True):
     """
     Two lists of the same things, matched by what makes an entry that thing.
 
@@ -348,7 +353,8 @@ def _alongside(held, offered, path, conflicts):
             if entry not in grown:
                 grown.append(entry)
         else:
-            grown[at] = _written(grown[at], entry, _under(path, this), conflicts)
+            grown[at] = _written(grown[at], entry, _under(path, this), conflicts,
+                                 record_conflicts)
     return grown
 
 

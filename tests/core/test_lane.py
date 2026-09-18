@@ -316,6 +316,72 @@ def test_score_for_reads_the_scorer_when_both_files_exist(tmp_path, monkeypatch)
     assert lane._score_for(log, "mm2025-phase1-rep1") == 0.5
 
 
+def test_run_one_passes_the_conflicts_flag_through(monkeypatch):
+    """`--conflicts` reaches `tools/run.py`'s own subprocess, unset by default."""
+    spawned = {}
+    monkeypatch.setattr(lane.subprocess, "Popen", lambda cmd: spawned.setdefault("cmd", cmd))
+
+    lane.run_one("mm23", "sheet.pdf", "opus", "medium", None, "/tmp/mm23.jsonl",
+                "Build it.", "Claude (subscription)", conflicts="off")
+
+    cmd = spawned["cmd"]
+    assert cmd[cmd.index("--conflicts") + 1] == "off"
+
+
+def test_run_one_omits_the_conflicts_flag_when_unset(monkeypatch):
+    spawned = {}
+    monkeypatch.setattr(lane.subprocess, "Popen", lambda cmd: spawned.setdefault("cmd", cmd))
+
+    lane.run_one("mm23", "sheet.pdf", "opus", "medium", None, "/tmp/mm23.jsonl",
+                "Build it.", "Claude (subscription)")
+
+    assert "--conflicts" not in spawned["cmd"]
+
+
+def test_sweep_suffixes_the_arm_onto_the_task_label(tmp_path):
+    """
+    `logs/ab-rlm-agentic/<model>/mm23-off.jsonl` is the naming an earlier
+    A/B already left on disk; this sweep reuses it rather than
+    inventing a second scheme.
+    """
+    out = str(tmp_path)
+    spawned = []
+
+    class FakeProcess:
+        returncode = 0
+
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
+                     conflicts=None):
+        spawned.append((label, log, conflicts))
+        open(log, "w").close()
+        return FakeProcess()
+
+    lane.run_one, real_run_one = fake_run_one, lane.run_one
+    lane.watch, real_watch = lambda *a, **k: "exited", lane.watch
+    try:
+        lane.sweep([("mm23", "sheet.pdf")], ["opus"], "medium", None, "Build it.", out,
+                  1800, 3, False, "Claude (subscription)", None, conflicts="off")
+    finally:
+        lane.run_one, lane.watch = real_run_one, real_watch
+
+    ((label, log, conflicts),) = spawned
+    assert label == "mm23"
+    assert log == os.path.join(out, "opus", "mm23-off.jsonl")
+    assert conflicts == "off"
+
+
+def test_sheet_stem_keeps_an_arm_suffix_past_the_repeat():
+    assert lane._sheet_stem("mm2025-phase1-rep2-off") == "mm2025-phase1-off"
+    assert lane._sheet_stem("mm2025-phase1-rep2") == "mm2025-phase1"
+
+
+def test_exemplar_for_ignores_an_arm_suffix(monkeypatch, tmp_path):
+    monkeypatch.setattr(lane, "EXEMPLAR_DIR", str(tmp_path))
+    (tmp_path / "mm2025-phase1.step").write_text("exemplar")
+
+    assert lane._exemplar_for("mm2025-phase1-rep1-off") == str(tmp_path / "mm2025-phase1.step")
+
+
 def test_pinned_tasks_walk_the_six_phase_sheets_three_times_each():
     """
     Three repeats is the point: four headless runs of one sheet took 27.4,

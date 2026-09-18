@@ -22,7 +22,9 @@ class Budgets:
     Steps, up to 266s call duration; `readings` repeats a Design page-sized
     group's own reading that many times, merged the same grow-only way,
     because a dimension digit at the provider's pixel cap is a stochastic
-    read.
+    read; `record_conflicts` false turns the append-only model off, a merge
+    disagreement overwrites with the later reading instead of standing at
+    the Gate as a conflict, paired with `readings=1` for the whole switch.
     """
 
     attempts_per_step: int = 3
@@ -32,6 +34,7 @@ class Budgets:
     rereads: int = 3
     readings: int = 3
     trailing_gap_retries: int = 1
+    record_conflicts: bool = True
 
 
 def revisions_ceiling(budgets, steps) -> int:

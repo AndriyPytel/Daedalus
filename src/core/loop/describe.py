@@ -91,7 +91,8 @@ def _answered(question, ask, events):
     return answer
 
 
-def _written_in(the_part, intent, question, answer, llm, events, attachments):
+def _written_in(the_part, intent, question, answer, llm, events, attachments,
+                record_conflicts=True):
     """
     A person's answer, back through Design rather than on to Plan. The
     drawing answering writes `read` and the person answering writes
@@ -102,7 +103,7 @@ def _written_in(the_part, intent, question, answer, llm, events, attachments):
     if answer:
         body["the_answer_you_were_given"] = answer
     grew, asks = design(body, llm, events, attachments)
-    return merge(the_part, grew), asks
+    return merge(the_part, grew, record_conflicts), asks
 
 
 def _settle_it(question):
@@ -119,8 +120,8 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
     only what the sheet cannot settle reaches the Gate unanswered.
     """
     the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled,
-                                               budgets.readings)
-    the_part = merge({}, the_part)
+                                               budgets.readings, budgets.record_conflicts)
+    the_part = merge({}, the_part, budgets.record_conflicts)
 
     if question:
         if cancelled():
@@ -131,19 +132,19 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
             grew, _ = design({"intent": intent, "the_part_as_you_described_it": the_part,
                               "the_question": question}, llm, events, attachments)
         if grew:
-            the_part = merge(the_part, grew)
+            the_part = merge(the_part, grew, budgets.record_conflicts)
             events.emit(ANSWER, text=render(grew), by="drawing")
         else:
             the_part, _ = _written_in(the_part, intent, question,
                                       _answered(question, ask, events), llm, events,
-                                      attachments)
+                                      attachments, budgets.record_conflicts)
 
     try:
         if grouped:
             if cancelled():
                 raise Stopped()
             grown, _ = _reconciled(the_part, intent, llm, events, attachments)
-            the_part = merge(the_part, grown)
+            the_part = merge(the_part, grown, budgets.record_conflicts)
 
         the_part = _every_callout_accounted_for(the_part, intent, attachments, llm, events,
                                                 budgets, cancelled)
@@ -159,7 +160,7 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
                                            budgets, cancelled)
     disagreements = _the_geometry_disagrees(attachments, events)
     the_part = merge(the_part, dict(the_part, conflicts=disagreements)
-                     if disagreements else the_part)
+                     if disagreements else the_part, budgets.record_conflicts)
     the_part = _every_direction_settled(the_part, _round_evidence(attachments))
     the_part = _the_tracing_governs(the_part)
     return _written_down(distilled(the_part), each_disagreement_once(the_part),
@@ -186,7 +187,7 @@ def _every_number_is_the_sheets(the_part, intent, attachments, llm, events, budg
                           "the_question": _where_is_this_number(found)},
                          llm, events, attachments)
         if grew:
-            the_part = merge(the_part, grew)
+            the_part = merge(the_part, grew, budgets.record_conflicts)
         found = _off_the_sheet(attachments, the_part)
 
     return merge(the_part, {"conflicts": [
@@ -196,7 +197,7 @@ def _every_number_is_the_sheets(the_part, intent, attachments, llm, events, budg
          "was_also_said": "the drawing",
          "kind": A_CONFLICT,
          "machine_written": True}
-        for number in found]}) if found else the_part
+        for number in found]}, budgets.record_conflicts) if found else the_part
 
 
 def _off_the_sheet(attachments, the_part):
@@ -249,7 +250,7 @@ def _the_directions_are_the_drawings(the_part, intent, attachments, llm, events,
         if not grew:
             break
         the_part = _corrected_by(the_part, grew, found, round_here)
-        the_part = merge(the_part, grew)
+        the_part = merge(the_part, grew, budgets.record_conflicts)
         still = read_off_the_wrong_view(the_part, round_here)
         if len(still) >= len(found):
             break
@@ -421,7 +422,7 @@ def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
                          llm, events, attachments)
         if not grew:
             break
-        the_part = merge(the_part, grew)
+        the_part = merge(the_part, grew, budgets.record_conflicts)
         still = nobody_carries_the_outside(the_part)
         if still == why:
             break
@@ -435,7 +436,7 @@ def _the_outside_is_carried(the_part, intent, attachments, llm, events, budgets,
                       "the_part_as_you_described_it": the_part,
                       "the_question": _settle_the_outer_profile(why)},
                      llm, events, attachments)
-    return merge(the_part, grew) if grew else the_part
+    return merge(the_part, grew, budgets.record_conflicts) if grew else the_part
 
 
 def _settle_the_outer_profile(why):
@@ -477,7 +478,7 @@ def _every_callout_accounted_for(the_part, intent, attachments, llm, events, bud
                          llm, events, attachments, views=_views_of(attachments, missed))
         if not grew:
             break
-        the_part = merge(the_part, grew)
+        the_part = merge(the_part, grew, budgets.record_conflicts)
         still = _uncited(attachments, the_part)
         if len(still) >= len(missed):
             break
