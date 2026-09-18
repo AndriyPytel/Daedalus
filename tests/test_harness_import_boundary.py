@@ -1,8 +1,7 @@
 """
-The harness directory -- `src/tools/`, the two scripts that drive
-`copilot.sdk.Client` from the command line -- is imported by nothing else in
-the repository. A stray import of it is caught the same way a stray `core`
-import under `Mod/` is (`tests/test_tree_boundary.py`).
+The harness directory -- `src/tools/`, the scripts listed below -- is
+imported by nothing else in the repository. A stray import of it is caught
+the same way a stray `core` import under `Mod/` is (`tests/test_tree_boundary.py`).
 """
 import ast
 import os
@@ -45,9 +44,10 @@ def test_nothing_outside_the_harness_directory_imports_it():
     assert not offenders, "only the harness scripts may import each other: %s" % ", ".join(offenders)
 
 
-def test_the_harness_directory_holds_exactly_two_scripts():
+def test_the_harness_directory_holds_exactly_these_scripts():
     from tests.source_tree import tracked
 
     harness = {path for path in tracked() if path.startswith("src/tools/")}
 
-    assert harness == {"src/tools/run.py", "src/tools/lane.py", "src/tools/score.py"}
+    assert harness == {"src/tools/run.py", "src/tools/lane.py", "src/tools/score.py",
+                       "src/tools/cadgenbench_bundle.py"}
