@@ -118,7 +118,8 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
     question goes back to the sheet once before it goes to a person, and
     only what the sheet cannot settle reaches the Gate unanswered.
     """
-    the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled)
+    the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled,
+                                               budgets.readings)
     the_part = merge({}, the_part)
 
     if question:

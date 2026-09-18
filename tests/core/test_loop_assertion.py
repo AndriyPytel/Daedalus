@@ -681,10 +681,11 @@ def test_looking_again_stops_when_it_stops_finding_anything():
     same nothing twice, is a sheet that does not carry the value — and the run
     carries on with what it had rather than spending the budget proving it.
     """
-    result, _, llm, _ = drive([*_first_pass_turns(A_DATUM, [MODEL_MANIA]), design_reply({}),
+    result, _, llm, _ = drive([*_first_pass_turns(A_DATUM, [MODEL_MANIA], readings=1),
+                               design_reply({}),
                                plan_reply("Only"), code_reply("box()"),
                                suspect_reply(), verdict_reply("pass")],
-                              attachments=[MODEL_MANIA])
+                              attachments=[MODEL_MANIA], budgets=Budgets(readings=1))
 
     assert result.ok, "the run did not finish: the re-look kept going"
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
@@ -699,13 +700,13 @@ def test_the_second_look_is_bounded_by_the_re_read_ceiling():
     otherwise loop for as long as the sheet has numbers on it.
     """
     llm = ScriptedLLMClient(
-        _first_pass_turns({"envelope": {"length": read("150 mm")}}, [MODEL_MANIA])
+        _first_pass_turns({"envelope": {"length": read("150 mm")}}, [MODEL_MANIA], readings=1)
         + [design_reply({"envelope": {"width %d" % at: read("%d mm" % at)}})
            for at in (40, 35, 30, 20, 10)]
         + [plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
     run("Build this", llm=llm, tools=FakeTools().registry,
-        budgets=Budgets(rereads=2), attachments=[MODEL_MANIA])
+        budgets=Budgets(rereads=2, readings=1), attachments=[MODEL_MANIA])
 
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
     assert len(design_turns) <= 4, "the re-look ran past its ceiling"
@@ -1316,7 +1317,8 @@ def test_a_description_that_succeeded_survives_a_reconcile_that_raises(monkeypat
     import core.loop.describe as loop_describe
 
     monkeypatch.setattr(loop_describe, "_first_pass",
-                        lambda intent, llm, events, attachments, cancelled: (A_PART, "", True))
+                        lambda intent, llm, events, attachments, cancelled, readings=1:
+                        (A_PART, "", True))
 
     def _blows_up(*args, **kwargs):
         raise RuntimeError("the reconcile blew up")

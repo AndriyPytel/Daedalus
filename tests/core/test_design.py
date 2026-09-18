@@ -2210,6 +2210,43 @@ def test_an_unmarked_reply_keeps_its_conflicts_exactly_as_the_recorded_fixtures_
     assert grown["conflicts"] == [{"what": "the split's own width"}]
 
 
+def test_three_readings_of_a_digit_that_differs_once_merge_to_a_conflict_not_a_value():
+    """
+    Three readings are three sources, merged the same way any two are: the
+    first stands, and a later reading that disagrees is a conflict, never a
+    silent overwrite.
+    """
+    readings = [{"envelope": {"length": _read("100 mm")}},
+               {"envelope": {"length": _read("108 mm")}},
+               {"envelope": {"length": _read("100 mm")}}]
+
+    grown = {}
+    for reading in readings:
+        grown = merge(grown, reading)
+
+    assert grown["envelope"]["length"] == _read("100 mm")
+    assert grown["conflicts"] == [{"about": "envelope → length",
+                                   "stands": _read("100 mm"),
+                                   "was_also_said": _read("108 mm")}]
+
+
+def test_three_identical_readings_of_a_busy_sheet_add_no_conflict():
+    """
+    Agreement across readings is not news: three identical readings merge to
+    the one value they all carry and grow the conflicts list by nothing, so
+    unanimity does not triple what a busy sheet already put at the Gate.
+    """
+    reading = {"envelope": {"length": _read("100 mm"), "width": _read("40 mm"),
+                            "thickness": _read("10 mm")}}
+
+    grown = {}
+    for _ in range(3):
+        grown = merge(grown, reading)
+
+    assert "conflicts" not in grown
+    assert grown["envelope"] == reading["envelope"]
+
+
 RECORDED = modelmania_harness.RECORDED_DIR
 
 

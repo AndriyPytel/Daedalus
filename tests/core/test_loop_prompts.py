@@ -953,11 +953,11 @@ def test_every_design_call_of_a_run_carries_a_page_and_not_the_whole_sheet():
     calls' totals against the two Model Mania sheets.
     """
     _, _, llm, _ = drive([
-        *_first_pass_turns(A_DATUM, [THE_PIPE_CLAMP]), design_reply(A_DATUM),
+        *_first_pass_turns(A_DATUM, [THE_PIPE_CLAMP], readings=1), design_reply(A_DATUM),
         plan_reply("Only", satisfies=everything(A_DATUM)),
         code_reply("box()"),
         suspect_reply(), verdict_reply("pass"),
-    ], attachments=[THE_PIPE_CLAMP])
+    ], attachments=[THE_PIPE_CLAMP], budgets=Budgets(readings=1))
 
     calls = [call for call in llm.calls if prompt("design") in call[0]["content"]]
     assert len(calls) == 4, "first pass (2 pages + reconcile) plus the re-read A_DATUM provokes"

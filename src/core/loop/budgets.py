@@ -19,7 +19,10 @@ class Budgets:
     Steps standing before the run died, six fillets never attempted.
     `trailing_gap_retries` bounds the free continuation for a reply that
     stops -- 23 such replies across 13 sessions, 57% within the last two
-    Steps, up to 266s call duration.
+    Steps, up to 266s call duration; `readings` repeats a Design page-sized
+    group's own reading that many times, merged the same grow-only way,
+    because a dimension digit at the provider's pixel cap is a stochastic
+    read.
     """
 
     attempts_per_step: int = 3
@@ -27,6 +30,7 @@ class Budgets:
     revisions: int = 3
     mechanical_revisions: int = 2
     rereads: int = 3
+    readings: int = 3
     trailing_gap_retries: int = 1
 
 

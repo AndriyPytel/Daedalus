@@ -141,21 +141,30 @@ def _the_groups(attachments):
     return groups
 
 
-def _asked_about_a_group(label, views, intent, llm, events, attachments):
-    """One page-sized group's Design turn — the printed-callout list rides
-    along even though `views` narrows the pictures, because a callout printed
-    once can explain a feature in a view this group never sees."""
-    return design({"intent": intent}, llm, events, attachments, views=views,
-                  phase="%s: %s" % (DESIGN_PHASE, label), keep_printed=True)
+def _asked_about_a_group(label, views, intent, llm, events, attachments, readings=1):
+    """One page-sized group's Design turn, read *readings* times and merged
+    into one group-local model — a dimension digit at the provider's pixel
+    cap is a stochastic read, so repeating the turn and merging catches a
+    misreading as a conflict instead of a single silent value. The
+    printed-callout list rides along even though `views` narrows the
+    pictures, because a callout printed once can explain a feature in a
+    view this group never sees."""
+    grown, question = {}, ""
+    for _ in range(max(1, readings)):
+        this, asked = design({"intent": intent}, llm, events, attachments, views=views,
+                             phase="%s: %s" % (DESIGN_PHASE, label), keep_printed=True)
+        grown = merge(grown, this)
+        question = question or asked
+    return grown, question
 
 
-def _first_pass(intent, llm, events, attachments, cancelled):
+def _first_pass(intent, llm, events, attachments, cancelled, readings=1):
     """
     The Design phase's opening move: one call per page-sized group of views,
-    run in parallel, each merged as it lands, since grow-only and order-
-    independent merging makes concurrent merges legitimate. A group's failure
-    lands as a `conflicts` entry with `kind=A_CHECK_HAZARD`; at most one
-    question crosses the fan-out, the first asked in page order.
+    each read *readings* times and merged as it lands, since grow-only and
+    order-independent merging makes concurrent merges legitimate. A group's
+    failure lands as a `conflicts` entry with `kind=A_CHECK_HAZARD`; at most
+    one question crosses the fan-out, the first asked in page order.
     """
     groups = _the_groups(attachments)
     if not groups:
@@ -169,7 +178,7 @@ def _first_pass(intent, llm, events, attachments, cancelled):
     question = ""
     with ThreadPoolExecutor(max_workers=min(len(groups), _A_GROUP_CONCURRENCY)) as pool:
         futures = [(label, pool.submit(_asked_about_a_group, label, views, intent,
-                                       copy.copy(llm), events, attachments))
+                                       copy.copy(llm), events, attachments, readings))
                   for label, views in groups]
         for label, future in futures:
             try:

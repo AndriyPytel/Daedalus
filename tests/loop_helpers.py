@@ -205,22 +205,23 @@ def design_reply(model=None, question="", thinking=None):
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
-def _first_pass_turns(model, attachments, question=""):
+def _first_pass_turns(model, attachments, question="", readings=Budgets().readings):
     """
     The scripted replies one `_first_pass` costs today: the same
-    `design_reply` repeated once per page-sized group `core._the_groups`
-    cuts *attachments* into, plus one more for the reconciling call — or the
-    single reply it always was where nothing groups (no attachment, or one
-    `sheet_reader` cannot read).
+    `design_reply` repeated *readings* times per page-sized group
+    `core._the_groups` cuts *attachments* into, plus one more for the
+    reconciling call — or the single reply it always was where nothing
+    groups (no attachment, or one `sheet_reader` cannot read).
 
-    Every copy answers alike on purpose: the merge the fan-out ends in is
-    order-independent and idempotent over the same model, so which
-    of the concurrent group calls a scripted turn happens to land on does not
-    change what the run ends up holding, and a test does not have to predict
-    the race to script one.
+    Every copy answers alike on purpose: the merge each group's own
+    readings end in, and the merge the fan-out itself ends in, are both
+    order-independent and idempotent over the same model, so which of the
+    concurrent group calls a scripted turn happens to land on does not
+    change what the run ends up holding, and a test does not have to
+    predict the race to script one.
     """
     groups = _the_groups(list(attachments))
-    calls = len(groups) + 1 if groups else 1
+    calls = len(groups) * readings + 1 if groups else 1
     return [design_reply(model, question=question)] * calls
 
 
@@ -859,7 +860,7 @@ def _a_run_that_reads_the_sheet_every_way(sheet, intent):
                                satisfies=everything(A_READING_THAT_PROVOKES_EVERY_RE_READ)),
                     code_reply("box()"), suspect_reply(), verdict_reply("pass")],
                  intent=intent, attachments=[sheet], ask=lambda question: "12 mm",
-                 budgets=Budgets(rereads=1))
+                 budgets=Budgets(rereads=1, readings=1))
 
 
 A_BOX_FROM_WORDS = {
