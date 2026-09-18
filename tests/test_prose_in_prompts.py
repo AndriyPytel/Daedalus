@@ -5,8 +5,10 @@ Text the provider receives — lint refusals, retry prompts, failure messages �
 lives in config/prompts/ so correcting what the Copilot is told is a text edit
 rather than a Python edit and a release.
 
-_ENVELOPE_CHECK and SELF_INTERSECTION_CHECK are code templates executed in the
-worker, not prose the provider receives, so they are excluded.
+A worker code template — a Python snippet `exec`'d in the Preflight Worker
+against the Document, never sent to a provider — is named ending in `_CHECK`
+by convention (`_ENVELOPE_CHECK`, `SELF_INTERSECTION_CHECK`, `_TOPOLOGY_CHECK`)
+and is excluded on that name alone, so a new one needs no edit here.
 """
 import ast
 import os
@@ -15,7 +17,9 @@ from tests.source_tree import ROOT, package_dirs
 
 THRESHOLD = 200
 
-CODE_TEMPLATES = frozenset(("_ENVELOPE_CHECK", "SELF_INTERSECTION_CHECK"))
+
+def _is_a_worker_code_template(name):
+    return name.endswith("_CHECK")
 
 
 def _module_level_string_constants(path):
@@ -31,7 +35,7 @@ def _module_level_string_constants(path):
         for target in node.targets:
             if not isinstance(target, ast.Name):
                 continue
-            if target.id in CODE_TEMPLATES:
+            if _is_a_worker_code_template(target.id):
                 continue
             if not isinstance(node.value, ast.Constant):
                 continue

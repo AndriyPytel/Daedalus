@@ -265,6 +265,36 @@ def test_an_envelope_of_anything_but_three_plain_sizes_is_not_measured_here():
         ["envelope → length: as long as the arm reaches (assumed)"]) == ""
 
 
+def test_the_topology_check_always_asks_for_one_solid_body():
+    from core.loop.assertion import the_topology_measured
+
+    code = the_topology_measured(None)
+
+    assert "betti_numbers" in code
+    assert "b0 == 1" in code
+    assert "b1" not in code.split("assert b0 == 1")[1], \
+        "no through-feature count was ever established, so none should be checked"
+
+
+def test_the_topology_check_names_the_through_count_design_established():
+    from core.loop.assertion import the_topology_measured
+
+    code = the_topology_measured(A_PART)
+
+    assert "b1 == 1" in code
+    assert "expected 1 through features" in code
+
+
+def test_a_part_with_no_through_features_at_all_is_checked_against_zero():
+    from core.loop.assertion import the_topology_measured
+
+    no_through = {"features": [{"id": "pad-outer", "kind": "pad", "topology": "blind"}]}
+
+    code = the_topology_measured(no_through)
+
+    assert "b1 == 0" in code
+
+
 def test_self_intersection_check_removes_its_temp_file_even_when_export_fails():
     """
     The `.brep` round-trip opens one temp file per solid

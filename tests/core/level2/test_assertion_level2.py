@@ -314,3 +314,61 @@ def test_math_is_available_to_the_checks(worker):
     """The phase computes; a check that cannot take a square root is no check."""
     assert worker.check("import math\nassert math.sqrt(4) == 2.0, 'math'\n", None).ok
     assert math.sqrt(4) == 2.0
+
+
+PLATE_WITH_HOLES = """
+box = doc.addObject('Part::Box', 'Plate')
+box.Length, box.Width, box.Height = 100, 60, 10
+prev = box
+for i in range(%d):
+    cyl = doc.addObject('Part::Cylinder', 'Hole%%d' %% i)
+    cyl.Radius = 5
+    cyl.Height = 20
+    cyl.Placement.Base = App.Vector(20 + i * 20, 30, -5)
+    cut = doc.addObject('Part::Cut', 'Cut%%d' %% i)
+    cut.Base = prev
+    cut.Tool = cyl
+    prev = cut
+doc.recompute()
+finished_shape = prev.Shape.copy()
+for consumed in list(doc.Objects):
+    doc.removeObject(consumed.Name)
+result = doc.addObject('Part::Feature', 'Result')
+result.Shape = finished_shape
+"""
+
+
+def test_a_plate_short_one_through_hole_fails_the_topology_check(worker):
+    """
+    The defect this whole check exists for, made measurable: the drawing
+    showed three through holes and the built plate has one, and an envelope
+    check alone passes it.
+    """
+    from core.loop.assertion import the_topology_measured
+
+    described = {"features": [{"id": "hole-%d" % i, "kind": "hole", "topology": "through"}
+                              for i in range(3)]}
+
+    result = worker.check(PLATE_WITH_HOLES % 1 + the_topology_measured(described), None)
+
+    assert not result.ok
+    assert "expected 3 through features" in result.traceback
+
+
+def test_the_same_plate_with_every_hole_through_passes(worker):
+    from core.loop.assertion import the_topology_measured
+
+    described = {"features": [{"id": "hole-%d" % i, "kind": "hole", "topology": "through"}
+                              for i in range(3)]}
+
+    result = worker.check(PLATE_WITH_HOLES % 3 + the_topology_measured(described), None)
+
+    assert result.ok, result.traceback
+
+
+def test_a_part_whose_through_count_design_never_established_is_not_failed_for_it(worker):
+    from core.loop.assertion import the_topology_measured
+
+    result = worker.check(PLATE_WITH_HOLES % 1 + the_topology_measured({}), None)
+
+    assert result.ok, result.traceback

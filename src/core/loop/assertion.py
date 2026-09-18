@@ -76,6 +76,53 @@ assert all(abs(a - b) <= %s for a, b in zip(built, asked)), (
 """
 
 
+_GOES_THROUGH = "through"
+
+
+def the_topology_measured(description):
+    """
+    Betti numbers of the finished Document's tessellated shape, checked
+    against b0 == 1 -- the one closed positive-volume body every
+    description assumes, with no flag needed to say so -- and, only where
+    the model carries at least one feature, against b1 == the count of
+    features Design itself marked `topology: through`. A through-feature
+    count nobody established is not appended, so nothing is invented to
+    check the built part against.
+    """
+    features = [feature for feature in (description or {}).get("features") or ()
+               if isinstance(feature, dict)]
+    through_check = ""
+    if features:
+        expected = sum(1 for feature in features
+                       if _GOES_THROUGH in str(feature.get("topology") or "").lower())
+        through_check = _THROUGH_FEATURE_CHECK % (expected, expected)
+    return _TOPOLOGY_CHECK % through_check
+
+
+_TOPOLOGY_CHECK = """
+from core.topology import betti_numbers
+solids = [o for o in doc.Objects if getattr(o, 'Shape', None) is not None
+          and o.Shape.Solids and not o.Shape.isNull()]
+assert solids, 'the acceptance names topology and the Document has no solid'
+shape = max(solids, key=lambda o: o.Shape.Volume).Shape
+bbox = shape.BoundBox
+deflection = 0.001 * bbox.DiagonalLength
+points, facets = shape.tessellate(deflection)
+vertices = [(p.x, p.y, p.z) for p in points]
+b0, b1, b2 = betti_numbers(vertices, facets)
+assert b0 == 1, (
+    'these did not hold: the topology. The part is meant to be one solid body '
+    'and the one built comes back in ' + str(b0) + '.')
+%s
+"""
+
+
+_THROUGH_FEATURE_CHECK = """assert b1 == %d, (
+    'these did not hold: the through-features. expected %d through features, '
+    'the solid has ' + str(b1) + '.')
+"""
+
+
 SELF_INTERSECTION_CHECK = """
 import os
 import tempfile
@@ -168,7 +215,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     cancelled = cancelled or (lambda: False)
 
     fixed_checks = [c for c in
-                   (the_envelope_measured(acceptance), SELF_INTERSECTION_CHECK) if c]
+                   (the_envelope_measured(acceptance), SELF_INTERSECTION_CHECK,
+                    the_topology_measured(description)) if c]
     if fixed_checks:
         code = "\n".join(fixed_checks)
         events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
