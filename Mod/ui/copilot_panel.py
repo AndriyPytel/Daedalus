@@ -646,7 +646,6 @@ the part from `attachments` alone.
                 cancelled=self._stop.is_set,
                 outstanding=list(outstanding or ()),
                 the_part_path=the_part_path or None,
-                route_first=False,
                 events=events)
             self.finished.emit(result, transcript)
         except Exception as exc:

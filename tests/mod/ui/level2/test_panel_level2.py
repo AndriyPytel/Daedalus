@@ -4218,3 +4218,44 @@ def test_an_unopenable_transcript_is_logged_not_swallowed(monkeypatch, tmp_path)
 
     assert finished == [unopenable], "an unopenable transcript must not stop the run"
     assert any(unopenable in msg for msg in errors), "the failure must name the path"
+
+
+def test_an_intent_from_the_panel_is_routed_before_design(monkeypatch):
+    """
+    Every Intent the panel sends reaches the orchestrator first, the same as
+    an SDK caller's. `route_first=False` here made the classifier dead code
+    in the GUI: a run question or a Stop typed into the composer was built
+    as a design request.
+    """
+    import types
+
+    from ui.copilot_panel import LoopWorker, EventBridge, AskTheUser
+
+    worker = LoopWorker(EventBridge(), AskTheUser())
+    sent = []
+
+    class _FakePipeline:
+        def start_run(self):
+            return None
+
+        def end_run(self):
+            return None
+
+    class _FakeClient:
+        def __init__(self):
+            self.pipeline = _FakePipeline()
+            self.dispatch = lambda func, timeout=None: func()
+
+        def send(self, *args, **kwargs):
+            sent.append(kwargs)
+            return types.SimpleNamespace(ok=True)
+
+    fake_registry = types.SimpleNamespace(call=lambda *a, **k: {"document": ""})
+    monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
+    monkeypatch.setattr("copilot.sdk.build_registry", lambda **kwargs: fake_registry)
+
+    worker.do_work("is it done yet?", [], "")
+
+    assert sent, "the panel must reach the SDK at all"
+    assert sent[0].get("route_first", True) is not False, (
+        "the panel must let the orchestrator classify the Intent, not force Design")

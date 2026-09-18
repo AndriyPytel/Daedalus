@@ -25,6 +25,11 @@ Intent ──► Design ──► Plan ──► [ Plan Gate ] ──► Step 1 
                                  the whole Plan  (in the kernel)                  to Plan
 ```
 
+**Every message you send is classified before it reaches a phase.** One model call names
+it a design request, a question about the run in progress, or a control instruction —
+Stop, abort — and only the first of those starts the loop below. The panel and the SDK
+take the same route.
+
 **Design → Plan → Execute → Assertion → Review is a fixed order with deterministic
 routing** (ADR-0003, ADR-0018, ADR-0019). Design says what the part is, Plan produces the
 Steps, Execute holds one kernel open for the phase and declares each Step's code the
@@ -233,7 +238,18 @@ Before a Step's code runs anywhere:
   Step's Promise before Apply (ADR-0014). A Step that fails Preflight never
   reaches your Document. The worker dying is a normal outcome, not an incident: it is
   restarted and the crash comes back as a traceback the assistant can correct against.
-- **Apply** commits what survived, as one undoable transaction.
+  After the recompute the copy is read for seven failures the model cannot see from its own
+  code: an object left in error, a fillet whose Base mixes concavities, a feature that
+  moved no material, a feature no Body claims, a Body left in more than one piece, a Body
+  whose Shape fails OCC's `isValid()`, and a solid with a negative volume. Each comes back
+  as the reason, not as "it worked".
+- **Apply** commits what survived, as one undoable transaction. The transaction recomputes
+  inside itself and compares what landed against the signature the kernel verified: a
+  mismatch is **drift** — your Document disagreeing with the kernel's, not the Step being
+  wrong — and it is rolled back rather than accepted. Deleting more than one modelling
+  object is a **rebuild**, not a correction, and needs your say-so; a sketch, datum,
+  Measurement or spreadsheet does not count toward that, since a Pad and its sketch go
+  together.
 
 A failed Step answers itself (ADR-0008): the traceback goes back to Execute with
 introspection of whatever object the call failed on, so the next attempt has the real
@@ -248,7 +264,10 @@ instantiates a type in a throwaway Document so its properties, and the spellings
 enumerations accept, are readable before the first object of it exists. What cannot be
 introspected is carried as a
 **Trap** — one sentence of knowledge about this specific FreeCAD build, in the system
-prompt, so a phase never discovers it by failing.
+prompt, so a phase never discovers it by failing. A Trap is not only that sentence: each
+seed Trap carries the script that reproduces it against the running build, so a claim can
+be re-checked instead of believed, and the ones a script disproved are kept as retired
+Traps with the reason.
 
 ---
 
@@ -256,6 +275,7 @@ prompt, so a phase never discovers it by failing.
 
 | Path | What lives there |
 |---|---|
+| `src/core/orchestrator.py` | The one call every message passes through: design, run question, or control |
 | `src/core/loop/` | The Design → Plan → Execute → Assertion → Review loop, budgets, the Plan Gate |
 | `src/core/design/` | The part Design holds: the merge that never overwrites, and how it reads at the Gate |
 | `src/core/agent/` | The multi-turn phase agent, and the visibility contract each phase runs under |
@@ -275,7 +295,8 @@ prompt, so a phase never discovers it by failing.
 | `Mod/ui/history_popup.py` | The Session Picker |
 | `Mod/bridge/` | Qt-touching mirrors of `core/` concerns the UI needs directly: settings, provider fetch, logging, the main-thread marshaller |
 | `config/prompts/` | The phase, lint and message prompts, grouped by reader (`system/`, `lint/`, `messages/`); copy to tune, kept out of the source |
-| `Mod/` | Workbench registration and the Preferences pages |
+| `Mod/CopilotPreferences.py` | Registers the three Preferences pages, which live in `Mod/ui/` |
+| `InitGui.py`, `Init.py` | Workbench registration, at the repo root where FreeCAD runs them from |
 | `tests/` | The suite; `src/tools/run.py` drives a slice against a live provider |
 
 ---
