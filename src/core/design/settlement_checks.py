@@ -136,20 +136,28 @@ def twice_over(model) -> list:
     return found
 
 
-_SAYS_WHAT_SETTLED_IT = {"assumed": "because", "derived": "from"}
+_SAYS_WHAT_SETTLED_IT = {"read": "from", "assumed": "because", "derived": "from"}
 
 
 def settled_by_nothing(model) -> list:
     """
-    An entry that does not say what settled its value. `assumed` carries
-    `because`, `derived` carries `from`, one line each saying who settled
-    the value and on what; `decided_for_you` falls back to prose when
-    nothing said what settled the value, which nobody can then check. One
-    rule, not two: a gap, not a refusal, the run carries on.
+    An entry that does not say what settled its value: `assumed` carries
+    `because`, `read` and `derived` carry `from`, one line each saying who
+    settled the value and on what. A `read` is asked the same question the
+    other two are only where the part was read off a sheet, since the view
+    and the callout a citation names are what a sheet has and a part
+    described in words has not; two recorded runs over mm2023-phase1 flagged
+    `read` a left end radius carried over from the right end's printed R12.5
+    and a ring depth front to rear taken off a lug's height in another
+    direction. One rule, not three: a gap, not a refusal, the run carries on.
     """
+    off_a_sheet = bool(model.get("printed_on_the_sheet"))
     found = []
     for path, node in _each_value(model, ""):
-        says = _SAYS_WHAT_SETTLED_IT.get(str(node.get("flag") or ""))
+        flag = str(node.get("flag") or "")
+        if flag == "read" and not off_a_sheet:
+            continue
+        says = _SAYS_WHAT_SETTLED_IT.get(flag)
         if says and not _filled(node.get(says)):
             found.append(_conflict(
                 path,

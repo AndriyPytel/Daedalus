@@ -1644,6 +1644,34 @@ def test_a_tracing_already_written_in_is_not_written_again():
     assert settled_by_the_tracing(model) == []
 
 
+def test_a_read_that_does_not_say_where_it_was_read_is_a_gap():
+    """
+    A `read` claims the sheet prints the value, and nothing else on the model
+    can say afterwards where on the sheet that was. Two recorded runs over
+    mm2023-phase1 gave the left end the R12.5 printed against the right end,
+    and the ring band a depth front to rear taken off a lug's height in
+    another direction, both flagged `read` off places the sheet prints
+    nothing.
+    """
+    from core.design.settlement_checks import settled_by_nothing
+
+    off_a_sheet = {"printed_on_the_sheet": [{"callout": "R12.5",
+                                             "view": "the bottom view"}],
+                   "features": [{"id": "ear-left",
+                                 "radius": {"value": "12.5 mm", "flag": "read"}}]}
+
+    assert [found["about"] for found in settled_by_nothing(off_a_sheet)] \
+        == ["features \u2192 ear-left \u2192 radius"]
+
+    off_a_sheet["features"][0]["radius"]["from"] = \
+        "the bottom view, the callout R12.5 against the right end"
+    assert settled_by_nothing(off_a_sheet) == []
+
+    assert settled_by_nothing({"features": [{"id": "ear-left",
+                                             "radius": {"value": "12.5 mm",
+                                                        "flag": "read"}}]}) == []
+
+
 THE_BORE_AND_ITS_EVIDENCE = {
     "printed_on_the_sheet": [{"callout": "\u00d842", "view": "the front elevation"}],
     "datums": [{"name": "the left end face", "is": "the flat face at the left"}],

@@ -203,6 +203,20 @@ the model. Where the ordering costs a split edge, state the pieces — moving th
 round earlier to keep the number whole buys one Step at the price of every Step
 after it.
 
+**A round that comes back invalid is a wrong count before it is a wrong
+radius.** A cavity opening on a junction does not only divide the crease, it
+adds its own faces to it: where a window is cut through an arm that runs into a
+ring, the floor of that window meets the ring too, and the one crease is three
+collinear runs and not the two on either side of the cut. A count the
+description flags `assumed` is a count nobody has measured, so where a dress-up
+over one builds a body that fails `Shape.isValid()`, the next move is to
+enumerate the edges the two named surfaces share on the solid as built and
+re-state the Step with that number — once, before the radius, the order or the
+surfaces are questioned. A recorded run over `mm2023-phase1` filleted 2 of
+those 3 runs, got the invalid body, and spent 24 minutes and 17 calls probing
+faces and edges — 42% of the run's time and cost, and it ran out of budget
+before the 3 it had found was ever written back into the Step.
+
 **A round is planned early only where a later Step must inherit it.** A wall of
 constant thickness taken off a rounded solid is rounded before it is thinned, a
 draft goes on before the rounds that sit on the drafted face, a pattern that has

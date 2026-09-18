@@ -12,6 +12,7 @@ user needs to spot the miss. An `assumed` value with no `because` is what
 import re
 from core.sheets.sheet_reader import numbers_in
 from core.design.core import (
+    A_CONFLICT,
     KINDS,
     UNDER,
     _HEADED_BY,
@@ -36,12 +37,21 @@ def _one_to_an_address(conflicts):
     """
     The disagreements, one to an address, each saying which of the three it
     is. The first entry at an address is the one that stands: it is the
-    earliest reading, and the later one is what the merge goes on holding.
+    earliest reading, and the later one is what the merge goes on holding. A
+    disagreement takes the address over a gap standing at the same one,
+    whatever their order: two readings that cannot both be true are what the
+    user settles, and a value short of what settled it is not news beside one.
     """
     kinds = {}
     for conflict in conflicts:
         at, said = _addressed_by(conflict), _named(conflict, ("kind",))
-        if at and said in KINDS:
+        if said not in KINDS and isinstance(conflict, dict):
+            said = _which_kind_it_is(conflict)
+        if not at or said not in KINDS:
+            continue
+        if said == A_CONFLICT:
+            kinds[at] = said
+        else:
             kinds.setdefault(at, said)
 
     seen = set()

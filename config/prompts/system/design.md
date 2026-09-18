@@ -154,7 +154,14 @@ value.
   overall — `0.47 of the overall length`. The two are equal: a fraction is a
   full record, not a fallback.
 - **the flag** is one of three, and the third is not a softer `assumed`:
-  - `read` — printed on the sheet, or following from numbers that are.
+  - `read` — read off the sheet itself: a printed number, a callout, or line
+    work you counted in a view, carrying `from` beside it the way `derived`
+    does — `{"value": "R12.5", "flag": "read", "from": "the bottom view, the
+    callout against the right end"}`. What follows from numbers on the sheet,
+    or from its symmetry, is `derived`: two recorded runs over mm2023-phase1
+    flagged `read` a left end radius printed only against the right end, and a
+    ring depth front to rear that is a lug's height in another direction, and
+    a place the sheet prints nothing is the one claim nothing can check.
   - `derived` — settled by the geometry rather than by a callout: measured off
     the line work you were given, or fixed by a tangency, a silhouette drawn to
     scale, a face two views share. A `derived` value carries `from` beside it,

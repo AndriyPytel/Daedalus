@@ -62,6 +62,14 @@ makes. What it buys is the edge count and the shape Plan no longer invents —
 a recorded run named eight fillets' surfaces and none of their edge counts,
 and read a square opening as obround off a section instead of the view that
 draws it.
+
+The ratio moved again to 1.79 when `read` stopped meaning "printed, or
+following from numbers that are" and became a value that cites the view and
+the callout it was read off, the way `derived` cites what fixes it. 548
+characters, 136 tokens on every call the first pass makes. What it buys is a
+provenance nobody can fabricate: two recorded runs over mm2023-phase1 flagged
+`read` a left end radius printed only against the right end, and a ring depth
+front to rear that is a lug's height in another direction.
 """
 import json
 import os
@@ -91,24 +99,24 @@ SINGLE_CALL_BASELINE = {
     "model-mania-2024.pdf": 39970,
 }
 
-FIRST_PASS_CEILING_RATIO = 1.78
+FIRST_PASS_CEILING_RATIO = 1.79
 
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 24898},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 25636},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25034},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 25772},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 21365},
-        "total": 71899,
+        "reconcile": {"total_chars": 40545, "input_tokens": 21501},
+        "total": 72307,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23233},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26117},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23369},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26253},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 21572},
-        "total": 70922,
+        "reconcile": {"total_chars": 41375, "input_tokens": 21708},
+        "total": 71330,
     },
 }
 
