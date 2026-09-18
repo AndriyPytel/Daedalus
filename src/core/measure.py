@@ -135,6 +135,23 @@ def _average(measurements: List[Measurement], field) -> float:
     return sum(field(m) for m in measurements) / len(measurements)
 
 
+def score_spread(measurements: List[Measurement]) -> Optional[float]:
+    """
+    `max - min` of the runs' own Score, or `None` under two of them --
+    the smallest difference a later comparison of the same sheet can trust
+    is one repeat's own spread, and a spread needs at least two readings.
+    """
+    scored = [m.score for m in measurements if m.score is not None]
+    if len(scored) < 2:
+        return None
+    return max(scored) - min(scored)
+
+
+def _score_average(measurements: List[Measurement]) -> float:
+    scored = [m.score for m in measurements if m.score is not None]
+    return sum(scored) / len(scored) if scored else 0.0
+
+
 _ROWS = (
     ("pass rate", _pass_rate, "{:.1%}"),
     ("blocked rate", lambda ms: _rate(ms, lambda m: m.blocked_reason is not None), "{:.1%}"),
@@ -148,12 +165,20 @@ _ROWS = (
     ("assertion fail rate", lambda ms: _average(ms, lambda m: m.assertion_fail_rate), "{:.1%}"),
     ("review fail rate", lambda ms: _average(ms, lambda m: m.review_fail_rate), "{:.1%}"),
     ("avg question count", lambda ms: _average(ms, lambda m: m.question_count), "{:.1f}"),
+    ("avg score", _score_average, "{:.4f}"),
 )
 
 
 def compare(baseline: List[str], experiment: List[str],
-           baseline_label: str = "baseline", experiment_label: str = "experiment") -> str:
-    """A plain Markdown table, one row per metric, readable in a ticket comment."""
+           baseline_label: str = "baseline", experiment_label: str = "experiment",
+           score_floor: Optional[float] = None) -> str:
+    """
+    A plain Markdown table, one row per metric, readable in a ticket comment.
+
+    *score_floor* is the noise floor `tools/lane.py --pinned --report`
+    measured -- a Score difference smaller than it is marked unmeasurable
+    instead of printed as though it were a real change.
+    """
     baseline_runs = [measure(path) for path in baseline]
     experiment_runs = [measure(path) for path in experiment]
 
@@ -165,4 +190,14 @@ def compare(baseline: List[str], experiment: List[str],
     for name, compute, fmt in _ROWS:
         lines.append("| %s | %s | %s |" % (
             name, fmt.format(compute(baseline_runs)), fmt.format(compute(experiment_runs))))
+
+    if score_floor is not None:
+        diff = _score_average(experiment_runs) - _score_average(baseline_runs)
+        if abs(diff) < score_floor:
+            lines.append("")
+            lines.append("Score moved by %.4f, smaller than the noise floor %.4f -- "
+                         "unmeasurable." % (diff, score_floor))
+        else:
+            lines.append("")
+            lines.append("Score moved by %.4f, larger than the noise floor %.4f." % (diff, score_floor))
     return "\n".join(lines)

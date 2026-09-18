@@ -116,6 +116,29 @@ def baseline_tasks():
             for rep in (1, 2)]
 
 
+def pinned_tasks():
+    """
+    The six sheets in `manual/modelmania/phases/`, three repeats each -- the
+    suite this repo measures itself against overnight. Three repeats is the
+    point: four headless runs of one sheet took 27.4, 32.5, 66.1 and 122.4
+    minutes on identical input, and one repeat would report that spread as
+    a fact about the sheet rather than about the run.
+    """
+    from tests import modelmania_harness
+
+    return [("%s-rep%d" % (sheet.stem, rep), str(sheet))
+            for sheet in modelmania_harness.PHASES.values()
+            for rep in (1, 2, 3)]
+
+
+def smoke_tasks():
+    """One sheet, one repeat -- the fastest run that proves the lane still works."""
+    from tests import modelmania_harness
+
+    sheet = modelmania_harness.PHASES["mm2025-phase1.pdf"]
+    return [(sheet.stem, str(sheet))]
+
+
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
           resume, provider, run_seconds):
     state_path = os.path.join(out, "state.json")
@@ -317,6 +340,43 @@ def _detail_table(rows):
     return "\n".join(lines)
 
 
+def _sheet_stem(label):
+    """The sheet a repeat's label names, e.g. `mm2025-phase1-rep2` -> `mm2025-phase1`."""
+    import re as _re
+
+    return _re.sub(r"-rep\d+$", "", label)
+
+
+def _noise_floor_section(rows):
+    """
+    The spread of Score across the repeats of each sheet, per model, and the
+    largest of them -- the noise floor a later comparison must clear before
+    it can be trusted as a real change, not this instrument's own jitter.
+    """
+    from core.measure import score_spread
+
+    grouped = {}
+    for model, label, _events, m in rows:
+        grouped.setdefault((model, _sheet_stem(label)), []).append(m)
+    spreads = {key: score_spread(ms) for key, ms in grouped.items()}
+    spreads = {key: s for key, s in spreads.items() if s is not None}
+
+    if not spreads:
+        return ("## Noise floor\n\nnot enough repeats of any one sheet to measure a "
+                "spread; run `--pinned` (3 repeats per sheet) and `--report` again.")
+
+    floor = max(spreads.values())
+    lines = ["## Noise floor", "", "| model | sheet | score spread |", "| --- | --- | --- |"]
+    for (model, stem), spread in sorted(spreads.items()):
+        lines.append("| %s | %s | %.4f |" % (model, stem, spread))
+    lines.append("")
+    lines.append("Noise floor (largest spread across repeats of any one sheet): "
+                 "**%.4f**." % floor)
+    lines.append("A comparison that moves the score by less than this has not been "
+                 "shown to be a change.")
+    return "\n".join(lines)
+
+
 def report(out):
     """The whole Markdown document for the lane directory *out*."""
     rows = list(_rows(out))
@@ -331,6 +391,7 @@ def report(out):
         _summary_table(by_model),
         "## Detail",
         _detail_table(rows),
+        _noise_floor_section(rows),
     ]) + "\n"
 
 
@@ -357,6 +418,10 @@ def main():
     parser.add_argument("--save", help="Also write --report's Markdown to this path")
     parser.add_argument("--baseline", action="store_true",
                         help="Sweep the 8 pinned baseline sheets, 2 replicates each, over --model")
+    parser.add_argument("--pinned", action="store_true",
+                        help="Sweep the 6 pinned phase sheets, 3 repeats each, over --model")
+    parser.add_argument("--smoke", action="store_true",
+                        help="Sweep 1 sheet, 1 repeat, over --model")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
@@ -372,7 +437,15 @@ def main():
                 handle.write(text)
         return 0
 
-    if args.baseline:
+    if args.pinned:
+        if len(args.model) != 1:
+            raise SystemExit("--pinned takes exactly one --model, run again for a second one")
+        tasks = pinned_tasks()
+    elif args.smoke:
+        if len(args.model) != 1:
+            raise SystemExit("--smoke takes exactly one --model, run again for a second one")
+        tasks = smoke_tasks()
+    elif args.baseline:
         if len(args.model) != 1:
             raise SystemExit("--baseline takes exactly one --model, run twice as its own replicate")
         tasks = baseline_tasks()

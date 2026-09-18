@@ -522,3 +522,18 @@ def test_a_run_counts_the_questions_it_asked(tmp_path):
     result = measure(log_path)
 
     assert result.question_count == 2
+
+
+def test_score_spread_is_none_under_two_scored_runs():
+    from core.measure import Measurement, score_spread
+
+    def _m(score):
+        return Measurement(verdict="pass", blocked_reason=None, steps_started=0,
+                          steps_applied=0, plan_revisions=0, preflight_failures=0,
+                          cost_usd=0.0, wall_clock_seconds=0.0, gate_wait_seconds=0.0,
+                          working_seconds=0.0, truncated=False, assertion_fail_rate=0.0,
+                          review_fail_rate=0.0, question_count=0, score=score)
+
+    assert score_spread([_m(0.9)]) is None
+    assert score_spread([_m(None), _m(None)]) is None
+    assert score_spread([_m(0.9), _m(0.97), _m(None)]) == pytest.approx(0.07)

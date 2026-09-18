@@ -314,3 +314,128 @@ def test_score_for_reads_the_scorer_when_both_files_exist(tmp_path, monkeypatch)
     monkeypatch.setattr(score_module, "score", lambda candidate, exemplar: {"score": 0.5})
 
     assert lane._score_for(log, "mm2025-phase1-rep1") == 0.5
+
+
+def test_pinned_tasks_walk_the_six_phase_sheets_three_times_each():
+    """
+    Three repeats is the point: four headless runs of one sheet took 27.4,
+    32.5, 66.1 and 122.4 minutes on identical input, and one repeat would
+    report that spread as a fact about the sheet rather than about the run.
+    """
+    tasks = lane.pinned_tasks()
+
+    labels = [label for label, _sheet in tasks]
+    assert len(tasks) == 18
+    assert sorted(labels) == sorted(
+        "%s-rep%d" % (stem, rep)
+        for stem in ("mm2023-phase1", "mm2023-phase2", "mm2024-phase1", "mm2024-phase2",
+                     "mm2025-phase1", "mm2025-phase2")
+        for rep in (1, 2, 3)
+    )
+    assert len(set(labels)) == 18
+
+
+def test_smoke_tasks_is_one_sheet_one_repeat():
+    tasks = lane.smoke_tasks()
+
+    assert len(tasks) == 1
+    label, sheet = tasks[0]
+    assert "-rep" not in label
+    assert sheet.endswith(".pdf")
+
+
+def test_pinned_needs_exactly_one_model(monkeypatch):
+    monkeypatch.setattr(sys, "argv", [
+        "lane.py", "--pinned", "--model", "sonnet", "--model", "opus", "--out", "/tmp/x",
+    ])
+
+    with pytest.raises(SystemExit) as excinfo:
+        lane.main()
+    assert "exactly one --model" in str(excinfo.value)
+
+
+def test_smoke_needs_exactly_one_model(monkeypatch):
+    monkeypatch.setattr(sys, "argv", [
+        "lane.py", "--smoke", "--model", "sonnet", "--model", "opus", "--out", "/tmp/x",
+    ])
+
+    with pytest.raises(SystemExit) as excinfo:
+        lane.main()
+    assert "exactly one --model" in str(excinfo.value)
+
+
+def test_sweep_resumes_by_skipping_a_run_state_already_marks_done(tmp_path, monkeypatch):
+    """The resume path, against a recorded state file -- no real run is spawned for it."""
+    out = str(tmp_path)
+    os.makedirs(os.path.join(out, "opus"))
+    state = {"runs": {"mm2025-phase1-rep1/opus": {"label": "mm2025-phase1-rep1",
+                      "model": "opus", "log": "unused.jsonl", "status": "done"}}}
+    with open(os.path.join(out, "state.json"), "w", encoding="utf-8") as handle:
+        json.dump(state, handle)
+
+    spawned = []
+
+    class FakeProcess:
+        returncode = 0
+
+        def poll(self):
+            return 0
+
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+        spawned.append(label)
+        open(log, "w").close()
+        return FakeProcess()
+
+    monkeypatch.setattr(lane, "run_one", fake_run_one)
+    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
+
+    tasks = [("mm2025-phase1-rep1", "sheet1.pdf"), ("mm2025-phase1-rep2", "sheet1.pdf")]
+    lane.sweep(tasks, ["opus"], "medium", None, "Build it.", out, 1800, 3, True,
+              "Claude (subscription)", None)
+
+    assert spawned == ["mm2025-phase1-rep2"]
+    with open(os.path.join(out, "state.json"), encoding="utf-8") as handle:
+        final_state = json.load(handle)
+    assert final_state["runs"]["mm2025-phase1-rep1/opus"]["status"] == "done"
+    assert final_state["runs"]["mm2025-phase1-rep2/opus"]["status"] == "done"
+
+
+def test_report_states_the_noise_floor_from_repeats_of_the_same_sheet(tmp_path, monkeypatch):
+    monkeypatch.setattr(lane, "EXEMPLAR_DIR", str(tmp_path))
+    (tmp_path / "mm2025-phase1.step").write_text("exemplar")
+    for rep in (1, 2, 3):
+        _write_events(str(tmp_path / "opus" / ("mm2025-phase1-rep%d.jsonl" % rep)),
+                     [(1, "review_verdict", {"verdict": "pass", "reason": "ok"})])
+        (tmp_path / "opus" / ("mm2025-phase1-rep%d.step" % rep)).write_text("candidate")
+
+    import score as score_module
+    scores = iter([0.90, 0.94, 0.97])
+    monkeypatch.setattr(score_module, "score", lambda candidate, exemplar: {"score": next(scores)})
+
+    text = lane.report(str(tmp_path))
+
+    assert "## Noise floor" in text
+    assert "0.0700" in text
+
+
+def test_report_says_when_no_sheet_has_enough_repeats_to_measure_a_spread(tmp_path):
+    _write_events(str(tmp_path / "opus" / "bolt-nut.jsonl"), [
+        (1, "review_verdict", {"verdict": "pass", "reason": "ok"}),
+    ])
+
+    text = lane.report(str(tmp_path))
+
+    assert "not enough repeats" in text
+
+
+def test_compare_marks_a_score_difference_smaller_than_the_floor_unmeasurable(tmp_path):
+    baseline_log = str(tmp_path / "baseline.jsonl")
+    experiment_log = str(tmp_path / "experiment.jsonl")
+    _write_events(baseline_log, [(1, "review_verdict", {"verdict": "pass", "reason": "ok"})])
+    _write_events(experiment_log, [(1, "review_verdict", {"verdict": "pass", "reason": "ok"})])
+
+    from core.measure import compare
+
+    table = compare([baseline_log], [experiment_log], "before", "after", score_floor=1.0)
+
+    assert "unmeasurable" in table.lower()
