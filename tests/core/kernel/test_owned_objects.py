@@ -71,7 +71,8 @@ def test_modifying_an_object_we_created_is_not_confirmed():
     built = pipeline(confirm=asked)
     built.apply("box()", kernel_result=touching(created=["Box"]))
 
-    result = built.apply("box.Length = 20", kernel_result=touching(modified=["Box"]))
+    result = built.apply("box.Length = design['features']['Box']['length']",
+                         kernel_result=touching(modified=["Box"]))
 
     assert result.ok
     assert asked.asks == [], "asked about an object the assistant made itself"

@@ -12,20 +12,23 @@ from core.kernel import Kernel, copy_of, find_freecadcmd
 from core.kernel.kernel_worker import signature_of
 
 
-def _kernel_result(worker, doc, code, names=None):
+def _kernel_result(worker, doc, code, names=None, design=None):
     """What `apply()` now expects a caller to already have from the kernel's own
     run of *code*, rather than a rehearsal `apply()` runs itself (FCC-A-53)."""
     import os
 
     copy = copy_of(doc)
     try:
-        result = worker.check(code, document=copy, names=names or {}, ephemeral=True)
+        result = worker.check(code, document=copy, names=names or {}, ephemeral=True,
+                              design=design)
     finally:
         os.remove(copy)
     assert result.ok, result.traceback
     return {"created": result.created, "deleted": result.deleted,
             "modified": result.modified, "objects": result.objects,
             "names": result.names, "signature": result.signature}
+
+A_DESIGN = {"features": {"Box": {"length": 42}}}
 
 pytestmark = pytest.mark.freecad
 
@@ -92,9 +95,9 @@ def test_a_step_addresses_an_earlier_steps_object_through_the_pipelines_own_name
     doc.addObject("Part::Box", "Box")
     doc.recompute()
 
-    first_code = "box = doc.addObject('Part::Box', 'Box')\nbox.Length = 42\n"
-    first = pipeline.apply(first_code, label="Add the box",
-                           kernel_result=_kernel_result(worker, doc, first_code))
+    first_code = "box = doc.addObject('Part::Box', 'Box')\nbox.Length = design['features']['Box']['length']\n"
+    first = pipeline.apply(first_code, label="Add the box", design=A_DESIGN,
+                           kernel_result=_kernel_result(worker, doc, first_code, design=A_DESIGN))
     assert first.ok, first.traceback
     assert first.created == ["Box001"], \
         "FreeCAD did not rename the colliding object the way this test assumes"

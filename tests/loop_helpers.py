@@ -385,14 +385,17 @@ class FakeTools:
             "type": "object",
             "properties": {"code": {"type": "string"}, "label": {"type": "string"},
                           "op": {"type": "string"},
-                          "kernel_result": {"type": "object"}},
+                          "kernel_result": {"type": "object"},
+                          "design": {"type": "object"}},
             "required": ["code"],
         })
-        def apply_step(code, label="Step", op=None, kernel_result=None):
+        def apply_step(code, label="Step", op=None, kernel_result=None, design=None):
             """A None entry, or running off the end, means "this one worked"."""
             arguments = {"code": code, "label": label}
             if op is not None:
                 arguments["op"] = op
+            if design is not None:
+                arguments["design"] = design
             self.calls.append(("apply_step", arguments))
             queued = self.applies.pop(0) if self.applies else None
             result = queued if queued is not None else dict(self.APPLIED)

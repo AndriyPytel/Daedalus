@@ -90,20 +90,22 @@ def _direct(func, timeout=None):
     return func()
 
 
-def run_in_transaction(doc, code, label="Copilot Step", names=None, expected_signature=None):
+def run_in_transaction(doc, code, label="Copilot Step", names=None, expected_signature=None,
+                       design=None):
     """
     Execute *code* against *doc* as one undoable unit, main thread only; the
     recompute runs inside the transaction, so one undo takes the whole Step
-    back. *names* is the requested-name -> allocated-name map from an
-    earlier Step's Preflight, exposed through the same `_NamedDoc` wrapper
-    the kernel uses. *expected_signature* is what Preflight verified; `None`
-    skips the check, a mismatch aborts the transaction.
+    back. *names* and *design* are the allocated-name map and the Design
+    model Preflight already ran this same Step against, both carried in the
+    same way so Apply resolves them identically. *expected_signature* is
+    what Preflight verified; `None` skips the check, a mismatch aborts the
+    transaction.
     """
     names = {} if names is None else names
     doc.openTransaction(label)
     try:
         register_step_source(code)
-        namespace = step_namespace(_NamedDoc(doc, names))
+        namespace = step_namespace(_NamedDoc(doc, names), design=design)
         namespace["names"] = names
         exec(compile(code, "<step>", "exec"), namespace)  # noqa: S102
         doc.recompute()
@@ -265,14 +267,16 @@ class ApplyPipeline:
         return os.path.join(directory, "copilot_step_%d.png" % self._renders)
 
     def apply(self, code, selection=None, label="Copilot Step", op=None,
-              kernel_result=None) -> ApplyResult:
+              kernel_result=None, design=None) -> ApplyResult:
         """
         Lint *code* and land it on the live Document as one transaction.
         `kernel_result` is what the kernel already found running this Step
         for real -- names created/deleted/modified, its name map, its
         Document's signature -- so the kernel's run is the rehearsal, rolled
         back on a signature disagreement, with no second rehearsal here.
-        `op` is checked against what the kernel built, not this code's text.
+        `op` is checked against what the kernel built, not this code's text,
+        and `design` is the Design model Preflight ran this Step against,
+        carried into the same transaction so Apply resolves it identically.
         """
         kernel_result = kernel_result or {}
         checked = lint(code, selection)
@@ -302,7 +306,7 @@ class ApplyPipeline:
         try:
             self._dispatch(lambda: self._transaction(
                 doc, code, label, names=self._names,
-                expected_signature=kernel_result.get("signature")))
+                expected_signature=kernel_result.get("signature"), design=design))
         except Closing:
             raise
         except SignatureMismatch as exc:
@@ -1689,18 +1693,24 @@ def _register_apply(registry, pipeline, selection):
                                    "(FCC-A-53): created, deleted, modified, names, signature, "
                                    "objects. Carried by the loop, not asked for here.",
                 },
+                "design": {
+                    "type": "object",
+                    "description": "The Design model, read-only in the Step's own namespace "
+                                   "(FCC-411). Carried by the loop, not asked for here.",
+                },
             },
             "required": ["code"],
         },
     )
-    def apply_step(code, label="Copilot Step", op=None, kernel_result=None):
+    def apply_step(code, label="Copilot Step", op=None, kernel_result=None, design=None):
         """
         There is no rehearsal behind this Tool any more: from here up, a
         Step was applied or it was not, and there is no third thing to know
         about.
         """
         return pipeline.apply(code, selection=selection(), label=label,
-                              op=op, kernel_result=kernel_result).as_tool_result()
+                              op=op, kernel_result=kernel_result,
+                              design=design).as_tool_result()
 
     @registry.tool(
         "check_assertions",

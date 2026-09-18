@@ -44,7 +44,7 @@ the whole budget and leaves the run nothing to apply."""
 
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               kernel=None, supervisor=None, stream=None, system=None,
-              on_declaration=None, exploration=None):
+              on_declaration=None, exploration=None, design=None):
     """
     Run *phase* as a multi-turn agent against its own kernel, returning
     `(declared, session, declarations)`. *on_declaration*, called the moment a
@@ -52,7 +52,9 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     `drift`, kept apart for SignatureMismatch) that rewinds the kernel to the
     last checkpoint and asks again in this session, or a final
     `{"delivered": False}` for the caller's handback. *exploration* seeds and
-    is updated with `since_declaration`.
+    is updated with `since_declaration`, and *design* is carried into the
+    kernel alongside *document*, remembered past this call the same as a
+    Step's allocated names.
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)
@@ -131,7 +133,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     working_kernel = Kernel()
                 step_document = document if first_step else _NO_DOCUMENT
                 result = working_kernel.check(message["code"], **(
-                    {} if step_document is _NO_DOCUMENT else {"document": step_document}))
+                    {} if step_document is _NO_DOCUMENT
+                    else {"document": step_document, "design": design}))
                 first_step = False
                 delivered_step = None
                 if "step" in message and result.ok and result.checkpoint:

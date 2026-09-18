@@ -22,6 +22,7 @@ import os
 import sys
 import tempfile
 import traceback
+import types
 
 SENTINEL = "@@KERNEL@@"
 
@@ -187,15 +188,31 @@ def edges_between(shape, a, b):
     return names
 
 
-def step_namespace(doc):
+def _read_only(value):
+    """
+    *value* with every nested `dict`/`list` frozen -- `types.MappingProxyType`
+    for a mapping, a `tuple` of frozen elements for a list -- so a Step that
+    tries to write through it (`design['x'] = ...`, `design['x'].append(...)`)
+    gets a `TypeError` instead of quietly changing what Design established.
+    """
+    if isinstance(value, dict):
+        return types.MappingProxyType({key: _read_only(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_read_only(item) for item in value)
+    return value
+
+
+def step_namespace(doc, design=None):
     """
     What a Step's code runs with, built identically by the kernel and the GUI's
     replay or they run different programs. Sketch geometry lives outside
     Sketcher in every FreeCAD version, so leaving Part out turns correct code
-    into a NameError answered by an invented Sketcher.Circle. FreeCAD's own
+    into a NameError answered by an invented Sketcher.Circle, and FreeCAD's own
     Mod/Mesh/App directory shares the name `App` on sys.path, so a Step's bare
     `import App` finds an empty namespace package unless sys.modules holds the
-    real module first.
+    real module first. *design* is carried in read-only alongside the
+    Document rather than through a working directory that does not survive
+    Apply or replay -- absent where no run has one.
     """
     import FreeCAD
 
@@ -203,6 +220,8 @@ def step_namespace(doc):
 
     namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__",
                  "edges_between": edges_between}
+    if design is not None:
+        namespace["design"] = _read_only(design)
     for module in STEP_MODULES:
         try:
             namespace[module] = __import__(module)
@@ -807,7 +826,7 @@ def _recompute_scope(doc, touched):
     return scope
 
 
-_SESSION = {"doc": None, "checkpoint": None, "names": {}}
+_SESSION = {"doc": None, "checkpoint": None, "names": {}, "design": None}
 
 
 def _checkpoint_path():
@@ -957,10 +976,12 @@ def run_step(request):
         _SESSION["names"] = dict(request.get("names") or {})
         if not ephemeral:
             _save_checkpoint(_SESSION["doc"])
+    if "design" in request:
+        _SESSION["design"] = request["design"]
 
     doc = _SESSION["doc"]
     names = dict(_SESSION["names"])
-    namespace = step_namespace(_NamedDoc(doc, names))
+    namespace = step_namespace(_NamedDoc(doc, names), design=_SESSION["design"])
     namespace["names"] = names
 
     touched = _Touched(doc)

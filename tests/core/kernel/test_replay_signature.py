@@ -42,7 +42,7 @@ class FakeWorker:
         self.checked = []
 
     def check(self, code, document=None, render_path=None, timeout=None, names=None,
-              ephemeral=False):
+              ephemeral=False, design=None):
         self.checked.append({"code": code, "document": document, "names": names})
         return self.result
 
@@ -56,7 +56,7 @@ def _pipeline(trace, result):
     doc = FakeDocument()
     worker = FakeWorker(result)
 
-    def transaction(document, code, label, names=None, expected_signature=None):
+    def transaction(document, code, label, names=None, expected_signature=None, design=None):
         trace.append(("transaction", label, dict(names or {})))
         document.Objects.append(FakeObject("Box001"))
 

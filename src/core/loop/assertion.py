@@ -253,6 +253,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                     if attempt == 0:
                         run_kwargs["document"] = document
                     sources = {"design": design_source} if design_source else {}
+                    if design_source:
+                        run_kwargs["design"] = design_source
                     declared, session, declarations = run_phase(
                         pc.ASSERTION, working_dir, sources, llm, task, **run_kwargs)
 

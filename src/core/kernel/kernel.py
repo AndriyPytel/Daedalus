@@ -205,13 +205,15 @@ class Kernel:
         self.kill()
 
     def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None,
-              ephemeral=False):
+              ephemeral=False, design=None):
         """
         Run *code* as one Step in the kernel. `document` not given
         continues the kernel's own session, resuming on the last
         checkpoint if the worker restarted since, or refusing if no
         checkpoint exists yet to resume onto; `document` given is a fresh
-        handoff from that path, always honoured. Returns a KernelResult,
+        handoff from that path, always honoured, and *design* is carried
+        into the Step's namespace read-only, remembered by the kernel's own
+        session past this call the same as *names*. Returns a KernelResult,
         never raising for anything the code did.
         """
         if document is _CONTINUE and self._needs_resume:
@@ -231,6 +233,8 @@ class Kernel:
             request["names"] = names
         if ephemeral:
             request["ephemeral"] = True
+        if design is not None:
+            request["design"] = design
         response, why = self._ask(request, timeout or self.timeout, "the Step")
         if response is None:
             return KernelResult(ok=False, traceback=why)

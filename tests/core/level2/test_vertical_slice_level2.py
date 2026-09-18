@@ -23,11 +23,12 @@ import pytest
 
 from core.freecad_apply import ApplyPipeline
 from core.events import (
-    APPLIED, BLOCKED, CALL_STARTED, COST, INTENT, PLAN, REVIEW_VERDICT,
+    APPLIED, BLOCKED, CALL_STARTED, COST, DESIGN, INTENT, PART, PLAN, REVIEW_VERDICT,
     STEP_STARTED, THOUGHT, TOOL_CALL, TOOL_RESULT, WRITING, EventStream,
 )
 from core.freecad_apply import build_registry
 from core.llm import ScriptedLLMClient
+from loop_helpers import design_reply, everything, plan_reply
 from core.loop.gate import APPROVE, Approval
 from core.loop.run import run
 from core.kernel import Kernel, find_freecadcmd
@@ -67,17 +68,28 @@ sketch.addConstraint(Sketcher.Constraint('DistanceX', 0, 1, 0, 2, side))
 sketch.addConstraint(Sketcher.Constraint('DistanceY', 1, 1, 1, 2, side))
 """ % {"side": SQUARE}
 
+def _read(value):
+    return {"value": value, "flag": "read"}
+
+
+A_DESIGN = {"features": [{"id": "pad", "length": _read(PAD), "changed_length": _read(PAD_CHANGED)},
+                        {"id": "fillet", "radius": _read(RADIUS)},
+                        {"id": "hole", "diameter": _read(BORE)}]}
+
+
 STEP_PAD = """
 body = doc.getObject("Body")
 pad = doc.addObject("PartDesign::Pad", "Pad")
 body.addObject(pad)
 pad.Profile = doc.getObject("Sketch")
-pad.Length = %s
-""" % PAD
+pad_design = next(f for f in design["features"] if f["id"] == "pad")
+pad.Length = pad_design["length"]["value"]
+"""
 
 STEP_PARAMETER = """
-doc.getObject("Pad").Length = %s
-""" % PAD_CHANGED
+pad_design = next(f for f in design["features"] if f["id"] == "pad")
+doc.getObject("Pad").Length = pad_design["changed_length"]["value"]
+"""
 
 STEP_FILLET = """
 body = doc.getObject("Body")
@@ -95,8 +107,9 @@ if len(edges) != %(count)d:
 fillet = doc.addObject("PartDesign::Fillet", "Fillet")
 body.addObject(fillet)
 fillet.Base = (base, edges)
-fillet.Radius = %(radius)s
-""" % {"count": TOP_EDGES, "radius": RADIUS}
+fillet_design = next(f for f in design["features"] if f["id"] == "fillet")
+fillet.Radius = fillet_design["radius"]["value"]
+""" % {"count": TOP_EDGES}
 
 STEP_HOLE = """
 import Part
@@ -107,17 +120,18 @@ body.addObject(profile)
 profile.AttachmentSupport = [(doc.getObject("XY_Plane"), '')]
 profile.MapMode = "FlatFace"
 side = %(side)s
+hole_design = next(f for f in design["features"] if f["id"] == "hole")
 profile.addGeometry(Part.Circle(App.Vector(side / 2, side / 2, 0),
-                                App.Vector(0, 0, 1), %(bore)s / 2), False)
+                                App.Vector(0, 0, 1), hole_design["diameter"]["value"] / 2), False)
 
 hole = doc.addObject("PartDesign::Hole", "Hole")
 body.addObject(hole)
 hole.Profile = profile
-hole.Diameter = %(bore)s
+hole.Diameter = hole_design["diameter"]["value"]
 hole.DepthType = "ThroughAll"
 # The profile is on XY and the material is above it, so the cut goes up.
 hole.Reversed = True
-""" % {"side": SQUARE, "bore": BORE}
+""" % {"side": SQUARE}
 
 
 def scripted_model():
@@ -133,22 +147,25 @@ def scripted_model():
         (STEP_FILLET, "Fillet the top edges"),
         (STEP_HOLE, "Drill the hole"),
     ]
+    step_prose = [
+        "Sketch a %gmm square on the XY plane inside a new Body" % SQUARE,
+        "Pad the sketch by %gmm" % PAD,
+        "Change the pad length to %gmm" % PAD_CHANGED,
+        "Fillet the %d top edges with a %gmm radius, finding them from the geometry"
+        % (TOP_EDGES, RADIUS),
+        "Drill a %gmm hole through it on the centreline" % BORE,
+    ]
     return ScriptedLLMClient([
-        json.dumps({"declare": {"design": {}, "question": ""}}),
-        json.dumps({"declare": {"steps": [
-            "Sketch a %gmm square on the XY plane inside a new Body" % SQUARE,
-            "Pad the sketch by %gmm" % PAD,
-            "Change the pad length to %gmm" % PAD_CHANGED,
-            "Fillet the %d top edges with a %gmm radius, finding them from the geometry"
-            % (TOP_EDGES, RADIUS),
-            "Drill a %gmm hole through it on the centreline" % BORE,
-        ]}}),
+        design_reply(A_DESIGN),
+        plan_reply(*step_prose, satisfies=everything(A_DESIGN)),
         *[json.dumps({"code": code, "step": number, "label": label})
           for number, (code, label) in enumerate(steps, start=1)],
         json.dumps({"declare": {"steps": [
             {"step": number, "label": label} for number, (code, label) in enumerate(steps, start=1)
         ]}}),
         json.dumps({"declare": {"suspected": []}}),
+        json.dumps({"declare": {"code": "assert True, 'built to the read Design fields'",
+                                "uncovered": []}}),
         json.dumps({"declare": {"verdict": "pass",
                     "reason": "A %gmm square padded to %gmm, top edges filleted, "
                               "drilled Ø%g." % (SQUARE, PAD_CHANGED, BORE)}}),
@@ -349,10 +366,11 @@ def test_each_step_of_the_run_undoes_in_turn(own_slice_run):
 
 def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
     """
-    Every event the panel draws the run from. The twelve Tool calls are the
+    Every event the panel draws the run from. The thirteen Tool calls are the
     five kernel checks a code turn makes of its own Step (FCC-A-53), the five
-    applies, the self-intersection check (unconditional) and the one
-    review_views the loop drives at the end.
+    applies, the self-intersection check (unconditional), the one
+    review_views the loop drives at the end, and the one check_assertions
+    against what the Design model asked for.
 
     CALL_STARTED, COST, THOUGHT and WRITING are per-call bookkeeping and say nothing
     about the order of the run, so they are filtered out before checking the
@@ -362,10 +380,10 @@ def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
     kinds = [e.kind for e in events
              if e.kind not in (CALL_STARTED, COST, THOUGHT, WRITING)]
 
-    assert kinds[:2] == [INTENT, PLAN]
+    assert kinds[:4] == [INTENT, DESIGN, PART, PLAN]
     assert len(events.of(STEP_STARTED)) == 5
-    assert len(events.of(TOOL_CALL)) == 12
-    assert len(events.of(TOOL_RESULT)) == 12
+    assert len(events.of(TOOL_CALL)) == 13
+    assert len(events.of(TOOL_RESULT)) == 13
     assert len(events.of(APPLIED)) == 5
     assert events.last(REVIEW_VERDICT).data["verdict"] == "pass"
     assert events.first(BLOCKED) is None

@@ -1,0 +1,1 @@
+%r is resolved from `design` with `.get(key, default)`. A field Design left `not_defined` does not become *default* -- that is inventing the value the reference was supposed to avoid. Index `design` directly (`design['features']['Boss']['length']`) so a missing field raises instead of resolving quietly.

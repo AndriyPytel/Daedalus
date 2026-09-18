@@ -10,10 +10,11 @@ since a BoundBox lands inside the true extreme it claims to report. A
 computed selection must assert its own length, no bare except/pass swallows a
 Step's failure, and no literal-name lookup of an object this Step just
 allocated, since a collision would rename it silently -- `dimensional_literal`
-and `dimensional_default` stay outside this refusal list, called by a
-regression tool rather than by `lint()`, because no Step can read a Design
-value at the point it runs and refusing the only other form a number could
-take would teach obfuscation, not reference.
+and `dimensional_default` are wired into `lint()`'s refusal list now that
+`design` is in a Step's own namespace: a bare numeral in a dimensional
+position is refused, and so is a Design reference resolved with
+`.get(key, default)` instead of a plain index, since a field Design left
+`not_defined` must raise rather than resolve quietly.
 """
 import ast
 import re
@@ -127,6 +128,8 @@ _ALLOCATED_NAME_REASON = read_prompt("lint_allocated_name.md")
 
 _ATTACHMENT_SUPPORT_REASON = read_prompt("lint_attachment_support_empty_list.md")
 _BOUNDBOX_GUARD_REASON = read_prompt("lint_boundbox_guard.md")
+_DIMENSIONAL_LITERAL_REASON = read_prompt("lint_dimensional_literal.md")
+_DIMENSIONAL_DEFAULT_REASON = read_prompt("lint_dimensional_default.md")
 
 DIMENSION_ATTRS = frozenset((
     "Length", "Length2", "Radius", "Diameter", "HoleCutDiameter",
@@ -189,6 +192,7 @@ def lint(code: str, selection=None) -> LintResult:
     counted = _counted_selections(tree)
     allocated = _names_allocated_here(tree)
     boundbox_names = _boundbox_names(tree)
+    bindings = literal_bindings(tree)
     problems = []
     seen = set()
 
@@ -234,6 +238,12 @@ def lint(code: str, selection=None) -> LintResult:
         empty_attachment = _attachment_support_empty_list(node)
         if empty_attachment:
             complain(_ATTACHMENT_SUPPORT_REASON % empty_attachment)
+        literal = dimensional_literal(node, bindings)
+        if literal:
+            complain(_DIMENSIONAL_LITERAL_REASON % literal)
+        defaulted = dimensional_default(node)
+        if defaulted:
+            complain(_DIMENSIONAL_DEFAULT_REASON % defaulted)
 
     def _on_call(node):
         disguised = _added_property(node, features)

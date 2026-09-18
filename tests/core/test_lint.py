@@ -695,9 +695,9 @@ def test_reading_or_signing_off_boundbox_is_untouched(code):
 
 
 def _dimensional_findings(code):
-    """`dimensional_literal`/`dimensional_default` are not wired into `lint()` --
-    no Step can read a Design value at the point it runs, so this is how a
-    regression tool would call them."""
+    """`dimensional_literal`/`dimensional_default`, called directly the way a
+    regression tool over the applied corpus calls them -- `lint()` itself
+    already surfaces the same findings as refusals."""
     from core.lint import dimensional_default, dimensional_literal, literal_bindings
 
     tree = ast.parse(code)
@@ -775,9 +775,32 @@ def test_a_bare_numeral_unpacked_from_a_tuple_is_still_found():
     assert _dimensional_findings(code) == [("literal", "pad.Length", 150.0)]
 
 
-def test_none_of_the_lint_wired_checks_touch_a_bare_dimensional_numeral():
-    """`dimensional_literal`/`dimensional_default` are findings a regression
-    tool reads, not a `lint()` refusal: no Step can satisfy the reference
-    form at the point its code actually runs."""
-    assert lint("pad.Length = 80.0").ok
-    assert lint("pad.Length = design.get('length', 80.0)\n").ok
+def test_the_lint_wired_checks_now_touch_a_bare_dimensional_numeral():
+    """`dimensional_literal`/`dimensional_default` are wired into `lint()`'s
+    refusal list: a Step can read a Design value at the point it runs, so
+    the only other form a bare number could take is refused."""
+    assert not lint("pad.Length = 80.0").ok
+    assert not lint("pad.Length = design.get('length', 80.0)\n").ok
+
+
+def test_a_dimensional_literal_refusal_names_the_target_and_the_value():
+    report = lint("pad.Length = 80.0").report()
+
+    assert "pad.Length" in report
+    assert "80.0" in report
+
+
+def test_a_design_reference_resolved_with_a_default_is_still_refused():
+    report = lint("pad.Length = design.get('length', 80.0)\n").report()
+
+    assert "pad.Length" in report
+
+
+def test_a_dimension_read_from_design_by_index_passes():
+    assert lint("pad.Length = design['features']['Boss']['length']\n").ok
+
+
+def test_counts_indices_and_a_right_angle_pass_lint_too():
+    for code in ("pad.Length = 0", "pad.Length = 1", "revolve.Angle = 90",
+                "revolve.Angle = 360"):
+        assert lint(code).ok, lint(code).report()

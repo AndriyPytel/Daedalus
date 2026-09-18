@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 from core.arithmetic import wrong_sums
 from core.design import part_file
-from core.design.report import render
+from core.design.report import distilled, render
 from core.design.gaps import (
     decided_for_you,
     entries,
@@ -364,7 +364,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                 progress, render(part.the_part), looks,
                                 planned.acceptance, planned.cites, ledger,
                                 start=carried, ops=planned.ops, kernel=kernel,
-                                exploration=exploration)
+                                exploration=exploration,
+                                design=distilled(part.the_part) if part.the_part else None)
         last_pass.steps, last_pass.applied = steps, outcome["applied_here"]
         applied = progress.applied
 
@@ -464,7 +465,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
-                  start=0, ops=(), kernel=None, exploration=None):
+                  start=0, ops=(), kernel=None, exploration=None, design=None):
     """
     One pass over the Plan: written by one Execute phase, applied one Step at a
     time. `budgets.attempts_per_step` bounds one Step; a spent Step hands back
@@ -472,8 +473,9 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     `apply_step` as `op` so `core/lint.py` checks the TypeId. `exploration`
     carries `agent.py`'s undeclared-turn count across a same-Step regeneration
     and, threaded in by `_run` across its own replan loop, across a Plan
-    revision too; `outcome.apply_failed` here is exhausted from retrying in
-    place.
+    revision too, `outcome.apply_failed` here is exhausted from retrying in
+    place, and `design`, distilled of its evidence, is carried read-only into
+    every Step's own namespace.
     """
     if cancelled():
         raise Stopped()
@@ -490,7 +492,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     probe, probed_step = _step_exploration(exploration, steps, start)
     written = execute(steps, tools, llm, events, start, budgets=budgets,
                       as_described=as_described, looks=looks, entries=entries,
-                      ledger=ledger, kernel=kernel, ops=ops, exploration=probe)
+                      ledger=ledger, kernel=kernel, ops=ops, exploration=probe,
+                      design=design)
     if probed_step is not None:
         exploration[probed_step] = probe["turns"]
 
