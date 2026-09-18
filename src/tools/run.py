@@ -60,8 +60,9 @@ def main():
     parser.add_argument("--allow-user-objects", action="store_true",
                         help="Answer yes to the Owned Object prompt instead of refusing")
     parser.add_argument("--conflicts", choices=("on", "off"), default="on",
-                        help="The append-only model's own A/B toggle: 'off' sets readings=1 "
-                             "and turns off merge's own conflict recording, last reading wins")
+                        help="The append-only model's own A/B toggle: 'off' drops the "
+                             "conflict record at the Gate, everything else about the run "
+                             "unchanged")
     args = parser.parse_args()
 
     for lib in ("/Applications/FreeCAD.app/Contents/Resources/lib",):
@@ -88,7 +89,7 @@ def main():
 
     client.watch(track)
 
-    budgets = Budgets(readings=1, record_conflicts=False) if args.conflicts == "off" else None
+    budgets = Budgets(record_conflicts=False) if args.conflicts == "off" else None
     cancelled = (lambda: spent["usd"] >= args.budget_usd) if args.budget_usd is not None else None
     result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled,
                          ask=nobody_to_ask, budgets=budgets)

@@ -29,14 +29,21 @@ def test_two_disagreeing_reads_are_recorded_by_default():
         _two_disagreeing_reads(), attachments=[MODEL_MANIA],
         budgets=Budgets(readings=2))
 
-    assert _the_part(events).get("conflicts")
+    the_part = _the_part(events)
+    assert the_part.get("conflicts")
+    assert the_part["envelope"]["depth front to rear"] == _read("100 mm")
 
 
-def test_two_disagreeing_reads_overwrite_with_conflicts_off():
+def test_two_disagreeing_reads_drop_only_the_record_with_conflicts_off():
+    """
+    The off arm keeps the same held value the on arm keeps -- the first
+    read stands against the second either way -- and differs only in
+    whether that disagreement is recorded.
+    """
     _, events, _, _ = drive(
         _two_disagreeing_reads(), attachments=[MODEL_MANIA],
         budgets=Budgets(readings=2, record_conflicts=False))
 
     the_part = _the_part(events)
     assert not the_part.get("conflicts")
-    assert the_part["envelope"]["depth front to rear"] == _read("50 mm")
+    assert the_part["envelope"]["depth front to rear"] == _read("100 mm")

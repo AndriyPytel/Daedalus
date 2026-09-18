@@ -85,13 +85,12 @@ def test_the_disagreement_is_recorded_rather_than_reconciled():
     assert conflict["was_also_said"] == _read("25 mm")
 
 
-def test_the_same_disagreement_with_conflicts_off_overwrites_instead():
+def test_the_same_disagreement_with_conflicts_off_drops_only_the_record():
     """
-    `record_conflicts=False` is the off arm of the append-only model: the
-    same two readings that
-    `test_the_disagreement_is_recorded_rather_than_reconciled` turns into a
-    conflict instead produce one value, the later reading, and no
-    `conflicts` entry at all.
+    `record_conflicts=False` drops the one thing recording the disagreement
+    adds: the held value from `test_the_disagreement_is_recorded_rather_
+    than_reconciled` still stands, unchanged, and there is no `conflicts`
+    entry at all -- one difference, not two.
     """
     grown = merge(DEPTH_OFF_THE_SECTION,
                   {"features": [{"id": "hole-40-left",
@@ -99,7 +98,7 @@ def test_the_same_disagreement_with_conflicts_off_overwrites_instead():
                   record_conflicts=False)
 
     held = grown["features"][0]["position"]["the left end face"]
-    assert held == _read("25 mm")
+    assert held == _read("20 mm")
     assert "conflicts" not in grown
 
 

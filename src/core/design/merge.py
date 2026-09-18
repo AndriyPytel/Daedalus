@@ -98,10 +98,9 @@ def merge(held, offered, record_conflicts=True):
     *offered* written into *held*, filling only what is empty. A value that
     is already on the model stays, whatever a later pass believes it saw,
     what is empty is filled, what is new is added, and what disagrees is
-    appended to `conflicts`. A fragment that is not a model at all leaves
-    the part exactly as it was; *record_conflicts* false is the append-only
-    model's off arm, where the later reading overwrites the disagreement
-    instead.
+    appended to `conflicts` unless *record_conflicts* is false, which drops
+    only that record -- the held value still stands either way. A fragment
+    that is not a model at all leaves the part exactly as it was.
     """
     if not isinstance(offered, dict):
         return _with_the_findings(dict(held or {}))
