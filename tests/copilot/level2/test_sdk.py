@@ -76,6 +76,37 @@ def test_an_empty_document_gets_a_client_and_ends_with_a_saved_fcstd(tmp_path, k
     client.close()
 
 
+@pytest.mark.cadgenbench
+def test_a_run_s_save_path_ends_in_step_and_the_scorer_can_read_it(tmp_path, kernel):
+    """The seam a headless run hands the scorer -- `client.export_step(path)`
+    writes real STEP geometry, not a Document FreeCAD would otherwise
+    rename to `<path>.FCStd` the way `client.save(path)` would."""
+    import sys
+
+    from copilot.sdk import Client
+
+    client = Client(kernel=kernel, llm=_a_box_run())
+    result = client.send("Add a 10mm cube")
+    assert result.ok, result.reason
+
+    out = str(tmp_path / "made.step")
+    client.export_step(out)
+    client.close()
+
+    assert os.path.exists(out)
+    assert not os.path.exists(out + ".FCStd")
+
+    ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))))
+    sys.path.insert(0, os.path.join(ROOT, "src", "tools"))
+    import score as score_module
+
+    scored = score_module.score(out, out)
+
+    assert scored["score"] == pytest.approx(1.0, abs=0.0005)
+    assert scored["is_valid"] is True
+
+
 class _NoKernel:
     """A worker never asked to run anything, for a route that never reaches Design."""
 

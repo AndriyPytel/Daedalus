@@ -95,7 +95,10 @@ def main():
     print("event log     :", args.log)
 
     if args.save:
-        client.save(args.save)
+        if args.save.lower().endswith((".step", ".stp")):
+            client.export_step(args.save)
+        else:
+            client.save(args.save)
         print("saved         :", args.save)
 
     client.close()

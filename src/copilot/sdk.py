@@ -287,6 +287,16 @@ class Client:
         self.document.saveAs(path)
         return path
 
+    def export_step(self, path):
+        """
+        Write this Client's modelled geometry to *path* as STEP, and hand
+        the path back -- `save` writes a Document; `saveAs` would otherwise
+        append `.FCStd` to a STEP-shaped name and leave no STEP behind.
+        """
+        from core.freecad_apply import export_step
+
+        return export_step(self.document, path)
+
     def close(self):
         """Let the kernel go and close the Document. A Client is not reused after this."""
         if self.kernel is not None:

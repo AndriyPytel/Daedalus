@@ -1177,6 +1177,24 @@ def _measurable(obj):
     return bound
 
 
+def export_step(document, path):
+    """
+    Write *document*'s modelled geometry to *path* as STEP, and hand the
+    path back.
+
+    Only the top-level objects `_measurable` calls real geometry go in --
+    a Sketch or Pad an unhidden Body already fused into its own Shape, or
+    a Body's own Origin scaffolding, would double the geometry or fail
+    `Part.export` outright.
+    """
+    import Part
+
+    objects = [obj for obj in document.Objects
+               if not obj.InList and _measurable(obj) is not None]
+    Part.export(objects, path)
+    return path
+
+
 def _overall_size(doc):
     """
     How big the modelled part is, `[x, y, z]` in mm, or None if nothing is.
