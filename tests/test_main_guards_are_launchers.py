@@ -13,6 +13,7 @@ LAUNCHED = {
     "src/core/kernel/kernel_worker.py",
     "src/tools/run.py",
     "src/tools/lane.py",
+    "src/tools/score.py",
 }
 
 MAIN_GUARD = re.compile(r'^if __name__ (==|in) ', re.MULTILINE)

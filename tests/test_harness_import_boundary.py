@@ -50,4 +50,4 @@ def test_the_harness_directory_holds_exactly_two_scripts():
 
     harness = {path for path in tracked() if path.startswith("src/tools/")}
 
-    assert harness == {"src/tools/run.py", "src/tools/lane.py"}
+    assert harness == {"src/tools/run.py", "src/tools/lane.py", "src/tools/score.py"}

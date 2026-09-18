@@ -92,9 +92,10 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
     A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone,
     which is what a part named by a standard rather than drawn on a page is.
     """
+    save = log[: -len(".jsonl")] + ".step" if log.endswith(".jsonl") else log + ".step"
     cmd = [python, os.path.join(ROOT, "tools", "run.py"),
           "--intent", intent, "--model", model,
-          "--provider", provider, "--effort", effort, "--log", log]
+          "--provider", provider, "--effort", effort, "--log", log, "--save", save]
     if sheet:
         cmd += ["--attach", sheet]
     if budget_usd is not None:
@@ -202,6 +203,39 @@ def _reason(events, m):
     return ""
 
 
+MODELMANIA_DIR = os.environ.get(
+    "FCC_MODELMANIA_DIR", os.path.join(os.path.dirname(ROOT), "manual", "modelmania"))
+EXEMPLAR_DIR = os.path.join(MODELMANIA_DIR, "exemplar")
+
+
+def _exemplar_for(label):
+    """The Exemplar STEP *label* scores against, or `None` when it names none.
+
+    A baseline label is `<sheet stem>` or `<sheet stem>-rep<n>`; only the
+    six `manual/modelmania/exemplar/<stem>.step` sheets have one, and
+    `FCC_MODELMANIA_DIR` names where that tree actually lives, same as
+    `tests/modelmania_harness.py`'s own `EXEMPLAR_DIR`.
+    """
+    import re as _re
+
+    stem = _re.sub(r"-rep\d+$", "", label)
+    exemplar = os.path.join(EXEMPLAR_DIR, stem + ".step")
+    return exemplar if os.path.isfile(exemplar) else None
+
+
+def _score_for(path, label):
+    """The run's own Score against its Exemplar, or `None` when either is absent."""
+    candidate = path[: -len(".jsonl")] + ".step" if path.endswith(".jsonl") else None
+    exemplar = _exemplar_for(label)
+    if not candidate or not exemplar or not os.path.exists(candidate):
+        return None
+
+    import score as score_module
+
+    result = score_module.score(candidate, exemplar)
+    return result["score"] if result is not None else None
+
+
 def _rows(out):
     """(model, label, events, Measurement), one per sweep log under *out*."""
     from core.events import replay
@@ -209,7 +243,13 @@ def _rows(out):
 
     for model, label, path in _logs(out):
         events, _truncated = replay(path)
-        yield model, label, events, measure(path)
+        yield model, label, events, measure(path, score=_score_for(path, label))
+
+
+def _score_average(measurements):
+    """Mean Score over the runs that have one; `0.0` when none do, like `core.measure._average`."""
+    scored = [m.score for m in measurements if m.score is not None]
+    return sum(scored) / len(scored) if scored else 0.0
 
 
 def _summary_rows():
@@ -224,6 +264,7 @@ def _summary_rows():
         ("avg cost (USD)", lambda ms: _average(ms, lambda m: m.cost_usd), "{:.4f}"),
         ("avg working (s)", lambda ms: _average(ms, lambda m: m.working_seconds), "{:.1f}"),
         ("avg questions", lambda ms: _average(ms, lambda m: m.question_count), "{:.1f}"),
+        ("avg score", _score_average, "{:.4f}"),
     )
 
 
@@ -255,10 +296,14 @@ def _verdict(events, m):
     return "-"
 
 
+def _fmt_score(value):
+    return "-" if value is None else "{:.4f}".format(value)
+
+
 def _detail_table(rows):
     header = ["model", "sheet", "verdict", "reason", "confirmed/unmet",
              "steps started/applied", "preflight fails", "cost (USD)",
-             "working (s)", "questions", "truncated"]
+             "working (s)", "questions", "truncated", "score"]
     lines = [_row(header), _row(["---"] * len(header))]
     for model, label, events, m in rows:
         confirmed, unmet = _assertion_counts(events)
@@ -267,7 +312,7 @@ def _detail_table(rows):
                 "%d/%d" % (m.steps_started, m.steps_applied),
                 str(m.preflight_failures), "{:.4f}".format(m.cost_usd),
                 "{:.1f}".format(m.working_seconds), str(m.question_count),
-                "yes" if m.truncated else "no"]
+                "yes" if m.truncated else "no", _fmt_score(m.score)]
         lines.append(_row(cells))
     return "\n".join(lines)
 

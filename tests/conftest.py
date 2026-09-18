@@ -86,6 +86,15 @@ def _try_import_freecad():
 
 HAVE_FREECAD = _try_import_freecad()
 
+
+def _have_cadgenbench():
+    """The vendored scorer's own venv, named by `CADGENBENCH_VENV` or defaulting beside the repo."""
+    python = os.environ.get("CADGENBENCH_VENV") or os.path.join(ROOT, "harness", ".venv", "bin", "python")
+    return os.path.exists(python)
+
+
+HAVE_CADGENBENCH = _have_cadgenbench()
+
 for entry in (ROOT, SRC, MOD):
     if entry in sys.path:
         sys.path.remove(entry)
@@ -187,12 +196,14 @@ def no_module_leaves_a_qthread_running():
 
 
 def pytest_collection_modifyitems(config, items):
-    if HAVE_FREECAD:
-        return
-    skip = pytest.mark.skip(reason="FreeCAD not importable; set FREECAD_LIB to its lib dir")
+    skip_freecad = pytest.mark.skip(reason="FreeCAD not importable; set FREECAD_LIB to its lib dir")
+    skip_cadgenbench = pytest.mark.skip(
+        reason="vendored CADGenBench scorer not found; set CADGENBENCH_VENV")
     for item in items:
-        if "freecad" in item.keywords:
-            item.add_marker(skip)
+        if not HAVE_FREECAD and "freecad" in item.keywords:
+            item.add_marker(skip_freecad)
+        if not HAVE_CADGENBENCH and "cadgenbench" in item.keywords:
+            item.add_marker(skip_cadgenbench)
 
 
 _SHEET_TEST_FILES = {

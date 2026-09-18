@@ -273,3 +273,44 @@ def test_report_sums_question_count_in_summary_and_shows_it_in_detail(tmp_path):
 
     assert "2.0" in summary
     assert "questions" in detail
+
+
+def test_report_shows_a_dash_for_a_sheet_with_no_exemplar(tmp_path):
+    _write_events(str(tmp_path / "haiku" / "bolt-nut.jsonl"), [
+        (1, "review_verdict", {"verdict": "pass", "reason": "ok"}),
+    ])
+
+    text = lane.report(str(tmp_path))
+
+    detail_row = next(line for line in text.split("## Detail")[1].splitlines() if "bolt-nut" in line)
+    assert detail_row.rstrip().endswith("| - |")
+
+
+def test_score_for_is_none_without_a_matching_exemplar(tmp_path):
+    log = str(tmp_path / "bolt-nut.jsonl")
+    open(log, "w").close()
+
+    assert lane._score_for(log, "bolt-nut") is None
+
+
+def test_score_for_is_none_without_a_saved_step(tmp_path, monkeypatch):
+    monkeypatch.setattr(lane, "EXEMPLAR_DIR", str(tmp_path))
+    exemplar = tmp_path / "mm2025-phase1.step"
+    exemplar.write_text("not a real step")
+    log = str(tmp_path / "mm2025-phase1-rep1.jsonl")
+    open(log, "w").close()
+
+    assert lane._score_for(log, "mm2025-phase1-rep1") is None
+
+
+def test_score_for_reads_the_scorer_when_both_files_exist(tmp_path, monkeypatch):
+    monkeypatch.setattr(lane, "EXEMPLAR_DIR", str(tmp_path))
+    (tmp_path / "mm2025-phase1.step").write_text("exemplar")
+    log = str(tmp_path / "mm2025-phase1-rep1.jsonl")
+    open(log, "w").close()
+    (tmp_path / "mm2025-phase1-rep1.step").write_text("candidate")
+
+    import score as score_module
+    monkeypatch.setattr(score_module, "score", lambda candidate, exemplar: {"score": 0.5})
+
+    assert lane._score_for(log, "mm2025-phase1-rep1") == 0.5

@@ -33,7 +33,7 @@ def tracked():
                             capture_output=True, text=True, check=True)
     return set(listed.stdout.split("\n")) - {""}
 
-NOT_THE_ADDON = {"tests", "manual", "logs", "docs", "config", "src", ".git", ".venv"}
+NOT_THE_ADDON = {"tests", "manual", "logs", "docs", "config", "src", ".git", ".venv", "harness"}
 
 
 def package_dirs():

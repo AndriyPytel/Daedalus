@@ -31,6 +31,7 @@ class Measurement:
     assertion_fail_rate: float
     review_fail_rate: float
     question_count: int
+    score: Optional[float] = None
 
 
 def _fail_rate(events, is_failure) -> float:
@@ -78,7 +79,12 @@ def _checks_fail_rate(assertions) -> float:
     return unmet / total if total else 0.0
 
 
-def measure(path: str) -> Measurement:
+def measure(path: str, score: Optional[float] = None) -> Measurement:
+    """
+    One run's process metrics from its Session log, plus *score* -- the
+    Score a Document this run produced got against its Exemplar, when the
+    caller already computed one (`tools/lane.py`'s report does, by name).
+    """
     events, truncated = replay(path)
     verdicts = [event for event in events if event.kind == REVIEW_VERDICT]
     blocks = [event for event in events if event.kind == BLOCKED]
@@ -101,6 +107,7 @@ def measure(path: str) -> Measurement:
         assertion_fail_rate=_checks_fail_rate(assertions),
         review_fail_rate=_fail_rate(verdicts, lambda event: event.data.get("verdict") == "fail"),
         question_count=sum(1 for event in events if event.kind == QUESTION),
+        score=score,
     )
 
 
