@@ -139,6 +139,16 @@ def smoke_tasks():
     return [(sheet.stem, str(sheet))]
 
 
+PINNED_BUDGET_USD = 40.0
+"""
+Default `--budget-usd` for `--pinned`: one opus `mm2025-phase1` run at
+`--effort high` cost $9.66 (Design) + $1.54 (Plan) + $20.29 for 8 of 9
+Execute Steps, and was cut off before a verdict by a $30 ceiling -- too low
+to let a pinned run finish, so `--pinned` defaults to $40 instead of
+leaving `--budget-usd` unset and risking an unbounded overnight spend.
+"""
+
+
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
           resume, provider, run_seconds):
     state_path = os.path.join(out, "state.json")
@@ -441,6 +451,8 @@ def main():
         if len(args.model) != 1:
             raise SystemExit("--pinned takes exactly one --model, run again for a second one")
         tasks = pinned_tasks()
+        if args.budget_usd is None:
+            args.budget_usd = PINNED_BUDGET_USD
     elif args.smoke:
         if len(args.model) != 1:
             raise SystemExit("--smoke takes exactly one --model, run again for a second one")

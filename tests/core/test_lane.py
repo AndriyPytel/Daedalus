@@ -439,3 +439,33 @@ def test_compare_marks_a_score_difference_smaller_than_the_floor_unmeasurable(tm
     table = compare([baseline_log], [experiment_log], "before", "after", score_floor=1.0)
 
     assert "unmeasurable" in table.lower()
+
+
+def test_pinned_defaults_the_budget_ceiling_above_the_run_a_30_dollar_cap_cut_off(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_sweep(tasks, models, effort, budget_usd, *rest):
+        captured["budget_usd"] = budget_usd
+
+    monkeypatch.setattr(lane, "sweep", fake_sweep)
+    monkeypatch.setattr(sys, "argv", ["lane.py", "--pinned", "--model", "opus", "--out", str(tmp_path)])
+
+    lane.main()
+
+    assert captured["budget_usd"] == lane.PINNED_BUDGET_USD
+
+
+def test_an_explicit_budget_overrides_the_pinned_default(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_sweep(tasks, models, effort, budget_usd, *rest):
+        captured["budget_usd"] = budget_usd
+
+    monkeypatch.setattr(lane, "sweep", fake_sweep)
+    monkeypatch.setattr(sys, "argv", [
+        "lane.py", "--pinned", "--model", "opus", "--budget-usd", "55", "--out", str(tmp_path),
+    ])
+
+    lane.main()
+
+    assert captured["budget_usd"] == 55.0
