@@ -6,6 +6,8 @@ name does not crash, it silently deforms the model; and Gui/selection code
 runs differently in the worker than it will here, which makes Preflight
 meaningless rather than wrong.
 """
+import ast
+
 import pytest
 
 from core.lint import lint, selected_elements
@@ -139,7 +141,7 @@ def test_adding_a_feature_to_a_body_passes():
 def test_document_only_code_passes():
     code = (
         "box = doc.addObject('Part::Box', 'Box')\n"
-        "box.Length = 10\n"
+        "box.Length = design['features']['Box']['length']\n"
         "doc.recompute()\n"
     )
 
@@ -275,7 +277,7 @@ def test_a_real_partdesign_feature_is_untouched():
     code = (
         "pad = body.newObject('PartDesign::Pad', 'Pad')\n"
         "pad.Profile = sketch\n"
-        "pad.Length = 12.0\n"
+        "pad.Length = design['features']['Pad']['length']\n"
     )
 
     assert lint(code).ok, lint(code).report()
@@ -548,11 +550,12 @@ def test_the_reason_names_the_allocated_name_map():
 def test_a_lookup_of_an_object_the_user_made_before_the_run_is_accepted():
     """No addObject('...', 'UsersBox') anywhere in this Step's own code, so
     the name is not one this run allocated -- it is the user's own object."""
-    assert lint("doc.getObject('UsersBox').Length = 99").ok
+    assert lint("doc.getObject('UsersBox').Label = 'Renamed'").ok
 
 
 def test_addressing_the_returned_reference_instead_needs_no_lookup():
-    assert lint("box = doc.addObject('Part::Box', 'Box')\nbox.Length = 10").ok
+    code = "box = doc.addObject('Part::Box', 'Box')\nbox.Length = design['features']['Box']['length']"
+    assert lint(code).ok
 
 
 def test_a_lookup_of_a_name_that_is_not_the_one_just_created_is_accepted():
@@ -689,3 +692,92 @@ def test_reading_or_signing_off_boundbox_is_untouched(code):
     acts on, not the property existing.
     """
     assert lint(code).ok, lint(code).report()
+
+
+def _dimensional_findings(code):
+    """`dimensional_literal`/`dimensional_default` are not wired into `lint()` --
+    no Step can read a Design value at the point it runs, so this is how a
+    regression tool would call them."""
+    from core.lint import dimensional_default, dimensional_literal, literal_bindings
+
+    tree = ast.parse(code)
+    bindings = literal_bindings(tree)
+    findings = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        literal = dimensional_literal(node, bindings)
+        if literal:
+            findings.append(("literal",) + literal)
+        defaulted = dimensional_default(node)
+        if defaulted:
+            findings.append(("default", defaulted))
+    return findings
+
+
+@pytest.mark.parametrize("code", [
+    "pad.Length = 80.0",
+    "pocket.Radius = 12.5",
+    "fillet.Radius = 3",
+])
+def test_a_bare_numeral_in_a_dimensional_position_is_found(code):
+    assert _dimensional_findings(code)
+
+
+def test_the_finding_names_the_target_and_the_value():
+    findings = _dimensional_findings("pad.Length = 80.0")
+
+    assert findings == [("literal", "pad.Length", 80.0)]
+
+
+def test_a_dimension_written_as_a_design_reference_is_not_found():
+    code = "pad.Length = design['features']['Boss']['length']\n"
+
+    assert not _dimensional_findings(code)
+
+
+@pytest.mark.parametrize("code", [
+    "pad.Length = 0",
+    "pad.Length = 1",
+    "revolve.Angle = 90",
+    "revolve.Angle = 360",
+])
+def test_counts_indices_and_a_right_angle_are_not_dimensions(code):
+    assert not _dimensional_findings(code)
+
+
+def test_a_reference_resolved_with_a_default_is_found():
+    code = "pad.Length = design.get('length', 80.0)\n"
+
+    assert _dimensional_findings(code) == [("default", "pad.Length")]
+
+
+def test_a_non_dimensional_attribute_with_a_number_is_untouched():
+    assert not _dimensional_findings("pad.Occurrences = 4")
+    assert not _dimensional_findings("hole.Type = 0")
+
+
+def test_a_bare_numeral_named_one_hop_away_is_still_found():
+    code = "L = 80.0\npad.Length = L\n"
+
+    assert _dimensional_findings(code) == [("literal", "pad.Length", 80.0)]
+
+
+def test_a_variable_computed_from_geometry_is_not_a_bare_numeral():
+    code = "L = base.Shape.BoundBox.YLength\npad.Length = L\n"
+
+    assert not _dimensional_findings(code)
+
+
+def test_a_bare_numeral_unpacked_from_a_tuple_is_still_found():
+    code = "L, D = 150.0, 100.0\npad.Length = L\n"
+
+    assert _dimensional_findings(code) == [("literal", "pad.Length", 150.0)]
+
+
+def test_none_of_the_lint_wired_checks_touch_a_bare_dimensional_numeral():
+    """`dimensional_literal`/`dimensional_default` are findings a regression
+    tool reads, not a `lint()` refusal: no Step can satisfy the reference
+    form at the point its code actually runs."""
+    assert lint("pad.Length = 80.0").ok
+    assert lint("pad.Length = design.get('length', 80.0)\n").ok
