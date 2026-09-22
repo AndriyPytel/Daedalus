@@ -278,18 +278,20 @@ def test_a_twice_placed_conflict_reaches_the_gate_the_way_pointing_does():
     """
     model = {
         "features": [
-            {"id": "boss-centre", "kind": "boss, centred",
+            {"id": "boss-centre", "kind": "boss",
              "axis": {"value": "along the depth"},
              "position": {"the left end face": {"value": "60 mm"}}},
-            {"id": "boss-right", "kind": "boss, offset right",
+            {"id": "boss-right", "kind": "boss",
              "axis": {"value": "along the depth"},
              "position": {"the left end face": {"value": "60 mm"}}},
         ],
     }
     grown = merge({}, model)
     reading = each_disagreement_once(grown)
+    identity = [conflict for conflict in grown["conflicts"]
+                if "every shared datum agrees" in conflict.get("about", "")]
 
-    assert [conflict["kind"] for conflict in grown["conflicts"]] == [A_CONFLICT]
+    assert [conflict["kind"] for conflict in identity] == [A_CONFLICT]
     assert core.HEADED[core.A_CONFLICT] in render(reading)
     assert "boss-centre" in render(reading) and "boss-right" in render(reading)
 

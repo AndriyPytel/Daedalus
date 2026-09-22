@@ -139,12 +139,15 @@ def _axis_direction(feature):
 
 def twice_placed(model) -> list:
     """
-    Two features with the same axis direction, agreeing at one datum and
-    differing at another -- one placement described twice. Requires all
-    three: axes match, one shared datum agrees, another differs; without
-    the third, agreeing everywhere makes them synonym candidates
-    (superseded_by), not conflicts. Returns conflicts in sorted order, so
-    the result is order-independent.
+    Two features with the same axis direction and nothing between them to
+    tell them apart -- one placement described twice. Fires on a
+    contradiction (one shared datum agrees, another differs) or on plain
+    identity (same `kind`, every shared datum agrees, and no shared
+    datum's `direction` field names opposing ends); a concentric bore and
+    the ring around it share a datum without being one feature, so
+    identity also needs the same `kind`, the way `twice_over` already
+    does. Returns conflicts in sorted order, so the result is
+    order-independent.
     """
     features = [feature for feature in _features(model)
                 if not feature.get("superseded_by")]
@@ -171,6 +174,7 @@ def twice_placed(model) -> list:
 
                 agreeing = []
                 differing = []
+                opposing_direction = False
 
                 for datum in shared_datums:
                     value_a = _extract_value(position_a[datum])
@@ -188,22 +192,37 @@ def twice_placed(model) -> list:
                     if numeric_a is None or numeric_b is None:
                         continue
 
+                    direction_a = _direction_value(position_a[datum])
+                    direction_b = _direction_value(position_b[datum])
+                    if direction_a and direction_b and direction_a != direction_b:
+                        opposing_direction = True
+
                     if numeric_a == numeric_b:
                         agreeing.append((datum, value_a))
                     else:
                         differing.append((datum, value_a, value_b))
 
-                if agreeing and differing:
-                    id_a = feature_a.get("id") or "unknown"
-                    id_b = feature_b.get("id") or "unknown"
-                    pair = sorted([id_a, id_b])
+                if not agreeing:
+                    continue
 
+                id_a = feature_a.get("id") or "unknown"
+                id_b = feature_b.get("id") or "unknown"
+                pair = sorted([id_a, id_b])
+
+                kind_a, kind_b = feature_a.get("kind"), feature_b.get("kind")
+
+                if differing:
                     datum_diff, value_a_diff, value_b_diff = differing[0]
-
                     found.append(_conflict(
                         "features → %s and %s (same axis, one placement described twice)" % (pair[0], pair[1]),
                         "%s says %s: %s" % (pair[0], datum_diff, value_a_diff if pair[0] == id_a else value_b_diff),
                         "%s says %s: %s" % (pair[1], datum_diff, value_b_diff if pair[1] == id_b else value_a_diff)))
+                elif not opposing_direction and kind_a and kind_a == kind_b:
+                    datum_same, value_same = agreeing[0]
+                    found.append(_conflict(
+                        "features → %s and %s (same axis, every shared datum agrees -- one feature described twice)" % (pair[0], pair[1]),
+                        "%s says %s: %s" % (pair[0], datum_same, value_same),
+                        "%s says %s: %s" % (pair[1], datum_same, value_same)))
 
     return found
 
@@ -239,6 +258,17 @@ def _extract_value(payload):
     if isinstance(payload, dict):
         return None
     return payload
+
+
+def _direction_value(payload):
+    """
+    The `direction` a datum-measured payload names, or "" when it carries
+    none -- empty means not established, never a guessed direction, so two
+    empty readings never count as opposing.
+    """
+    if isinstance(payload, dict):
+        return str(payload.get("direction") or "").strip()
+    return ""
 
 
 _ROUNDED_OUTSIDE = ("capsule", "obround", "racetrack", "oval",
