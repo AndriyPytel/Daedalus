@@ -288,7 +288,8 @@ def test_the_topology_check_names_the_through_count_design_established():
 def test_a_part_with_no_through_features_at_all_is_checked_against_zero():
     from core.loop.assertion import the_topology_measured
 
-    no_through = {"features": [{"id": "pad-outer", "kind": "pad", "topology": "blind"}]}
+    no_through = {"features": [{"id": "pad-outer", "kind": "pad", "topology": "blind",
+                                "goes_through": False}]}
 
     code = the_topology_measured(no_through)
 
@@ -307,14 +308,21 @@ _THE_QWEN_GATEWAY_SWEEP_CUTOUT_TOPOLOGY = (
 
 
 def test_a_feature_with_through_in_its_prose_but_no_flag_is_not_counted():
+    """
+    The flag is established elsewhere in the model (`hole-left` carries
+    it), so the cutout's own missing flag reads as "not through" -- its
+    prose saying "goes through the height of the part" must not count it.
+    """
     from core.loop.assertion import the_topology_measured
 
-    prose_only = {"features": [{"id": "cutout-centre", "kind": "cutout",
-                                 "topology": _THE_QWEN_GATEWAY_SWEEP_CUTOUT_TOPOLOGY}]}
+    prose_only = {"features": [
+        {"id": "hole-left", "kind": "hole", "topology": "through", "goes_through": True},
+        {"id": "cutout-centre", "kind": "cutout",
+         "topology": _THE_QWEN_GATEWAY_SWEEP_CUTOUT_TOPOLOGY}]}
 
     code = the_topology_measured(prose_only)
 
-    assert "b1 == 0" in code
+    assert "b1 == 1" in code
 
 
 def test_a_feature_with_the_flag_set_is_counted_whatever_its_prose_says():
