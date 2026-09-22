@@ -410,6 +410,35 @@ def test_smoke_tasks_is_one_sheet_one_repeat():
     assert sheet.endswith(".pdf")
 
 
+def test_smoke_tasks_takes_a_sheet_argument():
+    tasks = lane.smoke_tasks("mm2024-phase1.pdf")
+
+    assert len(tasks) == 1
+    label, sheet = tasks[0]
+    assert label == "mm2024-phase1"
+    assert sheet == str(modelmania_harness.PHASES["mm2024-phase1.pdf"])
+
+
+def test_smoke_cli_selects_mm2024_phase1(monkeypatch, tmp_path):
+    monkeypatch.setattr(sys, "argv", [
+        "lane.py", "--smoke", "--smoke-sheet", "mm2024-phase1.pdf",
+        "--model", "sonnet", "--out", str(tmp_path),
+    ])
+    called = {}
+
+    def fake_sweep(tasks, *args, **kwargs):
+        called["tasks"] = tasks
+        return None
+
+    monkeypatch.setattr(lane, "sweep", fake_sweep)
+
+    lane.main()
+
+    assert len(called["tasks"]) == 1
+    label, sheet = called["tasks"][0]
+    assert sheet.endswith("mm2024-phase1.pdf")
+
+
 def test_pinned_needs_exactly_one_model(monkeypatch):
     monkeypatch.setattr(sys, "argv", [
         "lane.py", "--pinned", "--model", "sonnet", "--model", "opus", "--out", "/tmp/x",
