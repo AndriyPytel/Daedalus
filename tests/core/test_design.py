@@ -1919,6 +1919,101 @@ def test_two_features_same_placeholder_not_a_conflict():
     )
 
 
+def _placed(value, direction=None):
+    reading = _read(value)
+    if direction is not None:
+        reading["direction"] = direction
+    return reading
+
+
+def test_boss_centre_boss_right_full_agreement_no_direction_is_identity():
+    """
+    The mm2024 duplicate: `boss-centre` and `boss-right` are the same
+    `kind` of boss, share the axis, and agree at every shared datum, with
+    no `direction` stated on either. Nothing disagrees, so a
+    contradiction-only check could never fire -- `twice_over` also flags
+    the pair, on `kind` and a shared datum alone, so this asserts
+    `twice_placed`'s own conflict rather than the count of every check's.
+    """
+    model = {
+        "features": [
+            {
+                "id": "boss-centre",
+                "kind": "boss",
+                "axis": _read("along the depth"),
+                "position": {
+                    "the left end face": _placed("60 mm"),
+                    "the longitudinal centre plane": _placed("0 mm"),
+                    "the top face": _placed("rises from this face"),
+                },
+            },
+            {
+                "id": "boss-right",
+                "kind": "boss",
+                "axis": _read("along the depth"),
+                "position": {
+                    "the left end face": _placed("60 mm"),
+                    "the longitudinal centre plane": _placed("0 mm"),
+                    "the top face": _placed("rises from this face"),
+                },
+            },
+        ],
+    }
+    grown = merge({}, model)
+    identity_conflicts = [conflict for conflict in grown.get("conflicts", [])
+                          if "boss-centre" in conflict.get("about", "")
+                          and "boss-right" in conflict.get("about", "")
+                          and "every shared datum agrees" in conflict.get("about", "")]
+
+    assert len(identity_conflicts) == 1, \
+        f"Expected 1 identity conflict, got {identity_conflicts}"
+    assert identity_conflicts[0]["kind"] == "conflict"
+
+
+def test_hole_left_hole_right_opposing_direction_is_not_identity():
+    """
+    The mm2025 symmetric pair: `hole-left` and `hole-right` are the same
+    `kind` of hole and agree on every shared numeric datum -- bottom
+    25/25, top 25/25, transverse centre plane 50/50 -- but the transverse
+    centre plane's `direction` field names opposite ends. Two real holes,
+    not one described twice.
+    """
+    model = {
+        "features": [
+            {
+                "id": "hole-left",
+                "kind": "hole",
+                "axis": _read("along the height"),
+                "position": {
+                    "the bottom face": _placed("25 mm"),
+                    "the top face": _placed("25 mm"),
+                    "the transverse centre plane": _placed("50 mm", "from the left end"),
+                },
+            },
+            {
+                "id": "hole-right",
+                "kind": "hole",
+                "axis": _read("along the height"),
+                "position": {
+                    "the bottom face": _placed("25 mm"),
+                    "the top face": _placed("25 mm"),
+                    "the transverse centre plane": _placed("50 mm", "from the right end"),
+                },
+            },
+        ],
+    }
+    grown = merge({}, model)
+    identity_conflicts = [conflict for conflict in grown.get("conflicts", [])
+                          if "hole-left" in conflict.get("about", "")
+                          and "hole-right" in conflict.get("about", "")
+                          and "every shared datum agrees" in conflict.get("about", "")]
+
+    assert len(identity_conflicts) == 0, (
+        f"Expected no identity conflict (opposing direction is a bilateral pair), "
+        f"got {identity_conflicts}"
+    )
+
+
 CLOSED = "closed"
 
 
