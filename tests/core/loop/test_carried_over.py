@@ -12,7 +12,7 @@ def test_a_wording_only_revision_carries_a_reworded_step_that_keeps_its_operatio
     previous = ["Pad the outline", "Boss the centre", "Rib the centre",
                 "Fillet the corner"]
     revised = ["Pad a cleaner outline", "Boss a rounder centre",
-               "Rib the tidier centre", "Fillet the corner, R2"]
+               "Rib the tidier centre", "Fillet the sharp corner"]
 
     assert _carried_over(previous, revised, applied=3, wording_only=True) == 3
 
