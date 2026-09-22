@@ -117,7 +117,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     continue
                 if supervisor is not None:
                     supervisor.record_turn()
-                    if supervisor.outcome:
+                    if supervisor.outcome or supervisor.reserved():
                         if last_call:
                             raise AgentGaveUp("%s ran out of budget before declaring" % phase)
                         last_call = True
@@ -226,7 +226,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 continue
             if supervisor is not None:
                 supervisor.record_turn()
-                if supervisor.outcome and not last_call:
+                if (supervisor.outcome or supervisor.reserved()) and not last_call:
                     last_call = True
                     if stream is not None:
                         reached = supervisor.exhaustion_reason()

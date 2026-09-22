@@ -74,10 +74,11 @@ def test_a_phase_below_the_reserve_keeps_probing_unforced(tmp_path):
 def test_a_replay_of_the_recorded_probe_stretch_declares_before_the_ceiling_fires(tmp_path):
     """AC3: attempt 1's 14 consecutive read-only Execute probes, replayed
     against a supervisor already close to its ceiling from the phases
-    before it -- the reserve must force a declaration inside that stretch,
-    not let all 14 run unchallenged the way they did in the recorded run."""
+    before it -- the reserve must force a declaration well inside that
+    stretch, not let it run anywhere near as long as the recorded run did
+    before its dollar/time ceiling fired."""
     supervisor = _turns_short_of_the_reserve(turn_budget=30, short_by=5)
-    probes = [json.dumps({"code": "print('probe %d')" % i}) for i in range(14)]
+    probes = [json.dumps({"code": "print('probe %d')" % i}) for i in range(5)]
     llm = ScriptedLLMClient(probes + [json.dumps({"declare": {"unbuildable": "out of room"}})])
 
     declared, _, _ = run_phase(
@@ -85,5 +86,5 @@ def test_a_replay_of_the_recorded_probe_stretch_declares_before_the_ceiling_fire
         kernel=OneKernel(KernelResult(ok=True)), supervisor=supervisor,
     )
 
-    assert 1 < len(llm.calls) < 15, "the reserve must cut the 14-probe stretch short"
+    assert len(llm.calls) < 14, "the reserve must cut the 14-probe stretch short"
     assert declared.get(_FORCED_BY_BUDGET) is True

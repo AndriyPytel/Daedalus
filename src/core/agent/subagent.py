@@ -16,6 +16,12 @@ MB_PER_KERNEL = 100
 
 BUDGET_EXHAUSTED = "budget-exhausted"
 
+RESERVE = 3
+"""Turns held back before `turn_budget`'s wall: room for one forced
+declaration and the one retry that follows a refused Step, so `run_phase`
+can still ask for a choice while a turn remains to answer it, rather than
+only once `outcome` has already fired."""
+
 
 def _free_ram_mb():
     """
@@ -65,6 +71,18 @@ class SessionTreeSupervisor:
         if self.turns > self.turn_budget or self.tokens > self.token_budget:
             return BUDGET_EXHAUSTED
         return None
+
+    def reserved(self):
+        """
+        True once fewer than `RESERVE` turns remain before `turn_budget`,
+        while `outcome` is still `None` -- the point `run_phase` treats as
+        the reserve crossing, ahead of the hard ceiling `outcome` itself
+        answers for. A `turn_budget` no bigger than `RESERVE` itself has no
+        room to reserve anything ahead of `outcome`, so it never fires.
+        """
+        if self.outcome is not None or self.turn_budget <= RESERVE:
+            return False
+        return self.turns >= self.turn_budget - RESERVE
 
     def exhaustion_reason(self):
         """
