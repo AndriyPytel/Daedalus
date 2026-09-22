@@ -1,10 +1,10 @@
 """
-FCC-416: the closed vocabulary gains the fields the facts are already
-written in -- a canonical order for a feature `id`'s `place` tokens, a
-`direction` field for a datum-measured value, and a closed `goes_through`
-flag beside the free-text `topology` field. This ticket changes what the
-vocabulary declares, not any comparison or Gate logic that reads it --
-`merge()` is untouched, and these tests are its regression proof.
+The closed vocabulary gains the fields the facts are already written in --
+a canonical order for a feature `id`'s `place` tokens, a `direction` field
+for a datum-measured value, and a closed `goes_through` flag beside the
+free-text `topology` field. This changes what the vocabulary declares,
+not any comparison or Gate logic that reads it -- `merge()` is untouched,
+and these tests are its regression proof.
 """
 import re
 
