@@ -14,31 +14,22 @@ a rejection to argue with.
 Feature `id`: `<kind>-<place>` where kind is one of (hole, slot, pocket,
 cutout, pad, fillet, chamfer, boss, rib, thread, counterbore, countersink,
 groove, notch, tab, lug, ear, flange, step, shoulder, shell, draft) and place
-is one or two of (left, right, front, rear, top, bottom, upper, lower,
-centre, inner, outer), written in that order when two apply — the earlier
-word of the two before the later, `front-inner` never `inner-front` — so two
-readings of the same feature's place always spell the same `id`. Write the
-operation, not a synonym for it: a bore is
-a `hole`, a round is a `fillet`, an opening or a window is a `cutout`, a
-split or a saw cut is a `slot`, a recess is a `counterbore`. Write the shape,
-not the drawing's word for the region it sits in: an arm, a ring, a web, a
-band, a collar, a profile, a plate, a body, an outline or a contour is a
-`pad`. Put that word in the new `region` field instead — `region` is open
-text off the drawing and is never a value in `kind`, in `id`'s place slot, or
-in any other closed list here. A dimension the drawing gives — a diameter, a
-radius, a length, an angle — is never in `kind` either; it goes in its own
-field (`diameter`, `outer_diameter`, `radius`, `thickness`, `length`,
-`width`, `depth`, `angle`, `count`, `pitch`, `bolt_circle_diameter`). Append
-`-4x` for a repeated feature.
+is one or two of (left, right, front, rear, top, bottom, upper, lower, centre,
+inner, outer); `front-inner` never `inner-front`. Write the operation, not a
+synonym for it: a bore is a `hole`, a round is a `fillet`, an opening or a
+window is a `cutout`, a split or a saw cut is a `slot`, a recess is a
+`counterbore`. Write the shape, not the drawing's word for the region it sits
+in: an arm, a ring, a web, a band, a collar, a profile, a plate, a body, an
+outline or a contour is a `pad`. Put that word in the new `region` field
+instead — `region` is open text off the drawing and is never a value in
+`kind`, in `id`'s place slot, or in any other closed list here. A dimension
+the drawing gives — a diameter, a radius, a length, an angle — is never in
+`kind` either; it goes in its own field (`diameter`, `outer_diameter`,
+`radius`, `thickness`, `length`, `width`, `depth`, `angle`, `count`, `pitch`,
+`bolt_circle_diameter`). Append `-4x` for a repeated feature.
 
-A feature measured from a named end or side carries a `direction` field
-naming which one, in the drawing's own words ("from the left end", "from
-the right end"); left empty when nothing on the sheet establishes it —
-empty means not established, never a guessed direction.
-
-A feature's through-ness is the closed `goes_through` field (`true` or
-`false`), read on its own — never inferred from the word "through" turning
-up somewhere in the free-text `topology` field, which stays prose.
+`direction` marks the measured-from end (empty if unknown); `goes_through`,
+never inferred from the word "through" in `topology`.
 
 Datum `name`: one of (the left end face, the right end face, the front face,
 the rear face, the top face, the bottom face, the ring axis, the bore axis,
