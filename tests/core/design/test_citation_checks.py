@@ -21,22 +21,35 @@ except ImportError:
 
 SHEET = modelmania_harness.PHASES["mm2024-phase1.pdf"]
 
+SHEET_WITH_A_DECIMAL = modelmania_harness.PHASES["mm2023-phase1.pdf"]
+"""mm2024-phase1 prints no decimal at all; `65.5` here is the profile width."""
+
 needs_pymupdf = pytest.mark.skipif(pymupdf is None, reason="PyMuPDF is not installed")
 
 
-def _skip_unless_present():
-    if not os.path.exists(SHEET):
-        pytest.skip("sheet not found: %s; set FCC_MODELMANIA_DIR" % SHEET)
+def _skip_unless_present(path):
+    if not os.path.exists(path):
+        pytest.skip("sheet not found: %s; set FCC_MODELMANIA_DIR" % path)
 
 
-@pytest.fixture(scope="module")
-def sheet_words():
-    _skip_unless_present()
-    document = pymupdf.open(str(SHEET))
+def _words_of(path):
+    document = pymupdf.open(str(path))
     try:
         return [word[4] for page in document for word in page.get_text("words")]
     finally:
         document.close()
+
+
+@pytest.fixture(scope="module")
+def sheet_words():
+    _skip_unless_present(SHEET)
+    return _words_of(SHEET)
+
+
+@pytest.fixture(scope="module")
+def decimal_sheet_words():
+    _skip_unless_present(SHEET_WITH_A_DECIMAL)
+    return _words_of(SHEET_WITH_A_DECIMAL)
 
 
 def _read(value, citation):
@@ -81,3 +94,17 @@ def test_a_refused_citation_still_carries_its_reading(sheet_words):
     assert model["envelope"]["height"]["value"] == "40 mm"
     assert found[0]["kind"] == "conflict"
     assert found[0]["machine_written"] is True
+
+
+@needs_pymupdf
+def test_an_honest_decimal_citation_is_not_split_and_not_flagged(decimal_sheet_words):
+    """
+    `65.5` is one token on the sheet, not two -- a mark pattern that reads
+    digits alone would split it into `65` and `5`, and neither bare number
+    is printed anywhere on this sheet, so an honest decimal citation would
+    be refused as if it were fabricated.
+    """
+    model = {"envelope": {"width": _read(
+        "65.5 mm", "the profile, 65.5 across the flats")}}
+
+    assert fabricated_citation(model, decimal_sheet_words) == []
