@@ -1,8 +1,8 @@
 """Level 1 -- a `from` field checked against the sheet it claims to quote.
 
-Fed the mm2024-phase1 sheet's own text layer, per FCC-426: `40` appears
-bare at (586,412), `R8` and `4X` are both printed, and nothing on the
-sheet is ever parenthesised.
+Fed the mm2024-phase1 sheet's own text layer: `40` appears bare at
+(586,412), `R8` and `4X` are both printed, and nothing on the sheet is
+ever parenthesised.
 """
 import os
 
