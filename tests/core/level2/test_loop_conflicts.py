@@ -1332,3 +1332,19 @@ def test_an_honest_citation_is_left_alone(monkeypatch):
 
     assert loop_describe._the_citations_are_the_sheets(
         the_part, ["a.pdf"], Budgets()) == the_part
+
+
+def test_with_no_sheet_a_citation_is_not_flagged(monkeypatch):
+    """
+    The same abstention as `_off_the_sheet`'s own
+    `test_with_no_sheet_to_ask_nothing_is_off_the_sheet`: no sheet to check
+    against is not evidence the citation is fabricated.
+    """
+    monkeypatch.setattr(loop_describe, "_sheets", lambda attachments: [])
+
+    the_part = {"envelope": {"height": {
+        "value": "40 mm", "flag": "read",
+        "from": "SECTION B-B, the (40) reference dimension"}}}
+
+    assert loop_describe._the_citations_are_the_sheets(
+        the_part, ["a.pdf"], Budgets()) == the_part
