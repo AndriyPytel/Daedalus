@@ -200,6 +200,23 @@ def test_a_step_that_throws_leaves_the_document_untouched(doc, worker, tmp_path)
     assert [o.Name for o in doc.Objects] == before, "an aborted transaction left debris"
 
 
+def test_a_retried_step_after_an_abort_allocates_the_original_name(doc):
+    """
+    FreeCAD's own name allocator only appends a suffix when the name is
+    already taken; an aborted transaction that actually cleared its objects
+    leaves the retried Step free to claim the same name outright.
+    """
+    code = "doc.addObject('Part::Box', 'Box')"
+
+    with pytest.raises(BaseException):
+        run_in_transaction(doc, code + "\nraise RuntimeError('halfway')")
+
+    run_in_transaction(doc, code)
+
+    assert [o.Name for o in doc.Objects] == ["Box"], \
+        "the retry collided with debris the abort should have removed"
+
+
 def test_run_in_transactions_own_exec_frame_is_cut_from_the_traceback(doc):
     """The frame that actually failed is the Step's, not `run_in_transaction`'s."""
     from core.kernel.kernel_worker import trimmed_traceback
