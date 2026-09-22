@@ -1297,3 +1297,54 @@ def test_run_state_namespaces_are_dataclasses_that_reject_a_typo():
         instance = cls()
         with pytest.raises(AttributeError):
             getattr(instance, typo)
+
+
+def test_a_fabricated_citation_is_refused_into_conflicts(monkeypatch):
+    """
+    `_the_citations_are_the_sheets` is the same seam as
+    `_every_number_is_the_sheets`: the reading stays on the model, the
+    refusal is appended to `conflicts` through `merge`.
+    """
+    import types
+    words = [types.SimpleNamespace(text=word) for word in ["THE", "TOP", "VIEW", "60", "R8", "4X"]]
+    monkeypatch.setattr(loop_describe, "_sheets",
+                        lambda attachments: [types.SimpleNamespace(printed=words)])
+
+    the_part = {"envelope": {"height": {
+        "value": "40 mm", "flag": "read",
+        "from": "SECTION B-B, the (40) reference dimension"}}}
+
+    grown = loop_describe._the_citations_are_the_sheets(the_part, ["a.pdf"], Budgets())
+
+    assert grown["envelope"]["height"]["value"] == "40 mm"
+    assert len(grown["conflicts"]) == 1
+    assert "(40)" in str(grown["conflicts"][0])
+
+
+def test_an_honest_citation_is_left_alone(monkeypatch):
+    import types
+    words = [types.SimpleNamespace(text=word) for word in ["THE", "TOP", "VIEW", "R8", "4X"]]
+    monkeypatch.setattr(loop_describe, "_sheets",
+                        lambda attachments: [types.SimpleNamespace(printed=words)])
+
+    the_part = {"envelope": {"height": {
+        "value": "60 mm", "flag": "read", "from": "the top view, R8 4X"}}}
+
+    assert loop_describe._the_citations_are_the_sheets(
+        the_part, ["a.pdf"], Budgets()) == the_part
+
+
+def test_with_no_sheet_a_citation_is_not_flagged(monkeypatch):
+    """
+    The same abstention as `_off_the_sheet`'s own
+    `test_with_no_sheet_to_ask_nothing_is_off_the_sheet`: no sheet to check
+    against is not evidence the citation is fabricated.
+    """
+    monkeypatch.setattr(loop_describe, "_sheets", lambda attachments: [])
+
+    the_part = {"envelope": {"height": {
+        "value": "40 mm", "flag": "read",
+        "from": "SECTION B-B, the (40) reference dimension"}}}
+
+    assert loop_describe._the_citations_are_the_sheets(
+        the_part, ["a.pdf"], Budgets()) == the_part
