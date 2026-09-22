@@ -445,6 +445,28 @@ def _fillets_with_mixed_concavity(doc):
     return mixed
 
 
+def _raise_if_mixed_concavity(doc):
+    """
+    Refuse a mixed-concavity `Base` with its own sentence before OCC's
+    `command not done` or `FrozenShape` can bury it under a generic
+    recompute-error message.
+
+    Called once before the recompute -- against Base edges resolved from a
+    base feature the Step's own code already recomputed, so the check needs
+    no recompute of its own -- and once after, since a base feature this
+    same Step just created has no Shape yet at the first call and only
+    becomes checkable once the recompute below gives it one.
+    """
+    mixed = _fillets_with_mixed_concavity(doc)
+    if mixed:
+        raise RuntimeError(
+            "this Step built a fillet whose Base mixes concavities:\n" + "\n".join(mixed)
+            + "\nOne radius on a mixed selection pulls the concave edges inward and the "
+              "convex edges outward -- split Base by concavity (a face's own normal against "
+              "the other face's CenterOfMass at the edge's midpoint) and fillet one side "
+              "at a time.")
+
+
 _A_DRESSUP = {"PartDesign::Fillet": ("Radius", "makeFillet"),
               "PartDesign::Chamfer": ("Size", "makeChamfer")}
 
@@ -881,6 +903,8 @@ def _run_step_body(doc, namespace, touched, request):
     exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
     touched.diff(doc)
 
+    _raise_if_mixed_concavity(doc)
+
     if touched.touched():
         scope = _recompute_scope(doc, touched)
         if scope is None:
@@ -892,14 +916,7 @@ def _run_step_body(doc, namespace, touched, request):
     if failures:
         raise RuntimeError("recompute left these objects in error:\n" + "\n".join(failures))
 
-    mixed = _fillets_with_mixed_concavity(doc)
-    if mixed:
-        raise RuntimeError(
-            "this Step built a fillet whose Base mixes concavities:\n" + "\n".join(mixed)
-            + "\nOne radius on a mixed selection pulls the concave edges inward and the "
-              "convex edges outward -- split Base by concavity (a face's own normal against "
-              "the other face's CenterOfMass at the edge's midpoint) and fillet one side "
-              "at a time.")
+    _raise_if_mixed_concavity(doc)
 
     if _features_that_moved_no_material(doc, touched.created):
         raise RuntimeError(_IDLE_HEADLINE)
