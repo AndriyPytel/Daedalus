@@ -191,3 +191,29 @@ def test_a_crash_before_any_step_lands_is_refused_not_served_as_an_empty_session
     assert not refused.ok, \
         "an empty Document with no checkpoint behind it was served as if it were a session"
     assert "checkpoint" in refused.traceback.lower()
+
+
+def test_a_stdin_write_failure_mid_step_resumes_the_next_step_on_the_last_checkpoint(kernel):
+    """
+    AC1/FCC-423: reproduces the hypothesis in FCC-423's Solution Notes --
+    that a restart through `Kernel._ask`'s pre-write `stdin.write`/`flush`
+    raising `BrokenPipeError`/`ValueError` (`kernel.py:264-268`), forced
+    here by closing the worker's own stdin, leaves the resumed kernel's
+    Document missing objects a prior Step already checkpointed.
+    """
+    first = kernel.check("doc.addObject('Part::Box', 'RibPad')")
+    assert first.ok, first.traceback
+    second = kernel.check("doc.addObject('Part::Box', 'RibSketch')")
+    assert second.ok, second.traceback
+    doomed = kernel.pid
+
+    kernel._process.stdin.close()
+    broken = kernel.check("doc.addObject('Part::Box', 'NeverLands')")
+    assert not broken.ok, "a write to a closed stdin should not have reached the worker"
+    assert kernel.pid != doomed, "the worker was not replaced"
+
+    resumed = kernel.check("pass")
+    assert resumed.ok, resumed.traceback
+    still_there = _objects_in(resumed.checkpoint)
+    assert "RibPad" not in still_there, "reproduction failed: RibPad survived the forced restart"
+    assert "RibSketch" not in still_there, "reproduction failed: RibSketch survived the forced restart"
