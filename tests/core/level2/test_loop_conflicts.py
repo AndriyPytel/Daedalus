@@ -270,6 +270,30 @@ def test_an_outline_nobody_could_check_is_a_hazard_on_the_part(tmp_path, monkeyp
     assert core.HEADED[core.A_CHECK_HAZARD] in render(reading)
 
 
+def test_a_twice_placed_conflict_reaches_the_gate_the_way_pointing_does():
+    """
+    A `twice_placed` finding rides to the Gate through the same conflicts
+    section a `pointing` finding already uses -- the Gate reads the part,
+    and both land under the same `A_CONFLICT` heading once `merge` has run.
+    """
+    model = {
+        "features": [
+            {"id": "boss-centre", "kind": "boss, centred",
+             "axis": {"value": "along the depth"},
+             "position": {"the left end face": {"value": "60 mm"}}},
+            {"id": "boss-right", "kind": "boss, offset right",
+             "axis": {"value": "along the depth"},
+             "position": {"the left end face": {"value": "60 mm"}}},
+        ],
+    }
+    grown = merge({}, model)
+    reading = each_disagreement_once(grown)
+
+    assert [conflict["kind"] for conflict in grown["conflicts"]] == [A_CONFLICT]
+    assert core.HEADED[core.A_CONFLICT] in render(reading)
+    assert "boss-centre" in render(reading) and "boss-right" in render(reading)
+
+
 def test_a_child_that_never_starts_says_what_was_not_checked(tmp_path, monkeypatch):
     """
     `None` is a legitimate answer; silence is not. A worker that never came up
