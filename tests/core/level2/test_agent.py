@@ -9,6 +9,7 @@ import pytest
 
 from core.agent import phase_contract as pc
 from core.agent import AgentGaveUp, run_phase
+from core.agent.agent import _FORCED_BY_BUDGET
 from core.agent import agent
 from core.events import SUB_AGENT_ANSWERED, SUB_AGENT_SPAWNED, EventStream
 from core.kernel import Kernel, find_freecadcmd
@@ -170,7 +171,7 @@ def test_the_spent_budget_buys_one_last_turn_to_declare(kernel, tmp_path):
         kernel=kernel, supervisor=supervisor,
     )
 
-    assert declared == {"step": "one box"}
+    assert declared == {"step": "one box", _FORCED_BY_BUDGET: True}
     assert len(declarations) == 1
     assert "declare" in session.messages[-2]["content"]
 

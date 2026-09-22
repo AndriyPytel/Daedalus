@@ -32,6 +32,13 @@ class AgentGaveUp(Exception):
 _NO_DOCUMENT = object()
 
 
+_FORCED_BY_BUDGET = "_forced_by_budget"
+"""The key `run_phase` sets on a `declare` reply sent while `last_call` is
+True, so a caller can tell the declaration `budget_last_call.md` compelled
+from one the model chose to make -- a verdict on a Step it never had a turn
+left to attempt."""
+
+
 _DECLARATION_LIMIT = 15
 """Turns a phase may run code without declaring a Step before it is demanded
 one, past which a phase that still does not declare gives up. Counted against
@@ -79,6 +86,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
             message = _parsed(text)
             if "declare" in message:
                 declared = message["declare"]
+                if last_call and isinstance(declared, dict):
+                    declared[_FORCED_BY_BUDGET] = True
                 if pending_retry is not None and not (
                         declared.get("unbuildable") or declared.get("obsolete")):
                     declarations.append(pending_retry)

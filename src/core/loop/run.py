@@ -54,6 +54,7 @@ from core.loop.execute import (
     _MAY_START_AGAIN,
     _SHAPES_THE_PART,
     _SKIPPED_A_STEP,
+    _TURN_BUDGET_SPENT,
     _WHAT_NOW,
     _emit_plan,
     _freecad_version,
@@ -369,6 +370,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         last_pass.steps, last_pass.applied = steps, outcome["applied_here"]
         applied = progress.applied
 
+        if outcome.get("budget_exhausted"):
+            return _budget_exhausted(events, outcome["budget_exhausted"],
+                                     outcome["tried"], applied)
+
         if outcome["handback"] and stuck["applied"] == applied \
                 and not revisions.exhausted(budgets, steps):
             return _block(events, _GOING_NOWHERE % outcome["handback"],
@@ -528,6 +533,12 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                 charged = 0
                 free_trailing_gaps = 0
                 continue
+            if written.forced:
+                return {
+                    "handback": None, "obsolete": None, "description": described,
+                    "applied_here": index, "tried": [],
+                    "budget_exhausted": _TURN_BUDGET_SPENT % (index + 1, len(steps)),
+                }
             return {
                 "handback": "Step %d of %d could not be built as written: %s\n%s"
                             % (index + 1, len(steps), step, written.unbuildable),

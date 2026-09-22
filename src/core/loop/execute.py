@@ -12,7 +12,7 @@ from core.tools import ToolError
 
 import tempfile
 
-from core.agent.agent import run_phase
+from core.agent.agent import _FORCED_BY_BUDGET, run_phase
 from core.agent import phase_contract as pc
 from core.agent.subagent import SessionTreeSupervisor
 from core.loop.budgets import Budgets
@@ -120,16 +120,19 @@ class Written:
     What one Execute phase produced: each Step's declared code, keyed by
     number, and why a Step it was asked about has none. Keyed by Step
     number, not reply position, so a reply leaving a Step out leaves a
-    hole there instead of shifting later Steps' code. `unbuildable` is
-    why a Step was left out of a reply that coded the rest, and `said` is
-    what a reply carried instead of code, when it could leave a Step
-    uncovered -- none of either means a call spent for nothing.
+    hole there instead of shifting later Steps' code -- `unbuildable` is
+    why a Step was left out of a reply that coded the rest, `said` is what
+    a reply carried instead of code, and `forced` is whether the call's own
+    turn budget ran out before it declared, making `unbuildable` (if set)
+    the forced last word `budget_last_call.md` demands rather than a
+    verdict the model reached on its own.
     """
 
     steps: dict = field(default_factory=dict)
     obsolete: str = None
     unbuildable: str = None
     said: str = None
+    forced: bool = False
 
     def for_step(self, number) -> ExecuteOutcome:
         return self.steps.get(number) or ExecuteOutcome()
@@ -258,18 +261,19 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             )
 
         reply = declared if isinstance(declared, dict) else {}
+        forced = bool(reply.pop(_FORCED_BY_BUDGET, False))
 
         written = _written(declarations, start)
         if written:
             return Written(steps=written,
                            unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
                            if (reply.get("unbuildable") or reply.get("obsolete")) else None,
-                           said=_said(reply, declarations, start))
+                           said=_said(reply, declarations, start), forced=forced)
         if reply.get("obsolete"):
-            return Written(obsolete=str(reply["obsolete"]))
+            return Written(obsolete=str(reply["obsolete"]), forced=forced)
         if reply.get("unbuildable"):
-            return Written(unbuildable=str(reply["unbuildable"]))
-        return Written(said=_said(reply, declarations, start))
+            return Written(unbuildable=str(reply["unbuildable"]), forced=forced)
+        return Written(said=_said(reply, declarations, start), forced=forced)
     finally:
         shutil.rmtree(working_dir, ignore_errors=True)
 
@@ -592,6 +596,9 @@ _DID_NOT_HOLD = "these did not hold: "
 
 
 _GOING_NOWHERE = read_prompt("going_nowhere.md")
+
+
+_TURN_BUDGET_SPENT = read_prompt("turn_budget_spent.md")
 
 
 _A_PROPERTY_OF_THE_DOCUMENT = ("material", "appearance", "colour", "color",
