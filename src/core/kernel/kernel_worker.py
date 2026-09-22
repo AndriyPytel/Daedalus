@@ -715,7 +715,8 @@ def _idle_feature_report(doc, created):
 
     A Step's own volume assert raises before any check in `_run_step_body`
     runs, so every failure carries this and not only the clean runs. A hint is
-    never worth losing the traceback it explains: anything raised here is lost.
+    never worth losing the traceback it explains, but the diagnostic's own
+    exception is not thrown away either: it is reported in its place.
     """
     try:
         idle = _features_that_moved_no_material(doc, created)
@@ -728,8 +729,8 @@ def _idle_feature_report(doc, created):
             for obj, before, now in idle
         ]
         return "\n%s\n%s" % ("\n".join(lines), _IDLE_EXPLANATION)
-    except BaseException:
-        return ""
+    except BaseException as exc:
+        return "\n(the volume-neutral feature diagnostic itself raised: %s)" % exc
 
 
 STDOUT_LIMIT = 4000

@@ -88,12 +88,20 @@ def test_a_feature_that_moved_material_reports_nothing():
     assert _idle_feature_report(FakeDoc(pad, pocket), ["Pocket"]) == ""
 
 
-def test_the_report_is_never_worth_the_traceback_it_explains():
+def test_the_report_names_what_it_could_not_compute_instead_of_going_silent():
+    """
+    A diagnostic that raises internally must not discard both the hint and
+    the exception behind an empty string -- the reader of the Step's failure
+    still needs to know the idle-feature check itself could not run.
+    """
     class Exploding(FakeDoc):
         def getObject(self, name):
             raise RuntimeError("the Document is gone")
 
-    assert _idle_feature_report(Exploding(), ["Pocket"]) == ""
+    report = _idle_feature_report(Exploding(), ["Pocket"])
+
+    assert report != ""
+    assert "the Document is gone" in report
 
 
 def test_a_failed_step_is_told_what_its_idle_feature_did():

@@ -429,6 +429,10 @@ def failed(traceback):
     return {"status": "failed", "traceback": traceback}
 
 
+def drifted(traceback):
+    return {"status": "failed", "traceback": traceback, "drift": True}
+
+
 def _describes_a_part(turn):
     """Whether a scripted turn is a Design turn — the phase every run opens with."""
     body = turn.get("text") if isinstance(turn, dict) else turn
