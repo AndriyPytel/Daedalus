@@ -50,9 +50,22 @@ for probing the one thing that keeps failing. A pass that only reads spends
 the whole budget and leaves the run nothing to apply."""
 
 
+_PYTHON_LEVEL_ERRORS = ("AttributeError", "NameError", "TypeError", "SyntaxError")
+
+
+def _a_python_level_error(traceback):
+    """
+    Whether *traceback* names a bug in the Step's own code -- an attribute,
+    name or type it got wrong, or code that does not parse -- rather than a
+    geometric refusal or a failed assertion, which read from the object the
+    code built and say nothing about the code itself.
+    """
+    return bool(traceback) and any(kind + ":" in traceback for kind in _PYTHON_LEVEL_ERRORS)
+
+
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               kernel=None, supervisor=None, stream=None, system=None,
-              on_declaration=None, exploration=None, design=None):
+              on_declaration=None, exploration=None, design=None, repair_ceiling=None):
     """
     Run *phase* as a multi-turn agent against its own kernel, returning
     `(declared, session, declarations)`. *on_declaration*, called the moment a
@@ -62,9 +75,12 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     `{"delivered": False}` for the caller's handback -- which rewinds the
     kernel the same way, since a Step abandoned there already committed its
     Preflight checkpoint though the real Document never landed it. *exploration*
-    seeds and is updated with `since_declaration`, and *design* is carried into
+    seeds and is updated with `since_declaration`, *design* is carried into
     the kernel alongside *document*, remembered past this call the same as a
-    Step's allocated names.
+    Step's allocated names, and *repair_ceiling* refuses an `unbuildable`
+    declared right after the Step's own rehearsal code raised a Python-level
+    error (`_a_python_level_error`) rather than a geometric refusal, demanding
+    the Step again, up to that many times, before it reaches a revision.
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)
@@ -76,6 +92,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     first_step = True
     declared_failure = None
     pending_retry = None
+    last_failure = None
+    repairs = 0
     last_landed_checkpoint = None
     last_call = False
     exploration = {} if exploration is None else exploration
@@ -89,6 +107,19 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 declared = message["declare"]
                 if last_call and isinstance(declared, dict):
                     declared[_FORCED_BY_BUDGET] = True
+                if (repair_ceiling and not last_call and isinstance(declared, dict)
+                        and declared.get("unbuildable") and _a_python_level_error(last_failure)
+                        and repairs < repair_ceiling):
+                    repairs += 1
+                    refused = {"ok": False, "status": "refused",
+                              "traceback": "%s\n\nThat is a bug in the Step's own code, "
+                                            "not a verdict on the Plan -- write the Step "
+                                            "again rather than declare it unbuildable."
+                                            % last_failure}
+                    if stream is not None:
+                        stream.emit(TOOL_RESULT, name=phase, result=refused)
+                    text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
+                    continue
                 if pending_retry is not None and not (
                         declared.get("unbuildable") or declared.get("obsolete")):
                     declarations.append(pending_retry)
@@ -151,6 +182,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 result = working_kernel.check(message["code"], **(
                     {} if step_document is _NO_DOCUMENT
                     else {"document": step_document, "design": design}))
+                last_failure = None if result.ok else result.traceback
                 first_step = False
                 delivered_step = None
                 if "step" in message and result.ok and result.checkpoint:
