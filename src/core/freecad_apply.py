@@ -63,9 +63,12 @@ class ApplyResult:
     """
     All the loop ever learns about a Step: it landed, or here is why not.
     `modified` is Preflight's own measured list, carried past the
-    `_CHANGED_NOTHING` check rather than dropped there. `drift` is set only
+    `_CHANGED_NOTHING` check rather than dropped there; `drift` is set only
     by a `SignatureMismatch`, the GUI Document disagreeing with what the
-    kernel verified, not the Step being wrong.
+    kernel verified. `gate` names which refusal branch built this result --
+    "lint", "op_mismatch", "changed_nothing", "no_document", "ownership" or
+    "rollback" -- and stays empty on a `SignatureMismatch` drift, which
+    already has its own boolean.
     """
 
     ok: bool
@@ -74,12 +77,14 @@ class ApplyResult:
     created: list = field(default_factory=list)
     modified: list = field(default_factory=list)
     drift: bool = False
+    gate: str = ""
 
     def as_tool_result(self) -> dict:
         if self.ok:
             return {"status": "applied", "created": self.created,
                     "modified": self.modified, "description": self.description}
-        return {"status": "failed", "traceback": self.traceback, "drift": self.drift}
+        return {"status": "failed", "traceback": self.traceback, "drift": self.drift,
+                "gate": self.gate}
 
 
 _CHANGED_NOTHING = read_prompt("changed_nothing.md")
@@ -281,27 +286,28 @@ class ApplyPipeline:
         kernel_result = kernel_result or {}
         checked = lint(code, selection)
         if not checked.ok:
-            return ApplyResult(ok=False, traceback=checked.report())
+            return ApplyResult(ok=False, traceback=checked.report(), gate="lint")
 
         mismatch = op_typeid_mismatch(op, kernel_result.get("created"),
                                       kernel_result.get("objects"))
         if mismatch:
             return ApplyResult(ok=False, traceback=_TYPEID_REASON % (
-                mismatch, mismatch, op, " or ".join(OP_TYPEIDS[op])))
+                mismatch, mismatch, op, " or ".join(OP_TYPEIDS[op])), gate="op_mismatch")
 
         if not (kernel_result.get("created") or kernel_result.get("deleted")
                 or kernel_result.get("modified")):
-            return ApplyResult(ok=False, traceback=_CHANGED_NOTHING)
+            return ApplyResult(ok=False, traceback=_CHANGED_NOTHING, gate="changed_nothing")
 
         doc = self._dispatch(self._active)
         if doc is None:
-            return ApplyResult(ok=False, traceback="There is no open Document to apply this Step to.")
+            return ApplyResult(ok=False, traceback="There is no open Document to apply this Step to.",
+                               gate="no_document")
 
         before = set(self._dispatch(lambda: [o.Name for o in doc.Objects]))
 
         declined = self._refused(kernel_result.get("deleted") or (), doc)
         if declined:
-            return ApplyResult(ok=False, traceback=declined)
+            return ApplyResult(ok=False, traceback=declined, gate="ownership")
 
         try:
             self._dispatch(lambda: self._transaction(
@@ -316,6 +322,7 @@ class ApplyPipeline:
                 ok=False,
                 traceback="The Step passed the kernel but failed against the real Document, "
                           "so it was rolled back:\n\n" + trimmed_traceback(exc),
+                gate="rollback",
             )
 
         self._names = dict(kernel_result.get("names") or {})

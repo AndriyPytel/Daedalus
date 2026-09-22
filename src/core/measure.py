@@ -6,7 +6,7 @@ Measure one Session log by the definitions the QA rounds used.
 attempts: a run with 12 of 110 named checks unmet reads as ~11%, and one
 with 110 of 110 unmet reads as 100%.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 
 from core.events import (
@@ -34,6 +34,7 @@ class Measurement:
     score: Optional[float] = None
     not_defined_count: int = 0
     conflicted_count: int = 0
+    preflight_by_gate: dict = field(default_factory=dict)
 
 
 def _fail_rate(events, is_failure) -> float:
@@ -100,6 +101,23 @@ def _checks_fail_rate(assertions) -> float:
     return unmet / total if total else 0.0
 
 
+def _preflight_by_gate(events) -> dict:
+    """
+    Per-gate count of `PREFLIGHT_FAILED` events, `gate` values as the keys --
+    an event with no `gate` (a `SignatureMismatch` drift, or a log recorded
+    before this field existed) is not counted under any key, so the totals
+    here never claim more than the events that actually named a cause.
+    """
+    counts = {}
+    for event in events:
+        if event.kind != PREFLIGHT_FAILED:
+            continue
+        gate = event.data.get("gate")
+        if gate:
+            counts[gate] = counts.get(gate, 0) + 1
+    return counts
+
+
 def measure(path: str, score: Optional[float] = None) -> Measurement:
     """
     One run's process metrics from its Session log, plus *score* -- the
@@ -121,6 +139,7 @@ def measure(path: str, score: Optional[float] = None) -> Measurement:
         steps_applied=sum(1 for event in events if event.kind == APPLIED),
         plan_revisions=sum(1 for event in events if event.kind == PLAN_REVISED),
         preflight_failures=sum(1 for event in events if event.kind == PREFLIGHT_FAILED),
+        preflight_by_gate=_preflight_by_gate(events),
         cost_usd=sum(event.data.get("usd") or 0 for event in events if event.kind == COST),
         wall_clock_seconds=wall_clock_seconds,
         gate_wait_seconds=gate_wait_seconds,

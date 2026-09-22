@@ -360,6 +360,7 @@ def test_an_interior_gap_says_a_step_was_skipped_not_that_room_ran_out():
     assert "skipped a Step it could have written" in failure.data["traceback"]
     assert "ran out of room" not in failure.data["traceback"]
     assert "shorter this time" not in failure.data["traceback"]
+    assert failure.data["gate"] == "no_code"
 
 
 def test_a_step_left_out_with_no_reason_records_what_the_reply_carried():

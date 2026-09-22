@@ -225,7 +225,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         traceback = result.get("traceback")
         tried.setdefault(number, []).append(traceback or "")
         events.emit(PREFLIGHT_FAILED, step=number, attempt=len(tried[number]),
-                    traceback=traceback or "")
+                    traceback=traceback or "", gate=result.get("gate"))
         directive = _the_same_way_twice(
             [Attempt(code="", traceback=t) for t in tried[number]])
         if number not in free_refusal_spent and budgets.attempts_per_step > 1:
