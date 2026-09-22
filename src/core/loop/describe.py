@@ -19,6 +19,7 @@ from core.design.merge import (
     corrected,
     merge,
 )
+from core.design.citation_checks import fabricated_citation
 from core.design.presence_checks import nobody_carries_the_outside
 from core.design.orientation_checks import (
     ROUND_IN,
@@ -158,6 +159,7 @@ def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments
                                                 events, budgets, cancelled)
     the_part = _every_number_is_the_sheets(the_part, intent, attachments, llm, events,
                                            budgets, cancelled)
+    the_part = _the_citations_are_the_sheets(the_part, attachments, budgets)
     disagreements = _the_geometry_disagrees(attachments, events)
     the_part = merge(the_part, dict(the_part, conflicts=disagreements)
                      if disagreements else the_part, budgets.record_conflicts)
@@ -222,6 +224,24 @@ def _where_is_this_number(found):
         "those, it was assumed, and an assumption belongs in `not_defined` "
         "with what you looked in. Reply with those fields only."
         % ", ".join("%g" % number for number in found))
+
+
+def _the_citations_are_the_sheets(the_part, attachments, budgets):
+    """
+    A `from` field whose quoted numerals and marks are on no sheet at
+    all, refused into `conflicts` -- the reading itself stays on the
+    model, the same way `_every_number_is_the_sheets` above leaves an
+    invented number where it was and only records the disagreement.
+    Deterministic, so unlike that check it never asks the drawing again.
+    No sheet to check against is not evidence either way, the same
+    abstention `_off_the_sheet` already makes.
+    """
+    sheets = _sheets(attachments)
+    if not sheets:
+        return the_part
+    words = {entry.text for sheet in sheets for entry in sheet.printed}
+    found = fabricated_citation(the_part, words)
+    return merge(the_part, {"conflicts": found}, budgets.record_conflicts) if found else the_part
 
 
 A_READING_BUDGET = 60.0

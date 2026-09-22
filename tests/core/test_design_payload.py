@@ -70,6 +70,20 @@ characters, 136 tokens on every call the first pass makes. What it buys is a
 provenance nobody can fabricate: two recorded runs over mm2023-phase1 flagged
 `read` a left end radius printed only against the right end, and a ring depth
 front to rear that is a lug's height in another direction.
+
+`BASELINE`'s input_tokens moved up by 41 on every one of the six calls when
+`language.md` gained three fields: a canonical order for a feature `id`'s
+two-word `place` (`front-inner` never `inner-front`), a `direction` field
+naming the end or side a measurement runs from, and a closed `goes_through`
+flag read apart from the free-text `topology` field. 166 characters, 41
+tokens on every call the first pass makes — the wording was cut from an
+earlier, fuller draft to the shortest phrasing that still states all three
+facts and keeps the two literal forms (`front-inner`/`inner-front` and the
+`goes_through`-vs-"through" distinction) other tests read out of this file
+verbatim; no shorter wording was found that keeps every fact and both
+literal forms. What it buys is a `place` two readings of the same feature
+always spell the same way, a measured-from end that is never guessed, and a
+through-ness that is never inferred from prose.
 """
 import json
 import os
@@ -104,19 +118,19 @@ FIRST_PASS_CEILING_RATIO = 1.79
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25034},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 25772},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25075},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 25813},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 21501},
-        "total": 72307,
+        "reconcile": {"total_chars": 40545, "input_tokens": 21542},
+        "total": 72430,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23369},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26253},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23410},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26294},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 21708},
-        "total": 71330,
+        "reconcile": {"total_chars": 41375, "input_tokens": 21749},
+        "total": 71453,
     },
 }
 

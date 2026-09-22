@@ -134,11 +134,19 @@ def pinned_tasks():
             for rep in (1, 2, 3)]
 
 
-def smoke_tasks():
-    """One sheet, one repeat -- the fastest run that proves the lane still works."""
+SMOKE_SHEET_DEFAULT = "mm2025-phase1.pdf"
+
+
+def smoke_tasks(sheet_name=SMOKE_SHEET_DEFAULT):
+    """One sheet, one repeat -- the fastest run that proves the lane still works.
+
+    *sheet_name* is one of `tests/modelmania_harness.py`'s `PHASES` keys;
+    defaults to `mm2025-phase1.pdf`, the sheet the smoke ran before this
+    became a choice.
+    """
     from tests import modelmania_harness
 
-    sheet = modelmania_harness.PHASES["mm2025-phase1.pdf"]
+    sheet = modelmania_harness.PHASES[sheet_name]
     return [(sheet.stem, str(sheet))]
 
 
@@ -423,6 +431,8 @@ def report(out):
 
 
 def main():
+    from tests import modelmania_harness
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--model", action="append", default=[],
                         help="Repeatable; each model sweeps every --task")
@@ -449,6 +459,9 @@ def main():
                         help="Sweep the 6 pinned phase sheets, 3 repeats each, over --model")
     parser.add_argument("--smoke", action="store_true",
                         help="Sweep 1 sheet, 1 repeat, over --model")
+    parser.add_argument("--smoke-sheet", choices=sorted(modelmania_harness.PHASES),
+                        default=SMOKE_SHEET_DEFAULT,
+                        help="Sheet --smoke runs; defaults to %r" % SMOKE_SHEET_DEFAULT)
     parser.add_argument("--conflicts", choices=("on", "off"), default=None,
                         help="The conflict-recording A/B arm; unset runs tools/run.py's own "
                              "default (on)")
@@ -476,7 +489,7 @@ def main():
     elif args.smoke:
         if len(args.model) != 1:
             raise SystemExit("--smoke takes exactly one --model, run again for a second one")
-        tasks = smoke_tasks()
+        tasks = smoke_tasks(args.smoke_sheet)
     elif args.baseline:
         if len(args.model) != 1:
             raise SystemExit("--baseline takes exactly one --model, run twice as its own replicate")

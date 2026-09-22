@@ -76,25 +76,24 @@ assert all(abs(a - b) <= %s for a, b in zip(built, asked)), (
 """
 
 
-_GOES_THROUGH = "through"
-
-
 def the_topology_measured(description):
     """
     Betti numbers of the finished Document's tessellated shape, checked
     against b0 == 1 -- the one closed positive-volume body every
     description assumes, with no flag needed to say so -- and, only where
-    the model carries at least one feature, against b1 == the count of
-    features Design itself marked `topology: through`. A through-feature
-    count nobody established is not appended, so nothing is invented to
-    check the built part against.
+    at least one feature carries the closed `goes_through` flag, against
+    b1 == the count of features whose flag is true. A model that never
+    writes the flag on any feature has established nothing -- the same as
+    before the flag existed -- so nothing is appended rather than
+    defaulting every unflagged feature to "not through". The free-text
+    `topology` field is never read here: it stays the human-readable
+    description of what a feature runs into, not what this check counts.
     """
     features = [feature for feature in (description or {}).get("features") or ()
                if isinstance(feature, dict)]
     through_check = ""
-    if features:
-        expected = sum(1 for feature in features
-                       if _GOES_THROUGH in str(feature.get("topology") or "").lower())
+    if any("goes_through" in feature for feature in features):
+        expected = sum(1 for feature in features if feature.get("goes_through") is True)
         through_check = _THROUGH_FEATURE_CHECK % (expected, expected)
     return _TOPOLOGY_CHECK % through_check
 

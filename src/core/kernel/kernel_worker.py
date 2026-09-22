@@ -219,7 +219,7 @@ def step_namespace(doc, design=None):
     sys.modules["App"] = FreeCAD
 
     namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__",
-                 "edges_between": edges_between}
+                 "edges_between": edges_between, "edges_by_concavity": edges_by_concavity}
     if design is not None:
         namespace["design"] = _read_only(design)
     for module in STEP_MODULES:
@@ -412,6 +412,34 @@ def _edge_concavity_sign(shape, edge):
     return -1 if sign < 0 else 1
 
 
+def _group_edges_by_sign(shape, names):
+    """
+    `{sign: [edge names]}` for *names*, each looked up on *shape* and signed
+    by `_edge_concavity_sign`. An edge with no resolvable sign -- fewer than
+    two adjacent faces, or an edge-on normal -- is left out of every group.
+    """
+    by_sign = {}
+    for name in names:
+        edge = shape.getElement(name)
+        sign = _edge_concavity_sign(shape, edge)
+        if sign is None:
+            continue
+        by_sign.setdefault(sign, []).append(name)
+    return by_sign
+
+
+def edges_by_concavity(shape, edges):
+    """
+    *edges* -- typically `edges_between`'s own return value -- split into
+    one group per concavity sign, concave group first, so a Step can fillet
+    one group at a time and never hand `doc.recompute()` a mixed Base. A
+    selection that is already single-concavity comes back as one group
+    holding the same edges.
+    """
+    by_sign = _group_edges_by_sign(shape, edges)
+    return [names for _, names in sorted(by_sign.items(), reverse=True)]
+
+
 def _fillets_with_mixed_concavity(doc):
     """
     Every `PartDesign::Fillet` whose `Base` edges are not all one concavity.
@@ -431,18 +459,34 @@ def _fillets_with_mixed_concavity(doc):
         shape = getattr(feature, "Shape", None)
         if shape is None or shape.isNull():
             continue
-        by_sign = {}
-        for name in names:
-            edge = shape.getElement(name)
-            sign = _edge_concavity_sign(shape, edge)
-            if sign is None:
-                continue
-            by_sign.setdefault(sign, []).append(name)
+        by_sign = _group_edges_by_sign(shape, names)
         if len(by_sign) > 1:
             sides = ", ".join("%s: %s" % ("concave" if sign > 0 else "convex", ", ".join(edges))
                               for sign, edges in sorted(by_sign.items(), reverse=True))
             mixed.append("%s: Base mixes concave and convex edges (%s)" % (obj.Name, sides))
     return mixed
+
+
+def _raise_if_mixed_concavity(doc):
+    """
+    Refuse a mixed-concavity `Base` with its own sentence before OCC's
+    `command not done` or `FrozenShape` can bury it under a generic
+    recompute-error message.
+
+    Called once before the recompute -- against Base edges resolved from a
+    base feature the Step's own code already recomputed, so the check needs
+    no recompute of its own -- and once after, since a base feature this
+    same Step just created has no Shape yet at the first call and only
+    becomes checkable once the recompute below gives it one.
+    """
+    mixed = _fillets_with_mixed_concavity(doc)
+    if mixed:
+        raise RuntimeError(
+            "this Step built a fillet whose Base mixes concavities:\n" + "\n".join(mixed)
+            + "\nOne radius on a mixed selection pulls the concave edges inward and the "
+              "convex edges outward -- split Base by concavity (a face's own normal against "
+              "the other face's CenterOfMass at the edge's midpoint) and fillet one side "
+              "at a time.")
 
 
 _A_DRESSUP = {"PartDesign::Fillet": ("Radius", "makeFillet"),
@@ -715,7 +759,8 @@ def _idle_feature_report(doc, created):
 
     A Step's own volume assert raises before any check in `_run_step_body`
     runs, so every failure carries this and not only the clean runs. A hint is
-    never worth losing the traceback it explains: anything raised here is lost.
+    never worth losing the traceback it explains, but the diagnostic's own
+    exception is not thrown away either: it is reported in its place.
     """
     try:
         idle = _features_that_moved_no_material(doc, created)
@@ -728,8 +773,8 @@ def _idle_feature_report(doc, created):
             for obj, before, now in idle
         ]
         return "\n%s\n%s" % ("\n".join(lines), _IDLE_EXPLANATION)
-    except BaseException:
-        return ""
+    except BaseException as exc:
+        return "\n(the volume-neutral feature diagnostic itself raised: %s)" % exc
 
 
 STDOUT_LIMIT = 4000
@@ -881,6 +926,8 @@ def _run_step_body(doc, namespace, touched, request):
     exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
     touched.diff(doc)
 
+    _raise_if_mixed_concavity(doc)
+
     if touched.touched():
         scope = _recompute_scope(doc, touched)
         if scope is None:
@@ -892,14 +939,7 @@ def _run_step_body(doc, namespace, touched, request):
     if failures:
         raise RuntimeError("recompute left these objects in error:\n" + "\n".join(failures))
 
-    mixed = _fillets_with_mixed_concavity(doc)
-    if mixed:
-        raise RuntimeError(
-            "this Step built a fillet whose Base mixes concavities:\n" + "\n".join(mixed)
-            + "\nOne radius on a mixed selection pulls the concave edges inward and the "
-              "convex edges outward -- split Base by concavity (a face's own normal against "
-              "the other face's CenterOfMass at the edge's midpoint) and fillet one side "
-              "at a time.")
+    _raise_if_mixed_concavity(doc)
 
     if _features_that_moved_no_material(doc, touched.created):
         raise RuntimeError(_IDLE_HEADLINE)

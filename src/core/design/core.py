@@ -51,6 +51,17 @@ FEATURE_KIND = ("hole", "slot", "pocket", "cutout", "pad", "fillet", "chamfer",
                 "shell", "draft")
 
 
+PLACE = ("left", "right", "front", "rear", "top", "bottom", "upper", "lower",
+         "centre", "inner", "outer")
+
+
+def canonical_place(tokens):
+    """*tokens* (a feature `id`'s place words) ordered the way `PLACE` lists
+    them, so two readings of the same feature's place produce the same
+    order whichever order the model wrote them in."""
+    return tuple(sorted(tokens, key=PLACE.index))
+
+
 CLOSED_KIND_VOCABULARY = "closed"
 
 

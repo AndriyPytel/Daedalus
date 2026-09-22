@@ -145,6 +145,7 @@ A_PART = {
     "envelope": {"length": read("80 mm"), "width": read("40 mm"),
                  "thickness": read("10 mm")},
     "features": [{"id": "hole-8-left", "kind": "Ø8 hole", "topology": "through",
+                  "goes_through": True,
                   "axis": read("perpendicular to the top face"),
                   "position": {"the left end face": read("15 mm")},
                   "seen_in": ["top view"]}],
@@ -427,6 +428,10 @@ class FakeTools:
 
 def failed(traceback):
     return {"status": "failed", "traceback": traceback}
+
+
+def drifted(traceback):
+    return {"status": "failed", "traceback": traceback, "drift": True}
 
 
 def _describes_a_part(turn):
