@@ -14,19 +14,22 @@ a rejection to argue with.
 Feature `id`: `<kind>-<place>` where kind is one of (hole, slot, pocket,
 cutout, pad, fillet, chamfer, boss, rib, thread, counterbore, countersink,
 groove, notch, tab, lug, ear, flange, step, shoulder, shell, draft) and place
-is one or two of (left, right, front, rear, top, bottom, upper, lower,
-centre, inner, outer). Write the operation, not a synonym for it: a bore is
-a `hole`, a round is a `fillet`, an opening or a window is a `cutout`, a
-split or a saw cut is a `slot`, a recess is a `counterbore`. Write the shape,
-not the drawing's word for the region it sits in: an arm, a ring, a web, a
-band, a collar, a profile, a plate, a body, an outline or a contour is a
-`pad`. Put that word in the new `region` field instead — `region` is open
-text off the drawing and is never a value in `kind`, in `id`'s place slot, or
-in any other closed list here. A dimension the drawing gives — a diameter, a
-radius, a length, an angle — is never in `kind` either; it goes in its own
-field (`diameter`, `outer_diameter`, `radius`, `thickness`, `length`,
-`width`, `depth`, `angle`, `count`, `pitch`, `bolt_circle_diameter`). Append
-`-4x` for a repeated feature.
+is one or two of (left, right, front, rear, top, bottom, upper, lower, centre,
+inner, outer); `front-inner` never `inner-front`. Write the operation, not a
+synonym for it: a bore is a `hole`, a round is a `fillet`, an opening or a
+window is a `cutout`, a split or a saw cut is a `slot`, a recess is a
+`counterbore`. Write the shape, not the drawing's word for the region it sits
+in: an arm, a ring, a web, a band, a collar, a profile, a plate, a body, an
+outline or a contour is a `pad`. Put that word in the new `region` field
+instead — `region` is open text off the drawing and is never a value in
+`kind`, in `id`'s place slot, or in any other closed list here. A dimension
+the drawing gives — a diameter, a radius, a length, an angle — is never in
+`kind` either; it goes in its own field (`diameter`, `outer_diameter`,
+`radius`, `thickness`, `length`, `width`, `depth`, `angle`, `count`, `pitch`,
+`bolt_circle_diameter`). Append `-4x` for a repeated feature.
+
+`direction` marks the measured-from end (empty if unknown); `goes_through`,
+never inferred from the word "through" in `topology`.
 
 Datum `name`: one of (the left end face, the right end face, the front face,
 the rear face, the top face, the bottom face, the ring axis, the bore axis,
