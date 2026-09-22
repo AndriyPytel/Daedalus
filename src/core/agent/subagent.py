@@ -58,12 +58,25 @@ class SessionTreeSupervisor:
         self.tokens = 0
         self.active_kernels = 0
         self.refusals = []
+        self._exhaustion_told = False
 
     @property
     def outcome(self):
         if self.turns > self.turn_budget or self.tokens > self.token_budget:
             return BUDGET_EXHAUSTED
         return None
+
+    def exhaustion_reason(self):
+        """
+        The one-time transition into `BUDGET_EXHAUSTED`, told once for this
+        supervisor's whole life -- a run threads one supervisor through
+        every phase continuation, so its ceiling firing is one event, not
+        one per continuation that asks after it already has.
+        """
+        if self.outcome != BUDGET_EXHAUSTED or self._exhaustion_told:
+            return None
+        self._exhaustion_told = True
+        return {"turns": self.turns, "budget": self.turn_budget}
 
     def spawn(self, depth):
         if depth >= 1:
