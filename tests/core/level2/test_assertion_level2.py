@@ -346,8 +346,8 @@ def test_a_plate_short_one_through_hole_fails_the_topology_check(worker):
     """
     from core.loop.assertion import the_topology_measured
 
-    described = {"features": [{"id": "hole-%d" % i, "kind": "hole", "topology": "through"}
-                              for i in range(3)]}
+    described = {"features": [{"id": "hole-%d" % i, "kind": "hole", "topology": "through",
+                               "goes_through": True} for i in range(3)]}
 
     result = worker.check(PLATE_WITH_HOLES % 1 + the_topology_measured(described), None)
 
@@ -358,8 +358,8 @@ def test_a_plate_short_one_through_hole_fails_the_topology_check(worker):
 def test_the_same_plate_with_every_hole_through_passes(worker):
     from core.loop.assertion import the_topology_measured
 
-    described = {"features": [{"id": "hole-%d" % i, "kind": "hole", "topology": "through"}
-                              for i in range(3)]}
+    described = {"features": [{"id": "hole-%d" % i, "kind": "hole", "topology": "through",
+                               "goes_through": True} for i in range(3)]}
 
     result = worker.check(PLATE_WITH_HOLES % 3 + the_topology_measured(described), None)
 
