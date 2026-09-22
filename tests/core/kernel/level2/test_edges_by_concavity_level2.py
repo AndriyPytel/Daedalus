@@ -4,8 +4,8 @@ concavity before any `PartDesign::Fillet` exists, so a Step can call it on
 `edges_between`'s own return value and build one Fillet per group before
 `doc.recompute()` ever sees a mixed Base. It shares `_edge_concavity_sign`
 with `_fillets_with_mixed_concavity` rather than recomputing signs a second
-way (FCC-399's own `A_PLATE_WITH_TWO_BOSSES` names Edge10 concave and Edge9
-convex).
+way; the imported `A_PLATE_WITH_TWO_BOSSES` fixture names Edge10 concave
+and Edge9 convex.
 """
 import pytest
 
