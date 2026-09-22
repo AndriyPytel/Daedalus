@@ -142,6 +142,7 @@ def test_saying_no_stops_the_step_and_says_why_to_the_assistant():
     assert not result.ok
     assert "you created rather than I did" in result.traceback
     assert "delete UserBox" in result.traceback
+    assert result.gate == "ownership"
     assert built.document.Objects == [], "the Step ran anyway"
 
 
@@ -333,6 +334,7 @@ def test_refusing_the_rebuild_stops_the_step_and_says_edit_instead():
     assert "rebuild of a model that is already there" in result.traceback
     assert "Edit the features that exist" in result.traceback
     assert "add a feature to the end of it" in result.traceback
+    assert result.gate == "ownership"
 
 
 def test_replacing_one_feature_and_its_sketch_is_a_correction_not_a_rebuild():

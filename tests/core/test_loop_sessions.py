@@ -309,6 +309,7 @@ def test_a_step_the_reply_left_out_fails_that_step_and_not_the_run():
     failure = events.first(PREFLIGHT_FAILED)
     assert failure.data["step"] == 2
     assert "no code for Step 2" in failure.data["traceback"]
+    assert failure.data["gate"] == "no_code"
 
 
 def test_a_trailing_gap_says_it_ran_out_of_room_and_steers_shorter():
@@ -332,6 +333,7 @@ def test_a_trailing_gap_says_it_ran_out_of_room_and_steers_shorter():
     assert "ran out of room before finishing this reply" in failure.data["traceback"]
     assert "nothing after it either" in failure.data["traceback"]
     assert "shorter this time" in failure.data["traceback"]
+    assert failure.data["gate"] == "no_code"
 
 
 def test_an_interior_gap_says_a_step_was_skipped_not_that_room_ran_out():
@@ -358,6 +360,7 @@ def test_an_interior_gap_says_a_step_was_skipped_not_that_room_ran_out():
     assert "skipped a Step it could have written" in failure.data["traceback"]
     assert "ran out of room" not in failure.data["traceback"]
     assert "shorter this time" not in failure.data["traceback"]
+    assert failure.data["gate"] == "no_code"
 
 
 def test_a_step_left_out_with_no_reason_records_what_the_reply_carried():

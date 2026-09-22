@@ -582,7 +582,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         attempts.append(Attempt(code=outcome.code or "", traceback=traceback))
         progress.tried = [_tried(step, a) for a in attempts]
         events.emit(PREFLIGHT_FAILED, step=index + 1, attempt=len(attempts),
-                    traceback=traceback)
+                    traceback=traceback, gate="no_code")
         if ledger is not None:
             ledger.record(step, traceback)
 

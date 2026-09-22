@@ -139,6 +139,7 @@ def test_a_step_the_kernel_says_changed_nothing_leaves_the_camera_alone(pipeline
 
     assert not result.ok
     assert "changed nothing" in result.traceback
+    assert result.gate == "changed_nothing"
     assert pipeline.trace == [], "a Step that does nothing still opened a transaction"
     assert fitted == []
 
@@ -164,6 +165,7 @@ def test_lint_runs_before_the_transaction_so_a_bad_step_costs_nothing(pipeline):
 
     assert not result.ok
     assert "literal element name" in result.traceback
+    assert result.gate == "lint"
     assert pipeline.trace == []
 
 
@@ -174,6 +176,7 @@ def test_the_caller_sees_applied_or_failed_and_nothing_else(pipeline):
     assert applied["status"] == "applied"
     assert failed["status"] == "failed"
     assert "changed nothing" in failed["traceback"]
+    assert failed["gate"] == "changed_nothing"
     assert "preflight" not in repr(applied).lower()
     assert set(applied) == {"status", "created", "modified", "description"}
 
@@ -190,6 +193,7 @@ def test_a_step_that_the_kernel_ran_but_fails_for_real_is_reported_as_such(trace
     assert not result.ok
     assert "rolled back" in result.traceback
     assert "the live Document disagreed" in result.traceback
+    assert result.gate == "rollback"
 
 
 def test_closing_during_the_transaction_is_a_clean_stop_not_a_failed_step(trace):
@@ -211,6 +215,7 @@ def test_no_open_document_is_a_reason_not_a_crash():
 
     assert not result.ok
     assert "no open Document" in result.traceback
+    assert result.gate == "no_document"
 
 
 def test_an_element_the_user_selected_survives_the_lint(pipeline):
@@ -292,6 +297,7 @@ def test_an_op_mismatch_reaches_apply_the_same_way_a_lint_rejection_does(pipelin
 
     assert not result.ok
     assert "pad" in result.traceback
+    assert result.gate == "op_mismatch"
     assert pipeline.trace == []
 
 
