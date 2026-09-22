@@ -219,7 +219,7 @@ def step_namespace(doc, design=None):
     sys.modules["App"] = FreeCAD
 
     namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__",
-                 "edges_between": edges_between}
+                 "edges_between": edges_between, "edges_by_concavity": edges_by_concavity}
     if design is not None:
         namespace["design"] = _read_only(design)
     for module in STEP_MODULES:
@@ -412,6 +412,34 @@ def _edge_concavity_sign(shape, edge):
     return -1 if sign < 0 else 1
 
 
+def _group_edges_by_sign(shape, names):
+    """
+    `{sign: [edge names]}` for *names*, each looked up on *shape* and signed
+    by `_edge_concavity_sign`. An edge with no resolvable sign -- fewer than
+    two adjacent faces, or an edge-on normal -- is left out of every group.
+    """
+    by_sign = {}
+    for name in names:
+        edge = shape.getElement(name)
+        sign = _edge_concavity_sign(shape, edge)
+        if sign is None:
+            continue
+        by_sign.setdefault(sign, []).append(name)
+    return by_sign
+
+
+def edges_by_concavity(shape, edges):
+    """
+    *edges* -- typically `edges_between`'s own return value -- split into
+    one group per concavity sign, concave group first, so a Step can fillet
+    one group at a time and never hand `doc.recompute()` a mixed Base. A
+    selection that is already single-concavity comes back as one group
+    holding the same edges.
+    """
+    by_sign = _group_edges_by_sign(shape, edges)
+    return [names for _, names in sorted(by_sign.items(), reverse=True)]
+
+
 def _fillets_with_mixed_concavity(doc):
     """
     Every `PartDesign::Fillet` whose `Base` edges are not all one concavity.
@@ -431,13 +459,7 @@ def _fillets_with_mixed_concavity(doc):
         shape = getattr(feature, "Shape", None)
         if shape is None or shape.isNull():
             continue
-        by_sign = {}
-        for name in names:
-            edge = shape.getElement(name)
-            sign = _edge_concavity_sign(shape, edge)
-            if sign is None:
-                continue
-            by_sign.setdefault(sign, []).append(name)
+        by_sign = _group_edges_by_sign(shape, names)
         if len(by_sign) > 1:
             sides = ", ".join("%s: %s" % ("concave" if sign > 0 else "convex", ", ".join(edges))
                               for sign, edges in sorted(by_sign.items(), reverse=True))
