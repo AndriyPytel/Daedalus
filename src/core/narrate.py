@@ -15,7 +15,7 @@ from core.events import (
     ABORTED, ANSWER, APPLIED, ASSERTION, ATTACHED, BLOCKED, BUDGET_EXHAUSTED,
     COMPLETED, ERROR, FAILED, GATE, INTENT, OUTSTANDING, PART, PLAN_REVISED,
     PREFLIGHT_FAILED, QUESTION, REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED,
-    STEP_DECLARED, STEP_STARTED, STOPPED, TOOL_RESULT, UNBUILT,
+    STEP_DECLARED, STEP_STARTED, STOPPED, TOOL_RESULT, TURN_BUDGET_EXHAUSTED, UNBUILT,
 )
 
 _GATE_SAID = {
@@ -186,6 +186,10 @@ def narrate(event) -> Narration:
         return Narration(line="⏸  " + data["reason"],
                          title="What was tried (%d)" % len(tried),
                          body=_what_was_tried(tried))
+
+    if kind == TURN_BUDGET_EXHAUSTED:
+        return Narration(line="⏸  %s's turn budget (%d) was reached at turn %d."
+                         % (data["phase"], data["budget"], data["turns"]))
 
     if kind == FAILED:
         return Narration(title="✗ Something went wrong", body=data["message"])

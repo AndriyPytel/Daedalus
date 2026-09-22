@@ -22,7 +22,7 @@ from core.events import (
     OUTSTANDING, PART, PLAN, DESIGN, PLAN_REVISED, PREFLIGHT_FAILED, QUESTION,
     REVIEW_SUSPECTED, REVIEW_VERDICT, ROUTED, STEP_DECLARED, STEP_STARTED, STOPPED,
     SUB_AGENT_ANSWERED, SUB_AGENT_REFUSED, SUB_AGENT_SPAWNED, THOUGHT,
-    TOOL_CALL, TOOL_RESULT, UNBUILT, WRITING, Event,
+    TOOL_CALL, TOOL_RESULT, TURN_BUDGET_EXHAUSTED, UNBUILT, WRITING, Event,
 )
 from core.narrate import Narration, narrate
 
@@ -70,6 +70,7 @@ SAMPLES = {
     SUB_AGENT_REFUSED: {"phase": "design", "reason": "depth"},
     CONSULT_DESIGN: {},
     CONSULT_DESIGN_ANSWERED: {"description": {"features": []}},
+    TURN_BUDGET_EXHAUSTED: {"phase": "execute", "turns": 31, "budget": 30},
 }
 
 

@@ -14,7 +14,8 @@ import shutil
 import time
 
 from core.events import (
-    CALL_STARTED, COST, STEP_DECLARED, THOUGHT, TOOL_CALL, TOOL_RESULT, WRITING,
+    CALL_STARTED, COST, STEP_DECLARED, THOUGHT, TOOL_CALL, TOOL_RESULT, TURN_BUDGET_EXHAUSTED,
+    WRITING,
 )
 from core.kernel import Kernel
 from core.llm import REASONING, TEXT, Session
@@ -111,6 +112,10 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         if last_call:
                             raise AgentGaveUp("%s ran out of budget before declaring" % phase)
                         last_call = True
+                        if stream is not None:
+                            reached = supervisor.exhaustion_reason()
+                            if reached is not None:
+                                stream.emit(TURN_BUDGET_EXHAUSTED, phase=phase, **reached)
                         text = _say(session, llm, prompt("budget_last_call"),
                                     phase=phase, stream=stream)
                         continue
@@ -214,6 +219,10 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 supervisor.record_turn()
                 if supervisor.outcome and not last_call:
                     last_call = True
+                    if stream is not None:
+                        reached = supervisor.exhaustion_reason()
+                        if reached is not None:
+                            stream.emit(TURN_BUDGET_EXHAUSTED, phase=phase, **reached)
                     text = _say(session, llm, prompt("budget_last_call"),
                                 phase=phase, stream=stream)
                     continue

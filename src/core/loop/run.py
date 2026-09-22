@@ -31,6 +31,7 @@ from core.events import (
     STEP_STARTED,
     UNBUILT,
 )
+from core.agent.subagent import SessionTreeSupervisor
 from core.ledger import Ledger
 from core.llm import ProviderRefused
 
@@ -225,11 +226,13 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     ledger = Ledger(_FAILED_THIS_WAY)
     geometry_baseline = {}
     exploration = {}
+    supervisor = SessionTreeSupervisor()
 
     def replan(feedback=None, revising=()):
         planned, part.the_part = _plan_once_it_knows_enough(
             intent, tools.call("snapshot"), llm, events, budgets, part.the_part,
-            cancelled, asking, tools, feedback, attachments, revising, ledger)
+            cancelled, asking, tools, feedback, attachments, revising, ledger,
+            supervisor)
         return planned
 
     def decided(why, applied, unmet=()):
@@ -365,7 +368,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                 planned.acceptance, planned.cites, ledger,
                                 start=carried, ops=planned.ops, kernel=kernel,
                                 exploration=exploration,
-                                design=distilled(part.the_part) if part.the_part else None)
+                                design=distilled(part.the_part) if part.the_part else None,
+                                supervisor=supervisor)
         last_pass.steps, last_pass.applied = steps, outcome["applied_here"]
         applied = progress.applied
 
@@ -391,7 +395,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         described = outcome["description"] or described
 
         views = _review_views(tools, events)
-        suspected = review_suspect(intent, views, described, llm, events, attachments)
+        suspected = review_suspect(intent, views, described, llm, events, attachments,
+                                   supervisor=supervisor)
         events.emit(REVIEW_SUSPECTED, suspected=list(suspected))
 
         checking = _also_check(_also_check(planned.acceptance, outstanding), suspected)
@@ -399,7 +404,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         acceptance = [entry for entry in checking if entry not in not_reached]
         checked = assertion(acceptance, described, tools, llm, events, budgets,
                             cancelled, after_a_retry=outcome.get("retried"),
-                            description=part.the_part)
+                            description=part.the_part, supervisor=supervisor)
         if checked is not None and checked.geometry:
             regressed = _geometry_regressions(geometry_baseline, checked.geometry,
                                               outcome.get("retried_names"))
@@ -434,7 +439,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             continue
 
         verdict, reason = review(intent, views, described, llm, events, attachments,
-                                 checked=checked)
+                                 checked=checked, supervisor=supervisor)
         events.emit(REVIEW_VERDICT, verdict=verdict, reason=reason)
 
         if verdict != "pass":
@@ -465,7 +470,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
-                  start=0, ops=(), kernel=None, exploration=None, design=None):
+                  start=0, ops=(), kernel=None, exploration=None, design=None,
+                  supervisor=None):
     """
     One pass over the Plan: written by one Execute phase, applied one Step at a
     time. `budgets.attempts_per_step` bounds one Step; a spent Step hands back
@@ -493,7 +499,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     written = execute(steps, tools, llm, events, start, budgets=budgets,
                       as_described=as_described, looks=looks, entries=entries,
                       ledger=ledger, kernel=kernel, ops=ops, exploration=probe,
-                      design=design)
+                      design=design, supervisor=supervisor)
     if probed_step is not None:
         exploration[probed_step] = probe["turns"]
 
@@ -606,7 +612,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
             raise Stopped()
         probe, probed_step = _step_exploration(exploration, steps, index)
         written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
-                          looks, entries, ledger, kernel=kernel, ops=ops, exploration=probe)
+                          looks, entries, ledger, kernel=kernel, ops=ops, exploration=probe,
+                          supervisor=supervisor)
         if probed_step is not None:
             exploration[probed_step] = probe["turns"]
 

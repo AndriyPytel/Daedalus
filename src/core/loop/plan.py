@@ -280,7 +280,7 @@ def _one_direction_per_step(mixed):
 
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
-                               revising=(), ledger=None):
+                               revising=(), ledger=None, supervisor=None):
     """
     Plan, letting it ask for what the description did not carry, and the
     run waits. A question goes to the drawing first; unanswered, Plan
@@ -294,7 +294,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                        the_part=grown, change_set=change_set, unanswered=asking.unanswered,
                        revising=revising, looking=_lookable(tools) if for_the_build else (),
                        looked=asking.looked_up,
-                       tried=ledger.render() if ledger else "")
+                       tried=ledger.render() if ledger else "", supervisor=supervisor)
         change_set = None
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))
