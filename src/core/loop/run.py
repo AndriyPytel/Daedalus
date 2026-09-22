@@ -190,11 +190,13 @@ class Part:
 @dataclass
 class LastPass:
     """
-    What the previous pass over the Plan's Steps applied, so a revised Plan
-    knows how much of its own head is already standing in the Document.
+    What the previous pass over the Plan's Steps applied, and why it was
+    revised, so a revised Plan knows how much of its own head is already
+    standing in the Document.
     """
     steps: object = None
     applied: int = 0
+    cause: str = None
 
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
@@ -279,6 +281,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                        step=step), tried)
         revisions.spend(cause, step=step)
         revised = replan(feedback, revising=list(steps))
+        last_pass.cause = cause
         _emit_plan(events, PLAN_REVISED, revised, reason=reason or feedback,
                    unanswered=asking.unanswered,
                    decided=decided_for_you(part.the_part),
@@ -359,7 +362,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             return _block(events, "The Plan came back with no Steps, so there is nothing to "
                                   "apply and nothing to review.", progress.tried,
                           progress.applied)
-        carried = _carried_over(last_pass.steps, steps, last_pass.applied)
+        carried = _carried_over(last_pass.steps, steps, last_pass.applied,
+                                wording_only=last_pass.cause == _Revisions.UNBUILDABLE)
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part.the_part), looks,
                                 planned.acceptance, planned.cites, ledger,

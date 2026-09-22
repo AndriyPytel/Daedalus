@@ -23,20 +23,27 @@ def _still_wrong(outstanding):
     )
 
 
-def _carried_over(previous, steps, applied):
+def _carried_over(previous, steps, applied, wording_only=False):
     """
     How many Steps at the head of a revised Plan are already standing in the Document, and so must not be written or applied again.
 
-    Matched to a recorded run: an 11-Step Plan revised three times produced 28 `step_started` events over the expected 11, since every revision restarted Execute at Step 1. Counted as the longest identical prefix, capped at how many Steps of `previous` actually landed.
+    Exact match by default, the longest identical prefix capped at how many Steps of `previous` actually landed; `wording_only` relaxes that to each Step's leading word, for the one cause that does not call the earlier Steps into question -- Execute handing a later Step back unbuilt, where a revision only reworded what already landed. Every other cause -- Review's verdict, an obsolete Document, a Plan amendment -- keeps the exact match, because it is exactly what puts the earlier Steps in doubt.
     """
     if previous is None:
         return 0
     carried = 0
     for was, now in zip(previous[:applied], steps):
-        if was != now:
+        same = _leading_word(was) == _leading_word(now) if wording_only else was == now
+        if not same:
             break
         carried += 1
     return carried
+
+
+def _leading_word(step):
+    """The first word of a Step's prose, lowered -- the op verb every Step opens with."""
+    said = str(step).strip().split(None, 1)
+    return said[0].lower() if said else ""
 
 
 def _also_check(acceptance, outstanding):

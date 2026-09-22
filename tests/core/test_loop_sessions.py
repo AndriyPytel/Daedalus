@@ -543,28 +543,6 @@ def test_a_revised_plan_does_not_reapply_steps_that_already_landed():
         "Execute was asked to write Steps it had already applied"
 
 
-def test_a_revised_plan_whose_first_step_differs_reexecutes_everything():
-    """
-    The guard is a prefix match, not a hunch: a revision that changes the
-    very first Step carries nothing, and the second pass is a full Execute
-    turn over every Step of the revised Plan, same as before this existed.
-    """
-    result, events, llm, tools = drive([
-        plan_reply("Pad the outline", "Fillet the marked edges"),
-        json.dumps({"code": "pad()", "step": 1, "label": "Pad"}),
-        json.dumps({"declare": {"steps": [{"step": 1, "label": "Pad"}],
-                    "unbuildable": "Step 2 needs edges nobody named."}}),
-        plan_reply("Pad a wider outline", "Fillet the named edges"),
-        code_reply("pad_wider()", "fillet_named()"),
-        suspect_reply(), verdict_reply("pass"),
-    ])
-
-    assert result.ok, result.reason
-    assert tools.applied_codes() == ["pad()", "pad_wider()", "fillet_named()"]
-
-    second_pass = _execute_attempts(llm)[-1]
-    assert [s["step"] for s in second_pass["steps"]] == [1, 2], \
-        "a Step that only reads differently was still treated as carried"
 
 
 def test_a_revised_plan_says_which_revision_it_is_and_what_caused_it():

@@ -3,38 +3,61 @@
 from core.loop.helpers import _carried_over
 
 
-def test_carried_over_trusts_the_applied_count_even_when_the_revised_wording_differs():
+def test_a_wording_only_revision_carries_a_reworded_step_that_keeps_its_operation():
     """
-    FCC-432: matched to the post-epic smoke, where a failure on Step 4
-    triggered a revision and the revised Plan began again at Step 2 -
-    whose objects were already standing in the Document. A revision
-    inherits the applied Steps and continues from the first unapplied
-    one (FCC-428 Q11); the run already knows how many landed, so a
-    revision that only rewords an already-applied Step must still carry
-    it, not redeclare it.
+    Execute handing a later Step back unbuilt does not call the earlier,
+    applied Steps into question, so a revision that only rewords one of
+    them -- Boss stays Boss, Rib stays Rib -- must carry it, not redeclare it.
     """
     previous = ["Pad the outline", "Boss the centre", "Rib the centre",
                 "Fillet the corner"]
     revised = ["Pad a cleaner outline", "Boss a rounder centre",
                "Rib the tidier centre", "Fillet the corner, R2"]
 
-    assert _carried_over(applied=3, steps=revised) == 3
+    assert _carried_over(previous, revised, applied=3, wording_only=True) == 3
 
 
-def test_carried_over_matches_a_revision_that_left_the_wording_alone():
+def test_a_wording_only_revision_still_matches_unchanged_wording():
     previous = ["Pad the outline", "Fillet the marked edges"]
     steps = ["Pad the outline", "Fillet the marked edges",
              "Drill a 6mm hole", "Chamfer the edge"]
 
-    assert _carried_over(applied=2, steps=steps) == 2
+    assert _carried_over(previous, steps, applied=2, wording_only=True) == 2
+
+
+def test_a_wording_only_revision_stops_where_it_swaps_the_operation():
+    """
+    A revision that replaces an applied Step with a different one -- not a
+    reword of the same build, a different operation standing in its place
+    -- must not be carried: that Step still has to be applied for real.
+    """
+    previous = ["First", "Impossible"]
+    revised = ["Second", "Impossible again"]
+
+    assert _carried_over(previous, revised, applied=1, wording_only=True) == 0
+
+
+def test_carried_over_stays_exact_match_by_default():
+    """
+    Every cause but Execute's own unbuilt handback still calls the earlier
+    Steps into question -- a failed acceptance check, a rejected review, an
+    obsolete Document -- so a revision under any of them still rebuilds a
+    Step whose wording moved, exact match, same as before this ticket.
+    """
+    previous = ["Pocket the split"]
+    revised = ["Pocket the split again"]
+
+    assert _carried_over(previous, revised, applied=1) == 0
+    assert _carried_over(previous, revised, applied=1, wording_only=False) == 0
 
 
 def test_carried_over_never_exceeds_the_revised_plans_own_length():
     """A revision that collapses Steps cannot be asked to carry more than it has."""
+    previous = ["Pad the outline", "Boss the centre", "Rib the centre"]
     steps = ["Pad the outline"]
 
-    assert _carried_over(applied=3, steps=steps) == 1
+    assert _carried_over(previous, steps, applied=3) == 1
 
 
 def test_carried_over_is_zero_with_nothing_applied_yet():
-    assert _carried_over(applied=0, steps=["Pad the outline"]) == 0
+    assert _carried_over(["Pad the outline"], ["Pad the outline"], applied=0) == 0
