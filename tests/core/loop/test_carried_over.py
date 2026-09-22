@@ -61,3 +61,16 @@ def test_carried_over_never_exceeds_the_revised_plans_own_length():
 
 def test_carried_over_is_zero_with_nothing_applied_yet():
     assert _carried_over(["Pad the outline"], ["Pad the outline"], applied=0) == 0
+
+
+def test_a_wording_only_revision_stops_when_a_numeral_moves():
+    """
+    Sharing a leading word is not enough: a Step whose diameter, length or
+    count changed is a different Step wearing the same verb, and carrying it
+    would leave the Document holding geometry the revised Plan no longer
+    describes -- a mismatch nothing downstream would ever notice.
+    """
+    previous = ["Sketch a \u224820 circle and pad it 20 mm"]
+    revised = ["Sketch a \u224824 circle and pad it 26 mm"]
+
+    assert _carried_over(previous, revised, applied=1, wording_only=True) == 0
