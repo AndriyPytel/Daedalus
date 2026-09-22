@@ -233,8 +233,13 @@ def _the_citations_are_the_sheets(the_part, attachments, budgets):
     model, the same way `_every_number_is_the_sheets` above leaves an
     invented number where it was and only records the disagreement.
     Deterministic, so unlike that check it never asks the drawing again.
+    No sheet to check against is not evidence either way, the same
+    abstention `_off_the_sheet` already makes.
     """
-    words = {entry.text for sheet in _sheets(attachments) for entry in sheet.printed}
+    sheets = _sheets(attachments)
+    if not sheets:
+        return the_part
+    words = {entry.text for sheet in sheets for entry in sheet.printed}
     found = fabricated_citation(the_part, words)
     return merge(the_part, {"conflicts": found}, budgets.record_conflicts) if found else the_part
 
