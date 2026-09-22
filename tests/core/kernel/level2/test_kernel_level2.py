@@ -195,11 +195,12 @@ def test_a_crash_before_any_step_lands_is_refused_not_served_as_an_empty_session
 
 def test_a_stdin_write_failure_mid_step_resumes_the_next_step_on_the_last_checkpoint(kernel):
     """
-    AC1/FCC-423: reproduces the hypothesis in FCC-423's Solution Notes --
-    that a restart through `Kernel._ask`'s pre-write `stdin.write`/`flush`
-    raising `BrokenPipeError`/`ValueError` (`kernel.py:264-268`), forced
-    here by closing the worker's own stdin, leaves the resumed kernel's
-    Document missing objects a prior Step already checkpointed.
+    The one restart path the other two Level 2 restart tests do not cover
+    -- `Kernel._ask`'s pre-write `stdin.write`/`flush` raising
+    `BrokenPipeError`/`ValueError`, forced here by closing the worker's
+    own stdin while a Step is in flight. The hypothesised divergence does
+    not reproduce here: the resumed kernel's Document still holds both
+    objects an earlier Step had checkpointed.
     """
     first = kernel.check("doc.addObject('Part::Box', 'RibPad')")
     assert first.ok, first.traceback
@@ -212,8 +213,10 @@ def test_a_stdin_write_failure_mid_step_resumes_the_next_step_on_the_last_checkp
     assert not broken.ok, "a write to a closed stdin should not have reached the worker"
     assert kernel.pid != doomed, "the worker was not replaced"
 
-    resumed = kernel.check("pass")
+    resumed = kernel.check(
+        "assert doc.getObject('RibPad') is not None, "
+        "'the resumed kernel forgot RibPad the live Document still had'\n"
+        "assert doc.getObject('RibSketch') is not None, "
+        "'the resumed kernel forgot RibSketch the live Document still had'"
+    )
     assert resumed.ok, resumed.traceback
-    still_there = _objects_in(resumed.checkpoint)
-    assert "RibPad" not in still_there, "reproduction failed: RibPad survived the forced restart"
-    assert "RibSketch" not in still_there, "reproduction failed: RibSketch survived the forced restart"
