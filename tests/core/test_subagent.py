@@ -178,3 +178,25 @@ def test_a_refused_delegate_emits_sub_agent_refused_and_calls_the_worker_never()
     assert worker_llm.calls == []
     assert [event.kind for event in stream] == [SUB_AGENT_REFUSED]
     assert stream[0].data == {"phase": "worker", "reason": "depth"}
+
+
+def test_exhaustion_reason_fires_once_no_matter_how_many_times_asked():
+    """
+    One supervisor, shared across every phase continuation of a run, must
+    tell its own exhaustion once -- a caller asking again after the ceiling
+    already fired gets `None`, not a second telling of the same event.
+    """
+    supervisor = sa.SessionTreeSupervisor(turn_budget=2)
+    supervisor.record_turn()
+    assert supervisor.exhaustion_reason() is None
+    supervisor.record_turn()
+    supervisor.record_turn()
+
+    first = supervisor.exhaustion_reason()
+    assert first == {"turns": 3, "budget": 2}
+    assert supervisor.exhaustion_reason() is None
+
+    supervisor.record_turn()
+    assert supervisor.exhaustion_reason() is None, (
+        "a supervisor already exhausted keeps telling nothing on later turns, "
+        "not a fresh event per continuation")
