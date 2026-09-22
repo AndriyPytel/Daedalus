@@ -51,9 +51,11 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     Step is declared, answers `{"delivered": True}`, a retry shape (`retry` or
     `drift`, kept apart for SignatureMismatch) that rewinds the kernel to the
     last checkpoint and asks again in this session, or a final
-    `{"delivered": False}` for the caller's handback. *exploration* seeds and
-    is updated with `since_declaration`, and *design* is carried into the
-    kernel alongside *document*, remembered past this call the same as a
+    `{"delivered": False}` for the caller's handback -- which rewinds the
+    kernel the same way, since a Step abandoned there already committed its
+    Preflight checkpoint though the real Document never landed it. *exploration*
+    seeds and is updated with `since_declaration`, and *design* is carried into
+    the kernel alongside *document*, remembered past this call the same as a
     Step's allocated names.
     """
     working = spawn(phase, working_dir,
@@ -163,11 +165,12 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         continue
                     delivered = (on_declaration(declaration) if on_declaration is not None
                                 else {"delivered": True})
-                    if delivered.get("drift") or delivered.get("retry"):
+                    if not delivered.get("delivered"):
                         working_kernel.check("pass", document=(
                             last_landed_checkpoint
                             if last_landed_checkpoint is not None
                             else (document if isinstance(document, str) else None)))
+                    if delivered.get("drift") or delivered.get("retry"):
                         declaration["delivered"] = False
                         declaration["traceback"] = delivered.get("traceback", "")
                         pending_retry = declaration
