@@ -328,6 +328,35 @@ def test_a_feature_with_the_flag_set_is_counted_whatever_its_prose_says():
     assert "b1 == 1" in code
 
 
+def test_no_through_check_is_appended_when_no_feature_carries_the_flag_at_all():
+    """
+    `goes_through` is new this epic; a model that never emits it anywhere
+    has established nothing, the same as a model asked before the flag
+    existed. Defaulting an absent flag to "not through" would assert
+    b1 == 0 against a part with a real through hole Design simply never
+    flagged -- a false failure the transition must not invent.
+    """
+    from core.loop.assertion import the_topology_measured
+
+    no_flag_anywhere = {"features": [{"id": "hole-left", "kind": "hole", "topology": "through"},
+                                      {"id": "pad-outer", "kind": "pad", "topology": "blind"}]}
+
+    code = the_topology_measured(no_flag_anywhere)
+
+    assert "b1" not in code.split("assert b0 == 1")[1]
+
+
+def test_the_through_check_is_appended_and_asks_for_zero_when_every_flagged_feature_is_false():
+    from core.loop.assertion import the_topology_measured
+
+    all_flagged_false = {"features": [{"id": "hole-left", "kind": "hole",
+                                        "topology": "blind", "goes_through": False}]}
+
+    code = the_topology_measured(all_flagged_false)
+
+    assert "b1 == 0" in code
+
+
 def test_the_qwen_gateway_sweep_reading_reconstructed_with_flags_gives_b1_3():
     """
     `logs/mm-gateway-sweep/qwen3.8-max-low.jsonl`'s Design turn, with C7's
