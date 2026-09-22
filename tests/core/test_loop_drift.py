@@ -3,13 +3,14 @@ A drifted attempt (`SignatureMismatch`) goes through the same bookkeeping as
 any other refused attempt, instead of returning before `tried[number]`,
 `PREFLIGHT_FAILED`, `_the_same_way_twice` and `refused[number]` ever run.
 """
+import json
+
 from core.events import PREFLIGHT_FAILED
 from core.loop.budgets import Budgets
 from core.loop.execute import _classified_failures
 
 from tests.loop_helpers import (
-    _execute_attempts, drifted, drive, plan_reply, retried_code_reply, suspect_reply,
-    verdict_reply,
+    _turns_of, drifted, drive, plan_reply, retried_code_reply, suspect_reply, verdict_reply,
 )
 
 SIGNATURE_MISMATCH = (
@@ -28,10 +29,11 @@ def test_a_drifted_attempt_is_appended_to_tried_and_reaches_the_directive():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[drifted(SIGNATURE_MISMATCH), drifted(SIGNATURE_MISMATCH), None])
 
-    retried = [turn for turn in _execute_attempts(llm)
+    retried = [turn for turn in _turns_of(llm, "execute")
                if "you_have_failed_this_the_same_way_twice" in turn]
     assert retried, "two drifted attempts at the same Step never reached the directive"
-    assert "failed 2 times with the same failure" in         retried[0]["you_have_failed_this_the_same_way_twice"]
+    assert "failed 2 times with the same failure" in \
+        retried[0]["you_have_failed_this_the_same_way_twice"]
 
 
 def test_a_drifted_attempt_emits_preflight_failed():
@@ -58,15 +60,9 @@ def test_a_step_that_drifts_attempts_per_step_times_is_handed_back_to_plan():
         suspect_reply(), verdict_reply("pass"),
     ], applies=[drifted(SIGNATURE_MISMATCH)] * 4, budgets=Budgets(attempts_per_step=3))
 
-    to_plan = _turns_of_plan_text(llm)
+    to_plan = json.dumps(_turns_of(llm, "plan")[1])
     assert "failed the same way" in to_plan
     assert "Rewording it will send Execute back at the same wall" in to_plan
-
-
-def _turns_of_plan_text(llm):
-    import json
-    from tests.loop_helpers import _turns_of
-    return json.dumps(_turns_of(llm, "plan")[1])
 
 
 def test_classified_failures_has_a_signature_mismatch_entry():

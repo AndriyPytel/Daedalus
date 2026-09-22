@@ -221,8 +221,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             if tried.get(number):
                 declaration["retried"] = True
             return {"delivered": True}
-        if result.get("drift"):
-            return {"delivered": False, "traceback": result.get("traceback"), "drift": True}
+        drift = bool(result.get("drift"))
         traceback = result.get("traceback")
         tried.setdefault(number, []).append(traceback or "")
         events.emit(PREFLIGHT_FAILED, step=number, attempt=len(tried[number]),
@@ -232,13 +231,13 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         if number not in free_refusal_spent and budgets.attempts_per_step > 1:
             free_refusal_spent.add(number)
             return {"delivered": False, "traceback": traceback, "retry": True,
-                    "directive": directive}
+                    "drift": drift, "directive": directive}
         refused[number] = refused.get(number, 0) + 1
         if refused[number] < budgets.attempts_per_step:
             return {"delivered": False, "traceback": traceback, "retry": True,
-                    "directive": directive}
+                    "drift": drift, "directive": directive}
         declaration["retries"] = list(tried[number])
-        return {"delivered": False, "traceback": traceback}
+        return {"delivered": False, "traceback": traceback, "drift": drift}
 
     working_dir = tempfile.mkdtemp()
     try:
@@ -402,6 +401,12 @@ def _classified_failures():
          "twice over. Write every Step you are asked about, in the order given, rather "
          "than leaving one for a regeneration to fill in.",
          "skipped a Step it could have written while writing later ones"),
+        ("signature did not match what the kernel verified",
+         "the GUI Document landed something other than what the kernel verified -- the "
+         "same code replayed against the same Document should not drift a second time. "
+         "Read the Document above rather than assume what the drifted attempt left "
+         "behind, and write the Step again against what is actually there.",
+         "the GUI replay drifted from what the kernel verified"),
     )
 
 
