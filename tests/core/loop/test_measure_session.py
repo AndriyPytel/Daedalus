@@ -122,6 +122,29 @@ def test_a_run_with_preflight_failures_and_no_verdict_yet():
     assert result.preflight_failures == 2
 
 
+def test_preflight_failures_break_down_by_gate():
+    """
+    Each of the seven named causes is one key, and the per-gate counts sum
+    to the same total `preflight_failures` already reports for the run.
+    """
+    result = measure(_fixture("preflight_gates.jsonl"))
+
+    assert result.preflight_failures == 7
+    assert result.preflight_by_gate == {
+        "lint": 1, "op_mismatch": 1, "changed_nothing": 1, "no_document": 1,
+        "ownership": 1, "rollback": 1, "no_code": 1,
+    }
+    assert sum(result.preflight_by_gate.values()) == result.preflight_failures
+
+
+def test_preflight_failures_with_no_gate_field_break_down_to_nothing():
+    """A log recorded before `gate` existed reports a total with an empty breakdown."""
+    result = measure(_fixture("preflight_failures.jsonl"))
+
+    assert result.preflight_failures == 2
+    assert result.preflight_by_gate == {}
+
+
 def test_a_truncated_log_is_measured_from_what_survived_the_cut():
     """The last line was cut mid-write; `replay` drops it and says so."""
     result = measure(_fixture("truncated.jsonl"))
