@@ -295,6 +295,76 @@ def test_a_part_with_no_through_features_at_all_is_checked_against_zero():
     assert "b1 == 0" in code
 
 
+_THE_QWEN_GATEWAY_SWEEP_CUTOUT_TOPOLOGY = (
+    "a window between the two \u00d840 bores with straight top and bottom edges "
+    "and curved left and right ends; the left end is an arc nearly concentric "
+    "with the left bore (traced R32.28 centred at the left bore centre) and "
+    "the right end is an arc approximately concentric with the right bore "
+    "(traced R30.14); the pocket is approximately 25 mm wide in the depth "
+    "direction, symmetric about the longitudinal centre plane; goes through "
+    "the height of the part"
+)
+
+
+def test_a_feature_with_through_in_its_prose_but_no_flag_is_not_counted():
+    from core.loop.assertion import the_topology_measured
+
+    prose_only = {"features": [{"id": "cutout-centre", "kind": "cutout",
+                                 "topology": _THE_QWEN_GATEWAY_SWEEP_CUTOUT_TOPOLOGY}]}
+
+    code = the_topology_measured(prose_only)
+
+    assert "b1 == 0" in code
+
+
+def test_a_feature_with_the_flag_set_is_counted_whatever_its_prose_says():
+    from core.loop.assertion import the_topology_measured
+
+    flagged = {"features": [{"id": "hole-centre", "kind": "hole",
+                              "topology": "blind", "goes_through": True}]}
+
+    code = the_topology_measured(flagged)
+
+    assert "b1 == 1" in code
+
+
+def test_the_qwen_gateway_sweep_reading_reconstructed_with_flags_gives_b1_3():
+    """
+    `logs/mm-gateway-sweep/qwen3.8-max-low.jsonl`'s Design turn, with C7's
+    `goes_through` flag added to match the true drawing: three through
+    holes flagged, the cutout's "goes through the height of the part"
+    prose left unflagged. The substring match this ticket removes counted
+    that cutout too, for an expected b1 of 4 against the drawing's 3.
+    """
+    from core.loop.assertion import the_topology_measured
+
+    reconstructed = {"features": [
+        {"id": "pad-outer", "kind": "pad",
+         "topology": "the profile lies in the plane of the length and the depth "
+                      "front to rear, 150 mm long by 50 mm deep with both ends "
+                      "R25, extruded 100 mm in height"},
+        {"id": "hole-left", "kind": "hole", "topology": "through", "goes_through": True},
+        {"id": "hole-right", "kind": "hole", "topology": "through", "goes_through": True},
+        {"id": "hole-centre", "kind": "hole", "topology": "through", "goes_through": True},
+        {"id": "cutout-centre", "kind": "cutout",
+         "topology": _THE_QWEN_GATEWAY_SWEEP_CUTOUT_TOPOLOGY},
+        {"id": "fillet-top-left", "kind": "fillet"},
+        {"id": "fillet-top-right", "kind": "fillet"},
+        {"id": "fillet-bottom-left", "kind": "fillet"},
+        {"id": "fillet-bottom-right", "kind": "fillet"},
+        {"id": "step-front", "kind": "step",
+         "topology": "a step 20 mm from the front face, visible in SECTION A-A "
+                      "as a change in the cross-section at 20 mm depth from the front"},
+        {"id": "step-rear", "kind": "step",
+         "topology": "a step 20 mm from the rear face, visible in SECTION A-A "
+                      "as a change in the cross-section at 20 mm depth from the rear"},
+    ]}
+
+    code = the_topology_measured(reconstructed)
+
+    assert "b1 == 3" in code
+
+
 def test_self_intersection_check_removes_its_temp_file_even_when_export_fails():
     """
     The `.brep` round-trip opens one temp file per solid
