@@ -282,7 +282,8 @@ def test_design_is_told_a_chamfer_names_the_two_surfaces_it_joins():
 
     assert "A fillet or a chamfer names the two surfaces it joins" in design_system
     assert "`joins`" in design_system
-    assert "it never" in design_system and "covers more than one edge" in design_system
+    assert ("one entry" in design_system
+            and "covers every edge that junction gives" in design_system)
 
 
 def test_plan_is_told_each_joins_entry_is_its_own_step():

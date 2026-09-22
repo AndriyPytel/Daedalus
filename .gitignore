@@ -11,3 +11,6 @@ __pycache__/
 .claude/
 tests/models/
 manual/modelmania/
+
+# Prime Agent local skills
+.prime/
