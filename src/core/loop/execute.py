@@ -181,6 +181,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     refused = {}
     tried = {}
     free_refusal_spent = set()
+    exhausted = set()
 
     def on_declaration(declaration):
         """
@@ -189,14 +190,18 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         other refusal answers `retry: True` and rewinds the kernel, with the
         first such refusal per Step free of charge against
         `budgets.attempts_per_step` whenever `attempts_per_step > 1` --
-        bounding the Step at `attempts_per_step + 1` attempts rather than
-        leaving it unbounded. Recording the Step to `Ledger` is not this
+        bounding the Step at `attempts_per_step + 1` attempts, a Step already
+        at that bound refused before `apply_step` runs at all rather than
+        left unbounded. Recording the Step to `Ledger` is not this
         function's decision: whether the Step lands or is abandoned is
         `_work_through`'s to find out, from `declaration["retries"]` alone,
         so that is where the one `Ledger` entry per abandoned Step is
         written.
         """
         number = declaration.get("step")
+        if number in exhausted:
+            declaration["retries"] = list(tried[number])
+            return {"delivered": False, "traceback": tried[number][-1]}
         index = number - 1 if isinstance(number, int) else None
         op = ops[index] if (ops and index is not None and 0 <= index < len(ops)) else None
         arguments = {"code": declaration["code"], "label": declaration.get("label") or "Copilot Step",
@@ -236,6 +241,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         if refused[number] < budgets.attempts_per_step:
             return {"delivered": False, "traceback": traceback, "retry": True,
                     "drift": drift, "directive": directive}
+        exhausted.add(number)
         declaration["retries"] = list(tried[number])
         return {"delivered": False, "traceback": traceback, "drift": drift}
 
