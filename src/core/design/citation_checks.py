@@ -12,7 +12,7 @@ from core.design.core import _conflict, _filled
 from core.design.gaps import _each_value
 
 
-_MARK = re.compile(r"\(?\b[A-Z]?\d+[A-Z]?\)?")
+_MARK = re.compile(r"\(?\b[A-Z]?\d+(?:\.\d+)?[A-Z]?\)?")
 
 
 def _marks(citation):
@@ -26,6 +26,12 @@ def fabricated_citation(model, sheet_words) -> list:
     refused values travel on in `conflicts`, the way `_refused_conflicts`
     (`core.design.merge`) leaves a bad conflict entry in place rather than
     dropping it.
+
+    A mark is compared to a whole sheet word, never a substring of one:
+    `from` citing bare `8` is not satisfied by the sheet printing `R8`,
+    and citing bare `4` is not satisfied by `4X` -- the letter is part of
+    the mark, not decoration around a number, so a citation must quote it
+    to match.
     """
     words = set(sheet_words or ())
     found = []
