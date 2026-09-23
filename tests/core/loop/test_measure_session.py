@@ -5,6 +5,7 @@ Fixtures under `tests/recorded/sessions/` are real Session logs, copied in
 whole from `logs/sessions/`, so the numbers below are read off an actual run
 rather than invented.
 """
+import json
 import os
 
 import pytest
@@ -135,6 +136,17 @@ def test_preflight_failures_break_down_by_gate():
         "ownership": 1, "rollback": 1, "no_code": 1,
     }
     assert sum(result.preflight_by_gate.values()) == result.preflight_failures
+
+
+def test_a_drift_recorded_before_it_had_a_gate_is_counted_as_drift(tmp_path):
+    """A recorded `SignatureMismatch` refusal with an empty `gate` still counts under drift."""
+    log = tmp_path / "drift.jsonl"
+    log.write_text(json.dumps({"at": 1.0, "kind": "preflight_failed", "data": {
+        "step": 13, "attempt": 1, "gate": "",
+        "traceback": "The replayed Step's signature did not match what the kernel verified"
+                     " -- expected {}, landed {}."}}) + "\n")
+
+    assert measure(str(log)).preflight_by_gate == {"drift": 1}
 
 
 def test_preflight_failures_with_no_gate_field_break_down_to_nothing():

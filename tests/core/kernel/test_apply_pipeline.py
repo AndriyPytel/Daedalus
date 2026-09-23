@@ -11,7 +11,7 @@ is only `start_run`'s own seed call, untouched by this ticket.
 """
 import pytest
 
-from core.freecad_apply import CHAT_DOCK, ApplyPipeline, Closing
+from core.freecad_apply import CHAT_DOCK, ApplyPipeline, Closing, SignatureMismatch
 from core.kernel import KernelResult
 
 
@@ -194,6 +194,19 @@ def test_a_step_that_the_kernel_ran_but_fails_for_real_is_reported_as_such(trace
     assert "rolled back" in result.traceback
     assert "the live Document disagreed" in result.traceback
     assert result.gate == "rollback"
+
+
+def test_a_replay_that_drifts_names_drift_as_its_cause(trace):
+    def transaction(document, code, label, **_):
+        raise SignatureMismatch({"volume": 2.0}, {"volume": 1.0})
+
+    pipeline = ApplyPipeline(document=FakeDocument(), worker=FakeWorker(),
+                             dispatch=lambda f, timeout=None: f(), transaction=transaction)
+
+    result = pipeline.apply("doc.recompute()", kernel_result=_kernel_result())
+
+    assert result.drift
+    assert result.gate == "drift"
 
 
 def test_closing_during_the_transaction_is_a_clean_stop_not_a_failed_step(trace):

@@ -66,9 +66,8 @@ class ApplyResult:
     `_CHANGED_NOTHING` check rather than dropped there; `drift` is set only
     by a `SignatureMismatch`, the GUI Document disagreeing with what the
     kernel verified. `gate` names which refusal branch built this result --
-    "lint", "op_mismatch", "changed_nothing", "no_document", "ownership" or
-    "rollback" -- and stays empty on a `SignatureMismatch` drift, which
-    already has its own boolean.
+    "lint", "op_mismatch", "changed_nothing", "no_document", "ownership",
+    "rollback" or "drift".
     """
 
     ok: bool
@@ -316,7 +315,7 @@ class ApplyPipeline:
         except Closing:
             raise
         except SignatureMismatch as exc:
-            return ApplyResult(ok=False, traceback=str(exc), drift=True)
+            return ApplyResult(ok=False, traceback=str(exc), drift=True, gate="drift")
         except BaseException as exc:
             return ApplyResult(
                 ok=False,
