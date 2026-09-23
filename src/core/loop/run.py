@@ -31,7 +31,7 @@ from core.events import (
     STEP_STARTED,
     UNBUILT,
 )
-from core.agent.subagent import SessionTreeSupervisor
+from core.agent.subagent import RESERVE, SessionTreeSupervisor
 from core.ledger import Ledger
 from core.llm import ProviderRefused
 
@@ -254,6 +254,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         return answer
 
     planned = replan(_still_wrong(outstanding) if outstanding else None)
+    supervisor.turn_budget = max(supervisor.turn_budget, 3 * len(planned.steps) + RESERVE)
     _emit_plan(events, PLAN, planned, unanswered=asking.unanswered,
                decided=decided_for_you(part.the_part))
 

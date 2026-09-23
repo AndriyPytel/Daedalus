@@ -86,3 +86,38 @@ def test_execute_and_plan_share_the_one_supervisor_the_run_created(monkeypatch):
     assert plan_seen[0] is execute_seen[0], (
         "Plan and Execute must run under the one supervisor _run created for "
         "this run, not each default their own")
+
+
+def test_a_long_plan_gets_a_ceiling_sized_from_its_own_step_count(monkeypatch):
+    """
+    `TURN_BUDGET` (30) is sized for the p90 sub-agent tree, never measured
+    against a long Execute. The ceiling `_run` hands the one supervisor it
+    creates must grow with the Plan it is sized from, staying at least
+    `3 * len(steps) + RESERVE`.
+    """
+    from core.agent.subagent import RESERVE
+
+    seen = []
+    real_run_phase = execute_module.run_phase
+
+    def spying(*args, **kwargs):
+        seen.append(kwargs.get("supervisor"))
+        return real_run_phase(*args, **kwargs)
+
+    monkeypatch.setattr(execute_module, "run_phase", spying)
+
+    steps = [f"Step {number}" for number in range(1, 17)]
+    codes = [f"op{number}()" for number in range(1, 17)]
+
+    result, events, llm, tools = drive([
+        plan_reply(*steps),
+        code_reply(*codes),
+        suspect_reply(),
+        verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    assert seen and seen[0] is not None
+    assert seen[0].turn_budget == 3 * 16 + RESERVE, (
+        "a 16-Step Plan must get a ceiling of at least 3 turns per Step plus "
+        "the reserve, not the flat 30 sized for a much shorter tree")
