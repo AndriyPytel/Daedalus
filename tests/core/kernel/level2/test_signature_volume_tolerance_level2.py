@@ -49,7 +49,7 @@ def test_a_volume_difference_past_the_tolerance_still_aborts(doc):
     probe = doc.addObject("Part::Box", "Box")
     probe.recompute()
     expected = signature_of(doc)
-    expected["volume"] += expected["volume"] * 1e-6
+    expected["volume"] += expected["volume"] * 1e-5
     doc.removeObject("Box")
 
     with pytest.raises(SignatureMismatch):
@@ -57,3 +57,15 @@ def test_a_volume_difference_past_the_tolerance_still_aborts(doc):
                            expected_signature=expected)
 
     assert doc.Objects == []
+
+
+def test_the_drift_a_live_fillet_replay_measured_still_matches():
+    """
+    Two OCC processes built the same fillet 4.4e-3 mm3 apart on a 275,674
+    mm3 part, a relative 1.6e-8 with count, names and links identical.
+    """
+    from core.kernel.kernel_worker import signatures_match
+
+    same = {"count": 3, "names": ["Body", "Fillet", "Pad"], "links": {}}
+    assert signatures_match(dict(same, volume=275673.872855),
+                            dict(same, volume=275673.877298))
