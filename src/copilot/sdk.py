@@ -250,8 +250,11 @@ class Client:
                        outstanding=list(outstanding),
                        the_part_path=the_part_path, kernel=self.kernel, budgets=budgets)
 
+        orchestrator = (self.llm.for_role(ORCHESTRATOR)
+                        if hasattr(self.llm, "for_role") else self.llm)
+
         def run_question(message, decision):
-            return "".join(chunk.text for chunk in self.session.turn(self.llm, message)
+            return "".join(chunk.text for chunk in self.session.turn(orchestrator, message)
                            if chunk.kind == TEXT)
 
         def control(message, decision):
@@ -260,7 +263,7 @@ class Client:
             self._stop = True
 
         if route_first:
-            return route(prompt, llm=self.llm, events=stream,
+            return route(prompt, llm=orchestrator, events=stream,
                          handlers={DESIGN: design, RUN_QUESTION: run_question, CONTROL: control},
                          session=self.session)
         else:

@@ -130,6 +130,19 @@ def test_run_question_answers_through_the_session_without_touching_the_document(
     client.close()
 
 
+def test_the_role_table_client_routes_and_answers_from_the_orchestrator_row():
+    from copilot.sdk import Client
+    from core.llm import ORCHESTRATOR, RoleClient
+
+    llm = RoleClient(roles={ORCHESTRATOR: ScriptedLLMClient(
+        ["run_question", "It finished after one Step."])},
+        caller=ScriptedLLMClient([]))
+    client = Client(kernel=_NoKernel(), llm=llm)
+
+    assert client.send("what happened to the last run?") == "It finished after one Step."
+    client.close()
+
+
 def test_control_stops_a_run_already_in_flight():
     from copilot.sdk import Client
 
