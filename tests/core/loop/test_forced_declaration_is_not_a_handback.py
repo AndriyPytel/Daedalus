@@ -84,3 +84,47 @@ def test_a_forced_handback_names_the_budget_as_its_terminal_cause(monkeypatch):
                  kernel=StubKernel())
 
     assert "turn budget" in result.reason
+
+
+def test_a_forced_declaration_carries_how_many_times_the_step_was_rehearsed():
+    """
+    AC2's seam: `Written.rehearsals` counts every declared-but-rejected
+    attempt at a Step, so the caller can tell a Step that was tried and
+    tried again apart from one nobody ever wrote code for.
+    """
+    from tests.loop_helpers import FakeTools, failed
+
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "try1()", "step": 1, "label": "Step"}),
+        json.dumps({"code": "try2()", "step": 1, "label": "Step"}),
+        json.dumps({"code": "try3()", "step": 1, "label": "Step"}),
+        json.dumps({"declare": {"unbuildable": "out of turns"}}),
+    ])
+    supervisor = SessionTreeSupervisor(turn_budget=6)
+    tools = FakeTools(applies=[failed("one"), failed("two")])
+
+    written = execute(["Pad a rib"], tools.registry, llm, EventStream(),
+                      kernel=StubKernel(), supervisor=supervisor)
+
+    assert written.forced is True
+    assert written.rehearsals.get(1) == 2
+
+
+def _forced_handback_with_rehearsals(*_args, **_kwargs):
+    from core.loop.execute import Written
+    return Written(unbuildable="Step 1 of 1 could not be built as written: out of turns",
+                  forced=True, rehearsals={1: 3})
+
+
+def test_a_forced_handback_reports_the_rehearsals_it_already_tried(monkeypatch):
+    """AC2: a Step rehearsed before the turn budget ran out must say how
+    many times, not that it 'never reached a build attempt'."""
+    monkeypatch.setattr(run_module, "execute", _forced_handback_with_rehearsals)
+    llm = ScriptedLLMClient([design_reply(), plan_reply("Pad the rib")])
+
+    result = run("Pad a rib", llm=llm, tools=FakeTools().registry, events=EventStream(),
+                 kernel=StubKernel())
+
+    assert "never reached a build attempt" not in result.reason
+    assert "3" in result.reason
+    assert "turn budget" in result.reason
