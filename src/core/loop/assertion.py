@@ -213,9 +213,11 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
     cancelled = cancelled or (lambda: False)
 
-    fixed_checks = [c for c in
-                   (the_envelope_measured(acceptance), SELF_INTERSECTION_CHECK,
-                    the_topology_measured(description)) if c]
+    fixed = [(the_envelope_measured(acceptance), "the envelope"),
+             (SELF_INTERSECTION_CHECK, "no solid self-intersects"),
+             (the_topology_measured(description), "the topology")]
+    fixed_checks = [code for code, _ in fixed if code]
+    fixed_confirmed = []
     if fixed_checks:
         code = "\n".join(fixed_checks)
         events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
@@ -228,6 +230,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                         uncovered=[], traceback=traceback, unmet=unmet)
             return Checked(failed=True, traceback=traceback, unmet=unmet,
                            geometry=result.get("geometry") or {})
+        fixed_confirmed = [name for code, name in fixed if code]
 
     if not acceptance:
         return None
@@ -297,10 +300,10 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         if kernel is None:
             working_kernel.kill()
 
-    events.emit(ASSERTION, ok=None, code="", confirmed=[],
+    events.emit(ASSERTION, ok=None, code="", confirmed=fixed_confirmed,
                 uncovered=list(acceptance),
                 traceback=attempts[-1]["traceback"] if attempts else "")
-    return Checked(uncovered=list(acceptance))
+    return Checked(confirmed=fixed_confirmed, uncovered=list(acceptance))
 
 
 def _unmet_in(traceback):

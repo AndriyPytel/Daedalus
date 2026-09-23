@@ -679,7 +679,8 @@ def test_a_check_that_cannot_be_written_lets_review_judge_alone():
     """
     Attempts spent on a check that never runs is not a reason to rebuild a good
     model, and not a reason to lose a finished run either: the phase gives up,
-    says so, and everything it failed to cover goes to Review.
+    says so, everything it failed to cover goes to Review, and what the fixed
+    checks already held is not thrown away with it.
     """
     result, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"),
@@ -694,8 +695,9 @@ def test_a_check_that_cannot_be_written_lets_review_judge_alone():
     assert result.ok
     assert events.first(PLAN_REVISED) is None
     assert events.first(ASSERTION).data["ok"] is None, "an unwritable check is not a verdict"
-    assert events.first(ASSERTION).data["confirmed"] == [], \
-        "a check that never ran measured nothing to confirm"
+    assert events.first(ASSERTION).data["confirmed"] == ["no solid self-intersects", "the topology"], \
+        "the check the model never wrote measured nothing, but the fixed checks that " \
+        "already ran and held must still be reported confirmed"
 
 
 def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
