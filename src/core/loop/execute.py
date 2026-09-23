@@ -236,17 +236,18 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                     traceback=traceback or "", gate=result.get("gate"))
         directive = _the_same_way_twice(
             [Attempt(code="", traceback=t) for t in tried[number]])
+        resync = tools.call("document_copy")["path"]
         if number not in free_refusal_spent and budgets.attempts_per_step > 1:
             free_refusal_spent.add(number)
             return {"delivered": False, "traceback": traceback, "retry": True,
-                    "drift": drift, "directive": directive}
+                    "drift": drift, "directive": directive, "resync": resync}
         refused[number] = refused.get(number, 0) + 1
         if refused[number] < budgets.attempts_per_step:
             return {"delivered": False, "traceback": traceback, "retry": True,
-                    "drift": drift, "directive": directive}
+                    "drift": drift, "directive": directive, "resync": resync}
         exhausted.add(number)
         declaration["retries"] = list(tried[number])
-        return {"delivered": False, "traceback": traceback, "drift": drift}
+        return {"delivered": False, "traceback": traceback, "drift": drift, "resync": resync}
 
     working_dir = tempfile.mkdtemp()
     try:

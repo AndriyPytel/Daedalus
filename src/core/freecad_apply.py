@@ -21,7 +21,7 @@ from core.events import ANSWER, QUESTION
 from core.freecad_traps import Trap
 from core.kernel import Kernel, KernelResult, copy_of
 from core.kernel.kernel_worker import (_NamedDoc, register_step_source, signature_of,
-                                step_namespace, trimmed_traceback)
+                                signatures_match, step_namespace, trimmed_traceback)
 from core.lint import OP_TYPEIDS, _TYPEID_REASON, lint, op_typeid_mismatch
 from core.prompts import read_prompt
 from core.tools import NO_PARAMETERS, ToolError, ToolRegistry
@@ -116,7 +116,7 @@ def run_in_transaction(doc, code, label="Copilot Step", names=None, expected_sig
         doc.recompute()
         if expected_signature:
             landed = signature_of(doc)
-            if landed != expected_signature:
+            if not signatures_match(landed, expected_signature):
                 raise SignatureMismatch(landed, expected_signature)
     except BaseException:
         doc.abortTransaction()
@@ -243,7 +243,7 @@ class ApplyPipeline:
             try:
                 seeded = self.worker.check("pass", document=copy, ephemeral=True)
             finally:
-                _discard(copy)
+                discard(copy)
         self._dispatch(lambda: lock_gui(self.main_window, True))
         self.locked = True
         self._names = {}
@@ -350,7 +350,7 @@ class ApplyPipeline:
         try:
             checked = self.worker.check(code, document=copy, ephemeral=True)
         finally:
-            _discard(copy)
+            discard(copy)
         return {"ok": bool(checked.ok), "traceback": checked.traceback or "",
                 "held": checked.held, "failed": checked.failed,
                 "geometry": checked.geometry}
@@ -381,7 +381,7 @@ class ApplyPipeline:
                                       render_path=self._render_path(),
                                       ephemeral=True)
         finally:
-            _discard(copy)
+            discard(copy)
         return [drawn.render] if drawn.ok and drawn.render else []
 
     def _narrate(self, kind, **data):
@@ -475,7 +475,7 @@ class ApplyPipeline:
         )
 
 
-def _discard(path):
+def discard(path):
     try:
         os.remove(path)
     except OSError:

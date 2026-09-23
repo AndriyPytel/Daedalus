@@ -647,6 +647,24 @@ def signature_of(doc):
     }
 
 
+_VOLUME_RELATIVE_TOLERANCE = 1e-9
+
+
+def signatures_match(landed, expected):
+    """
+    Whether a replay's *landed* signature reproduces *expected* closely
+    enough to count as the same Step. Count, names and links must match
+    exactly; volume is compared with a relative tolerance, since the same
+    geometry computed in two OCC processes does not round to the same
+    sixth decimal.
+    """
+    if (landed["count"], landed["names"], landed["links"]) != (
+            expected["count"], expected["names"], expected["links"]):
+        return False
+    scale = max(abs(landed["volume"]), abs(expected["volume"]), 1.0)
+    return abs(landed["volume"] - expected["volume"]) <= _VOLUME_RELATIVE_TOLERANCE * scale
+
+
 def _volume_of(obj):
     """
     A feature's own material, zero for anything that is not a closed solid.
