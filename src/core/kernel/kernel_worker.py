@@ -151,6 +151,17 @@ _HINT_LIMIT = 60
 STEP_MODULES = ("Part", "Sketcher", "PartDesign", "Materials")
 
 
+def built_ok(obj):
+    """
+    Whether *obj* recomputed clean -- the one check every `DocumentObject`
+    answers the same way. `isError()` exists on some `PartDesign::Feature`
+    subtypes and not on others (`PartDesign::AdditivePipe` has none in this
+    build), so a Step reaches for `obj.State` instead, the same field the
+    kernel's own failure report reads.
+    """
+    return not (obj.State and "Invalid" in obj.State)
+
+
 def edges_between(shape, a, b):
     """
     The edges of *shape* where a face matching predicate *a* meets a face
@@ -219,7 +230,8 @@ def step_namespace(doc, design=None):
     sys.modules["App"] = FreeCAD
 
     namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__",
-                 "edges_between": edges_between, "edges_by_concavity": edges_by_concavity}
+                 "edges_between": edges_between, "edges_by_concavity": edges_by_concavity,
+                 "built_ok": built_ok}
     if design is not None:
         namespace["design"] = _read_only(design)
     for module in STEP_MODULES:
