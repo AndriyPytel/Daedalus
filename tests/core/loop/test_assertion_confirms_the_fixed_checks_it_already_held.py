@@ -81,3 +81,27 @@ def test_a_run_whose_assertion_confirms_nothing_is_not_an_unqualified_pass(monke
     assert result.ok
     assert result.unmet, "a pass over an Assertion that confirmed nothing must carry unmet"
 
+
+
+def test_the_recorded_shape_end_to_end_fixed_checks_pass_the_model_gives_up_still_qualified():
+    """
+    The exact shape of the recorded run, through the real `assertion()`, with
+    no monkeypatch: the fixed checks genuinely hold (`confirmed` is not
+    empty), the model still gives up without declaring a check of its own,
+    and the acceptance lines the fixed checks never touch stay `uncovered`.
+    A pass over that must still come back qualified.
+    """
+    result, events, llm, tools = drive([
+        design_reply(_A_PART_WITH_AN_ENVELOPE),
+        plan_reply("Pad the outline", satisfies=everything(_A_PART_WITH_AN_ENVELOPE)),
+        code_reply("pad()"),
+        suspect_reply(),
+    ] + _the_model_gives_up_after_probing() + [verdict_reply("pass")],
+        budgets=Budgets(attempts_per_step=1))
+
+    give_up_events = [event for event in events.of(ASSERTION) if event.data.get("ok") is None]
+    assert give_up_events, "the give-up fallback must have run"
+    assert give_up_events[-1].data["confirmed"], "the fixed checks held and must be reported"
+    assert result.ok
+    assert result.unmet, ("the fixed checks holding is not the whole acceptance list -- a pass "
+                          "that never checked it must still carry unmet")

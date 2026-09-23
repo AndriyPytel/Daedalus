@@ -481,7 +481,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               feedback, outcome["tried"] + [{"review": reason}])
             continue
 
-        if checked is not None and acceptance and not checked.confirmed:
+        if checked is not None and checked.uncovered:
             progress.unmet = list(progress.unmet) + list(checked.uncovered)
 
         return LoopResult(ok=True, verdict=verdict, reason=reason,
