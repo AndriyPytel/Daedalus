@@ -116,29 +116,29 @@ def test_a_trailing_gaps_free_continuation_does_not_count_against_attempts_per_s
     assert len(blocked.data["tried"]) == 2
 
 
-def test_an_interior_gap_gets_no_free_continuation():
+def test_an_out_of_order_step_is_refused_before_it_can_land():
     """
-    A Step skipped while a later one in the same reply got code is not room
-    pressure, so it spends `attempts_per_step` from the first occurrence —
-    `attempts_per_step=1` blocks on it immediately, unlike the trailing-gap
-    case above.
+    Step 3's code, offered while Step 2 has neither landed nor been declared,
+    is refused before the kernel ever sees it -- the reply that follows
+    writes Step 2 instead, and the run completes normally.
     """
     result, events, _, _ = drive(
         [
             plan_reply("First", "Second", "Third"),
             json.dumps({"code": "first()", "step": 1, "label": "Step"}),
             json.dumps({"code": "third()", "step": 3, "label": "Step"}),
-            json.dumps({"declare": {"steps": [{"step": 1, "label": "Step"},
-                                              {"step": 3, "label": "Step"}]}}),
+            code_reply("second()", "third()", first=2),
+            suspect_reply(), verdict_reply("pass"),
         ],
         budgets=Budgets(attempts_per_step=1, revisions=0),
     )
 
-    assert not result.ok
-    blocked = events.first(BUDGET_EXHAUSTED)
-    assert blocked is not None
-    assert len(blocked.data["tried"]) == 1
-    assert "skipped a Step it could have written" in blocked.data["tried"][0]["traceback"]
+    assert result.ok
+    refusals = [e for e in events.of(TOOL_RESULT)
+               if e.data.get("result", {}).get("status") == "refused"
+               and e.data["result"].get("step") == 3]
+    assert refusals, "Step 3 must be refused while Step 2 is still missing"
+    assert "Step 2" in refusals[0].data["result"]["traceback"]
 
 
 def test_steps_applied_before_a_trailing_gap_stay_applied():
@@ -333,33 +333,6 @@ def test_a_trailing_gap_says_it_ran_out_of_room_and_steers_shorter():
     assert "ran out of room before finishing this reply" in failure.data["traceback"]
     assert "nothing after it either" in failure.data["traceback"]
     assert "shorter this time" in failure.data["traceback"]
-    assert failure.data["gate"] == "no_code"
-
-
-def test_an_interior_gap_says_a_step_was_skipped_not_that_room_ran_out():
-    """
-    Step 2 is missing while Step 3, after it, carries code in the same reply —
-    the model could write further down and skipped this one, which is a
-    different failure than running dry and gets no "shorter this time" steer.
-    """
-    result, events, _, _ = drive(
-        [
-            plan_reply("First", "Second", "Third"),
-            json.dumps({"code": "first()", "step": 1, "label": "Step"}),
-            json.dumps({"code": "third()", "step": 3, "label": "Step"}),
-            json.dumps({"declare": {"steps": [{"step": 1, "label": "Step"},
-                                                {"step": 3, "label": "Step"}]}}),
-            code_reply("second()", "third()", first=2),
-            suspect_reply(), verdict_reply("pass"),
-        ],
-    )
-
-    assert result.ok
-    failure = events.first(PREFLIGHT_FAILED)
-    assert failure.data["step"] == 2
-    assert "skipped a Step it could have written" in failure.data["traceback"]
-    assert "ran out of room" not in failure.data["traceback"]
-    assert "shorter this time" not in failure.data["traceback"]
     assert failure.data["gate"] == "no_code"
 
 

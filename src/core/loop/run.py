@@ -56,6 +56,7 @@ from core.loop.execute import (
     _SHAPES_THE_PART,
     _SKIPPED_A_STEP,
     _TURN_BUDGET_SPENT,
+    _TURN_BUDGET_SPENT_REHEARSED,
     _WHAT_NOW,
     _emit_plan,
     _freecad_version,
@@ -551,10 +552,13 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
                 free_trailing_gaps = 0
                 continue
             if written.forced:
+                rehearsals = written.rehearsals.get(index + 1, 0)
+                spent = (_TURN_BUDGET_SPENT_REHEARSED % (index + 1, len(steps), rehearsals)
+                        if rehearsals else _TURN_BUDGET_SPENT % (index + 1, len(steps)))
                 return {
                     "handback": None, "obsolete": None, "description": described,
                     "applied_here": index, "tried": [],
-                    "budget_exhausted": _TURN_BUDGET_SPENT % (index + 1, len(steps)),
+                    "budget_exhausted": spent,
                 }
             return {
                 "handback": "Step %d of %d could not be built as written: %s\n%s"

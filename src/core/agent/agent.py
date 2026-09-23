@@ -66,7 +66,8 @@ def _a_python_level_error(traceback):
 
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               kernel=None, supervisor=None, stream=None, system=None,
-              on_declaration=None, exploration=None, design=None, repair_ceiling=None):
+              on_declaration=None, exploration=None, design=None, repair_ceiling=None,
+              already_delivered=()):
     """
     Run *phase* as a multi-turn agent against its own kernel, returning
     `(declared, session, declarations)`. *on_declaration*, called the moment a
@@ -83,7 +84,10 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     Step's allocated names, and *repair_ceiling* refuses an `unbuildable`
     declared right after the Step's own rehearsal code raised a Python-level
     error (`_a_python_level_error`) rather than a geometric refusal, demanding
-    the Step again, up to that many times, before it reaches a revision.
+    the Step again, up to that many times, before it reaches a revision;
+    *already_delivered* seeds Step order enforcement with numbers a prior
+    call already landed, so a regeneration resuming mid-Plan does not refuse
+    its own first Step for a predecessor this call never saw.
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)
@@ -91,7 +95,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     session = Session(system=_composed_system(system, working))
     working_kernel = kernel
     declarations = []
-    delivered_steps = set()
+    delivered_steps = set(already_delivered)
     first_step = True
     declared_failure = None
     pending_retry = None
@@ -176,6 +180,18 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         stream.emit(TOOL_RESULT, name=phase, result=refused)
                     text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
                     continue
+                if message.get("step") is not None:
+                    previous_step = _previous_step(message["step"], sources.get("plan"))
+                    if (previous_step is not None and previous_step not in delivered_steps
+                            and previous_step != declared_failure):
+                        refused = {"ok": False, "status": "refused", "step": message["step"],
+                                  "traceback": "Step %s has neither landed nor been declared. "
+                                                "Write Step %s first."
+                                                % (previous_step, previous_step)}
+                        if stream is not None:
+                            stream.emit(TOOL_RESULT, name=phase, result=refused)
+                        text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
+                        continue
                 if stream is not None:
                     stream.emit(TOOL_CALL, name=phase,
                                 arguments={"code": message["code"]})
@@ -313,6 +329,18 @@ def _next_step(step, plan):
         numbers = range(1, len(plan) + 1)
     later = [number for number in numbers if number > step]
     return min(later) if later else None
+
+
+def _previous_step(step, plan):
+    """The Step before *step* the Plan holds, or `None` when *step* is first."""
+    if not isinstance(plan, list) or not plan:
+        return step - 1 if step > 1 else None
+    if all(isinstance(item, dict) and "step" in item for item in plan):
+        numbers = [item["step"] for item in plan]
+    else:
+        numbers = range(1, len(plan) + 1)
+    earlier = [number for number in numbers if number < step]
+    return max(earlier) if earlier else None
 
 
 def _kept(working_dir, checkpoint, index):

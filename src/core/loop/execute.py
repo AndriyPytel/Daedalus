@@ -126,6 +126,9 @@ class Written:
     turn budget ran out before it declared, making `unbuildable` (if set)
     the forced last word `budget_last_call.md` demands rather than a
     verdict the model reached on its own.
+
+    `rehearsals` counts, per Step number, how many declared attempts
+    `apply_step` rejected before the phase moved on or ran out of turns.
     """
 
     steps: dict = field(default_factory=dict)
@@ -133,6 +136,7 @@ class Written:
     unbuildable: str = None
     said: str = None
     forced: bool = False
+    rehearsals: dict = field(default_factory=dict)
 
     def for_step(self, number) -> ExecuteOutcome:
         return self.steps.get(number) or ExecuteOutcome()
@@ -260,22 +264,27 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                 system=prompt(EXECUTE_PHASE, ledger=ledger.render() if ledger else ""),
                 on_declaration=on_declaration, exploration=exploration,
                 repair_ceiling=budgets.attempts_per_step,
+                already_delivered=range(1, start + 1),
             )
 
         reply = declared if isinstance(declared, dict) else {}
         forced = bool(reply.pop(_FORCED_BY_BUDGET, False))
+        rehearsals = {number: len(attempts) for number, attempts in tried.items()}
 
         written = _written(declarations, start)
         if written:
             return Written(steps=written,
                            unbuildable=str(reply.get("unbuildable") or reply.get("obsolete"))
                            if (reply.get("unbuildable") or reply.get("obsolete")) else None,
-                           said=_said(reply, declarations, start), forced=forced)
+                           said=_said(reply, declarations, start), forced=forced,
+                           rehearsals=rehearsals)
         if reply.get("obsolete"):
-            return Written(obsolete=str(reply["obsolete"]), forced=forced)
+            return Written(obsolete=str(reply["obsolete"]), forced=forced, rehearsals=rehearsals)
         if reply.get("unbuildable"):
-            return Written(unbuildable=str(reply["unbuildable"]), forced=forced)
-        return Written(said=_said(reply, declarations, start), forced=forced)
+            return Written(unbuildable=str(reply["unbuildable"]), forced=forced,
+                           rehearsals=rehearsals)
+        return Written(said=_said(reply, declarations, start), forced=forced,
+                       rehearsals=rehearsals)
     finally:
         shutil.rmtree(working_dir, ignore_errors=True)
 
@@ -601,6 +610,9 @@ _GOING_NOWHERE = read_prompt("going_nowhere.md")
 
 
 _TURN_BUDGET_SPENT = read_prompt("turn_budget_spent.md")
+
+
+_TURN_BUDGET_SPENT_REHEARSED = read_prompt("turn_budget_spent_rehearsed.md")
 
 
 _A_PROPERTY_OF_THE_DOCUMENT = ("material", "appearance", "colour", "color",
