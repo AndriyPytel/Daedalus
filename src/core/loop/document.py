@@ -1,7 +1,7 @@
 """The live Document, copied for a phase kernel to open."""
 import contextlib
 
-from core.freecad_apply import _discard
+from core.freecad_apply import discard
 
 
 @contextlib.contextmanager
@@ -18,4 +18,4 @@ def copied(tools):
         yield path
     finally:
         if path:
-            _discard(path)
+            discard(path)

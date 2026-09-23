@@ -22,7 +22,7 @@ from core.llm import REASONING, TEXT, Session
 from core.llm.exceptions import StreamCutOff
 from core.agent.phase_contract import spawn
 from core.agent.subagent import delegate
-from core.freecad_apply import _discard
+from core.freecad_apply import discard
 from core.loop.prompt import _CUT_OFF_ATTEMPTS, _object_of, prompt
 from core.prompts import read_prompt
 
@@ -222,7 +222,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                             if last_landed_checkpoint is not None
                             else (document if isinstance(document, str) else None)))
                         if resync is not None:
-                            _discard(resync)
+                            discard(resync)
                     if delivered.get("drift") or delivered.get("retry"):
                         declaration["delivered"] = False
                         declaration["traceback"] = delivered.get("traceback", "")

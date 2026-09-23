@@ -243,7 +243,7 @@ class ApplyPipeline:
             try:
                 seeded = self.worker.check("pass", document=copy, ephemeral=True)
             finally:
-                _discard(copy)
+                discard(copy)
         self._dispatch(lambda: lock_gui(self.main_window, True))
         self.locked = True
         self._names = {}
@@ -350,7 +350,7 @@ class ApplyPipeline:
         try:
             checked = self.worker.check(code, document=copy, ephemeral=True)
         finally:
-            _discard(copy)
+            discard(copy)
         return {"ok": bool(checked.ok), "traceback": checked.traceback or "",
                 "held": checked.held, "failed": checked.failed,
                 "geometry": checked.geometry}
@@ -381,7 +381,7 @@ class ApplyPipeline:
                                       render_path=self._render_path(),
                                       ephemeral=True)
         finally:
-            _discard(copy)
+            discard(copy)
         return [drawn.render] if drawn.ok and drawn.render else []
 
     def _narrate(self, kind, **data):
@@ -475,7 +475,7 @@ class ApplyPipeline:
         )
 
 
-def _discard(path):
+def discard(path):
     try:
         os.remove(path)
     except OSError:
