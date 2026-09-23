@@ -253,10 +253,15 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         events.emit(ANSWER, by="user", text=_DECIDED[answer])
         return answer
 
+    def _size_ceiling(steps):
+        """One ceiling for the whole run, grown to fit whichever Plan is biggest so far."""
+        supervisor.turn_budget = max(supervisor.turn_budget, 3 * len(steps) + RESERVE)
+        return supervisor.turn_budget
+
     planned = replan(_still_wrong(outstanding) if outstanding else None)
-    supervisor.turn_budget = max(supervisor.turn_budget, 3 * len(planned.steps) + RESERVE)
     _emit_plan(events, PLAN, planned, unanswered=asking.unanswered,
-               decided=decided_for_you(part.the_part))
+               decided=decided_for_you(part.the_part),
+               turn_budget=_size_ceiling(planned.steps))
 
     rejections = 0
     revisions = _Revisions()
@@ -292,7 +297,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                    decided=decided_for_you(part.the_part),
                    revision=revisions.spent_total(),
                    of=(budgets.revisions if step is not None else revisions_ceiling(budgets, steps)),
-                   because=revisions.named(cause))
+                   because=revisions.named(cause),
+                   turn_budget=_size_ceiling(revised.steps))
         return revised
 
     while True:
