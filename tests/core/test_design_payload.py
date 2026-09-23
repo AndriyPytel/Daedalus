@@ -84,6 +84,18 @@ verbatim; no shorter wording was found that keeps every fact and both
 literal forms. What it buys is a `place` two readings of the same feature
 always spell the same way, a measured-from end that is never guessed, and a
 through-ness that is never inferred from prose.
+
+`BASELINE`'s input_tokens moved up by 26 more on every call when
+`language.md` gained a rib's own `slope` and `rounding` fields, so its
+sloped, rounded top is read off a value rather than re-derived by hand
+with `atan`/`sin` each attempt. 102 characters, 26 tokens on every call —
+cut from an earlier 149-character draft (37 tokens) to the shortest
+wording that still names both fields and the two it replaces
+(`height`/`position`); a fuller draft crossed the 2024 sheet's ceiling
+(`FIRST_PASS_CEILING_RATIO` * `SINGLE_CALL_BASELINE`) by 18 tokens, so no
+wording above ~26 tokens fits without raising the ratio. What it buys is
+the rib top's slope and rounding as one settled number instead of six
+attempts' worth of disagreeing trigonometry.
 """
 import json
 import os
@@ -118,19 +130,19 @@ FIRST_PASS_CEILING_RATIO = 1.79
 BASELINE = {
     "model-mania_-in-person-2023.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25075},
-            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 25813},
+            {"label": "page 1", "pictures": 15, "total_chars": 7195, "input_tokens": 25101},
+            {"label": "page 2", "pictures": 14, "total_chars": 6999, "input_tokens": 25839},
         ],
-        "reconcile": {"total_chars": 40545, "input_tokens": 21542},
-        "total": 72430,
+        "reconcile": {"total_chars": 40545, "input_tokens": 21568},
+        "total": 72508,
     },
     "model-mania-2024.pdf": {
         "groups": [
-            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23410},
-            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26294},
+            {"label": "page 1", "pictures": 15, "total_chars": 8636, "input_tokens": 23436},
+            {"label": "page 2", "pictures": 15, "total_chars": 8539, "input_tokens": 26320},
         ],
-        "reconcile": {"total_chars": 41375, "input_tokens": 21749},
-        "total": 71453,
+        "reconcile": {"total_chars": 41375, "input_tokens": 21775},
+        "total": 71531,
     },
 }
 

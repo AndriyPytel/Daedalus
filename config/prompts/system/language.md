@@ -29,7 +29,9 @@ the drawing gives — a diameter, a radius, a length, an angle — is never in
 `bolt_circle_diameter`). Append `-4x` for a repeated feature.
 
 `direction` marks the measured-from end (empty if unknown); `goes_through`,
-never inferred from the word "through" in `topology`.
+never inferred from the word "through" in `topology`. A rib's sloped top
+carries `slope` and `rounding`; never re-derived from `height`/`position`
+by hand.
 
 Datum `name`: one of (the left end face, the right end face, the front face,
 the rear face, the top face, the bottom face, the ring axis, the bore axis,
