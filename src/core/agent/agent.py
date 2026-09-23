@@ -22,6 +22,7 @@ from core.llm import REASONING, TEXT, Session
 from core.llm.exceptions import StreamCutOff
 from core.agent.phase_contract import spawn
 from core.agent.subagent import delegate
+from core.freecad_apply import _discard
 from core.loop.prompt import _CUT_OFF_ATTEMPTS, _object_of, prompt
 from core.prompts import read_prompt
 
@@ -70,11 +71,13 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     Run *phase* as a multi-turn agent against its own kernel, returning
     `(declared, session, declarations)`. *on_declaration*, called the moment a
     Step is declared, answers `{"delivered": True}`, a retry shape (`retry` or
-    `drift`, kept apart for SignatureMismatch) that rewinds the kernel to the
-    last checkpoint and asks again in this session, or a final
-    `{"delivered": False}` for the caller's handback -- which rewinds the
-    kernel the same way, since a Step abandoned there already committed its
-    Preflight checkpoint though the real Document never landed it. *exploration*
+    `drift`, kept apart for SignatureMismatch) that rewinds the kernel and
+    asks again in this session, or a final `{"delivered": False}` for the
+    caller's handback -- which rewinds the kernel the same way, reopening the
+    answer's own `resync` path (the real Document after the rejection) when
+    given, the last landed checkpoint otherwise, since a Step abandoned there
+    already committed its Preflight checkpoint though the real Document never
+    landed it. *exploration*
     seeds and is updated with `since_declaration`, *design* is carried into
     the kernel alongside *document*, remembered past this call the same as a
     Step's allocated names, and *repair_ceiling* refuses an `unbuildable`
@@ -212,10 +215,14 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     delivered = (on_declaration(declaration) if on_declaration is not None
                                 else {"delivered": True})
                     if not delivered.get("delivered"):
+                        resync = delivered.get("resync")
                         working_kernel.check("pass", document=(
-                            last_landed_checkpoint
+                            resync if resync is not None
+                            else last_landed_checkpoint
                             if last_landed_checkpoint is not None
                             else (document if isinstance(document, str) else None)))
+                        if resync is not None:
+                            _discard(resync)
                     if delivered.get("drift") or delivered.get("retry"):
                         declaration["delivered"] = False
                         declaration["traceback"] = delivered.get("traceback", "")
