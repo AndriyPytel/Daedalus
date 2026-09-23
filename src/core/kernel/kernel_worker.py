@@ -911,7 +911,18 @@ def _reload_checkpoint():
 
 
 def _save_checkpoint(doc):
-    doc.saveCopy(_checkpoint_path())
+    """
+    `saveCopy` is a silent no-op when the destination equals `doc.FileName`
+    -- which is exactly what it becomes after `_reload_checkpoint` opens the
+    checkpoint itself. Saving to a sibling temp path first sidesteps that,
+    and `os.replace` is atomic, so a reader never sees a half-written file.
+    """
+    path = _checkpoint_path()
+    handle, tmp_path = tempfile.mkstemp(
+        prefix="kernel_checkpoint_", suffix=".FCStd", dir=os.path.dirname(path))
+    os.close(handle)
+    doc.saveCopy(tmp_path)
+    os.replace(tmp_path, path)
 
 
 def _run_step_body(doc, namespace, touched, request):
