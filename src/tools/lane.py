@@ -13,6 +13,7 @@ log; `--report` prints the fuller Markdown document `report()` builds over
 the same logs, one summary row per model and one detail row per run.
 """
 import argparse
+import datetime
 import glob
 import json
 import os
@@ -27,20 +28,8 @@ HANG_SECONDS = 1800
 REASON_WIDTH = 60
 
 
-def rotate(stem):
-    """Move a previous attempt's log aside so a retry starts on an empty file.
-
-    `EventStream.log_to` opens for append, so a retry -- or a run picked back
-    up by `--resume` -- would otherwise write a second run into the first
-    one's log, and `core.measure` would then read both as one.
-    """
-    log = stem + ".jsonl"
-    if not os.path.exists(log):
-        return
-    index = 1
-    while os.path.exists("%s.attempt%d.jsonl" % (stem, index)):
-        index += 1
-    os.rename(log, "%s.attempt%d.jsonl" % (stem, index))
+def _attempt_timestamp():
+    return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
 def load_state(path):
@@ -161,13 +150,18 @@ leaving `--budget-usd` unset and risking an unbounded overnight spend.
 
 
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
-          resume, provider, run_seconds, conflicts=None):
+          resume, provider, run_seconds, conflicts=None, timestamp=None):
     """
     *conflicts* ("on"/"off"/`None`) is the append-only model's own A/B arm:
     set, it suffixes every task's label the way `logs/ab-rlm-agentic`
     already names an arm (`mm23-off`) and is passed on to
-    `tools/run.py --conflicts`.
+    `tools/run.py --conflicts`. Every attempt gets its own `<stem>.<timestamp>`
+    log and, from `run_one`'s own naming, STEP, so a retry's save never
+    lands on the same path as any other attempt's. *timestamp* is
+    injectable so a test can make attempts distinguishable without a real
+    clock.
     """
+    timestamp = timestamp or _attempt_timestamp
     state_path = os.path.join(out, "state.json")
     state = load_state(state_path) if resume else {"runs": {}}
 
@@ -182,10 +176,12 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                 continue
 
             stem = os.path.join(model_dir, arm_label)
-            log = stem + ".jsonl"
             outcome = "hung"
+            attempts = []
+            log = None
             for attempt in range(1, retries + 1):
-                rotate(stem)
+                log = "%s.%s.jsonl" % (stem, timestamp())
+                attempts.append(log)
                 kwargs = {"conflicts": conflicts} if conflicts is not None else {}
                 process = run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
                                   **kwargs)
@@ -195,7 +191,8 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                 print("%s attempt %d: %s (exit %s)"
                       % (key, attempt, outcome, process.returncode), flush=True)
 
-            state["runs"][key] = {"label": label, "model": model, "log": log,
+            state["runs"][key] = {"label": arm_label, "model": model, "log": log,
+                                  "attempts": attempts,
                                   "status": "done" if outcome == "exited"
                                   and process.returncode == 0 else "failed"}
             save_state(state_path, state)
@@ -222,12 +219,23 @@ def status(out):
 
 
 def _logs(out):
-    """(model, label, path), one per sweep log -- a rotated attempt is not the run."""
+    """
+    (model, label, path), one per run -- `state.json`, when a sweep wrote
+    one, names each key's own final attempt so a retried, failed attempt
+    at the same key does not also show up as a run of its own; a directory
+    of logs no sweep ever touched falls back to every `.jsonl` in it.
+    """
+    state_path = os.path.join(out, "state.json")
+    if os.path.exists(state_path):
+        state = load_state(state_path)
+        for key, run in sorted(state["runs"].items()):
+            if run.get("log") and os.path.exists(run["log"]):
+                yield run["model"], run["label"], run["log"]
+        return
+
     models = sorted(d for d in os.listdir(out) if os.path.isdir(os.path.join(out, d)))
     for model in models:
         for path in sorted(glob.glob(os.path.join(out, model, "*.jsonl"))):
-            if ".attempt" in os.path.basename(path):
-                continue
             yield model, os.path.basename(path)[: -len(".jsonl")], path
 
 

@@ -19,30 +19,64 @@ sys.path.insert(0, os.path.join(ROOT, "src", "tools"))
 import lane  # noqa: E402
 
 
-def test_rotate_moves_an_existing_log_aside_instead_of_letting_a_retry_append(tmp_path):
-    stem = str(tmp_path / "mm25-sonnet")
-    open(stem + ".jsonl", "w").write("first\n")
+def test_a_retry_gets_its_own_stem_for_both_the_log_and_the_step(tmp_path):
+    """
+    A retry no longer overwrites the previous attempt's `.step` -- each of
+    3 failing attempts leaves its own `.jsonl` and, from `run_one`'s own
+    naming, its own `.step`, the two sharing one timestamp stem.
+    """
+    out = str(tmp_path)
+    stamps = iter(["20260101-000001", "20260101-000002", "20260101-000003"])
 
-    lane.rotate(stem)
+    class FakeProcess:
+        returncode = 1
 
-    assert not os.path.exists(stem + ".jsonl")
-    assert open(stem + ".attempt1.jsonl").read() == "first\n"
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+        open(log, "w").close()
+        open(log[: -len(".jsonl")] + ".step", "w").close()
+        return FakeProcess()
 
-    open(stem + ".jsonl", "w").write("second\n")
-    lane.rotate(stem)
+    lane.run_one, real_run_one = fake_run_one, lane.run_one
+    lane.watch, real_watch = lambda *a, **k: "exited", lane.watch
+    try:
+        lane.sweep([("mm24-opus", "sheet.pdf")], ["opus"], "medium", None, "Build it.", out,
+                  1800, 3, False, "Claude (subscription)", None,
+                  timestamp=lambda: next(stamps))
+    finally:
+        lane.run_one, lane.watch = real_run_one, real_watch
 
-    assert open(stem + ".attempt1.jsonl").read() == "first\n"
-    assert open(stem + ".attempt2.jsonl").read() == "second\n"
+    jsonls = sorted(glob.glob(os.path.join(out, "opus", "mm24-opus.*.jsonl")))
+    steps = sorted(glob.glob(os.path.join(out, "opus", "mm24-opus.*.step")))
+    assert len(jsonls) == 3, jsonls
+    assert [p[: -len(".jsonl")] for p in jsonls] == [p[: -len(".step")] for p in steps]
+
+    with open(os.path.join(out, "state.json"), encoding="utf-8") as handle:
+        state = json.load(handle)
+    run = state["runs"]["mm24-opus/opus"]
+    assert run["log"] == jsonls[-1]
+    assert run["attempts"] == jsonls
 
 
-def test_a_run_that_never_appends_leaves_one_log_per_attempt(tmp_path):
-    stem = str(tmp_path / "mm24-opus")
-    for content in ("attempt-a\n", "attempt-b\n", "attempt-c\n"):
-        lane.rotate(stem)
-        open(stem + ".jsonl", "w").write(content)
+def test_logs_reads_the_final_attempt_from_state_json_not_every_retry(tmp_path):
+    """
+    Two failed attempts at the same key must not turn into two rows of
+    `report()` -- `state.json` names which attempt was final, and that is
+    the one `_logs()` must yield.
+    """
+    out = str(tmp_path)
+    os.makedirs(os.path.join(out, "opus"))
+    winner = os.path.join(out, "opus", "mm24-opus.20260101-000002.jsonl")
+    loser = os.path.join(out, "opus", "mm24-opus.20260101-000001.jsonl")
+    open(winner, "w").close()
+    open(loser, "w").close()
+    state = {"runs": {"mm24-opus/opus": {"label": "mm24-opus", "model": "opus",
+             "log": winner, "attempts": [loser, winner], "status": "done"}}}
+    with open(os.path.join(out, "state.json"), "w", encoding="utf-8") as handle:
+        json.dump(state, handle)
 
-    logs = sorted(glob.glob(str(tmp_path / "mm24-opus*.jsonl")))
-    assert [open(path).read() for path in logs] == ["attempt-a\n", "attempt-b\n", "attempt-c\n"]
+    rows = list(lane._logs(out))
+
+    assert rows == [("opus", "mm24-opus", winner)]
 
 
 def test_watch_kills_a_process_whose_log_stops_growing(tmp_path):
@@ -340,9 +374,9 @@ def test_run_one_omits_the_conflicts_flag_when_unset(monkeypatch):
 
 def test_sweep_suffixes_the_arm_onto_the_task_label(tmp_path):
     """
-    `logs/ab-rlm-agentic/<model>/mm23-off.jsonl` is the naming an earlier
-    A/B already left on disk; this sweep reuses it rather than
-    inventing a second scheme.
+    `logs/ab-rlm-agentic/<model>/mm23-off.*.jsonl` is the naming an earlier
+    A/B already left on disk, an attempt stamp now added; this sweep reuses
+    the arm suffix rather than inventing a second scheme.
     """
     out = str(tmp_path)
     spawned = []
@@ -360,13 +394,14 @@ def test_sweep_suffixes_the_arm_onto_the_task_label(tmp_path):
     lane.watch, real_watch = lambda *a, **k: "exited", lane.watch
     try:
         lane.sweep([("mm23", "sheet.pdf")], ["opus"], "medium", None, "Build it.", out,
-                  1800, 3, False, "Claude (subscription)", None, conflicts="off")
+                  1800, 3, False, "Claude (subscription)", None, conflicts="off",
+                  timestamp=lambda: "20260101-000000")
     finally:
         lane.run_one, lane.watch = real_run_one, real_watch
 
     ((label, log, conflicts),) = spawned
     assert label == "mm23"
-    assert log == os.path.join(out, "opus", "mm23-off.jsonl")
+    assert log == os.path.join(out, "opus", "mm23-off.20260101-000000.jsonl")
     assert conflicts == "off"
 
 
