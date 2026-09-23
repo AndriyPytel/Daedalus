@@ -74,7 +74,9 @@ element names of the edges where a face answering predicate `a` meets a face
 answering predicate `b` — `edges_between(body.Shape, lambda f: planar_at_z(f,
 15), lambda f: cylinder_of(f, 25))` is the whole of a fillet's selection, and
 a predicate that matches nothing raises there and then rather than filleting
-the wrong junction. The code must be a pure function of the Document:
+the wrong junction. So is `built_ok(obj)`, true when *obj* recomputed clean —
+there is no `isError()` on every feature type, so check with this instead of
+guessing at one. The code must be a pure function of the Document:
 no Gui.*, no reading the live selection, and no literal element names such as
 Edge12 — compute references from the geometry at execution time instead.
 

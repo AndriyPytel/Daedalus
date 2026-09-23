@@ -818,6 +818,20 @@ def test_the_tessellated_bound_box_is_a_trap_not_a_number_in_the_prompt():
         "Execute no longer says where a coordinate comes from"
 
 
+def test_built_ok_is_named_in_the_execute_prompt_not_just_the_namespace():
+    """
+    A Step's generated code cannot reach for a helper it was never told
+    exists — `built_ok` must be named in execute.md next to `edges_between`,
+    the same way every other Step-namespace helper is, or a Step keeps
+    guessing at `isError()` instead.
+    """
+    execute = " ".join(read_prompt("execute.md").split())
+    assert "built_ok(obj)" in execute, \
+        "execute.md does not name built_ok as a Step helper"
+    assert "isError" in execute, \
+        "execute.md does not say why built_ok exists instead of isError()"
+
+
 def test_the_constraint_spellings_are_a_trap_not_prompt_copy():
     """
     Which constraint types exist is knowledge about a specific FreeCAD build,
