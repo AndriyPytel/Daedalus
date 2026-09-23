@@ -103,16 +103,17 @@ def _checks_fail_rate(assertions) -> float:
 
 def _preflight_by_gate(events) -> dict:
     """
-    Per-gate count of `PREFLIGHT_FAILED` events, `gate` values as the keys --
-    an event with no `gate` (a `SignatureMismatch` drift, or a log recorded
-    before this field existed) is not counted under any key, so the totals
-    here never claim more than the events that actually named a cause.
+    Per-gate count of `PREFLIGHT_FAILED` events, `gate` values as the keys.
+    A drift recorded before it carried a gate is recognised by its own
+    traceback; any other event with no `gate` is not counted under any key.
     """
     counts = {}
     for event in events:
         if event.kind != PREFLIGHT_FAILED:
             continue
-        gate = event.data.get("gate")
+        gate = event.data.get("gate") or (
+            "drift" if "signature did not match what the kernel verified"
+            in (event.data.get("traceback") or "") else None)
         if gate:
             counts[gate] = counts.get(gate, 0) + 1
     return counts
