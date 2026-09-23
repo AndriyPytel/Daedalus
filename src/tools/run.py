@@ -97,6 +97,7 @@ def main():
     print("ok            :", result.ok)
     print("verdict       :", result.verdict, "-", result.reason)
     print("steps applied :", result.steps_applied)
+    print("unverified    :", ", ".join(getattr(result, "unmet", None) or ()) or "none")
     print("spent         : $%.2f" % spent["usd"])
     print("event log     :", args.log)
 
