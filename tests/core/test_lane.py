@@ -57,6 +57,38 @@ def test_a_retry_gets_its_own_stem_for_both_the_log_and_the_step(tmp_path):
     assert run["attempts"] == jsonls
 
 
+def test_two_attempts_on_the_same_stamp_still_get_two_files(tmp_path):
+    """
+    A run that dies in under a second -- the misrouted attempt 1 in
+    `logs/mm429-smoke-part1-run2` -- can share its stamp with the retry
+    that follows it; the second attempt must still land on its own path
+    rather than overwrite the first's `.jsonl`/`.step`.
+    """
+    out = str(tmp_path)
+
+    class FakeProcess:
+        returncode = 1
+
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+        open(log, "w").close()
+        open(log[: -len(".jsonl")] + ".step", "w").close()
+        return FakeProcess()
+
+    lane.run_one, real_run_one = fake_run_one, lane.run_one
+    lane.watch, real_watch = lambda *a, **k: "exited", lane.watch
+    try:
+        lane.sweep([("mm24-opus", "sheet.pdf")], ["opus"], "medium", None, "Build it.", out,
+                  1800, 2, False, "Claude (subscription)", None,
+                  timestamp=lambda: "20260101-000001")
+    finally:
+        lane.run_one, lane.watch = real_run_one, real_watch
+
+    jsonls = sorted(glob.glob(os.path.join(out, "opus", "mm24-opus.*.jsonl")))
+    steps = sorted(glob.glob(os.path.join(out, "opus", "mm24-opus.*.step")))
+    assert len(jsonls) == 2, jsonls
+    assert [p[: -len(".jsonl")] for p in jsonls] == [p[: -len(".step")] for p in steps]
+
+
 def test_logs_reads_the_final_attempt_from_state_json_not_every_retry(tmp_path):
     """
     Two failed attempts at the same key must not turn into two rows of

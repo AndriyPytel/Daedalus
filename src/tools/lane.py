@@ -29,7 +29,19 @@ REASON_WIDTH = 60
 
 
 def _attempt_timestamp():
-    return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    return datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+
+
+def _unique_stem(stem, stamp):
+    """`<stem>.<stamp>`, or that with a counter suffix if a run already
+    claimed it -- two attempts a real clock or an injected *timestamp*
+    both gave the same stamp must still land on different files."""
+    candidate = "%s.%s" % (stem, stamp)
+    index = 2
+    while os.path.exists(candidate + ".jsonl"):
+        candidate = "%s.%s-%d" % (stem, stamp, index)
+        index += 1
+    return candidate
 
 
 def load_state(path):
@@ -180,7 +192,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
             attempts = []
             log = None
             for attempt in range(1, retries + 1):
-                log = "%s.%s.jsonl" % (stem, timestamp())
+                log = _unique_stem(stem, timestamp()) + ".jsonl"
                 attempts.append(log)
                 kwargs = {"conflicts": conflicts} if conflicts is not None else {}
                 process = run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
