@@ -487,7 +487,7 @@ def test_boss_foot_fillet_refuses_naming_the_conflicting_feature(kernel):
     assert "StdFail_NotDone" in result.traceback
 
 
-def test_rib_flank_fillet_refuses_at_every_radius(kernel):
+def test_rib_flank_fillet_refuses_at_every_radius_naming_the_conflicting_feature(kernel):
     _build_through_step_8(kernel)
 
     for radius in (2.0, 1.5, 1.0, 0.5, 0.1):
@@ -497,4 +497,6 @@ def test_rib_flank_fillet_refuses_at_every_radius(kernel):
         result = kernel.check(code, design=DESIGN)
 
         assert not result.ok, "R%s built where the recorded run found every radius refused" % radius
+        assert "FilletRibBoss" in result.traceback, (
+            "R%s's refusal does not name the conflicting feature: %s" % (radius, result.traceback))
         assert "StdFail_NotDone" in result.traceback
