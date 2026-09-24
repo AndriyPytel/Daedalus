@@ -1,7 +1,7 @@
 """
-`plan.md` must state FCC-453's four fillet-ordering rules verbatim enough to
-grep for: sketch radii, fillets-last with largest-first, the early-fillet
-exception, and edge counts as estimates, not facts.
+`plan.md` must state the fillet-ordering rules verbatim enough to grep for:
+sketch radii, fillets-last with largest-first, the early-fillet exception,
+and edge counts as estimates, not facts.
 """
 import re
 

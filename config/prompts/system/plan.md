@@ -180,6 +180,29 @@ away. Planning the fillets and chamfers last is what keeps every Step before
 them free to be found again by the geometry it actually built, rather than by
 a selector some earlier boolean already invalidated.
 
+**A radius that belongs to a profile is drawn in the sketch**, not planned as
+a fillet feature: a rounded corner that is part of the outline it sits in is
+geometry of that sketch, and the sketch is where it is stated.
+
+**Every other fillet or chamfer is planned at the end, largest radius first.**
+That is common CAD practice — later features cut earlier fillets, and
+PartDesign stores a fillet's edges by name, so a fillet planned early is a
+fillet a later Step can invalidate.
+
+**A fillet is planned directly after the feature that makes its edge only
+when a later feature would cut that edge into pieces.** An R10 fillet on the
+edge a base pad makes, planned before the lugs that later cut that edge into
+twelve pieces, rounds the edge whole; planned last, it rounds twelve pieces
+of an edge nobody described as twelve. That is the one exception to
+fillets-last, and it applies only where a later feature splits the edge —
+never as the general rule.
+
+**An edge count a Step states is an estimate for Execute to check against the
+real Body, not a fact.** A circle Design counted as one edge comes into the
+Body as two arcs, and a count a Step carries in `satisfies` is what Execute
+checks its selection against on the geometry as built, not a number the Plan
+is trusted to have gotten right.
+
 The order is not the order the description lists the features in, and the
 properties that are not geometry at all come last of all — a material card
 depends on nothing and nothing depends on it, so it is the last Step of any
