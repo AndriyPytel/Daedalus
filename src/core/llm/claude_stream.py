@@ -27,12 +27,33 @@ def _as_text(content) -> str:
                        if piece.get("type") == "text")
 
 
+_TASK_CACHE_BREAKPOINT = {"type": "ephemeral", "ttl": "1h"}
+
+
 def _user_turn(messages: list) -> dict:
-    """The user half of *messages* as the one message stream-json input takes."""
+    """
+    The user half of *messages* as the one message stream-json input takes,
+    with an explicit cache breakpoint on the task turn's own last block.
+
+    Anthropic's lookback only reaches 20 blocks behind wherever a call's own
+    breakpoint lands, and this route's `claude` CLI already spends 3 of the
+    4 a request allows on its own (tools, the system prompt, the end of the
+    conversation) -- one more, placed on the task rather than left for the
+    CLI to place only at the tail, is what keeps the task itself cached
+    once a Step's retries push the conversation past that window, since the
+    CLI's own end-of-conversation breakpoint moves with every call and
+    stops finding it.
+    """
     content = []
-    for message in messages:
-        if message.get("role") == "user":
-            content.extend(_blocks(message.get("content")))
+    task_end = None
+    for index, message in enumerate(messages):
+        if message.get("role") != "user":
+            continue
+        content.extend(_blocks(message.get("content")))
+        if task_end is None and content:
+            task_end = len(content) - 1
+    if task_end is not None:
+        content[task_end] = dict(content[task_end], cache_control=_TASK_CACHE_BREAKPOINT)
     return {"type": "user", "message": {"role": "user", "content": content}}
 
 
