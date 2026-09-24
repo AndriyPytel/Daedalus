@@ -268,8 +268,10 @@ already in scope alongside `doc`, the same dict Design settled, read-only —
 not a file, so there is no `design.json` here to open. Run `{"code": "..."}`
 freely to read the Document before you commit to anything — `hasattr`, an
 enumeration, a material card, walking `Shape.Faces` — that code runs and may
-print, and it is never replayed: it dies with the kernel the moment this
-phase ends.
+print, and it is never replayed. It is for looking, not for building: where
+it creates, deletes or modifies an object, the kernel undoes it before your
+next turn and the result names what was undone, so build only in a turn that
+declares a Step.
 
 A dimension a Step names is a dimension you read off `design`, never a
 number you write down. `features` is a dict keyed by each feature's `id` —
@@ -281,7 +283,8 @@ because a default stands in for a value nobody measured.
 `0`, `1`, `90` and `360` are counts and right angles, not dimensions, and
 need no lookup.
 
-Once a Step's code is the code that built it, declare it in the same turn:
+Only a turn that declares a Step builds anything — write that Step's code
+and declare it together, never explore your way to it first:
 
     {"code": "...", "step": 4, "label": "short name for the undo entry"}
 
