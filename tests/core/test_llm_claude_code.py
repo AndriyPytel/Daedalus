@@ -45,6 +45,7 @@ from core.llm import (
 )
 from core.llm import claude as llm_claude
 from core.llm.claude import _spawn_claude, _environment, _CLAUDE_CANDIDATES
+from core.llm.claude_stream import _user_turn
 from core.llm.effort_policy import _CEILING, _SUBSCRIPTION_EFFORT
 from core.llm.attachments import _PREFIX
 from tests import modelmania_harness
@@ -861,6 +862,28 @@ def test_the_user_message_goes_in_as_one_json_line_on_stdin():
     assert sent(spawn) == {"type": "user", "message": {
         "role": "user", "content": [{"type": "text", "text": "Make a 10mm plate",
                                       "cache_control": {"type": "ephemeral", "ttl": "1h"}}]}}
+
+
+def test_a_later_turn_carries_the_models_own_earlier_replies_in_order():
+    """
+    Every earlier assistant reply rides along as a marked text block in the
+    one user message stream-json input takes -- the CLI accepts user turns
+    only, so a real `assistant` entry is not an option here.
+    """
+    messages = [
+        {"role": "system", "content": "s"},
+        {"role": "user", "content": "Step 1"},
+        {"role": "assistant", "content": "box_1()"},
+        {"role": "user", "content": "Step 1 failed"},
+        {"role": "assistant", "content": "box_1_fixed()"},
+        {"role": "user", "content": "Step 2"},
+    ]
+
+    turn = _user_turn(messages)["message"]["content"]
+
+    assert [block["text"] for block in turn] == [
+        "Step 1", "Your reply:\nbox_1()", "Step 1 failed",
+        "Your reply:\nbox_1_fixed()", "Step 2"]
 
 
 def _drawn(tmp_path, name):
