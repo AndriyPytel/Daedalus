@@ -56,7 +56,7 @@ assert len(body.Shape.Solids) == 1, 'rib pad left %d solids' % len(body.Shape.So
 STEP_4_WITH_ISERROR = r"""
 import math
 body = doc.getObject('Body')
-rib = next(f for f in design['features'] if f['id'] == 'rib-centre')
+rib = design["features"]["rib-centre"]
 thk = float(rib['thickness']['value'].split()[0])
 r = thk / 2.0
 ribsk = next(o for o in doc.Objects if o.Label == 'RibProfile')
@@ -111,7 +111,7 @@ print('solids', len(sh.Solids))
 STEP_4_RIB_ROUND_SWEEP = r"""
 import math
 body = doc.getObject('Body')
-rib = next(f for f in design['features'] if f['id'] == 'rib-centre')
+rib = design["features"]["rib-centre"]
 thk = float(rib['thickness']['value'].split()[0])
 r = thk / 2.0
 ribsk = next(o for o in doc.Objects if o.Label == 'RibProfile')

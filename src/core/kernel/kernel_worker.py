@@ -14,6 +14,7 @@ the idle-feature diagnosis and the Document's own objects, not only the
 traceback.
 """
 import contextlib
+import copy
 import difflib
 import io
 import json
@@ -22,7 +23,6 @@ import os
 import sys
 import tempfile
 import traceback
-import types
 
 SENTINEL = "@@KERNEL@@"
 
@@ -199,18 +199,18 @@ def edges_between(shape, a, b):
     return names
 
 
-def _read_only(value):
+def _step_design(design):
     """
-    *value* with every nested `dict`/`list` frozen -- `types.MappingProxyType`
-    for a mapping, a `tuple` of frozen elements for a list -- so a Step that
-    tries to write through it (`design['x'] = ...`, `design['x'].append(...)`)
-    gets a `TypeError` instead of quietly changing what Design established.
+    A private `copy.deepcopy` of *design* for one Step's own namespace, with
+    `features` reshaped from the on-disk list into a dict keyed by each
+    feature's `id` -- a Step writes into its own copy, nothing reads that
+    copy back, and the model Design produced never changes underneath it.
     """
-    if isinstance(value, dict):
-        return types.MappingProxyType({key: _read_only(item) for key, item in value.items()})
-    if isinstance(value, list):
-        return tuple(_read_only(item) for item in value)
-    return value
+    design = copy.deepcopy(design)
+    features = design.get("features")
+    if isinstance(features, list):
+        design["features"] = {feature["id"]: feature for feature in features}
+    return design
 
 
 def step_namespace(doc, design=None):
@@ -221,7 +221,7 @@ def step_namespace(doc, design=None):
     into a NameError answered by an invented Sketcher.Circle, and FreeCAD's own
     Mod/Mesh/App directory shares the name `App` on sys.path, so a Step's bare
     `import App` finds an empty namespace package unless sys.modules holds the
-    real module first. *design* is carried in read-only alongside the
+    real module first. *design* is carried as a private copy alongside the
     Document rather than through a working directory that does not survive
     Apply or replay -- absent where no run has one.
     """
@@ -233,7 +233,7 @@ def step_namespace(doc, design=None):
                  "edges_between": edges_between, "edges_by_concavity": edges_by_concavity,
                  "built_ok": built_ok}
     if design is not None:
-        namespace["design"] = _read_only(design)
+        namespace["design"] = _step_design(design)
     for module in STEP_MODULES:
         try:
             namespace[module] = __import__(module)

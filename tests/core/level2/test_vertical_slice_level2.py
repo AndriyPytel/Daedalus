@@ -82,12 +82,12 @@ body = doc.getObject("Body")
 pad = doc.addObject("PartDesign::Pad", "Pad")
 body.addObject(pad)
 pad.Profile = doc.getObject("Sketch")
-pad_design = next(f for f in design["features"] if f["id"] == "pad")
+pad_design = design["features"]["pad"]
 pad.Length = pad_design["length"]["value"]
 """
 
 STEP_PARAMETER = """
-pad_design = next(f for f in design["features"] if f["id"] == "pad")
+pad_design = design["features"]["pad"]
 doc.getObject("Pad").Length = pad_design["changed_length"]["value"]
 """
 
@@ -107,7 +107,7 @@ if len(edges) != %(count)d:
 fillet = doc.addObject("PartDesign::Fillet", "Fillet")
 body.addObject(fillet)
 fillet.Base = (base, edges)
-fillet_design = next(f for f in design["features"] if f["id"] == "fillet")
+fillet_design = design["features"]["fillet"]
 fillet.Radius = fillet_design["radius"]["value"]
 """ % {"count": TOP_EDGES}
 
@@ -120,7 +120,7 @@ body.addObject(profile)
 profile.AttachmentSupport = [(doc.getObject("XY_Plane"), '')]
 profile.MapMode = "FlatFace"
 side = %(side)s
-hole_design = next(f for f in design["features"] if f["id"] == "hole")
+hole_design = design["features"]["hole"]
 profile.addGeometry(Part.Circle(App.Vector(side / 2, side / 2, 0),
                                 App.Vector(0, 0, 1), hole_design["diameter"]["value"] / 2), False)
 

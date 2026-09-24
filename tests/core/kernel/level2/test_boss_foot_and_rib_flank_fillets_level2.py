@@ -54,7 +54,7 @@ import re, math
 def num(s):
     return float(re.search(r'[-+]?\d*\.?\d+', s).group())
 
-feat = {f['id']: f for f in design['features']}
+feat = design['features']
 pad_d = feat['pad-outer']
 L = num(pad_d['length']['value'])
 W = num(pad_d['width']['value'])
@@ -116,7 +116,7 @@ STEP_2_BOSS = r"""
 import math
 body = doc.getObject("Body")
 xy = doc.getObject("XY_Plane")
-boss = next(f for f in design["features"] if f["id"]=="boss-centre")
+boss = design["features"]["boss-centre"]
 od = float(boss["outer_diameter"]["value"].replace("\u00d8",""))
 h = float(boss["height"]["value"].split()[0])
 x = float(boss["position"]["the left end face"]["value"].split()[0])
@@ -147,7 +147,7 @@ print("ok", top, c)
 
 STEP_3_LUG = r"""
 import re, math
-feat = {f["id"]: f for f in design["features"]}
+feat = design['features']
 lug = feat["lug-left"]
 def num(s):
     return float(re.findall(r"[-+]?\d*\.?\d+", s)[0])
@@ -199,7 +199,7 @@ STEP_4_RIB = r"""
 import re
 def num(s):
     return float(re.search(r"[-+]?[0-9]*\.?[0-9]+", s).group())
-rib = next(f for f in design["features"] if f["id"] == "rib-centre")
+rib = design["features"]["rib-centre"]
 t = num(rib["thickness"]["value"])
 print(t, rib["position"]["the left end face"]["value"], rib["height"]["value"])
 body = next(o for o in doc.Objects if o.Label == "PlateBody")
@@ -249,9 +249,9 @@ start = App.Vector(lo.x, 0.0, lo.y)
 end = App.Vector(hi.x, 0.0, hi.y)
 print('path', start, end)
 
-rib = next(f for f in design['features'] if f['id'] == 'fillet-rib-upper')
+rib = design["features"]["fillet-rib-upper"]
 rad = float(rib['radius']['value'].replace('R', '').strip())
-ribthk = float(next(f for f in design['features'] if f['id'] == 'rib-centre')['thickness']['value'].split()[0])
+ribthk = float(design["features"]["rib-centre"]['thickness']['value'].split()[0])
 assert abs(2.0 * rad - ribthk) < 1e-9, 'round diameter %.3f does not match rib thickness %.3f' % (2 * rad, ribthk)
 
 # path sketch, attached to the same XZ plane the rib profile uses
@@ -299,9 +299,9 @@ print('ok', pipe.Name, body.Shape.Volume, len(body.Shape.Solids), len(cyls))
 STEP_6_BORE = r"""
 import re
 body = doc.getObject('Body')
-hc = next(f for f in design['features'] if f['id'] == 'hole-centre')
+hc = design["features"]["hole-centre"]
 dia = float(re.search(r'[\d.]+', hc['diameter']['value']).group())
-bc = next(f for f in design['features'] if f['id'] == 'boss-centre')
+bc = design["features"]["boss-centre"]
 x_bore = float(re.search(r'[\d.]+', bc['position']['the left end face']['value']).group())
 
 top = doc.getObject('XY_Plane')
@@ -336,7 +336,7 @@ print('bored', pk.Name, 'vol', body.Shape.Volume)
 
 STEP_7_LUG_BORE = r"""
 import re, math
-feat = {f['id']: f for f in design['features']}
+feat = design['features']
 hl = feat['hole-left']
 def num(s):
     return float(re.search(r'[-+]?[0-9]*\.?[0-9]+', str(s)).group(0))
@@ -384,7 +384,7 @@ print('ok', body.Shape.Volume, len(cyls), span)
 STEP_8_FILLET_RIB_TO_BOSS = r"""
 import re
 body = doc.getObject('Body')
-fi = next(f for f in design["features"] if f["id"] == "fillet-inner")
+fi = design["features"]["fillet-inner"]
 r = float(re.findall(r"[\d.]+", fi["radius"]["value"])[0])
 base = body.Tip
 shp = base.Shape
@@ -413,7 +413,7 @@ assert len(body.Shape.Solids) == 1, "body split into %d solids" % len(body.Shape
 STEP_9_FILLET_BOSS_FOOT = r"""
 import re
 body = next(o for o in doc.Objects if o.TypeId=='PartDesign::Body' and o.Label=='PlateBody')
-fc = next(f for f in design['features'] if f['id']=='fillet-centre')
+fc = design["features"]["fillet-centre"]
 radius = float(re.search(r'[0-9.]+', fc['radius']['value']).group())
 base = body.Tip
 shape = base.Shape
@@ -448,7 +448,7 @@ import re
 body = doc.getObject('Body')
 base = body.Tip
 shape = base.Shape
-fu = next(f for f in design['features'] if f['id']=='fillet-upper')
+fu = design["features"]["fillet-upper"]
 rad = float(re.findall(r'[\d.]+', fu['radius']['value'])[0])
 def top_face(f):
     return f.Surface.__class__.__name__=='Plane' and abs(abs(f.Surface.Axis.z)-1)<1e-6 and abs(f.Surface.Position.z)<1e-6
