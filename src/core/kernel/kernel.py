@@ -127,6 +127,7 @@ class Kernel:
         self._draining = None
         self._checkpoint = None
         self._needs_resume = False
+        self._design = None
 
     @property
     def alive(self):
@@ -223,6 +224,11 @@ class Kernel:
                     "checkpoint to resume from. Hand check() an explicit document "
                     "to start a session."))
             document = self._checkpoint
+
+        if design is not None:
+            self._design = design
+        elif document is not _CONTINUE:
+            design = self._design
 
         request = {"code": code}
         if document is not _CONTINUE:
