@@ -178,8 +178,10 @@ def _tokens_of(usage: dict) -> dict:
     Prompt, completion and cached-prompt token counts off a `result` event's
     own `usage` -- `input_tokens` and `output_tokens` on this route, where the
     keyed one reads `prompt_tokens`/`completion_tokens` off LiteLLM's `Usage`.
-    `cache_read_input_tokens` is the preamble a cache hit spared the model,
-    and is omitted rather than zero where nothing was cached.
+    `cache_read_input_tokens` is the preamble a cache hit spared the model and
+    `cache_creation_input_tokens` is the preamble this call paid to write for
+    a later one to read; both are omitted rather than zero where nothing was
+    read or written.
     """
     tokens = {}
     if usage.get("input_tokens") is not None:
@@ -189,4 +191,7 @@ def _tokens_of(usage: dict) -> dict:
     cached = usage.get("cache_read_input_tokens")
     if cached:
         tokens["cached_tokens"] = cached
+    written = usage.get("cache_creation_input_tokens")
+    if written:
+        tokens["cache_creation_tokens"] = written
     return tokens

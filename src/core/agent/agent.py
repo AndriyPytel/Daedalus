@@ -23,7 +23,7 @@ from core.llm.exceptions import StreamCutOff
 from core.agent.phase_contract import spawn
 from core.agent.subagent import delegate
 from core.freecad_apply import discard
-from core.loop.prompt import _CUT_OFF_ATTEMPTS, _object_of, prompt
+from core.loop.prompt import _CUT_OFF_ATTEMPTS, _LEDGER_HEADING, _object_of, prompt
 from core.prompts import read_prompt
 
 
@@ -67,7 +67,7 @@ def _a_python_level_error(traceback):
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               kernel=None, supervisor=None, stream=None, system=None,
               on_declaration=None, exploration=None, design=None, repair_ceiling=None,
-              already_delivered=()):
+              already_delivered=(), ledger=""):
     """
     Run *phase* as a multi-turn agent against its own kernel, returning
     `(declared, session, declarations)`. *on_declaration*, called the moment a
@@ -87,12 +87,14 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     the Step again, up to that many times, before it reaches a revision;
     *already_delivered* seeds Step order enforcement with numbers a prior
     call already landed, so a regeneration resuming mid-Plan does not refuse
-    its own first Step for a predecessor this call never saw.
+    its own first Step for a predecessor this call never saw; *ledger* is
+    rendered after the Protocol rather than folded into *system*, the same
+    split `core.agent.agent._composed_system` documents.
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)
                        else sources))
-    session = Session(system=_composed_system(system, working))
+    session = Session(system=_composed_system(system, ledger))
     working_kernel = kernel
     declarations = []
     delivered_steps = set(already_delivered)
@@ -351,11 +353,20 @@ def _kept(working_dir, checkpoint, index):
     return kept
 
 
-def _composed_system(phase_prompt, working_dir):
-    protocol = _protocol().replace("{{working_dir}}", working_dir)
-    if phase_prompt:
-        return phase_prompt + "\n\n" + protocol
-    return protocol
+def _composed_system(phase_prompt, ledger=""):
+    """
+    *phase_prompt* then the Protocol, both the same text on every call a
+    phase makes; *ledger*, once this run has a failure to carry forward,
+    is rendered last of all -- appended after both rather than folded into
+    *phase_prompt* the way `core/loop/prompt.py :: prompt` renders it for
+    every other caller, so a call with one more entry than the call before
+    it still shares that whole, unchanged prefix rather than losing it to
+    an edit in the middle of the string.
+    """
+    body = phase_prompt + "\n\n" + _protocol() if phase_prompt else _protocol()
+    if ledger:
+        body = "%s\n\n%s\n%s" % (body, _LEDGER_HEADING, ledger)
+    return body
 
 
 def _protocol():
@@ -400,7 +411,8 @@ def _one_turn(session, llm, content, phase=None, stream=None):
             spent = getattr(llm, "last_cost", None) or {}
             paid = {"phase": phase, "seconds": time.time() - start,
                     "model": spent.get("model", model)}
-            for key in ("usd", "prompt_tokens", "completion_tokens", "cached_tokens", "reasoning_tokens", "usage_unavailable"):
+            for key in ("usd", "prompt_tokens", "completion_tokens", "cached_tokens",
+                        "cache_creation_tokens", "reasoning_tokens", "usage_unavailable"):
                 if key in spent:
                     paid[key] = spent[key]
             stream.emit(COST, **paid)
