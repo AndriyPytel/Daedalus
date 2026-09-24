@@ -1,6 +1,6 @@
 ## Checklist
 
-Preflight's lint refuses six shapes on sight, so write around them from the first Step:
+Preflight's lint refuses these shapes on sight, so write around them from the first Step:
 
 - No bare numeral in a dimensional position — read it off `design`: `design["features"]["Boss"]["length"]["mm"]`, never `80.0`.
 - No `.get(key, default)` on a Design field — index it directly, so a field Design never defined raises instead of resolving to the default.
@@ -8,6 +8,12 @@ Preflight's lint refuses six shapes on sight, so write around them from the firs
 - No `Gui.*` or reading the live selection — the worker is headless, so a Step is a pure function of the Document.
 - No bare `except`, and no handler that swallows the exception it caught — let a Step fail.
 - No lookup of an object this Step just allocated by the literal name handed to `addObject`/`newObject` — keep the reference the call returned.
+- No selection assigned to `.Base` whose length nothing checked — count it with `pick_edges(shape, predicate, expect)`, or `if len(edges) != N: raise RuntimeError(...)` before the reference is assigned.
+- No guard comparing a `Shape.BoundBox` attribute — take the number off the geometry itself, and use `bbox(shape)` for an exact box.
+- No `.Shape =` assignment or `addProperty` on a PartDesign feature — build it with the feature that performs the operation (`Pad`, `Pocket`, `Fillet`, ...) on a real sketch.
+- No empty list literal as `AttachmentSupport`'s subelement — write `""` for a whole-shape attachment instead; nothing raises on `[(plane, [])]` and the sketch silently does not attach.
+- No making an object active (`ActiveObject`, `setActiveObject`, `getActiveObject`, `activeView`, `ActiveView`) — nothing needs to be active; put a PartDesign feature in its Body with `Body.addObject(feature)`.
+- A `Sketcher.Constraint` call must name a real constraint type with the arity that type takes — concentricity between two circles is `Constraint('Coincident', a, 3, b, 3)` on their centres, not a type of its own.
 
 ## Worked Step
 
