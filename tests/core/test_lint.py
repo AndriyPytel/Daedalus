@@ -459,6 +459,34 @@ def test_a_pick_edges_call_without_expect_is_still_uncounted():
     assert "how many" in result.report()
 
 
+def test_pick_edges_with_expect_given_positionally_is_counted():
+    """
+    `expect` is `pick_edges`'s third parameter -- a Step calling it
+    positionally, the natural way to write the call, states the count the
+    same as one that spells out the keyword.
+    """
+    code = (
+        "held = pick_edges(base.Shape, lambda e: True, 3)\n"
+        "fillet.Base = (base, held)\n"
+    )
+
+    assert lint(code).ok, lint(code).report()
+
+
+def test_a_pick_edges_call_inline_in_base_is_counted():
+    """
+    `fillet.Base = (base, pick_edges(...))` never binds a name for
+    `_uncounted_selection` to look up -- a bare `Call` as the element list
+    falls outside both the counted-name and counted-comprehension shapes it
+    checks, so it is accepted already, not because the count was seen but
+    because the shape does not match. Pinned here so a later lint change
+    does not turn this back into a rejection.
+    """
+    code = "fillet.Base = (base, pick_edges(shape, pred, expect=4))\n"
+
+    assert lint(code).ok, lint(code).report()
+
+
 def test_a_selection_the_user_made_needs_no_count():
     result = lint("fillet.Base = (box, ['Edge3'])", SELECTED_EDGE_3)
 
