@@ -409,3 +409,45 @@ def test_run_phase_writes_the_ending_count_back_into_the_exploration_argument(ke
               kernel=kernel, exploration=exploration)
 
     assert exploration["turns"] == 2
+
+
+def test_exploration_carries_lint_warnings_for_a_dimensional_literal(kernel, tmp_path):
+    """AC1: an exploration call (no `step`) that writes a bare dimensional
+    numeral runs, and its result carries the same finding a Step would be
+    refused with."""
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "box = doc.addObject('Part::Box', 'Box')\n"
+                             "box.Length = 10.0\n"
+                             "doc.recompute()"}),
+        json.dumps({"declare": {"step": "looked"}}),
+    ])
+
+    run_phase(
+        pc.EXECUTE, str(tmp_path / "execute"),
+        {"design": {"kind": "box"}, "plan": [{"do": "pad 10mm"}]},
+        llm, "explore a 10mm box", kernel=kernel,
+    )
+
+    sent = json.loads(llm.calls[1][-1]["content"])
+    assert sent["ok"]
+    assert any("bare numeral in a dimensional position" in warning
+               for warning in sent["lint_warnings"])
+
+
+def test_exploration_with_clean_code_has_no_lint_warnings(kernel, tmp_path):
+    """AC2: an exploration call with clean code has no `lint_warnings`."""
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "box = doc.addObject('Part::Box', 'Box')\n"
+                             "doc.recompute()"}),
+        json.dumps({"declare": {"step": "looked"}}),
+    ])
+
+    run_phase(
+        pc.EXECUTE, str(tmp_path / "execute"),
+        {"design": {"kind": "box"}, "plan": [{"do": "pad 10mm"}]},
+        llm, "explore a plain box", kernel=kernel,
+    )
+
+    sent = json.loads(llm.calls[1][-1]["content"])
+    assert sent["ok"]
+    assert "lint_warnings" not in sent
