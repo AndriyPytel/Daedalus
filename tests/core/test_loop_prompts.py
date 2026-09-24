@@ -865,6 +865,25 @@ def test_the_in_place_vector_methods_are_a_trap_and_reach_the_checks():
         "the checks are not told which Vector methods mutate"
 
 
+def test_exploration_is_never_said_to_die_with_the_kernel_or_build_by_code():
+    """
+    Exploration is a call for looking, never for building, and the prompt
+    says so directly rather than through wording that reads as
+    build-first-declare-later.
+    """
+    protocol = " ".join(read_prompt("agent_protocol.md").split())
+    execute = " ".join(read_prompt("execute.md").split())
+
+    for cancelled in ("dies with the kernel", "the code that built it"):
+        assert cancelled not in protocol, "agent_protocol.md still says: " + cancelled
+        assert cancelled not in execute, "execute.md still says: " + cancelled
+
+    assert "exploration, for looking, never for building" in protocol
+    assert "rolls the Document back to the last checkpoint" in protocol
+    assert "Only a turn that declares a Step builds anything" in execute
+    assert "kernel undoes it before your next turn" in execute
+
+
 def test_a_missing_prompt_file_raises_rather_than_sending_an_empty_prompt():
     with pytest.raises(IOError):
         prompt("no_such_phase")
