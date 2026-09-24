@@ -403,6 +403,17 @@ def _counted_selections(tree) -> set:
                     and isinstance(inner.args[0], ast.Name)):
                 counted.add(inner.args[0].id)
 
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and isinstance(node.value, ast.Call)
+                and isinstance(node.value.func, ast.Name)
+                and node.value.func.id == "pick_edges"):
+            continue
+        if any(kw.arg == "expect" and isinstance(kw.value, ast.Constant)
+               and isinstance(kw.value.value, int) for kw in node.value.keywords):
+            counted.add(node.targets[0].id)
+
     comprehension_assigns = [node for node in ast.walk(tree)
                               if isinstance(node, ast.Assign)
                               and len(node.targets) == 1

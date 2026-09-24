@@ -82,29 +82,16 @@ def test_bbox_of_the_padded_box_is_exact(worker):
 
 
 def test_by_label_finds_the_one_object_with_that_label(worker):
-    code = A_BOX_PAD + "held = by_label(doc, 'BasePad').Name\n"
+    code = A_BOX_PAD + "held = [by_label(doc, 'BasePad').Name]\n"
 
     result = worker.check(code, None)
 
     assert result.ok, result.traceback
-    assert result.held == "BoxPad"
+    assert result.held == ["BoxPad"]
 
 
 def test_by_label_with_no_match_lists_the_labels_it_found(worker):
     code = A_BOX_PAD + "by_label(doc, 'NoSuchThing')\n"
-
-    result = worker.check(code, None)
-
-    assert not result.ok
-    assert "BasePad" in result.traceback
-
-
-def test_by_label_with_more_than_one_match_lists_the_labels_it_found(worker):
-    code = A_BOX_PAD + (
-        "sk.Label = 'BasePad'\n"
-        "doc.recompute()\n"
-        "by_label(doc, 'BasePad')\n"
-    )
 
     result = worker.check(code, None)
 

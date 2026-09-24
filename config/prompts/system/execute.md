@@ -76,7 +76,13 @@ answering predicate `b` — `edges_between(body.Shape, lambda f: planar_at_z(f,
 a predicate that matches nothing raises there and then rather than filleting
 the wrong junction. So is `built_ok(obj)`, true when *obj* recomputed clean —
 there is no `isError()` on every feature type, so check with this instead of
-guessing at one. The code must be a pure function of the Document:
+guessing at one. So is `pick_edges(shape, predicate, expect)`, the edge
+names *predicate* matches, raising with what it found when the count is not
+*expect* — a selection from it is already counted, no guard of your own
+needed. So is `bbox(shape)`, `Shape.optimalBoundingBox()` under a shorter
+name. So is `by_label(doc, label)`, the one object with that Label, raising
+with every Label in the Document when there is none or more than one. The
+code must be a pure function of the Document:
 no Gui.*, no reading the live selection, and no literal element names such as
 Edge12 — compute references from the geometry at execution time instead.
 
