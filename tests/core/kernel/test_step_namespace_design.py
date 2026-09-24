@@ -1,7 +1,9 @@
 """
-`step_namespace()` carries the Design model into a Step's own namespace,
-read-only, alongside the Document, never through the working directory.
+`step_namespace()` carries the Design model into a Step's own namespace, a
+private `copy.deepcopy` alongside the Document, never through the working
+directory.
 """
+import json
 import sys
 import types
 
@@ -24,42 +26,38 @@ def test_no_design_leaves_the_namespace_without_one(fake_freecad):
     assert "design" not in namespace
 
 
-def test_design_is_carried_into_the_namespace(fake_freecad):
+def test_design_is_a_plain_dict_with_features_keyed_by_id(fake_freecad):
     from core.kernel.kernel_worker import step_namespace
 
-    model = {"features": [{"about": "Boss", "length": 30.0}]}
+    model = {"features": [{"id": "Boss", "length": 30.0}]}
+    namespace = step_namespace(doc=object(), design=model)
+    design = namespace["design"]
+
+    assert isinstance(design, dict)
+    assert json.dumps(design)
+    assert design["features"]["Boss"]["length"] == 30.0
+
+
+def test_lint_message_example_path_runs_against_a_real_design(fake_freecad):
+    """The dimensional-literal lint message points at `design['features']['Boss']['length']`;
+    that path has to resolve against what a Step actually sees, not raise."""
+    from core.kernel.kernel_worker import step_namespace
+
+    model = {"features": [{"id": "Boss", "length": 30.0}]}
+    namespace = step_namespace(doc=object(), design=model)
+    design = namespace["design"]
+
+    assert design['features']['Boss']['length'] == 30.0
+
+
+def test_writing_into_the_namespace_design_does_not_reach_the_caller_s_model(fake_freecad):
+    """A Step's own copy, so a write into it changes only that copy -- nothing
+    reads it back, and the model Design produced is unaffected."""
+    from core.kernel.kernel_worker import step_namespace
+
+    model = {"features": [{"id": "Boss", "length": 30.0}]}
     namespace = step_namespace(doc=object(), design=model)
 
-    assert namespace["design"]["features"][0]["length"] == 30.0
-
-
-def test_design_in_the_namespace_cannot_be_written_back(fake_freecad):
-    from core.kernel.kernel_worker import step_namespace
-
-    model = {"features": [{"about": "Boss", "length": 30.0}]}
-    namespace = step_namespace(doc=object(), design=model)
-
-    with pytest.raises(TypeError):
-        namespace["design"]["features"] = []
-
-    with pytest.raises(TypeError):
-        namespace["design"]["features"][0]["length"] = 999.0
-
-    with pytest.raises((TypeError, AttributeError)):
-        namespace["design"]["features"].append({})
-
-
-def test_design_read_only_leaves_the_caller_s_model_untouched(fake_freecad):
-    """
-    Read-only is a property of the namespace, not a mutation of the model
-    Design produced -- the same dict is handed to Preflight, Apply and a
-    later replay alike.
-    """
-    from core.kernel.kernel_worker import step_namespace
-
-    model = {"features": [{"about": "Boss", "length": 30.0}]}
-    step_namespace(doc=object(), design=model)
+    namespace["design"]["features"]["Boss"]["length"] = 999.0
 
     assert model["features"][0]["length"] == 30.0
-    model["features"][0]["length"] = 999.0
-    assert model["features"][0]["length"] == 999.0
