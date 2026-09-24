@@ -170,9 +170,11 @@ fuse there; Execute had to widen the Plan's own number by a millimetre before
 the Pad would build as one solid.
 
 **A part is planned base, then addition, then subtraction, then a shell or
-its holes, and a fillet or a chamfer only once every one of those stands.**
-Each of those Steps is a boolean — a Pad added to the solid, a Pocket or a
-Hole cut out of it, a Shell hollowing it — and a boolean does not add to the
+its holes, and a fillet or a chamfer only once every one of those stands —
+except the one case below, where a later feature would cut the fillet's own
+edge into pieces.** Each of those Steps is a boolean — a Pad added to the
+solid, a Pocket or a Hole cut out of it, a Shell hollowing it — and a
+boolean does not add to the
 Shape the Steps before it built: it replaces it, so a reference Execute worked
 out against the geometry before the boolean runs — a face by its position, an
 edge by its axis — is a reference into a Shape the boolean has already thrown
@@ -197,11 +199,12 @@ of an edge nobody described as twelve. That is the one exception to
 fillets-last, and it applies only where a later feature splits the edge —
 never as the general rule.
 
-**An edge count a Step states is an estimate for Execute to check against the
-real Body, not a fact.** A circle Design counted as one edge comes into the
-Body as two arcs, and a count a Step carries in `satisfies` is what Execute
-checks its selection against on the geometry as built, not a number the Plan
-is trusted to have gotten right.
+**An edge count a Step states is written as approximate, not as a fact.**
+A circle Design counted as one edge comes into the Body as two arcs, so a
+Step names the edges it rounds or chamfers by what identifies them — "the
+loop at Z=45", "the twelve longitudinal edges of the outer profile" — and
+gives the count with "about": "about 4 edges", never stated as an exact
+number the real Body is bound to match.
 
 The order is not the order the description lists the features in, and the
 properties that are not geometry at all come last of all — a material card
@@ -211,7 +214,8 @@ main design work of the solid before applying fillets and chamfers, or edges
 change names and the filleted edges become invalid; its advice for a stable
 model is to use dress-ups as late in the feature tree as possible. A round
 planned in the middle of the shape is a round the Steps after it move out from
-under.
+under — outside the one exception already named, where a later feature would
+cut the round's own edge into pieces.
 
 **A dress-up Step is planned against the solid the Steps before it leave, not
 against the feature it was read off.** Every shape Step earlier in the Plan has
