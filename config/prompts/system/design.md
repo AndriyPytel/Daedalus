@@ -24,19 +24,19 @@ and, separately and explicitly, what is in conflict and what nobody has defined.
          "proves": "150 mm to the right end face, matching the overall length"}
       ],
       "envelope": {
-        "length": {"value": "150 mm", "flag": "read"},
-        "depth front to rear": {"value": "100 mm", "flag": "read"}
+        "length": {"value": "150 mm", "flag": "read", "mm": 150},
+        "depth front to rear": {"value": "100 mm", "flag": "read", "mm": 100}
       },
       "features": [
         {
           "id": "bore-left",
           "kind": "hole",
-          "diameter": {"value": "40 mm", "flag": "read"},
+          "diameter": {"value": "40 mm", "flag": "read", "mm": 40},
           "topology": "through",
           "axis": {"value": "perpendicular to the top face", "flag": "read",
                    "round_in": "the top view"},
-          "position": {"the left end face": {"value": "20 mm", "flag": "read"},
-                       "the top face": {"value": "25 mm", "flag": "read"}},
+          "position": {"the left end face": {"value": "20 mm", "flag": "read", "mm": 20},
+                       "the top face": {"value": "25 mm", "flag": "read", "mm": 25}},
           "seen_in": ["front view", "SECTION B-B"]
         }
       ],
@@ -145,6 +145,16 @@ no `because`, no Acceptance entry.
 
 A value is `{"value": ..., "flag": ...}` and a value missing either is not a
 value.
+
+**A value stating one length or one angle carries its number beside its
+text.** `{"value": "100 mm (Ø200)", "flag": "read", "mm": 100}` for a length
+in millimetres, under `mm`; `{"value": "45°", "flag": "read", "deg": 45}` for
+an angle, under `deg`; a range as a list of two -- `{"value": "from 0 to 24
+mm", "flag": "read", "mm": [0, 24]}`. The number is read off the sheet, the
+same reading that gave you the text, not a return address for whoever plans
+from your description to parse back out of the prose later, and a value
+stating one is refused without it. A count -- `edges`, `count` -- carries no
+unit and needs no number field.
 
 - **the datum** is the key it sits under in `position` — the face, axis, plane,
   edge or centreline the drawing measures it from, named the way the drawing
