@@ -2234,11 +2234,11 @@ def test_a_dimension_in_kind_is_refused_and_the_dimension_belongs_in_a_field():
     """
     grown = merge({}, {"kind_vocabulary": CLOSED,
                         "features": [{"id": "hole-1", "kind": "Ø40 bore",
-                                      "diameter": _read("40 mm")}]})
+                                      "diameter": dict(_read("40 mm"), mm=40)}]})
 
     feature = grown["features"][0]
     assert feature.get("kind") is None
-    assert feature["diameter"] == _read("40 mm")
+    assert feature["diameter"] == dict(_read("40 mm"), mm=40)
     assert any(c["about"].endswith("kind") for c in grown["conflicts"])
 
 

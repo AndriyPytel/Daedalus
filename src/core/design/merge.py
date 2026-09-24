@@ -7,12 +7,15 @@ carries all of it to Assertion and Review, unchanged by `diff` existing.
 """
 
 
+import re
+
 from core.design.core import (
     CLOSED_KIND_VOCABULARY,
     FEATURE_KIND,
     UNDER,
     _BANNED_KIND_SYNONYM,
     _HEADED_BY,
+    _IDENTITY,
     _REGION_WORD,
     _a_value,
     _appended,
@@ -105,10 +108,12 @@ def merge(held, offered, record_conflicts=True):
     if not isinstance(offered, dict):
         return _with_the_findings(dict(held or {}))
 
-    conflicts = list(_refused_kinds(offered)) + list(_refused_conflicts(offered))
+    conflicts = (list(_refused_kinds(offered)) + list(_refused_conflicts(offered))
+                + list(_refused_dimensions(offered)))
     if conflicts:
         offered = _without_refused_kinds(offered)
         offered = _without_refused_conflicts(offered)
+        offered = _without_refused_dimensions(offered)
     merged = _written(dict(held or {}), offered, "", conflicts, record_conflicts)
     if conflicts:
         merged["conflicts"] = _appended(merged.get("conflicts"), conflicts)
@@ -190,6 +195,113 @@ def _without_refused_conflicts(offered):
             if not (isinstance(entry, dict)
                     and any(field not in entry for field in CONFLICT_ENTRY_FIELDS))]
     return dict(offered, conflicts=kept)
+
+
+_DIMENSION_KEYS = ("mm", "deg")
+
+_A_RANGE = re.compile(r"\bfrom\s+(-?\d+(?:\.\d+)?)\s+to\s+(-?\d+(?:\.\d+)?)\s*mm\b")
+
+_A_LENGTH = re.compile(r"(-?\d+(?:\.\d+)?)\s*mm\b")
+
+_AN_ANGLE = re.compile(r"(-?\d+(?:\.\d+)?)\s*(?:\xb0|deg\b)")
+
+
+def _the_number(text):
+    """
+    The one mm or degree magnitude *text* states -- `("mm", 24)`, `("mm",
+    [0, 24])` for a range, `("deg", 45)` -- or None where *text* states no
+    magnitude, or states more than one, since an entry naming several (an
+    envelope giving two faces' distances in one sentence, a `tangent_to`
+    explaining itself) is prose to read, not one value to attach a number to.
+    """
+    ranged = _A_RANGE.search(text)
+    if ranged:
+        return "mm", [_a_number(ranged.group(1)), _a_number(ranged.group(2))]
+    lengths = _A_LENGTH.findall(text)
+    angles = _AN_ANGLE.findall(text)
+    if len(lengths) == 1 and not angles:
+        return "mm", _a_number(lengths[0])
+    if len(angles) == 1 and not lengths:
+        return "deg", _a_number(angles[0])
+    return None
+
+
+def _a_number(digits):
+    value = float(digits)
+    return int(value) if value.is_integer() else value
+
+
+def _needs_its_number(entry):
+    """The `(unit, magnitude)` *entry*'s text names but does not carry, or
+    None where it carries one already or names none."""
+    if any(key in entry for key in _DIMENSION_KEYS):
+        return None
+    text = entry.get("value")
+    return _the_number(text) if isinstance(text, str) else None
+
+
+def _value_entries(node, path):
+    """Every `{"value": ..., "flag": ...}` entry on *node*, with the address
+    it sits under -- `conflicts` is skipped, the way `_said` skips it, since
+    a disagreement's own `was_also_said` can itself be shaped like a value."""
+    if isinstance(node, dict):
+        if _a_value(node):
+            yield path, node
+            return
+        for key, value in node.items():
+            if key == "conflicts":
+                continue
+            yield from _value_entries(value, _under(path, key))
+    elif isinstance(node, list):
+        for at, value in enumerate(node, start=1):
+            yield from _value_entries(value, _under(path, _named(value, _IDENTITY) or at))
+
+
+def _refused_dimensions(offered):
+    """
+    A value in *offered* naming a single mm or degree magnitude with no
+    `mm`/`deg` field beside it, refused -- the number is Design's to give,
+    read off the drawing, not guessed later from the text by a Step.
+    Checked only under `kind_vocabulary: closed`, the same marker
+    `_refused_kinds` and `_refused_conflicts` gate on, so a recorded fixture
+    written against the older prose-only grammar is not flagged for a
+    contract it never opted into.
+    """
+    if not isinstance(offered, dict) or offered.get("kind_vocabulary") != CLOSED_KIND_VOCABULARY:
+        return []
+    found = []
+    for path, entry in _value_entries(offered, ""):
+        number = _needs_its_number(entry)
+        if number is None:
+            continue
+        unit = number[0]
+        found.append(_conflict(
+            path, "%r names a %s magnitude with no %r field" % (entry["value"], unit, unit),
+            "refused — the field is left as not yet filled"))
+    return found
+
+
+def _without_refused_dimensions(offered):
+    return _stripped_of_bare_dimensions(offered)
+
+
+def _stripped_of_bare_dimensions(node):
+    if isinstance(node, dict):
+        if _a_value(node) and _needs_its_number(node) is not None:
+            return None
+        cleaned = {}
+        for key, value in node.items():
+            if key == "conflicts":
+                cleaned[key] = value
+                continue
+            stripped = _stripped_of_bare_dimensions(value)
+            if stripped is not None:
+                cleaned[key] = stripped
+        return cleaned
+    if isinstance(node, list):
+        return [entry for entry in (_stripped_of_bare_dimensions(item) for item in node)
+                if entry is not None]
+    return node
 
 
 def corrected(model, address, value, because):
