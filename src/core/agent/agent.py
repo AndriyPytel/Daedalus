@@ -23,6 +23,7 @@ from core.llm.exceptions import StreamCutOff
 from core.agent.phase_contract import spawn
 from core.agent.subagent import delegate
 from core.freecad_apply import discard
+from core.lint import lint
 from core.loop.prompt import _CUT_OFF_ATTEMPTS, _object_of, prompt
 from core.prompts import read_prompt
 
@@ -270,7 +271,9 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         delivered_step = message["step"]
                         declared_failure = None
                         last_landed_checkpoint = checkpoint
-                answer = _feedback(result)
+                lint_warnings = (lint(message["code"]).problems
+                                if "step" not in message else None)
+                answer = _feedback(result, lint_warnings)
                 if delivered_step is not None:
                     answer["step"] = delivered_step
                     next_step = _next_step(delivered_step, sources.get("plan"))
@@ -421,11 +424,13 @@ def _parsed(text):
     return parsed
 
 
-def _feedback(result):
+def _feedback(result, lint_warnings=None):
     """
     What the agent's next turn is told about the Step it just ran, as a dict:
     the same payload is the `tool_result` that carries the kernel's answer
     into the session log, which held only the code the model wrote.
+    `lint_warnings` is the exploration lint's findings, the words a declared
+    Step would be refused with, none of them blocking the call.
     """
     payload = {"ok": result.ok, "status": "ok" if result.ok else "failed",
                "checkpoint": result.checkpoint}
@@ -435,6 +440,8 @@ def _feedback(result):
         payload["volume"] = result.volume
     if result.rolled_back:
         payload["rolled_back"] = result.rolled_back
+    if lint_warnings:
+        payload["lint_warnings"] = lint_warnings
     if result.ok:
         touched = set(result.created) | set(result.modified)
         geometry = {name: g for name, g in result.geometry.items() if name in touched}
