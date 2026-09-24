@@ -403,6 +403,13 @@ def _counted_selections(tree) -> set:
                     and isinstance(inner.args[0], ast.Name)):
                 counted.add(inner.args[0].id)
 
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)
+                and isinstance(node.value, ast.Call)
+                and _pick_edges_counts_its_own(node.value)):
+            counted.add(node.targets[0].id)
+
     comprehension_assigns = [node for node in ast.walk(tree)
                               if isinstance(node, ast.Assign)
                               and len(node.targets) == 1
@@ -462,6 +469,20 @@ def _boundbox_guard(test, boundbox_names: set):
             if _is_boundbox_reference(inner, boundbox_names):
                 return ast.unparse(node)
     return None
+
+
+def _pick_edges_counts_its_own(call) -> bool:
+    """
+    Whether *call* is `pick_edges(shape, predicate, expect)` with *expect*
+    an int literal, keyword or positional -- `pick_edges` raises on the
+    count itself, so a selection from it needs no guard the lint has to see.
+    """
+    if not (isinstance(call.func, ast.Name) and call.func.id == "pick_edges"):
+        return False
+    if len(call.args) >= 3 and isinstance(call.args[2], ast.Constant) and isinstance(call.args[2].value, int):
+        return True
+    return any(kw.arg == "expect" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, int)
+               for kw in call.keywords)
 
 
 def _uncounted_selection(node: ast.Assign, counted: set):

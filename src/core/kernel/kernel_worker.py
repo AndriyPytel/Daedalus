@@ -199,6 +199,49 @@ def edges_between(shape, a, b):
     return names
 
 
+def pick_edges(shape, predicate, expect):
+    """
+    The edge names of *shape* where *predicate* -- a function from one
+    `Part.Edge` to True/False -- answers True, or a `RuntimeError` naming
+    the edges it found when their count is not *expect*. The lint treats
+    a name assigned from this call as counted, the same as a Step's own
+    `if len(...) != N: raise` guard.
+    """
+    if not callable(predicate):
+        raise TypeError(
+            "pick_edges wants a predicate over Shape.Edges, a function from one "
+            "Edge to True/False -- got %r" % (predicate,))
+    names = ["Edge%d" % at for at, edge in enumerate(shape.Edges, start=1) if predicate(edge)]
+    if len(names) != expect:
+        raise RuntimeError(
+            "pick_edges wanted %d edges, found %d: %s" % (expect, len(names), names))
+    return names
+
+
+def bbox(shape):
+    """
+    *shape*'s bounding box computed from its exact geometry, not from
+    `Shape.BoundBox`'s tessellation padding -- `optimalBoundingBox()` reads
+    the surfaces themselves and carries no tolerance margin.
+    """
+    return shape.optimalBoundingBox()
+
+
+def by_label(doc, label):
+    """
+    The one `DocumentObject` in *doc* whose Label is *label*, or a
+    `LookupError` listing every Label the Document holds when there is
+    none or more than one -- a Step's own Label guess never silently
+    resolves to the wrong object.
+    """
+    matches = [obj for obj in doc.Objects if obj.Label == label]
+    if len(matches) != 1:
+        raise LookupError(
+            "by_label wanted one object labelled %r, found %d: %s"
+            % (label, len(matches), [obj.Label for obj in doc.Objects]))
+    return matches[0]
+
+
 def _step_design(design):
     """
     A private `copy.deepcopy` of *design* for one Step's own namespace, with
@@ -231,7 +274,8 @@ def step_namespace(doc, design=None):
 
     namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__",
                  "edges_between": edges_between, "edges_by_concavity": edges_by_concavity,
-                 "built_ok": built_ok}
+                 "built_ok": built_ok, "pick_edges": pick_edges, "bbox": bbox,
+                 "by_label": by_label}
     if design is not None:
         namespace["design"] = _step_design(design)
     for module in STEP_MODULES:
