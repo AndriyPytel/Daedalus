@@ -146,15 +146,9 @@ no `because`, no Acceptance entry.
 A value is `{"value": ..., "flag": ...}` and a value missing either is not a
 value.
 
-**A value stating one length or one angle carries its number beside its
-text.** `{"value": "100 mm (Ø200)", "flag": "read", "mm": 100}` for a length
-in millimetres, under `mm`; `{"value": "45°", "flag": "read", "deg": 45}` for
-an angle, under `deg`; a range as a list of two -- `{"value": "from 0 to 24
-mm", "flag": "read", "mm": [0, 24]}`. The number is read off the sheet, the
-same reading that gave you the text, not a return address for whoever plans
-from your description to parse back out of the prose later, and a value
-stating one is refused without it. A count -- `edges`, `count` -- carries no
-unit and needs no number field.
+**A value stating one length or angle carries its number:** `"mm": 100`,
+`"deg": 45`, a range `"mm": [0, 24]`; one without it is refused. A count needs
+none.
 
 - **the datum** is the key it sits under in `position` — the face, axis, plane,
   edge or centreline the drawing measures it from, named the way the drawing
