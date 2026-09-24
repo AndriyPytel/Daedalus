@@ -79,3 +79,23 @@ def test_two_consecutive_execute_calls_of_one_pass_send_the_same_prefix(tmp_path
     for index, (earlier, later) in enumerate(zip(turns, turns[1:])):
         assert later[:len(earlier)] == earlier, \
             "call %d's user turn is not a prefix of call %d's" % (index, index + 1)
+
+
+def test_only_the_tasks_own_last_block_carries_a_cache_breakpoint():
+    """
+    The `claude` CLI spends 3 of Anthropic's 4 cache breakpoints on its own
+    (tools, the system prompt, the end of the conversation), so the one
+    this project may still place has to land on the task turn -- the block
+    a Step's retries otherwise push out of the provider's 20-block lookback.
+    """
+    messages = [
+        {"role": "system", "content": "You write FreeCAD Python."},
+        {"role": "user", "content": "Make a 10mm plate"},
+        {"role": "assistant", "content": "box_1_good()"},
+        {"role": "user", "content": "Step 1 self-intersects"},
+    ]
+
+    turn = _user_turn(messages)["message"]["content"]
+
+    assert turn[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert "cache_control" not in turn[1]
