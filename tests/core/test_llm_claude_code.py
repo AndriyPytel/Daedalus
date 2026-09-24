@@ -313,6 +313,44 @@ def test_what_the_call_spent_is_carried_off_the_result_event():
     }
 
 
+def test_tokens_of_carries_cache_creation_tokens_when_reported():
+    """
+    `cache_creation_input_tokens` is what a call paid to write the preamble a
+    later call can then read from cache -- the pair `cache_read_input_tokens`
+    reports what an earlier one already wrote. A `result` event that carries
+    both is read as both.
+    """
+    from core.llm.claude_stream import _tokens_of
+
+    tokens = _tokens_of({"input_tokens": 2, "output_tokens": 238,
+                         "cache_read_input_tokens": 2385,
+                         "cache_creation_input_tokens": 29213})
+
+    assert tokens["cache_creation_tokens"] == 29213
+    assert tokens["cached_tokens"] == 2385
+
+
+def test_tokens_of_omits_cache_creation_tokens_when_nothing_was_written():
+    from core.llm.claude_stream import _tokens_of
+
+    tokens = _tokens_of({"input_tokens": 2, "output_tokens": 238,
+                         "cache_creation_input_tokens": 0})
+
+    assert "cache_creation_tokens" not in tokens
+
+
+def test_what_was_written_to_cache_is_carried_off_the_result_event_too():
+    """The client-level counterpart of `test_tokens_of_...`: `DEFAULT_ENV`'s
+    own recording is the one call of the two fixtures that actually wrote to
+    cache rather than reading from it."""
+    client, spawn = client_replaying(DEFAULT_ENV)
+
+    collect(client.stream(a_turn()))
+
+    usage = _result(DEFAULT_ENV)["usage"]
+    assert client.last_cost["cache_creation_tokens"] == usage["cache_creation_input_tokens"]
+
+
 def test_a_call_that_says_nothing_about_cost_is_not_billed_the_last_one():
     """
     `last_cost` is read after the stream is drained, so one held over from the
