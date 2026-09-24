@@ -158,6 +158,9 @@ def _billed(model, chunks, messages):
         cached = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", None)
         if cached:
             tokens["cached_tokens"] = cached
+        cache_creation = getattr(usage, "cache_creation_input_tokens", None)
+        if cache_creation:
+            tokens["cache_creation_tokens"] = cache_creation
         reasoning = getattr(getattr(usage, "completion_tokens_details", None),
                             "reasoning_tokens", None)
         if reasoning:

@@ -682,6 +682,7 @@ def test_a_priced_streaming_call_sets_last_cost():
     assert client.last_cost == {
         "usd": 0.004521, "model": "claude-3-7-sonnet-20250219",
         "prompt_tokens": 1066, "completion_tokens": 37, "reasoning_tokens": 18,
+        "cache_creation_tokens": 1024,
     }
 
 
