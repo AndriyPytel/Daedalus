@@ -266,12 +266,12 @@ print, and it is never replayed: it dies with the kernel the moment this
 phase ends.
 
 A dimension a Step names is a dimension you read off `design`, never a
-number you write down. `features` is a list, each one found by its `id` —
-`boss = next(f for f in design["features"] if f["id"] == "Boss")` — and its
-own fields are `{"value": ..., "flag": ...}`, so the number itself is
-`boss["length"]["value"]`, not `80.0`. Let a field Design never established
-raise there and then; `.get(key, 80.0)` is refused for the same reason a
-bare `80.0` is, because a default stands in for a value nobody measured.
+number you write down. `features` is a dict keyed by each feature's `id` —
+`boss = design["features"]["Boss"]` — and its own fields are `{"value": ...,
+"flag": ...}`, so the number itself is `boss["length"]["value"]`, not `80.0`.
+Let a field Design never established raise there and then;
+`.get(key, 80.0)` is refused for the same reason a bare `80.0` is,
+because a default stands in for a value nobody measured.
 `0`, `1`, `90` and `360` are counts and right angles, not dimensions, and
 need no lookup.
 
