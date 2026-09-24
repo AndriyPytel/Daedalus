@@ -170,15 +170,41 @@ fuse there; Execute had to widen the Plan's own number by a millimetre before
 the Pad would build as one solid.
 
 **A part is planned base, then addition, then subtraction, then a shell or
-its holes, and a fillet or a chamfer only once every one of those stands.**
-Each of those Steps is a boolean — a Pad added to the solid, a Pocket or a
-Hole cut out of it, a Shell hollowing it — and a boolean does not add to the
+its holes, and a fillet or a chamfer only once every one of those stands —
+except the one case below, where a later feature would cut the fillet's own
+edge into pieces.** Each of those Steps is a boolean — a Pad added to the
+solid, a Pocket or a Hole cut out of it, a Shell hollowing it — and a
+boolean does not add to the
 Shape the Steps before it built: it replaces it, so a reference Execute worked
 out against the geometry before the boolean runs — a face by its position, an
 edge by its axis — is a reference into a Shape the boolean has already thrown
 away. Planning the fillets and chamfers last is what keeps every Step before
 them free to be found again by the geometry it actually built, rather than by
 a selector some earlier boolean already invalidated.
+
+**A radius that belongs to a profile is drawn in the sketch**, not planned as
+a fillet feature: a rounded corner that is part of the outline it sits in is
+geometry of that sketch, and the sketch is where it is stated.
+
+**Every other fillet or chamfer is planned at the end, largest radius first.**
+That is common CAD practice — later features cut earlier fillets, and
+PartDesign stores a fillet's edges by name, so a fillet planned early is a
+fillet a later Step can invalidate.
+
+**A fillet is planned directly after the feature that makes its edge only
+when a later feature would cut that edge into pieces.** An R10 fillet on the
+edge a base pad makes, planned before the lugs that later cut that edge into
+twelve pieces, rounds the edge whole; planned last, it rounds twelve pieces
+of an edge nobody described as twelve. That is the one exception to
+fillets-last, and it applies only where a later feature splits the edge —
+never as the general rule.
+
+**An edge count a Step states is written as approximate, not as a fact.**
+A circle Design counted as one edge comes into the Body as two arcs, so a
+Step names the edges it rounds or chamfers by what identifies them — "the
+loop at Z=45", "the twelve longitudinal edges of the outer profile" — and
+gives the count with "about": "about 4 edges", never stated as an exact
+number the real Body is bound to match.
 
 The order is not the order the description lists the features in, and the
 properties that are not geometry at all come last of all — a material card
@@ -188,7 +214,8 @@ main design work of the solid before applying fillets and chamfers, or edges
 change names and the filleted edges become invalid; its advice for a stable
 model is to use dress-ups as late in the feature tree as possible. A round
 planned in the middle of the shape is a round the Steps after it move out from
-under.
+under — outside the one exception already named, where a later feature would
+cut the round's own edge into pieces.
 
 **A dress-up Step is planned against the solid the Steps before it leave, not
 against the feature it was read off.** Every shape Step earlier in the Plan has
