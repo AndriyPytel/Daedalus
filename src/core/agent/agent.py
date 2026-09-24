@@ -198,9 +198,10 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 if working_kernel is None:
                     working_kernel = Kernel()
                 step_document = document if first_step else _NO_DOCUMENT
-                result = working_kernel.check(message["code"], **(
-                    {} if step_document is _NO_DOCUMENT
-                    else {"document": step_document, "design": design}))
+                result = working_kernel.check(
+                    message["code"], exploring=message.get("step") is None, **(
+                        {} if step_document is _NO_DOCUMENT
+                        else {"document": step_document, "design": design}))
                 last_failure = None if result.ok else result.traceback
                 first_step = False
                 delivered_step = None
@@ -432,6 +433,8 @@ def _feedback(result):
         payload["stdout"] = result.stdout
     if result.volume:
         payload["volume"] = result.volume
+    if result.rolled_back:
+        payload["rolled_back"] = result.rolled_back
     if result.ok:
         touched = set(result.created) | set(result.modified)
         geometry = {name: g for name, g in result.geometry.items() if name in touched}

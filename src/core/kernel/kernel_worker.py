@@ -1093,9 +1093,12 @@ def run_step(request):
     `ephemeral=True` skips checkpoint writes. Pass writes the checkpoint;
     fail reopens the last checkpoint only when `_Touched.touched()` says
     the Step actually changed the Document, since a read-only probe that
-    raises leaves it exactly as it was.
+    raises leaves it exactly as it was; `exploring=True` marks a call no
+    Step declared, so a pass that touched the Document is reopened the
+    same as a failed one, and the response names what was rolled back.
     """
     ephemeral = request.get("ephemeral", False)
+    exploring = request.get("exploring", False)
     if "document" in request or _SESSION["doc"] is None:
         _SESSION["doc"] = _open_document(request.get("document"))
         _SESSION["names"] = dict(request.get("names") or {})
@@ -1135,9 +1138,13 @@ def run_step(request):
         response["stdout"] = printed
 
     if response.get("ok"):
-        if not ephemeral:
-            _save_checkpoint(doc)
-        _SESSION["names"] = names
+        if exploring and touched.touched() and not ephemeral:
+            _reload_checkpoint()
+            response["rolled_back"] = sorted(touched.created | touched.deleted | touched.modified())
+        else:
+            if not ephemeral:
+                _save_checkpoint(doc)
+            _SESSION["names"] = names
     else:
         if not ephemeral and touched.touched():
             _reload_checkpoint()

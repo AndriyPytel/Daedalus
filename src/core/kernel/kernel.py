@@ -57,6 +57,7 @@ class KernelResult:
     checkpoint: str = None
     names: dict = field(default_factory=dict)
     signature: dict = field(default_factory=dict)
+    rolled_back: list = field(default_factory=list)
 
     @classmethod
     def from_response(cls, response):
@@ -88,7 +89,8 @@ class KernelResult:
                    geometry=response.get("geometry") or {},
                    volume=response.get("volume") or {},
                    checkpoint=checkpoint, names=names,
-                   signature=response.get("signature") or {})
+                   signature=response.get("signature") or {},
+                   rolled_back=response.get("rolled_back") or [])
 
 
 def find_freecadcmd():
@@ -206,15 +208,18 @@ class Kernel:
         self.kill()
 
     def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None,
-              ephemeral=False, design=None):
+              ephemeral=False, design=None, exploring=False):
         """
         Run *code* as one Step in the kernel. `document` not given
         continues the kernel's own session, resuming on the last
         checkpoint if the worker restarted since, or refusing if no
         checkpoint exists yet to resume onto; `document` given is a fresh
-        handoff from that path, always honoured, and *design* is carried
-        into the Step's namespace read-only, remembered by the kernel's own
-        session past this call the same as *names*. Returns a KernelResult,
+        handoff from that path, always honoured; *design* is carried into
+        the Step's namespace read-only, remembered by the kernel's own
+        session past this call the same as *names*; and *exploring* marks
+        *code* as a call no Step declares, rolled back to the last
+        checkpoint with the result naming what was undone where it
+        creates, deletes or modifies an object. Returns a KernelResult,
         never raising for anything the code did.
         """
         if document is _CONTINUE and self._needs_resume:
@@ -239,6 +244,8 @@ class Kernel:
             request["names"] = names
         if ephemeral:
             request["ephemeral"] = True
+        if exploring:
+            request["exploring"] = True
         if design is not None:
             request["design"] = design
         response, why = self._ask(request, timeout or self.timeout, "the Step")
