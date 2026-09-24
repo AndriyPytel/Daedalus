@@ -80,6 +80,9 @@ def test_two_consecutive_execute_calls_of_one_pass_send_the_same_prefix(tmp_path
         assert later[:len(earlier)] == earlier, \
             "call %d's user turn is not a prefix of call %d's" % (index, index + 1)
 
+    assert any(block["text"].startswith("Your reply:") for block in turns[-1]), \
+        "a later call carries none of the model's own earlier replies"
+
 
 def test_only_the_tasks_own_last_block_carries_a_cache_breakpoint():
     """

@@ -32,12 +32,16 @@ _TASK_CACHE_BREAKPOINT = {"type": "ephemeral", "ttl": "1h"}
 
 def _user_turn(messages: list) -> dict:
     """
-    The user half of *messages* as the one message stream-json input takes,
-    with an explicit cache breakpoint on the task turn's own last block.
+    *messages* as the one message stream-json input takes, with an explicit
+    cache breakpoint on the task turn's own last block.
 
-    Anthropic's lookback only reaches 20 blocks behind wherever a call's own
-    breakpoint lands, and this route's `claude` CLI already spends 3 of the
-    4 a request allows on its own (tools, the system prompt, the end of the
+    stream-json input takes user turns only, so each assistant reply rides
+    along as a marked text block in that one message rather than as a
+    message of its own -- the model otherwise sees the task and the
+    results of its code, never the code it wrote. Anthropic's lookback
+    only reaches 20 blocks behind wherever a call's own breakpoint lands,
+    and this route's `claude` CLI already spends 3 of the 4 a request
+    allows on its own (tools, the system prompt, the end of the
     conversation) -- one more, placed on the task rather than left for the
     CLI to place only at the tail, is what keeps the task itself cached
     once a Step's retries push the conversation past that window, since the
@@ -46,15 +50,22 @@ def _user_turn(messages: list) -> dict:
     """
     content = []
     task_end = None
-    for index, message in enumerate(messages):
-        if message.get("role") != "user":
-            continue
-        content.extend(_blocks(message.get("content")))
-        if task_end is None and content:
-            task_end = len(content) - 1
+    for message in messages:
+        role = message.get("role")
+        if role == "user":
+            content.extend(_blocks(message.get("content")))
+            if task_end is None and content:
+                task_end = len(content) - 1
+        elif role == "assistant":
+            content.append(_reply_block(message.get("content")))
     if task_end is not None:
         content[task_end] = dict(content[task_end], cache_control=_TASK_CACHE_BREAKPOINT)
     return {"type": "user", "message": {"role": "user", "content": content}}
+
+
+def _reply_block(content) -> dict:
+    """One earlier assistant reply, marked so the model reads it as its own rather than the user's."""
+    return {"type": "text", "text": "Your reply:\n" + _as_text(content)}
 
 
 def _blocks(content) -> list:
