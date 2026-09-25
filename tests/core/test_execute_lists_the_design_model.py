@@ -1,7 +1,5 @@
 """Execute's first message already lists the Design model, so it does not
 have to print `design` to read it back."""
-import json
-
 from core.prompts import read_prompt
 
 from tests.loop_helpers import (
@@ -20,7 +18,7 @@ def test_the_first_message_lists_every_feature_id_and_dimensional_number():
     _, _, llm, _ = drive([
         design_reply(A_PART),
         plan_reply("Drill the hole", satisfies=everything(A_PART)),
-        code_reply("doc.addObject(\'Part::Box\', \'Box\')"),
+        code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(),
         assertion_reply("assert True"),
         verdict_reply("pass"),
