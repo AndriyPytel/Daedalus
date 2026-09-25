@@ -175,6 +175,34 @@ def test_a_not_defined_field_is_filled_by_a_later_pass():
     assert not grown.get("conflicts")
 
 
+def test_a_value_chosen_for_a_not_defined_field_reads_assumed_with_its_number():
+    """
+    Design settling a `not_defined` field for Plan writes it in the same shape
+    as any other dimensional value, `mm`/`deg` included, so a Step reads it by
+    index (`design[...]["mm"]`) instead of parsing the `because` it settled on.
+    """
+    grown = merge(NOT_DEFINED_DEPTH,
+                  {"envelope": {"depth front to rear":
+                                {"value": "40 mm", "flag": "assumed", "mm": 40,
+                                 "because": "nothing in the views gave it, so a typical "
+                                            "depth was assumed"}}})
+
+    assert grown["envelope"]["depth front to rear"]["mm"] == 40
+    assert grown["envelope"]["depth front to rear"]["flag"] == "assumed"
+    assert not grown.get("conflicts")
+
+
+def test_a_not_defined_field_left_unsettled_still_raises_when_read():
+    """A Step reading a field nobody settled hits the missing `mm` it needs, not a number."""
+    field = NOT_DEFINED_DEPTH["envelope"]["depth front to rear"]
+
+    try:
+        field["mm"]
+        assert False, "a not_defined field must not answer for a number"
+    except KeyError:
+        pass
+
+
 def test_a_filled_field_still_cannot_be_replaced_even_by_not_defined():
     """
     `not_defined` -> value is the *only* exception. A field already carrying a
