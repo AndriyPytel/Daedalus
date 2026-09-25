@@ -206,6 +206,10 @@ loop at Z=45", "the twelve longitudinal edges of the outer profile" — and
 gives the count with "about": "about 4 edges", never stated as an exact
 number the real Body is bound to match.
 
+**The kernel refuses a Base mixing concave and convex edges in one round: one
+fillet Step takes edges of one concavity**, so a round that runs from an
+inside corner onto an outside edge is two Steps, concave first.
+
 The order is not the order the description lists the features in, and the
 properties that are not geometry at all come last of all — a material card
 depends on nothing and nothing depends on it, so it is the last Step of any
