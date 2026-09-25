@@ -54,6 +54,7 @@ from core.design.gaps import (
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, _streamed, prompt
+from core.lint import lint
 from core.loop.run import run
 import core.loop.prompt as loop_prompt_module
 from core.tools import ToolError, ToolRegistry
@@ -1066,12 +1067,15 @@ def test_plan_can_ask_instead_of_planning():
     This is the in-process half of the standing rule: with a value the part
     cannot be built without missing, Plan answers with a question and no Plan
     is shown. That it may ask is unchanged; who answers it is not — nobody
-    does, and Plan chooses and says in the Step what it chose.
+    does, and Design settles it into the model instead.
     """
     result, events, _, tools = drive(
         [question_reply(MISSING),
-         plan_reply("Sketch the blank, assumed module 2", "Pad it"),
-         code_reply("a()", "b()"), suspect_reply(), verdict_reply("pass")],
+         design_reply({"features": [{"id": "teeth",
+                                     "module": dict(settled("2", "typical for this size"), mm=2)}]}),
+         plan_reply("Sketch the blank", "Pad it"),
+         code_reply("a()", "b()"), suspect_reply(), assertion_reply("assert True"),
+         verdict_reply("pass")],
         intent=GEAR)
 
     question = events.first(QUESTION)
@@ -1114,30 +1118,98 @@ def test_the_users_answer_is_written_into_the_description_and_not_handed_to_plan
     assert "you_asked_and_were_answered" not in described
 
 
-def test_a_run_nobody_is_watching_gets_a_plan_that_chose_for_them():
+def test_a_run_nobody_is_watching_gets_a_plan_settled_for_them():
     result, events, llm, _ = drive(
         [question_reply(MISSING),
-         plan_reply("Sketch the blank, assumed module 2 and 20 teeth"), code_reply("a()"),
+         design_reply({"features": [{"id": "teeth",
+                                     "module": dict(settled("2", "typical for this size"), mm=2)}]}),
+         plan_reply("Sketch the blank"), code_reply("a()"),
+         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+        intent=GEAR)
+
+    assert result.ok
+    assert events.first(ANSWER).data["by"] == "design"
+    assert events.first(ANSWER).data["text"]
+    to_plan = json.loads(llm.calls[3][-1]["content"])
+    assert "module" in json.dumps(to_plan["what_the_part_is"])
+
+
+def test_with_nobody_to_ask_and_nothing_design_can_settle_the_run_does_not_stall():
+    """
+    Level 1, Level 2 and headless runs have no user; they must still plan,
+    even when Design also has nothing to settle a question with.
+    """
+    result, events, llm, _ = drive(
+        [question_reply(MISSING), design_reply(),
+         plan_reply("Sketch it"), code_reply("a()"),
          suspect_reply(), verdict_reply("pass")],
         intent=GEAR)
 
     assert result.ok
-    told = json.dumps(llm.calls[2])
-    assert "Choose sensible values yourself" in told
     assert events.first(ANSWER).data["by"] == "nobody"
+    assert "not_defined" in json.dumps(llm.calls[2])
 
 
-def test_with_nobody_to_ask_the_run_does_not_stall():
-    """Level 1, Level 2 and headless runs have no user; they must still plan."""
-    result, _, llm, _ = drive(
-        [question_reply(MISSING), plan_reply("Sketch it, assumed module 2"), code_reply("a()"),
-         suspect_reply(), verdict_reply("pass")],
+def test_a_settle_attempt_that_changes_nothing_falls_through_and_asks_no_more():
+    """
+    Design settling a question by re-stating what the model already carries
+    is not progress: `grown` comes back unchanged, so a second settle
+    attempt over the same question would cost exactly as much as the first
+    and get exactly as far. One attempt is what the field is owed.
+    """
+    module_already_settled = {"features": [{"id": "teeth",
+                                            "module": dict(settled("2", "typical for this size"),
+                                                           mm=2)}]}
+
+    result, events, llm, _ = drive(
+        [design_reply(module_already_settled),
+         question_reply(MISSING), design_reply(module_already_settled),
+         plan_reply("Sketch the blank"), code_reply("a()"),
+         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
         intent=GEAR)
 
-    assert result.ok
-    assert "Choose sensible values yourself" in json.dumps(llm.calls[2])
+    assert result.ok, result.reason
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
+    assert len(design_turns) == 2, "a settle attempt that changed nothing was tried again"
+    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["nobody"]
+    assert events.first(PLAN).data["unanswered"] == [MISSING]
 
 
+
+
+def test_the_plan_gate_lists_a_design_settled_value_as_an_assumption():
+    """
+    End to end, the first Acceptance Criterion: a `not_defined` length Design
+    settles for Plan reaches Execute carrying its number, a Step reading it
+    by index passes the lint, and the Gate lists it as an assumption rather
+    than showing nothing for a field a run once could not have built at all.
+    """
+    not_defined_length = {"envelope": {"length": {"value": "not defined",
+                                                   "flag": "not_defined"}}}
+    settled_length = {"envelope": {"length": dict(settled("40 mm", "nothing in the views "
+                                                           "gave it, so a typical length "
+                                                           "was assumed"), mm=40)}}
+    code = "pad.Length = design['envelope']['length']['mm']"
+
+    result, events, llm, tools = drive(
+        [design_reply(not_defined_length),
+         question_reply("What is the length?"), design_reply(settled_length),
+         plan_reply("Pad the profile 40 mm"), code_reply(code),
+         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+        intent=GEAR)
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == [code]
+
+    handed, = [arguments for name, arguments in tools.calls if name == "apply_step"]
+    length = handed["design"]["envelope"]["length"]
+    assert length["flag"] == "assumed" and length["mm"] == 40
+
+    assert lint(code).ok, lint(code).report()
+
+    decided = events.first(PLAN).data["decided"]
+    assert any("envelope \u2192 length" in line and "40 mm" in line for line in decided), \
+        "the value the model settled did not reach the Gate as an assumption"
 
 
 def test_a_run_nobody_answered_at_all_reaches_the_gate_rather_than_a_block():
@@ -1152,9 +1224,9 @@ def test_a_run_nobody_answered_at_all_reaches_the_gate_rather_than_a_block():
 
     result, events, _, tools = drive([
         design_reply(SETTLED),
-        question_reply("q1"), design_reply({}),
-        question_reply("q2"), design_reply({}),
-        question_reply("q3"),
+        question_reply("q1"), design_reply({}), design_reply(),
+        question_reply("q2"), design_reply({}), design_reply(),
+        question_reply("q3"), design_reply(),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
         code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=2),
@@ -1225,20 +1297,20 @@ def test_rereads_are_spent_only_on_questions_put_to_the_drawing():
 def test_rereads_counts_re_reads_of_the_drawing_and_nothing_else():
     """
     One budget, one job. With one re-read allowed the sheet is asked once, and
-    the three questions nobody answered cost nothing further.
+    every question past it still costs one settle attempt of its own.
     """
     result, events, llm, _ = drive([
         design_reply(SETTLED),
-        question_reply("q1"), design_reply({}),
-        question_reply("q2"),
-        question_reply("q3"),
+        question_reply("q1"), design_reply({}), design_reply(),
+        question_reply("q2"), design_reply(),
+        question_reply("q3"), design_reply(),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
         code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
 
     assert result.ok, result.reason
     design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
-    assert len(design_turns) == 2, "the sheet was read past its ceiling"
+    assert len(design_turns) == 5, "the sheet was read past its ceiling"
     assert events.first(PLAN).data["unanswered"] == ["q1", "q2", "q3"]
 
 
@@ -1314,27 +1386,30 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
 def test_a_question_the_sheet_does_not_answer_is_settled_by_the_model():
     """
     A tolerance nobody printed is not on the sheet, and nobody is asked for it
-    either: Plan chooses and says in the Step what it chose.
+    either: Design settles it into the model instead.
 
     The sheet saying nothing is on the stream. Without it a stalled run cannot
     be told from one where the drawing was never looked at, which is the first
     thing anybody reading the log asks.
     """
     asked = []
+    a_tolerance = {"tolerances": {"general": dict(settled("±0.1 mm", "typical for this part"),
+                                                   mm=0.1)}}
 
     result, events, _, _ = drive([
         design_reply(A_PART),
         question_reply("What general tolerance applies?"),
         design_reply(),
-        plan_reply("Sketch it, assumed ±0.1 mm", satisfies=everything(A_PART)),
+        design_reply(a_tolerance),
+        plan_reply("Sketch it", satisfies=everything(A_PART)),
         code_reply("a()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG],
         ask=lambda q: asked.append(q) or "±0.1 mm")
 
     assert result.ok, result.reason
     assert asked == [], "the user was asked for a value: %s" % asked
-    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "nobody"]
-    assert "nothing in the views" in events.first(ANSWER).data["text"]
+    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["drawing", "design"]
+    assert events.last(DESIGN).data["model"]["tolerances"]["general"]["flag"] == "assumed"
 
 
 def test_a_drawing_that_keeps_answering_is_never_a_question_for_anybody():
@@ -1369,7 +1444,7 @@ def test_the_re_reads_have_a_ceiling_of_their_own():
     result, events, llm, _ = drive([
         design_reply(A_PART),
         question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
-        question_reply("q2"),
+        question_reply("q2"), design_reply(),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1),
@@ -1395,7 +1470,7 @@ def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
 
     result, events, llm, _ = drive([
         design_reply(A_PART),
-        question_reply("q1"), design_reply(),
+        question_reply("q1"), design_reply(), design_reply(),
         question_reply("q2"), design_reply(off_the_sheet),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
@@ -1405,7 +1480,7 @@ def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
     assert asked == []
     assert [answer.data["by"] for answer in events.of(ANSWER)] \
         == ["drawing", "nobody", "drawing"]
-    re_read = llm.calls[4][-1]["content"]
+    re_read = llm.calls[5][-1]["content"]
     assert json.loads(re_read[-1]["text"])["the_question"] == "q2"
     assert [b for b in re_read if b.get("type") == "image_url"], "it re-read without the sheet"
 
@@ -1418,8 +1493,8 @@ def test_the_same_question_twice_is_listed_once_and_does_not_end_the_run():
     """
     result, events, _, tools = drive([
         design_reply(A_PART),
-        question_reply("q1"), design_reply(),
-        question_reply("q1"), design_reply(),
+        question_reply("q1"), design_reply(), design_reply(),
+        question_reply("q1"), design_reply(), design_reply(),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda _: "")

@@ -567,13 +567,14 @@ def test_nothing_is_asked_between_the_attachment_and_the_gate(monkeypatch):
 def test_a_plan_that_asks_for_a_value_is_told_to_choose_and_never_the_user():
     """
     Plan's question used to reach the panel and block the run on a
-    `threading.Event`. It reaches the sheet, and past that the model chooses
-    and says in the Step what it chose.
+    `threading.Event`. It reaches the sheet, and past that Design has nothing
+    left to settle it with either, so the field stays `not_defined`.
     """
     asked = []
 
     result, events, _, tools = drive(
-        [question_reply(MISSING), plan_reply("Sketch the blank, assumed module 2"),
+        [question_reply(MISSING), design_reply(),
+         plan_reply("Sketch the blank, assumed module 2"),
          code_reply("a()"), suspect_reply(), verdict_reply("pass")],
         intent=GEAR, ask=lambda question: asked.append(question) or "module 2, 20 teeth")
 

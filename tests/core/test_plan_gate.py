@@ -226,7 +226,7 @@ def test_a_replan_after_an_amendment_may_ask_rather_than_planning_blind():
 
     result, _, tools = drive([
         plan_reply("Add a Part::Box"),
-        question_reply("Which thickness?"),
+        question_reply("Which thickness?"), design_reply(),
         plan_reply("Create a 10mm Body"), code_reply("a()"),
         suspect_reply(), verdict_reply("pass"),
     ], gate, ask=lambda question: asked.append(question) or "10mm")

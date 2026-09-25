@@ -79,6 +79,7 @@ from tests.loop_helpers import (
     _turns_of,
     _cut_off,
     GEAR,
+    GEAR_AS_TOLD,
     MISSING,
     A_NUT,
     ACCEPTANCE,
@@ -192,22 +193,22 @@ def test_a_replan_after_a_reread_is_handed_the_change_set_not_the_whole_part():
     assert events.last(CHANGE_SET).data["changes"] == reread_plan["what_the_part_is"]
 
 
-def test_with_no_attachment_a_question_is_settled_by_plan_itself():
+def test_with_no_attachment_a_question_is_settled_by_design_itself():
     """
-    No sheet to ask and nobody to ask either, so no turn is spent on either:
-    Plan is told to choose, and the only turn Design costs is the one it
-    describes the part in.
+    No sheet to ask and nobody to ask either, so no turn is spent re-reading a
+    drawing that is not there: Design settles the value itself, and Plan reads
+    it back from the model.
     """
     asked = []
 
     result, _, llm, _ = drive(
-        [question_reply(MISSING), plan_reply("Sketch it, assumed module 2"),
-         code_reply("a()"), suspect_reply(), verdict_reply("pass")],
+        [question_reply(MISSING), design_reply(GEAR_AS_TOLD), plan_reply("Sketch it"),
+         code_reply("a()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
         intent=GEAR, ask=lambda q: asked.append(q) or "module 2")
 
     assert result.ok, result.reason
     assert asked == []
-    assert len(llm.calls) == 7, "a turn was spent re-reading a drawing that is not there"
+    assert len(llm.calls) == 9, "a turn was spent re-reading a drawing that is not there"
 
 
 def test_a_question_alongside_steps_is_still_a_plan():
@@ -228,8 +229,8 @@ def test_a_replan_after_a_handback_may_ask_rather_than_planning_blind():
     """
     A re-plan that needs a value nobody gave it used to answer with a question
     and no Steps, and the loop took `planned.steps` blind: the question was
-    dropped and the revised Plan was empty. It may still ask; what it gets back
-    is "choose it yourself", and the Plan that follows is a Plan.
+    dropped and the revised Plan was empty. It may still ask; what it gets back,
+    Design having nothing left to settle it with either, is the Plan that follows.
 
     Four `nope`s, not three: a declared Step's first refusal is free.
     """
@@ -239,7 +240,7 @@ def test_a_replan_after_a_handback_may_ask_rather_than_planning_blind():
         [
             plan_reply("Impossible"),
             retried_code_reply("nope1()", "nope2()", "nope3()", "nope4()"),
-            question_reply(MISSING),
+            question_reply(MISSING), design_reply(),
             plan_reply("Possible, assumed module 2"),
             code_reply("yes()"),
             suspect_reply(), verdict_reply("pass"),
@@ -260,7 +261,7 @@ def test_a_replan_after_a_rejected_verdict_may_ask_too():
     result, events, _, _ = drive(
         [
             plan_reply("Make it"), code_reply("make()"), suspect_reply(), verdict_reply("fail", "20mm, not 10mm"),
-            question_reply(MISSING),
+            question_reply(MISSING), design_reply(),
             plan_reply("Make it 10mm across the flats"), code_reply("fix()"),
             suspect_reply(), verdict_reply("pass"),
         ],

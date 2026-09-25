@@ -66,9 +66,9 @@ def revise_by_default(failure):
 DECIDE_FOR_ME = ""
 
 
-_DECIDE = ("Nobody is asked for a value. Choose sensible values yourself, and write every "
-           "value you chose into the prose of the Step that uses it, so a wrong choice is "
-           "correctable at the Plan Gate.")
+_DECIDE = ("Nobody is asked for a value, and Design could not settle it either -- it stays "
+           "`not_defined`. Do not invent a number: plan around it, or say so in `question` "
+           "if the part cannot be built without it.")
 
 
 _ABOUT_THE_BUILD = ("material", "materials", "uuid", "uuids", "card", "cards", "density",

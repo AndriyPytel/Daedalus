@@ -350,12 +350,12 @@ you are handed `tools_you_may_look_with` and asked for a look — reply with
 in `what_the_tools_say` for you to plan from. Never guess a uuid and never treat
 a card as unavailable because the sheet does not name it.
 
-`nobody_answered` means the questions in it got no answer and none is coming:
-the sheet was asked and did not settle them. Choose, and write every value you
-chose into the prose of the Step that uses it, as "assumed module 2", "assumed
-20 teeth". An assumption stated in a Step is correctable at the Plan Gate; an
-assumption that only exists in the code is not. Asking again instead of
-choosing ends the run with no Plan at all.
+`nobody_answered` means the questions in it got no answer, and Design could
+not settle them either — they stay `not_defined` in the part. Do not invent a
+number for one of them: a Step naming one is refused before it runs. Plan the
+rest of the part around it, citing every value the part does carry, or say so
+in `question` if nothing can be built without it. Asking again instead of
+planning around it ends the run with no Plan at all.
 
 ## How you work
 

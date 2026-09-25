@@ -13,7 +13,7 @@ from core.design.gaps import entries
 from core.events import ANSWER, CHANGE_SET, DESIGN, QUESTION
 
 from core.loop.budgets import PhaseError
-from core.loop.describe import _A_DIRECTION_FIELD, _not_english
+from core.loop.describe import _A_DIRECTION_FIELD, _not_english, _settle_it
 from core.loop.design import design
 from core.loop.execute import (
     OP_VERBS,
@@ -283,8 +283,9 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                revising=(), ledger=None, supervisor=None):
     """
     Plan, letting it ask for what the description did not carry, and the
-    run waits. A question goes to the drawing first; unanswered, Plan
-    chooses for itself.
+    run waits. A question goes to the drawing first; unanswered, Design
+    settles it itself and writes the chosen value into the model with
+    `flag: assumed`, so Plan reads it back like any other field.
     """
     grown, for_the_build, change_set = the_part, False, None
     while True:
@@ -330,6 +331,19 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                 events.emit(ANSWER, text=render(from_the_drawing), by="drawing")
                 continue
             events.emit(ANSWER, text=_SAID_NOTHING, by="drawing")
+
+        settled, _ = design({"intent": intent,
+                             "the_part_as_you_described_it": grown,
+                             "the_question": _settle_it(planned.question)},
+                            llm, events, attachments)
+        if settled:
+            before, grown = grown, merge(grown, settled, budgets.record_conflicts)
+            if grown != before:
+                change_set = diff(before, grown)
+                events.emit(CHANGE_SET, changes=change_set)
+                events.emit(ANSWER, text=render(settled), by="design")
+                continue
+            grown = before
 
         events.emit(ANSWER, text=_DECIDE, by="nobody")
         if planned.question not in asking.unanswered:
