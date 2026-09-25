@@ -414,3 +414,38 @@ def test_what_the_assistant_created_needs_no_permission(doc, worker, tmp_path):
                           kernel_result=_kernel_result(worker, doc, modify_code, design=A_DESIGN)).ok
     assert asks == [], "asked permission for its own object"
     assert doc.getObject("Box").Length.Value == 25
+
+
+def test_each_applied_step_lands_as_exactly_one_undo_transaction(pipeline, doc, worker):
+    """
+    A revision that drops a Step undoes it by calling `doc.undo()` once per
+    Step dropped (FCC-459), which is only correct if nothing besides
+    `apply()`'s own transaction ever lands on the stack -- not the
+    recompute inside it, and not `_show_tip`'s ViewObject changes after it.
+    """
+    CYLINDER = "cyl = doc.addObject('Part::Cylinder', 'Cyl')\n"
+
+    first = pipeline.apply(BOX, label="Add the box", design=A_DESIGN,
+                           kernel_result=_kernel_result(worker, doc, BOX, design=A_DESIGN))
+    assert first.ok, first.traceback
+    second = pipeline.apply(CYLINDER, label="Add the cylinder",
+                            kernel_result=_kernel_result(worker, doc, CYLINDER))
+    assert second.ok, second.traceback
+
+    assert len(doc.UndoNames) == 2, (
+        "two Steps landed but the undo stack holds %r -- something other "
+        "than a Step's own transaction is on it" % list(doc.UndoNames))
+
+
+def test_undo_step_takes_back_exactly_the_last_steps_objects(pipeline, doc, worker):
+    CYLINDER = "cyl = doc.addObject('Part::Cylinder', 'Cyl')\n"
+
+    pipeline.apply(BOX, label="Add the box", design=A_DESIGN,
+                  kernel_result=_kernel_result(worker, doc, BOX, design=A_DESIGN))
+    pipeline.apply(CYLINDER, label="Add the cylinder",
+                  kernel_result=_kernel_result(worker, doc, CYLINDER))
+
+    pipeline.undo_step()
+
+    assert [o.Name for o in doc.Objects] == ["Box"]
+    assert len(doc.UndoNames) == 1
