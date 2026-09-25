@@ -376,6 +376,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                           progress.applied)
         carried = _carried_over(last_pass.steps, steps, last_pass.applied,
                                 wording_only=last_pass.cause == _Revisions.UNBUILDABLE)
+        if carried < progress.applied:
+            for _ in range(progress.applied - carried):
+                tools.call("undo_step")
+            progress.applied = carried
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part.the_part), looks,
                                 planned.acceptance, planned.cites, ledger,

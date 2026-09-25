@@ -333,6 +333,16 @@ class ApplyPipeline:
         return ApplyResult(ok=True, description=described, created=created,
                            modified=list(kernel_result.get("modified") or ()))
 
+    def undo_step(self):
+        """
+        Undo the last Step's transaction on the live Document -- the same
+        undo entry `apply` committed. A Plan revision that drops the Step
+        it belongs to calls this once per Step dropped; nothing else does.
+        """
+        doc = self._dispatch(self._active)
+        if doc is not None:
+            self._dispatch(doc.undo)
+        return {"object_count": len(doc.Objects) if doc is not None else 0}
 
     def check_assertions(self, code):
         """
@@ -1735,6 +1745,15 @@ def _register_apply(registry, pipeline, selection):
         return pipeline.apply(code, selection=selection(), label=label,
                               op=op, kernel_result=kernel_result,
                               design=design).as_tool_result()
+
+    @registry.tool(
+        "undo_step",
+        "Undo the last Step's transaction on the live Document -- the same undo entry "
+        "apply_step committed. Driven by a Plan revision that drops that Step, never by "
+        "a phase.",
+    )
+    def undo_step():
+        return pipeline.undo_step()
 
     @registry.tool(
         "check_assertions",
