@@ -1,8 +1,9 @@
 """Helper functions for the run loop - revision tracking and termination."""
 import re
 
-from core.events import ABORTED, BLOCKED, BUDGET_EXHAUSTED, STOPPED
+from core.events import ABORTED, BLOCKED, BUDGET_EXHAUSTED, STOPPED, TOOL_RESULT
 from core.loop.describe import _INVENTED
+from core.loop.execute import _GOING_NOWHERE
 from core.loop.results import LoopResult
 
 
@@ -84,6 +85,60 @@ def _trailing_gap(written, number, total):
 
 def _tried(step, attempt):
     return {"step": step, "code": attempt.code, "traceback": attempt.traceback}
+
+
+_CORRECT_THE_DESCRIPTION = (
+    "Correct the description — the values it holds in conflict, and the datums and "
+    "overalls a superseded feature left behind — and run it again."
+)
+
+
+_KERNEL_RESULT_NAMES = ("apply_step", "execute")
+
+
+_REFUSED_STATUSES = ("refused", "failed")
+
+
+def _last_kernel_result(tried, events):
+    """
+    The last word the kernel, or this phase's own bookkeeping, had on the
+    handed-back Step -- `outcome["tried"]`'s own last attempt where
+    Preflight or apply rejected one, or, where nothing was ever declared
+    for it, this phase's last refusal off the event stream. A result
+    carrying no `step` is a look Execute took while exploring, not a verdict
+    on any Step, and is skipped rather than read as the last word. `None`
+    where the last result that did name a Step was a success, or there was
+    none at all, since a run-scoped record can hold an unrelated Step's old
+    rejection and say nothing about this one.
+    """
+    if tried:
+        return tried[-1].get("traceback") or None
+    for event in reversed(list(events)):
+        if event.kind != TOOL_RESULT or event.data.get("name") not in _KERNEL_RESULT_NAMES:
+            continue
+        result = event.data.get("result") or {}
+        if not isinstance(result, dict) or "step" not in result:
+            continue
+        if result.get("status") in _REFUSED_STATUSES or result.get("ok") is False:
+            return result.get("traceback") or None
+        return None
+    return None
+
+
+def _going_nowhere(handback, kernel_result):
+    """
+    The `going_nowhere` block, closed with what this phase's kernel
+    actually said, not a guess about the description.
+
+    A kernel result on record means the kernel, not the description, had
+    the last word on this Step, so the block quotes that refusal instead
+    of sending the user to fix a description that was never in question.
+    Nothing on record leaves the hand-back's own account as the only word,
+    so the usual advice to correct the description stands.
+    """
+    closing = ("The kernel's last word on this Step:\n" + kernel_result if kernel_result
+              else _CORRECT_THE_DESCRIPTION)
+    return _GOING_NOWHERE % (handback, closing)
 
 
 def _block(events, reason, tried, applied, said="", verdict=None):
