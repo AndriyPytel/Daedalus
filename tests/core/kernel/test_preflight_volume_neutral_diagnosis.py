@@ -43,4 +43,33 @@ def test_a_feature_with_no_reversed_property_cannot_be_diagnosed():
         Name = "Fillet1"
         TypeId = "PartDesign::Fillet"
 
-    assert _diagnose_idle_feature(NoReversed(), 100.0, 100.0) is None
+    assert _diagnose_idle_feature(NoReversed(), 100.0, 100.0) == (None, None)
+
+
+def test_a_direction_cause_names_the_reversed_value_that_would_fix_it():
+    class Shape:
+        def __init__(self, volume):
+            self.Volume = volume
+            self.Solids = [object()]
+
+        def isNull(self):
+            return False
+
+    class Reversible:
+        Name = "Pocket1"
+        TypeId = "PartDesign::Pocket"
+
+        def __init__(self):
+            self.Reversed = True
+            self.Document = self
+
+        @property
+        def Shape(self):
+            return Shape(1000.0 if self.Reversed else 750.0)
+
+        def recompute(self, scope=None):
+            return 0
+
+    cause, fix = _diagnose_idle_feature(Reversible(), 1000.0, 750.0)
+
+    assert (cause, fix) == ("direction", False)

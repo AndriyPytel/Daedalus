@@ -787,9 +787,12 @@ def _diagnose_idle_feature(obj, before, now):
     """
     Tell a wrong-direction Pocket from one whose profile never touches the
     solid, by flipping `Reversed` and recomputing.
+
+    Returns the cause and, for `"direction"`, the `Reversed` value opposite
+    the one already on the object -- the value that would fix the cut.
     """
     if not hasattr(obj, "Reversed"):
-        return None
+        return None, None
     original = obj.Reversed
     try:
         obj.Reversed = not original
@@ -798,14 +801,14 @@ def _diagnose_idle_feature(obj, before, now):
     finally:
         obj.Reversed = original
         obj.Document.recompute([obj])
-    return _idle_feature_cause(before, flipped)
+    return _idle_feature_cause(before, flipped), not original
 
 
 _IDLE_CAUSE_MESSAGE = {
     "direction": (
         "flipping Reversed changed its volume: the profile sits on the right "
         "face but the cut travels away from the solid instead of into it. Set "
-        "Reversed=True (or use Type='ThroughAll' or SideType='Symmetric' for a "
+        "Reversed=%s (or use Type='ThroughAll' or SideType='Symmetric' for a "
         "through cut rather than a length that may run the wrong way)."
     ),
     "no-overlap": (
@@ -842,10 +845,14 @@ def _idle_feature_report(doc, created):
         idle = _features_that_moved_no_material(doc, created)
         if not idle:
             return ""
+        def _cause_message(obj, before, now):
+            cause, fix = _diagnose_idle_feature(obj, before, now)
+            message = _IDLE_CAUSE_MESSAGE[cause]
+            return message % fix if cause == "direction" else message
+
         lines = [
             "%s (%s): %s mm3 before, %s mm3 after -- %s"
-            % (obj.Name, obj.TypeId, before, now,
-               _IDLE_CAUSE_MESSAGE[_diagnose_idle_feature(obj, before, now)])
+            % (obj.Name, obj.TypeId, before, now, _cause_message(obj, before, now))
             for obj, before, now in idle
         ]
         return "\n%s\n%s" % ("\n".join(lines), _IDLE_EXPLANATION)

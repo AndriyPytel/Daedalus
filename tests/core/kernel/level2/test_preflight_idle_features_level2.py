@@ -53,8 +53,12 @@ pocket.Length = 100
 doc.recompute()
 """
 
+BORE_FLIPPED = BORE.replace("App.Placement(App.Vector(0, 0, 0), App.Rotation(App.Vector(1, 0, 0), -90))",
+                            "App.Placement(App.Vector(0, 100, 0), App.Rotation(App.Vector(1, 0, 0), -90))")
+
 CUTS_NOTHING = BLOCK + BORE % ""
 CUTS = BLOCK + BORE % "pocket.Reversed = True"
+CUTS_NOTHING_WHEN_REVERSED = BLOCK + BORE_FLIPPED % "pocket.Reversed = True"
 
 
 def test_a_pocket_that_cut_nothing_fails_preflight(worker):
@@ -71,6 +75,20 @@ def test_the_failure_says_what_happened_and_what_to_do(worker):
     assert "Reversed" in said, "the failure does not say how to fix it: %s" % said
     assert "SideType" in said and "Midplane" not in said, \
         "the failure names the property FreeCAD warns on every write to: %s" % said
+
+
+def test_reversed_false_that_cut_nothing_names_reversed_true(worker):
+    said = worker.check(CUTS_NOTHING, None).traceback
+
+    assert "Reversed=True" in said, said
+    assert "Reversed=False" not in said, said
+
+
+def test_reversed_true_that_cut_nothing_names_reversed_false(worker):
+    said = worker.check(CUTS_NOTHING_WHEN_REVERSED, None).traceback
+
+    assert "Reversed=False" in said, said
+    assert "Reversed=True" not in said, said
 
 
 def test_the_same_pocket_the_right_way_round_passes(worker):
