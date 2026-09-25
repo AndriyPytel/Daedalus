@@ -88,6 +88,7 @@ from core.loop.results import LoopResult, Progress, Stopped, _OutOfRevisions
 from core.loop.helpers import (
     _assumed, _still_wrong, _carried_over, _also_check, _trailing_gap,
     _tried, _block, _stopped, _aborted, _budget_exhausted, _going_nowhere,
+    _last_kernel_result,
 )
 from core.loop.review import review, review_suspect
 
@@ -391,7 +392,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
         if outcome["handback"] and stuck["applied"] == applied \
                 and not revisions.exhausted(budgets, steps):
-            return _block(events, _going_nowhere(outcome["handback"], ledger),
+            return _block(events, _going_nowhere(
+                outcome["handback"], _last_kernel_result(outcome["tried"], events)),
                           outcome["tried"], applied)
         if outcome["handback"]:
             stuck["applied"] = applied
