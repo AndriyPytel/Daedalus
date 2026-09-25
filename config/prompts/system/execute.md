@@ -316,7 +316,11 @@ You are a multi-turn agent, not a one-shot reply. Your working directory
 holds `plan.json`, read-only, and a writable `document.FCStd` — the live
 Document, per Execute's row of the visibility table (FCC-305). `design` is
 already in scope alongside `doc`, the same dict Design settled, read-only —
-not a file, so there is no `design.json` here to open. Run `{"code": "..."}`
+not a file, so there is no `design.json` here to open. `what_the_part_is`, in
+the task that opened this phase, already lists every feature's `id` next to
+its dimensional fields and their `mm` or `deg` numbers — read it there rather
+than spending a turn on `print(design)` to find out what it already shows.
+Run `{"code": "..."}`
 freely to read the Document before you commit to anything — `hasattr`, an
 enumeration, a material card, walking `Shape.Faces` — that code runs and may
 print, and it is never replayed. It is for looking, not for building: where
