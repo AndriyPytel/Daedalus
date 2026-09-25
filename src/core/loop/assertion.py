@@ -44,9 +44,9 @@ def the_envelope_measured(acceptance):
     The check nobody had to write: the part's three overall sizes, sorted
     against sorted so it never has to know which way the part was built.
     Measured: a lug built 25mm tall for 30 drawn passed Preflight.
-    `_TRUE_TO` is 0.5mm, since `optimalBoundingBox` -- not triangulated --
-    lands inside the true extreme on a curved face; guessing orientation
-    from geometry was rejected.
+    `_TRUE_TO` is 0.5mm, since `optimalBoundingBox(False)` still lands
+    inside the true extreme on a curved face; guessing orientation from
+    geometry was rejected.
     """
     sizes = []
     for address, value in _addressed(acceptance).items():
@@ -64,7 +64,7 @@ solids = [o for o in doc.Objects if getattr(o, 'Shape', None) is not None
           and o.Shape.Solids and not o.Shape.isNull()]
 assert solids, 'the acceptance names an envelope and the Document has no solid'
 shape = max(solids, key=lambda o: o.Shape.Volume).Shape
-box = shape.optimalBoundingBox()
+box = shape.optimalBoundingBox(False)
 built = sorted([box.XLength, box.YLength, box.ZLength])
 asked = %s
 assert all(abs(a - b) <= %s for a, b in zip(built, asked)), (

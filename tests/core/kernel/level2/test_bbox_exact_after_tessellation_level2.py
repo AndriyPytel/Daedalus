@@ -1,7 +1,7 @@
 """
 Level 2 -- `bbox()` against a shape that has been tessellated for display,
-the discrepancy `FCC-458` names between Preflight (headless kernel, never
-tessellated) and Apply (GUI Document, already tessellated for the 3D view).
+the discrepancy between Preflight (headless kernel, never tessellated) and
+Apply (GUI Document, already tessellated for the 3D view).
 """
 import pytest
 

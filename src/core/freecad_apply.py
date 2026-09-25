@@ -704,7 +704,7 @@ doc.recompute()
 """,
     ),
     Trap(
-        claim="Shape.BoundBox is taken off the shape's triangulation, so on a curved face it reports the tessellation and not the surface — and lands inside the true extreme, by the sagitta of whatever chord the mesh happened to use. The BoundBox of a pad with R25 rounded ends read XMin=0.182278 where the face is tangent at 0, and the five sketches placed at that XMin each built their feature 0.18 mm off, in a Document that reopens with XMin=0.0 and cannot be made to show it again. Read it for the sign of a direction and for which side of the solid you are on; never for a coordinate a feature is placed at. Shape.optimalBoundingBox() is exact where a box is genuinely what is wanted, and the face that carries the number — Surface.Center, Surface.Radius, a Vertex Point — is better still.",
+        claim="Shape.BoundBox is taken off the shape's triangulation, so on a curved face it reports the tessellation and not the surface — and lands inside the true extreme, by the sagitta of whatever chord the mesh happened to use. The BoundBox of a pad with R25 rounded ends read XMin=0.182278 where the face is tangent at 0, and the five sketches placed at that XMin each built their feature 0.18 mm off, in a Document that reopens with XMin=0.0 and cannot be made to show it again. Read it for the sign of a direction and for which side of the solid you are on; never for a coordinate a feature is placed at. Shape.optimalBoundingBox(False) is exact where a box is genuinely what is wanted — its default triangulates and inherits the same tessellation padding as BoundBox once the shape carries a mesh — and the face that carries the number — Surface.Center, Surface.Radius, a Vertex Point — is better still.",
         script="""
 body = doc.addObject("PartDesign::Body", "Body")
 xyplane = [f for f in body.Origin.OriginFeatures if f.Name == "XY_Plane"][0]
@@ -722,7 +722,7 @@ doc.recompute()
 shape = pad.Shape.copy()
 shape.tessellate(1.0)
 assert shape.BoundBox.YMax < 25.0 - 1e-3, "BoundBox no longer reads off the triangulation"
-assert abs(shape.optimalBoundingBox().YMax - 25.0) < 1e-6
+assert abs(shape.optimalBoundingBox(False).YMax - 25.0) < 1e-6
 faces = [f for f in pad.Shape.Faces if type(f.Surface).__name__ == "Cylinder"]
 assert abs(faces[0].Surface.Radius - 25.0) < 1e-9
 """,
