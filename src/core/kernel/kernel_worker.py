@@ -26,10 +26,30 @@ import traceback
 
 SENTINEL = "@@KERNEL@@"
 
+_PROTOCOL_STREAM = None
+
+
+def _isolate_protocol_stream():
+    """
+    Give the wire protocol a private fd before any native code can write
+    into fd 1: `doc.recompute()`'s progress bar prints straight to the
+    process's real stdout, with no newline after its last, unfinished
+    fragment, so that text glues onto the front of the next tagged reply
+    line -- the parent's reader drops the malformed line silently and both
+    sides block on `read()` forever, one per Step. Native writes still land
+    somewhere (stderr) rather than vanishing, and the wire keeps fd 1's
+    original destination through the duplicated fd instead.
+    """
+    global _PROTOCOL_STREAM
+    original = os.dup(1)
+    os.dup2(2, 1)
+    _PROTOCOL_STREAM = os.fdopen(original, "w", encoding="utf-8")
+
 
 def respond(payload):
-    sys.stdout.write(SENTINEL + json.dumps(payload) + "\n")
-    sys.stdout.flush()
+    stream = _PROTOCOL_STREAM or sys.stdout
+    stream.write(SENTINEL + json.dumps(payload) + "\n")
+    stream.flush()
 
 
 def _ensure_on_path():
@@ -1190,6 +1210,7 @@ def serve(stdin=None, respond=respond):
     FreeCAD.
     """
     _ensure_on_path()
+    _isolate_protocol_stream()
     stdin = stdin or sys.stdin
     respond({"ready": True, "pid": os.getpid()})
 

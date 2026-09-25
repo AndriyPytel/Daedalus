@@ -1,17 +1,15 @@
 """
 Reproduces a fillet body's own recompute against a real headless FreeCAD:
 Steps 1-16 rebuild the ring's base body and must match its logged volume
-within 1 mm3.
-
-The later fillet steps run as a script, `ring_fillet_classification.py` in
-this directory, because their combined recompute cost makes the
-pytest-timeout plugin's wall clock unreliable in this environment.
+within 1 mm3, and Steps 1-26 build in the same Kernel session the worker
+uses in production.
 """
 import json
 import os
 
 import pytest
 
+import ring_fillet_classification as classification
 from core.kernel import Kernel, find_freecadcmd
 
 pytestmark = pytest.mark.freecad
@@ -50,3 +48,20 @@ def test_steps_1_to_16_rebuild_the_logged_volume(kernel):
     volume = kernel.check("print(doc.getObject('Body').Shape.Volume)")
     assert volume.ok, volume.traceback
     assert abs(float(volume.stdout.strip()) - EXPECTED_VOLUME_MM3) < 1.0
+
+
+def test_steps_1_to_26_build_as_one_kernel_session(kernel):
+    """AC: Steps 1-26, including the 10-fillet Step 17-26 block as one Kernel.check() call, complete."""
+    design = _load("ring_fillet_design.json")
+    steps = _load("ring_fillet_steps.json")
+    fillet_1730_code = _load("ring_fillet_steps_17_30.json")["code"]
+    classification._build_steps_1_to_26(kernel, design, steps, fillet_1730_code)
+
+
+def test_step_27_and_31_exclude_each_other():
+    """AC: Step 27 (outer edge) and Step 31 (bore edge) on one opening exclude each other, either build order."""
+    try:
+        find_freecadcmd()
+    except RuntimeError as exc:
+        pytest.skip(str(exc))
+    classification.check_step_27_and_31_exclude_each_other()

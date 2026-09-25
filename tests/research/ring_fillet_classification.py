@@ -7,10 +7,11 @@ B-spline and circular edges builds only when Base is the Tip captured before
 the Body retips itself, and an 18-edge boundary loop mixing convex and
 concave edges is refused regardless of Base.
 
-Run directly (not through pytest -- see the docstring in
-test_ring_fillet_reproduction.py for why): `python
-ring_fillet_classification.py` from a Python that resolves
-`core.kernel.find_freecadcmd()`, e.g. the repo's own `.venv`.
+`check_step_27_and_31_exclude_each_other` also runs as a pytest test in
+test_ring_fillet_reproduction.py; the rest of this module (the mixed-
+concavity and event-16094 demonstrations) is exploratory and still run
+directly: `python ring_fillet_classification.py` from a Python that
+resolves `core.kernel.find_freecadcmd()`, e.g. the repo's own `.venv`.
 """
 import json
 import os
