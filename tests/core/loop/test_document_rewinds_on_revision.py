@@ -92,3 +92,42 @@ def test_a_revision_that_outruns_the_undo_stack_blocks_without_undoing_anything(
         "blocked but still undid part of the way: %r" % _undo_calls(tools))
     assert tools.created == ["PadBase", "BossArm"], (
         "the Document changed even though the run blocked: %r" % tools.created)
+
+
+def test_a_revision_undoes_back_through_an_earlier_carried_pass():
+    """
+    Pass one lands Steps 1-5 and a revision carries all five whole, growing
+    the Plan to 14. Pass two lands Steps 6-14 on top of that. A third
+    revision keeps only Steps 1-9, so five Steps -- 10 through 14, all
+    landed in pass two -- must be undone, not zero: what a revision carries
+    is counted from the head of the whole Plan, not from where the pass
+    that landed the dropped Steps itself started.
+    """
+    first_five = ["Step %d" % n for n in range(1, 6)]
+    all_fourteen = first_five + ["Step %d" % n for n in range(6, 15)]
+    kept_nine = first_five + ["Step %d" % n for n in range(6, 10)]
+
+    applies = [{"status": "applied", "created": ["Obj%d" % n], "description": {}}
+              for n in range(1, 15)]
+
+    result, events, llm, tools = drive([
+        plan_reply(*first_five),
+        code_reply(*("s%d()" % n for n in range(1, 6)), first=1),
+        suspect_reply(),
+        verdict_reply("fail", "the part needs more features"),
+        plan_reply(*all_fourteen),
+        code_reply(*("s%d()" % n for n in range(6, 15)), first=6),
+        suspect_reply(),
+        verdict_reply("fail", "the tail past nine is scrapped"),
+        plan_reply(*kept_nine),
+        code_reply(first=10),
+        suspect_reply(),
+        verdict_reply("pass"),
+    ], applies=applies)
+
+    assert result.ok, result.reason
+    assert len(_undo_calls(tools)) == 5, (
+        "Steps 10-14 landed in the pass that carried Steps 1-9 in whole from "
+        "an earlier pass -- dropping them needs five undos, got %r"
+        % _undo_calls(tools))
+    assert tools.created == ["Obj%d" % n for n in range(1, 10)]
