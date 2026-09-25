@@ -376,6 +376,19 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                           progress.applied)
         carried = _carried_over(last_pass.steps, steps, last_pass.applied,
                                 wording_only=last_pass.cause == _Revisions.UNBUILDABLE)
+        if carried < last_pass.applied:
+            dropped = last_pass.applied - carried
+            depth = tools.call("undo_depth")["depth"]
+            if depth < dropped:
+                return _block(
+                    events,
+                    "The revision drops %d Step%s already in the Document, but "
+                    "only %d can still be undone -- the undo stack does not "
+                    "reach back that far, so nothing was undone."
+                    % (dropped, "" if dropped == 1 else "s", depth),
+                    progress.tried, progress.applied)
+            for _ in range(dropped):
+                tools.call("undo_step")
         outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part.the_part), looks,
                                 planned.acceptance, planned.cites, ledger,
