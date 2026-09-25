@@ -199,7 +199,7 @@ def _drive_the_slice(worker, render_dir):
         events = EventStream()
         gate = {"asked": [], "objects_at_the_gate": None}
 
-        def plan_gate(steps):
+        def plan_gate(steps, **kwargs):
             gate["asked"].append(list(steps))
             gate["objects_at_the_gate"] = [o.Name for o in doc.Objects]
             return Approval(APPROVE)

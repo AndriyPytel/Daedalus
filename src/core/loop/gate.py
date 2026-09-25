@@ -30,7 +30,7 @@ class Approval:
     steps: tuple = ()
 
 
-def auto_approve(steps):
+def auto_approve(steps, history=(), rollback=None):
     """
     The gate when nothing is wired up to ask.
 

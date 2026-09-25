@@ -130,8 +130,8 @@ class _Revisions:
         """
         What the Document holds when the run stops, and what it never tried.
 
-        `steps` is the latest revision's own Steps, not the whole Plan --
-        an applied Step is carried rather than restated (`_carried_over`),
+        `steps` is the latest revision's own continuation, not the whole
+        Plan -- an applied Step is carried in History rather than restated,
         so the total this run ever had is what already landed plus what
         the latest revision still lists.
         """

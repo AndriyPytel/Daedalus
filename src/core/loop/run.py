@@ -78,6 +78,7 @@ from core.loop.gate import (
 )
 from core.loop.plan import (
     _as_written,
+    _bad_rollback,
     _do_the_sums,
     _op_off_the_list,
     _plan_once_it_knows_enough,
@@ -86,9 +87,9 @@ from core.loop.plan import (
 )
 from core.loop.results import LoopResult, Progress, Stopped, _OutOfRevisions
 from core.loop.helpers import (
-    _assumed, _still_wrong, _carried_over, _also_check, _trailing_gap,
-    _tried, _block, _stopped, _aborted, _budget_exhausted, _going_nowhere,
-    _last_kernel_result,
+    _assumed, _still_wrong, _rollback_of, _mark_rolled_back, _also_check,
+    _trailing_gap, _tried, _block, _stopped, _aborted, _budget_exhausted,
+    _going_nowhere, _last_kernel_result,
 )
 from core.loop.review import review, review_suspect
 
@@ -193,13 +194,14 @@ class Part:
 @dataclass
 class LastPass:
     """
-    What the previous pass over the Plan's Steps applied, and why it was
-    revised, so a revised Plan knows how much of its own head is already
-    standing in the Document.
+    Every Step of the active timeline this run has reached so far -- the
+    text, and what each cites -- with `applied` how many of them actually
+    landed in the Document. A revision is handed the head of `steps` up to
+    `applied` as History, read-only, and writes only the continuation.
     """
     steps: object = None
+    cites: object = None
     applied: int = 0
-    cause: str = None
 
 
 def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachments, ask,
@@ -232,10 +234,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     exploration = {}
     supervisor = SessionTreeSupervisor()
 
-    def replan(feedback=None, revising=()):
+    def replan(feedback=None, revising=(), history=()):
         planned, part.the_part = _plan_once_it_knows_enough(
             intent, tools.call("snapshot"), llm, events, budgets, part.the_part,
-            cancelled, asking, tools, feedback, attachments, revising, ledger,
+            cancelled, asking, tools, feedback, attachments, revising, history, ledger,
             supervisor)
         return planned
 
@@ -271,6 +273,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     standing = Standing()
     looks = _what_this_build_has(tools)
     last_pass = LastPass()
+    history_log = []
 
     from core import settings
     auto_approve = settings.instance().get_auto_approve_plan()
@@ -291,8 +294,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                 revisions.block_reason(budgets, steps, cause, refused, progress.applied,
                                        step=step), tried)
         revisions.spend(cause, step=step)
-        revised = replan(feedback, revising=list(steps))
-        last_pass.cause = cause
+        if progress.applied:
+            revised = replan(feedback, history=list(last_pass.steps[:progress.applied]))
+        else:
+            revised = replan(feedback, revising=list(steps))
         _emit_plan(events, PLAN_REVISED, revised, reason=reason or feedback,
                    unanswered=asking.unanswered,
                    decided=decided_for_you(part.the_part),
@@ -304,6 +309,9 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
     while True:
         steps = planned.steps
+        rollback = _rollback_of(planned)
+        continuation = steps
+        to_step, rollback_reason = rollback if rollback else (last_pass.applied, None)
 
         if planned.unbuildable:
             planned = rewrite(_Revisions.OP_REFUSED,
@@ -312,16 +320,31 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               reason="; ".join(item["why"] for item in planned.unbuildable))
             continue
 
-        unconsumed = _unconsumed(part.the_part, planned.satisfies,
-                                 progress.satisfied)
+        if planned.bad_rollback:
+            planned = rewrite(_Revisions.OP_REFUSED,
+                              "The Plan's rollback field could not be used.",
+                              _bad_rollback(planned.bad_rollback), progress.tried,
+                              reason=planned.bad_rollback)
+            continue
+
+        satisfied_so_far = progress.satisfied
+        if rollback:
+            dropped_cites = {entry for index in range(to_step, last_pass.applied)
+                             for entry in (last_pass.cites[index]
+                                          if last_pass.cites and index < len(last_pass.cites)
+                                          else ())}
+            satisfied_so_far = [entry for entry in progress.satisfied
+                               if entry not in dropped_cites]
+        unconsumed = _unconsumed(part.the_part, planned.satisfies, satisfied_so_far)
         if unconsumed:
             planned = rewrite(_Revisions.UNCOVERED,
                               "The Plan still leaves part of the description unplanned.",
-                              _plan_the_rest(unconsumed), progress.tried,
+                              _plan_the_rest(unconsumed, history=bool(last_pass.steps)),
+                              progress.tried,
                               reason="no Step accounted for " + ", ".join(unconsumed))
             continue
 
-        miscounted = [sum_ for step in steps for sum_ in wrong_sums(step)]
+        miscounted = [sum_ for step in continuation for sum_ in wrong_sums(step)]
         if miscounted:
             planned = rewrite(_Revisions.MISCOUNTED,
                               "The Plan's arithmetic still does not come out.",
@@ -329,30 +352,38 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               reason="; ".join(miscounted))
             continue
 
-        unread = _assumed(steps) - standing.read
+        gate_context = {"history": list(history_log)} if history_log else {}
+        if rollback:
+            gate_context["rollback"] = {"to_step": to_step, "reason": rollback_reason}
+
+        unread = _assumed(continuation) - standing.read
         overruled = {"assumed": len(unread)} if standing.approval and unread else {}
-        events.emit(GATE, steps=len(steps),
+        events.emit(GATE, steps=len(continuation),
                     asked=(bool(unread) or not standing.approval) and not auto_approve,
-                    **overruled)
+                    **overruled, **gate_context)
         if auto_approve:
             approval = Approval(APPROVE, standing=True)
             standing.approval = True
-            standing.read |= _assumed(steps)
-            events.emit(GATE, decision=APPROVE, standing=True, auto=True, steps=list(steps),
-                        **({"assumed": sorted(unread)} if unread else {}))
+            standing.read |= _assumed(continuation)
+            events.emit(GATE, decision=APPROVE, standing=True, auto=True,
+                        steps=list(continuation),
+                        **({"assumed": sorted(unread)} if unread else {}), **gate_context)
         elif standing.approval and not unread:
             approval = Approval(APPROVE, standing=True)
-            events.emit(GATE, decision=APPROVE, standing=True, steps=list(steps))
+            events.emit(GATE, decision=APPROVE, standing=True, steps=list(continuation),
+                        **gate_context)
         else:
-            approval = gate(list(steps)) or Approval(APPROVE)
+            approval = gate(list(continuation), history=list(history_log),
+                            rollback=(dict(gate_context["rollback"], upto=last_pass.applied)
+                                      if rollback else None)) or Approval(APPROVE)
             standing.approval = bool(getattr(approval, "standing", False)
                                         and approval.decision == APPROVE)
             if approval.decision == APPROVE:
-                standing.read |= _assumed(steps)
+                standing.read |= _assumed(continuation)
                 if approval.steps:
-                    steps = list(approval.steps)
+                    continuation = list(approval.steps)
             events.emit(GATE, decision=approval.decision,
-                        standing=standing.approval, steps=list(steps))
+                        standing=standing.approval, steps=list(continuation), **gate_context)
 
         if approval.decision == REJECT:
             applied = progress.applied
@@ -370,33 +401,41 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               reason="You asked for: " + approval.feedback)
             continue
 
-        if not steps:
+        if not steps and not rollback:
             return _block(events, "The Plan came back with no Steps, so there is nothing to "
                                   "apply and nothing to review.", progress.tried,
                           progress.applied)
-        carried = _carried_over(last_pass.steps, steps, last_pass.applied,
-                                wording_only=last_pass.cause == _Revisions.UNBUILDABLE)
-        if carried < last_pass.applied:
-            dropped = last_pass.applied - carried
+        if rollback:
+            dropped = last_pass.applied - to_step
             depth = tools.call("undo_depth")["depth"]
             if depth < dropped:
                 return _block(
                     events,
-                    "The revision drops %d Step%s already in the Document, but "
-                    "only %d can still be undone -- the undo stack does not "
-                    "reach back that far, so nothing was undone."
-                    % (dropped, "" if dropped == 1 else "s", depth),
+                    "The revision rolls back %d Step%s to Step %d, but only %d can "
+                    "still be undone -- the undo stack does not reach back that far, "
+                    "so nothing was undone."
+                    % (dropped, "" if dropped == 1 else "s", to_step, depth),
                     progress.tried, progress.applied)
             for _ in range(dropped):
                 tools.call("undo_step")
-        outcome = _work_through(steps, intent, tools, llm, events, budgets, cancelled,
+            _mark_rolled_back(history_log, to_step, last_pass.applied, rollback_reason)
+            progress.satisfied = satisfied_so_far
+        carried = to_step
+        full_steps = (list(last_pass.steps[:carried]) if last_pass.steps else []) + continuation
+        full_cites = (list(last_pass.cites[:carried]) if last_pass.cites else []) + list(planned.cites)
+        full_ops = [None] * carried + list(planned.ops)
+        outcome = _work_through(full_steps, intent, tools, llm, events, budgets, cancelled,
                                 progress, render(part.the_part), looks,
-                                planned.acceptance, planned.cites, ledger,
-                                start=carried, ops=planned.ops, kernel=kernel,
+                                planned.acceptance, full_cites, ledger,
+                                start=carried, ops=full_ops, kernel=kernel,
                                 exploration=exploration,
                                 design=distilled(part.the_part) if part.the_part else None,
                                 supervisor=supervisor)
-        last_pass.steps, last_pass.applied = steps, outcome["applied_here"]
+        for offset in range(outcome["applied_here"] - carried):
+            history_log.append({"step": carried + offset + 1, "text": continuation[offset],
+                               "rolled_back": None})
+        last_pass.steps, last_pass.cites, last_pass.applied = \
+            full_steps, full_cites, outcome["applied_here"]
         applied = progress.applied
 
         if outcome.get("budget_exhausted"):

@@ -113,7 +113,19 @@ unplanned, wrote those nine again, dropped the two — and spent the whole
 revision budget swapping one half of the part for the other without a single
 Step ever running. Start again from nothing only when the feedback says
 outright that you may; the part in front of you cost the user a run, and
-throwing it away is their decision, not yours.
+throwing it away is their decision, not yours. This is the Plan before any of
+it has been built; once Steps have landed, `already_built` replaces it.
+
+**Once Steps have landed, `already_built` is History and a revision only
+continues it.** A Plan never rewrites a Step already standing in the
+Document: `already_built` is those Steps, read-only, and what you write is
+the continuation, picking up the numbering where History leaves off. Where
+something built has to go, say so in a `rollback` field of your reply,
+`{"to": K, "why": "<one sentence>"}`, K the last Step to keep — never as a
+Step's own prose, so no rewording can lose it. The harness undoes back to
+Step K itself; the continuation carries no Step for the rollback. Steps K+1
+onward are then yours to build again, starting from the same numbers; History
+keeps its own record of what was rolled back and why.
 
 ## A number you worked out is written as the sum that worked it out
 
@@ -379,6 +391,9 @@ When your Steps, or your `question`, are settled, end the phase with either
 or
 
     {"declare": {"question": "..."}}
+
+A revision that rolls part of the History back adds `"rollback": {"to": 3,
+"why": "..."}` beside `"steps"` — never a Step of its own.
 
 Never declare both `steps` and `question`: a question is not a Plan with a
 caveat.

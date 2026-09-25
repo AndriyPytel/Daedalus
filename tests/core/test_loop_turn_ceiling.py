@@ -40,7 +40,7 @@ def test_a_plan_revision_shares_the_same_supervisor_execute_spent_its_turns_on(m
         json.dumps({"code": "pad2()", "step": 2, "label": "Step"}),
         _unbuildable_after_two_steps(),
         plan_reply("Fillet the edge, done differently"),
-        code_reply("fillet()"),
+        code_reply("fillet()", first=3),
         suspect_reply(),
         verdict_reply("pass"),
     ], applies=[
@@ -160,7 +160,7 @@ def test_a_plan_revision_grows_the_ceiling_when_it_ends_up_longer(monkeypatch):
         json.dumps({"code": "pad2()", "step": 2, "label": "Step"}),
         _unbuildable_after_two_steps(),
         plan_reply(*revised_steps),
-        code_reply(*revised_codes),
+        code_reply(*revised_codes, first=3),
         suspect_reply(),
         verdict_reply("pass"),
     ], applies=[

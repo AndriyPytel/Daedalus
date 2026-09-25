@@ -44,7 +44,7 @@ class Gate:
         self.answers = list(answers)
         self.shown = []
 
-    def __call__(self, steps):
+    def __call__(self, steps, **kwargs):
         self.shown.append(list(steps))
         return self.answers.pop(0) if self.answers else Approval(APPROVE)
 
@@ -114,7 +114,7 @@ def test_a_review_driven_revision_goes_back_to_the_gate():
 
     _, events, tools = drive([
         plan_reply("Make it"), code_reply("make()"), suspect_reply(), verdict_reply("fail", "20mm, not 10mm"),
-        plan_reply("Fix the length"), code_reply("fix()"), suspect_reply(), verdict_reply("pass"),
+        plan_reply("Fix the length"), code_reply("fix()", first=2), suspect_reply(), verdict_reply("pass"),
     ], gate)
 
     assert gate.shown == [["Make it"], ["Fix the length"]]
@@ -140,7 +140,7 @@ def test_a_revised_plan_is_shown_before_it_changes_anything():
     applied_when_shown = []
     tools = FakeTools([failed("one")])
 
-    def gate(steps):
+    def gate(steps, **kwargs):
         applied_when_shown.append(list(tools.applied_codes()))
         return Approval(APPROVE)
 
@@ -317,8 +317,8 @@ def test_a_review_driven_rewrite_spends_the_budget_and_says_so():
     """
     result, _, _ = drive([
         plan_reply("a"), code_reply("a()"), suspect_reply(), verdict_reply("fail", "no"),
-        plan_reply("b"), code_reply("b()"), suspect_reply(), verdict_reply("fail", "still no"),
-        plan_reply("c"), code_reply("c()"), suspect_reply(), verdict_reply("fail", "no better"),
+        plan_reply("b"), code_reply("b()", first=2), suspect_reply(), verdict_reply("fail", "still no"),
+        plan_reply("c"), code_reply("c()", first=3), suspect_reply(), verdict_reply("fail", "no better"),
     ], Gate(), budgets=Budgets(review_cycles=3, revisions=2))
 
     assert result.blocked
@@ -332,7 +332,7 @@ def test_a_review_driven_rewrite_shows_up_in_another_branchs_block():
     """The misattribution the other way round: Review's spending was invisible."""
     result, _, _ = drive([
         plan_reply("a"), code_reply("a()"), suspect_reply(), verdict_reply("fail", "no"),
-        plan_reply("b"), code_reply("b()"), suspect_reply(), verdict_reply("fail", "still no"),
+        plan_reply("b"), code_reply("b()", first=2), suspect_reply(), verdict_reply("fail", "still no"),
         plan_reply("c"), obsolete_reply("stale"),
         plan_reply("d"), obsolete_reply("stale again"),
         plan_reply("e"),
@@ -356,7 +356,7 @@ def test_rejecting_after_amending_still_applies_nothing():
 def test_a_gate_that_answers_nothing_is_treated_as_approval():
     """A gate returning None must not wedge the run."""
     _, _, tools = drive([plan_reply("Only"), code_reply("box()"), suspect_reply(), verdict_reply("pass")],
-                        gate=lambda steps: None)
+                        gate=lambda steps, **kwargs: None)
 
     assert tools.applied_codes() == ["box()"]
 
@@ -479,7 +479,7 @@ def test_revise_replans_and_the_revision_goes_through_the_gate():
     result, events, tools = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Make it 13 mm"),
-            code_reply("fix()"), suspect_reply(), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("fix()", first=2), suspect_reply(), assertion_reply("check()"), verdict_reply("pass")),
         decide, gate=gate, attachments=[RENDER_PNG],
         checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
                 SELF_INTERSECTION_HELD, {"ok": True}])
@@ -563,7 +563,7 @@ def test_an_unrecognised_answer_is_the_default_and_not_a_crash():
     result, events, _ = drive_with([
         plan_reply("Make it"), code_reply("make()"),
         suspect_reply(), verdict_reply("fail", "20mm, not 10mm"),
-        plan_reply("Fix it"), code_reply("fix()"), suspect_reply(), verdict_reply("pass"),
+        plan_reply("Fix it"), code_reply("fix()", first=2), suspect_reply(), verdict_reply("pass"),
     ], decide)
 
     assert result.ok
@@ -765,7 +765,7 @@ def test_auto_mode_revises_a_failed_assertion_without_asking_anybody(monkeypatch
     result, events, tools = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Make it 13 mm"),
-            code_reply("fix()"), suspect_reply(), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("fix()", first=2), suspect_reply(), assertion_reply("check()"), verdict_reply("pass")),
         never_call_me, gate=Gate(Approval(APPROVE), Approval(APPROVE)),
         attachments=[RENDER_PNG],
         checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
@@ -838,9 +838,9 @@ def test_auto_mode_composes_with_the_revision_budget_running_out(monkeypatch):
     result, events, _ = drive_with([
         design_reply(THE_NUT), plan_reply("Make it"),
         code_reply("make()"), suspect_reply(), assertion_reply("check()"),
-        plan_reply("Make it v2"), code_reply("make2()"), suspect_reply(), assertion_reply("check()"),
-        plan_reply("Make it v3"), code_reply("make3()"), suspect_reply(), assertion_reply("check()"),
-        plan_reply("Make it v4"), code_reply("make4()"), suspect_reply(), assertion_reply("check()"),
+        plan_reply("Make it v2"), code_reply("make2()", first=2), suspect_reply(), assertion_reply("check()"),
+        plan_reply("Make it v3"), code_reply("make3()", first=3), suspect_reply(), assertion_reply("check()"),
+        plan_reply("Make it v4"), code_reply("make4()", first=4), suspect_reply(), assertion_reply("check()"),
     ], lambda failure: REVISE, gate=Gate(*[Approval(APPROVE) for _ in range(4)]),
         attachments=[RENDER_PNG],
         checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}] * 4)

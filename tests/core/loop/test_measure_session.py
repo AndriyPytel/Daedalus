@@ -72,8 +72,10 @@ def test_review_rejected_until_the_budget_is_spent_measures_as_fail(tmp_path):
 
     _, events, _, _ = drive([
         plan_reply("v1"), code_reply("v1()"), suspect_reply(), verdict_reply("fail", "not right"),
-        plan_reply("v2"), code_reply("v2()"), suspect_reply(), verdict_reply("fail", "still not right"),
-        plan_reply("v3"), code_reply("v3()"), suspect_reply(), verdict_reply("fail", "no better"),
+        plan_reply("v2"), code_reply("v2()", first=2), suspect_reply(),
+        verdict_reply("fail", "still not right"),
+        plan_reply("v3"), code_reply("v3()", first=3), suspect_reply(),
+        verdict_reply("fail", "no better"),
     ])
 
     path = str(tmp_path / "session.jsonl")
@@ -231,7 +233,7 @@ def test_a_run_with_a_failed_assertion_that_passed_on_retry(tmp_path):
         suspect_reply(),
         assertion_reply(CHECKS),
         planning_the_nut("Make it 13 mm across the flats"),
-        code_reply("fix()"),
+        code_reply("fix()", first=2),
         suspect_reply(),
         assertion_reply(CHECKS),
         verdict_reply("pass"),

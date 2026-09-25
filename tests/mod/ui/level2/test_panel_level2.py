@@ -3298,6 +3298,31 @@ def test_the_plan_gate_offers_exactly_one_build_button(panel):
     assert labels == ["Build"], labels
 
 
+def test_the_plan_gate_shows_history_and_a_rollback_banner_on_a_revision(panel):
+    """
+    A revision's Gate carries `history` (the Steps already standing) and
+    `rollback` (`to_step`, `reason`, `upto`) apart from the continuation it
+    is asking about -- the card shows both: how many Steps already built,
+    and a banner naming the Steps a rollback undoes and why.
+    """
+    from conftest import QtWidgets
+
+    from core.events import Event, PLAN
+
+    panel.on_event(Event(PLAN, {"steps": ["Step 4 redone", "Step 5 redone"], "acceptance": []}))
+    QT_APP.processEvents()
+    panel.on_plan_gate({
+        "steps": ["Step 4 redone", "Step 5 redone"],
+        "history": [{"step": n, "text": "Step %d" % n} for n in range(1, 6)],
+        "rollback": {"to_step": 3, "reason": "the fillet direction is wrong", "upto": 5},
+    })
+    QT_APP.processEvents()
+
+    text = " ".join(label.text() for label in panel._question_card.findChildren(QtWidgets.QLabel))
+    assert "5 Steps already built" in text, text
+    assert "Steps 4\u20135 will be rolled back: the fillet direction is wrong" in text, text
+
+
 def test_clicking_build_answers_with_the_plan_as_generated_when_nothing_was_edited(
         panel, monkeypatch):
     from core.events import Event, PLAN

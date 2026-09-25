@@ -290,7 +290,7 @@ def test_the_replan_after_a_handback_reads_the_document_as_it_is():
             plan_reply("First", "Impossible"),
             turns,
             plan_reply("Possible"),
-            code_reply("yes()"),
+            code_reply("yes()", first=2),
             suspect_reply(), verdict_reply("pass"),
         ],
         applies=[None, failed("one"), failed("two"), failed("three"), failed("four")],
@@ -347,11 +347,11 @@ def test_a_step_handed_back_after_another_one_landed_is_still_replanned():
             json.dumps({"declare": {"steps": [{"step": 1, "label": "First"}],
                         "unbuildable": "the second cuts nothing"}}),
             plan_reply("Second", "Impossible again"),
-            json.dumps({"code": "second()", "step": 1, "label": "Second"}),
-            json.dumps({"declare": {"steps": [{"step": 1, "label": "Second"}],
+            json.dumps({"code": "second()", "step": 2, "label": "Second"}),
+            json.dumps({"declare": {"steps": [{"step": 2, "label": "Second"}],
                         "unbuildable": "still cuts nothing"}}),
             plan_reply("Third"),
-            code_reply("third()"),
+            code_reply("third()", first=3),
             suspect_reply(), verdict_reply("pass"),
         ],
         budgets=Budgets(revisions=5),
@@ -420,8 +420,10 @@ def test_the_attempt_budget_is_per_step_not_per_run():
 def test_two_review_cycles_per_plan_then_blocked():
     result, events, _, _ = drive([
         plan_reply("v1"), code_reply("v1()"), suspect_reply(), verdict_reply("fail", "not right"),
-        plan_reply("v2"), code_reply("v2()"), suspect_reply(), verdict_reply("fail", "still not right"),
-        plan_reply("v3"), code_reply("v3()"), suspect_reply(), verdict_reply("fail", "no better"),
+        plan_reply("v2"), code_reply("v2()", first=2), suspect_reply(),
+        verdict_reply("fail", "still not right"),
+        plan_reply("v3"), code_reply("v3()", first=3), suspect_reply(),
+        verdict_reply("fail", "no better"),
     ])
 
     assert not result.ok
@@ -1545,7 +1547,7 @@ def test_one_wedged_step_no_longer_starves_the_step_after_it():
             code_reply("first()"),
             obsolete_reply("second stalls"),
             plan_reply({"do": "Second"}),
-            code_reply("second()"),
+            code_reply("second()", first=2),
             suspect_reply(), verdict_reply("pass"),
         ],
     )

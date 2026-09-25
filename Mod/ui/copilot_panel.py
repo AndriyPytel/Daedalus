@@ -396,8 +396,10 @@ Area before blocking.
         self._answered = threading.Event()
         self._answer = None
 
-    def about_the_plan(self, steps):
-        return self._ask(self.plan_gate, steps,
+    def about_the_plan(self, steps, history=(), rollback=None):
+        payload = ({"steps": steps, "history": history, "rollback": rollback}
+                  if history or rollback else steps)
+        return self._ask(self.plan_gate, payload,
                          "FreeCAD Copilot needs you to approve its Plan before it continues.")
 
     def about_objects_we_do_not_own(self, kinds):
@@ -2275,15 +2277,24 @@ code stays one click away. Duration is added at `TOOL_RESULT`, from
         self._last_tool_call_name = None
 
     @QtCore.Slot(object)
-    def on_plan_gate(self, steps):
+    def on_plan_gate(self, payload):
         """The Plan Gate: one approval covers every Step, there is no per-Step
 approval, so this appears once per Plan and the run waits on it, and a
 revised Plan is a new Plan and gets its own card. One answer now, not four,
 since the Plan is edited directly on `self._plan_widget`, and Build reads
 whatever it holds when pressed, locking the widget in the same breath so
-nothing typed after Build changes what already ran.
+nothing typed after Build changes what already ran. *payload* is a bare
+Steps list where nothing was ever applied yet, or `{"steps", "history",
+"rollback"}` on a revision, since `about_the_plan` sends the richer shape
+only once there is History or a rollback to show.
 """
         from copilot.sdk import APPROVE, Approval
+
+        if isinstance(payload, dict):
+            steps, history, rollback = payload["steps"], payload.get("history") or (), \
+                payload.get("rollback")
+        else:
+            steps, history, rollback = payload, (), None
 
         plan_widget = self._plan_widget
 
@@ -2293,13 +2304,24 @@ nothing typed after Build changes what already ran.
                 plan_widget.lock()
             return Approval(APPROVE, steps=tuple(edited))
 
-        self._put_the_question(
-            "Waiting for you to approve the Plan\u2026",
-            "Run this Plan? Approving covers all %d Steps \u2014 no Step is confirmed "
-            "separately." % len(steps),
+        prompt = ("Run this Plan? Approving covers all %d Steps \u2014 no Step is confirmed "
+                 "separately." % len(steps))
+        if history:
+            prompt = ("%d Step%s already built. %s"
+                     % (len(history), "" if len(history) == 1 else "s", prompt))
+        notes = []
+        if rollback:
+            notes.append("Steps %d\u2013%d will be rolled back: %s"
+                         % (rollback["to_step"] + 1, rollback["upto"], rollback["reason"]))
+        notes.append(
             "Click a Step to edit it, or add and remove Steps above, then Build. You are "
             "still asked before anything of yours is deleted, before the model is "
-            "rebuilt, and about a result that did not pass.",
+            "rebuilt, and about a result that did not pass.")
+
+        self._put_the_question(
+            "Waiting for you to approve the Plan\u2026",
+            prompt,
+            "\n".join(notes),
             (("Build", build),))
 
     @QtCore.Slot(object)

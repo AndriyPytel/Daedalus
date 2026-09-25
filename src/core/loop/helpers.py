@@ -1,6 +1,4 @@
 """Helper functions for the run loop - revision tracking and termination."""
-import re
-
 from core.events import ABORTED, BLOCKED, BUDGET_EXHAUSTED, STOPPED, TOOL_RESULT
 from core.loop.describe import _INVENTED
 from core.loop.execute import _GOING_NOWHERE
@@ -26,37 +24,31 @@ def _still_wrong(outstanding):
     )
 
 
-def _carried_over(previous, steps, applied, wording_only=False):
+def _rollback_of(planned):
     """
-    How many Steps at the head of a revised Plan are already standing in the Document, and so must not be written or applied again.
+    The rollback a Plan's reply carried, as `(to_step, reason)`, or `None`
+    where the reply carries no `rollback` field -- every reply but the one
+    that undoes something.
+    """
+    if not planned.rollback:
+        return None
+    return planned.rollback["to"], planned.rollback["why"]
 
-    Exact match by default, the longest identical prefix capped at how many Steps of `previous` actually landed; `wording_only` relaxes that to a Step's leading word plus its numerals unchanged, for the one cause that does not call the earlier Steps into question -- Execute handing a later Step back unbuilt, where a revision only reworded what already landed. A changed numeral -- a diameter, a length, a count, a radius -- means the geometry moved even under a matching leading word, so it breaks the carried prefix the same as every other cause does, because those do call the earlier Steps into question and keep the exact match.
+
+def _mark_rolled_back(history, to_step, upto, reason):
     """
-    if previous is None:
-        return 0
-    carried = 0
-    for was, now in zip(previous[:applied], steps):
-        same = _reworded(was, now) if wording_only else was == now
-        if not same:
+    Mark the standing History entries for Steps `to_step + 1`..`upto` as
+    rolled back, most recently added first. A Step number can appear more
+    than once in `history` when it was rebuilt after an earlier rollback;
+    only its current, unmarked entry is the one this rollback undid.
+    """
+    left = set(range(to_step + 1, upto + 1))
+    for entry in reversed(history):
+        if entry["step"] in left and entry["rolled_back"] is None:
+            entry["rolled_back"] = reason
+            left.discard(entry["step"])
+        if not left:
             break
-        carried += 1
-    return carried
-
-
-def _reworded(was, now):
-    """A Step is the same build reworded when its op verb and its numerals both hold."""
-    return _leading_word(was) == _leading_word(now) and _numerals(was) == _numerals(now)
-
-
-def _leading_word(step):
-    """The first word of a Step's prose, lowered -- the op verb every Step opens with."""
-    said = str(step).strip().split(None, 1)
-    return said[0].lower() if said else ""
-
-
-def _numerals(step):
-    """Every number a Step's prose names, in order -- a diameter, a length, a count, a radius."""
-    return re.findall(r"\d+(?:\.\d+)?", str(step))
 
 
 def _also_check(acceptance, outstanding):

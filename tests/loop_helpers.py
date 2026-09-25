@@ -153,9 +153,11 @@ A_PART = {
 }
 
 
-def plan_reply(*steps, thinking=None, satisfies=None):
+def plan_reply(*steps, thinking=None, satisfies=None, rollback=None):
     """
-    One Plan turn. `satisfies` is what the *first* Step cites.
+    One Plan turn. `satisfies` is what the *first* Step cites. `rollback`,
+    given as `{"to": K, "why": "..."}`, is the reply's own field for undoing
+    part of the History -- never a Step's prose.
 
     Coverage is checked over the Plan and not over a Step, so one Step citing
     every entry is a Plan that leaves none of them to nobody — which is what
@@ -166,7 +168,10 @@ def plan_reply(*steps, thinking=None, satisfies=None):
         written[0] = (dict(written[0], satisfies=list(satisfies))
                       if isinstance(written[0], dict)
                       else {"do": written[0], "satisfies": list(satisfies)})
-    body = json.dumps({"declare": {"steps": written}})
+    declared = {"steps": written}
+    if rollback is not None:
+        declared["rollback"] = rollback
+    body = json.dumps({"declare": declared})
     return {"reasoning": thinking, "text": body} if thinking else body
 
 
@@ -1074,7 +1079,7 @@ def _four_steps_applied_then_a_handback():
                     "unbuildable": "the bore misses the web as planned"}}),
         plan_reply({"do": "Bore the central hole from the top face",
                     "satisfies": list(LEFT_TO_BUILD)}),
-        code_reply("bore()"),
+        code_reply("bore()", first=5),
         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ]
 
@@ -1131,12 +1136,15 @@ def gate_that(*answers):
 
     queued = list(answers)
     asked = []
+    calls = []
 
-    def gate(steps):
+    def gate(steps, **kwargs):
         asked.append(list(steps))
+        calls.append(dict(steps=list(steps), **kwargs))
         return queued.pop(0) if queued else Approval(APPROVE)
 
     gate.asked = asked
+    gate.calls = calls
     return gate
 
 

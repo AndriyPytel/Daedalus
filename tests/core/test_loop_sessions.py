@@ -494,8 +494,7 @@ def test_a_revised_plan_does_not_reapply_steps_that_already_landed():
         json.dumps({"declare": {"steps": [{"step": 1, "label": "Pad"},
                               {"step": 2, "label": "Fillet"}],
                     "unbuildable": "Step 3 needs a hole diameter nobody supplied."}}),
-        plan_reply("Pad the outline", "Fillet the marked edges",
-                   "Drill a 6mm hole", "Chamfer the edge"),
+        plan_reply("Drill a 6mm hole", "Chamfer the edge"),
         code_reply("drill()", "chamfer()", first=3),
         suspect_reply(), verdict_reply("pass"),
     ])
@@ -572,7 +571,7 @@ def test_obsolete_beside_code_does_not_throw_that_code_away():
         json.dumps({"declare": {"steps": [{"step": 1, "label": "Pad"}],
                     "obsolete": "Step 2 does not say which edges are marked."}}),
         plan_reply("Fillet the four corner edges"),
-        code_reply("fillet()"),
+        code_reply("fillet()", first=2),
         suspect_reply(), verdict_reply("pass"),
     ])
 
@@ -597,7 +596,7 @@ def test_a_step_left_out_with_a_reason_hands_back_without_spending_attempts():
                     "unbuildable": "Step 2 cuts a hex inside a bore of the same "
                                    "diameter, so it moves no material."}}),
         plan_reply("Pocket a wider hex recess"),
-        code_reply("hex()"),
+        code_reply("hex()", first=2),
         suspect_reply(), verdict_reply("pass"),
     ])
 

@@ -262,7 +262,7 @@ def test_a_replan_after_a_rejected_verdict_may_ask_too():
         [
             plan_reply("Make it"), code_reply("make()"), suspect_reply(), verdict_reply("fail", "20mm, not 10mm"),
             question_reply(MISSING), design_reply(),
-            plan_reply("Make it 10mm across the flats"), code_reply("fix()"),
+            plan_reply("Make it 10mm across the flats"), code_reply("fix()", first=2),
             suspect_reply(), verdict_reply("pass"),
         ],
         ask=lambda question: asked.append(question) or "10mm across the flats",
@@ -407,7 +407,7 @@ def test_a_refuted_suspicion_fails_assertion_and_replans_then_passes():
     result, events, llm, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"),
         suspect_reply(raised), assertion_reply(CHECKS),
-        planning_the_nut("Make it 13 mm across the flats"), code_reply("fix()"),
+        planning_the_nut("Make it 13 mm across the flats"), code_reply("fix()", first=2),
         suspect_reply(), assertion_reply(CHECKS),
         verdict_reply("pass"),
         checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED),
@@ -527,7 +527,7 @@ def test_a_feature_that_moved_without_a_retry_touching_it_fails_a_later_assertio
         assertion_reply(CHECKS),
         verdict_reply("fail", "wrong flank"),
         planning_the_nut("Make it again"),
-        code_reply("fix()"),
+        code_reply("fix()", first=2),
         suspect_reply(),
         assertion_reply(CHECKS),
         budgets=Budgets(revisions=1),
@@ -566,7 +566,7 @@ def test_a_feature_named_in_what_a_retry_touched_does_not_fail_a_later_assertion
         assertion_reply("assert True, 'the split'"),
         verdict_reply("fail", "still off"),
         plan_reply("Pocket the split again", satisfies=everything(A_SPLIT)),
-        retried_code_reply("split_through_2()", "split_shortened()"),
+        retried_code_reply("split_through_2()", "split_shortened()", step=2),
         suspect_reply(),
         assertion_reply("assert True, 'the split'"),
         verdict_reply("pass"),
@@ -1016,7 +1016,7 @@ def test_an_entry_no_step_ever_landed_for_is_still_unplanned():
         plan_reply({"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
         plan_reply({"do": "Pad part 4", "satisfies": [BUILT[3]]},
                    {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
-        code_reply("part4()", "bore()"),
+        code_reply("part4()", "bore()", first=4),
         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(revisions=5))
 

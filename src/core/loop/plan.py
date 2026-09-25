@@ -39,8 +39,10 @@ class Plan:
     """
     The Steps, and what the finished part has to satisfy. `question` is
     what Plan must know before it can plan at all, set *instead of*
-    steps, never beside them. `acceptance` is what has to be true of the
-    finished part, and `ops` is the operation each Step declared.
+    steps, never beside them; `rollback` is the reply's own field for
+    undoing part of the History, `{"to": K, "why": "..."}`, with
+    `bad_rollback` set instead of it when that field could not be used as
+    written.
     """
 
     steps: list
@@ -51,22 +53,28 @@ class Plan:
     ops: list = field(default_factory=list)
     unbuildable: list = field(default_factory=list)
     look: dict = None
+    rollback: dict = None
+    bad_rollback: str = ""
 
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set=None,
-         unanswered=(), revising=(), looking=(), looked=(), tried="",
+         unanswered=(), revising=(), history=(), looking=(), looked=(), tried="",
          supervisor=None, kernel=None):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot. Plan
     never sees the picture; it is handed the part Design describes, one
     key and the user's own words -- two keys once let the newer always
-    win and lost a value read off SECTION B-B. A revision is handed the
-    Plan it rewrites, or it drops Steps a bare complaint never named, and
-    `tried` is every classified failure so far, so a revision does not
-    repeat one.
+    win and lost a value read off SECTION B-B. A revision before anything
+    is applied is handed the Plan it rewrites (`revising`) or drops Steps
+    a bare complaint never named; a revision after Steps have landed is
+    handed those read-only (`history`) and writes only the continuation,
+    numbered from where the History leaves off, and `tried` is every
+    classified failure so far so a revision does not repeat one.
     """
     request = {"intent": intent, "document": snapshot}
-    if revising:
+    if history:
+        request["already_built"] = list(history)
+    elif revising:
         request["the_plan_you_wrote"] = list(revising)
     if change_set is not None:
         request["what_the_part_is"] = change_set
@@ -102,6 +110,7 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     reply = declared if isinstance(declared, dict) else {}
     steps, satisfies, cites, ops, unbuildable = _steps_of(
         reply.get("steps", []), reply.get("op_vocabulary"))
+    rollback, bad_rollback = _rollback_field(reply.get("rollback"), len(history))
 
     look = reply.get("look")
     if not steps and looking and isinstance(look, dict) and look:
@@ -110,10 +119,11 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     question = str(reply.get("question") or "").strip()
     if not steps and question:
         return Plan(steps=[], question=question)
-    if not steps:
+    if not steps and not rollback and not bad_rollback:
         raise PhaseError("Plan produced no Steps for this Intent.")
     return Plan(steps=steps, satisfies=satisfies, cites=cites, ops=ops,
-                unbuildable=unbuildable, acceptance=_acceptance_of(the_part))
+                unbuildable=unbuildable, acceptance=_acceptance_of(the_part),
+                rollback=rollback, bad_rollback=bad_rollback)
 
 
 def _steps_of(planned, op_vocabulary=None):
@@ -195,6 +205,38 @@ def _unconsumed(the_part, satisfies, standing=()):
                         for said in cited)]
 
 
+def _rollback_field(raw, applied) -> tuple:
+    """
+    The `rollback` field of a Plan reply, validated against how many Steps
+    of `already_built` it was handed: `to` must be an already-applied Step,
+    `0 <= to < applied`. Returns `(rollback, bad_reason)`, exactly one of
+    the two set, so a malformed field is refused rather than silently
+    dropped or crashed on.
+    """
+    if raw is None:
+        return None, ""
+    if not isinstance(raw, dict):
+        return None, ("%r is not a rollback object -- it must be "
+                      '{"to": K, "why": "..."}.' % (raw,))
+    to = raw.get("to")
+    why = str(raw.get("why") or "").strip()
+    if not isinstance(to, int) or isinstance(to, bool) or not (0 <= to < applied):
+        return None, ('rollback.to=%r must be an integer naming an already-applied Step, '
+                      "from 0 to %d." % (to, applied - 1 if applied else -1))
+    if not why:
+        return None, "rollback.why is empty -- give one sentence of reason."
+    return {"to": to, "why": why}, ""
+
+
+def _bad_rollback(reason) -> str:
+    """What Plan is told when its `rollback` field could not be used as written."""
+    return (reason
+            + "\nSend back the continuation with a valid `rollback` field -- "
+              '{"to": K, "why": "..."} naming an already-applied Step, K from 0 up to the '
+              "last Step applied -- or with none at all if nothing needs to be undone. Send "
+              "back every Step of the continuation you already wrote, unchanged, beside it.")
+
+
 def _op_off_the_list(unbuildable) -> str:
     """
     What Plan is told when one of its own Steps named an operation off
@@ -209,19 +251,30 @@ def _op_off_the_list(unbuildable) -> str:
               "wrote that was kept, unchanged, beside the rewritten one(s).")
 
 
-def _plan_the_rest(unconsumed) -> str:
-    """What Plan is told about the entries it left to nobody."""
-    return ("No Step of your Plan cited these entries of the description, so nothing in "
+def _plan_the_rest(unconsumed, history=False) -> str:
+    """
+    What Plan is told about the entries it left to nobody.
+
+    Before anything is applied, Plan's own Plan is what it corrects
+    (`the_plan_you_wrote`); once Steps have landed, they are History and
+    only the continuation is Plan's to write, so the instruction differs
+    only in what it asks for back.
+    """
+    said = ("No Step of your Plan cited these entries of the description, so nothing in "
             "the Plan builds them:\n"
             + "\n".join("- " + entry for entry in unconsumed)
             + "\nPlan them, and name each one in the `satisfies` of the Step that "
-              "satisfies it, written exactly as it is above.\n"
-              "Your Plan is in `the_plan_you_wrote`. Send it back with these Steps added "
-              "— every Step you already wrote, unchanged, and the new ones beside them. A "
-              "Plan of only the entries listed here drops the Steps that built the rest, "
-              "and the same check then names those instead: a recorded run swapped one "
-              "half of the part for the other four times over and spent the whole revision "
-              "budget without running a single Step.")
+              "satisfies it, written exactly as it is above.\n")
+    if history:
+        return (said + "`already_built` is History and not yours to touch. Add Steps to "
+                "the continuation that cover the entries listed above, beside whatever "
+                "continuation Steps you already wrote.")
+    return (said + "Your Plan is in `the_plan_you_wrote`. Send it back with these Steps "
+            "added — every Step you already wrote, unchanged, and the new ones beside "
+            "them. A Plan of only the entries listed here drops the Steps that built the "
+            "rest, and the same check then names those instead: a recorded run swapped "
+            "one half of the part for the other four times over and spent the whole "
+            "revision budget without running a single Step.")
 
 
 def _do_the_sums(miscounted) -> str:
@@ -280,7 +333,7 @@ def _one_direction_per_step(mixed):
 
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
-                               revising=(), ledger=None, supervisor=None):
+                               revising=(), history=(), ledger=None, supervisor=None):
     """
     Plan, letting it ask for what the description did not carry, and the
     run waits. A question goes to the drawing first; unanswered, Design
@@ -293,7 +346,8 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             raise Stopped()
         planned = plan(intent, snapshot, llm, events, feedback=feedback,
                        the_part=grown, change_set=change_set, unanswered=asking.unanswered,
-                       revising=revising, looking=_lookable(tools) if for_the_build else (),
+                       revising=revising, history=history,
+                       looking=_lookable(tools) if for_the_build else (),
                        looked=asking.looked_up,
                        tried=ledger.render() if ledger else "", supervisor=supervisor)
         change_set = None
