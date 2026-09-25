@@ -3,6 +3,7 @@ import re
 
 from core.events import ABORTED, BLOCKED, BUDGET_EXHAUSTED, STOPPED
 from core.loop.describe import _INVENTED
+from core.loop.execute import _GOING_NOWHERE
 from core.loop.results import LoopResult
 
 
@@ -84,6 +85,28 @@ def _trailing_gap(written, number, total):
 
 def _tried(step, attempt):
     return {"step": step, "code": attempt.code, "traceback": attempt.traceback}
+
+
+_CORRECT_THE_DESCRIPTION = (
+    "Correct the description — the values it holds in conflict, and the datums and "
+    "overalls a superseded feature left behind — and run it again."
+)
+
+
+def _going_nowhere(handback, ledger):
+    """
+    The `going_nowhere` block, closed with what the run actually knows.
+
+    A ledger that already holds an entry means the kernel, not the
+    description, had the last word on this Step, so the block quotes that
+    refusal instead of sending the user to fix a description that was
+    never in question. An empty ledger leaves the hand-back's own account
+    as the only word on it, so the usual advice to correct the description
+    stands.
+    """
+    closing = "The kernel's last word on this Step:\n" + ledger.render() if ledger \
+        else _CORRECT_THE_DESCRIPTION
+    return _GOING_NOWHERE % (handback, closing)
 
 
 def _block(events, reason, tried, applied, said="", verdict=None):
