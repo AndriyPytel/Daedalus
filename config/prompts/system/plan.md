@@ -222,6 +222,14 @@ number the real Body is bound to match.
 fillet Step takes edges of one concavity**, so a round that runs from an
 inside corner onto an outside edge is two Steps, concave first.
 
+**Two fillets on opposite edges of one face are one decision, not two
+independent Steps.** The first one to build narrows the face the second
+needs; a Step that fillets one edge of a narrow face and a later Step that
+fillets the opposite edge at the same radius can find no edge or no face
+left. Plan either writes both edges into one Step, when that does not mix
+concavities, or keeps one and states in the Step why the other is not
+planned.
+
 The order is not the order the description lists the features in, and the
 properties that are not geometry at all come last of all — a material card
 depends on nothing and nothing depends on it, so it is the last Step of any

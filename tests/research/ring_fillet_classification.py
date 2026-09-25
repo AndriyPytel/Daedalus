@@ -258,11 +258,45 @@ doc.recompute()
     return boundary
 
 
+def check_step_27_and_31_exclude_each_other():
+    """
+    Builds the ring's own left-lower opening and tries Step 27 (outer edge)
+    and Step 31 (bore edge) in both orders, asserting that whichever one runs
+    second on that opening cannot find an edge to fillet.
+    """
+    find_freecadcmd()
+    design = _load("ring_fillet_design.json")
+    steps = _load("ring_fillet_steps.json")
+    fillet_1730_code = _load("ring_fillet_steps_17_30.json")["code"]
+
+    with Kernel() as kernel:
+        outer_first = classify_steps_27_to_34(kernel, design, steps, fillet_1730_code, bore_first=False)
+    with Kernel() as kernel:
+        bore_first = classify_steps_27_to_34(kernel, design, steps, fillet_1730_code, bore_first=True)
+
+    outer_status, _count, outer_ok, _names = outer_first["27_out_L_lower"]
+    bore_status, _bore_message = outer_first["31_bore_L_lower"]
+    assert outer_status == "OK" and outer_ok, "Step 27 was expected to build first: %r" % (outer_first,)
+    assert bore_status == "FAIL", "Step 31 was expected to fail once Step 27 had built: %r" % (outer_first,)
+
+    bore_status2, _count2, bore_ok2, _names2 = bore_first["31_bore_L_lower"]
+    outer_status2, _outer_message2 = bore_first["27_out_L_lower"]
+    assert bore_status2 == "OK" and bore_ok2, "Step 31 was expected to build first: %r" % (bore_first,)
+    assert outer_status2 == "FAIL", "Step 27 was expected to fail once Step 31 had built: %r" % (bore_first,)
+
+    return outer_first, bore_first
+
+
 def main():
     find_freecadcmd()
     design = _load("ring_fillet_design.json")
     steps = _load("ring_fillet_steps.json")
     fillet_1730_code = _load("ring_fillet_steps_17_30.json")["code"]
+
+    outer_first, bore_first = check_step_27_and_31_exclude_each_other()
+    print("Steps 27 and 31 exclude each other on the left-lower opening:")
+    print("  outer first:", outer_first["27_out_L_lower"], outer_first["31_bore_L_lower"])
+    print("  bore first:", bore_first["31_bore_L_lower"], bore_first["27_out_L_lower"])
 
     with Kernel() as kernel:
         plan_order = classify_steps_27_to_34(kernel, design, steps, fillet_1730_code, bore_first=False)
