@@ -466,13 +466,20 @@ def _bodies_with_inverted_solid(doc):
     return inverted
 
 
+_TANGENT_COS = 0.999
+
+
 def _edge_concavity_sign(shape, edge):
     """
     Convex/concave sign of one Base edge: `normal.dot(other.CenterOfMass -
     point)` at its midpoint, negative for convex. Beats the Solution Notes'
     `cross(n1, n2).dot(tangent)` -- OCC's own per-edge curve direction is
     not consistent around one rim, so that one splits a uniform corner set.
-    `None` without exactly two adjacent faces, or an edge-on normal.
+    `None` without exactly two adjacent faces, an edge-on normal, or a
+    dihedral angle near zero -- a fillet's own boundary is C0-tangent to
+    its neighbour there, the dot product stays far from zero on a small
+    face, and a fillet asked to round it again is silently skipped by OCC
+    rather than refused.
     """
     import Part
 
@@ -484,6 +491,10 @@ def _edge_concavity_sign(shape, edge):
     face, other = faces
     u, v = face.Surface.parameter(point)
     normal = face.normalAt(u, v)
+    u2, v2 = other.Surface.parameter(point)
+    other_normal = other.normalAt(u2, v2)
+    if normal.dot(other_normal) > _TANGENT_COS:
+        return None
     sign = normal.dot(other.CenterOfMass - point)
     if abs(sign) < 1e-9:
         return None
@@ -494,7 +505,8 @@ def _group_edges_by_sign(shape, names):
     """
     `{sign: [edge names]}` for *names*, each looked up on *shape* and signed
     by `_edge_concavity_sign`. An edge with no resolvable sign -- fewer than
-    two adjacent faces, or an edge-on normal -- is left out of every group.
+    two adjacent faces, an edge-on normal, or a dihedral angle near zero --
+    is left out of every group.
     """
     by_sign = {}
     for name in names:

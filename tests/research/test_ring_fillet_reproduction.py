@@ -1,8 +1,9 @@
 """
 Reproduces a fillet body's own recompute against a real headless FreeCAD:
 Steps 1-16 rebuild the ring's base body and must match its logged volume
-within 1 mm3, and Steps 1-26 build in the same Kernel session the worker
-uses in production.
+within 1 mm3, Steps 1-26 build in the same Kernel session the worker uses
+in production, and Step 35's front boundary loop builds one Fillet per
+`edges_by_concavity` group with the Body left one valid solid.
 """
 import json
 import os
@@ -65,3 +66,20 @@ def test_step_27_and_31_exclude_each_other():
     except RuntimeError as exc:
         pytest.skip(str(exc))
     classification.check_step_27_and_31_exclude_each_other()
+
+
+def test_step_35_groups_all_build_and_body_stays_one_valid_solid(kernel):
+    """AC1: Step 35's front boundary loop, split by edges_by_concavity, builds every group and the Body stays one valid solid."""
+    design = _load("ring_fillet_design.json")
+    steps = _load("ring_fillet_steps.json")
+    fillet_1730_code = _load("ring_fillet_steps_17_30.json")["code"]
+
+    total_edges, group_results, is_valid, solid_count = classification.build_step_35_split_by_concavity(
+        kernel, design, steps, fillet_1730_code
+    )
+
+    assert group_results, "expected at least one concavity group, got none for %d edges" % total_edges
+    for size, ok in group_results:
+        assert ok, "a Step 35 group of %d edges failed to build: %r" % (size, group_results)
+    assert is_valid, "Body was left invalid after Step 35's groups built"
+    assert solid_count == 1, "Body was left with %d solids after Step 35's groups built" % solid_count

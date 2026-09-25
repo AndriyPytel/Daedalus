@@ -259,6 +259,45 @@ doc.recompute()
     return boundary
 
 
+def build_step_35_split_by_concavity(kernel, design, steps, fillet_1730_code):
+    """
+    Splits Step 35's front boundary loop with `edges_by_concavity`, builds
+    one `PartDesign::Fillet` per group in order (concave first), and reports
+    each group's size and `built_ok`, plus the final Body's validity and
+    solid count. The tangent transitional edges are expected to fall out of
+    every group rather than into the convex one.
+    """
+    _build_steps_1_to_26(kernel, design, steps, fillet_1730_code)
+    result = kernel.check(HELPERS + """
+body = doc.getObject('Body')
+base = body.Tip
+shape = base.Shape
+def is_front_outer(f):
+    info = plane_info(f)
+    if info is None: return False
+    axis, pos = info
+    box = bb(f)
+    return abs(abs(axis.y)-1) < 0.01 and _isclose(pos.y, 0, 0.5) and (box.XMax-box.XMin) > 60
+names = edges_between(shape, is_front_outer, lambda f: not is_front_outer(f))
+groups = edges_by_concavity(shape, names)
+GROUP_RESULTS = []
+current_base = base
+for i, group in enumerate(groups):
+    fillet = doc.addObject('PartDesign::Fillet', 'FilletFrontGroup%d' % i)
+    body.addObject(fillet)
+    fillet.Base = (current_base, group)
+    fillet.Radius = 2.0
+    doc.recompute()
+    GROUP_RESULTS.append((len(group), built_ok(fillet)))
+    current_base = fillet
+FINAL_SHAPE = body.Shape
+print((len(names), GROUP_RESULTS, FINAL_SHAPE.isValid(), len(FINAL_SHAPE.Solids)))
+""")
+    assert result.ok, result.traceback
+    return eval(result.stdout.strip())
+
+
+
 def check_step_27_and_31_exclude_each_other():
     """
     Builds the ring's own left-lower opening and tries Step 27 (outer edge)

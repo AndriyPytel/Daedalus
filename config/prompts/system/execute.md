@@ -312,7 +312,12 @@ z. Only the two faces either side of an edge say which way a fillet on it
 pulls: Preflight rejects a `Base` whose edges are not all one concavity and
 names the mixed ones, so a selection built off length or position alone is
 still worth checking against the parts it actually rounds before the Step
-runs, not after it comes back refused.
+runs, not after it comes back refused. `edges_by_concavity(shape, edges)`
+splits a mixed selection into one group per sign -- concave first -- so a
+Step builds one Fillet per group instead of hitting that rejection; an edge
+tangent to its neighbour, such as an earlier fillet's own boundary, has no
+sign to give and is left out of every group rather than dropped silently by
+OCC once the Fillet is built.
 
 ## How you work
 
