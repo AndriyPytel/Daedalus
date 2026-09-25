@@ -341,8 +341,9 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
             if grown != before:
                 change_set = diff(before, grown)
                 events.emit(CHANGE_SET, changes=change_set)
-            events.emit(ANSWER, text=render(settled), by="design")
-            continue
+                events.emit(ANSWER, text=render(settled), by="design")
+                continue
+            grown = before
 
         events.emit(ANSWER, text=_DECIDE, by="nobody")
         if planned.question not in asking.unanswered:
