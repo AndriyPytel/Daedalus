@@ -5,8 +5,8 @@ Level 1 — the Claude subscription client, over two recorded `claude -p` runs.
 flag set this client sends: 2,385 tokens of preamble, `apiKeySource: none`, two
 surviving tools, a `rate_limit_event` and a `result`.
 `claude-code-stream-default-env.jsonl` is the same prompt with no flags but the
-model — 29,213 tokens and 74 tools — and is what the disallowed list is
-measured against.
+model — 29,213 tokens and 74 tools — and is what the tool count without
+`--tools ""` is measured against.
 
 What spawns the process is injected the way `LiteLLMClient` takes its
 `completion` callable, so nothing here runs a binary, spends a call or needs a
