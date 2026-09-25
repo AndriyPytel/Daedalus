@@ -114,6 +114,7 @@ _ELEMENT_REASON = read_prompt("lint_element.md")
 _RAW_SHAPE_REASON = read_prompt("lint_raw_shape.md")
 _SWALLOWED_REASON = read_prompt("lint_swallowed.md")
 _UNCOUNTED_SELECTION_REASON = read_prompt("lint_uncounted_selection.md")
+_DRESSUP_BASE_IS_BODY_REASON = read_prompt("lint_dressup_base_is_body.md")
 _GUI_REASON = read_prompt("lint_gui.md")
 
 _TYPEID_REASON = (
@@ -189,6 +190,7 @@ def lint(code: str, selection=None) -> LintResult:
 
     allowed = selected_elements(selection)
     features = _partdesign_features(tree)
+    bodies = _partdesign_bodies(tree)
     counted = _counted_selections(tree)
     allocated = _names_allocated_here(tree)
     boundbox_names = _boundbox_names(tree)
@@ -235,6 +237,9 @@ def lint(code: str, selection=None) -> LintResult:
         uncounted = _uncounted_selection(node, counted)
         if uncounted:
             complain(_UNCOUNTED_SELECTION_REASON % uncounted)
+        based_on_body = _dressup_base_is_body(node, bodies)
+        if based_on_body:
+            complain(_DRESSUP_BASE_IS_BODY_REASON % based_on_body)
         empty_attachment = _attachment_support_empty_list(node)
         if empty_attachment:
             complain(_ATTACHMENT_SUPPORT_REASON % empty_attachment)
@@ -314,6 +319,51 @@ def _partdesign_features(tree) -> set:
             if isinstance(target, ast.Name):
                 features.add(target.id)
     return features
+
+
+def _partdesign_bodies(tree) -> set:
+    """
+    Variables holding this Document's `PartDesign::Body`: what this Step's
+    own code created with `addObject('PartDesign::Body', ...)`, or fetched
+    with `getObject('Body')` -- every Body in this project, recorded and
+    reproduced, is named exactly `Body`, since a Document holds one part and
+    so one Body (README "Scope").
+    """
+    bodies = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        call = node.value
+        if not (isinstance(call.func, ast.Attribute) and call.args):
+            continue
+        first = call.args[0]
+        made = (call.func.attr in ("addObject", "newObject")
+               and isinstance(first, ast.Constant) and first.value == "PartDesign::Body")
+        fetched = (call.func.attr == "getObject"
+                  and isinstance(first, ast.Constant) and first.value == "Body")
+        if not (made or fetched):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                bodies.add(target.id)
+    return bodies
+
+
+def _dressup_base_is_body(node: ast.Assign, bodies: set):
+    """
+    The unparsed `feature.Base = (body, elements)` target whose `body` is a
+    name `_partdesign_bodies` resolved to this Document's Body, or None.
+    """
+    for target in node.targets:
+        if not (isinstance(target, ast.Attribute) and target.attr == "Base"):
+            continue
+        value = node.value
+        if not (isinstance(value, (ast.Tuple, ast.List)) and len(value.elts) == 2):
+            continue
+        base = value.elts[0]
+        if isinstance(base, ast.Name) and base.id in bodies:
+            return ast.unparse(target)
+    return None
 
 
 def _names_allocated_here(tree) -> set:

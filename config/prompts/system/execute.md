@@ -14,6 +14,7 @@ Preflight's lint refuses these shapes on sight, so write around them from the fi
 - No empty list literal as `AttachmentSupport`'s subelement — write `""` for a whole-shape attachment instead; nothing raises on `[(plane, [])]` and the sketch silently does not attach.
 - No making an object active (`ActiveObject`, `setActiveObject`, `getActiveObject`, `activeView`, `ActiveView`) — nothing needs to be active; put a PartDesign feature in its Body with `Body.addObject(feature)`.
 - A `Sketcher.Constraint` call must name a real constraint type with the arity that type takes — concentricity between two circles is `Constraint('Coincident', a, 3, b, 3)` on their centres, not a type of its own.
+- A dress-up feature's `Base` is never the Body itself — read the Body's `Tip` before `Body.addObject(feature)` retips it, and assign that captured feature as `Base` instead.
 
 ## Worked Step
 

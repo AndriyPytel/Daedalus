@@ -1,0 +1,1 @@
+%s sets a dress-up feature's Base to the Body itself, not a feature. `Body.addObject(feature)` retips the Body to that feature before this line runs, so the Body it names as Base has nothing built on it yet to round or chamfer -- OCC refuses it as too few faces. Read the Body's Tip before `addObject(feature)` and assign that captured feature as Base instead.

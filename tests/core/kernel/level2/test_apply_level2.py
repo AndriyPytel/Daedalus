@@ -449,3 +449,90 @@ def test_undo_step_takes_back_exactly_the_last_steps_objects(pipeline, doc, work
 
     assert [o.Name for o in doc.Objects] == ["Box"]
     assert len(doc.UndoNames) == 1
+
+
+_BLOCK_DESIGN = {"features": {"Pad": {"length": 10}, "Pocket": {"length": 10},
+                              "Fillet": {"radius": 1.0}}}
+
+_A_BLOCK_WITH_A_HOLE = """
+import Part
+
+body = doc.addObject('PartDesign::Body', 'Body')
+outer = doc.addObject('Sketcher::SketchObject', 'Outer')
+body.addObject(outer)
+for a, b in (((0, 0), (20, 0)), ((20, 0), (20, 20)), ((20, 20), (0, 20)), ((0, 20), (0, 0))):
+    outer.addGeometry(Part.LineSegment(App.Vector(a[0], a[1], 0),
+                                       App.Vector(b[0], b[1], 0)), False)
+pad = doc.addObject('PartDesign::Pad', 'Pad')
+body.addObject(pad)
+pad.Profile = outer
+pad.Length = design['features']['Pad']['length']
+doc.recompute()
+
+hole_sketch = doc.addObject('Sketcher::SketchObject', 'HoleSketch')
+body.addObject(hole_sketch)
+hole_sketch.Placement = App.Placement(App.Vector(0, 0, 10), App.Rotation())
+hole_sketch.addGeometry(Part.Circle(App.Vector(10, 10, 0), App.Vector(0, 0, 1), 4))
+pocket = doc.addObject('PartDesign::Pocket', 'Pocket')
+body.addObject(pocket)
+pocket.Profile = hole_sketch
+pocket.Length = design['features']['Pocket']['length']
+doc.recompute()
+"""
+
+
+def _outer_corner_edge_name(shape):
+    """The vertical edge at the block's (0, 0) corner, untouched by the interior hole."""
+    for at, edge in enumerate(shape.Edges):
+        if len(edge.Vertexes) != 2:
+            continue
+        p0, p1 = (v.Point for v in edge.Vertexes)
+        if abs(p0.x) < 1e-6 and abs(p0.y) < 1e-6 and abs(p1.x) < 1e-6 and abs(p1.y) < 1e-6:
+            return "Edge%d" % (at + 1)
+    raise RuntimeError("no outer corner edge found on the padded block")
+
+
+def test_a_fillets_base_set_to_the_body_is_refused_before_it_reaches_freecad(pipeline, doc, worker):
+    setup = pipeline.apply(_A_BLOCK_WITH_A_HOLE, label="Pad a block and pocket a hole",
+                           design=_BLOCK_DESIGN,
+                           kernel_result=_kernel_result(worker, doc, _A_BLOCK_WITH_A_HOLE,
+                                                        design=_BLOCK_DESIGN))
+    assert setup.ok, setup.traceback
+    before = sorted(o.Name for o in doc.Objects)
+
+    code = ("body = doc.getObject('Body')\n"
+           "fillet = doc.addObject('PartDesign::Fillet', 'Fillet')\n"
+           "body.addObject(fillet)\n"
+           "fillet.Base = (body, ['Edge1'])\n")
+
+    result = pipeline.apply(code, label="Fillet the block", kernel_result={})
+
+    assert not result.ok
+    assert result.gate == "lint"
+    assert "Tip" in result.traceback
+    assert sorted(o.Name for o in doc.Objects) == before, (
+        "a Step lint refused still reached the real Document")
+
+
+def test_the_same_fillet_based_on_the_previous_tip_builds(pipeline, doc, worker):
+    setup = pipeline.apply(_A_BLOCK_WITH_A_HOLE, label="Pad a block and pocket a hole",
+                           design=_BLOCK_DESIGN,
+                           kernel_result=_kernel_result(worker, doc, _A_BLOCK_WITH_A_HOLE,
+                                                        design=_BLOCK_DESIGN))
+    assert setup.ok, setup.traceback
+    edge = _outer_corner_edge_name(doc.getObject("Pocket").Shape)
+
+    code = ("body = doc.getObject('Body')\n"
+           "tip = body.Tip\n"
+           "fillet = doc.addObject('PartDesign::Fillet', 'Fillet')\n"
+           "body.addObject(fillet)\n"
+           "fillet.Base = (tip, [%r])\n"
+           "fillet.Radius = design['features']['Fillet']['radius']\n"
+           "doc.recompute()\n" % edge)
+
+    result = pipeline.apply(code, label="Fillet the block", design=_BLOCK_DESIGN,
+                            selection=[{"object": "Pocket", "elements": [edge]}],
+                            kernel_result=_kernel_result(worker, doc, code, design=_BLOCK_DESIGN))
+
+    assert result.ok, result.traceback
+    assert doc.getObject("Fillet").isValid()

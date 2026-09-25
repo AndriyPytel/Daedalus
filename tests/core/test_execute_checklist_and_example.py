@@ -71,6 +71,13 @@ RULES = {
     "lint_unknown_constraint": (
         "sketch.addConstraint(Sketcher.Constraint('Concentric', a, b))\n",
         "is not a Sketcher constraint type", CONSTRAINT_CHECKLIST_LINE),
+    "lint_dressup_base_is_body": (
+        "body = doc.addObject('PartDesign::Body', 'Body')\n"
+        "fillet = doc.addObject('PartDesign::Fillet', 'Fillet')\n"
+        "body.addObject(fillet)\n"
+        "fillet.Base = (body, ['Edge1'])\n",
+        "retips the Body",
+        "A dress-up feature's `Base` is never the Body itself"),
 }
 
 

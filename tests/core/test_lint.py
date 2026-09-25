@@ -13,6 +13,8 @@ import pytest
 from core.lint import lint, selected_elements
 
 SELECTED_EDGE_3 = [{"object": "Box", "elements": ["Edge3"]}]
+SELECTED_EDGE_1_ON_PAD = [{"object": "Pad", "elements": ["Edge1"]}]
+SELECTED_EDGE_1_ON_BODY = [{"object": "Body", "elements": ["Edge1"]}]
 
 
 @pytest.mark.parametrize("code", [
@@ -495,6 +497,66 @@ def test_a_selection_the_user_made_needs_no_count():
 
 def test_a_base_that_is_not_a_selection_is_untouched():
     assert lint("pad.Base = sketch\npocket.Profile = sketch\n").ok
+
+
+def test_a_dressup_base_set_to_the_body_itself_is_refused():
+    code = (
+        "body = doc.addObject('PartDesign::Body', 'Body')\n"
+        "fillet = doc.addObject('PartDesign::Fillet', 'Fillet')\n"
+        "body.addObject(fillet)\n"
+        "fillet.Base = (body, ['Edge1'])\n"
+    )
+
+    result = lint(code, selection=SELECTED_EDGE_1_ON_BODY)
+
+    assert not result.ok
+    assert "Tip" in result.report()
+
+
+def test_the_same_dressup_based_on_the_previous_tip_passes():
+    code = (
+        "body = doc.addObject('PartDesign::Body', 'Body')\n"
+        "pad = doc.addObject('PartDesign::Pad', 'Pad')\n"
+        "body.addObject(pad)\n"
+        "fillet = doc.addObject('PartDesign::Chamfer', 'Chamfer')\n"
+        "body.addObject(fillet)\n"
+        "fillet.Base = (pad, ['Edge1'])\n"
+    )
+
+    result = lint(code, selection=SELECTED_EDGE_1_ON_PAD)
+
+    assert result.ok, result.report()
+
+
+def test_a_body_fetched_by_its_document_name_is_also_caught():
+    """
+    A Step's own code getting the Body this way, not creating it, is the
+    shape the actual regression took (a later Step in a multi-Step Plan
+    reaches for the Body the first Step already made).
+    """
+    code = (
+        "body = doc.getObject('Body')\n"
+        "fillet = doc.addObject('PartDesign::Fillet', 'Fillet')\n"
+        "body.addObject(fillet)\n"
+        "fillet.Base = (body, ['Edge1'])\n"
+    )
+
+    result = lint(code, selection=SELECTED_EDGE_1_ON_BODY)
+
+    assert not result.ok
+    assert "Tip" in result.report()
+
+
+def test_getobject_of_a_name_that_is_not_body_is_untouched():
+    code = (
+        "shelf = doc.getObject('Shelf')\n"
+        "fillet = doc.getObject('Fillet')\n"
+        "fillet.Base = (shelf, ['Edge1'])\n"
+    )
+
+    result = lint(code, selection=SELECTED_EDGE_1_ON_BODY)
+
+    assert result.ok, result.report()
 
 
 def test_writing_the_deprecated_midplane_is_refused():
