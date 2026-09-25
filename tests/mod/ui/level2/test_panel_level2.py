@@ -4012,90 +4012,54 @@ def test_copilot_panel_has_no_dead_request_work_signal():
     assert not hasattr(CopilotPanel, "request_work")
 
 
-def _kinds_referenced_in(source: str) -> set:
+def test_no_event_kind_the_loop_emits_puts_a_warning_in_the_chat(panel):
     """
-    Every `ev.NAME`-shaped token appearing in a method's own source, standing
-    in for "this kind is handled here" without parsing the branch structure —
-    the three dispatchers guard some kinds with an extra condition
-    (`ev.ASSERTION and data.get("ok") is not None`) and a regex over the
-    source sees those the same as a plain `==`, which is what a completeness
-    check needs: mentioned at all, not mentioned in a particular shape.
+    `on_event` and the two tables it runs first each warn in the transcript
+    about a kind they do not name, so every kind in `core.events.KINDS` must
+    be a key of all three, or a live run shows the user a warning per event.
     """
-    import re
-
-    return set(re.findall(r"ev\.([A-Z_]+)", source))
-
-
-def _unhandled_kinds(all_kinds, method_sources, allowlist):
-    handled = set(allowlist)
-    for source in method_sources:
-        handled |= _kinds_referenced_in(source)
-    return set(all_kinds) - handled
-
-
-PANEL_DISPATCH_ALLOWLIST = {
-    "QUESTION", "ANSWER", "DESIGN", "OUTSTANDING", "REVIEW_SUSPECTED", "ROUTED",
-    "CONSULT_DESIGN", "CONSULT_DESIGN_ANSWERED",
-}
-
-
-def test_every_event_kind_is_handled_by_a_panel_dispatcher_or_allowlisted():
-    """
-    `on_event`, `_update_queue` and `_update_review_evidence` each
-    run their own `if event.kind == ev.X` chain over the same stream. A kind
-    missing from all three today renders nothing and fails nothing — this is
-    the CI check that would have caught it, without touching any of the three
-    chains: it just reads their source and cross-checks it against
-    `core.events.KINDS`.
-
-    `PANEL_DISPATCH_ALLOWLIST` is the kinds none of the three chains branch
-    on by name: `QUESTION`/`ANSWER` never reach the panel as events (they are
-    the loop asking and the user answering), and `DESIGN`/`OUTSTANDING`/
-    `REVIEW_SUSPECTED`/`ROUTED` are narrated generically by
-    `_say(narrate(event))` at the tail of `on_event` rather than singled out.
-    """
-    import inspect
-
     from core import events as ev
     from ui.copilot_panel import CopilotPanel
 
-    sources = [
-        inspect.getsource(CopilotPanel.on_event),
-        inspect.getsource(CopilotPanel._update_queue),
-        inspect.getsource(CopilotPanel._update_review_evidence),
-    ]
-    kind_names = {name for name in dir(ev) if name.isupper() and getattr(ev, name) in ev.KINDS}
-
-    missing = _unhandled_kinds(kind_names, sources, PANEL_DISPATCH_ALLOWLIST)
-    assert not missing, (
-        f"event kind(s) {missing} are in core.events.KINDS but not handled by "
-        f"on_event/_update_queue/_update_review_evidence and not in "
-        f"PANEL_DISPATCH_ALLOWLIST"
-    )
+    panel.new_chat()
+    panel.on_event(ev.Event(ev.CHANGE_SET, {}))
+    tables = {
+        "_ON_EVENT_DISPATCH": set(ev.KINDS) - {ev.INTENT},
+        "_QUEUE_DISPATCH": set(ev.KINDS),
+        "_EVIDENCE_DISPATCH": set(ev.KINDS),
+    }
+    missing = {attr: sorted(kinds - set(getattr(CopilotPanel, attr)))
+               for attr, kinds in tables.items()}
+    assert missing == {attr: [] for attr in tables}
 
 
-def test_the_completeness_check_actually_catches_a_missing_kind():
+def test_the_intent_shows_at_once_while_the_message_is_routed(panel, monkeypatch):
     """
-    Proves `_unhandled_kinds` is not a check that always passes: a fake kind
-    left out of every fixture source and out of the allowlist is reported,
-    and putting it back into either clears the report. Runs against a fake
-    kind and fake sources so it says nothing about the real `core.events`.
+    Routing is a whole model call before the run's own `INTENT` arrives, so
+    the user's words go up on Send and the Queue says it is routing; the
+    `INTENT` that follows does not put the same words up a second time.
     """
-    fake_kinds = ("KEPT", "DROPPED")
-    handled_source = 'if event.kind == ev.KEPT:\n    pass\n'
-    unhandled_source = 'if event.kind == ev.OTHER:\n    pass\n'
+    from core.events import INTENT, ROUTED, Event
 
-    missing = _unhandled_kinds(fake_kinds, [handled_source, unhandled_source], allowlist=set())
-    assert missing == {"DROPPED"}
+    panel.new_chat()
+    _never_call_the_real_model(panel)
+    monkeypatch.setattr(panel, "_bind_document", lambda bundle: None)
 
-    missing_allowlisted = _unhandled_kinds(
-        fake_kinds, [handled_source, unhandled_source], allowlist={"DROPPED"})
-    assert missing_allowlisted == set()
+    panel.user_input.setPlainText("a flanged bushing")
+    try:
+        panel.on_send()
+        assert "a flanged bushing" in _said_in(panel)
+        assert _now_on(panel) == "Routing\u2026"
 
-    handled_source_with_dropped = handled_source + 'elif event.kind == ev.DROPPED:\n    pass\n'
-    missing_now_handled = _unhandled_kinds(
-        fake_kinds, [handled_source_with_dropped, unhandled_source], allowlist=set())
-    assert missing_now_handled == set()
+        panel.on_event(Event(ROUTED, {"route": "design"}))
+        panel.on_event(Event(INTENT, {"text": "a flanged bushing"}))
+    finally:
+        panel._set_running(False)
+        panel._worker_for(panel._current_log()).running = False
+
+    shown = _said_in(panel)
+    assert shown.count("a flanged bushing") == 1
+    assert "unrecognized" not in shown
 
 
 def test_no_row_widens_the_column_past_its_viewport(panel):

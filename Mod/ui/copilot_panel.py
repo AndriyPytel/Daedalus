@@ -763,6 +763,7 @@ belong to the Session.
     _ON_EVENT_DISPATCH = None
     _QUEUE_DISPATCH = None
     _EVIDENCE_DISPATCH = None
+    _intent_on_screen = None
 
     @classmethod
     def _dispatch_table(cls, attr, build):
@@ -1589,7 +1590,9 @@ switched away from is abandoned rather than rendered.
         self._reset_render_state()
         bundle.running = True
         self._set_running(True)
-        self._queue_widget.now("Planning…")
+        self.add_chat_widget(TextMessageWidget(intent))
+        self._intent_on_screen = intent
+        self._queue_widget.now("Routing\u2026")
         outstanding = list(bundle.outstanding)
         the_part_path = "" if attachments else bundle.the_part_path
         bundle.request_work.emit(intent, attachments, log, outstanding, the_part_path)
@@ -1704,8 +1707,8 @@ a code block, a picture, streaming reasoning, or the document path as a
 link, with no calls back into the loop. `_ON_EVENT_DISPATCH` maps every
 `core.events.KINDS` member to a `_oe_*` method, True ending here and False
 falling through, and an unmapped kind reaches `_report_unknown_kind` rather
-than being skipped. `INTENT` takes the user's bubble, so a restored
-Session's prompt shows once.
+than being skipped. `INTENT` takes the user's bubble unless Send already put
+it up, so a prompt shows once whether live or restored.
 """
         from copilot.sdk import events as ev
         from copilot.sdk import narrate
@@ -1722,7 +1725,9 @@ Session's prompt shows once.
             self._last_assertion_event = None
             self._last_review_verdict_event = None
             self._last_review_views = []
-            self.add_chat_widget(TextMessageWidget(data.get("text", "")))
+            if data.get("text", "") != self._intent_on_screen:
+                self.add_chat_widget(TextMessageWidget(data.get("text", "")))
+            self._intent_on_screen = None
             self._update_queue(event)
             return
 
@@ -1754,6 +1759,9 @@ Session's prompt shows once.
             ev.ANSWER: CopilotPanel._noop,
             ev.DESIGN: CopilotPanel._noop,
             ev.CHANGE_SET: CopilotPanel._noop,
+            ev.ROUTED: CopilotPanel._noop,
+            ev.CONSULT_DESIGN: CopilotPanel._noop,
+            ev.CONSULT_DESIGN_ANSWERED: CopilotPanel._noop,
             ev.OUTSTANDING: CopilotPanel._noop,
             ev.REVIEW_SUSPECTED: CopilotPanel._noop,
             ev.GATE: CopilotPanel._noop,
@@ -1904,6 +1912,9 @@ as running only after it already shows `applied`.
             ev.ATTACHED: CopilotPanel._noop,
             ev.DESIGN: CopilotPanel._noop,
             ev.CHANGE_SET: CopilotPanel._noop,
+            ev.ROUTED: CopilotPanel._noop,
+            ev.CONSULT_DESIGN: CopilotPanel._noop,
+            ev.CONSULT_DESIGN_ANSWERED: CopilotPanel._noop,
             ev.PART: CopilotPanel._uq_part,
             ev.PLAN: CopilotPanel._uq_plan,
             ev.PLAN_REVISED: CopilotPanel._uq_plan,
@@ -1927,6 +1938,9 @@ as running only after it already shows `applied`.
             ev.FAILED: CopilotPanel._uq_fail_current,
             ev.COMPLETED: CopilotPanel._noop,
             ev.ERROR: CopilotPanel._uq_fail_current,
+            ev.SUB_AGENT_SPAWNED: CopilotPanel._noop,
+            ev.SUB_AGENT_ANSWERED: CopilotPanel._noop,
+            ev.SUB_AGENT_REFUSED: CopilotPanel._noop,
         }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "_update_queue")
@@ -2009,6 +2023,9 @@ as running only after it already shows `applied`.
             ev.ATTACHED: CopilotPanel._noop,
             ev.DESIGN: CopilotPanel._noop,
             ev.CHANGE_SET: CopilotPanel._noop,
+            ev.ROUTED: CopilotPanel._noop,
+            ev.CONSULT_DESIGN: CopilotPanel._noop,
+            ev.CONSULT_DESIGN_ANSWERED: CopilotPanel._noop,
             ev.PART: CopilotPanel._noop,
             ev.PLAN: CopilotPanel._noop,
             ev.PLAN_REVISED: CopilotPanel._noop,
@@ -2034,6 +2051,9 @@ as running only after it already shows `applied`.
             ev.CALL_STARTED: CopilotPanel._noop,
             ev.COST: CopilotPanel._noop,
             ev.ERROR: CopilotPanel._noop,
+            ev.SUB_AGENT_SPAWNED: CopilotPanel._noop,
+            ev.SUB_AGENT_ANSWERED: CopilotPanel._noop,
+            ev.SUB_AGENT_REFUSED: CopilotPanel._noop,
         }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "_update_review_evidence")
