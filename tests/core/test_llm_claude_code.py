@@ -5,8 +5,8 @@ Level 1 — the Claude subscription client, over two recorded `claude -p` runs.
 flag set this client sends: 2,385 tokens of preamble, `apiKeySource: none`, two
 surviving tools, a `rate_limit_event` and a `result`.
 `claude-code-stream-default-env.jsonl` is the same prompt with no flags but the
-model — 29,213 tokens and 74 tools — and is what the disallowed list is
-measured against.
+model — 29,213 tokens and 74 tools — and is what the tool count without
+`--tools ""` is measured against.
 
 What spawns the process is injected the way `LiteLLMClient` takes its
 `completion` callable, so nothing here runs a binary, spends a call or needs a
@@ -704,21 +704,17 @@ def test_a_result_event_that_says_it_failed_is_a_refusal():
     assert "error_during_execution" in str(refusal.value)
 
 
-def test_every_tool_the_cli_reports_is_handed_back_as_disallowed():
+def test_no_tool_is_named_the_cli_is_told_to_disable_them_all():
     """
-    The 29,213-to-2,385 cut. `--allowed-tools ''` strips nothing — the 21,623
-    arrive as a cache read instead — so the preamble only goes when each tool
-    is named. `Glob` and `Grep` are what the remaining 2,385 is spent on with
-    the residual system prompt, and whether naming them too goes lower is
-    unmeasured.
+    A named list goes stale the day the CLI adds a tool -- `--tools ""`
+    disables every tool the CLI has, named or not, and `--disallowed-tools`
+    is gone from the invocation.
     """
     client, spawn = client_replaying()
     collect(client.stream(a_turn()))
 
-    named = spawn.argv[spawn.argv.index("--disallowed-tools") + 1].split(",")
-    reported = [tool for tool in _init(DEFAULT_ENV)["tools"] if not tool.startswith("mcp__")]
-
-    assert set(reported) <= set(named), sorted(set(reported) - set(named))
+    assert spawn.argv[spawn.argv.index("--tools") + 1] == ""
+    assert "--disallowed-tools" not in spawn.argv
 
 
 def test_a_machines_mcp_servers_are_shut_out_by_the_flags_rather_than_by_name():

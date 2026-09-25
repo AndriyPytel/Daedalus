@@ -1,7 +1,7 @@
 """
 ClaudeCodeClient: streams from a Claude Max subscription through one
 `claude` process a call. Every CLI flag is a measurement, not a taste --
-`--disallowed-tools` naming every reported tool cuts the preamble 29,213 to
+`--tools ""` disabling every tool cuts the preamble 29,213 to
 2,385 tokens, and `--safe-mode` (not `--bare`) keeps subscription auth from
 being forced onto ANTHROPIC_API_KEY. Timeout follows `--effort`:
 52s/429s/668s measured at low/medium/high, and `_CEILING` is twice each,
@@ -94,15 +94,6 @@ _CLAUDE_CANDIDATES = (
     "/opt/homebrew/bin/claude",
 )
 
-_DISALLOWED_TOOLS = (
-    "Task", "Bash", "CronCreate", "CronDelete", "CronList", "DesignSync",
-    "Edit", "EnterWorktree", "ExitWorktree", "ListAgents", "Monitor",
-    "NotebookEdit", "PushNotification", "Read", "RemoteTrigger",
-    "ReportFindings", "ScheduleWakeup", "SendMessage", "Skill", "TaskCreate",
-    "TaskGet", "TaskList", "TaskOutput", "TaskStop", "TaskUpdate", "ToolSearch",
-    "WebFetch", "WebSearch", "Workflow", "Write",
-)
-
 
 def find_claude() -> str:
     """
@@ -162,8 +153,8 @@ def signed_in(run: Callable = None) -> tuple:
 class ClaudeCodeClient:
     """
     Streams from a Claude Max subscription through one `claude` process a
-    call. Every CLI flag is a measurement, not a taste -- `--disallowed-tools`
-    naming every reported tool cuts the preamble 29,213 to 2,385 tokens, and
+    call. Every CLI flag is a measurement, not a taste -- `--tools ""`
+    disabling every tool cuts the preamble 29,213 to 2,385 tokens, and
     `--safe-mode` (not `--bare`) keeps subscription auth from being forced
     onto ANTHROPIC_API_KEY. Timeout follows `--effort`: 52s/429s/668s
     measured at low/medium/high, and `_CEILING` is twice each, rounded up
@@ -333,5 +324,5 @@ def _invocation(model: str, system_prompt: str, effort: str) -> list:
         "--strict-mcp-config",
         "--setting-sources", "",
         "--disable-slash-commands",
-        "--disallowed-tools", ",".join(_DISALLOWED_TOOLS),
+        "--tools", "",
     ]
