@@ -344,6 +344,15 @@ class ApplyPipeline:
             self._dispatch(doc.undo)
         return {"object_count": len(doc.Objects) if doc is not None else 0}
 
+    def undo_depth(self):
+        """
+        How many Steps the live Document could still undo -- `UndoMode`'s
+        stack drops its oldest entries once `MaxUndoSize` is spent, so this
+        can be smaller than every Step ever applied this run.
+        """
+        doc = self._dispatch(self._active)
+        return len(doc.UndoNames) if doc is not None else 0
+
     def check_assertions(self, code):
         """
         Run read-only checks against a copy of the finished Document.
@@ -1754,6 +1763,14 @@ def _register_apply(registry, pipeline, selection):
     )
     def undo_step():
         return pipeline.undo_step()
+
+    @registry.tool(
+        "undo_depth",
+        "How many Steps the live Document could still undo. Driven by a Plan "
+        "revision before it drops any Step, never by a phase.",
+    )
+    def undo_depth():
+        return {"depth": pipeline.undo_depth()}
 
     @registry.tool(
         "check_assertions",

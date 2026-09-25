@@ -419,9 +419,9 @@ def test_what_the_assistant_created_needs_no_permission(doc, worker, tmp_path):
 def test_each_applied_step_lands_as_exactly_one_undo_transaction(pipeline, doc, worker):
     """
     A revision that drops a Step undoes it by calling `doc.undo()` once per
-    Step dropped (FCC-459), which is only correct if nothing besides
-    `apply()`'s own transaction ever lands on the stack -- not the
-    recompute inside it, and not `_show_tip`'s ViewObject changes after it.
+    Step dropped, which is only correct if nothing besides `apply()`'s own
+    transaction ever lands on the stack -- not the recompute inside it, and
+    not `_show_tip`'s ViewObject changes after it.
     """
     CYLINDER = "cyl = doc.addObject('Part::Cylinder', 'Cyl')\n"
 

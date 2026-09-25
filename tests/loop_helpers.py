@@ -308,7 +308,7 @@ class FakeTools:
 
     APPLIED = {"status": "applied", "created": ["Box"], "description": DESCRIPTION}
 
-    def __init__(self, applies=(), views=None, checks=()):
+    def __init__(self, applies=(), views=None, checks=(), undo_capacity=None):
         """
         What is in the Document by now. A Snapshot frozen at empty could not
         show that a regeneration is written against the Steps that did apply.
@@ -317,10 +317,15 @@ class FakeTools:
         `review_views` at all, which is the same case as headless.
         
         One entry per `check_assertions` call; anything left over passes.
+        
+        `undo_capacity` scripts a live Document whose own undo stack has
+        already dropped Steps older than it can hold; `None` reports every
+        Step ever applied, the same as a stack nothing has spilled off yet.
         """
         self.applies = list(applies)
         self.created = []
         self._applied_groups = []
+        self.undo_capacity = undo_capacity
         self.views = views
         self.checks = list(checks)
         self.calls = []
@@ -414,6 +419,14 @@ class FakeTools:
                 for name in self._applied_groups.pop():
                     self.created.remove(name)
             return {"object_count": len(self.created)}
+
+        @registry.tool("undo_depth", "How many Steps could still be undone.")
+        def undo_depth():
+            self.calls.append(("undo_depth", {}))
+            depth = len(self._applied_groups)
+            if self.undo_capacity is not None:
+                depth = min(depth, self.undo_capacity)
+            return {"depth": depth}
 
         @registry.tool("check_assertions", "Run read-only checks against a copy.", {
             "type": "object", "properties": {"code": {"type": "string"}},
@@ -554,11 +567,11 @@ def needs_drawing(*paths):
 
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,
           views=None, checks=(), attachments=(), decide=None, outstanding=(),
-          the_part_path=None, kernel=None):
+          the_part_path=None, kernel=None, undo_capacity=None):
     """Run the loop over scripted turns and hand back everything to assert on."""
     needs_drawing(*attachments)
     llm = scripted(turns, attachments, resuming=bool(the_part_path))
-    tools = FakeTools(applies, views=views, checks=checks)
+    tools = FakeTools(applies, views=views, checks=checks, undo_capacity=undo_capacity)
     events = EventStream()
     kwargs = {"ask": ask} if ask is not None else {}
     if decide is not None:

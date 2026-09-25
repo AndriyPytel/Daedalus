@@ -65,3 +65,30 @@ def test_a_revision_that_keeps_every_landed_step_undoes_nothing():
     assert result.ok, result.reason
     assert _undo_calls(tools) == []
     assert tools.created == ["PadBase", "BossArm", "DrillHole"]
+
+
+def test_a_revision_that_outruns_the_undo_stack_blocks_without_undoing_anything():
+    """
+    The same drop as above, but the live Document's own undo stack has
+    already spilled past its `MaxUndoSize` and holds nothing to undo -- the
+    run must block with that reason rather than undo part of the way back
+    and leave the Document between two Plans.
+    """
+    result, events, llm, tools = drive([
+        plan_reply("Pad the base", "Boss the arm", "Drill the hole"),
+        code_reply("pad()", first=1),
+        code_reply("boss()", first=2),
+        obsolete_reply("The arm width changed"),
+        plan_reply("Pad the base", "Boss the wider arm", "Drill the smaller hole"),
+    ], applies=[
+        {"status": "applied", "created": ["PadBase"], "description": {}},
+        {"status": "applied", "created": ["BossArm"], "description": {}},
+    ], undo_capacity=0)
+
+    assert not result.ok
+    assert result.blocked
+    assert "undo" in result.reason.lower()
+    assert _undo_calls(tools) == [], (
+        "blocked but still undid part of the way: %r" % _undo_calls(tools))
+    assert tools.created == ["PadBase", "BossArm"], (
+        "the Document changed even though the run blocked: %r" % tools.created)
