@@ -90,3 +90,25 @@ def test_an_unrelated_ledger_entry_does_not_change_a_named_description_conflict(
 
     assert "Correct the description" in reason
     assert "Pad" not in reason
+
+
+def test_exploration_results_with_no_step_are_skipped_to_reach_the_refusal():
+    """Run A's real sequence: Execute's phase refused Step 15 for the
+    sequencing gap, then took two exploration looks that came back `ok`
+    with no `step` at all -- those must not be read as the last word, or
+    the refusal they sit on top of is lost, on exactly the run that
+    motivated this ticket."""
+    events = EventStream()
+    events.emit(TOOL_RESULT, name="execute",
+                result={"ok": False, "status": "refused", "step": 15,
+                        "traceback": "Step 14 has neither landed nor been declared. "
+                                     "Write Step 14 first."})
+    events.emit(TOOL_RESULT, name="execute",
+                result={"checkpoint": "/tmp/kernel_checkpoint.FCStd", "created": [],
+                        "deleted": [], "geometry": {}})
+    events.emit(TOOL_RESULT, name="execute",
+                result={"checkpoint": "/tmp/kernel_checkpoint.FCStd", "created": [],
+                        "deleted": [], "geometry": {}})
+
+    assert _last_kernel_result([], events) == \
+        "Step 14 has neither landed nor been declared. Write Step 14 first."

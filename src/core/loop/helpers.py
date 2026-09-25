@@ -104,10 +104,12 @@ def _last_kernel_result(tried, events):
     The last word the kernel, or this phase's own bookkeeping, had on the
     handed-back Step -- `outcome["tried"]`'s own last attempt where
     Preflight or apply rejected one, or, where nothing was ever declared
-    for it, this phase's last refusal off the event stream. `None` where
-    the last such result was a success, or there was none at all, since a
-    run-scoped record can hold an unrelated Step's old rejection and say
-    nothing about this one.
+    for it, this phase's last refusal off the event stream. A result
+    carrying no `step` is a look Execute took while exploring, not a verdict
+    on any Step, and is skipped rather than read as the last word. `None`
+    where the last result that did name a Step was a success, or there was
+    none at all, since a run-scoped record can hold an unrelated Step's old
+    rejection and say nothing about this one.
     """
     if tried:
         return tried[-1].get("traceback") or None
@@ -115,7 +117,7 @@ def _last_kernel_result(tried, events):
         if event.kind != TOOL_RESULT or event.data.get("name") not in _KERNEL_RESULT_NAMES:
             continue
         result = event.data.get("result") or {}
-        if not isinstance(result, dict):
+        if not isinstance(result, dict) or "step" not in result:
             continue
         if result.get("status") in _REFUSED_STATUSES or result.get("ok") is False:
             return result.get("traceback") or None
