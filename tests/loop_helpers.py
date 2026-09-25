@@ -320,6 +320,7 @@ class FakeTools:
         """
         self.applies = list(applies)
         self.created = []
+        self._applied_groups = []
         self.views = views
         self.checks = list(checks)
         self.calls = []
@@ -401,8 +402,18 @@ class FakeTools:
             queued = self.applies.pop(0) if self.applies else None
             result = queued if queued is not None else dict(self.APPLIED)
             if result.get("status") == "applied":
-                self.created.extend(result.get("created", ()))
+                group = list(result.get("created", ()))
+                self._applied_groups.append(group)
+                self.created.extend(group)
             return result
+
+        @registry.tool("undo_step", "Undo the last Step's transaction.")
+        def undo_step():
+            self.calls.append(("undo_step", {}))
+            if self._applied_groups:
+                for name in self._applied_groups.pop():
+                    self.created.remove(name)
+            return {"object_count": len(self.created)}
 
         @registry.tool("check_assertions", "Run read-only checks against a copy.", {
             "type": "object", "properties": {"code": {"type": "string"}},
