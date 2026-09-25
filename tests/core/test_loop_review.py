@@ -54,6 +54,7 @@ from core.design.gaps import (
 )
 from core.loop.budgets import Budgets, revisions_ceiling
 from core.loop.prompt import _PHASE_VOCABULARY, _language_sections, _streamed, prompt
+from core.lint import lint
 from core.loop.run import run
 import core.loop.prompt as loop_prompt_module
 from core.tools import ToolError, ToolRegistry
@@ -1149,6 +1150,66 @@ def test_with_nobody_to_ask_and_nothing_design_can_settle_the_run_does_not_stall
     assert "not_defined" in json.dumps(llm.calls[2])
 
 
+def test_a_settle_attempt_that_changes_nothing_falls_through_and_asks_no_more():
+    """
+    Design settling a question by re-stating what the model already carries
+    is not progress: `grown` comes back unchanged, so a second settle
+    attempt over the same question would cost exactly as much as the first
+    and get exactly as far. One attempt is what the field is owed.
+    """
+    module_already_settled = {"features": [{"id": "teeth",
+                                            "module": dict(settled("2", "typical for this size"),
+                                                           mm=2)}]}
+
+    result, events, llm, _ = drive(
+        [design_reply(module_already_settled),
+         question_reply(MISSING), design_reply(module_already_settled),
+         plan_reply("Sketch the blank"), code_reply("a()"),
+         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+        intent=GEAR)
+
+    assert result.ok, result.reason
+    design_turns = [call for call in llm.calls if call[0]["content"].startswith(prompt("design"))]
+    assert len(design_turns) == 2, "a settle attempt that changed nothing was tried again"
+    assert [answer.data["by"] for answer in events.of(ANSWER)] == ["nobody"]
+    assert events.first(PLAN).data["unanswered"] == [MISSING]
+
+
+
+
+def test_the_plan_gate_lists_a_design_settled_value_as_an_assumption():
+    """
+    End to end, the first Acceptance Criterion: a `not_defined` length Design
+    settles for Plan reaches Execute carrying its number, a Step reading it
+    by index passes the lint, and the Gate lists it as an assumption rather
+    than showing nothing for a field a run once could not have built at all.
+    """
+    not_defined_length = {"envelope": {"length": {"value": "not defined",
+                                                   "flag": "not_defined"}}}
+    settled_length = {"envelope": {"length": dict(settled("40 mm", "nothing in the views "
+                                                           "gave it, so a typical length "
+                                                           "was assumed"), mm=40)}}
+    code = "pad.Length = design['envelope']['length']['mm']"
+
+    result, events, llm, tools = drive(
+        [design_reply(not_defined_length),
+         question_reply("What is the length?"), design_reply(settled_length),
+         plan_reply("Pad the profile 40 mm"), code_reply(code),
+         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+        intent=GEAR)
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == [code]
+
+    handed, = [arguments for name, arguments in tools.calls if name == "apply_step"]
+    length = handed["design"]["envelope"]["length"]
+    assert length["flag"] == "assumed" and length["mm"] == 40
+
+    assert lint(code).ok, lint(code).report()
+
+    decided = events.first(PLAN).data["decided"]
+    assert any("envelope \u2192 length" in line and "40 mm" in line for line in decided), \
+        "the value the model settled did not reach the Gate as an assumption"
 
 
 def test_a_run_nobody_answered_at_all_reaches_the_gate_rather_than_a_block():
