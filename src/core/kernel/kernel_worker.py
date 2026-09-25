@@ -221,10 +221,12 @@ def pick_edges(shape, predicate, expect):
 def bbox(shape):
     """
     *shape*'s bounding box computed from its exact geometry, not from
-    `Shape.BoundBox`'s tessellation padding -- `optimalBoundingBox()` reads
-    the surfaces themselves and carries no tolerance margin.
+    `Shape.BoundBox`'s tessellation padding. `optimalBoundingBox()`'s
+    default reads a cached triangulation when the shape carries one, so
+    this always passes `useTriangulation=False` to read the surfaces
+    themselves.
     """
-    return shape.optimalBoundingBox()
+    return shape.optimalBoundingBox(False)
 
 
 def by_label(doc, label):
