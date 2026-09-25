@@ -252,6 +252,9 @@ for a through hole, `SideType='Symmetric'` for one cut symmetrically,
 `Reversed` where the sketch has to sit on the far face. `Midplane` is
 deprecated and warns on every write; `SideType` replaced it.
 
+A Pocket's inward draft — the profile narrowing as it goes deeper — takes a
+negative `TaperAngle`; a positive one widens it going in.
+
 **A Body left in more than one piece did not happen either.** Preflight
 refuses a Pad that produced two solids instead of one, and the cause is
 almost always the sketch: two regions meant to fuse were drawn tangent — a
