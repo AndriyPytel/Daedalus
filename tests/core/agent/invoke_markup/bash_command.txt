@@ -1,0 +1,5 @@
+
+<invoke name="Bash">
+<parameter name="command">cd /private/var/folders/_1/zdwq9btn2tqcjbf38kms2n1c0000gp/T/fcc-claude-ibrzb4u0 && ls -la && wc -c design.json && python3 -c "
+import json;d=json.load(open('design.json'));print(type(d)); print(list(d.keys()) if isinstance(d,dict) else len(d))"</parameter>
+</invoke>

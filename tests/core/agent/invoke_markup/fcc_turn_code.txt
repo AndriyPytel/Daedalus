@@ -1,0 +1,18 @@
+
+<invoke name="fcc_turn">
+<parameter name="code">import math
+r=2.0
+a=math.radians(40)
+L=(4.7-2*r*(1-math.cos(a)))/math.sin(a)
+run=2*r*math.sin(a)+L*math.cos(a)
+print('joggle L',L,'run',run,'left end',27.6-run,'right end',107.6+run, 'right flat',135.6-(107.6+run))
+b=math.radians(80)
+rise=2*r*(1-math.cos(b))+1.42*math.sin(b); runt=2*r*math.sin(b)+1.42*math.cos(b)
+print('tongue drop',rise,'run',runt,28.6+runt,107.1-runt)
+print('flange len',102.6-30.6,'tab spans',39-6,39+6,94.5-6,94.5+6)
+print('windows',57.1-42.6,93.1-78.6,77.1-63.1,(42.6+57.1)/2,(78.6+93.1)/2,(63.1+77.1)/2, 20-7,20+7,36-7,36+7)
+print('slot',27-6.5,27+6.5,10.2-2.75,10.2+2.75,'hole',44.5-2.75,44.5+2.75)
+print('trough',(60.1+73.1)/2,73.1-60.1,63.1,70.1,70.1-63.1, math.degrees(math.atan2(5.6,3)))
+print('front arc Z0 Y',50.9+math.sqrt(9-1))
+print('ear flats',20.54-0,135.6-114.66, 107.6-27.6, 24.7-2, 11.7+2, 4.7+2, 18.7+2, 30.6+14.5,30.6+57.5,[30.6+x for x in (7.5,21.5,50.5,64.5)])</parameter>
+</invoke>

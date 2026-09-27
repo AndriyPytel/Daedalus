@@ -14,12 +14,13 @@ import shutil
 import time
 
 from core.events import (
-    CALL_STARTED, COST, STEP_DECLARED, THOUGHT, TOOL_CALL, TOOL_RESULT, TURN_BUDGET_EXHAUSTED,
-    WRITING,
+    CALL_STARTED, COST, INVOKE_MARKUP, STEP_DECLARED, THOUGHT, TOOL_CALL, TOOL_RESULT,
+    TURN_BUDGET_EXHAUSTED, WRITING,
 )
 from core.kernel import Kernel
 from core.llm import REASONING, TEXT, Session
 from core.llm.exceptions import StreamCutOff
+from core.agent.invoke_guard import first_invoke_in, recovered_message
 from core.agent.phase_contract import spawn
 from core.agent.subagent import delegate
 from core.freecad_apply import discard
@@ -392,17 +393,19 @@ def _one_turn(session, llm, content, phase=None, stream=None):
     llm = llm.for_phase(phase) if hasattr(llm, "for_phase") else llm
     model = getattr(llm, "model", None)
     ceiling = getattr(llm, "timeout", None)
-    
+
     if stream is not None:
         started = {"phase": phase, "model": model}
         if ceiling is not None:
             started["ceiling"] = ceiling
         stream.emit(CALL_STARTED, **started)
-    
+
     start = time.time()
     text = []
+    invoke = None
+    turn = session.turn(llm, content)
     try:
-        for chunk in session.turn(llm, content):
+        for chunk in turn:
             if chunk.kind == REASONING:
                 if stream is not None:
                     stream.emit(THOUGHT, phase=phase, text=chunk.text)
@@ -410,6 +413,10 @@ def _one_turn(session, llm, content, phase=None, stream=None):
                 text.append(chunk.text)
                 if stream is not None:
                     stream.emit(WRITING, phase=phase, text=chunk.text)
+                invoke = first_invoke_in("".join(text))
+                if invoke is not None:
+                    turn.close()
+                    break
     finally:
         if stream is not None:
             spent = getattr(llm, "last_cost", None) or {}
@@ -420,8 +427,19 @@ def _one_turn(session, llm, content, phase=None, stream=None):
                 if key in spent:
                     paid[key] = spent[key]
             stream.emit(COST, **paid)
-    
-    return "".join(text)
+
+    if invoke is None:
+        return "".join(text)
+
+    name, parameters = invoke
+    session.messages.append({"role": "assistant", "content": "".join(text)})
+    recovered = recovered_message(parameters)
+    if stream is not None:
+        stream.emit(INVOKE_MARKUP, phase=phase, name=name,
+                    parameters=sorted(parameters), recovered=recovered is not None)
+    if recovered is not None:
+        return recovered
+    return _one_turn(session, llm, read_prompt("invoke_markup_used.md"), phase, stream)
 
 
 def _parsed(text):

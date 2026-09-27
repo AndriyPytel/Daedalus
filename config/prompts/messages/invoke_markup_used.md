@@ -1,0 +1,1 @@
+There is no Bash, no MCP tool, and no other function to call here -- only the JSON protocol. Reply with exactly one JSON object: {"code": "..."} to run Python, {"delegate": "..."} to ask a sub-agent, or {"declare": ...} to finish.
