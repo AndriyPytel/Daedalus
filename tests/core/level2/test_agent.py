@@ -451,3 +451,25 @@ def test_exploration_with_clean_code_has_no_lint_warnings(kernel, tmp_path):
     sent = json.loads(llm.calls[1][-1]["content"])
     assert sent["ok"]
     assert "lint_warnings" not in sent
+
+
+def test_plans_own_kernel_code_sees_design_read_only(kernel, tmp_path):
+    """
+    Plan's row of the visibility table grants it `design` and nothing else --
+    never a file, since nothing writes `design.json` -- so a code turn that
+    reads the `design` name off its own namespace sees the model Design
+    settled, the same object Plan is handed rather than a working-directory
+    stand-in.
+    """
+    llm = ScriptedLLMClient([
+        json.dumps({"code": "print(design['envelope']['length'])"}),
+        json.dumps({"declare": {"steps": ["pad it"]}}),
+    ])
+
+    _, session, _ = run_phase(
+        pc.PLAN, str(tmp_path / "plan"), {}, llm, "plan the part",
+        kernel=kernel, design={"envelope": {"length": "150 mm"}},
+    )
+
+    feedback = json.loads(session.messages[-2]["content"])
+    assert feedback["stdout"].strip() == "150 mm"

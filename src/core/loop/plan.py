@@ -101,10 +101,10 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     with tempfile.TemporaryDirectory() as working_dir:
         declared, session, declarations = run_phase(
             pc.PLAN, working_dir,
-            {"design": the_part or {}},
+            {},
             llm, task,
             kernel=kernel, supervisor=supervisor, stream=events,
-            system=prompt(PLAN_PHASE)
+            system=prompt(PLAN_PHASE), design=the_part or {},
         )
     
     reply = declared if isinstance(declared, dict) else {}

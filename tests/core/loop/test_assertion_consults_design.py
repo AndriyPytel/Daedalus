@@ -4,10 +4,7 @@ check can be written against what the description asked for rather than only
 the flattened acceptance list and what got built.
 """
 import json
-import os
 
-from core.agent import phase_contract as pc
-from core.agent.phase_contract import spawn
 from core.events import EventStream
 from core.loop import assertion as assertion_module
 from core.loop.assertion import assertion
@@ -31,14 +28,12 @@ def _assertion_tools(tmp_path):
     return registry
 
 
-def test_assertion_is_handed_designs_own_prose_as_the_design_artifact(monkeypatch, tmp_path):
+def test_assertion_is_handed_designs_own_prose_as_the_design_argument(monkeypatch, tmp_path):
     registry = _assertion_tools(tmp_path)
-    written = {}
+    seen = {}
 
     def fake_run_phase(kind, working_dir, sources, *args, **kwargs):
-        working = spawn(kind, working_dir, **sources)
-        with open(os.path.join(working, "design.json")) as handle:
-            written["design"] = json.load(handle)
+        seen["design"] = kwargs.get("design")
         return {"code": "assert True"}, None, []
 
     monkeypatch.setattr(assertion_module, "run_phase", fake_run_phase)
@@ -46,17 +41,16 @@ def test_assertion_is_handed_designs_own_prose_as_the_design_artifact(monkeypatc
     assertion(["the hole is 8mm through"], {"built": "a plain hole"}, registry,
               ScriptedLLMClient([]), EventStream(), description=_DESCRIPTION)
 
-    assert written["design"] == _DESCRIPTION
-    assert written["design"] != {"built": "a plain hole"}
+    assert seen["design"] == _DESCRIPTION
+    assert seen["design"] != {"built": "a plain hole"}
 
 
-def test_no_description_leaves_the_design_artifact_unwritten(monkeypatch, tmp_path):
+def test_no_description_leaves_the_design_argument_unset(monkeypatch, tmp_path):
     registry = _assertion_tools(tmp_path)
-    listed = {}
+    seen = {}
 
     def fake_run_phase(kind, working_dir, sources, *args, **kwargs):
-        working = spawn(kind, working_dir, **sources)
-        listed["files"] = os.listdir(working)
+        seen["kwargs"] = kwargs
         return {"code": "assert True"}, None, []
 
     monkeypatch.setattr(assertion_module, "run_phase", fake_run_phase)
@@ -64,7 +58,7 @@ def test_no_description_leaves_the_design_artifact_unwritten(monkeypatch, tmp_pa
     assertion(["the hole is 8mm through"], {"built": "a plain hole"}, registry,
               ScriptedLLMClient([]), EventStream())
 
-    assert "design.json" not in listed["files"]
+    assert "design" not in seen["kwargs"]
 
 
 def test_the_consult_is_on_the_stream_once_and_costs_no_call(monkeypatch, tmp_path):
@@ -106,12 +100,10 @@ def test_the_boundary_holds_evidence_and_attachments_never_reach_assertion(monke
     safe = distilled(raw)
 
     registry = _assertion_tools(tmp_path)
-    written = {}
+    seen = {}
 
     def fake_run_phase(kind, working_dir, sources, *args, **kwargs):
-        working = spawn(kind, working_dir, **sources)
-        with open(os.path.join(working, "design.json")) as handle:
-            written["design"] = json.load(handle)
+        seen["design"] = kwargs.get("design")
         return {"code": "assert True"}, None, []
 
     monkeypatch.setattr(assertion_module, "run_phase", fake_run_phase)
@@ -119,8 +111,8 @@ def test_the_boundary_holds_evidence_and_attachments_never_reach_assertion(monke
     assertion(["a hole"], {}, registry, ScriptedLLMClient([]), EventStream(),
               description=safe)
 
-    dumped = json.dumps(written["design"])
+    dumped = json.dumps(seen["design"])
     assert "from" not in dumped
     assert "seen_in" not in dumped
     assert "sheet3.pdf" not in dumped
-    assert written["design"] == safe
+    assert seen["design"] == safe

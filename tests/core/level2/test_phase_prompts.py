@@ -65,9 +65,9 @@ def test_assertion_prompt_has_no_execute_artifact_and_says_so(kernel, tmp_path):
     assert "not a file to go looking for" in text
 
     working = pc.spawn(pc.ASSERTION, str(tmp_path / "assertion"),
-                       design={"envelope": {}}, document=_blank_document(tmp_path),
+                       document=_blank_document(tmp_path),
                        execute={"steps": ["should never be written"]})
-    assert sorted(os.listdir(working)) == ["design.json", "document.FCStd"]
+    assert sorted(os.listdir(working)) == ["document.FCStd"]
 
 
 def test_assertion_agent_declares_from_a_real_prompt(kernel, tmp_path):
@@ -79,8 +79,8 @@ def test_assertion_agent_declares_from_a_real_prompt(kernel, tmp_path):
 
     declared, session, checkpoints = run_phase(
         pc.ASSERTION, str(tmp_path / "assertion"),
-        {"design": {"envelope": {}}, "document": _blank_document(tmp_path)},
-        llm, task, kernel=kernel,
+        {"document": _blank_document(tmp_path)},
+        llm, task, kernel=kernel, design={"envelope": {}},
     )
 
     assert declared == {"uncovered": []}
@@ -101,8 +101,9 @@ def test_plan_prompt_exercises_delegation(kernel, tmp_path):
     stream = EventStream()
 
     declared, session, checkpoints = run_phase(
-        pc.PLAN, str(tmp_path / "plan"), {"design": {"envelope": {"thickness": "10 mm"}}},
+        pc.PLAN, str(tmp_path / "plan"), {},
         llm, task, kernel=kernel, supervisor=supervisor, stream=stream,
+        design={"envelope": {"thickness": "10 mm"}},
     )
 
     assert declared["steps"][0]["op"] == "pad"
