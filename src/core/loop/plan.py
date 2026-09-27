@@ -67,11 +67,10 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     win and lost a value read off SECTION B-B. A revision before anything
     is applied is handed the Plan it rewrites (`revising`) or drops Steps
     a bare complaint never named; a revision after Steps have landed is
-    handed those read-only (`history`) and writes only the continuation,
-    numbered from where the History leaves off, and `tried` is every
-    classified failure so far so a revision does not repeat one. `undo_depth`,
-    when a revision could propose one, is how many Steps the live Document's
-    undo stack can still reach, bounding how far back its `rollback` may name.
+    handed those read-only (`history`), writes only the continuation
+    numbered from where it leaves off, carries `tried` so it does not repeat
+    a classified failure, and `undo_depth` bounding how far back its
+    `rollback` may name.
     """
     request = {"intent": intent, "document": snapshot}
     if history:
