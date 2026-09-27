@@ -202,10 +202,11 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 if working_kernel is None:
                     working_kernel = Kernel()
                 step_document = document if first_step else _NO_DOCUMENT
+                kernel_kwargs = {"design": design} if first_step and design is not None else {}
+                if step_document is not _NO_DOCUMENT:
+                    kernel_kwargs["document"] = step_document
                 result = working_kernel.check(
-                    message["code"], exploring=message.get("step") is None, **(
-                        {} if step_document is _NO_DOCUMENT
-                        else {"document": step_document, "design": design}))
+                    message["code"], exploring=message.get("step") is None, **kernel_kwargs)
                 last_failure = None if result.ok else result.traceback
                 first_step = False
                 delivered_step = None

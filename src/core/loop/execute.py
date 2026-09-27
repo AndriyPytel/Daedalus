@@ -258,7 +258,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         with copied(tools) as document:
             declared, session, declarations = run_phase(
                 pc.EXECUTE, working_dir,
-                {"plan": steps, "design": as_described},
+                {"plan": steps},
                 llm, task, document=document, design=design,
                 kernel=kernel, supervisor=supervisor, stream=events,
                 system=prompt(EXECUTE_PHASE),

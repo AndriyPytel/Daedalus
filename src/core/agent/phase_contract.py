@@ -3,13 +3,14 @@ The Design -> Plan -> Execute -> Assertion -> Review visibility contract, as
 one declared table rather than five hand-written spawn cases: Plan sees only
 Design; Execute sees Plan and Design; Assertion sees only Design and a
 read-only Document, never an Execute artifact; Review sees intent and
-outcome and nothing that would let it grade its own work; the orchestrator
-alone sees everything. This is enforced structurally -- a phase's kernel is
-spawned with a working directory `spawn()` builds from `PHASE_CONTRACT`
-alone, containing exactly what that phase's row declares, and an artefact
-`_WRITERS` does not cover raises rather than dropping silently. Adding a
-phase's visibility rule means editing `PHASE_CONTRACT`; `spawn()` itself
-never changes for it.
+outcome and nothing that would let it grade its own work. This is enforced
+structurally -- a phase's kernel is spawned with a working directory
+`spawn()` builds from `PHASE_CONTRACT` alone, containing exactly what that
+phase's row declares, and an artefact `_WRITERS` does not cover raises
+rather than dropping silently. Design is never a disk artefact -- `design`
+is the part-file YAML `run_phase` carries straight into the kernel's own
+namespace, read-only there because `step_namespace` hands each Step a deep
+copy, so `PHASE_CONTRACT` says nothing about it.
 """
 import json
 import os
@@ -24,13 +25,13 @@ from core.loop.prompt import (ASSERTION_PHASE as ASSERTION, DESIGN_PHASE as DESI
 RO = "ro"
 RW = "rw"
 
-ARTIFACTS = ("intent", "design", "plan", "execute", "document", "outcome")
+ARTIFACTS = ("intent", "plan", "execute", "document", "outcome")
 
 PHASE_CONTRACT = {
     DESIGN: {"intent": RO},
-    PLAN: {"design": RO},
-    EXECUTE: {"design": RO, "plan": RO, "document": RW},
-    ASSERTION: {"design": RO, "document": RO},
+    PLAN: {},
+    EXECUTE: {"plan": RO, "document": RW},
+    ASSERTION: {"document": RO},
     REVIEW_SUSPECT: {"intent": RO, "outcome": RO},
     REVIEW: {"intent": RO, "outcome": RO},
 }
@@ -51,7 +52,6 @@ def _write_document(base, value):
 
 _WRITERS = {
     "intent": _write_json,
-    "design": _write_json,
     "plan": _write_json,
     "execute": _write_json,
     "outcome": _write_json,
@@ -70,8 +70,9 @@ def spawn(phase, working_dir, **sources):
     `sources` is whatever the caller has on hand, keyed by `ARTIFACTS`' own
     names, and only the ones `PHASE_CONTRACT[phase]` declares are ever
     written. A `RO` artefact is made read-only on disk once written, `RW` is
-    left writable, and an unnamed phase raises `KeyError`. Returns
-    `working_dir`, created if it does not exist yet.
+    left writable, an unnamed phase raises `KeyError`, and `design` is
+    never written here -- it reaches a phase only through `run_phase`'s own
+    `design` argument. Returns `working_dir`, created if it does not exist yet.
     """
     row = PHASE_CONTRACT[phase]
     os.makedirs(working_dir, exist_ok=True)

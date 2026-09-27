@@ -14,20 +14,22 @@ def test_table_covers_every_phase():
         assert phase in pc.PHASE_CONTRACT
 
 
-def test_plan_sees_only_design():
-    assert set(pc.PHASE_CONTRACT[pc.PLAN]) == {"design"}
+def test_design_is_never_a_disk_artifact():
+    for row in pc.PHASE_CONTRACT.values():
+        assert "design" not in row
 
 
-def test_execute_sees_plan_and_design():
-    seen = set(pc.PHASE_CONTRACT[pc.EXECUTE])
-    assert seen >= {"plan", "design"}
-    assert "execute" not in seen or pc.PHASE_CONTRACT[pc.EXECUTE].get("execute") != "ro"
+def test_plan_writes_nothing_to_disk():
+    assert pc.PHASE_CONTRACT[pc.PLAN] == {}
 
 
-def test_assertion_sees_design_and_a_readonly_document_but_no_execute():
-    seen = pc.PHASE_CONTRACT[pc.ASSERTION]
-    assert set(seen) == {"design", "document"}
-    assert seen["document"] == pc.RO
+def test_execute_sees_plan_and_a_writable_document():
+    seen = pc.PHASE_CONTRACT[pc.EXECUTE]
+    assert seen == {"plan": pc.RO, "document": pc.RW}
+
+
+def test_assertion_sees_only_a_readonly_document():
+    assert pc.PHASE_CONTRACT[pc.ASSERTION] == {"document": pc.RO}
 
 
 def test_review_sees_no_code_at_all():
@@ -38,7 +40,6 @@ def test_review_sees_no_code_at_all():
 
 SOURCES = {
     "intent": "make a bracket",
-    "design": {"kind": "bracket"},
     "plan": [{"do": "pad 10mm"}],
     "execute": {"trace": "ok"},
     "document": None,  # filled in per-test with a real path
@@ -54,10 +55,10 @@ def _sources(tmp_path):
     return sources
 
 
-def test_spawn_assertion_directory_has_design_and_readonly_document_no_execute(tmp_path):
+def test_spawn_assertion_directory_has_only_a_readonly_document(tmp_path):
     working = pc.spawn(pc.ASSERTION, str(tmp_path / "assertion"), **_sources(tmp_path))
     names = set(os.listdir(working))
-    assert names == {"design.json", "document.FCStd"}
+    assert names == {"document.FCStd"}
     mode = os.stat(os.path.join(working, "document.FCStd")).st_mode
     assert not (mode & stat.S_IWUSR)
 
@@ -70,7 +71,13 @@ def test_spawn_review_directory_has_no_code_at_all(tmp_path):
 
 def test_spawn_ignores_a_source_the_table_does_not_declare_for_that_phase(tmp_path):
     working = pc.spawn(pc.PLAN, str(tmp_path / "plan"), **_sources(tmp_path))
-    assert set(os.listdir(working)) == {"design.json"}
+    assert set(os.listdir(working)) == set()
+
+
+def test_spawn_ignores_design_even_when_given(tmp_path):
+    sources = dict(_sources(tmp_path), design={"kind": "bracket"})
+    working = pc.spawn(pc.PLAN, str(tmp_path / "plan"), **sources)
+    assert set(os.listdir(working)) == set()
 
 
 def test_spawn_rejects_an_unknown_phase(tmp_path):
