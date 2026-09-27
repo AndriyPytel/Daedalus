@@ -1775,6 +1775,7 @@ it up, so a prompt shows once whether live or restored.
             ev.SUB_AGENT_SPAWNED: CopilotPanel._oe_sub_agent_spawned,
             ev.SUB_AGENT_ANSWERED: CopilotPanel._oe_sub_agent_answered,
             ev.SUB_AGENT_REFUSED: CopilotPanel._oe_sub_agent_refused,
+            ev.INVOKE_MARKUP: CopilotPanel._noop,
         }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "on_event")
@@ -1943,6 +1944,7 @@ as running only after it already shows `applied`.
             ev.SUB_AGENT_SPAWNED: CopilotPanel._noop,
             ev.SUB_AGENT_ANSWERED: CopilotPanel._noop,
             ev.SUB_AGENT_REFUSED: CopilotPanel._noop,
+            ev.INVOKE_MARKUP: CopilotPanel._noop,
         }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "_update_queue")
@@ -2056,6 +2058,7 @@ as running only after it already shows `applied`.
             ev.SUB_AGENT_SPAWNED: CopilotPanel._noop,
             ev.SUB_AGENT_ANSWERED: CopilotPanel._noop,
             ev.SUB_AGENT_REFUSED: CopilotPanel._noop,
+            ev.INVOKE_MARKUP: CopilotPanel._noop,
         }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "_update_review_evidence")
