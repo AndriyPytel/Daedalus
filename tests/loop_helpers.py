@@ -398,16 +398,20 @@ class FakeTools:
             "properties": {"code": {"type": "string"}, "label": {"type": "string"},
                           "op": {"type": "string"},
                           "kernel_result": {"type": "object"},
-                          "design": {"type": "object"}},
+                          "design": {"type": "object"},
+                          "plan_values": {"type": "object"}},
             "required": ["code"],
         })
-        def apply_step(code, label="Step", op=None, kernel_result=None, design=None):
+        def apply_step(code, label="Step", op=None, kernel_result=None, design=None,
+                       plan_values=None):
             """A None entry, or running off the end, means "this one worked"."""
             arguments = {"code": code, "label": label}
             if op is not None:
                 arguments["op"] = op
             if design is not None:
                 arguments["design"] = design
+            if plan_values is not None:
+                arguments["plan_values"] = plan_values
             self.calls.append(("apply_step", arguments))
             queued = self.applies.pop(0) if self.applies else None
             result = queued if queued is not None else dict(self.APPLIED)
@@ -504,15 +508,26 @@ class StubKernel:
     it saw in `.calls` makes it a spy too, but Stub is what it is for.
     """
 
-    def __init__(self, fails=()):
+    def __init__(self, fails=(), plan_values=None):
         self.calls = []
         self._fails = list(fails)
+        self.plan_values = dict(plan_values or {})
 
     def check(self, code, **kwargs):
         self.calls.append(code)
+        if kwargs.get("capture_values"):
+            namespace = dict(self.plan_values, math=__import__("math"))
+            try:
+                exec(code, namespace)  # noqa: S102
+            except Exception:
+                pass
+            self.plan_values.update(
+                {name: value for name, value in namespace.items()
+                 if isinstance(value, (int, float)) and not isinstance(value, bool)})
         if self._fails:
             return self._fails.pop(0)
-        return kernel.KernelResult(ok=True, checkpoint=_scripted_checkpoint())
+        return kernel.KernelResult(ok=True, checkpoint=_scripted_checkpoint(),
+                                   plan_values=dict(self.plan_values))
 
 
 _SCRIPTED_CHECKPOINT = None

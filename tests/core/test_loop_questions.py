@@ -1044,19 +1044,17 @@ def test_a_plan_that_never_learns_to_cite_stops_the_run_and_says_why():
     assert tools.applied_codes() == [], "a Plan that dropped an entry built something"
 
 
-def test_a_step_whose_sum_does_not_come_out_never_reaches_the_gate():
+def test_a_step_naming_a_value_its_kernel_never_computed_never_reaches_the_gate():
     """
-    The recorded run's Plan assumed an 80.5 mm station for a 45° arm "to place
-    the left extreme at the 0 mm tangent plane". It places it at 8.58, and the
-    only thing in the run that multiplied by the cosine was Execute — after the
-    Gate, after the user had approved it, and at the cost of a revision each
-    time. The sum is worked out where the number is still cheap.
+    A Step that names a value is refused the moment Plan declares it if that
+    Step's own kernel never computed it -- no prose sum for Execute to get
+    wrong later, because Execute never sees a number at all, only the name.
     """
     result, events, _, tools = drive([
-        plan_reply("Pad the arm to an assumed 80.5 mm station, so the left extreme "
-                   "is at 65.5 - 80.5 * cos(45°) = 0 mm"),
-        plan_reply("Pad the arm to an assumed 92.63 mm station, so the left extreme "
-                   "is at 65.5 - 92.63 * cos(45°) = 0 mm"),
+        json.dumps({"code": "arm_y = 65.5 - 999 * math.cos(math.radians(45))"}),
+        plan_reply({"do": "Pad the arm to arm_station", "values": ["arm_station"]}),
+        json.dumps({"code": "arm_station = 65.5 - 92.63 * math.cos(math.radians(45))"}),
+        plan_reply({"do": "Pad the arm to arm_station", "values": ["arm_station"]}),
         code_reply("arm()"),
         suspect_reply(), verdict_reply("pass"),
     ])
@@ -1064,24 +1062,43 @@ def test_a_step_whose_sum_does_not_come_out_never_reaches_the_gate():
     assert result.ok
     revised = events.first(PLAN_REVISED)
     assert revised is not None
-    assert "and it is 8.58" in revised.data["reason"]
-    assert revised.data["because"] == "the Plan's own arithmetic did not come out"
-    assert len(events.of(GATE)) == 2, "the wrong sum was put to the user"
+    assert "arm_station" in revised.data["reason"]
+    assert revised.data["because"] == "a Step named a value the Plan never computed"
+    assert len(events.of(GATE)) == 2, "the undefined value was put to the user"
     assert tools.applied_codes() == ["arm()"]
 
 
-def test_a_plan_whose_arithmetic_never_comes_out_stops_the_run():
+def test_a_plan_that_never_computes_the_value_it_names_stops_the_run():
     """
-    The same shared ceiling as every other cause, so a Plan that keeps writing
-    sums that do not come out stops with a reason instead of looping.
+    The same shared ceiling as every other cause, so a Plan that keeps naming
+    a value it never computes stops with a reason instead of looping.
     """
     result, _, _, tools = drive(
-        [plan_reply("Pad it to 65.5 - 80.5 * cos(45°) = 0 mm")] * 5,
+        [plan_reply({"do": "Pad it to arm_station", "values": ["arm_station"]})] * 5,
         budgets=Budgets(revisions=2),
     )
 
     assert result.blocked
-    assert "arithmetic did not come out" in result.reason
+    assert "never computed" in result.reason
+    assert tools.applied_codes() == []
+
+
+def test_a_step_naming_a_reserved_word_is_refused_before_it_reaches_the_gate():
+    """
+    A Step whose values entry shadows a name the kernel namespace already
+    reserves (`design`, `doc`, `math`, `plan_values`, ...) is refused at
+    declare time with the same instruction Plan is given for any other
+    value error: give it a new name.
+    """
+    result, events, _, tools = drive(
+        [plan_reply({"do": "Pad the arm to doc", "values": ["doc"]})] * 5,
+        budgets=Budgets(revisions=2),
+    )
+
+    assert result.blocked
+    revised = events.first(PLAN_REVISED)
+    assert revised is not None
+    assert "reserved name" in revised.data["reason"]
     assert tools.applied_codes() == []
 
 
