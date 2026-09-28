@@ -323,14 +323,30 @@ RESERVED_STEP_NAMES = frozenset(
 
 def _harvested_plan_values(namespace):
     """
-    The top-level numbers a Plan-phase call computed, for `_SESSION` to
-    remember by name -- a name already reserved for the namespace itself is
-    never captured, so a Step cannot smuggle a value in under `design` or
-    `doc`.
+    The top-level numbers, and lists of numbers, a Plan-phase call computed,
+    for `_SESSION` to remember by name. A reserved name is never captured, so
+    a Step cannot smuggle a value in under `design` or `doc`, and a
+    `_`-prefixed name is scratch.
     """
-    return {name: value for name, value in namespace.items()
-            if name not in RESERVED_STEP_NAMES
-            and isinstance(value, (int, float)) and not isinstance(value, bool)}
+    kept = {}
+    for name, value in namespace.items():
+        if name in RESERVED_STEP_NAMES or name.startswith("_"):
+            continue
+        numbers = _numbers(value)
+        if numbers is not None:
+            kept[name] = numbers
+    return kept
+
+
+def _numbers(value):
+    """*value* as a number or a non-empty nested list of numbers, else None."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value
+    if isinstance(value, (list, tuple)) and value:
+        items = [_numbers(item) for item in value]
+        if all(item is not None for item in items):
+            return items
+    return None
 
 
 class _NamedDoc:
