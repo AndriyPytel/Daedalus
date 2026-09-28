@@ -2,7 +2,6 @@
 import os
 from dataclasses import dataclass, field
 
-from core.arithmetic import wrong_sums
 from core.design import part_file
 from core.design.report import distilled, render
 from core.design.gaps import (
@@ -32,6 +31,7 @@ from core.events import (
     UNBUILT,
 )
 from core.agent.subagent import RESERVE, SessionTreeSupervisor
+from core.kernel import Kernel
 from core.ledger import Ledger
 from core.llm import ProviderRefused
 
@@ -79,7 +79,7 @@ from core.loop.gate import (
 from core.loop.plan import (
     _as_written,
     _bad_rollback,
-    _do_the_sums,
+    _value_undefined,
     _op_off_the_list,
     _plan_once_it_knows_enough,
     _plan_the_rest,
@@ -220,6 +220,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         events.emit(ATTACHED, files=[{"name": os.path.basename(path), "path": path}
                                      for path in attachments])
 
+    kernel = kernel or Kernel()
+
     if the_part_path and not attachments:
         part = Part(part_file.read(the_part_path))
     else:
@@ -238,7 +240,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         planned, part.the_part = _plan_once_it_knows_enough(
             intent, tools.call("snapshot"), llm, events, budgets, part.the_part,
             cancelled, asking, tools, feedback, attachments, revising, history, ledger,
-            supervisor)
+            supervisor, kernel=kernel)
         return planned
 
     def decided(why, applied, unmet=()):
@@ -274,6 +276,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     looks = _what_this_build_has(tools)
     last_pass = LastPass()
     history_log = []
+    frozen_values = {}
 
     from core import settings
     auto_approve = settings.instance().get_auto_approve_plan()
@@ -344,13 +347,20 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               reason="no Step accounted for " + ", ".join(unconsumed))
             continue
 
-        miscounted = [sum_ for step in continuation for sum_ in wrong_sums(step)]
-        if miscounted:
-            planned = rewrite(_Revisions.MISCOUNTED,
-                              "The Plan's arithmetic still does not come out.",
-                              _do_the_sums(miscounted), progress.tried,
-                              reason="; ".join(miscounted))
+        value_errors = list(planned.value_errors)
+        for name, value in planned.values.items():
+            if name in frozen_values and frozen_values[name] != value:
+                value_errors.append({"step": name,
+                                     "why": "is already frozen at %s for an earlier Step; "
+                                            "give this one a new name" % frozen_values[name]})
+        if value_errors:
+            planned = rewrite(_Revisions.VALUE_UNDEFINED,
+                              "The Plan named a value its kernel does not have.",
+                              _value_undefined(value_errors), progress.tried,
+                              reason="; ".join("%s %s" % (item["step"], item["why"])
+                                              for item in value_errors))
             continue
+        frozen_values.update(planned.values)
 
         gate_context = {"history": list(history_log)} if history_log else {}
         if rollback:
@@ -430,7 +440,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                 start=carried, ops=full_ops, kernel=kernel,
                                 exploration=exploration,
                                 design=distilled(part.the_part) if part.the_part else None,
-                                supervisor=supervisor)
+                                supervisor=supervisor, plan_values=dict(frozen_values))
         for offset in range(outcome["applied_here"] - carried):
             history_log.append({"step": carried + offset + 1, "text": continuation[offset],
                                "rolled_back": None})
@@ -544,7 +554,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
                   start=0, ops=(), kernel=None, exploration=None, design=None,
-                  supervisor=None):
+                  supervisor=None, plan_values=None):
     """
     One pass over the Plan: written by one Execute phase, applied one Step at a
     time. `budgets.attempts_per_step` bounds one Step; a spent Step hands back
@@ -553,8 +563,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     carries `agent.py`'s undeclared-turn count across a same-Step regeneration
     and, threaded in by `_run` across its own replan loop, across a Plan
     revision too, `outcome.apply_failed` here is exhausted from retrying in
-    place, and `design`, distilled of its evidence, is carried read-only into
-    every Step's own namespace.
+    place, `design`, distilled of its evidence, is carried read-only into
+    every Step's own namespace, and `plan_values` the same way beside it.
     """
     if cancelled():
         raise Stopped()
@@ -572,7 +582,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     written = execute(steps, tools, llm, events, start, budgets=budgets,
                       as_described=as_described, looks=looks, entries=entries,
                       ledger=ledger, kernel=kernel, ops=ops, exploration=probe,
-                      design=design, supervisor=supervisor)
+                      design=design, supervisor=supervisor, plan_values=plan_values)
     if probed_step is not None:
         exploration[probed_step] = probe["turns"]
 

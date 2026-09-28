@@ -144,7 +144,7 @@ class Written:
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
             looks=None, entries=(), ledger=None, supervisor=None, kernel=None, ops=(),
-            exploration=None, design=None):
+            exploration=None, design=None, plan_values=None):
     """
     Run every Step from `start` to the end of the Plan as one agent phase,
     against one kernel held open for the whole call. `Written` comes from
@@ -152,9 +152,10 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     summary -- the code already lives in the kernel. A reply that writes code
     is not a verdict on the Plan, a regeneration replays from `start` against a
     fresh Snapshot, `exploration` passes through to `run_phase` keyed there by
-    `_work_through`'s outstanding Step, and `design` is carried read-only into
+    `_work_through`'s outstanding Step, `design` is carried read-only into
     every Step's own namespace in Preflight and at Apply, not only into
-    `as_described`'s prose for the model to read.
+    `as_described`'s prose for the model to read, and `plan_values` is the
+    numbers Plan froze at declare time, read by name from the same namespace.
     """
     budgets = budgets or Budgets()
     request = {"steps": [{"step": number, "do": prose}
@@ -222,6 +223,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             arguments["op"] = op
         if design:
             arguments["design"] = design
+        if plan_values:
+            arguments["plan_values"] = plan_values
         events.emit(TOOL_CALL, name="apply_step", arguments=dict(arguments))
         result = tools.call("apply_step", arguments)
         events.emit(TOOL_RESULT, name="apply_step", result=result)
@@ -266,6 +269,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                 on_declaration=on_declaration, exploration=exploration,
                 repair_ceiling=budgets.attempts_per_step,
                 already_delivered=range(1, start + 1),
+                plan_values=plan_values,
             )
 
         reply = declared if isinstance(declared, dict) else {}

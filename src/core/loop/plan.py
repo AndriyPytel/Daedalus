@@ -26,6 +26,7 @@ from core.loop.execute import (
 )
 from core.loop.gate import _DECIDE, _a_question_for_the_build
 from core.loop.prompt import PLAN_PHASE, _pictures, prompt
+from core.kernel.kernel_worker import RESERVED_STEP_NAMES
 
 import tempfile
 from core.agent.agent import run_phase
@@ -42,7 +43,9 @@ class Plan:
     steps, never beside them; `rollback` is the reply's own field for
     undoing part of the History, `{"to": K, "why": "..."}`, with
     `bad_rollback` set instead of it when that field could not be used as
-    written.
+    written. `values` is the frozen name -> number for every value a Step
+    named that Plan's own kernel had actually computed, `value_errors`
+    the Steps that named one it had not.
     """
 
     steps: list
@@ -52,6 +55,8 @@ class Plan:
     cites: list = field(default_factory=list)
     ops: list = field(default_factory=list)
     unbuildable: list = field(default_factory=list)
+    values: dict = field(default_factory=dict)
+    value_errors: list = field(default_factory=list)
     look: dict = None
     rollback: dict = None
     bad_rollback: str = ""
@@ -108,8 +113,9 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
         )
     
     reply = declared if isinstance(declared, dict) else {}
-    steps, satisfies, cites, ops, unbuildable = _steps_of(
-        reply.get("steps", []), reply.get("op_vocabulary"))
+    known_values = dict(getattr(kernel, "plan_values", None) or {})
+    steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
+        reply.get("steps", []), reply.get("op_vocabulary"), known_values)
     rollback, bad_rollback = _rollback_field(reply.get("rollback"), len(history))
 
     look = reply.get("look")
@@ -122,19 +128,25 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     if not steps and not rollback and not bad_rollback:
         raise PhaseError("Plan produced no Steps for this Intent.")
     return Plan(steps=steps, satisfies=satisfies, cites=cites, ops=ops,
-                unbuildable=unbuildable, acceptance=_acceptance_of(the_part),
+                unbuildable=unbuildable, values=values, value_errors=value_errors,
+                acceptance=_acceptance_of(the_part),
                 rollback=rollback, bad_rollback=bad_rollback)
 
 
-def _steps_of(planned, op_vocabulary=None):
+def _steps_of(planned, op_vocabulary=None, known_values=None):
     """
     The prose of each Step, the entries the Plan cites, the operation each kept
     Step declared, and the Steps refused outright. What a Step satisfies goes
     into its own prose, so the Gate can tell one physical cavity planned three
-    times. `op` is checked against `OP_VERBS` only where `"op_vocabulary":
-    "closed"` -- unmarked, that check was measured at 14.9% and rejected.
+    times; `op` is checked against `OP_VERBS` only where `"op_vocabulary":
+    "closed"` -- unmarked, that check was measured at 14.9% and rejected. A
+    Step's own `values` names the numbers it reads from Plan's own kernel,
+    one not in *known_values* collected as a value nobody computed, the same
+    shape `unbuildable` already is rather than raised as a Step failure.
     """
-    steps, satisfies, cites, ops, unbuildable = [], [], [], [], []
+    known_values = known_values or {}
+    steps, satisfies, cites, ops, unbuildable, values, value_errors = \
+        [], [], [], [], [], {}, []
     closed = op_vocabulary == OP_VOCABULARY
     for step in planned:
         if isinstance(step, dict):
@@ -142,8 +154,10 @@ def _steps_of(planned, op_vocabulary=None):
             cited = [_as_written(entry) for entry in (step.get("satisfies") or ())
                      if _as_written(entry)]
             op = str(step.get("op") or "").strip() or None
+            named_values = [str(name).strip() for name in (step.get("values") or ())
+                            if str(name).strip()]
         else:
-            prose, cited, op = str(step).strip(), [], None
+            prose, cited, op, named_values = str(step).strip(), [], None, []
         if not prose:
             continue
         if closed and op and op not in OP_VERBS:
@@ -156,13 +170,23 @@ def _steps_of(planned, op_vocabulary=None):
                                 "why": "is not written in English",
                                 "entries": cited})
             continue
+        for name in named_values:
+            if name in RESERVED_STEP_NAMES:
+                value_errors.append({"step": prose,
+                                     "why": "%r is a reserved name -- give this one "
+                                            "a new name" % name})
+            elif name in known_values:
+                values[name] = known_values[name]
+            else:
+                value_errors.append({"step": prose,
+                                     "why": "%r was never computed in your kernel" % name})
         steps.append(prose + (" (satisfies: %s)" % ", ".join(_in_the_prose(entry)
                                                              for entry in cited)
                               if cited else ""))
         satisfies.extend(cited)
         cites.append(cited)
         ops.append(op if closed else None)
-    return steps, satisfies, cites, ops, unbuildable
+    return steps, satisfies, cites, ops, unbuildable, values, value_errors
 
 
 def _as_written(entry):
@@ -277,20 +301,19 @@ def _plan_the_rest(unconsumed, history=False) -> str:
             "revision budget without running a single Step.")
 
 
-def _do_the_sums(miscounted) -> str:
-    """What Plan is told about the arithmetic it stated and did not do."""
-    return ("These sums are in your Steps and they do not come out:\n"
-            + "\n".join("- " + said for said in miscounted)
-            + "\nWork each one out again and send the Plan back with the right number in "
-              "the Step that uses it — every Step you already wrote, with these corrected. "
-              "Angles are in degrees, and a distance along a direction is the distance "
-              "along the geometry times the cosine of the angle between them.\n"
-              "If the number that does come out contradicts an entry of the description, "
-              "that is two `read` values that cannot both be true and it is not yours to "
-              "settle: say so in `question` rather than choosing a third number. A "
-              "recorded run assumed one, was refused by Execute for the arithmetic, "
-              "assumed another, was refused in the same words, and ended with an empty "
-              "Document.")
+def _value_undefined(value_errors) -> str:
+    """
+    What Plan is told when a Step names a value its own kernel never
+    computed -- a typo in the name, or a value it meant to compute and
+    did not get to before declaring.
+    """
+    named = "\n".join("- %r %s" % (item["step"], item["why"]) for item in value_errors)
+    return (named
+            + "\nCompute the missing value as code in your kernel first, then send back "
+              "every Step you already wrote, unchanged, with the Step(s) named above "
+              "either naming the value you now computed or rewritten to use one that "
+              "already exists. A name a Step already applied is frozen -- give a new "
+              "value a name of its own rather than rebinding one already in use.")
 
 
 def _two_directions_in_one_step(planned):
@@ -333,7 +356,8 @@ def _one_direction_per_step(mixed):
 
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
-                               revising=(), history=(), ledger=None, supervisor=None):
+                               revising=(), history=(), ledger=None, supervisor=None,
+                               kernel=None):
     """
     Plan, letting it ask for what the description did not carry, and the
     run waits. A question goes to the drawing first; unanswered, Design
@@ -349,7 +373,8 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                        revising=revising, history=history,
                        looking=_lookable(tools) if for_the_build else (),
                        looked=asking.looked_up,
-                       tried=ledger.render() if ledger else "", supervisor=supervisor)
+                       tried=ledger.render() if ledger else "", supervisor=supervisor,
+                       kernel=kernel)
         change_set = None
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))

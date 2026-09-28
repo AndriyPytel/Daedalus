@@ -58,6 +58,7 @@ class KernelResult:
     names: dict = field(default_factory=dict)
     signature: dict = field(default_factory=dict)
     rolled_back: list = field(default_factory=list)
+    plan_values: dict = field(default_factory=dict)
 
     @classmethod
     def from_response(cls, response):
@@ -74,11 +75,12 @@ class KernelResult:
         held, failed = response.get("held"), response.get("failed")
         checkpoint = response.get("checkpoint")
         names = response.get("names") or {}
+        plan_values = response.get("plan_values") or {}
         if not response.get("ok"):
             return cls(ok=False, traceback=response.get("traceback", "the kernel failed"),
                        held=held, failed=failed, stdout=response.get("stdout", ""),
                        volume=response.get("volume") or {},
-                       checkpoint=checkpoint, names=names)
+                       checkpoint=checkpoint, names=names, plan_values=plan_values)
         return cls(ok=True,
                    render=response.get("render"),
                    objects=response.get("objects", []),
@@ -90,7 +92,8 @@ class KernelResult:
                    volume=response.get("volume") or {},
                    checkpoint=checkpoint, names=names,
                    signature=response.get("signature") or {},
-                   rolled_back=response.get("rolled_back") or [])
+                   rolled_back=response.get("rolled_back") or [],
+                   plan_values=plan_values)
 
 
 def find_freecadcmd():
@@ -130,10 +133,16 @@ class Kernel:
         self._checkpoint = None
         self._needs_resume = False
         self._design = None
+        self._plan_values = {}
 
     @property
     def alive(self):
         return self._process is not None and self._process.poll() is None
+
+    @property
+    def plan_values(self) -> dict:
+        """The name -> number Plan's kernel session currently holds."""
+        return dict(self._plan_values)
 
     @property
     def pid(self):
@@ -208,19 +217,22 @@ class Kernel:
         self.kill()
 
     def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None,
-              ephemeral=False, design=None, exploring=False):
+              ephemeral=False, design=None, exploring=False, plan_values=None,
+              capture_values=False):
         """
         Run *code* as one Step in the kernel. `document` not given
         continues the kernel's own session, resuming on the last
         checkpoint if the worker restarted since, or refusing if no
         checkpoint exists yet to resume onto; `document` given is a fresh
-        handoff from that path, always honoured; *design* is carried into
-        the Step's namespace read-only, remembered by the kernel's own
-        session past this call the same as *names*; and *exploring* marks
-        *code* as a call no Step declares, rolled back to the last
-        checkpoint with the result naming what was undone where it
-        creates, deletes or modifies an object. Returns a KernelResult,
-        never raising for anything the code did.
+        handoff from that path, always honoured; *design* and *plan_values*
+        are carried into the Step's namespace, both remembered and resent
+        by the kernel's own session past this call the same as *names*; and
+        *exploring* marks *code* as a call no Step declares, rolled back to
+        the last checkpoint with the result naming what was undone where it
+        creates, deletes or modifies an object. *capture_values* marks a
+        Plan-phase call whose own top-level numbers fold into *plan_values*
+        rather than only reading it, and the return is always a KernelResult,
+        never a raise for anything the code did.
         """
         if document is _CONTINUE and self._needs_resume:
             if self._checkpoint is None:
@@ -235,6 +247,11 @@ class Kernel:
         elif document is not _CONTINUE:
             design = self._design
 
+        if plan_values is not None:
+            self._plan_values = dict(plan_values)
+        elif document is not _CONTINUE:
+            plan_values = self._plan_values
+
         request = {"code": code}
         if document is not _CONTINUE:
             request["document"] = document
@@ -248,11 +265,17 @@ class Kernel:
             request["exploring"] = True
         if design is not None:
             request["design"] = design
+        if plan_values is not None:
+            request["plan_values"] = plan_values
+        if capture_values:
+            request["capture_values"] = True
         response, why = self._ask(request, timeout or self.timeout, "the Step")
         if response is None:
             return KernelResult(ok=False, traceback=why)
         self._checkpoint = response.get("checkpoint") or self._checkpoint
         self._needs_resume = False
+        if "plan_values" in response:
+            self._plan_values = dict(response.get("plan_values") or {})
         return KernelResult.from_response(response)
 
     def reading(self, request, timeout=None):
