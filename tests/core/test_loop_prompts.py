@@ -646,11 +646,12 @@ def test_plan_is_told_a_step_that_cannot_fail_alone_takes_the_plan_with_it():
     assert "never the same work twice" in plan_system
 
 
-def test_plan_is_told_to_write_the_sum_and_not_only_the_answer():
+def test_plan_is_told_to_name_a_computed_value_and_never_retype_it():
     """
-    The sum is checked before the Gate, so it has to be there to check: a Step
-    that states only the answer states nothing anybody can work out. And the
-    remedy for a sum that will not come out is a question, not a third number —
+    A computed value is checked against `plan_values` before the Gate, so it
+    has to be computed and named to be checked at all: a Step that retypes
+    the number states nothing Execute can read back. And the remedy for a
+    computation that will not come out is a question, not a third number —
     which is what the recorded run tried, twice.
     """
     _, _, llm, _ = drive([
@@ -660,12 +661,13 @@ def test_plan_is_told_to_write_the_sum_and_not_only_the_answer():
     ])
     plan_system = " ".join(_system_messages(llm)[1].split())
 
-    assert "A number you worked out is written as the sum that worked it out" \
+    assert "A number you worked out is a name, computed once, never retyped" \
         in plan_system
-    assert "Write the sum, not only the answer" in plan_system
-    assert "Angles are in degrees" in plan_system
-    assert "A sum that will not come out is a disagreement between two entries" \
+    assert "never the number itself" in plan_system
+    assert "A name is frozen the moment a Step naming it is declared" \
         in plan_system
+    assert "A computation that will not come out is a disagreement between " \
+        "two entries" in plan_system
 
 
 def test_design_is_told_to_replace_the_feature_the_later_page_supersedes():

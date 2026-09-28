@@ -11,7 +11,7 @@ class PhaseError(Exception):
 class Budgets:
     """
     What a run may spend, and the ceilings that make it terminate. Two
-    separate ceilings: mechanical causes (UNCOVERED, MISCOUNTED) spend
+    separate ceilings: mechanical causes (UNCOVERED, VALUE_UNDEFINED) spend
     their own whole-run budget; execution causes (OBSOLETE, UNBUILDABLE,
     ASSERTED, REJECTED, AMENDED) spend at most `revisions` replans against
     the Step that caused them, and `revisions_ceiling` overall -- a
@@ -57,7 +57,7 @@ class _Revisions:
     """How many times the Plan has been rewritten, and why -- in total, and per Step."""
 
     UNCOVERED = "uncovered"
-    MISCOUNTED = "miscounted"
+    VALUE_UNDEFINED = "value_undefined"
     OP_REFUSED = "op_refused"
     AMENDED = "amended"
     OBSOLETE = "obsolete"
@@ -65,11 +65,11 @@ class _Revisions:
     ASSERTED = "asserted"
     REJECTED = "rejected"
 
-    MECHANICAL_CAUSES = {UNCOVERED, MISCOUNTED, OP_REFUSED}
+    MECHANICAL_CAUSES = {UNCOVERED, VALUE_UNDEFINED, OP_REFUSED}
 
     _SAID = (
         (UNCOVERED, "the Plan left part of the description unplanned %s"),
-        (MISCOUNTED, "the Plan's own arithmetic did not come out %s"),
+        (VALUE_UNDEFINED, "a Step named a value the Plan never computed %s"),
         (OP_REFUSED, "a Step named an operation off the closed list %s"),
         (AMENDED, "you amended the Plan %s"),
         (OBSOLETE, "Execute found the Plan out of date %s"),

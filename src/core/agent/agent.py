@@ -20,6 +20,7 @@ from core.events import (
 from core.kernel import Kernel
 from core.llm import REASONING, TEXT, Session
 from core.llm.exceptions import StreamCutOff
+from core.agent import phase_contract as pc
 from core.agent.invoke_guard import first_invoke_in, recovered_message
 from core.agent.phase_contract import spawn
 from core.agent.subagent import delegate
@@ -69,7 +70,7 @@ def _a_python_level_error(traceback):
 def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
               kernel=None, supervisor=None, stream=None, system=None,
               on_declaration=None, exploration=None, design=None, repair_ceiling=None,
-              already_delivered=(), ledger=""):
+              already_delivered=(), ledger="", plan_values=None):
     """
     Run *phase* as a multi-turn agent against its own kernel, returning
     `(declared, session, declarations)`. *on_declaration*, called the moment a
@@ -91,7 +92,10 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     call already landed, so a regeneration resuming mid-Plan does not refuse
     its own first Step for a predecessor this call never saw; *ledger* is
     rendered after the Protocol rather than folded into *system*, the same
-    split `core.agent.agent._composed_system` documents.
+    split `core.agent.agent._composed_system` documents; and *plan_values*,
+    handed to the kernel the same way as *design*, is captured back out of
+    every call the Plan phase itself makes, so a later Step can name a
+    value an earlier one computed.
     """
     working = spawn(phase, working_dir,
                     **(dict(sources, document=document) if isinstance(document, str)
@@ -203,8 +207,12 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     working_kernel = Kernel()
                 step_document = document if first_step else _NO_DOCUMENT
                 kernel_kwargs = {"design": design} if first_step and design is not None else {}
+                if first_step and plan_values is not None:
+                    kernel_kwargs["plan_values"] = plan_values
                 if step_document is not _NO_DOCUMENT:
                     kernel_kwargs["document"] = step_document
+                if phase == pc.PLAN:
+                    kernel_kwargs["capture_values"] = True
                 result = working_kernel.check(
                     message["code"], exploring=message.get("step") is None, **kernel_kwargs)
                 last_failure = None if result.ok else result.traceback

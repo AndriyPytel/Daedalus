@@ -278,7 +278,7 @@ def _step_design(design):
     return design
 
 
-def step_namespace(doc, design=None):
+def step_namespace(doc, design=None, plan_values=None, capture_values=False):
     """
     What a Step's code runs with, built identically by the kernel and the GUI's
     replay or they run different programs. Sketch geometry lives outside
@@ -288,7 +288,10 @@ def step_namespace(doc, design=None):
     `import App` finds an empty namespace package unless sys.modules holds the
     real module first. *design* is carried as a private copy alongside the
     Document rather than through a working directory that does not survive
-    Apply or replay -- absent where no run has one.
+    Apply or replay -- absent where no run has one; *plan_values* is Plan's own
+    frozen numbers, seeded as bare names for Plan's own code to build on when
+    *capture_values* is set, or handed over as the one reserved `plan_values`
+    dict for Execute and Apply to read by name otherwise.
     """
     import FreeCAD
 
@@ -305,7 +308,29 @@ def step_namespace(doc, design=None):
             namespace[module] = __import__(module)
         except ImportError:
             pass  # except-pass-allowed: an optional Step module not installed in this build
+    if capture_values:
+        namespace.update(plan_values or {})
+    elif plan_values is not None:
+        namespace["plan_values"] = dict(plan_values)
     return namespace
+
+
+RESERVED_STEP_NAMES = frozenset(
+    {"App", "FreeCAD", "doc", "__name__", "edges_between", "edges_by_concavity",
+     "built_ok", "pick_edges", "bbox", "by_label", "design", "names", "plan_values"}
+    | set(STEP_MODULES))
+
+
+def _harvested_plan_values(namespace):
+    """
+    The top-level numbers a Plan-phase call computed, for `_SESSION` to
+    remember by name -- a name already reserved for the namespace itself is
+    never captured, so a Step cannot smuggle a value in under `design` or
+    `doc`.
+    """
+    return {name: value for name, value in namespace.items()
+            if name not in RESERVED_STEP_NAMES
+            and isinstance(value, (int, float)) and not isinstance(value, bool)}
 
 
 class _NamedDoc:
@@ -986,7 +1011,8 @@ def _recompute_scope(doc, touched):
     return scope
 
 
-_SESSION = {"doc": None, "checkpoint": None, "names": {}, "design": None}
+_SESSION = {"doc": None, "checkpoint": None, "names": {}, "design": None,
+            "plan_values": {}}
 
 
 def _checkpoint_path():
@@ -1140,6 +1166,7 @@ def run_step(request):
     """
     ephemeral = request.get("ephemeral", False)
     exploring = request.get("exploring", False)
+    capture_values = bool(request.get("capture_values"))
     if "document" in request or _SESSION["doc"] is None:
         _SESSION["doc"] = _open_document(request.get("document"))
         _SESSION["names"] = dict(request.get("names") or {})
@@ -1147,10 +1174,14 @@ def run_step(request):
             _save_checkpoint(_SESSION["doc"])
     if "design" in request:
         _SESSION["design"] = request["design"]
+    if "plan_values" in request:
+        _SESSION["plan_values"] = dict(request["plan_values"])
 
     doc = _SESSION["doc"]
     names = dict(_SESSION["names"])
-    namespace = step_namespace(_NamedDoc(doc, names), design=_SESSION["design"])
+    namespace = step_namespace(_NamedDoc(doc, names), design=_SESSION["design"],
+                               plan_values=_SESSION["plan_values"],
+                               capture_values=capture_values)
     namespace["names"] = names
 
     touched = _Touched(doc)
@@ -1179,6 +1210,8 @@ def run_step(request):
         response["stdout"] = printed
 
     if response.get("ok"):
+        if capture_values:
+            _SESSION["plan_values"].update(_harvested_plan_values(namespace))
         if exploring and touched.touched() and not ephemeral:
             _reload_checkpoint()
             response["rolled_back"] = sorted(touched.created | touched.deleted | touched.modified())
@@ -1191,6 +1224,7 @@ def run_step(request):
             _reload_checkpoint()
     response["checkpoint"] = _SESSION["checkpoint"]
     response["names"] = dict(_SESSION["names"])
+    response["plan_values"] = dict(_SESSION["plan_values"])
     return response
 
 
