@@ -127,31 +127,42 @@ Step K itself; the continuation carries no Step for the rollback. Steps K+1
 onward are then yours to build again, starting from the same numbers; History
 keeps its own record of what was rolled back and why.
 
-## A number you worked out is written as the sum that worked it out
+## A number you worked out is a name, computed once, never retyped
 
 A Step's numbers are not all copied off the description: a station along an
 angled arm, a coordinate at 45°, a distance that has to reach a datum — those
-you compute, and the Step carries the answer. **Write the sum, not only the
-answer**: `assumed arm station 65.5 / cos(45°) = 92.63 mm`. Angles are in
-degrees; a distance along one direction is the distance along the geometry
-times the cosine of the angle between them — that cosine is the whole of what
-goes missing. An interval is written the same way, span and all: `Y = 8 mm to
-Y = 22 mm (22 - 8 = 14 mm)`.
+you compute as real Python, with `{"code": "..."}`, in your own kernel; you
+see back what printed and any exception. Give what you computed a name that
+says which feature it belongs to — `arm_station`, `slot_left_y` — never a
+bare `x` or `v1`. A Step that needs it carries that name in its own
+`"values"` list, `{"do": "Pad the arm to arm_station", "values":
+["arm_station"]}`, and **never the number itself**: the Step's prose names
+the value, Execute reads it back from the same kernel by that name, and no
+number is ever typed twice to drift apart.
 
-Every sum you write is worked out before your Plan reaches the Gate, and one
-that does not come out is handed straight back to you. A recorded run wrote
-an interval whose two ends did not add to the width the same Step stated;
-Execute built the Step's numbers anyway, and a hole six Steps later drilled
-into a station with no material under it
-(`logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl`).
+A name is frozen the moment a Step naming it is declared: a later revision
+may not rebind it to a different value, only compute a new one under a name
+of its own. A name may not shadow one the kernel namespace already reserves
+— `design`, `doc`, `App`, `Part`, `math`, `plan_values` among them — a Step
+naming one is refused the same way an uncomputed name is.
 
-**A sum that will not come out is a disagreement between two entries, and
-settling it is not yours.** Where the number the arithmetic gives contradicts
-an entry of the description, you have found a conflict the description does
-not record — say so in `question`, naming both entries and the sum that puts
-them at odds. Assuming a third number instead is inventing your way past the
-sheet: it is refused at the geometry, and the value nobody supplied is the
-one the user cannot check.
+**A Step naming a value your kernel never computed is handed straight back to
+you**, the Step's own prose named with what is missing. Compute the value as
+code first, then resend every Step you already wrote, unchanged, save the
+Step(s) that named it. A recorded run wrote an interval whose two ends did not
+add to the width the same Step stated; Execute built the Step's numbers
+anyway, and a hole six Steps later drilled into a station with no material
+under it (`logs/sessions/247c2aaed0734866a8aa9d169f7303bd.jsonl`) — that
+class of drift is why a Step never carries the number again once it has a
+name.
+
+**A computation that will not come out is a disagreement between two
+entries, and settling it is not yours.** Where the number your code gives
+contradicts an entry of the description, you have found a conflict the
+description does not record — say so in `question`, naming both entries and
+the value that puts them at odds. Assuming a third number instead is
+inventing your way past the sheet: it is refused at the geometry, and the
+value nobody supplied is the one the user cannot check.
 
 
 Sketch geometry is positioned by computed coordinates, not by the constraint
@@ -387,8 +398,9 @@ already lists every feature's `id` next to its dimensional fields and their
 `mm` or `deg` numbers — read it there rather than spending a turn on
 `print(design)` to find out what it already shows. Where a Step's numbers
 need arithmetic worked out — a station along an angled arm, an interval
-that has to add up — write it as Python and run it with `{"code": "..."}`;
-you see back what printed and any exception. You may hand a bounded, self-contained
+that has to add up — write it as Python and run it with `{"code": "..."}`,
+naming what you compute so a Step can read it back by that name. You may
+hand a bounded, self-contained
 sub-question to a depth-1 sub-agent (`{"delegate": "..."}`, FCC-307) —
 checking one op-vocabulary spelling against the closed list, say — when
 that is genuinely faster than working it out yourself.

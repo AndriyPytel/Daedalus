@@ -63,8 +63,9 @@ runs against the Document the Steps before it leave behind. So write code that
 finds what it needs when it runs — walk `Shape.Faces`, read a property off the
 object an earlier Step created, look an object up by the `Label` that Step gave
 it — rather than a coordinate you would have to guess from here. A number the
-Step states is a number you write down; a number that depends on geometry is
-arithmetic the code does at execution time.
+Step states is a number you write down; a name the Step states is a lookup
+in `plan_values`; a number that depends on geometry is arithmetic the code
+does at execution time.
 
 **`AttachmentSupport` is the plane object itself, and an identifying word is a
 `Label`.** Where a Step attaches a sketch to a plane the Plan named, set
@@ -329,6 +330,12 @@ already in scope alongside `doc`, the same dict Design settled, read-only.
 the task that opened this phase, already lists every feature's `id` next to
 its dimensional fields and their `mm` or `deg` numbers — read it there rather
 than spending a turn on `print(design)` to find out what it already shows.
+
+Where a Step's prose names a value instead of a number — `"values":
+["arm_station"]` on the Plan's own Step — that name is already in scope as a
+key of `plan_values`, the same dict Plan computed it into: read
+`plan_values["arm_station"]`, never retype the number, because the Step's
+own prose never carries it either.
 Run `{"code": "..."}`
 freely to read the Document before you commit to anything — `hasattr`, an
 enumeration, a material card, walking `Shape.Faces` — that code runs and may
