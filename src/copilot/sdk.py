@@ -172,8 +172,10 @@ class Client:
 
         if document is None:
             self.document = self.dispatch(FreeCAD.newDocument)
+            self.document.UndoMode = 1
         elif isinstance(document, str):
             self.document = self.dispatch(lambda: FreeCAD.openDocument(document))
+            self.document.UndoMode = 1
         else:
             self.document = document
 

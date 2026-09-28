@@ -59,7 +59,7 @@ class Plan:
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set=None,
          unanswered=(), revising=(), history=(), looking=(), looked=(), tried="",
-         supervisor=None, kernel=None):
+         supervisor=None, kernel=None, undo_depth=None):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot. Plan
     never sees the picture; it is handed the part Design describes, one
@@ -67,9 +67,10 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     win and lost a value read off SECTION B-B. A revision before anything
     is applied is handed the Plan it rewrites (`revising`) or drops Steps
     a bare complaint never named; a revision after Steps have landed is
-    handed those read-only (`history`) and writes only the continuation,
-    numbered from where the History leaves off, and `tried` is every
-    classified failure so far so a revision does not repeat one.
+    handed those read-only (`history`), writes only the continuation
+    numbered from where it leaves off, carries `tried` so it does not repeat
+    a classified failure, and `undo_depth` bounding how far back its
+    `rollback` may name.
     """
     request = {"intent": intent, "document": snapshot}
     if history:
@@ -110,7 +111,7 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     reply = declared if isinstance(declared, dict) else {}
     steps, satisfies, cites, ops, unbuildable = _steps_of(
         reply.get("steps", []), reply.get("op_vocabulary"))
-    rollback, bad_rollback = _rollback_field(reply.get("rollback"), len(history))
+    rollback, bad_rollback = _rollback_field(reply.get("rollback"), len(history), undo_depth)
 
     look = reply.get("look")
     if not steps and looking and isinstance(look, dict) and look:
@@ -205,13 +206,15 @@ def _unconsumed(the_part, satisfies, standing=()):
                         for said in cited)]
 
 
-def _rollback_field(raw, applied) -> tuple:
+def _rollback_field(raw, applied, undo_depth=None) -> tuple:
     """
     The `rollback` field of a Plan reply, validated against how many Steps
-    of `already_built` it was handed: `to` must be an already-applied Step,
-    `0 <= to < applied`. Returns `(rollback, bad_reason)`, exactly one of
-    the two set, so a malformed field is refused rather than silently
-    dropped or crashed on.
+    of `already_built` it was handed and, when known, how many the live
+    Document's undo stack can still reach: `to` must be an already-applied
+    Step no further back than the stack goes, `max(0, applied - undo_depth)
+    <= to < applied`. Returns `(rollback, bad_reason)`, exactly one of the
+    two set, so a malformed or unreachable field is refused rather than
+    silently dropped, crashed on, or left to end the run.
     """
     if raw is None:
         return None, ""
@@ -220,9 +223,15 @@ def _rollback_field(raw, applied) -> tuple:
                       '{"to": K, "why": "..."}.' % (raw,))
     to = raw.get("to")
     why = str(raw.get("why") or "").strip()
-    if not isinstance(to, int) or isinstance(to, bool) or not (0 <= to < applied):
+    earliest = max(0, applied - undo_depth) if undo_depth is not None else 0
+    if not isinstance(to, int) or isinstance(to, bool) or not (earliest <= to < applied):
+        if undo_depth is not None and isinstance(to, int) and not isinstance(to, bool) \
+                and 0 <= to < earliest:
+            return None, ('rollback.to=%d would undo %d Steps, but the undo stack only '
+                          "reaches back %d -- name a Step no earlier than %d."
+                          % (to, applied - to, undo_depth, earliest))
         return None, ('rollback.to=%r must be an integer naming an already-applied Step, '
-                      "from 0 to %d." % (to, applied - 1 if applied else -1))
+                      "from %d to %d." % (to, earliest, applied - 1 if applied else -1))
     if not why:
         return None, "rollback.why is empty -- give one sentence of reason."
     return {"to": to, "why": why}, ""
@@ -338,9 +347,13 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     Plan, letting it ask for what the description did not carry, and the
     run waits. A question goes to the drawing first; unanswered, Design
     settles it itself and writes the chosen value into the model with
-    `flag: assumed`, so Plan reads it back like any other field.
+    `flag: assumed`, so Plan reads it back like any other field. A
+    revision with Steps already landed is asked, once, how far the live
+    Document's undo stack still reaches, so a `rollback` too deep is
+    refused before it ever ends the run.
     """
     grown, for_the_build, change_set = the_part, False, None
+    undo_depth = tools.call("undo_depth")["depth"] if history else None
     while True:
         if cancelled():
             raise Stopped()
@@ -349,7 +362,8 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                        revising=revising, history=history,
                        looking=_lookable(tools) if for_the_build else (),
                        looked=asking.looked_up,
-                       tried=ledger.render() if ledger else "", supervisor=supervisor)
+                       tried=ledger.render() if ledger else "", supervisor=supervisor,
+                       undo_depth=undo_depth)
         change_set = None
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))
