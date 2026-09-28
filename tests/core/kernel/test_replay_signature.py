@@ -56,7 +56,8 @@ def _pipeline(trace, result):
     doc = FakeDocument()
     worker = FakeWorker(result)
 
-    def transaction(document, code, label, names=None, expected_signature=None, design=None):
+    def transaction(document, code, label, names=None, expected_signature=None, design=None,
+                    plan_values=None):
         trace.append(("transaction", label, dict(names or {})))
         document.Objects.append(FakeObject("Box001"))
 

@@ -815,7 +815,7 @@ def test_a_conflict_the_tracing_settles_is_left_read_by_the_new_step(monkeypatch
 
 def test_mechanical_revisions_do_not_consume_execution_budget():
     """
-    UNCOVERED and MISCOUNTED spend their own ceiling without reducing what
+    UNCOVERED and VALUE_UNDEFINED spend their own ceiling without reducing what
     UNBUILDABLE, OBSOLETE, ASSERTED, REJECTED, and AMENDED have left.
 
     The recorded run (logs/sessions/247c2aa...) spent 2 of 3 revisions on
@@ -1042,7 +1042,7 @@ def test_a_closed_step_op_off_the_36_list_is_refused_and_names_the_verb():
     """
     from core.loop.plan import _steps_of
 
-    steps, satisfies, cites, ops, unbuildable = _steps_of(
+    steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
         [{"do": "Squish the tab flat", "op": "squish",
           "satisfies": ["envelope → depth: 10 mm (read)"]}],
         CLOSED_OPS)
@@ -1057,7 +1057,7 @@ def test_a_closed_step_op_off_the_36_list_is_refused_and_names_the_verb():
 def test_a_closed_step_op_on_the_36_list_is_kept_with_its_op():
     from core.loop.plan import _steps_of
 
-    steps, satisfies, cites, ops, unbuildable = _steps_of(
+    steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
         [{"do": "Pad the base profile 6 mm", "op": "pad"}], CLOSED_OPS)
 
     assert steps == ["Pad the base profile 6 mm"]
@@ -1073,7 +1073,7 @@ def test_an_unmarked_reply_takes_the_legacy_path_op_or_not():
     """
     from core.loop.plan import _steps_of
 
-    steps, satisfies, cites, ops, unbuildable = _steps_of(
+    steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
         [{"do": "Squish the tab flat", "op": "squish"}], None)
 
     assert steps == ["Squish the tab flat"]
@@ -1083,7 +1083,7 @@ def test_an_unmarked_reply_takes_the_legacy_path_op_or_not():
 def test_a_bare_string_step_is_unaffected_by_the_op_check():
     from core.loop.plan import _steps_of
 
-    steps, satisfies, cites, ops, unbuildable = _steps_of(["Pad the base profile 6 mm"],
+    steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(["Pad the base profile 6 mm"],
                                                           CLOSED_OPS)
 
     assert steps == ["Pad the base profile 6 mm"]
@@ -1099,7 +1099,7 @@ def test_a_closed_step_written_in_ukrainian_is_refused():
     """
     from core.loop.plan import _steps_of
 
-    steps, satisfies, cites, ops, unbuildable = _steps_of(
+    steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
         [{"do": "Виконати паз шириною 6 мм", "op": "pocket",
           "satisfies": ["envelope \u2192 depth: 10 mm (read)"]}],
         CLOSED_OPS)
@@ -1114,7 +1114,7 @@ def test_a_closed_step_written_in_ukrainian_is_refused():
 def test_a_closed_step_written_in_english_is_unaffected_by_the_language_check():
     from core.loop.plan import _steps_of
 
-    steps, satisfies, cites, ops, unbuildable = _steps_of(
+    steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
         [{"do": "Pocket a 6 mm slot", "op": "pocket"}], CLOSED_OPS)
 
     assert steps == ["Pocket a 6 mm slot"]
@@ -1128,7 +1128,7 @@ def test_a_closed_step_with_domain_symbols_is_not_mistaken_for_ukrainian():
     """
     from core.loop.plan import _steps_of
 
-    steps, satisfies, cites, ops, unbuildable = _steps_of(
+    steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
         [{"do": "Drill a Ø40 bore — 30° chamfer both ends", "op": "hole"}],
         CLOSED_OPS)
 
@@ -1145,7 +1145,7 @@ def test_a_closed_step_with_one_cyrillic_label_is_not_refused():
     """
     from core.loop.plan import _steps_of
 
-    steps, satisfies, cites, ops, unbuildable = _steps_of(
+    steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
         [{"do": "Pad the profile 6.5 mm, label it Профіль",
           "op": "pad"}],
         CLOSED_OPS)
@@ -1160,7 +1160,7 @@ def test_an_unmarked_reply_takes_the_legacy_path_for_language_too():
     language, whatever it is written in."""
     from core.loop.plan import _steps_of
 
-    steps, satisfies, cites, ops, unbuildable = _steps_of(
+    steps, satisfies, cites, ops, unbuildable, values, value_errors = _steps_of(
         [{"do": "Виконати паз шириною 6 мм", "op": "pocket"}], None)
 
     assert steps == ["Виконати паз шириною 6 мм"]

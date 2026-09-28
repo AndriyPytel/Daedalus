@@ -1901,8 +1901,8 @@ def test_a_number_the_sheet_measures_between_two_of_its_own_is_derived():
 
 def test_a_number_that_is_two_of_the_sheets_added_up_is_not_derived():
     """
-    Stating a sum is the prompt's job and checking one is `wrong_sums`. Admitted
-    here it exempts every total a description could have added up to.
+    Stating a sum is the prompt's job, not this function's -- admitted here,
+    it exempts every total a description could have added up to.
     """
     assert sheet_reader.invented(_a_sheet_printing("108", "12.5"), {
         "envelope": {"the length": {"value": "120.5 mm"}}}) == [120.5]

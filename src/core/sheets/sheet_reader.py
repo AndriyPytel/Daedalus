@@ -3033,7 +3033,7 @@ def _derived_from(number, cited):
     distance nobody printed is `derived`, told so rather than called undefined:
     `95.5 mm to the bore axis` is the 2023 sheet's 108 less its 12.5. Two
     distinct callouts, subtraction only: a callout paired with itself exempts
-    doubling, and a sum is arithmetic `wrong_sums` checks for.
+    doubling, and a sum is arithmetic this function leaves alone.
     """
     numbers = [one for one in cited if isinstance(one, float)]
     return any(abs(number - abs(one - other)) < 0.01
