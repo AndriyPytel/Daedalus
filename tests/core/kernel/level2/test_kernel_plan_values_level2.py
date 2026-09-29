@@ -43,3 +43,12 @@ def test_plan_values_survive_a_worker_restart(kernel):
     result = kernel.check("assert plan_values['arm_y'] == 46.458")
 
     assert result.ok, result.traceback
+
+
+def test_a_table_of_numbers_plan_computes_is_kept_whole(kernel):
+    """A sketch's corner table is a list of dicts of points; dropping it made Plan's own Step name a value it had just computed."""
+    computed = kernel.check("windows = [{'centre': [36.1, 23.4], 'radius': 8.0}]",
+                            document=None, capture_values=True, exploring=True)
+
+    assert computed.ok, computed.traceback
+    assert computed.plan_values["windows"] == [{"centre": [36.1, 23.4], "radius": 8.0}]

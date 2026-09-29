@@ -349,7 +349,7 @@ RESERVED_STEP_NAMES = frozenset(
 
 def _harvested_plan_values(namespace):
     """
-    The top-level numbers, and lists of numbers, a Plan-phase call computed,
+    The top-level numbers, and lists or dicts of numbers, a Plan-phase call computed,
     for `_SESSION` to remember by name. A reserved name is never captured, so
     a Step cannot smuggle a value in under `design` or `doc`, and a
     `_`-prefixed name is scratch.
@@ -365,12 +365,16 @@ def _harvested_plan_values(namespace):
 
 
 def _numbers(value):
-    """*value* as a number or a non-empty nested list of numbers, else None."""
+    """*value* as a number, or a non-empty nesting of lists and string-keyed dicts of numbers, else None."""
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return value
     if isinstance(value, (list, tuple)) and value:
         items = [_numbers(item) for item in value]
         if all(item is not None for item in items):
+            return items
+    if isinstance(value, dict) and value and all(isinstance(key, str) for key in value):
+        items = {key: _numbers(item) for key, item in value.items()}
+        if all(item is not None for item in items.values()):
             return items
     return None
 
