@@ -165,6 +165,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         request["what_the_part_is"] = as_described
     if entries:
         request["what_each_entry_says"] = _addressed(entries)
+    if plan_values:
+        request["plan_values"] = plan_values
     if attempts:
         request["your_failed_attempts_at_this_step"] = [
             {"code": a.code, "traceback": a.traceback} for a in attempts

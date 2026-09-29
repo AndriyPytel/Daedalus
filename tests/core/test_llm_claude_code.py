@@ -841,12 +841,22 @@ def test_the_process_starts_in_a_temporary_directory_of_its_own():
     assert "CLAUDE.md" not in spawn.beside_it
 
 
-def test_the_temporary_directory_does_not_outlive_the_call():
+def test_the_system_prompt_file_does_not_outlive_the_call():
     client, spawn = client_replaying()
 
     collect(client.stream(a_turn()))
 
-    assert not os.path.exists(spawn.cwd)
+    assert not os.path.exists(spawn.argv[spawn.argv.index("--system-prompt-file") + 1])
+
+
+def test_every_call_starts_in_the_same_directory():
+    """The CLI writes its working directory into the prompt, so a new one per call is a cache miss."""
+    first_client, first = client_replaying()
+    collect(first_client.stream(a_turn()))
+    second_client, second = client_replaying()
+    collect(second_client.stream(a_turn()))
+
+    assert first.cwd == second.cwd
 
 
 def test_the_user_message_goes_in_as_one_json_line_on_stdin():

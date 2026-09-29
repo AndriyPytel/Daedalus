@@ -176,20 +176,23 @@ class ClaudeCodeClient:
         goes as a file because Windows caps a whole command line at
         32,767 characters and `config/prompts/design.md` is more than
         that on its own, where `ARG_MAX` on macOS is 1,048,576, so argv
-        survives here and not there and FreeCAD ships to both. The file
-        lives in a temporary directory the process is started in, which
-        settles the working directory at the same time, and `overrides`
-        are LiteLLM's per-call knobs the CLI takes none of.
+        survives here and not there and FreeCAD ships to both. The process
+        starts in one fixed empty directory, because the CLI writes its
+        working directory into the prompt and a new one per call rewrites
+        the whole cache; `overrides` are LiteLLM's per-call knobs the CLI
+        takes none of.
         """
         spawn = self._spawn or _spawn_claude
         self.last_cost = None
         workspace = tempfile.mkdtemp(prefix="fcc-claude-")
+        cwd = os.path.join(tempfile.gettempdir(), "fcc-claude")
+        os.makedirs(cwd, exist_ok=True)
         try:
             system = os.path.join(workspace, "system.md")
             with open(system, "w", encoding="utf-8") as handle:
                 handle.write(_system_of(messages))
             for chunk in self._answered(
-                    spawn(_invocation(self.model, system, self.effort), workspace),
+                    spawn(_invocation(self.model, system, self.effort), cwd),
                     messages):
                 yield chunk
         finally:

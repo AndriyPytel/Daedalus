@@ -1068,6 +1068,19 @@ def test_a_step_naming_a_value_its_kernel_never_computed_never_reaches_the_gate(
     assert tools.applied_codes() == ["arm()"]
 
 
+def test_execute_is_handed_the_values_the_plan_computed():
+    """A Step names a value; Execute reads its number in the task instead of spending a turn printing it."""
+    _, _, llm, _ = drive([
+        json.dumps({"code": "arm_station = 65.5 - 92.63 * math.cos(math.radians(45))"}),
+        plan_reply({"do": "Pad the arm to arm_station", "values": ["arm_station"]}),
+        code_reply("arm()"),
+        suspect_reply(), verdict_reply("pass"),
+    ])
+
+    handed = _turns_of(llm, "execute")[0]["plan_values"]
+    assert handed["arm_station"] == pytest.approx(65.5 - 92.63 * math.cos(math.radians(45)))
+
+
 def test_a_plan_that_never_computes_the_value_it_names_stops_the_run():
     """
     The same shared ceiling as every other cause, so a Plan that keeps naming

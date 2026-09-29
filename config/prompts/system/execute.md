@@ -335,7 +335,8 @@ Where a Step's prose names a value instead of a number — `"values":
 ["arm_station"]` on the Plan's own Step — that name is already in scope as a
 key of `plan_values`, the same dict Plan computed it into: read
 `plan_values["arm_station"]`, never retype the number, because the Step's
-own prose never carries it either.
+own prose never carries it either. The task lists every one of them under
+`plan_values` with its numbers, so no turn is spent printing them.
 Run `{"code": "..."}`
 freely to read the Document before you commit to anything — `hasattr`, an
 enumeration, a material card, walking `Shape.Faces` — that code runs and may
