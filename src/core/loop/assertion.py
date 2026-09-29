@@ -136,6 +136,9 @@ for obj in doc.Objects:
     shape = getattr(obj, 'Shape', None)
     if shape is None or shape.isNull() or not shape.Solids:
         continue
+    group = obj.getParentGeoFeatureGroup() if hasattr(obj, 'getParentGeoFeatureGroup') else None
+    if group is not None and group.TypeId == 'PartDesign::Body':
+        continue
     handle, path = tempfile.mkstemp(suffix='.brep')
     os.close(handle)
     try:

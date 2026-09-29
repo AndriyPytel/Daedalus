@@ -84,3 +84,24 @@ def test_two_separately_valid_solids_that_overlap_each_other_still_hold(worker):
     assert checked.ok, checked.traceback
     assert sorted(checked.held) == ["First", "Second"]
     assert not checked.failed
+
+
+PADDED_BODY = """
+import Part, FreeCAD
+body = doc.addObject('PartDesign::Body', 'Body')
+sketch = body.newObject('Sketcher::SketchObject', 'Sketch')
+sketch.AttachmentSupport = [(body.Origin.OriginFeatures[3], '')]
+sketch.MapMode = 'FlatFace'
+sketch.addGeometry(Part.Circle(FreeCAD.Vector(), FreeCAD.Vector(0, 0, 1), 5))
+pad = body.newObject('PartDesign::Pad', 'Pad')
+pad.Profile = sketch
+pad.Length = 5
+doc.recompute()
+"""
+
+
+def test_a_body_is_checked_as_the_part_and_not_feature_by_feature(worker):
+    """A feature's Shape is the Body as it stood at that feature; a later feature may repair it, and only the Body is the part."""
+    checked = worker.check(PADDED_BODY + SELF_INTERSECTION_CHECK, None)
+    assert checked.ok, checked.traceback
+    assert checked.held == ["Body"]
