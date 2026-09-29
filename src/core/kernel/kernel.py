@@ -218,7 +218,7 @@ class Kernel:
 
     def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None,
               ephemeral=False, design=None, exploring=False, plan_values=None,
-              capture_values=False):
+              capture_values=False, builds=False):
         """
         Run *code* as one Step in the kernel. `document` not given
         continues the kernel's own session, resuming on the last
@@ -231,8 +231,9 @@ class Kernel:
         the last checkpoint with the result naming what was undone where it
         creates, deletes or modifies an object. *capture_values* marks a
         Plan-phase call whose own top-level numbers fold into *plan_values*
-        rather than only reading it, and the return is always a KernelResult,
-        never a raise for anything the code did.
+        rather than only reading it, *builds* marks a Step or a fix that fails
+        where it changes nothing in the Document, and the return is always a
+        KernelResult, never a raise for anything the code did.
         """
         if document is _CONTINUE and self._needs_resume:
             if self._checkpoint is None:
@@ -269,6 +270,8 @@ class Kernel:
             request["plan_values"] = plan_values
         if capture_values:
             request["capture_values"] = True
+        if builds:
+            request["builds"] = True
         response, why = self._ask(request, timeout or self.timeout, "the Step")
         if response is None:
             return KernelResult(ok=False, traceback=why)

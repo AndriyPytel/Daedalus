@@ -223,6 +223,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     kernel_kwargs["document"] = step_document
                 if phase == pc.PLAN:
                     kernel_kwargs["capture_values"] = True
+                if builds:
+                    kernel_kwargs["builds"] = True
                 result = working_kernel.check(
                     message["code"], exploring=not builds, **kernel_kwargs)
                 last_failure = None if result.ok else result.traceback

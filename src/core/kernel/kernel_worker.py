@@ -1255,6 +1255,10 @@ def run_step(request):
     if printed:
         response["stdout"] = printed
 
+    if request.get("builds") and response.get("ok") and not touched.touched():
+        response = {"ok": False, "traceback": (
+            "This Step changed nothing in the Document, so it is not a Step. Code "
+            "that only looks goes without \"step\"; send the code that builds it.")}
     if response.get("ok"):
         if capture_values:
             _SESSION["plan_values"].update(_harvested_plan_values(namespace))
