@@ -372,3 +372,37 @@ def test_a_part_whose_through_count_design_never_established_is_not_failed_for_i
     result = worker.check(PLATE_WITH_HOLES % 1 + the_topology_measured({}), None)
 
     assert result.ok, result.traceback
+
+
+BORED_BODY = """
+import Part
+body = doc.addObject('PartDesign::Body', 'Body')
+sketch = body.newObject('Sketcher::SketchObject', 'Sketch')
+sketch.AttachmentSupport = [(body.Origin.OriginFeatures[3], '')]
+sketch.MapMode = 'FlatFace'
+sketch.addGeometry(Part.Circle(App.Vector(), App.Vector(0, 0, 1), 20))
+pad = body.newObject('PartDesign::Pad', 'Pad')
+pad.Profile = sketch
+pad.Length = 40
+hole = body.newObject('Sketcher::SketchObject', 'HoleSketch')
+hole.AttachmentSupport = [(body.Origin.OriginFeatures[3], '')]
+hole.MapMode = 'FlatFace'
+hole.addGeometry(Part.Circle(App.Vector(), App.Vector(0, 0, 1), 10))
+pocket = body.newObject('PartDesign::Pocket', 'Pocket')
+pocket.Profile = hole
+pocket.Type = 'ThroughAll'
+pocket.Reversed = True
+doc.recompute()
+assert body.Shape.Volume < pad.Shape.Volume
+"""
+
+
+def test_the_topology_is_measured_on_the_body_and_not_its_largest_feature(worker):
+    """The Pad before the Pocket outweighs the Body it ends as, and has no hole."""
+    from core.loop.assertion import the_topology_measured
+
+    described = {"features": [{"id": "bore", "kind": "hole", "goes_through": True}]}
+
+    result = worker.check(BORED_BODY + the_topology_measured(described), None)
+
+    assert result.ok, result.traceback

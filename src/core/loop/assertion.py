@@ -61,7 +61,8 @@ def the_envelope_measured(acceptance):
 
 _ENVELOPE_CHECK = """
 solids = [o for o in doc.Objects if getattr(o, 'Shape', None) is not None
-          and o.Shape.Solids and not o.Shape.isNull()]
+          and o.Shape.Solids and not o.Shape.isNull()
+          and getattr(o.getParentGeoFeatureGroup(), 'TypeId', '') != 'PartDesign::Body']
 assert solids, 'the acceptance names an envelope and the Document has no solid'
 shape = max(solids, key=lambda o: o.Shape.Volume).Shape
 box = shape.optimalBoundingBox(False)
@@ -101,7 +102,8 @@ def the_topology_measured(description):
 _TOPOLOGY_CHECK = """
 from core.topology import betti_numbers
 solids = [o for o in doc.Objects if getattr(o, 'Shape', None) is not None
-          and o.Shape.Solids and not o.Shape.isNull()]
+          and o.Shape.Solids and not o.Shape.isNull()
+          and getattr(o.getParentGeoFeatureGroup(), 'TypeId', '') != 'PartDesign::Body']
 assert solids, 'the acceptance names topology and the Document has no solid'
 shape = max(solids, key=lambda o: o.Shape.Volume).Shape
 bbox = shape.BoundBox
