@@ -68,8 +68,12 @@ def _provider_manager_threads_join_before_the_next_test():
 
 
 @pytest.fixture
-def manager(settings_are_the_tests_own):
+def manager(settings_are_the_tests_own, monkeypatch):
+    """The provider manager, with models.dev refused so the list is the aliases alone."""
     from bridge import provider_manager
+    from core import model_catalog
+
+    monkeypatch.setattr(model_catalog, "MODELS_DEV", "http://127.0.0.1:9")
 
     instance = provider_manager.instance()
     _drain(instance)

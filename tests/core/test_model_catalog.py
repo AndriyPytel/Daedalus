@@ -205,18 +205,38 @@ def test_the_subscription_is_configured_by_neither_a_key_nor_an_address():
                    if provider != CLAUDE)
 
 
-def test_the_subscriptions_models_are_the_clis_three_aliases():
+_ALIASES = [
+    {"id": "opus", "display": "opus"},
+    {"id": "sonnet", "display": "sonnet"},
+    {"id": "haiku", "display": "haiku"},
+]
+
+
+def test_the_subscription_offers_its_aliases_then_every_anthropic_version(provider_endpoint):
     """
-    `claude -p --model definitely-not-a-model` answers that it may not exist or
-    you may not have access to it — a validator, not a list, and there is no
-    `/models` endpoint to ask. An alias is the one bundled list that cannot go
-    stale, because it always points at the latest version.
+    Two versions behind one alias cannot be told apart, so each Anthropic id
+    models.dev lists is offered beside the three aliases, and no other
+    provider's.
     """
-    assert fetch(CLAUDE, "") == [
-        {"id": "opus", "display": "opus"},
-        {"id": "sonnet", "display": "sonnet"},
-        {"id": "haiku", "display": "haiku"},
+    server, base = provider_endpoint
+    server.payload = _recorded("models_dev_api.json")
+
+    models = fetch(CLAUDE, "", base_url=base)
+
+    assert server.last_path == "/api.json"
+    assert models == _ALIASES + [
+        {"id": "claude-sonnet-5", "display": "Claude Sonnet 5"},
+        {"id": "claude-sonnet-5-5", "display": "Claude Sonnet 5.5"},
+        {"id": "claude-opus-5-5", "display": "Claude Opus 5.5"},
     ]
+
+
+def test_the_subscription_keeps_its_aliases_when_models_dev_is_down(provider_endpoint):
+    """The aliases need no network, so an outage there costs the versions only."""
+    server, base = provider_endpoint
+    server.status = 503
+
+    assert fetch(CLAUDE, "", base_url=base) == _ALIASES
 
 
 def test_opencode_go_is_configured_by_a_key_alone():

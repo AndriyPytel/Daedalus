@@ -27,6 +27,8 @@ _VENDORS = ("OpenAI", "Anthropic", "Google", "OpenRouter")
 
 _ALIASES = ("opus", "sonnet", "haiku")
 
+MODELS_DEV = "https://models.dev"
+
 
 def providers() -> list[str]:
     """Every provider the Preferences page offers, in the order it offers them."""
@@ -120,7 +122,7 @@ def fetch(provider: str, api_key: str, base_url: str | None = None,
     aliases are the only bundled list that cannot go stale.
     """
     if needs_no_key(provider):
-        return [{"id": alias, "display": alias} for alias in _ALIASES]
+        return _subscription_models(base_url or MODELS_DEV)
 
     base = (base_url or _DEFAULT_BASE.get(provider, "")).rstrip("/")
     params = {}
@@ -161,3 +163,21 @@ def fetch(provider: str, api_key: str, base_url: str | None = None,
 
     return [model for model in found
             if _offerable(provider, model["id"], accepts_images)]
+
+
+def _subscription_models(base: str) -> list[dict]:
+    """
+    The CLI's aliases, then every Anthropic id models.dev lists, so two
+    versions behind one alias can be picked apart. `/v1/models` refuses a
+    request with no API key, and models.dev answers one; when it is down the
+    aliases still work, so only the versions are lost.
+    """
+    aliases = [{"id": alias, "display": alias} for alias in _ALIASES]
+    try:
+        response = httpx.get(base.rstrip("/") + "/api.json", timeout=TIMEOUT)
+        response.raise_for_status()
+        listed = response.json().get("anthropic", {}).get("models", {})
+    except (httpx.HTTPError, ValueError):
+        return aliases
+    return aliases + [{"id": model_id, "display": entry.get("name") or model_id}
+                      for model_id, entry in listed.items()]
