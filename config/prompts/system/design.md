@@ -699,6 +699,13 @@ of it, and what the run is expected to leave behind.
   and say in `because` what you read the choice off. A choice the user can see
   at the Gate is a choice they can correct; one nobody wrote down is the padded
   profile that turned up in the geometry.
+- **Whichever of these it is, a value never changes a shape you already read.**
+  The question asks for a number, not for a new outline: a window you read as
+  a rounded four-cornered pocket stays one, and the missing radius or rim goes
+  onto that shape as `assumed`. Where the number you would need cannot be true
+  of the shape you read, that is a `conflicts` entry, never a quietly redrawn
+  feature — one run swapped its correctly read window for a crescent that made
+  its own arithmetic close, and built the crescent.
 
 ## Asking for yourself
 
@@ -712,6 +719,10 @@ Ask only where the sheet cannot answer it at all — what would go to
 `not_defined` with a reason. It is the one question a person is asked in the
 whole run, so it is asked once, before any Plan exists. Unanswered it is not
 fatal: settle it yourself, `assumed`, with `because`.
+
+A printed count you cannot find all of on the views is such a gap, not a
+`not_defined`: `8x R8.00` over four drawn ears means four more features you
+have not placed, and where the views do not show them, ask where they are.
 
 ## How you work
 
