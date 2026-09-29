@@ -150,7 +150,20 @@ def test_a_failed_fetch_lets_the_next_ensure_fetched_retry(manager, monkeypatch)
     manager._ensure_fetched("openai")
     assert len(starts) == 1
 
+    monkeypatch.setattr(manager, "sender", lambda: manager._threads["openai"])
     manager._on_fetch_failed("openai", "boom")
 
     manager._ensure_fetched("openai")
     assert len(starts) == 2
+
+
+@pytest.mark.freecad
+def test_a_stale_fetch_failing_leaves_the_fetch_in_flight(manager, monkeypatch):
+    """A fetch that outlived its key fails into the slot of the one that replaced it."""
+    in_flight = object()
+    manager._threads["openai"] = in_flight
+    monkeypatch.setattr(manager, "sender", lambda: object())
+
+    manager._on_fetch_failed("openai", "boom")
+
+    assert manager._threads["openai"] is in_flight

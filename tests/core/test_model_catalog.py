@@ -11,6 +11,7 @@ import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+import httpx
 import pytest
 
 from core.model_catalog import (
@@ -205,18 +206,10 @@ def test_the_subscription_is_configured_by_neither_a_key_nor_an_address():
                    if provider != CLAUDE)
 
 
-_ALIASES = [
-    {"id": "opus", "display": "opus-latest"},
-    {"id": "sonnet", "display": "sonnet-latest"},
-    {"id": "haiku", "display": "haiku-latest"},
-]
-
-
-def test_the_subscription_offers_its_aliases_then_every_anthropic_version(provider_endpoint):
+def test_the_subscription_offers_every_anthropic_version(provider_endpoint):
     """
-    Two versions behind one alias cannot be told apart, so each Anthropic id
-    models.dev lists is offered beside the three aliases, and no other
-    provider's.
+    An alias hides which version answers, so each Anthropic id models.dev
+    lists is offered by version, and no other provider's.
     """
     server, base = provider_endpoint
     server.payload = _recorded("models_dev_api.json")
@@ -224,19 +217,20 @@ def test_the_subscription_offers_its_aliases_then_every_anthropic_version(provid
     models = fetch(CLAUDE, "", base_url=base)
 
     assert server.last_path == "/api.json"
-    assert models == _ALIASES + [
+    assert models == [
         {"id": "claude-sonnet-5", "display": "Claude Sonnet 5"},
         {"id": "claude-sonnet-5-5", "display": "Claude Sonnet 5.5"},
         {"id": "claude-opus-5-5", "display": "Claude Opus 5.5"},
     ]
 
 
-def test_the_subscription_keeps_its_aliases_when_models_dev_is_down(provider_endpoint):
-    """The aliases need no network, so an outage there costs the versions only."""
+def test_the_subscription_says_so_when_models_dev_is_down(provider_endpoint):
+    """Like every other provider's endpoint, an outage is a failure, not an empty list."""
     server, base = provider_endpoint
     server.status = 503
 
-    assert fetch(CLAUDE, "", base_url=base) == _ALIASES
+    with pytest.raises(httpx.HTTPStatusError):
+        fetch(CLAUDE, "", base_url=base)
 
 
 def test_opencode_go_is_configured_by_a_key_alone():

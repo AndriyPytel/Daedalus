@@ -25,8 +25,6 @@ _DEFAULT_BASE = {
 
 _VENDORS = ("OpenAI", "Anthropic", "Google", "OpenRouter")
 
-_ALIASES = ("opus", "sonnet", "haiku")
-
 MODELS_DEV = "https://models.dev"
 
 
@@ -117,9 +115,8 @@ def fetch(provider: str, api_key: str, base_url: str | None = None,
     Custom/Local server or a test. A local server's address is a setting of
     its own, never the API key, since a key read as a URL breaks the
     request; its key stays optional, ignored by a server that wants none.
-    The subscription answers out of this module rather than over a socket,
-    since its CLI validates a model but cannot enumerate one, and its three
-    aliases are the only bundled list that cannot go stale.
+    The subscription's list comes from models.dev, since its CLI validates a
+    model but cannot enumerate one.
     """
     if needs_no_key(provider):
         return _subscription_models(base_url or MODELS_DEV)
@@ -167,17 +164,12 @@ def fetch(provider: str, api_key: str, base_url: str | None = None,
 
 def _subscription_models(base: str) -> list[dict]:
     """
-    The CLI's aliases, then every Anthropic id models.dev lists, so two
-    versions behind one alias can be picked apart. `/v1/models` refuses a
-    request with no API key, and models.dev answers one; when it is down the
-    aliases still work, so only the versions are lost.
+    Every Anthropic id models.dev lists, each named by its version, since an
+    alias hides which version answers. `/v1/models` refuses a request with no
+    API key, and models.dev answers one.
     """
-    aliases = [{"id": alias, "display": alias + "-latest"} for alias in _ALIASES]
-    try:
-        response = httpx.get(base.rstrip("/") + "/api.json", timeout=TIMEOUT)
-        response.raise_for_status()
-        listed = response.json().get("anthropic", {}).get("models", {})
-    except (httpx.HTTPError, ValueError):
-        return aliases
-    return aliases + [{"id": model_id, "display": entry.get("name") or model_id}
-                      for model_id, entry in listed.items()]
+    response = httpx.get(base.rstrip("/") + "/api.json", timeout=TIMEOUT)
+    response.raise_for_status()
+    listed = response.json().get("anthropic", {}).get("models", {})
+    return [{"id": model_id, "display": entry.get("name") or model_id}
+            for model_id, entry in listed.items()]

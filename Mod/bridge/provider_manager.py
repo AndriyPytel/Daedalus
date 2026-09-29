@@ -140,11 +140,14 @@ class _ProviderManager(QObject):
         Warn that a provider could not be reached, naming the address.
 
         A local server's failure is about an address the user typed, and
-        "Connection refused" without it says nothing they can act on.
+        "Connection refused" without it says nothing they can act on. A fetch
+        that outlived its key is ignored, so it cannot drop the fetch in flight.
         """
         import FreeCAD
         from bridge import settings_manager
 
+        if self.sender() is not self._threads.get(provider):
+            return
         self._threads.pop(provider, None)
         where = settings_manager.instance().get_base_url_for_provider(provider)
         at = f" at {where}" if where else ""

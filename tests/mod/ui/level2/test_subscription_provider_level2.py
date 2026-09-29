@@ -5,17 +5,18 @@ The first provider with neither a key nor a base URL: three places read "no key
 and no address" as "not configured", and a fourth — the Test button — refuses to
 test what it cannot see a key for. What is checked here is that the page offers
 it with nothing to type, that its Test reports the account rather than fetching a
-model list, that the combo carries the CLI's three aliases, and that a run on one
-of them builds the client that spawns `claude` instead of the one that bills a key.
+model list, that the combo carries the versions models.dev lists, and that a run
+on one of them builds the client that spawns `claude` instead of the one that bills a key.
 
 No `claude` binary is involved: `llm.signed_in` is the seam the Test button goes
-through, and the model list is answered by `core/model_catalog.py` itself.
+through, and models.dev is a loopback server answering its recorded payload.
 """
 import pytest
 
 from conftest import NO_QT, QT_APP
 
 from core.model_catalog import CLAUDE
+from tests.core.test_model_catalog import _recorded, provider_endpoint  # noqa: F401
 
 pytestmark = pytest.mark.freecad
 
@@ -68,12 +69,14 @@ def _provider_manager_threads_join_before_the_next_test():
 
 
 @pytest.fixture
-def manager(settings_are_the_tests_own, monkeypatch):
-    """The provider manager, with models.dev refused so the list is the aliases alone."""
+def manager(settings_are_the_tests_own, provider_endpoint, monkeypatch):
+    """The provider manager, with models.dev answering its recorded payload."""
     from bridge import provider_manager
     from core import model_catalog
 
-    monkeypatch.setattr(model_catalog, "MODELS_DEV", "http://127.0.0.1:9")
+    server, base = provider_endpoint
+    server.payload = _recorded("models_dev_api.json")
+    monkeypatch.setattr(model_catalog, "MODELS_DEV", base)
 
     instance = provider_manager.instance()
     _drain(instance)
@@ -151,9 +154,9 @@ def test_a_provider_that_does_need_a_key_still_says_when_it_has_none(providers_p
     assert _tested(providers_page) == "No key"
 
 
-def test_the_model_list_offers_the_clis_three_aliases(manager):
+def test_the_model_list_offers_every_version_models_dev_lists(manager):
     assert [model["id"] for model in manager.get_models_for_provider(CLAUDE)] == \
-        ["opus", "sonnet", "haiku"]
+        ["claude-sonnet-5", "claude-sonnet-5-5", "claude-opus-5-5"]
 
 
 def test_the_subscription_is_offered_with_no_key_stored(manager):
@@ -164,28 +167,28 @@ def test_the_subscription_is_offered_with_no_key_stored(manager):
     offered = [model for model in manager.get_available_models()
                if model["provider"] == CLAUDE]
 
-    assert [model["id"] for model in offered] == ["opus", "sonnet", "haiku"]
+    assert [model["id"] for model in offered] == ["claude-sonnet-5", "claude-sonnet-5-5", "claude-opus-5-5"]
 
 
 def test_a_model_on_the_subscription_resolves_without_a_key(manager,
                                                             settings_are_the_tests_own):
     """`get_llm_credentials` raises when a provider has neither key nor address."""
-    provider, model_id, key = settings_are_the_tests_own.get_llm_credentials("sonnet")
+    provider, model_id, key = settings_are_the_tests_own.get_llm_credentials("claude-sonnet-5-5")
 
-    assert (provider, model_id, key) == (CLAUDE, "sonnet", "")
+    assert (provider, model_id, key) == (CLAUDE, "claude-sonnet-5-5", "")
 
 
 def test_the_client_for_a_subscription_model_spawns_the_cli(manager):
     """
     Not a `LiteLLMClient` with an empty key: LiteLLM has no route to a
-    subscription, and the alias is not a model id it knows.
+    subscription, and it has no key to bill.
     """
     from core.llm import ClaudeCodeClient, client_from_settings
 
-    client = client_from_settings("sonnet")
+    client = client_from_settings("claude-sonnet-5-5")
 
     assert isinstance(client, ClaudeCodeClient)
-    assert client.model == "sonnet"
+    assert client.model == "claude-sonnet-5-5"
 
 
 def test_the_test_button_asks_the_cli_and_never_the_network(monkeypatch, manager):
