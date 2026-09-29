@@ -449,6 +449,60 @@ def test_a_raster_is_still_cut_up_and_still_says_it_has_no_text_layer(tmp_path):
     assert any("no text layer" in note for note in sheet.notes)
 
 
+CADGENBENCH_SHEETS = os.path.join(os.path.dirname(modelmania_harness.MODELMANIA_DIR), "cadgenbench", "sheets")
+
+VIEWS_ON = {
+    "101.png": {"isometric": (2432, 486), "SECTION A-A": (1510, 653), "the view under SECTION A-A": (1510, 1050),
+                "the left view": (614, 1472), "the view under the left view": (627, 1830)},
+    "104.png": {"top left view": (512, 486), "middle view": (1254, 768), "SECTION A-A": (1894, 461),
+                "isometric": (2586, 410), "SECTION C-C": (2598, 883), "DETAIL B": (1907, 1101),
+                "front view": (666, 1536)},
+}
+
+
+@pytest.mark.parametrize("name", sorted(VIEWS_ON))
+def test_every_view_of_a_raster_sheet_is_in_a_crop_of_its_own_part_of_the_sheet(tmp_path, name):
+    """
+    A view drawn in thin grey lines averages to paper over a grid cell, so the
+    104 sheet reached no crop with any of its views; and regions joined by
+    touching bounding boxes chain the 101 sheet into one crop of the whole of
+    it. The centres are placed by hand on the CADGenBench sheets.
+    """
+    pytest.importorskip("PIL")
+    path = os.path.join(CADGENBENCH_SHEETS, name)
+    _skip_unless_present(path)
+    from PIL import Image
+
+    width, height = Image.open(path).size
+    sheet = sheet_reader.read(path, into=str(tmp_path))
+
+    def holds(crop, point):
+        x0, y0, x1, y1 = crop.rect
+        return x0 <= point[0] <= x1 and y0 <= point[1] <= y1
+
+    for view, centre in VIEWS_ON[name].items():
+        assert any(holds(crop, centre)
+                   and (crop.rect[2] - crop.rect[0]) * (crop.rect[3] - crop.rect[1]) < 0.5 * width * height
+                   for crop in sheet.crops), view
+
+
+@pytest.mark.parametrize("name", sorted(VIEWS_ON))
+def test_the_registration_marks_in_a_raster_sheets_corners_are_not_crops(tmp_path, name):
+    """A frame's corner mark is a few cells of ink the cutting finds on every sheet, and a picture of it says nothing."""
+    pytest.importorskip("PIL")
+    path = os.path.join(CADGENBENCH_SHEETS, name)
+    _skip_unless_present(path)
+    from PIL import Image
+
+    width, height = Image.open(path).size
+    sheet = sheet_reader.read(path, into=str(tmp_path))
+
+    for crop in sheet.crops:
+        x0, y0, x1, y1 = crop.rect
+        in_a_corner = (x1 < 0.15 * width or x0 > 0.85 * width) and (y1 < 0.15 * height or y0 > 0.85 * height)
+        assert not in_a_corner, crop.name
+
+
 @needs_pymupdf
 def test_a_second_page_is_read_rather_than_mentioned(sheet_2023):
     """
