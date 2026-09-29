@@ -206,7 +206,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         so that is where the one `Ledger` entry per abandoned Step is
         written.
         """
-        number = declaration.get("step")
+        fix = declaration.get("fix")
+        number = declaration.get("step") if fix is None else ("fix", fix)
         if number in exhausted:
             declaration["retries"] = list(tried[number])
             return {"delivered": False, "traceback": tried[number][-1]}
@@ -229,8 +230,10 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         result = tools.call("apply_step", arguments)
         events.emit(TOOL_RESULT, name="apply_step", result=result)
         if result.get("status") == "applied":
-            events.emit(APPLIED, step=number, label=declaration.get("label") or "Copilot Step",
-                        created=result.get("created", []))
+            if fix is None:
+                events.emit(APPLIED, step=number,
+                            label=declaration.get("label") or "Copilot Step",
+                            created=result.get("created", []))
             declaration["description"] = result.get("description")
             declaration["created"] = result.get("created", [])
             if tried.get(number):
@@ -239,7 +242,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         drift = bool(result.get("drift"))
         traceback = result.get("traceback")
         tried.setdefault(number, []).append(traceback or "")
-        events.emit(PREFLIGHT_FAILED, step=number, attempt=len(tried[number]),
+        events.emit(PREFLIGHT_FAILED, step=fix if fix is not None else number, attempt=len(tried[number]),
                     traceback=traceback or "", gate=result.get("gate"))
         directive = _the_same_way_twice(
             [Attempt(code="", traceback=t) for t in tried[number]])
@@ -274,7 +277,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
 
         reply = declared if isinstance(declared, dict) else {}
         forced = bool(reply.pop(_FORCED_BY_BUDGET, False))
-        rehearsals = {number: len(attempts) for number, attempts in tried.items()}
+        rehearsals = {number: len(attempts) for number, attempts in tried.items()
+                      if isinstance(number, int)}
 
         written = _written(declarations, start)
         if written:

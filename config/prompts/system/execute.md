@@ -380,5 +380,10 @@ straight to:
 order you ran them, each with its own number — the code itself already lives
 in the kernel's checkpoint history, so it is not repeated here.
 
+After each landed Step, check the geometry of the objects in the tool result
+against what the Step says: position, direction. Where a landed Step is wrong,
+reply with `{"fix": N, "label": "...", "code": "..."}` for it before you write
+the next Step. A fix edits what Step N built and is not a new Step.
+
 Traps in this build:
 {{traps}}

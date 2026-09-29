@@ -22,7 +22,7 @@ def test_a_declaration_forced_by_a_spent_turn_budget_is_flagged():
     """AC1's seam: `Written.forced` tells Execute's own caller a declare came
     out of `budget_last_call`, not a real verdict on the Step."""
     llm = ScriptedLLMClient([
-        json.dumps({"code": "print(1)"}),
+        json.dumps({"code": "print(1)", "step": 1}),
         json.dumps({"declare": {
             "unbuildable": "Step 2 of 14 could not be built as written"}}),
     ])
