@@ -264,6 +264,32 @@ def by_label(doc, label):
     return matches[0]
 
 
+def sketch_at(body, label, normal, at):
+    """
+    A new Sketch in *body* on the plane perpendicular to global axis *normal*
+    ('x', 'y' or 'z'), lying at global coordinate *at* along it. Local (u, v)
+    are global (y, z) for 'x', (x, z) for 'y' and (x, y) for 'z'; the sketch's
+    own normal points along +X, -Y and +Z respectively, so pick a Pad or
+    Pocket direction with `Reversed`.
+    """
+    roles = {"x": "YZ_Plane", "y": "XZ_Plane", "z": "XY_Plane"}
+    axes = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}
+    if normal not in roles:
+        raise ValueError("sketch_at's normal must be 'x', 'y' or 'z', got %r" % (normal,))
+    plane = next(o for o in body.Origin.OriginFeatures if o.Role == roles[normal])
+    import FreeCAD
+    facing = plane.Placement.Rotation.multVec(FreeCAD.Vector(0, 0, 1))
+    sign = 1 if facing.dot(FreeCAD.Vector(*axes[normal])) > 0 else -1
+    sketch = body.newObject("Sketcher::SketchObject", label)
+    sketch.AttachmentSupport = [(plane, "")]
+    sketch.MapMode = "FlatFace"
+    sketch.AttachmentOffset = FreeCAD.Placement(
+        FreeCAD.Vector(0, 0, sign * at), FreeCAD.Rotation())
+    sketch.Label = label
+    sketch.Document.recompute()
+    return sketch
+
+
 def _step_design(design):
     """
     A private `copy.deepcopy` of *design* for one Step's own namespace, with
@@ -300,7 +326,7 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False):
     namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__",
                  "edges_between": edges_between, "edges_by_concavity": edges_by_concavity,
                  "built_ok": built_ok, "pick_edges": pick_edges, "bbox": bbox,
-                 "by_label": by_label}
+                 "by_label": by_label, "sketch_at": sketch_at}
     if design is not None:
         namespace["design"] = _step_design(design)
     for module in STEP_MODULES:
@@ -317,7 +343,7 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False):
 
 RESERVED_STEP_NAMES = frozenset(
     {"App", "FreeCAD", "doc", "__name__", "edges_between", "edges_by_concavity",
-     "built_ok", "pick_edges", "bbox", "by_label", "design", "names", "plan_values"}
+     "built_ok", "pick_edges", "bbox", "by_label", "sketch_at", "design", "names", "plan_values"}
     | set(STEP_MODULES))
 
 

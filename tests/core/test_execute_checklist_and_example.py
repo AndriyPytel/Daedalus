@@ -62,6 +62,10 @@ RULES = {
     "lint_attachment_support_empty_list": (
         "sketch.AttachmentSupport = [(plane, [])]\n", "empty list literal",
         "No empty list literal as `AttachmentSupport`'s subelement"),
+    "lint_attachment_offset_normal": (
+        "sketch.AttachmentOffset = App.Placement(App.Vector(0, 0, -130), App.Rotation())\n",
+        "-Y, so an offset of -130",
+        "No `AttachmentOffset` along the plane's normal"),
     "lint_activation": (
         "x = body.ActiveObject\n", "makes an object active",
         "No making an object active"),

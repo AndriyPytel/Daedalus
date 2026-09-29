@@ -161,7 +161,9 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                     text = _say(session, llm, prompt("declaration_limit"),
                                 phase=phase, stream=stream)
                     continue
-                if supervisor is not None:
+                fix = message.get("fix")
+                builds = message.get("step") is not None or fix is not None
+                if supervisor is not None and builds:
                     supervisor.record_turn()
                     if supervisor.outcome or supervisor.reserved():
                         if last_call:
@@ -174,6 +176,14 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         text = _say(session, llm, prompt("budget_last_call"),
                                     phase=phase, stream=stream)
                         continue
+                if fix is not None and fix not in delivered_steps:
+                    refused = {"ok": False, "status": "refused", "fix": fix,
+                              "traceback": "Step %s has not been delivered, so there is "
+                                            "nothing to fix. Write it as a Step." % fix}
+                    if stream is not None:
+                        stream.emit(TOOL_RESULT, name=phase, result=refused)
+                    text = _say(session, llm, json.dumps(refused), phase=phase, stream=stream)
+                    continue
                 if message.get("step") in delivered_steps:
                     next_step = _next_step(message["step"], sources.get("plan"))
                     refused = {"ok": False, "status": "refused", "step": message["step"]}
@@ -214,9 +224,47 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                 if phase == pc.PLAN:
                     kernel_kwargs["capture_values"] = True
                 result = working_kernel.check(
-                    message["code"], exploring=message.get("step") is None, **kernel_kwargs)
+                    message["code"], exploring=not builds, **kernel_kwargs)
                 last_failure = None if result.ok else result.traceback
                 first_step = False
+                if fix is not None:
+                    if result.ok and result.checkpoint:
+                        since_declaration = 0
+                        declaration_demanded = False
+                        checkpoint = _kept(working, result.checkpoint, len(declarations))
+                        declaration = {
+                            "step": None, "fix": fix,
+                            "label": message.get("label") or "Fix Step %s" % fix,
+                            "code": message["code"], "checkpoint": checkpoint,
+                            "signature": dict(result.signature), "names": dict(result.names),
+                            "created": list(result.created), "modified": list(result.modified),
+                            "deleted": list(result.deleted), "objects": list(result.objects),
+                        }
+                        delivered = (on_declaration(declaration) if on_declaration is not None
+                                    else {"delivered": True})
+                        if delivered.get("delivered"):
+                            last_landed_checkpoint = checkpoint
+                            answer = _feedback(result, None)
+                            answer["fixed"] = fix
+                        else:
+                            resync = delivered.get("resync")
+                            working_kernel.check("pass", document=(
+                                resync if resync is not None
+                                else last_landed_checkpoint
+                                if last_landed_checkpoint is not None
+                                else (document if isinstance(document, str) else None)))
+                            if resync is not None:
+                                discard(resync)
+                            answer = {"ok": False, "status": "failed", "fix": fix,
+                                      "traceback": "The fix for Step %s did not land: %s\n\n"
+                                                    "Write the fix again."
+                                                    % (fix, delivered.get("traceback", ""))}
+                    else:
+                        answer = _feedback(result, None)
+                    if stream is not None:
+                        stream.emit(TOOL_RESULT, name=phase, result=answer)
+                    text = _say(session, llm, json.dumps(answer), phase=phase, stream=stream)
+                    continue
                 delivered_step = None
                 if "step" in message and result.ok and result.checkpoint:
                     since_declaration = 0

@@ -4,6 +4,7 @@ Reply with exactly one JSON object per turn:
 
 - `{"code": "..."}` to run Python against your kernel's Document and see what happened
 - `{"code": "...", "step": N, "label": "..."}` for code that lands Step N — that code is what gets replayed into the user's Document; a `code` turn with no `step` is exploration, for looking, never for building — where it creates, deletes or modifies an object, the kernel rolls the Document back to the last checkpoint and says so in the result
+- `{"fix": N, "label": "...", "code": "..."}` to edit what an already delivered Step N built (re-attach a sketch, change a Length) instead of adding a Step
 - `{"delegate": "..."}` to hand a bounded question to a depth-1 sub-agent and see its answer
 - `{"declare": ...}` once you are done
 

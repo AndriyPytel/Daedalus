@@ -1,7 +1,8 @@
 """One tree-wide supervisor bounding sub-agent delegation to depth 1, under
 turn, token and concurrency budgets tracked across the whole spawn tree.
 
-TURN_BUDGET (30) is the p90 of provider calls over 72 real runs.
+TURN_BUDGET (30) is the p90 of provider calls over 72 real runs, when every code turn counted;
+now only a turn that builds a Step or fixes one does.
 TOKEN_BUDGET (2_600_000) is the p90 of 54 priced runs' `cost` events.
 """
 import math

@@ -24,8 +24,8 @@ class OneKernel:
 
 def test_a_turn_budget_exhaustion_names_itself_with_the_count_it_reached(tmp_path):
     llm = ScriptedLLMClient([
-        json.dumps({"code": "doc.addObject('Part::Box', 'Box')"}),
-        json.dumps({"code": "doc.addObject('Part::Box', 'Box2')"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box')", "step": 1}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box2')", "step": 1}),
         json.dumps({"declare": {"unbuildable": "out of turns"}}),
     ])
     stream = EventStream()
@@ -50,8 +50,8 @@ def test_a_second_continuation_on_the_same_exhausted_supervisor_fires_no_second_
     stream = EventStream()
 
     first_llm = ScriptedLLMClient([
-        json.dumps({"code": "doc.addObject('Part::Box', 'Box')"}),
-        json.dumps({"code": "doc.addObject('Part::Box', 'Box2')"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box')", "step": 1}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box2')", "step": 1}),
         json.dumps({"declare": {"unbuildable": "out of turns"}}),
     ])
     run_phase(pc.EXECUTE, str(tmp_path / "execute1"), {}, first_llm, "pad a box",

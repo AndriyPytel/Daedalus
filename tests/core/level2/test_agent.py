@@ -178,9 +178,9 @@ def test_the_spent_budget_buys_one_last_turn_to_declare(kernel, tmp_path):
 
 def test_a_phase_that_will_not_declare_on_its_last_turn_gives_up(kernel, tmp_path):
     llm = ScriptedLLMClient([
-        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()"}),
-        json.dumps({"code": "doc.addObject('Part::Box', 'Box2'); doc.recompute()"}),
-        json.dumps({"code": "doc.addObject('Part::Box', 'Box3'); doc.recompute()"}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box'); doc.recompute()", "step": 1}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box2'); doc.recompute()", "step": 1}),
+        json.dumps({"code": "doc.addObject('Part::Box', 'Box3'); doc.recompute()", "step": 1}),
     ])
     supervisor = SessionTreeSupervisor(turn_budget=1)
 
