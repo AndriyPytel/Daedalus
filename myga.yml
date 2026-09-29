@@ -23,9 +23,9 @@ articles:
 
 models:
   default: anthropic/claude-opus-5
-  developer: anthropic/claude-sonnet-5
-  tester: anthropic/claude-sonnet-5
-  worker: anthropic/claude-sonnet-5
+  developer: anthropic/claude-sonnet-5-5
+  tester: anthropic/claude-sonnet-5-5
+  worker: anthropic/claude-sonnet-5-5
   runner: anthropic/claude-haiku-4-5
   expert: anthropic/claude-fable-5
 
