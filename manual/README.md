@@ -11,6 +11,12 @@ Phase sheets from the SolidProfessor/Modelmania contests (2023-2025) plus the te
 `tests/modelmania` that grade against them. Dimensioned engineering drawings, already in
 the repo before this material pass.
 
+## cadgenbench/
+
+`generation_fixtures.json` lists the CADGenBench generation fixtures. `sheets/` holds a few of their
+`input.png` drawings (`HuggingAI4Engineering/cadgenbench-data`, ODC-BY, (c) Mecado Inc. and Hugging
+Face, Inc.), read by the raster tests in `tests/core/sheets/test_sheet_reader.py`.
+
 ## drawings/
 
 One directory per source, each with a `manifest.yaml` listing every file: the part, its

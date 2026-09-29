@@ -74,6 +74,16 @@ IN_THE_REGION = 0.5
 
 SHAPE_LONG_EDGE = 600
 
+INK_PIXELS = 2
+
+RASTER_REACH = 0.015
+
+RASTER_MARGIN = 0.02
+
+RASTER_JOIN = 0.5
+
+CORNER_MARK = 0.05
+
 
 @dataclass(frozen=True)
 class Crop:
@@ -2336,21 +2346,23 @@ def _from_raster(path, into, max_edge):
 
 def _raster_grid(picture, cells_across=200):
     """
-    The picture as marks, against whatever its own paper turns out to be.
-
-    The paper is read off the border of the picture. A drawing exported from a
-    viewer comes out on whatever that viewer's background was — black, as often
-    as white — and "dark means ink" then makes the background the drawing.
+    The picture as marks against its own paper, read off its border, since a
+    viewer's export comes out on black as often as on white and "dark means
+    ink" then makes the background the drawing. A cell is ink by the count of
+    its marked pixels, not their average, since a one-pixel grey line averages
+    to paper over a cell and a view drawn in them is never found.
     """
     grey = picture.convert("L")
     cell = max(1, int(picture.width / cells_across))
-    small = grey.resize((max(1, picture.width // cell),
-                         max(1, picture.height // cell)), Image.BILINEAR)
-    pixels = small.load()
-    paper = _paper_of(pixels, small.width, small.height)
+    paper = _paper_of(grey.load(), grey.width, grey.height)
+    marked = grey.point(lambda value: 255 if abs(value - paper) > INK else 0)
+    across, down = max(1, picture.width // cell), max(1, picture.height // cell)
+    share = marked.crop((0, 0, across * cell, down * cell)).resize((across, down), Image.BOX)
+    pixels = share.load()
+    enough = 255 * (INK_PIXELS - 0.5) / (cell * cell)
 
-    grid = [[abs(pixels[x, y] - paper) > INK for x in range(small.width)]
-            for y in range(small.height)]
+    grid = [[pixels[x, y] > enough for x in range(share.width)]
+            for y in range(share.height)]
     return _without_the_frame(grid), cell
 
 
@@ -2385,6 +2397,8 @@ def _raster_regions(grid, cell, width, height):
     Padded after, crops simply overlap, as they do at every other cut.
     """
     rows, columns = len(grid), len(grid[0])
+    across = max(1, round(RASTER_REACH * width / cell))
+    down = max(1, round(RASTER_REACH * height / cell))
     seen = [[False] * columns for _ in range(rows)]
     found = []
     for row in range(rows):
@@ -2396,8 +2410,8 @@ def _raster_regions(grid, cell, width, height):
             while stack:
                 at_row, at_column = stack.pop()
                 cells.append((at_row, at_column))
-                for next_row in range(at_row - REACH, at_row + REACH + 1):
-                    for next_column in range(at_column - REACH, at_column + REACH + 1):
+                for next_row in range(at_row - down, at_row + down + 1):
+                    for next_column in range(at_column - across, at_column + across + 1):
                         if not (0 <= next_row < rows and 0 <= next_column < columns):
                             continue
                         if grid[next_row][next_column] and not seen[next_row][next_column]:
@@ -2407,10 +2421,12 @@ def _raster_regions(grid, cell, width, height):
                 continue
             xs = [c[1] for c in cells]
             ys = [c[0] for c in cells]
-            found.append((min(xs) * cell, min(ys) * cell,
-                          (max(xs) + 1) * cell, (max(ys) + 1) * cell))
+            box = (min(xs) * cell, min(ys) * cell,
+                   (max(xs) + 1) * cell, (max(ys) + 1) * cell)
+            if not _a_corner_mark(box, width, height):
+                found.append(box)
 
-    pad = max(cell * 4, int(0.06 * max(width, height)))
+    pad = max(cell * 4, int(RASTER_MARGIN * max(width, height)))
     return [(max(0, box[0] - pad), max(0, box[1] - pad),
              min(width, box[2] + pad), min(height, box[3] + pad))
             for box in _merged_boxes(found)]
@@ -2418,10 +2434,11 @@ def _raster_regions(grid, cell, width, height):
 
 def _merged_boxes(boxes):
     """
-    Overlapping regions joined into one, until none of them overlap. Dropping a
-    box inside another is not enough: two views whose ink genuinely overlaps
-    would be sent as two crops each mostly showing the other. Joined, they are
-    one crop costing resolution the tiling gives back.
+    Regions joined when one overlaps more than half of the other, until none
+    do: two views whose ink genuinely overlaps would otherwise be sent as two
+    crops each mostly showing the other. Boxes that merely touch stay apart,
+    since touching boxes chain view to view through the title block into one
+    crop of the whole sheet.
     """
     boxes = list(boxes)
     joined = True
@@ -2429,7 +2446,7 @@ def _merged_boxes(boxes):
         joined = False
         for one in range(len(boxes)):
             for other in range(one + 1, len(boxes)):
-                if not _overlap(boxes[one], boxes[other]):
+                if not _mostly_overlap(boxes[one], boxes[other]):
                     continue
                 boxes[one] = (min(boxes[one][0], boxes[other][0]),
                               min(boxes[one][1], boxes[other][1]),
@@ -2443,9 +2460,20 @@ def _merged_boxes(boxes):
     return sorted(boxes, key=lambda box: (box[1], box[0]))
 
 
-def _overlap(one, other):
-    return not (one[2] <= other[0] or other[2] <= one[0]
-                or one[3] <= other[1] or other[3] <= one[1])
+def _mostly_overlap(one, other):
+    shared = (max(0, min(one[2], other[2]) - max(one[0], other[0]))
+              * max(0, min(one[3], other[3]) - max(one[1], other[1])))
+    smaller = min((one[2] - one[0]) * (one[3] - one[1]),
+                  (other[2] - other[0]) * (other[3] - other[1]))
+    return shared > RASTER_JOIN * smaller
+
+
+def _a_corner_mark(box, width, height):
+    """A registration mark: a speck of ink in a corner of the frame, small both ways."""
+    small = (box[2] - box[0]) < CORNER_MARK * width and (box[3] - box[1]) < CORNER_MARK * height
+    at_a_side = box[0] < CORNER_MARK * width or box[2] > (1 - CORNER_MARK) * width
+    at_an_end = box[1] < CORNER_MARK * height or box[3] > (1 - CORNER_MARK) * height
+    return small and at_a_side and at_an_end
 
 
 def _box_covers(outer, inner):
