@@ -165,3 +165,39 @@ def test_the_result_does_not_depend_on_the_order_the_objects_were_added(doc, tmp
         FreeCAD.closeDocument(other.Name)
 
     assert np.array_equal(box_first, rod_first)
+
+
+def _padded_body(doc):
+    import FreeCAD
+    import Part
+
+    body = doc.addObject("PartDesign::Body", "Body")
+    sketch = body.newObject("Sketcher::SketchObject", "Sketch")
+    sketch.AttachmentSupport = [(body.Origin.OriginFeatures[3], "")]
+    sketch.MapMode = "FlatFace"
+    sketch.addGeometry(Part.Circle(FreeCAD.Vector(), FreeCAD.Vector(0, 0, 1), 20))
+    pad = body.newObject("PartDesign::Pad", "Pad")
+    pad.Profile = sketch
+    pad.Length = 40
+    hole = body.newObject("Sketcher::SketchObject", "HoleSketch")
+    hole.AttachmentSupport = [(body.Origin.OriginFeatures[3], "")]
+    hole.MapMode = "FlatFace"
+    hole.addGeometry(Part.Circle(FreeCAD.Vector(), FreeCAD.Vector(0, 0, 1), 10))
+    pocket = body.newObject("PartDesign::Pocket", "Pocket")
+    pocket.Profile = hole
+    pocket.Type = "ThroughAll"
+    pocket.Reversed = True
+    doc.recompute()
+    return body
+
+
+def test_a_body_is_drawn_as_it_ends_and_not_as_each_feature_stood(doc):
+    """A Pad's Shape is the Body before the Pocket; drawn too, it closed the bored top a recorded run's Review judged by."""
+    from core.kernel.preflight_render import _tessellated
+
+    body = _padded_body(doc)
+    assert body.Shape.Volume < doc.getObject("Pad").Shape.Volume
+
+    triangles, _ = _tessellated(doc)
+
+    assert len(triangles) == len(body.Shape.tessellate(0.2)[1])

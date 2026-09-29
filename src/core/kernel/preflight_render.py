@@ -49,6 +49,12 @@ def _is_modelled(shape):
     return box.isValid() and box.DiagonalLength < 1e6
 
 
+def _inside_a_body(obj):
+    """True for a PartDesign feature, whose Shape is the Body as it stood at that feature rather than the part."""
+    group = obj.getParentGeoFeatureGroup() if hasattr(obj, "getParentGeoFeatureGroup") else None
+    return group is not None and group.TypeId == "PartDesign::Body"
+
+
 def _tessellated(doc):
     """
     Every modelled shape's triangles and its real edges, in model space.
@@ -61,7 +67,7 @@ def _tessellated(doc):
     triangles, polylines = [], []
     for obj in doc.Objects:
         shape = getattr(obj, "Shape", None)
-        if not _is_modelled(shape):
+        if not _is_modelled(shape) or _inside_a_body(obj):
             continue
         vertices, facets = shape.tessellate(_TESSELLATION)
         points = np.array([[v.x, v.y, v.z] for v in vertices], dtype=float)
