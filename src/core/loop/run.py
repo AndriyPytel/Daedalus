@@ -281,6 +281,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     from core import settings
     auto_approve = settings.instance().get_auto_approve_plan()
 
+    last_complaint = []
+
     def rewrite(cause, refused, feedback, tried, reason=None, step=None):
         """
         Rewrite the Plan for *cause*, or stop because the budget is spent.
@@ -297,6 +299,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                 revisions.block_reason(budgets, steps, cause, refused, progress.applied,
                                        step=step), tried)
         revisions.spend(cause, step=step)
+        last_complaint[:] = [reason or feedback]
         if progress.applied:
             revised = replan(feedback, history=list(last_pass.steps[:progress.applied]))
         else:
@@ -411,6 +414,11 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               reason="You asked for: " + approval.feedback)
             continue
 
+        if not steps and not rollback and progress.applied and last_complaint:
+            return _block(events, "The revision added no Step to the %d already built, so "
+                                  "what it was asked to fix still stands: %s"
+                          % (progress.applied, last_complaint[0]), progress.tried,
+                          progress.applied)
         if not steps and not rollback:
             return _block(events, "The Plan came back with no Steps, so there is nothing to "
                                   "apply and nothing to review.", progress.tried,

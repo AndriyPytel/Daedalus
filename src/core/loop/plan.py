@@ -126,7 +126,7 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     question = str(reply.get("question") or "").strip()
     if not steps and question:
         return Plan(steps=[], question=question)
-    if not steps and not rollback and not bad_rollback:
+    if not steps and not rollback and not bad_rollback and not history:
         raise PhaseError("Plan produced no Steps for this Intent.")
     return Plan(steps=steps, satisfies=satisfies, cites=cites, ops=ops,
                 unbuildable=unbuildable, values=values, value_errors=value_errors,

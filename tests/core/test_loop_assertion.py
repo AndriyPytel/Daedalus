@@ -1474,3 +1474,18 @@ def test_a_description_that_itself_failed_writes_no_design(monkeypatch, tmp_path
 
     replayed, truncated = replay(path)
     assert DESIGN not in [event.kind for event in replayed]
+
+
+def test_a_revision_that_adds_nothing_keeps_the_built_steps_and_says_what_still_fails():
+    """A recorded run built every Step, failed one check, and ended on "Plan produced no Steps" with 0 applied."""
+    result, _, _, _ = drive([
+        plan_reply("Make it"),
+        code_reply("make()"),
+        suspect_reply(), verdict_reply("fail", "The box is 20mm, not 10mm."),
+        plan_reply(),
+    ])
+
+    assert not result.ok
+    assert result.steps_applied == 1
+    assert "no Steps" not in result.reason
+    assert "The box is 20mm, not 10mm." in result.reason
