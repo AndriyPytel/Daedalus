@@ -370,8 +370,9 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     """
     Plan, letting it ask for what the description did not carry, and the
     run waits. A question goes to the drawing first; unanswered, Design
-    settles it itself and writes the chosen value into the model with
-    `flag: assumed`, so Plan reads it back like any other field. A
+    settles it itself, `budgets.settles` times at most, and writes the chosen
+    value into the model with `flag: assumed`, so Plan reads it back like any
+    other field. A
     revision with Steps already landed is asked, once, how far the live
     Document's undo stack still reaches, so a `rollback` too deep is
     refused before it ever ends the run.
@@ -424,13 +425,16 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                 continue
             events.emit(ANSWER, text=_SAID_NOTHING, by="drawing")
 
-        settled, _ = design({"intent": intent,
-                             "the_part_as_you_described_it": grown,
-                             "the_question": _settle_it(planned.question)},
-                            llm, events, attachments)
+        settled = None
+        if asking.settled < budgets.settles:
+            settled, _ = design({"intent": intent,
+                                 "the_part_as_you_described_it": grown,
+                                 "the_question": _settle_it(planned.question)},
+                                llm, events, attachments)
         if settled:
             before, grown = grown, merge(grown, settled, budgets.record_conflicts)
             if grown != before:
+                asking.settled += 1
                 change_set = diff(before, grown)
                 events.emit(CHANGE_SET, changes=change_set)
                 events.emit(ANSWER, text=render(settled), by="design")

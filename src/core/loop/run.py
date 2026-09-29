@@ -101,6 +101,7 @@ class _Asking:
         self.unanswered = []
         self.looked_up = []
         self.read_again = 0
+        self.settled = 0
         self.looks = 0
         self.re_aimed = 0
 

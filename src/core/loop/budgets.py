@@ -33,6 +33,7 @@ class Budgets:
     revisions: int = 3
     mechanical_revisions: int = 2
     rereads: int = 3
+    settles: int = 2
     readings: int = 3
     trailing_gap_retries: int = 1
     record_conflicts: bool = True
