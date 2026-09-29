@@ -27,39 +27,24 @@ def _as_text(content) -> str:
                        if piece.get("type") == "text")
 
 
-_TASK_CACHE_BREAKPOINT = {"type": "ephemeral", "ttl": "1h"}
+_CACHE_BREAKPOINT = {"type": "ephemeral", "ttl": "1h"}
 
 
 def _user_turn(messages: list) -> dict:
     """
-    *messages* as the one message stream-json input takes, with an explicit
-    cache breakpoint on the task turn's own last block.
-
-    stream-json input takes user turns only, so each assistant reply rides
-    along as a marked text block in that one message rather than as a
-    message of its own -- the model otherwise sees the task and the
-    results of its code, never the code it wrote. Anthropic's lookback
-    only reaches 20 blocks behind wherever a call's own breakpoint lands,
-    and this route's `claude` CLI already spends 3 of the 4 a request
-    allows on its own (tools, the system prompt, the end of the
-    conversation) -- one more, placed on the task rather than left for the
-    CLI to place only at the tail, is what keeps the task itself cached
-    once a Step's retries push the conversation past that window, since the
-    CLI's own end-of-conversation breakpoint moves with every call and
-    stops finding it.
+    *messages* as the one message stream-json input takes, with one explicit
+    cache breakpoint on its last block. Each assistant reply rides along as a
+    marked text block, because stream-json input takes user turns only.
     """
     content = []
-    task_end = None
     for message in messages:
         role = message.get("role")
         if role == "user":
             content.extend(_blocks(message.get("content")))
-            if task_end is None and content:
-                task_end = len(content) - 1
         elif role == "assistant":
             content.append(_reply_block(message.get("content")))
-    if task_end is not None:
-        content[task_end] = dict(content[task_end], cache_control=_TASK_CACHE_BREAKPOINT)
+    if content:
+        content[-1] = dict(content[-1], cache_control=_CACHE_BREAKPOINT)
     return {"type": "user", "message": {"role": "user", "content": content}}
 
 

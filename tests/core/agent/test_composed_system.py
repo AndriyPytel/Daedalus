@@ -71,7 +71,9 @@ def test_two_consecutive_execute_calls_of_one_pass_send_the_same_prefix(tmp_path
     )
 
     systems = [_system_of(messages) for messages in llm.calls]
-    turns = [_user_turn(messages)["message"]["content"] for messages in llm.calls]
+    turns = [[{key: value for key, value in block.items() if key != "cache_control"}
+              for block in _user_turn(messages)["message"]["content"]]
+             for messages in llm.calls]
 
     for index, (earlier, later) in enumerate(zip(systems, systems[1:])):
         assert later.startswith(earlier), \
@@ -84,12 +86,12 @@ def test_two_consecutive_execute_calls_of_one_pass_send_the_same_prefix(tmp_path
         "a later call carries none of the model's own earlier replies"
 
 
-def test_only_the_tasks_own_last_block_carries_a_cache_breakpoint():
+def test_only_the_conversations_last_block_carries_a_cache_breakpoint():
     """
     The `claude` CLI spends 3 of Anthropic's 4 cache breakpoints on its own
-    (tools, the system prompt, the end of the conversation), so the one
-    this project may still place has to land on the task turn -- the block
-    a Step's retries otherwise push out of the provider's 20-block lookback.
+    and, on Sonnet, none of them at the end of the conversation, so the one
+    this project may place goes on the last block: each call then reads what
+    the call before it wrote instead of rewriting everything past the task.
     """
     messages = [
         {"role": "system", "content": "You write FreeCAD Python."},
@@ -100,5 +102,5 @@ def test_only_the_tasks_own_last_block_carries_a_cache_breakpoint():
 
     turn = _user_turn(messages)["message"]["content"]
 
-    assert turn[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
-    assert "cache_control" not in turn[1]
+    assert turn[-1]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert all("cache_control" not in block for block in turn[:-1])
