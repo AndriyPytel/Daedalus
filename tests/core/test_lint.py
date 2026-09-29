@@ -753,6 +753,29 @@ def test_an_empty_list_attachment_subelement_is_rejected(code):
 
 
 @pytest.mark.parametrize("code", [
+    "sk.AttachmentOffset = App.Placement(App.Vector(0, 0, -130), App.Rotation())",
+    "sk.AttachmentOffset = FreeCAD.Placement(FreeCAD.Vector(1, 2, z), rot)",
+    "sk.AttachmentOffset = Placement(Vector(0, 0, 5.0), Rotation())",
+])
+def test_an_attachment_offset_along_the_plane_normal_is_rejected(code):
+    result = lint(code)
+
+    assert not result.ok
+    assert "sketch_at(" in result.report()
+    assert "-Y" in result.report()
+
+
+@pytest.mark.parametrize("code", [
+    "sk.AttachmentOffset = App.Placement(App.Vector(5, 6, 0), App.Rotation())",
+    "sk.AttachmentOffset = App.Placement(App.Vector(5, 6, 0.0), App.Rotation())",
+    "sk.AttachmentOffset = App.Placement(App.Vector(), App.Rotation(0, 0, 90))",
+    "sk.Placement = App.Placement(App.Vector(0, 0, 5), App.Rotation())",
+])
+def test_an_attachment_offset_without_a_normal_component_is_accepted(code):
+    assert lint(code).ok, lint(code).report()
+
+
+@pytest.mark.parametrize("code", [
     "sk.AttachmentSupport = [(xz_plane, '')]",
     "sk.AttachmentSupport = [(xz_plane, [''])]",
 ])

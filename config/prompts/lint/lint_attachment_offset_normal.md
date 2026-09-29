@@ -1,0 +1,1 @@
+%s puts a non-zero offset along the plane's normal into AttachmentOffset. The sign depends on which way that normal points: XZ_Plane's normal is -Y, so an offset of -130 puts the sketch at y=+130, not y=-130. Use `sketch_at(body, label, 'y', -130)` instead -- it places the sketch at that global coordinate whatever the plane's orientation.

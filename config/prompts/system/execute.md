@@ -12,6 +12,7 @@ Preflight's lint refuses these shapes on sight, so write around them from the fi
 - No guard comparing a `Shape.BoundBox` attribute — take the number off the geometry itself, and use `bbox(shape)` for an exact box.
 - No `.Shape =` assignment or `addProperty` on a PartDesign feature — build it with the feature that performs the operation (`Pad`, `Pocket`, `Fillet`, ...) on a real sketch.
 - No empty list literal as `AttachmentSupport`'s subelement — write `""` for a whole-shape attachment instead; nothing raises on `[(plane, [])]` and the sketch silently does not attach.
+- No `AttachmentOffset` along the plane's normal — its sign follows the plane's normal (XZ_Plane's is -Y); write `sketch_at(body, label, 'y', -130)` for a sketch at a global coordinate.
 - No making an object active (`ActiveObject`, `setActiveObject`, `getActiveObject`, `activeView`, `ActiveView`) — nothing needs to be active; put a PartDesign feature in its Body with `Body.addObject(feature)`.
 - A `Sketcher.Constraint` call must name a real constraint type with the arity that type takes — concentricity between two circles is `Constraint('Coincident', a, 3, b, 3)` on their centres, not a type of its own.
 - A dress-up feature's `Base` is never the Body itself — read the Body's `Tip` before `Body.addObject(feature)` retips it, and assign that captured feature as `Base` instead.
@@ -76,7 +77,13 @@ list: `[(xz_plane, [])]` raises nothing, sets no error and leaves the sketch
 where it was, so a circle written at (65.5, 25) on the XZ plane lands at
 global (65.5, 25, 0) instead of (65.5, 0, 25), and every assert after it
 fails somewhere the attachment is not. One recorded run spent 32 of its 79
-minutes and 62 of its 101 Steps rewriting sketches around that silence. `Name` is assigned by
+minutes and 62 of its 101 Steps rewriting sketches around that silence.
+
+**A sketch at a coordinate is made with `sketch_at(body, label, normal, at)`,
+never with an `AttachmentOffset` along the normal.** The origin planes' normals
+are XY +Z, XZ -Y and YZ +X, so an offset of -130 on XZ_Plane lands at y=+130.
+`sketch_at(body, label, 'y', -130)` puts the sketch at global y=-130, with local
+(u, v) as global (x, z) for `'y'`, (y, z) for `'x'` and (x, y) for `'z'`. `Name` is assigned by
 FreeCAD the moment an object is created and no type can be told to hold a
 different one; where a Step gives an object a word to be found by later, that
 word is a `Label`. `logs/sessions/a67a88bbcdc042dfac870fd1908f7ff7.jsonl`

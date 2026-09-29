@@ -128,6 +128,7 @@ _ACTIVATION_REASON = read_prompt("lint_activation.md")
 _ALLOCATED_NAME_REASON = read_prompt("lint_allocated_name.md")
 
 _ATTACHMENT_SUPPORT_REASON = read_prompt("lint_attachment_support_empty_list.md")
+_ATTACHMENT_OFFSET_REASON = read_prompt("lint_attachment_offset_normal.md")
 _BOUNDBOX_GUARD_REASON = read_prompt("lint_boundbox_guard.md")
 _DIMENSIONAL_LITERAL_REASON = read_prompt("lint_dimensional_literal.md")
 _DIMENSIONAL_DEFAULT_REASON = read_prompt("lint_dimensional_default.md")
@@ -243,6 +244,9 @@ def lint(code: str, selection=None) -> LintResult:
         empty_attachment = _attachment_support_empty_list(node)
         if empty_attachment:
             complain(_ATTACHMENT_SUPPORT_REASON % empty_attachment)
+        offset_along_normal = _attachment_offset_along_normal(node)
+        if offset_along_normal:
+            complain(_ATTACHMENT_OFFSET_REASON % offset_along_normal)
         literal = dimensional_literal(node, bindings)
         if literal:
             complain(_DIMENSIONAL_LITERAL_REASON % literal)
@@ -580,6 +584,31 @@ def _attachment_support_empty_list(node: ast.Assign):
                     and isinstance(entry.elts[1], ast.List) and not entry.elts[1].elts):
                 return ast.unparse(node)
     return None
+
+
+def _attachment_offset_along_normal(node: ast.Assign):
+    """
+    The unparsed assignment where `.AttachmentOffset` gets a Placement whose
+    position vector has a third component that is not the literal 0. The
+    sign of that component depends on the plane's normal, which is -Y for
+    XZ_Plane.
+    """
+    if not any(isinstance(t, ast.Attribute) and t.attr == "AttachmentOffset"
+               for t in node.targets):
+        return None
+    for call in ast.walk(node.value):
+        if not (isinstance(call, ast.Call) and _call_name(call) == "Vector"
+                and len(call.args) >= 3):
+            continue
+        third = call.args[2]
+        if not (isinstance(third, ast.Constant) and third.value == 0):
+            return ast.unparse(node)
+    return None
+
+
+def _call_name(call: ast.Call):
+    func = call.func
+    return func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
 
 
 def _dimensional_target(node: ast.Assign):
