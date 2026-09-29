@@ -206,9 +206,9 @@ def test_the_subscription_is_configured_by_neither_a_key_nor_an_address():
 
 
 _ALIASES = [
-    {"id": "opus", "display": "opus"},
-    {"id": "sonnet", "display": "sonnet"},
-    {"id": "haiku", "display": "haiku"},
+    {"id": "opus", "display": "opus-latest"},
+    {"id": "sonnet", "display": "sonnet-latest"},
+    {"id": "haiku", "display": "haiku-latest"},
 ]
 
 

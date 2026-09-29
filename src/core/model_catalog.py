@@ -172,7 +172,7 @@ def _subscription_models(base: str) -> list[dict]:
     request with no API key, and models.dev answers one; when it is down the
     aliases still work, so only the versions are lost.
     """
-    aliases = [{"id": alias, "display": alias} for alias in _ALIASES]
+    aliases = [{"id": alias, "display": alias + "-latest"} for alias in _ALIASES]
     try:
         response = httpx.get(base.rstrip("/") + "/api.json", timeout=TIMEOUT)
         response.raise_for_status()
