@@ -20,9 +20,9 @@ Work for this repo lives in YouTrack, not GitHub Issues. Project config: `myga.y
 The `myga-*` skills drive it.
 
 `package.xml`'s `<version>` is the version of truth; `Init.py` parses it back, never a literal
-of its own. Closing an Epic bumps the minor version to that epic's ticket number and resets
-patch to 0 (`0.<epic-number>.0`); closing any other ticket inside that epic bumps patch
-(`0.<epic-number>.<patch+1>`).
+of its own. The version is `1.<minor>.<patch>` and moves only when the user says so: a release
+bumps minor and resets patch to 0, a patch release bumps patch. Closing a ticket or an epic
+never touches it.
 
 ## Comments
 
