@@ -117,3 +117,41 @@ def test_record_milestone_appends_one_line_per_call(tmp_path):
                              leaderboard_score=0.55)
 
     assert len(path.read_text().splitlines()) == 2
+
+
+def test_bundle_writes_an_empty_folder_for_every_fixture_it_does_not_attempt(tmp_path):
+    run_dir = tmp_path / "run"
+    _write_output(str(run_dir / "101" / "output.step"))
+    out_path = tmp_path / "submission.zip"
+
+    report = bundle.write_bundle(str(run_dir), ["101"], str(out_path), empty=["201", "202"])
+
+    assert report["missing"] == []
+    with zipfile.ZipFile(str(out_path)) as zf:
+        names = set(zf.namelist())
+    assert {"201/", "202/"} <= names
+    assert not any(name.startswith("201/") and name != "201/" for name in names)
+
+
+def test_editing_fixtures_complete_the_81_the_space_checks():
+    generation, editing = bundle.generation_fixtures(), bundle.editing_fixtures()
+
+    assert len(editing) == 32
+    assert len(set(generation) | set(editing)) == 81
+
+
+def test_plan_finds_the_latest_step_a_lane_run_saved_for_a_fixture(tmp_path):
+    run_dir = tmp_path / "opus"
+    _write_output(str(run_dir / "101.20260930-193313-925084.step"))
+    _write_output(str(run_dir / "101.20260930-201415-846555.step"))
+    _write_output(str(run_dir / "1010.20260930-201415-846555.step"))
+
+    plan = bundle.plan_bundle(str(run_dir), ["101", "102"])
+
+    assert plan[0]["candidate"].endswith("101.20260930-201415-846555.step")
+    assert plan[1]["status"] == "missing"
+
+    out_path = tmp_path / "submission.zip"
+    bundle.write_bundle(str(run_dir), ["101"], str(out_path))
+    with zipfile.ZipFile(str(out_path)) as zf:
+        assert "101/output.step" in zf.namelist()

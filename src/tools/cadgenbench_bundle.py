@@ -16,6 +16,7 @@ zip against the exact fixture set before it will score anything.
 """
 import argparse
 import getpass
+import glob
 import json
 import os
 import zipfile
@@ -41,12 +42,21 @@ def generation_fixtures(manifest_path=DEFAULT_MANIFEST):
         return json.load(handle)["fixtures"]
 
 
+def editing_fixtures(manifest_path=DEFAULT_MANIFEST):
+    """The 32 CADGenBench editing-task fixture ids, which this repo never attempts."""
+    with open(manifest_path, encoding="utf-8") as handle:
+        return json.load(handle)["editing_fixtures"]
+
+
 def _candidate_for(run_dir, fixture):
+    """The fixture's `output.step` folder, or else the latest `<fixture>.<stamp>.step` a lane run saved."""
     for name in CANDIDATE_NAMES:
         candidate = os.path.join(run_dir, fixture, name)
         if os.path.isfile(candidate) and os.path.getsize(candidate) > 0:
             return candidate
-    return None
+    saved = sorted(path for path in glob.glob(os.path.join(run_dir, fixture + ".*.step"))
+                   if os.path.getsize(path) > 0)
+    return saved[-1] if saved else None
 
 
 def plan_bundle(run_dir, fixtures):
@@ -75,14 +85,15 @@ def _print_plan(plan, run_dir):
 
 
 def write_bundle(run_dir, fixtures, out_path, submitter=None, submission_name=None,
-                 agent_url=None, notes=None, agree=False):
+                 agent_url=None, notes=None, agree=False, empty=()):
     """Write the submission zip for *fixtures* found under *run_dir* to *out_path*.
 
     Every fixture in *fixtures* gets a folder entry in the zip whether or not
     a candidate was found for it, matching the "no directory disappears"
     contract `cadgenbench.baseline.package._discover_fixture_entries` relies
     on; a fixture with no entry at all is what fails the Space's exact
-    fixture-set check, not a fixture recorded as missing.
+    fixture-set check, not a fixture recorded as missing. *empty* ids get a
+    folder and nothing else: fixtures the run never attempted.
     """
     plan = plan_bundle(run_dir, fixtures)
     _print_plan(plan, run_dir)
@@ -102,7 +113,10 @@ def write_bundle(run_dir, fixtures, out_path, submitter=None, submission_name=No
             zf.writestr("%s/" % entry["fixture"], "")
             if entry["candidate"]:
                 name = os.path.basename(entry["candidate"])
+                name = name if name in CANDIDATE_NAMES else "output.step"
                 zf.write(entry["candidate"], arcname="%s/%s" % (entry["fixture"], name))
+        for fixture in empty:
+            zf.writestr("%s/" % fixture, "")
 
     missing = [entry["fixture"] for entry in plan if entry["status"] == "missing"]
     report = {
@@ -168,7 +182,8 @@ def main():
         fixtures = generation_fixtures(args.manifest)
         write_bundle(args.run_dir, fixtures, out, submitter=args.submitter,
                     submission_name=args.submission_name, agent_url=args.agent_url,
-                    notes=args.notes, agree=args.agree)
+                    notes=args.notes, agree=args.agree,
+                    empty=editing_fixtures(args.manifest))
         return 0
 
     record = record_milestone(args.path, args.milestone, args.local_score,
