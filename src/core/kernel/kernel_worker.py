@@ -972,6 +972,28 @@ def _idle_feature_report(doc, created):
         return "\n(the volume-neutral feature diagnostic itself raised: %s)" % exc
 
 
+def _past_the_tip(doc, created):
+    """
+    The features this call added to a Body after its Tip, which build nothing
+    into `body.Shape` whatever their own Shape shows. `Body.addObject` moves
+    the Tip onto a Pad but leaves it where it was for a PolarPattern.
+    """
+    lines = []
+    for body in doc.Objects:
+        if body.TypeId != "PartDesign::Body" or body.Tip is None:
+            continue
+        group = body.Group
+        tip = group.index(body.Tip) if body.Tip in group else len(group)
+        past = [obj for obj in group[tip + 1:]
+                if obj.Name in created and obj.isDerivedFrom("PartDesign::Feature")]
+        if past:
+            lines.append("%s is past %s's Tip (%s), so %s.Shape does not have it: "
+                         "set body.Tip = doc.getObject('%s') and recompute."
+                         % (", ".join(obj.Name for obj in past), body.Name, body.Tip.Name,
+                            body.Name, past[-1].Name))
+    return "\n" + "\n".join(lines) if lines else ""
+
+
 STDOUT_LIMIT = 4000
 
 
@@ -1264,6 +1286,10 @@ def run_step(request):
     if printed:
         response["stdout"] = printed
 
+    past = _past_the_tip(doc, touched.created)
+    if past:
+        response["ok"] = False
+        response["traceback"] = (response.get("traceback") or "") + past
     if request.get("builds") and response.get("ok") and not touched.touched():
         response = {"ok": False, "traceback": (
             "This Step changed nothing in the Document, so it is not a Step. Code "
