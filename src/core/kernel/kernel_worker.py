@@ -83,10 +83,18 @@ _EXCLUDED_FROM_DIFF = {"Name", "Label"} | DERIVED
 
 
 def _property_value(obj, prop):
+    """
+    A sketch's geometry is read as its serialised `Content`, since every read
+    of `Geometry` hands back fresh wrappers that never compare equal.
+    """
     try:
-        return getattr(obj, prop)
+        value = getattr(obj, prop)
     except Exception:
         return None
+    kind = getattr(obj, "getTypeIdOfProperty", lambda _: None)(prop)
+    if kind == "Part::PropertyGeometryList":
+        return [geometry.Content for geometry in value]
+    return value
 
 
 def _comparable(obj, prop):
@@ -94,11 +102,12 @@ def _comparable(obj, prop):
     Whether *prop* is worth diffing by value.
 
     `ShapeMaterial` hands back a fresh wrapper on every read with no
-    value equality, so two untouched reads compare unequal -- excluded
-    by FreeCAD property type, not name, so no other Tool reopens the trap.
+    value equality, and a `Part::PropertyPartShape` is a computed shape that
+    does the same, so both are excluded by FreeCAD property type, not name.
     """
     try:
-        return "Material" not in obj.getTypeIdOfProperty(prop)
+        kind = obj.getTypeIdOfProperty(prop)
+        return "Material" not in kind and kind != "Part::PropertyPartShape"
     except Exception:
         return True
 
