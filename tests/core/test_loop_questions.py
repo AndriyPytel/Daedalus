@@ -77,6 +77,7 @@ from tests.loop_helpers import (
     failed,
     drive,
     _turns_of,
+    obsolete_reply,
     _cut_off,
     GEAR,
     GEAR_AS_TOLD,
@@ -1431,3 +1432,19 @@ def test_design_settles_plans_questions_a_bounded_number_of_times_then_plan_deci
 
     assert result.ok, result.reason
     assert [event.data["by"] for event in events.of(ANSWER)][-1] == "nobody"
+
+
+def test_a_revision_may_recompute_a_value_no_landed_step_used():
+    """A recorded run replanned the unbuilt tail with its spokes turned, and was refused for recomputing hole positions no Step had built yet."""
+    result, events, _, tools = drive([
+        json.dumps({"code": "arm_station = 10.0"}),
+        plan_reply({"do": "Pad the arm to arm_station", "values": ["arm_station"]}),
+        obsolete_reply("The arm has to turn first"),
+        json.dumps({"code": "arm_station = 20.0"}),
+        plan_reply({"do": "Pad the arm to arm_station", "values": ["arm_station"]}),
+        code_reply("arm()"),
+        suspect_reply(), verdict_reply("pass"),
+    ])
+
+    assert result.ok, result.reason
+    assert tools.applied_codes() == ["arm()"]

@@ -1,5 +1,6 @@
 """The main loop runner and coordination logic."""
 import os
+import re
 from dataclasses import dataclass, field
 
 from core.design import part_file
@@ -352,8 +353,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             continue
 
         value_errors = list(planned.value_errors)
+        landed = " ".join(last_pass.steps[:progress.applied]) if last_pass.steps else ""
         for name, value in planned.values.items():
-            if name in frozen_values and frozen_values[name] != value:
+            if (name in frozen_values and frozen_values[name] != value
+                    and re.search(r"\b%s\b" % re.escape(name), landed)):
                 value_errors.append({"step": name,
                                      "why": "is already frozen at %s for an earlier Step; "
                                             "give this one a new name" % frozen_values[name]})

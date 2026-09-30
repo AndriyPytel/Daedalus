@@ -140,9 +140,9 @@ bare `x` or `v1`. A Step that needs it carries that name in its own
 the value, Execute reads it back from the same kernel by that name, and no
 number is ever typed twice to drift apart.
 
-A name is frozen the moment a Step naming it is declared: a later revision
+A name is frozen the moment a Step naming it has landed: a later revision
 may not rebind it to a different value, only compute a new one under a name
-of its own. A name may not shadow one the kernel namespace already reserves
+of its own. A name only unbuilt Steps named is free to recompute. A name may not shadow one the kernel namespace already reserves
 — `design`, `doc`, `App`, `Part`, `math`, `plan_values` among them — a Step
 naming one is refused the same way an uncomputed name is.
 

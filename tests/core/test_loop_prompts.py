@@ -664,7 +664,7 @@ def test_plan_is_told_to_name_a_computed_value_and_never_retype_it():
     assert "A number you worked out is a name, computed once, never retyped" \
         in plan_system
     assert "never the number itself" in plan_system
-    assert "A name is frozen the moment a Step naming it is declared" \
+    assert "A name is frozen the moment a Step naming it has landed" \
         in plan_system
     assert "A computation that will not come out is a disagreement between " \
         "two entries" in plan_system
