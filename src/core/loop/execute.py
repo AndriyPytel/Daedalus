@@ -215,13 +215,14 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             return {"delivered": False, "traceback": tried[number][-1]}
         index = number - 1 if isinstance(number, int) else None
         op = ops[index] if (ops and index is not None and 0 <= index < len(ops)) else None
-        arguments = {"code": declaration["code"], "label": declaration.get("label") or "Copilot Step",
-                     "kernel_result": {"created": declaration.get("created") or [],
-                                       "deleted": declaration.get("deleted") or [],
-                                       "modified": declaration.get("modified") or [],
-                                       "objects": declaration.get("objects") or [],
-                                       "names": declaration.get("names") or {},
-                                       "signature": declaration.get("signature")}}
+        arguments = {"code": declaration["code"], "label": declaration.get("label") or "Copilot Step"}
+        if budgets.preflight:
+            arguments["kernel_result"] = {"created": declaration.get("created") or [],
+                                          "deleted": declaration.get("deleted") or [],
+                                          "modified": declaration.get("modified") or [],
+                                          "objects": declaration.get("objects") or [],
+                                          "names": declaration.get("names") or {},
+                                          "signature": declaration.get("signature")}
         if op:
             arguments["op"] = op
         if design:
@@ -240,6 +241,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             declaration["created"] = result.get("created", [])
             if tried.get(number):
                 declaration["retried"] = True
+            if not budgets.preflight:
+                return {"delivered": True, "resync": tools.call("document_copy")["path"]}
             return {"delivered": True}
         drift = bool(result.get("drift"))
         traceback = result.get("traceback")
@@ -274,7 +277,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
                 on_declaration=on_declaration, exploration=exploration,
                 repair_ceiling=budgets.attempts_per_step,
                 already_delivered=range(1, start + 1),
-                plan_values=plan_values,
+                plan_values=plan_values, preflight=budgets.preflight,
             )
 
         reply = declared if isinstance(declared, dict) else {}

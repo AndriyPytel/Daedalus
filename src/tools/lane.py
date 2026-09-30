@@ -86,13 +86,15 @@ def watch(process, log, hang_seconds, run_seconds=None, poll_seconds=5,
 
 
 def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
-            python=sys.executable, conflicts=None):
+            python=sys.executable, conflicts=None, arm="pipeline", max_turns=None):
     """
     One run of one sheet, as a subprocess of `tools/run.py`.
 
     A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone,
     which is what a part named by a standard rather than drawn on a page is.
-    *conflicts* is `tools/run.py --conflicts`, unset runs its default ("on").
+    *conflicts* is `tools/run.py --conflicts`, unset runs its default ("on");
+    *arm* and *max_turns* are `--arm` and `--max-turns`, left off the command
+    line for the default pipeline so its command is what it always was.
     """
     save = log[: -len(".jsonl")] + ".step" if log.endswith(".jsonl") else log + ".step"
     cmd = [python, os.path.join(ROOT, "tools", "run.py"),
@@ -104,6 +106,10 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
         cmd += ["--budget-usd", str(budget_usd)]
     if conflicts is not None:
         cmd += ["--conflicts", conflicts]
+    if arm != "pipeline":
+        cmd += ["--arm", arm]
+    if max_turns is not None:
+        cmd += ["--max-turns", str(max_turns)]
     return subprocess.Popen(cmd)
 
 
@@ -162,7 +168,8 @@ leaving `--budget-usd` unset and risking an unbounded overnight spend.
 
 
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
-          resume, provider, run_seconds, conflicts=None, timestamp=None):
+          resume, provider, run_seconds, conflicts=None, timestamp=None, arm="pipeline",
+          max_turns=None):
     """
     *conflicts* ("on"/"off"/`None`) is the append-only model's own A/B arm:
     set, it suffixes every task's label the way `logs/ab-rlm-agentic`
@@ -171,7 +178,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
     log and, from `run_one`'s own naming, STEP, so a retry's save never
     lands on the same path as any other attempt's. *timestamp* is
     injectable so a test can make attempts distinguishable without a real
-    clock.
+    clock, and *arm* and *max_turns* go to every run.
     """
     timestamp = timestamp or _attempt_timestamp
     state_path = os.path.join(out, "state.json")
@@ -195,6 +202,10 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                 log = _unique_stem(stem, timestamp()) + ".jsonl"
                 attempts.append(log)
                 kwargs = {"conflicts": conflicts} if conflicts is not None else {}
+                if arm != "pipeline":
+                    kwargs["arm"] = arm
+                if max_turns is not None:
+                    kwargs["max_turns"] = max_turns
                 process = run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
                                   **kwargs)
                 outcome = watch(process, log, hang_seconds, run_seconds)
@@ -485,6 +496,11 @@ def main():
     parser.add_argument("--conflicts", choices=("on", "off"), default=None,
                         help="The conflict-recording A/B arm; unset runs tools/run.py's own "
                              "default (on)")
+    parser.add_argument("--arm", choices=("pipeline", "agent", "oneshot", "nopreflight"),
+                        default="pipeline",
+                        help="Which arm tools/run.py runs each task as; pipeline is unchanged")
+    parser.add_argument("--max-turns", type=int, default=None,
+                        help="The agent arm's turn ceiling; unset runs tools/run.py's own 60")
     parser.add_argument("--out", required=True)
     args = parser.parse_args()
 
@@ -520,9 +536,12 @@ def main():
             raise SystemExit("--status, --report, or --model and --task, each at least once")
 
     os.makedirs(args.out, exist_ok=True)
+    arms = {"arm": args.arm} if args.arm != "pipeline" else {}
+    if args.max_turns is not None:
+        arms["max_turns"] = args.max_turns
     sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,
          args.out, args.hang_seconds, args.retries, args.resume, args.provider,
-         args.run_seconds, args.conflicts)
+         args.run_seconds, args.conflicts, **arms)
     return 0
 
 

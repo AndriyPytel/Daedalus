@@ -8,6 +8,8 @@ rather than the main-thread marshaller a GUI needs. `run.py` and `lane.py`,
 the two surviving scripts in the harness directory, drive this same object to
 start a run.
 """
+import os
+
 from core import events, model_catalog
 from core import settings as _settings
 from core.freecad_apply import ApplyPipeline, active_document, build_registry
@@ -20,6 +22,8 @@ from core.loop import (ACCEPT, APPROVE, ASSERTION_PHASE, DECISIONS, DESIGN_PHASE
                        EXECUTE_PHASE, PLAN_PHASE, REJECT, REVIEW_PHASE, REVISE,
                        START_OVER, Approval, NeedsAnswer, auto_approve,
                        revise_by_default, run)
+from core.agent.oneshot import run_oneshot
+from core.agent.solo import run_solo
 from core.narrate import narrate
 from core.orchestrator import CONTROL, DESIGN, RUN_QUESTION, route
 from core.session_title import fallback, generate
@@ -271,6 +275,45 @@ class Client:
         else:
             return design(prompt)
 
+    def agent(self, prompt, attachments=(), cancelled=None, max_turns=60):
+        """
+        The agent arm: one model over this Client's kernel, choosing its own
+        route, its read tools bound to whichever Document the kernel last
+        checkpointed. The Client's Document becomes that checkpoint, so `save`
+        and `export_step` write what the agent built.
+        """
+        if self.kernel is None:
+            raise ValueError("the agent arm works through a kernel")
+        self.pipeline.events = self.events
+        tools = build_registry(document=lambda: self.document)
+        result, checkpoint = run_solo(
+            prompt, llm=self.llm, kernel=self.kernel, tools=tools, events=self.events,
+            attachments=list(attachments), cancelled=cancelled, max_turns=max_turns,
+            refresh=self._adopt)
+        if checkpoint:
+            self._adopt(checkpoint)
+        return result
+
+    def oneshot(self, prompt, attachments=()):
+        """The one-shot arm: one model call, its script executed once on this Client's Document."""
+        return run_oneshot(prompt, llm=self.llm, document=self.document, events=self.events,
+                           attachments=list(attachments))
+
+    def _adopt(self, checkpoint):
+        """Make a copy of *checkpoint* this Client's Document, closing the one it replaces."""
+        import shutil
+        import tempfile
+
+        import FreeCAD
+
+        handle, path = tempfile.mkstemp(prefix="fcc-adopted-", suffix=".FCStd")
+        os.close(handle)
+        shutil.copyfile(checkpoint, path)
+        previous = self.document
+        self.document = self.dispatch(lambda: FreeCAD.openDocument(path))
+        self.document.UndoMode = 1
+        FreeCAD.closeDocument(previous.Name)
+
     def resume(self, answer):
         """
         Answer the question a paused run is waiting on, and pick that same
@@ -303,6 +346,13 @@ class Client:
         from core.freecad_apply import export_step
 
         return export_step(self.document, path)
+
+    def has_geometry(self):
+        """Whether `export_step` would write any geometry at all, not an empty STEP."""
+        from core.freecad_apply import _measurable
+
+        return any(not obj.InList and _measurable(obj) is not None
+                   for obj in self.document.Objects)
 
     def close(self):
         """Let the kernel go and close the Document. A Client is not reused after this."""

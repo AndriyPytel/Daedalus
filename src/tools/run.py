@@ -15,12 +15,17 @@ the decide-for-yourself path.
         --attach tests/modelmania/mm25-p1-1.pdf --budget-usd 20
 """
 import argparse
+import json
 import os
 import sys
+import time
 
 _SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _SRC)
 sys.path.insert(0, os.path.dirname(_SRC))
+
+
+ARMS = ("pipeline", "agent", "oneshot", "nopreflight")
 
 
 def client_for(provider, model_id, effort):
@@ -38,14 +43,7 @@ def client_for(provider, model_id, effort):
     return client_from_settings(model_id, effort)
 
 
-def main():
-    """
-    One run, headless.
-
-    FreeCAD is imported before anything of the addon's: importing it is what
-    puts its `AdditionalPythonPackages` on `sys.path`, and that is where
-    litellm, httpx and pymupdf are installed.
-    """
+def parser():
     parser = argparse.ArgumentParser()
     parser.add_argument("--intent", required=True)
     parser.add_argument("--attach", nargs="*", default=[])
@@ -63,7 +61,46 @@ def main():
                         help="The append-only model's own A/B toggle: 'off' drops the "
                              "conflict record at the Gate, everything else about the run "
                              "unchanged")
-    args = parser.parse_args()
+    parser.add_argument("--arm", choices=ARMS, default="pipeline",
+                        help="pipeline is the fixed phase loop; nopreflight is it with every "
+                             "Step's code going straight to Apply; agent is one model choosing "
+                             "its own route; oneshot is one call executed once")
+    parser.add_argument("--max-turns", type=int, default=60,
+                        help="The agent arm's turn ceiling")
+    return parser
+
+
+def header(args):
+    """What a log needs to say to reproduce its run: the arm, the model dials and the commit."""
+    import subprocess
+
+    root = os.path.dirname(_SRC)
+    commit = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True,
+                            text=True).stdout.strip()
+    dirty = bool(subprocess.run(["git", "-C", root, "status", "--porcelain", "--untracked-files=no"],
+                                capture_output=True, text=True).stdout.strip())
+    return {"arm": args.arm, "model": args.model, "provider": args.provider,
+            "effort": args.effort, "max_turns": args.max_turns,
+            "budget_usd": args.budget_usd, "conflicts": args.conflicts,
+            "commit": commit, "dirty": dirty, "argv": sys.argv[1:]}
+
+
+def write_header(path, args):
+    """The log's first line: a `run` record in the events' own shape, for `replay` to carry through."""
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"kind": "run", "at": time.time(), "data": header(args)},
+                                default=str, sort_keys=True) + "\n")
+
+
+def main():
+    """
+    One run, headless.
+
+    FreeCAD is imported before anything of the addon's: importing it is what
+    puts its `AdditionalPythonPackages` on `sys.path`, and that is where
+    litellm, httpx and pymupdf are installed.
+    """
+    args = parser().parse_args()
 
     for lib in ("/Applications/FreeCAD.app/Contents/Resources/lib",):
         if os.path.isdir(lib) and lib not in sys.path:
@@ -77,6 +114,7 @@ def main():
     from core.loop import nobody_to_ask
     from core.loop.budgets import Budgets
 
+    write_header(args.log, args)
     llm = client_for(args.provider, args.model, args.effort) if args.model else None
     client = Client(llm=llm, confirm=lambda kinds: args.allow_user_objects is True)
     client.events.log_to(args.log)
@@ -89,10 +127,17 @@ def main():
 
     client.watch(track)
 
-    budgets = Budgets(record_conflicts=False) if args.conflicts == "off" else None
     cancelled = (lambda: spent["usd"] >= args.budget_usd) if args.budget_usd is not None else None
-    result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled,
-                         ask=nobody_to_ask, budgets=budgets)
+    if args.arm == "agent":
+        result = client.agent(args.intent, attachments=list(args.attach), cancelled=cancelled,
+                              max_turns=args.max_turns)
+    elif args.arm == "oneshot":
+        result = client.oneshot(args.intent, attachments=list(args.attach))
+    else:
+        budgets = Budgets(record_conflicts=args.conflicts != "off",
+                          preflight=args.arm != "nopreflight")
+        result = client.send(args.intent, attachments=list(args.attach), cancelled=cancelled,
+                             ask=nobody_to_ask, budgets=budgets)
 
     print("ok            :", result.ok)
     print("verdict       :", result.verdict, "-", result.reason)
@@ -101,7 +146,9 @@ def main():
     print("spent         : $%.2f" % spent["usd"])
     print("event log     :", args.log)
 
-    if args.save:
+    if args.save and args.arm in ("agent", "oneshot") and not client.has_geometry():
+        print("saved         : nothing, the Document holds no geometry")
+    elif args.save:
         if args.save.lower().endswith((".step", ".stp")):
             client.export_step(args.save)
         else:
