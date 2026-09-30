@@ -266,11 +266,16 @@ class ApplyPipeline:
         return self._document() if callable(self._document) else self._document
 
     def _render_path(self):
-        import tempfile
+        """
+        The next render's path, in a directory of this pipeline's own, so two
+        runs at once never overwrite or review each other's pictures.
+        """
+        if self._render_dir is None:
+            import tempfile
 
-        directory = self._render_dir or tempfile.gettempdir()
+            self._render_dir = tempfile.mkdtemp(prefix="fcc-renders-")
         self._renders += 1
-        return os.path.join(directory, "copilot_step_%d.png" % self._renders)
+        return os.path.join(self._render_dir, "copilot_step_%d.png" % self._renders)
 
     def apply(self, code, selection=None, label="Copilot Step", op=None,
               kernel_result=None, design=None, plan_values=None) -> ApplyResult:
