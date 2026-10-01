@@ -230,7 +230,7 @@ the wrong Session.
 
     def drop_from_the_dock(self):
         """
-        Down from the top of the copilot dock, exactly as wide as it is, and tall
+        Down from the top of the Daedalus dock, exactly as wide as it is, and tall
 enough for its content up to `CEILING` of the dock's own height, never a
 fixed 400px box regardless of a two-row history. The fill is resolved
 against *area* -- the dock's own widget, already painted by FreeCAD's

@@ -1,10 +1,10 @@
 """
-Level 2 -- `copilot.sdk.Client` end to end, against a real headless kernel.
+Level 2 -- `sdk.Client` end to end, against a real headless kernel.
 
 No FreeCAD GUI, no Qt application: `Client` wires `ApplyPipeline`'s `dispatch`
 straight through (the same pattern `run.py` uses), so a script can
 create one, send a prompt, and watch Steps and events land exactly as
-`ui/copilot_panel.py`'s own worker thread does, minus the thread.
+`ui/daedalus_panel.py`'s own worker thread does, minus the thread.
 """
 import json
 import os
@@ -43,7 +43,7 @@ def kernel():
 
 
 def test_a_prompt_against_a_real_document_produces_steps_and_events(kernel):
-    from copilot.sdk import Client
+    from sdk import Client
 
     client = Client(kernel=kernel, llm=_a_box_run())
     seen = []
@@ -62,7 +62,7 @@ def test_a_prompt_against_a_real_document_produces_steps_and_events(kernel):
 
 
 def test_an_empty_document_gets_a_client_and_ends_with_a_saved_fcstd(tmp_path, kernel):
-    from copilot.sdk import Client
+    from sdk import Client
 
     client = Client(kernel=kernel, llm=_a_box_run())
     result = client.send("Add a 10mm cube")
@@ -83,7 +83,7 @@ def test_a_run_s_save_path_ends_in_step_and_the_scorer_can_read_it(tmp_path, ker
     rename to `<path>.FCStd` the way `client.save(path)` would."""
     import sys
 
-    from copilot.sdk import Client
+    from sdk import Client
 
     client = Client(kernel=kernel, llm=_a_box_run())
     result = client.send("Add a 10mm cube")
@@ -118,7 +118,7 @@ class _NoKernel:
 
 
 def test_run_question_answers_through_the_session_without_touching_the_document():
-    from copilot.sdk import Client
+    from sdk import Client
 
     llm = ScriptedLLMClient(["run_question", "It finished after one Step."])
     client = Client(kernel=_NoKernel(), llm=llm)
@@ -131,7 +131,7 @@ def test_run_question_answers_through_the_session_without_touching_the_document(
 
 
 def test_the_role_table_client_routes_and_answers_from_the_orchestrator_row():
-    from copilot.sdk import Client
+    from sdk import Client
     from core.llm import ORCHESTRATOR, RoleClient
 
     llm = RoleClient(roles={ORCHESTRATOR: ScriptedLLMClient(
@@ -144,7 +144,7 @@ def test_the_role_table_client_routes_and_answers_from_the_orchestrator_row():
 
 
 def test_control_stops_a_run_already_in_flight():
-    from copilot.sdk import Client
+    from sdk import Client
 
     llm = ScriptedLLMClient(["control"])
     client = Client(kernel=_NoKernel(), llm=llm)
@@ -156,7 +156,7 @@ def test_control_stops_a_run_already_in_flight():
 
 
 def test_control_names_abort_separately_from_stop():
-    from copilot.sdk import Client
+    from sdk import Client
 
     llm = ScriptedLLMClient(["control"])
     client = Client(kernel=_NoKernel(), llm=llm)
@@ -183,7 +183,7 @@ def _a_question_then_a_box_run():
 
 
 def test_no_answer_callback_pauses_in_a_resumable_needs_answer_state(kernel):
-    from copilot.sdk import Client
+    from sdk import Client
 
     llm = ScriptedLLMClient(["design", json.dumps({"declare": {"design": {}, "question": "solid or hollow?"}})])
     client = Client(kernel=kernel, llm=llm)
@@ -216,7 +216,7 @@ def test_no_answer_callback_pauses_in_a_resumable_needs_answer_state(kernel):
 
 
 def test_an_answer_callback_receives_the_question_without_pausing(kernel):
-    from copilot.sdk import Client
+    from sdk import Client
 
     llm = _a_question_then_a_box_run()
     answered = []
@@ -240,7 +240,7 @@ def test_an_answer_callback_receives_the_question_without_pausing(kernel):
 
 
 def test_a_declared_auto_answer_policy_is_its_own_distinct_event(kernel):
-    from copilot.sdk import Client
+    from sdk import Client
     from core.loop.gate import nobody_to_ask
 
     llm = _a_question_then_a_box_run()
@@ -263,7 +263,7 @@ def test_send_cancelled_stops_the_run_before_it_starts():
     plan anything, and the run ends `budget_exhausted`, not `stopped`, the
     same boundary `test_loop_outcomes.py` proves for `run()` directly.
     """
-    from copilot.sdk import Client
+    from sdk import Client
     from core.events import BUDGET_EXHAUSTED, STOPPED
 
     llm = ScriptedLLMClient(["design"])
@@ -284,11 +284,11 @@ def test_send_cancelled_stops_the_run_before_it_starts():
 
 def test_kill_provider_reaches_this_clients_own_llm(monkeypatch):
     """
-    What `Mod/ui/copilot_panel.py`'s `LoopWorker.stop`/`abort` need of
+    What `Mod/ui/daedalus_panel.py`'s `LoopWorker.stop`/`abort` need of
     `core.llm.claude.kill`, reached through the SDK instead of a second
     `core.llm.claude` import outside `bridge/`.
     """
-    from copilot import sdk
+    import sdk
 
     calls = []
     monkeypatch.setattr("core.llm.claude.kill", lambda client: calls.append(client))
@@ -307,7 +307,7 @@ def test_a_real_runs_transcript_replays_as_the_run_that_wrote_it(tmp_path, kerne
     called directly -- would have passed every one of them. This drives an
     actual headless run and reads back the file `Client` itself wrote.
     """
-    from copilot.sdk import Client
+    from sdk import Client
 
     path = str(tmp_path / "session.jsonl")
     client = Client(kernel=kernel, llm=_a_box_run())
@@ -332,7 +332,7 @@ def test_a_fresh_document_is_created_through_dispatch_not_on_this_thread():
     main thread: macOS answers that with `NSWindow should only be instantiated
     on the main thread!` and aborts FreeCAD outright.
     """
-    from copilot.sdk import Client
+    from sdk import Client
 
     marshalled = []
 

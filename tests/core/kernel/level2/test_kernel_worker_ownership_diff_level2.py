@@ -19,7 +19,7 @@ from core.kernel import Kernel, copy_of, find_freecadcmd
 def _kernel_result(kernel, doc, code, names=None):
     """What `apply()` now expects a caller to already have from the kernel's
     own run of *code*, rather than a rehearsal `apply()` runs itself
-    (FCC-A-53)."""
+    (DAE-A-53)."""
     import os
 
     copy = copy_of(doc)

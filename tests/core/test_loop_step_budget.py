@@ -1,6 +1,6 @@
 """
 FCC-cheapest-experiment: the per-Step exploration budget crosses a
-same-Step regeneration (FCC-A-53) instead of resetting with it.
+same-Step regeneration (DAE-A-53) instead of resetting with it.
 
 `analysis-checkpoint-rollback.md` fix (b): `since_declaration`
 (`core.agent.agent`) demands a declaration after `_DECLARATION_LIMIT`

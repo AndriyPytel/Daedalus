@@ -1,5 +1,5 @@
 """
-FreeCadCopilot - GUI Initialization
+Daedalus - GUI Initialization
 
 FreeCAD runs this file with exec(compile(source, path, "exec")) from inside a
 function of FreeCADGuiInit. There is no __file__, and everything defined here
@@ -18,7 +18,7 @@ def initialize(addon_path):
     It sets up the system path, runs the dependency check, and installs the
     dock and the preference pages.
     """
-    App.Console.PrintMessage("--- [FreeCadCopilot] Initializing GUI ---\n")
+    App.Console.PrintMessage("--- [Daedalus] Initializing GUI ---\n")
     
     try:
         # 1. Register icon path
@@ -39,7 +39,7 @@ def initialize(addon_path):
         def _confirm(missing):
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Information)
-            msg_box.setText("FreeCadCopilot - Additional Dependencies Required")
+            msg_box.setText("Daedalus - Additional Dependencies Required")
             msg_box.setInformativeText(
                 "The following Python packages are missing and need to be installed:\n\n"
                 f"  - {', '.join(missing)}\n\n"
@@ -68,22 +68,22 @@ def initialize(addon_path):
         App.Console.PrintMessage("[DEBUG] Dependency check process completed.\n")
 
         # 4. Register the Preference Page
-        # This import executes the addPreferencePage() call in CopilotPreferences.py
-        from Mod import CopilotPreferences
-        App.Console.PrintMessage("[DEBUG] CopilotPreferences module loaded to register preference page.\n")
+        # This import executes the addPreferencePage() call in DaedalusPreferences.py
+        from Mod import DaedalusPreferences
+        App.Console.PrintMessage("[DEBUG] DaedalusPreferences module loaded to register preference page.\n")
 
         # 5. Dock the chat on the main window. There is no workbench of ours
         #    to switch to; the dock is a fixture of the window itself.
         #    FreeCAD may not have built the window yet at this point; the
         #    timer runs once it has.
-        from ui import copilot_dock
-        if copilot_dock.install(Gui.getMainWindow()) is None:
+        from ui import daedalus_dock
+        if daedalus_dock.install(Gui.getMainWindow()) is None:
             from PySide import QtCore
-            QtCore.QTimer.singleShot(0, lambda: copilot_dock.install(Gui.getMainWindow()))
+            QtCore.QTimer.singleShot(0, lambda: daedalus_dock.install(Gui.getMainWindow()))
 
     except Exception:
         App.Console.PrintError("=" * 50 + "\n")
-        App.Console.PrintError("An error occurred during FreeCadCopilot initialization.\n")
+        App.Console.PrintError("An error occurred during Daedalus initialization.\n")
         App.Console.PrintError(traceback.format_exc())
         App.Console.PrintError("=" * 50 + "\n")
 

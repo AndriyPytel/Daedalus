@@ -1,8 +1,8 @@
 # RLM role-to-model table
 
-One row per role, settled here so FCC-294's baseline and FCC-319's 24-run
+One row per role, settled here so DAE-294's baseline and DAE-319's 24-run
 comparison can be costed against concrete provider/model/effort values
-instead of a guess per ticket. This is a document, not code: FCC-312 wires
+instead of a guess per ticket. This is a document, not code: DAE-312 wires
 these values into Preferences and `core/llm.py`.
 
 Follows the pattern already used by `myga.yml`'s `default` / `worker` /
@@ -33,7 +33,7 @@ so it gets the cheapest model in the table.
 
 A role this table has never heard of falls back to **the caller's own
 model**, not to a cheaper default. This is the epic's settled rule
-(`FCC-291`, "Model and effort are chosen per role"): an unnamed role
+(`DAE-291`, "Model and effort are chosen per role"): an unnamed role
 inherits whatever provider/model/effort the agent that spawned it was
 already running under, so a new role introduced later never silently
 downgrades until someone adds it a row here.

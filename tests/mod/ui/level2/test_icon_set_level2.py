@@ -13,7 +13,7 @@ replace. A file that parses but carries a baked colour renders black on a dark
 panel, which is the defect this guards against, and it renders without
 raising.
 
-The directory also holds the workbench icons (copilot, preferences-freecadcopilot),
+The directory also holds the workbench icons (daedalus, preferences-daedalus),
 which are logos at a fixed size that FreeCAD reads directly; these carry no
 currentColor and do pin their own dimensions.
 """
@@ -26,7 +26,7 @@ from conftest import NO_QT, QT_APP
 
 pytestmark = pytest.mark.freecad
 
-WORKBENCH_ICONS = {"copilot", "preferences-freecadcopilot"}
+WORKBENCH_ICONS = {"daedalus", "preferences-daedalus"}
 
 
 def _panel_icons():

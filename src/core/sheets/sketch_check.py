@@ -21,7 +21,7 @@ from core.sheets.sheet_reader import A_DISTANCE, spelt
 
 START, END = 1, 2
 
-A_DOCUMENT = "copilot-reading-check"
+A_DOCUMENT = "daedalus-reading-check"
 
 A_SHIFT = 2.0
 

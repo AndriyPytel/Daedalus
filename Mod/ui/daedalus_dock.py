@@ -1,5 +1,5 @@
 """
-The Copilot chat is a fixture of the main window, installed at startup like
+The Daedalus chat is a fixture of the main window, installed at startup like
 Tasks rather than built on the workbench's `Activated` and hidden on
 `Deactivated`, since a conversation about the part being modelled is not a
 reason to leave the workbench the part is modelled in. Every workbench has
@@ -29,9 +29,9 @@ def install(main_window):
     if main_window is None:
         return None
     if _panel is None:
-        from ui.copilot_panel import CopilotPanel
+        from ui.daedalus_panel import DaedalusPanel
 
-        _panel = CopilotPanel()
+        _panel = DaedalusPanel()
         main_window.addDockWidget(QtCore.Qt.RightDockWidgetArea, _panel)
     return _panel
 

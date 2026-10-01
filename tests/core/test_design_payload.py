@@ -109,7 +109,7 @@ from tests import modelmania_harness
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MODELMANIA = str(modelmania_harness.MODELMANIA_DIR)
-REPORT_PATH = "/tmp/FreeCadCopilot/design_payload_report.json"
+REPORT_PATH = "/tmp/Daedalus/design_payload_report.json"
 
 ATTACHMENTS = {
     "model-mania_-in-person-2023.pdf": os.path.join(

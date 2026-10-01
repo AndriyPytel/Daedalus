@@ -19,7 +19,7 @@ import sys
 import textwrap
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUR_PACKAGES = ("core", "copilot", "bridge", "ui", "tools", "Mod")
+OUR_PACKAGES = ("core", "sdk", "bridge", "ui", "tools", "Mod")
 
 
 def _origins(module):

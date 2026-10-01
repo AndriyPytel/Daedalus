@@ -7,7 +7,7 @@ viewer that treats the file as a document on its own (not fed through
 `height` stays out of scope for panel icons: all of them carry a
 `viewBox="0 0 24 24"`, and
 `tests/test_icon_set_level2.py::test_every_icon_is_drawn_on_the_grid_the_tint_scales_from`
-already treats a pinned size as an offender. preferences-freecadcopilot.svg
+already treats a pinned size as an offender. preferences-daedalus.svg
 is a logo with a different viewBox and a pinned size that FreeCAD's
 preferences page expects.
 """
@@ -45,11 +45,11 @@ def test_no_panel_icon_svg_gained_a_pinned_size():
     """
     Panel icons carry no width/height; the preferences logo does.
 
-    preferences-freecadcopilot is a logo at a fixed size, not a tintable
+    preferences-daedalus is a logo at a fixed size, not a tintable
     glyph. Panel icons are loaded by UIHelpers.get_icon which scales the
     viewBox, so they must not pin a size.
     """
-    pinned_size_icons = {"preferences-freecadcopilot"}
+    pinned_size_icons = {"preferences-daedalus"}
     for name in _icon_names():
         if name in pinned_size_icons:
             continue

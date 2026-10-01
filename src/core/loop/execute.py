@@ -106,7 +106,7 @@ class ExecuteOutcome:
     """
 
     code: str = None
-    label: str = "Copilot Step"
+    label: str = "Daedalus Step"
     description: dict = None
     created: list = field(default_factory=list)
     apply_failed: str = None
@@ -215,7 +215,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             return {"delivered": False, "traceback": tried[number][-1]}
         index = number - 1 if isinstance(number, int) else None
         op = ops[index] if (ops and index is not None and 0 <= index < len(ops)) else None
-        arguments = {"code": declaration["code"], "label": declaration.get("label") or "Copilot Step",
+        arguments = {"code": declaration["code"], "label": declaration.get("label") or "Daedalus Step",
                      "kernel_result": {"created": declaration.get("created") or [],
                                        "deleted": declaration.get("deleted") or [],
                                        "modified": declaration.get("modified") or [],
@@ -234,7 +234,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
         if result.get("status") == "applied":
             if fix is None:
                 events.emit(APPLIED, step=number,
-                            label=declaration.get("label") or "Copilot Step",
+                            label=declaration.get("label") or "Daedalus Step",
                             created=result.get("created", []))
             declaration["description"] = result.get("description")
             declaration["created"] = result.get("created", [])
@@ -482,7 +482,7 @@ def _written(declarations, start):
     for position, entry in enumerate(declarations or (), start=start + 1):
         number = entry.get("step")
         written[number if isinstance(number, int) else position] = ExecuteOutcome(
-            code=str(entry["code"]), label=str(entry.get("label") or "Copilot Step"),
+            code=str(entry["code"]), label=str(entry.get("label") or "Daedalus Step"),
             description=entry.get("description"), created=list(entry.get("created") or ()),
             apply_failed=entry.get("traceback") if entry.get("delivered") is False else None,
             retries=list(entry.get("retries") or ()), retried=bool(entry.get("retried")))

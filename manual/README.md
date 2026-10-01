@@ -1,6 +1,6 @@
 # manual/
 
-Test material for FreeCadCopilot: drawings and photos of single manufactured mechanical
+Test material for Daedalus: drawings and photos of single manufactured mechanical
 parts, used to check that the tool can build a working FreeCAD model from a real input.
 See `MATERIAL_BRIEF.md` (not in this repo) for how this material was selected and what
 counts as good material.

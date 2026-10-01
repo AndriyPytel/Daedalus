@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(not HAVE_QT, reason=NO_QT)
 
 
 def _asks():
-    from ui.copilot_panel import AskTheUser
+    from ui.daedalus_panel import AskTheUser
 
     return AskTheUser()
 

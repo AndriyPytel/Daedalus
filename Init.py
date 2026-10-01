@@ -1,5 +1,5 @@
 """
-FreeCadCopilot - Initialization
+Daedalus - Initialization
 
 FreeCAD runs this file with exec(compile(source, path, "exec")) out of
 FreeCADInit.InitApplications, in that module's globals. There is no __file__
@@ -11,9 +11,9 @@ from pathlib import Path
 
 import FreeCAD
 
-__title__ = "FreeCadCopilot"
+__title__ = "Daedalus"
 __author__ = "Andrii Pytel"
-__url__ = "https://github.com/AndriyPytel/FreeCadCopilot"
+__url__ = "https://github.com/AndriyPytel/Daedalus"
 __doc__ = "Kernel/sub-agent AI architecture for FreeCAD"
 __date__ = "2025-10-26"
 

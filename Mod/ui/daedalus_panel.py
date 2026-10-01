@@ -1,6 +1,6 @@
 """The panel is a renderer of the event stream: it does not drive the loop, it
 sends one Intent then renders whatever the loop emits,
-`CopilotPanel.on_event` a switch over event kinds and nothing else, so the
+`DaedalusPanel.on_event` a switch over event kinds and nothing else, so the
 same stream is the session log and a frozen UI is impossible since the loop
 runs on a worker thread and only emits. The panel has no colours, since
 FreeCAD paints its UI with one global stylesheet and leaves QPalette at
@@ -10,7 +10,7 @@ when a Session opens, `ATTACHMENT_WIDTH` bounds an attached picture's
 width, `OPEN_AT_MOST` bounds entries beside the Plan that stand open,
 `FOLDS_OVER` is how long a narrated line may be before it folds into a row
 and `TITLE_KEPT` how much of its sentence titles it, while every
-`copilot.sdk` import is deferred to the method that needs it since the SDK
+`sdk` import is deferred to the method that needs it since the SDK
 reaches `core`, which imports FreeCAD's Qt bindings not yet guaranteed to
 exist at import time.
 """
@@ -400,7 +400,7 @@ Area before blocking.
         payload = ({"steps": steps, "history": history, "rollback": rollback}
                   if history or rollback else steps)
         return self._ask(self.plan_gate, payload,
-                         "FreeCAD Copilot needs you to approve its Plan before it continues.")
+                         "Daedalus needs you to approve its Plan before it continues.")
 
     def about_objects_we_do_not_own(self, kinds):
         """
@@ -413,7 +413,7 @@ Area before blocking.
         guard is there rather than repeated in each of them.
         """
         return self._ask(self.owned_objects, kinds,
-                         "FreeCAD Copilot wants to delete something it did not create and "
+                         "Daedalus wants to delete something it did not create and "
                          "needs your permission.")
 
     def about_missing_values(self, question):
@@ -424,7 +424,7 @@ takes the answer, taking it from the composer the same way Amend does.
 Enter is the only route to Send here, the button being hidden mid-run.
 """
         answer = self._ask(self.missing_values, question,
-                           "FreeCAD Copilot needs a value it could not find on the drawing.")
+                           "Daedalus needs a value it could not find on the drawing.")
         return answer if isinstance(answer, str) else ""
 
     def about_the_revision(self, failure):
@@ -437,10 +437,10 @@ Enter is the only route to Send here, the button being hidden mid-run.
         anything, so a stopped run is recorded as stopped rather than as a
         result the user took.
         """
-        from copilot.sdk import DECISIONS, REVISE
+        from sdk import DECISIONS, REVISE
 
         answer = self._ask(self.revision, failure,
-                           "FreeCAD Copilot needs you to say what to do about a result that "
+                           "Daedalus needs you to say what to do about a result that "
                            "did not pass its checks.")
         return answer if answer in DECISIONS else REVISE
 
@@ -481,7 +481,7 @@ does not need paging back.
     def abandon(self):
         """Release a waiting question so Stop is not swallowed by a prompt."""
         if not self._answered.is_set():
-            from copilot.sdk import REJECT, Approval
+            from sdk import REJECT, Approval
 
             self._answer = Approval(REJECT)
             self._answered.set()
@@ -589,7 +589,7 @@ run rebuilds it from settings when the model changes.
         """
         if self.sdk_client is None:
             from bridge.main_thread import on_main_thread
-            from copilot.sdk import Client
+            from sdk import Client
             self.sdk_client = Client(
                 document=self._document,
                 confirm=self.ask.about_objects_we_do_not_own,
@@ -607,7 +607,7 @@ traceback. `the_part_path` is the Session's last run's read/written part,
 forwarded here unless a new attachment replaces it; empty means describe
 the part from `attachments` alone.
 """
-        from copilot.sdk import events as ev, EventStream, build_registry
+        from sdk import events as ev, EventStream, build_registry
         from bridge.logger import generate_crash_report, logger
 
         self._stop.clear()
@@ -666,7 +666,7 @@ class _TitleThread(QtCore.QThread):
         self._model_id = model_id
 
     def run(self):
-        from copilot.sdk import generate
+        from sdk import generate
 
         self.titled.emit(generate(self._intent, self._model_id))
 
@@ -751,7 +751,7 @@ composer, never queued here.
                     self.thread.wait(1000)
 
 
-class CopilotPanel(QtWidgets.QDockWidget):
+class DaedalusPanel(QtWidgets.QDockWidget):
     """The dock is the panel's widgets, its worker thread, and the event stream
 rendered into a transcript, carrying an object name since
 `QMainWindow::saveState()` drops unnamed docks, losing the panel's restored
@@ -782,8 +782,8 @@ belong to the Session.
         return table
 
     def __init__(self):
-        super().__init__("FreeCAD Copilot")
-        self.setObjectName("FreeCadCopilotPanel")
+        super().__init__("Daedalus")
+        self.setObjectName("DaedalusPanel")
         self.setStyleSheet(_build_qss())
 
         root = QtWidgets.QWidget()
@@ -884,7 +884,7 @@ belong to the Session.
         `core.freecad_apply.active_document`, never `FreeCAD.ActiveDocument`.
         """
         if bundle.worker.document is None:
-            from copilot.sdk import active_document
+            from sdk import active_document
             bundle.worker.document = active_document()
 
     def _route_event(self, log: str, event):
@@ -1207,7 +1207,7 @@ left over is what the name is elided to.
         the composer's two pills edit; every other role is set in Preferences
         alone.
         """
-        from copilot.sdk import ORCHESTRATOR
+        from sdk import ORCHESTRATOR
 
         return settings_manager.instance().get_role_model(ORCHESTRATOR) or {}
 
@@ -1218,7 +1218,7 @@ left over is what the name is elided to.
         Through `set_role_table` and not `core.settings`, so the Preferences
         page hears the change while it is open.
         """
-        from copilot.sdk import ORCHESTRATOR
+        from sdk import ORCHESTRATOR
 
         settings = settings_manager.instance()
         table = settings.get_role_table()
@@ -1256,7 +1256,7 @@ left over is what the name is elided to.
         all: a picker that changes nothing is a picker that lies, so the
         trigger says so in its tooltip and does not open.
         """
-        from copilot.sdk import EFFORTS, effort_is_honoured
+        from sdk import EFFORTS, effort_is_honoured
 
         if not effort_is_honoured(self._orchestrator_row().get("model", "")):
             return
@@ -1276,7 +1276,7 @@ left over is what the name is elided to.
         same as `client_from_settings`. A model with no reasoning to spend
         cannot honour it, so the pill says so (`core.llm.effort_is_honoured`).
         """
-        from copilot.sdk import EFFORTS, effort_is_honoured, get_effort
+        from sdk import EFFORTS, effort_is_honoured, get_effort
 
         row = self._orchestrator_row()
         honoured = effort_is_honoured(row.get("model", ""))
@@ -1307,7 +1307,7 @@ left over is what the name is elided to.
 
     def _sessions_worth_showing(self) -> list:
         """The indexed Sessions of the Document in focus, or all of them."""
-        from copilot.sdk import active_document
+        from sdk import active_document
 
         try:
             identity = str(getattr(active_document(), "Uid", "") or "")
@@ -1431,7 +1431,7 @@ left over is what the name is elided to.
         replay would land its widgets after whatever this Session showed the
         last time it was open, doubling everything that had already rendered.
         """
-        from copilot.sdk import replay
+        from sdk import replay
 
         info = self.chat_sessions.get_session_info(index)
         if info is None:
@@ -1529,7 +1529,7 @@ switched away from is abandoned rather than rendered.
         the model changed — and the same Intent sent again. A settings lookup
         that fails is not the user's problem here; the run reports it.
         """
-        from copilot.sdk import selected_model_name, unusable_attachments
+        from sdk import selected_model_name, unusable_attachments
 
         attached = self.chip_bar.files()
         if not attached:
@@ -1620,7 +1620,7 @@ switched away from is abandoned rather than rendered.
         the log path, carries the title callback through, so a renamed or
         moved log cannot orphan the title in flight.
         """
-        from copilot.sdk import fallback
+        from sdk import fallback
 
         if self.chat_sessions.begin(index, fallback(intent)):
             index = self.chat_sessions.stack.currentIndex()
@@ -1712,8 +1712,8 @@ falling through, and an unmapped kind reaches `_report_unknown_kind` rather
 than being skipped. `INTENT` takes the user's bubble unless Send already put
 it up, so a prompt shows once whether live or restored.
 """
-        from copilot.sdk import events as ev
-        from copilot.sdk import narrate
+        from sdk import events as ev
+        from sdk import narrate
 
         data = event.data
 
@@ -1736,46 +1736,46 @@ it up, so a prompt shows once whether live or restored.
         self._update_queue(event)
         self._update_review_evidence(event)
 
-        handler = CopilotPanel._dispatch_table("_ON_EVENT_DISPATCH", lambda: {
-            ev.CALL_STARTED: CopilotPanel._oe_call_started,
-            ev.COST: CopilotPanel._oe_cost,
-            ev.THOUGHT: CopilotPanel._oe_thought,
-            ev.WRITING: CopilotPanel._oe_writing,
-            ev.ATTACHED: CopilotPanel._oe_attached,
-            ev.TOOL_CALL: CopilotPanel._oe_tool_call,
-            ev.TOOL_RESULT: CopilotPanel._oe_tool_result,
-            ev.PART: CopilotPanel._oe_part,
-            ev.PLAN: CopilotPanel._oe_plan,
-            ev.ASSERTION: CopilotPanel._oe_assertion,
-            ev.STEP_STARTED: CopilotPanel._noop,
-            ev.STEP_DECLARED: CopilotPanel._oe_step_declared,
-            ev.APPLIED: CopilotPanel._oe_applied,
-            ev.BLOCKED: CopilotPanel._oe_blocked,
-            ev.STOPPED: CopilotPanel._oe_blocked,
-            ev.ABORTED: CopilotPanel._oe_blocked,
-            ev.BUDGET_EXHAUSTED: CopilotPanel._oe_blocked,
-            ev.TURN_BUDGET_EXHAUSTED: CopilotPanel._noop,
-            ev.FAILED: CopilotPanel._oe_blocked,
-            ev.COMPLETED: CopilotPanel._noop,
-            ev.QUESTION: CopilotPanel._noop,
-            ev.ANSWER: CopilotPanel._noop,
-            ev.DESIGN: CopilotPanel._noop,
-            ev.CHANGE_SET: CopilotPanel._noop,
-            ev.ROUTED: CopilotPanel._noop,
-            ev.CONSULT_DESIGN: CopilotPanel._noop,
-            ev.CONSULT_DESIGN_ANSWERED: CopilotPanel._noop,
-            ev.OUTSTANDING: CopilotPanel._noop,
-            ev.REVIEW_SUSPECTED: CopilotPanel._noop,
-            ev.GATE: CopilotPanel._noop,
-            ev.UNBUILT: CopilotPanel._noop,
-            ev.PREFLIGHT_FAILED: CopilotPanel._noop,
-            ev.REVIEW_VERDICT: CopilotPanel._noop,
-            ev.PLAN_REVISED: CopilotPanel._noop,
-            ev.ERROR: CopilotPanel._noop,
-            ev.SUB_AGENT_SPAWNED: CopilotPanel._oe_sub_agent_spawned,
-            ev.SUB_AGENT_ANSWERED: CopilotPanel._oe_sub_agent_answered,
-            ev.SUB_AGENT_REFUSED: CopilotPanel._oe_sub_agent_refused,
-            ev.INVOKE_MARKUP: CopilotPanel._noop,
+        handler = DaedalusPanel._dispatch_table("_ON_EVENT_DISPATCH", lambda: {
+            ev.CALL_STARTED: DaedalusPanel._oe_call_started,
+            ev.COST: DaedalusPanel._oe_cost,
+            ev.THOUGHT: DaedalusPanel._oe_thought,
+            ev.WRITING: DaedalusPanel._oe_writing,
+            ev.ATTACHED: DaedalusPanel._oe_attached,
+            ev.TOOL_CALL: DaedalusPanel._oe_tool_call,
+            ev.TOOL_RESULT: DaedalusPanel._oe_tool_result,
+            ev.PART: DaedalusPanel._oe_part,
+            ev.PLAN: DaedalusPanel._oe_plan,
+            ev.ASSERTION: DaedalusPanel._oe_assertion,
+            ev.STEP_STARTED: DaedalusPanel._noop,
+            ev.STEP_DECLARED: DaedalusPanel._oe_step_declared,
+            ev.APPLIED: DaedalusPanel._oe_applied,
+            ev.BLOCKED: DaedalusPanel._oe_blocked,
+            ev.STOPPED: DaedalusPanel._oe_blocked,
+            ev.ABORTED: DaedalusPanel._oe_blocked,
+            ev.BUDGET_EXHAUSTED: DaedalusPanel._oe_blocked,
+            ev.TURN_BUDGET_EXHAUSTED: DaedalusPanel._noop,
+            ev.FAILED: DaedalusPanel._oe_blocked,
+            ev.COMPLETED: DaedalusPanel._noop,
+            ev.QUESTION: DaedalusPanel._noop,
+            ev.ANSWER: DaedalusPanel._noop,
+            ev.DESIGN: DaedalusPanel._noop,
+            ev.CHANGE_SET: DaedalusPanel._noop,
+            ev.ROUTED: DaedalusPanel._noop,
+            ev.CONSULT_DESIGN: DaedalusPanel._noop,
+            ev.CONSULT_DESIGN_ANSWERED: DaedalusPanel._noop,
+            ev.OUTSTANDING: DaedalusPanel._noop,
+            ev.REVIEW_SUSPECTED: DaedalusPanel._noop,
+            ev.GATE: DaedalusPanel._noop,
+            ev.UNBUILT: DaedalusPanel._noop,
+            ev.PREFLIGHT_FAILED: DaedalusPanel._noop,
+            ev.REVIEW_VERDICT: DaedalusPanel._noop,
+            ev.PLAN_REVISED: DaedalusPanel._noop,
+            ev.ERROR: DaedalusPanel._noop,
+            ev.SUB_AGENT_SPAWNED: DaedalusPanel._oe_sub_agent_spawned,
+            ev.SUB_AGENT_ANSWERED: DaedalusPanel._oe_sub_agent_answered,
+            ev.SUB_AGENT_REFUSED: DaedalusPanel._oe_sub_agent_refused,
+            ev.INVOKE_MARKUP: DaedalusPanel._noop,
         }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "on_event")
@@ -1820,7 +1820,7 @@ it up, so a prompt shows once whether live or restored.
         return False
 
     def _oe_part(self, event, data):
-        from copilot.sdk import narrate
+        from sdk import narrate
 
         self._render_part(narrate(event).line, data["path"])
         return True
@@ -1888,7 +1888,7 @@ as running only after it already shows `applied`.
         headed by the sentence `narrate()` returns -- saying it again above
         reads as two verdicts.
         """
-        from copilot.sdk import events as ev
+        from sdk import events as ev
 
         return (event.kind == ev.REVIEW_VERDICT
                 and event.data.get("verdict") != "pass")
@@ -1902,49 +1902,49 @@ as running only after it already shows `applied`.
         """
         data = event.data
 
-        from copilot.sdk import events as ev
+        from sdk import events as ev
 
-        handler = CopilotPanel._dispatch_table("_QUEUE_DISPATCH", lambda: {
-            ev.INTENT: CopilotPanel._uq_intent,
-            ev.CALL_STARTED: CopilotPanel._uq_call_started,
-            ev.COST: CopilotPanel._uq_cost,
-            ev.THOUGHT: CopilotPanel._noop,
-            ev.WRITING: CopilotPanel._noop,
-            ev.QUESTION: CopilotPanel._noop,
-            ev.ANSWER: CopilotPanel._noop,
-            ev.ATTACHED: CopilotPanel._noop,
-            ev.DESIGN: CopilotPanel._noop,
-            ev.CHANGE_SET: CopilotPanel._noop,
-            ev.ROUTED: CopilotPanel._noop,
-            ev.CONSULT_DESIGN: CopilotPanel._noop,
-            ev.CONSULT_DESIGN_ANSWERED: CopilotPanel._noop,
-            ev.PART: CopilotPanel._uq_part,
-            ev.PLAN: CopilotPanel._uq_plan,
-            ev.PLAN_REVISED: CopilotPanel._uq_plan,
-            ev.GATE: CopilotPanel._uq_gate,
-            ev.STEP_STARTED: CopilotPanel._noop,
-            ev.STEP_DECLARED: CopilotPanel._uq_step_declared,
-            ev.TOOL_CALL: CopilotPanel._noop,
-            ev.TOOL_RESULT: CopilotPanel._noop,
-            ev.PREFLIGHT_FAILED: CopilotPanel._uq_preflight_failed,
-            ev.APPLIED: CopilotPanel._uq_applied,
-            ev.ASSERTION: CopilotPanel._uq_assertion,
-            ev.OUTSTANDING: CopilotPanel._noop,
-            ev.UNBUILT: CopilotPanel._uq_unbuilt,
-            ev.REVIEW_VERDICT: CopilotPanel._uq_review_verdict,
-            ev.REVIEW_SUSPECTED: CopilotPanel._noop,
-            ev.BLOCKED: CopilotPanel._uq_fail_current,
-            ev.STOPPED: CopilotPanel._uq_fail_current,
-            ev.ABORTED: CopilotPanel._uq_fail_current,
-            ev.BUDGET_EXHAUSTED: CopilotPanel._uq_fail_current,
-            ev.TURN_BUDGET_EXHAUSTED: CopilotPanel._noop,
-            ev.FAILED: CopilotPanel._uq_fail_current,
-            ev.COMPLETED: CopilotPanel._noop,
-            ev.ERROR: CopilotPanel._uq_fail_current,
-            ev.SUB_AGENT_SPAWNED: CopilotPanel._noop,
-            ev.SUB_AGENT_ANSWERED: CopilotPanel._noop,
-            ev.SUB_AGENT_REFUSED: CopilotPanel._noop,
-            ev.INVOKE_MARKUP: CopilotPanel._noop,
+        handler = DaedalusPanel._dispatch_table("_QUEUE_DISPATCH", lambda: {
+            ev.INTENT: DaedalusPanel._uq_intent,
+            ev.CALL_STARTED: DaedalusPanel._uq_call_started,
+            ev.COST: DaedalusPanel._uq_cost,
+            ev.THOUGHT: DaedalusPanel._noop,
+            ev.WRITING: DaedalusPanel._noop,
+            ev.QUESTION: DaedalusPanel._noop,
+            ev.ANSWER: DaedalusPanel._noop,
+            ev.ATTACHED: DaedalusPanel._noop,
+            ev.DESIGN: DaedalusPanel._noop,
+            ev.CHANGE_SET: DaedalusPanel._noop,
+            ev.ROUTED: DaedalusPanel._noop,
+            ev.CONSULT_DESIGN: DaedalusPanel._noop,
+            ev.CONSULT_DESIGN_ANSWERED: DaedalusPanel._noop,
+            ev.PART: DaedalusPanel._uq_part,
+            ev.PLAN: DaedalusPanel._uq_plan,
+            ev.PLAN_REVISED: DaedalusPanel._uq_plan,
+            ev.GATE: DaedalusPanel._uq_gate,
+            ev.STEP_STARTED: DaedalusPanel._noop,
+            ev.STEP_DECLARED: DaedalusPanel._uq_step_declared,
+            ev.TOOL_CALL: DaedalusPanel._noop,
+            ev.TOOL_RESULT: DaedalusPanel._noop,
+            ev.PREFLIGHT_FAILED: DaedalusPanel._uq_preflight_failed,
+            ev.APPLIED: DaedalusPanel._uq_applied,
+            ev.ASSERTION: DaedalusPanel._uq_assertion,
+            ev.OUTSTANDING: DaedalusPanel._noop,
+            ev.UNBUILT: DaedalusPanel._uq_unbuilt,
+            ev.REVIEW_VERDICT: DaedalusPanel._uq_review_verdict,
+            ev.REVIEW_SUSPECTED: DaedalusPanel._noop,
+            ev.BLOCKED: DaedalusPanel._uq_fail_current,
+            ev.STOPPED: DaedalusPanel._uq_fail_current,
+            ev.ABORTED: DaedalusPanel._uq_fail_current,
+            ev.BUDGET_EXHAUSTED: DaedalusPanel._uq_fail_current,
+            ev.TURN_BUDGET_EXHAUSTED: DaedalusPanel._noop,
+            ev.FAILED: DaedalusPanel._uq_fail_current,
+            ev.COMPLETED: DaedalusPanel._noop,
+            ev.ERROR: DaedalusPanel._uq_fail_current,
+            ev.SUB_AGENT_SPAWNED: DaedalusPanel._noop,
+            ev.SUB_AGENT_ANSWERED: DaedalusPanel._noop,
+            ev.SUB_AGENT_REFUSED: DaedalusPanel._noop,
+            ev.INVOKE_MARKUP: DaedalusPanel._noop,
         }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "_update_queue")
@@ -1974,7 +1974,7 @@ as running only after it already shows `applied`.
         the running phase is Execute, and the wait belongs to the phase that
         was running while it lasted.
         """
-        from copilot.sdk import APPROVE
+        from sdk import APPROVE
 
         if "decision" not in data:
             self._waiting_on_you_since = event.at
@@ -2016,49 +2016,49 @@ as running only after it already shows `applied`.
         """What the Review verdict card shows, tracked off the stream as it passes."""
         data = event.data
 
-        from copilot.sdk import events as ev
+        from sdk import events as ev
 
-        handler = CopilotPanel._dispatch_table("_EVIDENCE_DISPATCH", lambda: {
-            ev.INTENT: CopilotPanel._noop,
-            ev.THOUGHT: CopilotPanel._noop,
-            ev.WRITING: CopilotPanel._noop,
-            ev.QUESTION: CopilotPanel._noop,
-            ev.ANSWER: CopilotPanel._noop,
-            ev.ATTACHED: CopilotPanel._noop,
-            ev.DESIGN: CopilotPanel._noop,
-            ev.CHANGE_SET: CopilotPanel._noop,
-            ev.ROUTED: CopilotPanel._noop,
-            ev.CONSULT_DESIGN: CopilotPanel._noop,
-            ev.CONSULT_DESIGN_ANSWERED: CopilotPanel._noop,
-            ev.PART: CopilotPanel._noop,
-            ev.PLAN: CopilotPanel._noop,
-            ev.PLAN_REVISED: CopilotPanel._noop,
-            ev.GATE: CopilotPanel._noop,
-            ev.STEP_STARTED: CopilotPanel._noop,
-            ev.STEP_DECLARED: CopilotPanel._noop,
-            ev.TOOL_CALL: CopilotPanel._noop,
-            ev.TOOL_RESULT: CopilotPanel._ev_tool_result,
-            ev.PREFLIGHT_FAILED: CopilotPanel._noop,
-            ev.APPLIED: CopilotPanel._noop,
-            ev.ASSERTION: CopilotPanel._ev_assertion,
-            ev.OUTSTANDING: CopilotPanel._noop,
-            ev.UNBUILT: CopilotPanel._noop,
-            ev.REVIEW_VERDICT: CopilotPanel._ev_review_verdict,
-            ev.REVIEW_SUSPECTED: CopilotPanel._noop,
-            ev.BLOCKED: CopilotPanel._noop,
-            ev.STOPPED: CopilotPanel._noop,
-            ev.ABORTED: CopilotPanel._noop,
-            ev.BUDGET_EXHAUSTED: CopilotPanel._noop,
-            ev.TURN_BUDGET_EXHAUSTED: CopilotPanel._noop,
-            ev.FAILED: CopilotPanel._noop,
-            ev.COMPLETED: CopilotPanel._noop,
-            ev.CALL_STARTED: CopilotPanel._noop,
-            ev.COST: CopilotPanel._noop,
-            ev.ERROR: CopilotPanel._noop,
-            ev.SUB_AGENT_SPAWNED: CopilotPanel._noop,
-            ev.SUB_AGENT_ANSWERED: CopilotPanel._noop,
-            ev.SUB_AGENT_REFUSED: CopilotPanel._noop,
-            ev.INVOKE_MARKUP: CopilotPanel._noop,
+        handler = DaedalusPanel._dispatch_table("_EVIDENCE_DISPATCH", lambda: {
+            ev.INTENT: DaedalusPanel._noop,
+            ev.THOUGHT: DaedalusPanel._noop,
+            ev.WRITING: DaedalusPanel._noop,
+            ev.QUESTION: DaedalusPanel._noop,
+            ev.ANSWER: DaedalusPanel._noop,
+            ev.ATTACHED: DaedalusPanel._noop,
+            ev.DESIGN: DaedalusPanel._noop,
+            ev.CHANGE_SET: DaedalusPanel._noop,
+            ev.ROUTED: DaedalusPanel._noop,
+            ev.CONSULT_DESIGN: DaedalusPanel._noop,
+            ev.CONSULT_DESIGN_ANSWERED: DaedalusPanel._noop,
+            ev.PART: DaedalusPanel._noop,
+            ev.PLAN: DaedalusPanel._noop,
+            ev.PLAN_REVISED: DaedalusPanel._noop,
+            ev.GATE: DaedalusPanel._noop,
+            ev.STEP_STARTED: DaedalusPanel._noop,
+            ev.STEP_DECLARED: DaedalusPanel._noop,
+            ev.TOOL_CALL: DaedalusPanel._noop,
+            ev.TOOL_RESULT: DaedalusPanel._ev_tool_result,
+            ev.PREFLIGHT_FAILED: DaedalusPanel._noop,
+            ev.APPLIED: DaedalusPanel._noop,
+            ev.ASSERTION: DaedalusPanel._ev_assertion,
+            ev.OUTSTANDING: DaedalusPanel._noop,
+            ev.UNBUILT: DaedalusPanel._noop,
+            ev.REVIEW_VERDICT: DaedalusPanel._ev_review_verdict,
+            ev.REVIEW_SUSPECTED: DaedalusPanel._noop,
+            ev.BLOCKED: DaedalusPanel._noop,
+            ev.STOPPED: DaedalusPanel._noop,
+            ev.ABORTED: DaedalusPanel._noop,
+            ev.BUDGET_EXHAUSTED: DaedalusPanel._noop,
+            ev.TURN_BUDGET_EXHAUSTED: DaedalusPanel._noop,
+            ev.FAILED: DaedalusPanel._noop,
+            ev.COMPLETED: DaedalusPanel._noop,
+            ev.CALL_STARTED: DaedalusPanel._noop,
+            ev.COST: DaedalusPanel._noop,
+            ev.ERROR: DaedalusPanel._noop,
+            ev.SUB_AGENT_SPAWNED: DaedalusPanel._noop,
+            ev.SUB_AGENT_ANSWERED: DaedalusPanel._noop,
+            ev.SUB_AGENT_REFUSED: DaedalusPanel._noop,
+            ev.INVOKE_MARKUP: DaedalusPanel._noop,
         }).get(event.kind)
         if handler is None:
             self._report_unknown_kind(event, "_update_review_evidence")
@@ -2291,7 +2291,7 @@ Steps list where nothing was ever applied yet, or `{"steps", "history",
 "rollback"}` on a revision, since `about_the_plan` sends the richer shape
 only once there is History or a rollback to show.
 """
-        from copilot.sdk import APPROVE, Approval
+        from sdk import APPROVE, Approval
 
         if isinstance(payload, dict):
             steps, history, rollback = payload["steps"], payload.get("history") or (), \
@@ -2338,7 +2338,7 @@ fail and stop the run before Review is asked anything and
 puts up the Confirmation card, Approve, Reject, Start Over, and without one
 this stays the plain question.
 """
-        from copilot.sdk import ACCEPT, REVISE, START_OVER
+        from sdk import ACCEPT, REVISE, START_OVER
 
         applied = failure.get("applied", 0)
         if self._last_review_verdict_event is not None:
@@ -2360,7 +2360,7 @@ this stays the plain question.
 
     def _put_the_review_verdict(self, accept, revise, start_over):
         """The Confirmation card: `ReviewVerdictWidget`, fed from `_update_review_evidence`."""
-        from copilot.sdk import narrate
+        from sdk import narrate
 
         self._queue_widget.now("Waiting for you to review the result\u2026")
 
@@ -2394,7 +2394,7 @@ Enter is the only route to Send here, the button being hidden mid-run.
         self._put_the_question(
             "Waiting for the values the Plan needs\u2026",
             "",
-            "Answer in the box below, then Send. Or let the Copilot choose \u2014 it will "
+            "Answer in the box below, then Send. Or let Daedalus choose \u2014 it will "
             "write each assumed value into the Plan, so you can still correct it.",
             (("Send", send),
              ("You decide", lambda: "")),

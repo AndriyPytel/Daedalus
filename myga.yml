@@ -18,8 +18,8 @@ permissions:
   run_tests: allow
   external_write: ask
 articles:
-  glossary: FCC-A-1
-  features: FCC-A-2
+  glossary: DAE-A-1
+  features: DAE-A-2
 
 models:
   default: anthropic/claude-opus-5
@@ -33,4 +33,4 @@ models:
 youtrack:
   instance: https://andriipytel.youtrack.cloud
   organization: Personal Projects
-  project: FCC
+  project: DAE

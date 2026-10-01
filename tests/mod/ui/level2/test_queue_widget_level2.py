@@ -3,7 +3,7 @@ Level 2 -- the Queue widget, built for real against FreeCAD's
 own Qt binding, offscreen.
 
 The Queue is a pure renderer (`ui/queue_widget.py`'s own docstring): it is
-told what happened through the small verbs `copilot_panel.py` calls from
+told what happened through the small verbs `daedalus_panel.py` calls from
 `on_event`, and this is where those verbs are checked against its
 Acceptance Criteria. The wiring from a live `core.events.Event` to those
 verbs is `tests/test_panel_level2.py`'s, the same split `test_icon_set_level2.py`

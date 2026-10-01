@@ -37,7 +37,7 @@ class MissingPyYAML(RuntimeError):
     def __init__(self):
         super().__init__(
             "PyYAML is not installed in this FreeCAD's Python (%s). Restart "
-            "FreeCAD so FreeCadCopilot's dependency check can install it, or "
+            "FreeCAD so Daedalus's dependency check can install it, or "
             "run `pip install PyYAML` into that Python yourself." % sys.executable)
 
 

@@ -103,7 +103,7 @@ class NeedsAnswer(Exception):
     """
     Raised by an `ask` callback that has nobody to ask.
 
-    `copilot.sdk.Client` raises this instead of guessing when its caller
+    `sdk.Client` raises this instead of guessing when its caller
     supplied no answer callback; `run` turns it into a blocked, resumable
     `LoopResult` rather than a failure, carrying the question itself as the
     reason so the caller can answer it later and pick the same run back up.

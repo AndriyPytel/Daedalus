@@ -194,21 +194,21 @@ def run_dependency_check(confirm=None, on_install_error=None, on_finished=None):
     superseded = prune_superseded(target_dir)
     if superseded:
         FreeCAD.Console.PrintMessage(
-            "[FreeCadCopilot] Removed %d superseded package version(s): %s\n"
+            "[Daedalus] Removed %d superseded package version(s): %s\n"
             % (len(superseded), ", ".join(superseded)))
 
     missing = missing_packages()
 
     if not missing:
-        FreeCAD.Console.PrintMessage("[FreeCadCopilot] All required packages are installed.\n")
+        FreeCAD.Console.PrintMessage("[Daedalus] All required packages are installed.\n")
         return
 
     if not confirm(missing):
         FreeCAD.Console.PrintMessage(
-            "[FreeCadCopilot] Required packages were not installed: %s\n" % ", ".join(missing))
+            "[Daedalus] Required packages were not installed: %s\n" % ", ".join(missing))
         return
 
-    FreeCAD.Console.PrintMessage("--- [FreeCadCopilot] Starting dependency installation ---\n")
+    FreeCAD.Console.PrintMessage("--- [Daedalus] Starting dependency installation ---\n")
     all_successful = True
     for package in missing:
         FreeCAD.Console.PrintMessage(f"Installing '{package}'...\n")
@@ -220,5 +220,5 @@ def run_dependency_check(confirm=None, on_install_error=None, on_finished=None):
             on_install_error(package, error_msg)
             all_successful = False
 
-    FreeCAD.Console.PrintMessage("--- [FreeCadCopilot] Dependency installation finished ---\n")
+    FreeCAD.Console.PrintMessage("--- [Daedalus] Dependency installation finished ---\n")
     on_finished(all_successful)

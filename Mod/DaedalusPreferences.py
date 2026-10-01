@@ -1,9 +1,9 @@
 """
-Registers the addon's preference page under the "FreeCadCopilot" group.
+Registers the addon's preference page under the "Daedalus" group.
 FreeCAD shows it as a child entry in the left-hand tree, exactly like
 "Appearance" appears under "Measure".
 
-  FreeCadCopilot
+  Daedalus
   ├── General
   ├── API & Providers
   └── Role → Model
@@ -16,6 +16,6 @@ from ui.general_page import GeneralPage
 from ui.providers_page import ProvidersPage
 from ui.roles_page import RolesPage
 
-FreeCADGui.addPreferencePage(GeneralPage, "FreeCadCopilot")
-FreeCADGui.addPreferencePage(ProvidersPage, "FreeCadCopilot")
-FreeCADGui.addPreferencePage(RolesPage, "FreeCadCopilot")
+FreeCADGui.addPreferencePage(GeneralPage, "Daedalus")
+FreeCADGui.addPreferencePage(ProvidersPage, "Daedalus")
+FreeCADGui.addPreferencePage(RolesPage, "Daedalus")

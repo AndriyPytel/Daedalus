@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-One run of one sheet, through `copilot.sdk.Client`.
+One run of one sheet, through `sdk.Client`.
 
 The useful half of the old `tools/ab_run.py`: the RLM_AGENTIC arm and its
 retry/`state.json` bookkeeping move to `tools/lane.py`, the one caller that
@@ -72,7 +72,7 @@ def main():
 
     import FreeCAD  # noqa: F401
 
-    from copilot.sdk import Client
+    from sdk import Client
     from core.events import COST
     from core.loop import nobody_to_ask
     from core.loop.budgets import Budgets

@@ -41,7 +41,7 @@ def summary_line(data):
     "N passed" or "N passed, M failed", from `confirmed` and `unmet` -- the
     same fields `ASSERTION` already carries. "" when the checks could not be
     written at all (`ok` is `None`): that is not a pass/fail count, it is the
-    absence of one, and both callers -- `copilot_panel.py`'s `on_event` and
+    absence of one, and both callers -- `daedalus_panel.py`'s `on_event` and
     `_put_the_review_verdict` -- fall back to the plain narration line for it.
     """
     if data.get("ok") is None:
@@ -142,7 +142,7 @@ class AssertionResultsWidget(QtWidgets.QFrame):
     collapsed under an `AccordionWidget` that expands to the Assertion code.
 
     Built once from the `ASSERTION` event's own data and never mutated after
-    (`copilot_panel.py :: on_event`), the same read-only shape
+    (`daedalus_panel.py :: on_event`), the same read-only shape
     `ReviewVerdictWidget` takes.
     """
 

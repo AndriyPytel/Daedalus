@@ -43,7 +43,7 @@ def _redirected_freecad_home():
     would fail every import that reaches an LLM provider, not just the
     settings this redirect exists to protect.
     """
-    home = tempfile.mkdtemp(prefix="freecadcopilot-test-freecad-home-")
+    home = tempfile.mkdtemp(prefix="daedalus-test-freecad-home-")
     real_packages = sorted(glob.glob(os.path.expanduser(
         "~/Library/Application Support/FreeCAD/*/AdditionalPythonPackages")))
     if real_packages:

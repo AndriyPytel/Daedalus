@@ -1,5 +1,5 @@
 """
-Settings -- Qt-free persistence for FreeCadCopilot's preferences.
+Settings -- Qt-free persistence for Daedalus's preferences.
 
 Everything here reads and writes through `FreeCAD.ParamGet` and nothing else:
 no `PySide` import, so any `core/` module can read or write a setting without
@@ -12,7 +12,25 @@ from functools import lru_cache
 
 from core.role_defaults import DEFAULT_ROLE_TABLE
 
-_PARAM_PATH = "User parameter:BaseApp/Preferences/FreeCadCopilot"
+_PARAM_PATH = "User parameter:BaseApp/Preferences/Daedalus"
+_LEGACY_PARAM_PATH = "User parameter:BaseApp/Preferences/FreeCadCopilot"
+_SETTERS = {"String": "SetString", "Boolean": "SetBool", "Integer": "SetInt",
+            "Unsigned Long": "SetUnsigned", "Float": "SetFloat"}
+
+
+def migrate_legacy_preferences(old, new):
+    """
+    Copy every entry and nested group of `old` into `new` when `new` is empty.
+
+    A user who set the add-on up under its former name keeps the keys, roles
+    and sessions; a `new` that already holds anything is never overwritten.
+    """
+    if new.GetContents() or new.GetGroups():
+        return
+    for kind, name, value in old.GetContents() or ():
+        getattr(new, _SETTERS[kind])(name, value)
+    for name in old.GetGroups() or ():
+        migrate_legacy_preferences(old.GetGroup(name), new.GetGroup(name))
 
 
 class Settings:
@@ -197,4 +215,7 @@ class Settings:
 
 @lru_cache(maxsize=None)
 def instance() -> Settings:
+    import FreeCAD
+
+    migrate_legacy_preferences(FreeCAD.ParamGet(_LEGACY_PARAM_PATH), FreeCAD.ParamGet(_PARAM_PATH))
     return Settings()
