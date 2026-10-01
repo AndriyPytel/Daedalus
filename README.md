@@ -1,7 +1,7 @@
 # Daedalus
 
 An assistant that lives inside FreeCAD's own UI. You state an **Intent** in your own
-words — "make a gear with 24 teeth" — and the Daedalus turns it into a **Plan** of
+words — "make a gear with 24 teeth" — and Daedalus turns it into a **Plan** of
 **Steps**, shows you the Plan before anything is written, and then applies the approved
 Steps to your **Document**.
 

@@ -2394,7 +2394,7 @@ Enter is the only route to Send here, the button being hidden mid-run.
         self._put_the_question(
             "Waiting for the values the Plan needs\u2026",
             "",
-            "Answer in the box below, then Send. Or let the Daedalus choose \u2014 it will "
+            "Answer in the box below, then Send. Or let Daedalus choose \u2014 it will "
             "write each assumed value into the Plan, so you can still correct it.",
             (("Send", send),
              ("You decide", lambda: "")),
