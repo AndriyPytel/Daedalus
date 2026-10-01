@@ -27,9 +27,9 @@ def migrate_legacy_preferences(old, new):
     """
     if new.GetContents() or new.GetGroups():
         return
-    for kind, name, value in old.GetContents():
+    for kind, name, value in old.GetContents() or ():
         getattr(new, _SETTERS[kind])(name, value)
-    for name in old.GetGroups():
+    for name in old.GetGroups() or ():
         migrate_legacy_preferences(old.GetGroup(name), new.GetGroup(name))
 
 
