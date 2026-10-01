@@ -29,10 +29,10 @@ def _tracked_files():
     return [ROOT / path for path in listed]
 
 
-def test_package_xml_carries_no_icon():
-    """The workbench icon package.xml once pointed at is gone with the workbench."""
+def test_package_xml_icon_is_a_file_that_exists():
+    """The Addon Manager lists the addon under this icon."""
     root = ET.parse(ROOT / "package.xml").getroot()
-    assert root.find(f"{NS}icon") is None
+    assert (ROOT / root.findtext(f"{NS}icon")).is_file()
 
 
 def test_package_xml_declares_the_workbench_content():

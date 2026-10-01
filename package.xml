@@ -5,6 +5,7 @@
   <version>1.0.0</version>
   <maintainer email="pytelandriy@gmail.com">Maui</maintainer>
   <license file="LICENSE">AGPLv3.0</license>
+  <icon>Mod/resources/icons/daedalus.svg</icon>
   <url type="repository" branch="master">https://github.com/AndriyPytel/Daedalus</url>
   <content>
     <workbench>
