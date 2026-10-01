@@ -12,7 +12,7 @@ def test_baseline_sheets_names_exactly_eight_paths_under_the_modelmania_dir():
 def test_baseline_sheets_resolve_to_real_files_when_the_directory_is_present():
     if not modelmania_harness.MODELMANIA_DIR.is_dir():
         import pytest
-        pytest.skip("modelmania sheets not found; set FCC_MODELMANIA_DIR")
+        pytest.skip("modelmania sheets not found; set DAE_MODELMANIA_DIR")
 
     sheets = modelmania_harness.baseline_sheets()
 

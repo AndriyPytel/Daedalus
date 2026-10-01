@@ -35,7 +35,7 @@ def _measure(step_path):
 
 def _require_exemplar_dir():
     if not modelmania_harness.EXEMPLAR_DIR.is_dir():
-        pytest.skip("modelmania exemplars not found; set FCC_MODELMANIA_DIR")
+        pytest.skip("modelmania exemplars not found; set DAE_MODELMANIA_DIR")
 
 
 @pytest.mark.parametrize("stem", sorted(modelmania_harness.exemplar_facts()))

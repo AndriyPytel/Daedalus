@@ -277,7 +277,7 @@ def _reason(events, m):
 
 
 MODELMANIA_DIR = os.environ.get(
-    "FCC_MODELMANIA_DIR", os.path.join(os.path.dirname(ROOT), "manual", "modelmania"))
+    "DAE_MODELMANIA_DIR", os.path.join(os.path.dirname(ROOT), "manual", "modelmania"))
 EXEMPLAR_DIR = os.path.join(MODELMANIA_DIR, "exemplar")
 
 
@@ -286,7 +286,7 @@ def _exemplar_for(label):
 
     A baseline label is `<sheet stem>` or `<sheet stem>-rep<n>`; only the
     six `manual/modelmania/exemplar/<stem>.step` sheets have one, and
-    `FCC_MODELMANIA_DIR` names where that tree actually lives, same as
+    `DAE_MODELMANIA_DIR` names where that tree actually lives, same as
     `tests/modelmania_harness.py`'s own `EXEMPLAR_DIR`.
     """
     import re as _re

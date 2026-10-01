@@ -266,7 +266,7 @@ def sheet_cache(tmp_path_factory):
 
     def read(path):
         if not os.path.exists(path):
-            pytest.skip("sheet not found: %s; set FCC_MODELMANIA_DIR" % path)
+            pytest.skip("sheet not found: %s; set DAE_MODELMANIA_DIR" % path)
         key = os.path.abspath(path)
         if key not in cache:
             cache[key] = sheet_reader.read(path, into=str(tmp_path_factory.mktemp("sheet")))
@@ -282,7 +282,7 @@ def modelmania_sheets(sheet_cache):
     from tests import modelmania_harness
 
     if not modelmania_harness.MODELMANIA_DIR.is_dir():
-        pytest.skip("modelmania sheets not found; set FCC_MODELMANIA_DIR")
+        pytest.skip("modelmania sheets not found; set DAE_MODELMANIA_DIR")
     if not sheet_reader.available():
         pytest.skip("PyMuPDF is not installed")
     return modelmania_harness.read_sheets(sheet_cache)

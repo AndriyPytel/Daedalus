@@ -582,7 +582,7 @@ def needs_drawing(*paths):
     """The `sheet_cache` guard (`tests/conftest.py`), for a run given a drawing directly."""
     for path in paths:
         if not os.path.exists(path):
-            pytest.skip("drawing not found: %s; set FCC_MODELMANIA_DIR" % path)
+            pytest.skip("drawing not found: %s; set DAE_MODELMANIA_DIR" % path)
 
 
 def drive(turns, applies=(), budgets=None, intent="Make a 10mm box", ask=None,

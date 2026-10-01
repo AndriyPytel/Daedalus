@@ -6,7 +6,7 @@ from pathlib import Path
 
 HERE = Path(__file__).parent
 MANUAL_DIR = HERE.parent / "manual"
-MODELMANIA_DIR = Path(os.environ.get("FCC_MODELMANIA_DIR", MANUAL_DIR / "modelmania"))
+MODELMANIA_DIR = Path(os.environ.get("DAE_MODELMANIA_DIR", MANUAL_DIR / "modelmania"))
 RECORDED_DIR = MANUAL_DIR / "recorded"
 BASELINE_SHEETS_FILE = MANUAL_DIR / "modelmania" / "baseline_sheets.json"
 EXEMPLAR_DIR = MODELMANIA_DIR / "exemplar"

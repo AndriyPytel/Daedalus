@@ -38,7 +38,7 @@ def _skip_unless_present(*paths):
     """The `sheet_cache` guard (`tests/conftest.py`), for the tests that read a drawing directly."""
     for path in paths:
         if not os.path.exists(path):
-            pytest.skip("sheet not found: %s; set FCC_MODELMANIA_DIR" % path)
+            pytest.skip("sheet not found: %s; set DAE_MODELMANIA_DIR" % path)
 
 
 @pytest.fixture(scope="module")

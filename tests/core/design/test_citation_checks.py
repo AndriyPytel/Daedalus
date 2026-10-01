@@ -29,7 +29,7 @@ needs_pymupdf = pytest.mark.skipif(pymupdf is None, reason="PyMuPDF is not insta
 
 def _skip_unless_present(path):
     if not os.path.exists(path):
-        pytest.skip("sheet not found: %s; set FCC_MODELMANIA_DIR" % path)
+        pytest.skip("sheet not found: %s; set DAE_MODELMANIA_DIR" % path)
 
 
 def _words_of(path):

@@ -28,7 +28,7 @@ def _score(candidate_stem, exemplar_stem):
 
 def _require_exemplar_dir():
     if not modelmania_harness.EXEMPLAR_DIR.is_dir():
-        pytest.skip("modelmania exemplars not found; set FCC_MODELMANIA_DIR")
+        pytest.skip("modelmania exemplars not found; set DAE_MODELMANIA_DIR")
 
 
 def test_an_exemplar_scored_against_itself_is_exactly_one():

@@ -1,4 +1,4 @@
-"""Guards the FCC_MODELMANIA_DIR override."""
+"""Guards the DAE_MODELMANIA_DIR override."""
 import os
 import subprocess
 import sys
@@ -12,7 +12,7 @@ def test_modelmania_evidence_skips_cleanly_without_the_directory(tmp_path):
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/core/level2/test_modelmania_evidence.py", "-v"],
         cwd=ROOT, capture_output=True, text=True,
-        env={**os.environ, "FCC_MODELMANIA_DIR": str(empty_dir)},
+        env={**os.environ, "DAE_MODELMANIA_DIR": str(empty_dir)},
     )
     assert "SKIPPED" in result.stdout, result.stdout
     assert "FAILED" not in result.stdout, result.stdout
