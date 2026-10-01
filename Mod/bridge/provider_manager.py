@@ -152,7 +152,7 @@ class _ProviderManager(QObject):
         where = settings_manager.instance().get_base_url_for_provider(provider)
         at = f" at {where}" if where else ""
         FreeCAD.Console.PrintWarning(
-            f"[FreeCadCopilot] Could not fetch models for {provider}{at}: {error}\n"
+            f"[Daedalus] Could not fetch models for {provider}{at}: {error}\n"
         )
 
     def _known(self, provider: str) -> list:

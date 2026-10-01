@@ -7,7 +7,7 @@ Figma never drew, subdued the way `AccordionWidget.mark_as_reasoning`
 subdues reasoning, an opacity effect rather than a colour of its own.
 `_THUMBNAIL` sizes the four viewport screenshots to a row across the panel:
 Figma's Confirmation page gives no screenshot size of its own, so this
-reads `copilot_panel.ATTACHMENT_WIDTH` (320px, wide enough to recognise the
+reads `daedalus_panel.ATTACHMENT_WIDTH` (320px, wide enough to recognise the
 drawing and narrow enough that it is not the whole transcript) as the
 panel's own idea of a picture's width, split four ways with `SPACE_SM` gaps
 between.
@@ -20,7 +20,7 @@ except ImportError:
 
 from ui.design_tokens import SPACE_SM, SPACE_XS
 from ui.typography import BODY, CAPTION, css
-from copilot.sdk import APPROVE, REJECT, START_OVER
+from sdk import APPROVE, REJECT, START_OVER
 
 _THUMBNAIL = (320 - 3 * SPACE_SM) // 4
 
@@ -30,7 +30,7 @@ class ReviewVerdictWidget(QtWidgets.QFrame):
     Review's four views, the acceptance-checks summary and Review's own
     verdict, above the three buttons that answer it.
 
-    Read-only once built: `copilot_panel.py :: on_revision` builds one per
+    Read-only once built: `daedalus_panel.py :: on_revision` builds one per
     Ask, from whatever `_update_review_evidence` already read off the stream,
     so nothing here changes after construction the way `PlanWidget`'s rows
     do.

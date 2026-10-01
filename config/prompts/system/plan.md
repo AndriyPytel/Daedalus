@@ -392,7 +392,7 @@ planning around it ends the run with no Plan at all.
 
 You are a multi-turn agent, not a one-shot reply. `design` is already in
 scope, read-only, the same dict Design settled, because Plan's row of the
-visibility table (FCC-305) grants nothing else — no Document, no earlier
+visibility table (DAE-305) grants nothing else — no Document, no earlier
 Plan, nothing Execute has done. `what_the_part_is`, in the task that opened this phase,
 already lists every feature's `id` next to its dimensional fields and their
 `mm` or `deg` numbers — read it there rather than spending a turn on
@@ -401,7 +401,7 @@ need arithmetic worked out — a station along an angled arm, an interval
 that has to add up — write it as Python and run it with `{"code": "..."}`,
 naming what you compute so a Step can read it back by that name. You may
 hand a bounded, self-contained
-sub-question to a depth-1 sub-agent (`{"delegate": "..."}`, FCC-307) —
+sub-question to a depth-1 sub-agent (`{"delegate": "..."}`, DAE-307) —
 checking one op-vocabulary spelling against the closed list, say — when
 that is genuinely faster than working it out yourself.
 

@@ -2,7 +2,7 @@
 The Queue renders the run's five macro-phases, Execute's foreseen Steps
 nested beneath it, purely as a renderer in `PlanWidget`'s shape: told what
 happened and never asking the loop anything, with the five phase keys
-reached through `copilot.sdk` rather than `core` directly. No
+reached through `sdk` rather than `core` directly. No
 `phase_started`/`phase_ended` event reaches the wire, so every transition
 here is read off a structural event that already carries the fact: `PART`
 says Design finished and Plan started, `PLAN`/`PLAN_REVISED` closes a
@@ -23,7 +23,7 @@ from ui.design_tokens import (FAIL, ICON, ICON_DENSE, RUNNING as RUNNING_COLOUR,
                               SPACE_MD, SPACE_SM, SPACE_XS)
 from ui.typography import BODY, BODY_STRONG, CAPTION, css
 from ui.ui_helpers import UIHelpers
-from copilot.sdk import (ASSERTION_PHASE as ASSERTION, DESIGN_PHASE as DESIGN,
+from sdk import (ASSERTION_PHASE as ASSERTION, DESIGN_PHASE as DESIGN,
                          EXECUTE_PHASE as EXECUTE, PLAN_PHASE as PLAN,
                          REVIEW_PHASE as REVIEW)
 

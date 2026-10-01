@@ -40,7 +40,7 @@ def test_package_xml_declares_the_workbench_content():
     root = ET.parse(ROOT / "package.xml").getroot()
     workbench = root.find(f"{NS}content/{NS}workbench")
     assert workbench is not None
-    assert workbench.findtext(f"{NS}classname") == "FreeCadCopilot"
+    assert workbench.findtext(f"{NS}classname") == "Daedalus"
     assert workbench.findtext(f"{NS}subdirectory") == "./"
 
 

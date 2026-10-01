@@ -3,7 +3,7 @@ The addon's own Python, derived rather than listed.
 
 Three guards read this tree and refuse what they find -- a swallowed failure,
 an unsanctioned route to the Document, a comment that is prose. Each held its
-own tuple of package names, and each tuple was written before `copilot/`
+own tuple of package names, and each tuple was written before `sdk.py`
 existed: the SDK, the one surface this addon offers, went unread by all three
 for a whole epic while every one of them reported green. A list a human keeps
 is a list that goes stale, so this derives it and `test_source_tree.py` fails
@@ -53,6 +53,11 @@ def package_dirs():
 
 def sources():
     """`(path relative to ROOT, source text)` for every module the addon ships."""
+    for name in sorted(os.listdir(SRC)):
+        full = os.path.join(SRC, name)
+        if name.endswith(".py") and os.path.isfile(full):
+            with open(full, encoding="utf-8") as handle:
+                yield os.path.relpath(full, ROOT).replace(os.sep, "/"), handle.read()
     for directory in package_dirs():
         for path, dirnames, names in os.walk(directory):
             dirnames[:] = [d for d in dirnames if d != "__pycache__"]

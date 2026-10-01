@@ -265,7 +265,7 @@ def test_there_is_no_addtodo_or_singleshot_path_left_anywhere():
             if isinstance(node, ast.Attribute) and node.attr in ("addTodo", "singleShot"):
                 offenders.append("%s uses %s" % (filename, node.attr))
 
-    allowed = ("copilot_panel.py", "accordion_widget.py")
+    allowed = ("daedalus_panel.py", "accordion_widget.py")
     assert [o for o in offenders if not o.startswith(allowed)] == []
 
 
@@ -353,7 +353,7 @@ def _install_fake_freecad_console(tmp_path):
     Swap in a `FreeCAD` whose `Console` records the calling thread, and force
     `bridge.logger` to configure itself against it from scratch.
 
-    `logging.getLogger("FreeCadCopilot")` is a process-wide singleton and
+    `logging.getLogger("Daedalus")` is a process-wide singleton and
     `get_logger` only attaches handlers once, so a bare re-import after the
     real FreeCAD already configured it would silently keep the old handlers.
     Clearing the handler list and the module cache is what makes the swap
@@ -386,12 +386,12 @@ def _install_fake_freecad_console(tmp_path):
 
     saved_freecad = sys.modules.get("FreeCAD")
     saved_logger_module = sys.modules.pop("bridge.logger", None)
-    logging.getLogger("FreeCadCopilot").handlers.clear()
+    logging.getLogger("Daedalus").handlers.clear()
     sys.modules["FreeCAD"] = fake_freecad
 
     def restore():
         sys.modules.pop("bridge.logger", None)
-        logging.getLogger("FreeCadCopilot").handlers.clear()
+        logging.getLogger("Daedalus").handlers.clear()
         if saved_freecad is not None:
             sys.modules["FreeCAD"] = saved_freecad
         else:
@@ -486,7 +486,7 @@ def test_logging_with_no_qt_application_prints_directly_instead_of_raising(tmp_p
 
 def test_a_line_the_main_thread_never_takes_is_dropped(tmp_path):
     """
-    `CopilotPanel.shut_down` waits on the worker thread from the main one and
+    `DaedalusPanel.shut_down` waits on the worker thread from the main one and
     the worker emits `blocked` on its way out of a Stop, so the marshalling
     can time out at exactly the moment a line is written. Writing it from
     here anyway is the cross-thread `FreeCAD.Console` call the guard exists to

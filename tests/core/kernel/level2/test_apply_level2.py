@@ -16,7 +16,7 @@ from core.kernel import Kernel, copy_of, find_freecadcmd
 def _kernel_result(worker, doc, code, names=None, design=None):
     """What `apply()` now expects a caller to already have from the kernel's
     own run of *code*, rather than a rehearsal `apply()` runs itself
-    (FCC-A-53)."""
+    (DAE-A-53)."""
     copy = copy_of(doc)
     try:
         result = worker.check(code, document=copy, names=names or {}, ephemeral=True,

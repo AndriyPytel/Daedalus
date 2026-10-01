@@ -57,7 +57,7 @@ class SettingsIndex:
     def new_log(self) -> str:
         import FreeCAD
 
-        directory = os.path.join(FreeCAD.getUserAppDataDir(), "Mod", "FreeCadCopilot",
+        directory = os.path.join(FreeCAD.getUserAppDataDir(), "Mod", "Daedalus",
                                  "logs", "sessions")
         os.makedirs(directory, exist_ok=True)
         return os.path.join(directory, "%s.jsonl" % uuid.uuid4().hex)

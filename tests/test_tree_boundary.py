@@ -1,13 +1,13 @@
 """
-The engine -- `core` and `copilot` (the SDK) -- runs with no Qt at all, not
+The engine -- `core` and `sdk.py` -- runs with no Qt at all, not
 even a deferred import, and never reaches back into `bridge` or `ui`:
 `on_main_thread` -- the one PySide import the engine still carried, deferred
 inside a function so headless callers never paid for it -- moved to
 `Mod/bridge/main_thread.py`, so the check below no longer needs a
 module-scope exception.
 
-`Mod` -- `ui`, `CopilotPreferences.py` -- is FreeCAD
-and Qt code, and reaches the engine through `copilot.sdk` alone; `bridge` is
+`Mod` -- `ui`, `DaedalusPreferences.py` -- is FreeCAD
+and Qt code, and reaches the engine through `sdk` alone; `bridge` is
 the one sanctioned exception, the Qt-touching layer built to carry a
 `core` setting or a model list across the boundary as a Qt signal.
 """
@@ -17,9 +17,10 @@ import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "src")
 MOD = os.path.join(ROOT, "Mod")
-ENGINE_DIRS = ("core", "copilot")
+ENGINE_DIRS = ("core",)
+ENGINE_MODULES = ("sdk.py",)
 MOD_NON_BRIDGE_DIRS = ("ui",)
-MOD_ROOT_FILES = ("CopilotPreferences.py",)
+MOD_ROOT_FILES = ("DaedalusPreferences.py",)
 
 
 def _py_files(base):
@@ -34,6 +35,8 @@ def _py_files(base):
 def _engine_files():
     for dirname in ENGINE_DIRS:
         yield from _py_files(os.path.join(SRC, dirname))
+    for name in ENGINE_MODULES:
+        yield os.path.join(SRC, name)
 
 
 def _mod_non_bridge_files():
@@ -92,7 +95,7 @@ def test_mod_reaches_the_engine_only_through_the_sdk():
 
     assert not offenders, (
         "Mod code outside bridge/ must cross into the engine only through "
-        "copilot.sdk, bridge/ being the other sanctioned route: %s" % ", ".join(offenders))
+        "sdk, bridge/ being the other sanctioned route: %s" % ", ".join(offenders))
 
 
 def test_initgui_installs_only_the_dock_and_preferences():

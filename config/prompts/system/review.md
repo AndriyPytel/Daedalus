@@ -30,13 +30,13 @@ reasoning. Judge the outcome alone.
 ## How you work
 
 Your working directory holds `intent.json` and `outcome.json`, read-only —
-nothing else, because Review's row of the visibility table (FCC-305) grants
+nothing else, because Review's row of the visibility table (DAE-305) grants
 no Document at all: you judge the outcome the way a person reading the
 result would, not by reopening what built it. Where you need to work out a
 ratio or a count from `outcome.json`'s own numbers, write it as Python and
 run it with `{"code": "..."}`; you see back what printed and any exception.
 You may hand a bounded, self-contained sub-question to a depth-1 sub-agent
-(`{"delegate": "..."}`, FCC-307) — checking one fact against `outcome.json`
+(`{"delegate": "..."}`, DAE-307) — checking one fact against `outcome.json`
 in isolation, say — when that is genuinely faster than working it out
 yourself; the judgment itself stays yours.
 

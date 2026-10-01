@@ -1,4 +1,4 @@
-"""Level 2 -- a fresh headless `copilot.sdk.Client` Document tracks undo across Steps."""
+"""Level 2 -- a fresh headless `sdk.Client` Document tracks undo across Steps."""
 import pytest
 
 from core.freecad_apply import run_in_transaction
@@ -17,7 +17,7 @@ def test_a_fresh_client_document_can_undo_every_step_it_applied():
     `undo_depth` must report all five undoable, not zero -- a Document whose
     `UndoMode` was never turned on keeps no undo history at all.
     """
-    from copilot.sdk import Client, NO_KERNEL
+    from sdk import Client, NO_KERNEL
 
     client = Client(kernel=NO_KERNEL)
     for n in range(1, 6):

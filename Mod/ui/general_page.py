@@ -1,7 +1,7 @@
 """
 GeneralPage - "General" preference sub-page, with one setting so far:
 whether a run goes unattended, stored under
-`copilot.sdk.get_auto_approve_plan`. The checkbox gates two things -- the
+`sdk.get_auto_approve_plan`. The checkbox gates two things -- the
 Plan Gate, and the decision after a failed acceptance check -- under the
 one name, since the key is invisible to the user and a migration buys
 nothing a label change does not already buy. More belongs here as the addon
@@ -20,7 +20,7 @@ class GeneralPage(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super(GeneralPage, self).__init__(parent)
-        self.setObjectName("CopilotGeneralPage")
+        self.setObjectName("DaedalusGeneralPage")
         self.setWindowTitle("General")
         self._build_ui()
 
@@ -53,9 +53,9 @@ class GeneralPage(QtWidgets.QWidget):
         return self
 
     def loadSettings(self):
-        from copilot import sdk
+        import sdk
         self.auto_approve_check.setChecked(sdk.get_auto_approve_plan())
 
     def saveSettings(self):
-        from copilot import sdk
+        import sdk
         sdk.set_auto_approve_plan(self.auto_approve_check.isChecked())

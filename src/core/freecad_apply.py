@@ -94,7 +94,7 @@ def _direct(func, timeout=None):
     return func()
 
 
-def run_in_transaction(doc, code, label="Copilot Step", names=None, expected_signature=None,
+def run_in_transaction(doc, code, label="Daedalus Step", names=None, expected_signature=None,
                        design=None, plan_values=None):
     """
     Execute *code* against *doc* as one undoable unit, main thread only; the
@@ -159,7 +159,7 @@ def refuse_without_asking(kinds):
     return False
 
 
-CHAT_DOCK = "FreeCadCopilotPanel"
+CHAT_DOCK = "DaedalusPanel"
 
 
 def lock_gui(window, locked, chat=CHAT_DOCK):
@@ -275,9 +275,9 @@ class ApplyPipeline:
 
             self._render_dir = tempfile.mkdtemp(prefix="fcc-renders-")
         self._renders += 1
-        return os.path.join(self._render_dir, "copilot_step_%d.png" % self._renders)
+        return os.path.join(self._render_dir, "daedalus_step_%d.png" % self._renders)
 
-    def apply(self, code, selection=None, label="Copilot Step", op=None,
+    def apply(self, code, selection=None, label="Daedalus Step", op=None,
               kernel_result=None, design=None, plan_values=None) -> ApplyResult:
         """
         Lint *code* and land it on the live Document as one transaction.
@@ -421,7 +421,7 @@ class ApplyPipeline:
         The reason this Step may not be applied, or None. Deleting something
         theirs, and deleting the model, are separate: ownership does not
         cover the second one. `deleted` is the kernel's own run's answer
-        (FCC-A-53), read against the Document before its transaction runs.
+        (DAE-A-53), read against the Document before its transaction runs.
         """
         return self._not_ours(deleted) or self._a_rebuild(deleted, doc)
 
@@ -1392,7 +1392,7 @@ def _along(axis):
     return tuple(value * flip + 0.0 for value in direction)
 
 
-_SCRATCH = "CopilotTypeProbe"
+_SCRATCH = "DaedalusTypeProbe"
 
 
 def _inventoried(obj):
@@ -1742,13 +1742,13 @@ def _register_apply(registry, pipeline, selection):
                 "kernel_result": {
                     "type": "object",
                     "description": "What the kernel already found running this Step for real "
-                                   "(FCC-A-53): created, deleted, modified, names, signature, "
+                                   "(DAE-A-53): created, deleted, modified, names, signature, "
                                    "objects. Carried by the loop, not asked for here.",
                 },
                 "design": {
                     "type": "object",
                     "description": "The Design model, read-only in the Step's own namespace "
-                                   "(FCC-411). Carried by the loop, not asked for here.",
+                                   "(DAE-411). Carried by the loop, not asked for here.",
                 },
                 "plan_values": {
                     "type": "object",
@@ -1760,7 +1760,7 @@ def _register_apply(registry, pipeline, selection):
             "required": ["code"],
         },
     )
-    def apply_step(code, label="Copilot Step", op=None, kernel_result=None, design=None,
+    def apply_step(code, label="Daedalus Step", op=None, kernel_result=None, design=None,
                    plan_values=None):
         """
         There is no rehearsal behind this Tool any more: from here up, a

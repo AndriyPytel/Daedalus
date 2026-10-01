@@ -2,7 +2,7 @@
 Level 1 — model-facing prose lives in config/prompts/, not in code.
 
 Text the provider receives — lint refusals, retry prompts, failure messages —
-lives in config/prompts/ so correcting what the Copilot is told is a text edit
+lives in config/prompts/ so correcting what the Daedalus is told is a text edit
 rather than a Python edit and a release.
 
 A worker code template — a Python snippet `exec`'d in the Preflight Worker

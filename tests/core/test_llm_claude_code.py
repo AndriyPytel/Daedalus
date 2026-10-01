@@ -463,7 +463,7 @@ def test_the_cut_off_reply_does_not_tell_the_user_to_raise_a_cap():
 
 def test_ending_a_run_kills_its_own_call_rather_than_waiting_the_ceiling():
     """
-    Stop and Abort (`Mod/ui/copilot_panel.py :: LoopWorker`) must return in
+    Stop and Abort (`Mod/ui/daedalus_panel.py :: LoopWorker`) must return in
     seconds against a call under the full `_CEILING`, not only a call given a
     short one, so this proves `Run.end()` itself rather than the timeout.
     """

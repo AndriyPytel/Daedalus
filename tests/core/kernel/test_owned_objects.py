@@ -7,7 +7,7 @@ may not be deleted without asking. Modifying it is covered by the Plan Gate: the
 user read and approved the Step that says so.
 
 What a Step touches is taken from `kernel_result` — what the kernel already
-found running the Step for real (FCC-A-53), not a Preflight rehearsal `apply()`
+found running the Step for real (DAE-A-53), not a Preflight rehearsal `apply()`
 runs itself, and not from reading the code.
 
 The Owned Object rule asks about the user's objects. It has nothing to say about

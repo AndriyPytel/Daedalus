@@ -68,9 +68,9 @@ def panel(sessions_are_the_tests_own):
     app = QT_APP
     if app is None:
         pytest.skip(NO_QT)
-    from ui.copilot_panel import CopilotPanel
+    from ui.daedalus_panel import DaedalusPanel
 
-    built = CopilotPanel()
+    built = DaedalusPanel()
     built.resize(360, 700)
     built.show()
     app.processEvents()
@@ -223,7 +223,7 @@ def test_two_sessions_on_the_same_document_cannot_both_run(panel, monkeypatch):
     """
     import types
 
-    from ui.copilot_panel import _SessionWorker, EventBridge, AskTheUser
+    from ui.daedalus_panel import _SessionWorker, EventBridge, AskTheUser
 
     first_log = panel._current_log()
     first = panel._worker_for(first_log)
@@ -419,9 +419,9 @@ def test_a_picked_model_is_the_shared_fallback_too(panel, monkeypatch):
 
 def test_a_model_that_cannot_reason_is_not_offered_the_choice(panel, monkeypatch):
     """A picker that changes nothing is a picker that lies."""
-    from ui import copilot_panel
+    from ui import daedalus_panel
 
-    monkeypatch.setattr("copilot.sdk.effort_is_honoured", lambda model_id=None: False)
+    monkeypatch.setattr("sdk.effort_is_honoured", lambda model_id=None: False)
     panel._show_effort()
     panel._open_effort_selector()
 
@@ -918,7 +918,7 @@ def test_an_unusable_attachment_stops_the_run_before_it_starts(panel, tmp_path, 
     on the bar, so the offending one can be taken off and the Intent sent
     again.
     """
-    from copilot import sdk
+    import sdk
 
     monkeypatch.setattr(sdk, "selected_model_name", lambda _=None: "openai/gpt-3.5-turbo")
     drawing = tmp_path / "bracket.step"
@@ -1182,9 +1182,9 @@ def test_shutdown_does_not_wait_for_a_document_operation_nobody_will_take(sessio
 
     import bridge.main_thread
     from conftest import QtCore
-    from ui.copilot_panel import CopilotPanel
+    from ui.daedalus_panel import DaedalusPanel
 
-    built = CopilotPanel()
+    built = DaedalusPanel()
     parked = threading.Event()
 
     def _dispatch_and_block():
@@ -1226,9 +1226,9 @@ def test_shutdown_does_not_wait_for_a_question_nobody_will_answer(sessions_are_t
     import threading
 
     from conftest import QtCore
-    from ui.copilot_panel import CopilotPanel
+    from ui.daedalus_panel import DaedalusPanel
 
-    built = CopilotPanel()
+    built = DaedalusPanel()
     parked = threading.Event()
 
     def _ask_and_block():
@@ -1295,9 +1295,9 @@ def test_a_document_closing_releases_a_run_parked_on_the_main_thread(sessions_ar
     import time
 
     import bridge.main_thread
-    from ui.copilot_panel import CopilotPanel
+    from ui.daedalus_panel import DaedalusPanel
 
-    built = CopilotPanel()
+    built = DaedalusPanel()
     bundle = built._worker_for(built._current_log())
 
     class _Document:
@@ -1330,9 +1330,9 @@ def test_deleting_a_session_releases_a_run_parked_on_the_main_thread(
 
     import bridge.main_thread
     from conftest import QtWidgets
-    from ui.copilot_panel import CopilotPanel
+    from ui.daedalus_panel import DaedalusPanel
 
-    built = CopilotPanel()
+    built = DaedalusPanel()
     log = built._current_log()
     bundle = built._worker_for(log)
     _parked_on_the_main_thread(bundle)
@@ -1373,12 +1373,12 @@ def test_a_blocked_question_pages_freecads_notification_area(
     import threading
 
     from conftest import QtCore
-    from ui.copilot_panel import CopilotPanel
+    from ui.daedalus_panel import DaedalusPanel
 
     calls = []
     monkeypatch.setattr("bridge.logger.notify_user", lambda msg: calls.append(msg))
 
-    built = CopilotPanel()
+    built = DaedalusPanel()
     parked = threading.Event()
 
     def _ask_and_block():
@@ -1411,20 +1411,20 @@ def test_the_panel_docks_on_the_main_window_once(sessions_are_the_tests_own):
     workbench switches — must not build a second panel.
     """
     from conftest import QtWidgets
-    from ui import copilot_dock
+    from ui import daedalus_dock
 
     window = QtWidgets.QMainWindow()
-    copilot_dock.forget()
+    daedalus_dock.forget()
     try:
-        panel = copilot_dock.install(window)
-        again = copilot_dock.install(window)
+        panel = daedalus_dock.install(window)
+        again = daedalus_dock.install(window)
 
         assert again is panel, "a second install built a second panel"
         assert panel.parent() is window, "the panel is not docked on the main window"
         assert window.findChildren(type(panel)) == [panel]
     finally:
         panel._cleanup_thread()
-        copilot_dock.forget()
+        daedalus_dock.forget()
         window.deleteLater()
 
 
@@ -1448,10 +1448,10 @@ def test_no_workbench_of_ours_exists_to_take_the_chat_away():
     import ast
     import os
 
-    from ui import copilot_dock
+    from ui import daedalus_dock
 
-    mod_dir = os.path.dirname(os.path.dirname(os.path.abspath(copilot_dock.__file__)))
-    assert not os.path.exists(os.path.join(mod_dir, "CopilotWorkbench.py"))
+    mod_dir = os.path.dirname(os.path.dirname(os.path.abspath(daedalus_dock.__file__)))
+    assert not os.path.exists(os.path.join(mod_dir, "DaedalusWorkbench.py"))
 
     root = os.path.dirname(mod_dir)
     path = os.path.join(root, "InitGui.py")
@@ -1761,16 +1761,16 @@ def test_a_launch_opens_an_empty_session_and_keeps_the_earlier_ones(sessions_are
     """
     The panel used to reopen the last Session with its transcript.
     """
-    from ui.copilot_panel import CopilotPanel
+    from ui.daedalus_panel import DaedalusPanel
     from bridge import settings_manager
 
-    first = CopilotPanel()
+    first = DaedalusPanel()
     try:
         first.chat_sessions.begin(first.chat_sessions.stack.currentIndex(), "yesterday")
     finally:
         first._cleanup_thread()
 
-    relaunched = CopilotPanel()
+    relaunched = DaedalusPanel()
     try:
         live = relaunched.chat_sessions.stack.currentIndex()
         assert not relaunched.chat_sessions.get_session_info(live)["indexed"]
@@ -2001,7 +2001,7 @@ def test_the_wait_for_the_build_button_is_not_run_time(panel):
     ask and the decision read as thirty minutes of work, so a run answered in
     a minute was reported at half an hour.
     """
-    from copilot.sdk import APPROVE
+    from sdk import APPROVE
     from core.events import COST, GATE, INTENT, Event
 
     panel.new_chat()
@@ -2067,7 +2067,7 @@ def test_a_session_recorded_before_the_step_render_went_away_still_opens(panel, 
     _a_transcript(log)
     with open(log, "a", encoding="utf-8") as handle:
         handle.write('{"kind": "render", "at": 1.0, '
-                     '"data": {"path": "/tmp/copilot_step_1.png", "step": 1}}\n')
+                     '"data": {"path": "/tmp/daedalus_step_1.png", "step": 1}}\n')
     index, _ = panel.chat_sessions.add_new_chat("before")
     panel.chat_sessions.get_session_info(index).update({"log": log, "restored": False})
 
@@ -2111,7 +2111,7 @@ def test_a_long_transcript_is_replayed_a_chunk_at_a_time(panel, tmp_path, monkey
     Opening a Session with hundreds of Steps used to replay them all in one
     pass on the GUI thread, and the panel was frozen for the duration.
     """
-    from ui import copilot_panel
+    from ui import daedalus_panel
 
     log = str(tmp_path / "long.jsonl")
     _a_long_transcript(log, 120)
@@ -2124,7 +2124,7 @@ def test_a_long_transcript_is_replayed_a_chunk_at_a_time(panel, tmp_path, monkey
 
     panel.switch_session(index)
 
-    assert len(replayed) == copilot_panel.RESTORE_CHUNK, \
+    assert len(replayed) == daedalus_panel.RESTORE_CHUNK, \
         "the whole transcript was replayed before the event loop got a turn"
 
     _spin()
@@ -2160,8 +2160,8 @@ def test_switching_away_mid_replay_abandons_the_rest(panel, tmp_path, monkeypatc
     panel.switch_session(elsewhere)
     _spin()
 
-    from ui import copilot_panel
-    assert len(replayed) == copilot_panel.RESTORE_CHUNK
+    from ui import daedalus_panel
+    assert len(replayed) == daedalus_panel.RESTORE_CHUNK
     assert _widgets_in(panel) == [], "another Session's transcript landed here"
 
 
@@ -2567,7 +2567,7 @@ def test_the_composer_says_when_the_keyboard_is_in_it(panel):
     window is not the active one, and the popups earlier tests open leave it
     somewhere else.
     """
-    from ui.copilot_panel import _build_qss
+    from ui.daedalus_panel import _build_qss
 
     panel.activateWindow()
     panel.raise_()
@@ -2595,7 +2595,7 @@ def test_a_model_name_too_long_for_the_strip_is_elided_not_shown_whole(panel):
     pushed off the edge of a docked panel. The name in full moves to the
     tooltip, where nothing is measured by it.
     """
-    from ui.copilot_panel import PICKER_SHARE
+    from ui.daedalus_panel import PICKER_SHARE
 
     panel._set_current_model("x", "claude-sonnet-4-5-20250929-thinking-preview")
     QT_APP.processEvents()
@@ -2946,7 +2946,7 @@ def test_a_long_list_beside_the_steps_folds_and_says_how_many_it_holds(panel):
     from core.events import PLAN, Event
 
     from ui.accordion_widget import AccordionWidget
-    from ui.copilot_panel import OPEN_AT_MOST
+    from ui.daedalus_panel import OPEN_AT_MOST
 
     many = ["criterion %d" % n for n in range(OPEN_AT_MOST + 1)]
 
@@ -3458,7 +3458,7 @@ def test_what_was_decided_for_the_user_stands_above_the_steps(panel):
 def test_reasoning_streams_inline_and_never_pins_to_the_queue(panel):
     """
     The status line used to carry the last 90 characters of every
-    reasoning chunk (`copilot_panel.py:1073` before this change). Reasoning
+    reasoning chunk (`daedalus_panel.py:1073` before this change). Reasoning
     now only ever lands in its own accordion, in the chat scroll.
     """
     from core.events import Event, THOUGHT
@@ -4015,7 +4015,7 @@ def test_the_panel_marshals_the_document_onto_the_gui_thread(panel):
 
     `LoopWorker.do_work` runs on a QThread and the first thing it does is
     `pipeline.start_run()`, which reads the active Document and disables the
-    main window. `copilot.sdk.Client` defaults `dispatch` to running the
+    main window. `sdk.Client` defaults `dispatch` to running the
     callable where it stands -- right for a headless script, a Document
     mutation and a `QWidget.setEnabled` off the GUI thread here.
     """
@@ -4027,14 +4027,14 @@ def test_the_panel_marshals_the_document_onto_the_gui_thread(panel):
     assert client.pipeline._dispatch is on_main_thread
 
 
-def test_copilot_panel_has_no_dead_request_work_signal():
+def test_daedalus_panel_has_no_dead_request_work_signal():
     """
-    `CopilotPanel.request_work` only ever had test subscribers —
+    `DaedalusPanel.request_work` only ever had test subscribers —
     the real work goes through the Session's own `bundle.request_work`.
     """
-    from ui.copilot_panel import CopilotPanel
+    from ui.daedalus_panel import DaedalusPanel
 
-    assert not hasattr(CopilotPanel, "request_work")
+    assert not hasattr(DaedalusPanel, "request_work")
 
 
 def test_no_event_kind_the_loop_emits_puts_a_warning_in_the_chat(panel):
@@ -4044,7 +4044,7 @@ def test_no_event_kind_the_loop_emits_puts_a_warning_in_the_chat(panel):
     be a key of all three, or a live run shows the user a warning per event.
     """
     from core import events as ev
-    from ui.copilot_panel import CopilotPanel
+    from ui.daedalus_panel import DaedalusPanel
 
     panel.new_chat()
     panel.on_event(ev.Event(ev.CHANGE_SET, {}))
@@ -4053,7 +4053,7 @@ def test_no_event_kind_the_loop_emits_puts_a_warning_in_the_chat(panel):
         "_QUEUE_DISPATCH": set(ev.KINDS),
         "_EVIDENCE_DISPATCH": set(ev.KINDS),
     }
-    missing = {attr: sorted(kinds - set(getattr(CopilotPanel, attr)))
+    missing = {attr: sorted(kinds - set(getattr(DaedalusPanel, attr)))
                for attr, kinds in tables.items()}
     assert missing == {attr: [] for attr in tables}
 
@@ -4119,7 +4119,7 @@ def test_a_step_that_faults_ends_its_own_run_and_the_gui_survives(panel, monkeyp
     """
     import types
 
-    from ui.copilot_panel import LoopWorker, EventBridge, AskTheUser
+    from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
 
     worker = LoopWorker(EventBridge(), AskTheUser())
 
@@ -4142,7 +4142,7 @@ def test_a_step_that_faults_ends_its_own_run_and_the_gui_survives(panel, monkeyp
 
     fake_registry = types.SimpleNamespace(call=lambda *a, **k: {"document": ""})
     monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
-    monkeypatch.setattr("copilot.sdk.build_registry", lambda **kwargs: fake_registry)
+    monkeypatch.setattr("sdk.build_registry", lambda **kwargs: fake_registry)
 
     finished = []
     worker.finished.connect(lambda result, transcript: finished.append(result))
@@ -4155,7 +4155,7 @@ def test_a_step_that_faults_ends_its_own_run_and_the_gui_survives(panel, monkeyp
 
 def test_stop_with_no_sdk_client_yet_is_a_no_op(monkeypatch):
     """A Stop before any Intent has built an `sdk_client` has nothing to kill."""
-    from ui.copilot_panel import LoopWorker, EventBridge, AskTheUser
+    from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
 
     worker = LoopWorker(EventBridge(), AskTheUser())
     monkeypatch.setattr(worker.ask, "abandon", lambda: None)
@@ -4173,7 +4173,7 @@ def test_an_unopenable_transcript_is_logged_not_swallowed(monkeypatch, tmp_path)
     import types
 
     from bridge import logger as logger_module
-    from ui.copilot_panel import LoopWorker, EventBridge, AskTheUser
+    from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
 
     worker = LoopWorker(EventBridge(), AskTheUser())
 
@@ -4194,7 +4194,7 @@ def test_an_unopenable_transcript_is_logged_not_swallowed(monkeypatch, tmp_path)
 
     fake_registry = types.SimpleNamespace(call=lambda *a, **k: {"document": ""})
     monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
-    monkeypatch.setattr("copilot.sdk.build_registry", lambda **kwargs: fake_registry)
+    monkeypatch.setattr("sdk.build_registry", lambda **kwargs: fake_registry)
 
     errors = []
     monkeypatch.setattr(logger_module.logger, "error", lambda msg: errors.append(msg))
@@ -4218,7 +4218,7 @@ def test_an_intent_from_the_panel_is_routed_before_design(monkeypatch):
     """
     import types
 
-    from ui.copilot_panel import LoopWorker, EventBridge, AskTheUser
+    from ui.daedalus_panel import LoopWorker, EventBridge, AskTheUser
 
     worker = LoopWorker(EventBridge(), AskTheUser())
     sent = []
@@ -4241,7 +4241,7 @@ def test_an_intent_from_the_panel_is_routed_before_design(monkeypatch):
 
     fake_registry = types.SimpleNamespace(call=lambda *a, **k: {"document": ""})
     monkeypatch.setattr(worker, "_get_sdk_client", lambda: _FakeClient())
-    monkeypatch.setattr("copilot.sdk.build_registry", lambda **kwargs: fake_registry)
+    monkeypatch.setattr("sdk.build_registry", lambda **kwargs: fake_registry)
 
     worker.do_work("is it done yet?", [], "")
 

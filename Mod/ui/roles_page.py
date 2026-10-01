@@ -23,7 +23,7 @@ class RolesPage(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super(RolesPage, self).__init__(parent)
-        self.setObjectName("CopilotRolesPage")
+        self.setObjectName("DaedalusRolesPage")
         self.setWindowTitle("Role → Model")
         self._build_ui()
 
@@ -58,7 +58,7 @@ class RolesPage(QtWidgets.QWidget):
         return self
 
     def _providers(self):
-        from copilot.sdk import providers
+        from sdk import providers
         return list(providers())
 
     @staticmethod
@@ -81,7 +81,7 @@ class RolesPage(QtWidgets.QWidget):
 
     def loadSettings(self):
         from bridge import settings_manager
-        from copilot.sdk import EFFORTS
+        from sdk import EFFORTS
 
         table = settings_manager.instance().get_role_table()
         self.table.setRowCount(len(table))

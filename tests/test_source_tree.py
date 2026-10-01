@@ -2,7 +2,7 @@
 The derivation in `source_tree` is checked against the tree it derives from.
 
 A guard that scans a hand-written list of packages goes stale silently: three
-of them here held a tuple written before `copilot/` existed and stayed green
+of them here held a tuple written before `sdk.py` existed and stayed green
 for a whole epic. Deriving the list only moves the problem unless something
 fails when the derivation misses a file, which is what this does.
 

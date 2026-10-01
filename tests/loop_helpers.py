@@ -238,7 +238,7 @@ class _MultiTurn(list):
 def code_reply(*codes, label="Step", thinking=None, first=1):
     """
     A whole Execute phase: one turn per Step's code, closed by the turn that
-    declares it (FCC-A-53) -- no code of its own, because the kernel already
+    declares it (DAE-A-53) -- no code of its own, because the kernel already
     has it (`execute.md`).
 
     `first` is the number of the Step the first code belongs to, which is 1 for
@@ -626,7 +626,7 @@ def _turns_of(llm, phase):
 def _execute_attempts(llm):
     """
     The task Execute was given, once per call to `execute()` in this run --
-    not the kernel's own feedback on a code turn inside one (FCC-A-53): that
+    not the kernel's own feedback on a code turn inside one (DAE-A-53): that
     request carries `ok`, the task that opens a call carries `steps`, and a
     phase with N Steps written one at a time is N+1 requests for one attempt.
     """

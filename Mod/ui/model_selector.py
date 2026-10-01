@@ -271,7 +271,7 @@ class ModelSelectorPopup(_ListPopup):
         its content up to whatever room that measurement found.
         The current model is read off *anchor*'s own label
         (`_set_current_model` put it there), not a new parameter: the public
-        `open_at(models, button)` API `copilot_panel.py` keeps already
+        `open_at(models, button)` API `daedalus_panel.py` keeps already
         carries it in the button's text. The fill resolves here too, against
         the same *anchor*, since its theme can change between opens.
         """

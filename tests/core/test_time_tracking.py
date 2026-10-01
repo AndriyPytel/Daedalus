@@ -90,7 +90,7 @@ def test_cost_event_includes_usd_when_client_reports_price():
 
 def test_format_elapsed_under_one_hour():
     """M:SS format when under an hour."""
-    from ui.copilot_panel import _format_elapsed
+    from ui.daedalus_panel import _format_elapsed
 
     assert _format_elapsed(90) == "1:30"
     assert _format_elapsed(45) == "0:45"
@@ -101,7 +101,7 @@ def test_format_elapsed_under_one_hour():
 
 def test_format_elapsed_over_one_hour():
     """H:MM:SS format when >= 1 hour."""
-    from ui.copilot_panel import _format_elapsed
+    from ui.daedalus_panel import _format_elapsed
 
     assert _format_elapsed(3600) == "1:00:00"
     assert _format_elapsed(3660) == "1:01:00"

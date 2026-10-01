@@ -185,7 +185,7 @@ class FileChipBar(QtWidgets.QWidget):
 class UploadWidget(QtWidgets.QWidget):
     """
     A minimal "+" icon button that opens a file dialog; chips are rendered by
-the `FileChipBar`, owned by `copilot_panel`. It uses the dense control
+the `FileChipBar`, owned by `daedalus_panel`. It uses the dense control
 height, not the full one the header uses, since it sits in the composer's
 tool strip beside the model pill and a row of controls at two different
 heights reads as a misalignment rather than as a hierarchy. Its width is
@@ -232,7 +232,7 @@ what the row aligns on, the width is not because nothing aligns on it.
         for f in files:
             self.file_attached.emit(f)
             from bridge.logger import logger
-            logger.info(f"[Copilot] Attached file: {f}")
+            logger.info(f"[Daedalus] Attached file: {f}")
 
     def handle_clipboard_paste(self) -> bool:
         """
@@ -250,7 +250,7 @@ what the row aligns on, the width is not because nothing aligns on it.
             pix = QtGui.QPixmap.fromImage(clipboard.image())
             if pix.isNull():
                 from bridge.logger import logger
-                logger.warning("[Copilot] The clipboard offered an image that did not convert")
+                logger.warning("[Daedalus] The clipboard offered an image that did not convert")
                 return False
             tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
             pix.save(tmp.name, "PNG")
@@ -258,7 +258,7 @@ what the row aligns on, the width is not because nothing aligns on it.
             self.temporary.append(tmp.name)
             self.file_attached.emit(tmp.name)
             from bridge.logger import logger
-            logger.info(f"[Copilot] Clipboard image saved to: {tmp.name}")
+            logger.info(f"[Daedalus] Clipboard image saved to: {tmp.name}")
             return True
         return False
 

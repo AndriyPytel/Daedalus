@@ -834,7 +834,7 @@ def test_a_phase_is_answered_by_the_client_its_own_profile_names():
 def test_a_phase_that_answers_without_thinking_leaves_the_accordion_empty():
     """
     Nothing is said in place of reasoning that did not arrive. The accordion
-    `ui/copilot_panel.py :: _render_thought` opens on a phase's first `thought`
+    `ui/daedalus_panel.py :: _render_thought` opens on a phase's first `thought`
     and a model that did not think opens none — which is what every provider
     without a reasoning stream already does, and what this route does at low
     effort. A sentence explaining the ordinary case is one no other provider

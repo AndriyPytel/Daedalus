@@ -15,7 +15,7 @@ from core.events import CHANGE_SET, CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED, DES
 WRITTEN_NOT_SHOWN = {DESIGN, CHANGE_SET, CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED}
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-PANEL = os.path.join(ROOT, "Mod", "ui", "copilot_panel.py")
+PANEL = os.path.join(ROOT, "Mod", "ui", "daedalus_panel.py")
 
 
 def panel_tree():
@@ -122,7 +122,7 @@ def test_the_dock_names_itself():
     without an objectName the panel's position never survives a restart.
     """
     panel = next(node for node in ast.walk(panel_tree())
-                 if isinstance(node, ast.ClassDef) and node.name == "CopilotPanel")
+                 if isinstance(node, ast.ClassDef) and node.name == "DaedalusPanel")
     init = function(panel, "__init__")
     named = [
         node for node in ast.walk(init)
@@ -131,7 +131,7 @@ def test_the_dock_names_itself():
         and isinstance(node.func.value, ast.Name) and node.func.value.id == "self"
     ]
 
-    assert named, "CopilotPanel.__init__ never calls self.setObjectName()"
+    assert named, "DaedalusPanel.__init__ never calls self.setObjectName()"
 
 
 def test_the_run_is_stoppable():

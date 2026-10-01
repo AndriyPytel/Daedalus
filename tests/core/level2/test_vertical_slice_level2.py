@@ -367,7 +367,7 @@ def test_each_step_of_the_run_undoes_in_turn(own_slice_run):
 def test_the_panel_had_everything_it_needed_to_show_the_run(slice_run):
     """
     Every event the panel draws the run from. The thirteen Tool calls are the
-    five kernel checks a code turn makes of its own Step (FCC-A-53), the five
+    five kernel checks a code turn makes of its own Step (DAE-A-53), the five
     applies, the self-intersection check (unconditional), the one
     review_views the loop drives at the end, and the one check_assertions
     against what the Design model asked for.

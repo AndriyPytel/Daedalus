@@ -1,7 +1,7 @@
-# FreeCAD Copilot
+# Daedalus
 
 An assistant that lives inside FreeCAD's own UI. You state an **Intent** in your own
-words — "make a gear with 24 teeth" — and the Copilot turns it into a **Plan** of
+words — "make a gear with 24 teeth" — and the Daedalus turns it into a **Plan** of
 **Steps**, shows you the Plan before anything is written, and then applies the approved
 Steps to your **Document**.
 
@@ -80,7 +80,7 @@ beside PNG, JPEG, GIF and WebP. A model that cannot read one says so before the 
 starts, naming the file and the model, the same way an unreadable attachment already does
 — and every attachment goes out labelled as what it is rather than as a PNG.
 
-**The sheet is rendered here, and it is not sent whole** (FCC-102). It used to ride along
+**The sheet is rendered here, and it is not sent whole** (DAE-102). It used to ride along
 as an opaque `file` block, with the provider choosing the resolution — and it chose
 against us. Measured on `mm25-p1-1.pdf`: an 11 × 8.5 in sheet arrives at the provider's
 own 1568 px cap, which is 143 DPI, which puts **14 px of ink in a dimension digit**. 14 px
@@ -290,13 +290,13 @@ Traps with the reason.
 | `src/core/narrate.py` | What an event says to a person — the panel and `tools/run.py` share it |
 | `src/core/sessions.py` | The Sessions: the durable index, the naming, the bound. No Qt |
 | `src/core/session_title.py` | The short call that names a Session from its first Intent |
-| `src/copilot/sdk.py` | The one assembly a caller drives — the only crossing between `src/`'s Qt-free engine and `Mod/` |
-| `Mod/ui/copilot_panel.py` | The dock: composer, transcript, question card, model picker |
+| `src/sdk.py` | The one assembly a caller drives — the only crossing between `src/`'s Qt-free engine and `Mod/` |
+| `Mod/ui/daedalus_panel.py` | The dock: composer, transcript, question card, model picker |
 | `Mod/ui/multi_tab_manager.py` | The stack of chat areas, one per Session |
 | `Mod/ui/history_popup.py` | The Session Picker |
 | `Mod/bridge/` | Qt-touching mirrors of `core/` concerns the UI needs directly: settings, provider fetch, logging, the main-thread marshaller |
 | `config/prompts/` | The phase, lint and message prompts, grouped by reader (`system/`, `lint/`, `messages/`); copy to tune, kept out of the source |
-| `Mod/CopilotPreferences.py` | Registers the three Preferences pages, which live in `Mod/ui/` |
+| `Mod/DaedalusPreferences.py` | Registers the three Preferences pages, which live in `Mod/ui/` |
 | `InitGui.py`, `Init.py` | Workbench registration, at the repo root where FreeCAD runs them from |
 | `tests/` | The suite; `src/tools/run.py` drives a slice against a live provider |
 
@@ -307,17 +307,17 @@ Traps with the reason.
 FreeCAD 1.0, Python 3.11.
 
 ```bash
-git clone <this repo> ~/Library/Application\ Support/FreeCAD/Mod/FreeCadCopilot
+git clone <this repo> ~/Library/Application\ Support/FreeCAD/Mod/Daedalus
 ```
 
 On Linux the addon directory is `~/.local/share/FreeCAD/Mod/`. A symlink from the Mod
 directory to a checkout elsewhere works too, and is how this repo is developed.
 
-Start FreeCAD and pick **Copilot** from the workbench list. On first launch the addon
+Start FreeCAD and pick **Daedalus** from the workbench list. On first launch the addon
 checks for `litellm`, `numpy` and `Pillow` and offers to install what is missing into
 FreeCAD's own `AdditionalPythonPackages`.
 
-Then open **Edit → Preferences → Copilot → Providers**, paste an API key, and pick a
+Then open **Edit → Preferences → Daedalus → Providers**, paste an API key, and pick a
 default model.
 
 ### Providers
@@ -383,7 +383,7 @@ Level 2 is skipped when FreeCAD is not importable. `conftest.py` finds it at
 >
 > ```bash
 > mkdir -p /tmp/fcuser/Mod
-> ln -sfn "$PWD" /tmp/fcuser/Mod/FreeCadCopilot
+> ln -sfn "$PWD" /tmp/fcuser/Mod/Daedalus
 > ln -sfn ~/Library/Application\ Support/FreeCAD/v1-1/AdditionalPythonPackages /tmp/fcuser/
 > FREECAD_USER_HOME=/tmp/fcuser .venv/bin/python -m pytest -q
 > ```
@@ -420,5 +420,5 @@ Apply, Review, Session, Session Name, Session Picker, Refusal. Tickets, tests an
 messages use these and not synonyms.
 
 The full Glossary and the Architecture Decisions live in the YouTrack knowledge base
-(`FCC-A-1` and `FCC-A-5`), not in this repo. Issues are tracked in YouTrack project
-`FCC`, not GitHub Issues — see `youtrack.md`.
+(`DAE-A-1` and `DAE-A-5`), not in this repo. Issues are tracked in YouTrack project
+`DAE`, not GitHub Issues — see `youtrack.md`.

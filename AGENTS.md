@@ -1,10 +1,10 @@
-# FreeCadCopilot
+# Daedalus
 
 ## Agent skills
 
 ### Issue tracker
 
-Issues live in YouTrack, project `FCC`, via the `yt` CLI — not GitHub Issues. Project config: `myga.yml`.
+Issues live in YouTrack, project `DAE`, via the `yt` CLI — not GitHub Issues. Project config: `myga.yml`.
 
 ### Triage labels
 
@@ -12,7 +12,7 @@ Default vocabulary as YouTrack tags — `needs-triage`, `needs-info`, `ready-for
 
 ### Domain docs
 
-In the YouTrack knowledge base, not in the repo — `FCC-A-3` Project Overview, `FCC-A-1` Glossary, `FCC-A-5` Architecture Decisions (ADR-0001 … ADR-0011).
+In the YouTrack knowledge base, not in the repo — `DAE-A-3` Project Overview, `DAE-A-1` Glossary, `DAE-A-5` Architecture Decisions (ADR-0001 … ADR-0011).
 
 ## YouTrack
 
@@ -49,10 +49,10 @@ are not prose and are exempt.
 
 ## Module layout
 
-`Mod/` is FreeCAD and Qt: `CopilotPreferences.py` and `Mod/ui/`. `src/` is
+`Mod/` is FreeCAD and Qt: `DaedalusPreferences.py` and `Mod/ui/`. `src/` is
 the engine and carries no Qt at all, not even a deferred import
 (`tests/test_tree_boundary.py`).
-`Mod/ui/`'s widgets reach the engine only through `copilot.sdk`, never
+`Mod/ui/`'s widgets reach the engine only through `sdk`, never
 `core` directly.
 
 A module that must emit a Qt signal or marshal onto the Qt main thread over a
@@ -79,5 +79,5 @@ passes while measuring what the code no longer does.
 
 A test that scans the tree by a hardcoded list of packages, paths or names is
 a liability — it must derive that list, or another test must assert the list
-is complete. Three guards here held a package tuple written before `copilot/`
+is complete. Three guards here held a package tuple written before `sdk.py`
 existed and stayed green for the whole epic.

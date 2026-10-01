@@ -1,5 +1,5 @@
 """
-Session-aware logging for FreeCAD Copilot: one timestamped file per session,
+Session-aware logging for Daedalus: one timestamped file per session,
 capped at MAX_LOG_FILES, plus log_exception and generate_crash_report for the
 chat UI. Every `FreeCAD.Console` write here is marshalled onto the Qt main
 thread, because FreeCAD's console observers (Report View, Notification Area)
@@ -46,7 +46,7 @@ def _console(write, msg) -> None:
 def _setup_session_log() -> str:
     """Create the per-session log directory/file and return its path."""
     try:
-        mod_dir = FreeCAD.getUserAppDataDir() + "Mod/FreeCadCopilot/"
+        mod_dir = FreeCAD.getUserAppDataDir() + "Mod/Daedalus/"
         log_dir = os.path.join(mod_dir, "logs")
         os.makedirs(log_dir, exist_ok=True)
 
@@ -61,7 +61,7 @@ def _setup_session_log() -> str:
 
         return log_file
     except Exception as e:
-        _console(FreeCAD.Console.PrintError, f"[Copilot] Could not create session log: {e}\n")
+        _console(FreeCAD.Console.PrintError, f"[Daedalus] Could not create session log: {e}\n")
         return ""
 
 
@@ -77,7 +77,7 @@ class _FreeCADHandler(logging.Handler):
             _console(FreeCAD.Console.PrintMessage, f"{msg}\n")
 
 
-def get_logger(name: str = "FreeCadCopilot") -> logging.Logger:
+def get_logger(name: str = "Daedalus") -> logging.Logger:
     lg = logging.getLogger(name)
     if lg.handlers:
         return lg
@@ -85,7 +85,7 @@ def get_logger(name: str = "FreeCadCopilot") -> logging.Logger:
     lg.setLevel(logging.DEBUG)
 
     ch = _FreeCADHandler()
-    ch.setFormatter(logging.Formatter("[Copilot %(levelname)s] %(message)s"))
+    ch.setFormatter(logging.Formatter("[Daedalus %(levelname)s] %(message)s"))
     lg.addHandler(ch)
 
     if _session_log_file:
@@ -97,7 +97,7 @@ def get_logger(name: str = "FreeCadCopilot") -> logging.Logger:
             )
             lg.addHandler(fh)
         except Exception as e:
-            _console(FreeCAD.Console.PrintError, f"[Copilot] Could not attach file handler: {e}\n")
+            _console(FreeCAD.Console.PrintError, f"[Daedalus] Could not attach file handler: {e}\n")
 
     return lg
 

@@ -48,7 +48,7 @@ class ProvidersPage(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super(ProvidersPage, self).__init__(parent)
-        self.setObjectName("CopilotProvidersPage")
+        self.setObjectName("DaedalusProvidersPage")
         self.setWindowTitle("API & Providers")
         self._current_provider = None
         self._edits = {}
@@ -255,14 +255,14 @@ reset the selection and throw away a key the user had typed but not saved.
 
     @staticmethod
     def _wants_base_url(provider):
-        from copilot.sdk import needs_base_url
+        from sdk import needs_base_url
 
         return needs_base_url(provider)
 
     @staticmethod
     def _signs_itself_in(provider):
         """A provider whose credential is the CLI's, so this page stores none."""
-        from copilot.sdk import needs_no_key
+        from sdk import needs_no_key
 
         return needs_no_key(provider)
 
