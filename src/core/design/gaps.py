@@ -23,6 +23,7 @@ from core.design.core import (
     _named,
     _one_value,
     _superseded,
+    _said,
     _under,
     _which_kind_it_is,
 )
@@ -129,6 +130,8 @@ def _which_datum_takes_over(model):
     the replaced feature was. A datum fixing two directions at once is
     left alone -- `_which_way_each_datum_fixes`'s own rule.
     """
+    if not _a_later_page_revises(model):
+        return {}
     fixes = _which_way_each_datum_fixes(model)
     features = [feature for feature in (model or {}).get("features") or ()
                 if isinstance(feature, dict)]
@@ -150,6 +153,21 @@ def _which_datum_takes_over(model):
             if placed.get(way) and placed[way] != datum:
                 taken_over[datum] = placed[way]
     return taken_over
+
+
+_A_PAGE = re.compile(r"\bpage\s+(\d+)", re.IGNORECASE)
+
+_A_REVISION_MARK = re.compile(r"\b(?:revisions?|rev|phase\s*\d+)\b", re.IGNORECASE)
+
+
+def _a_later_page_revises(model):
+    """
+    Whether the reading spans more than one page and any text of it carries a revision mark.
+
+    A single sheet has no later page, so nothing on it is replaced and no datum is taken over.
+    """
+    said = " ".join(text for _, text in _said(model, ""))
+    return len(set(_A_PAGE.findall(said))) > 1 and bool(_A_REVISION_MARK.search(said))
 
 
 def _every_datum_named(model):
@@ -205,9 +223,9 @@ def _re_measured(node, taken_over):
 
 
 def _read_again(value, gone, taken_over):
-    return {"value": _TO_BE_READ_AGAIN, "flag": "assumed",
-            "because": _WENT_WITH_THE_FEATURE % (gone, taken_over[gone]),
-            "was": value.get("value")}
+    return dict(value, value=_TO_BE_READ_AGAIN, flag="assumed",
+                because=_WENT_WITH_THE_FEATURE % (gone, taken_over[gone]),
+                was=value.get("value"))
 
 
 def _instead(said, taken_over):

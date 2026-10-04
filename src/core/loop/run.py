@@ -81,7 +81,9 @@ from core.loop.gate import (
 from core.loop.plan import (
     _as_written,
     _bad_rollback,
+    _cited_without_a_number,
     _fillet_before_a_cut,
+    _no_number_to_build_on,
     _round_after_the_cuts,
     _value_undefined,
     _op_off_the_list,
@@ -288,6 +290,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
     last_complaint = []
     patched = set()
+    numberless = set()
     plan_unmet = []
     rounds_patched = set()
     rollback_patched = [False]
@@ -386,6 +389,17 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               _round_after_the_cuts(early, planned.steps), progress.tried,
                               reason="round before a cut: " + "; ".join(item["step"] for item in early),
                               patch=True)
+            continue
+
+        no_number = _cited_without_a_number(part.the_part, planned.cites)
+        if no_number:
+            again = bool(numberless & set(no_number))
+            numberless.update(no_number)
+            planned = rewrite(_Revisions.VALUE_UNDEFINED,
+                              "A Step cites an address Design left without its number.",
+                              _no_number_to_build_on(no_number), progress.tried,
+                              reason="no number at " + ", ".join(no_number),
+                              patch=not again)
             continue
 
         value_errors = list(planned.value_errors)
