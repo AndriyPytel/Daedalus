@@ -546,6 +546,28 @@ def _bodies_with_inverted_solid(doc):
     return inverted
 
 
+def _bodies_with_non_manifold_mesh(doc):
+    """
+    Every PartDesign Body whose Shape the official mesh gate rejects, with the faces that touch.
+
+    A cylinder exactly tangent to another face leaves a wall of zero thickness: OCC calls the
+    solid valid, and the STEP still fails every consumer that welds its mesh by BRep vertex.
+    """
+    from core.manifold import check_fc
+
+    pinched = []
+    for obj in doc.Objects:
+        if obj.TypeId != "PartDesign::Body":
+            continue
+        shape = getattr(obj, "Shape", None)
+        if shape is None or shape.isNull():
+            continue
+        found = check_fc(shape)
+        if found:
+            pinched.append("%s: %s" % (obj.Name, found))
+    return pinched
+
+
 _TANGENT_COS = 0.999
 
 
@@ -1205,6 +1227,15 @@ def _run_step_body(doc, namespace, touched, request):
             "this Step left a Body with an inverted solid:\n" + "\n".join(inverted)
             + "\nA negative signed volume is a solid that came out inside-out -- a boss cut "
               "instead of added, a profile wound the wrong way.")
+
+    pinched = _bodies_with_non_manifold_mesh(doc)
+    if pinched:
+        raise RuntimeError(
+            "this Step left a Body that is not manifold:\n" + "\n".join(pinched)
+            + "\nA cylinder face exactly tangent to another face leaves a wall of zero "
+              "thickness there. OCC calls it valid, but the exported STEP fails the mesh check "
+              "every consumer runs -- move the cylinder or change its radius so the faces "
+              "overlap or leave a gap.")
 
     result = {
         "ok": True,

@@ -1219,13 +1219,27 @@ def export_step(document, path):
     Only the top-level objects `_measurable` calls real geometry go in --
     a Sketch or Pad an unhidden Body already fused into its own Shape, or
     a Body's own Origin scaffolding, would double the geometry or fail
-    `Part.export` outright.
+    `Part.export` outright. A shape the mesh gate rejects is repaired first; a repair that cannot
+    be made within 0.5% of the volume is refused with a warning and the shape goes out as it is.
     """
+    import warnings
+
     import Part
+
+    from core.manifold import repair_fc
 
     objects = [obj for obj in document.Objects
                if not obj.InList and _measurable(obj) is not None]
-    Part.export(objects, path)
+    shapes = []
+    for obj in objects:
+        fixed, note = repair_fc(obj.Shape)
+        if note and fixed.isSame(obj.Shape):
+            warnings.warn("%s: %s" % (obj.Name, note))
+        shapes.append(fixed)
+    if all(fixed is obj.Shape or fixed.isSame(obj.Shape) for fixed, obj in zip(shapes, objects)):
+        Part.export(objects, path)
+    else:
+        Part.Compound(shapes).exportStep(path)
     return path
 
 

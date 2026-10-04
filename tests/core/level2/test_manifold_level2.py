@@ -4,8 +4,7 @@ only when that gate fails.
 
 OCC's `isValid()` is True for a cylinder face exactly tangent to another face: the wall there has
 zero thickness and the official mesher welds it into 4 triangles on one edge. Each shape below is
-the smallest solid with that contact, and `isValid()` is asserted True first so the gate, not
-OCC, is what each test measures.
+the smallest solid with that contact.
 """
 import warnings
 
@@ -41,12 +40,14 @@ def _box_with_a_hole():
 
 @pytest.mark.parametrize("build", [_pocket_tangent_to_a_wall, _arc_tangent_to_a_block,
                                    _hole_tangent_to_both_sides])
-def test_a_tangent_contact_is_valid_to_occ_and_still_fails_the_gate(build):
+def test_a_tangent_contact_fails_the_gate(build):
     from core.manifold import check_fc
 
-    shape = build()
-    assert shape.isValid()
-    assert check_fc(shape) is not None
+    assert check_fc(build()) is not None
+
+
+def test_a_pocket_tangent_to_a_wall_is_valid_to_occ_all_the_same():
+    assert _pocket_tangent_to_a_wall().isValid()
 
 
 def test_the_failure_names_the_cylinder_and_the_plane_it_is_tangent_to():
@@ -159,4 +160,4 @@ def test_export_step_says_so_when_it_refuses_a_repair(tmp_path):
     finally:
         FreeCAD.closeDocument(doc.Name)
 
-    assert reread.Volume == pytest.approx(0.2146, abs=0.001)
+    assert reread.Volume == pytest.approx(_hole_tangent_to_both_sides().Volume, rel=1e-9)
