@@ -16,6 +16,9 @@ The Document is reached from exactly these places, and each has a reason:
   - src/sdk.py: `Client` owns the Document a caller hands it, opening the
     path or making the empty one the whole run is then applied to. It is the
     assembly point, above the registry rather than around it.
+  - src/tools/run.py: `base_document` builds the Document an editing run starts from, in
+    a process of its own, and hands its path to `Client`. It is the assembly point
+    for a headless run, the same role `sdk.py` plays for a caller.
 
 Reaching the live Document means one of these: ActiveDocument, openDocument,
 newDocument, listDocuments, getDocument.
@@ -32,6 +35,7 @@ ALLOWED = {
     "src/core/kernel/kernel_worker.py",
     "src/core/sheets/sketch_check.py",
     "src/sdk.py",
+    "src/tools/run.py",
 }
 
 DOCUMENT_ACCESS = ("ActiveDocument", "openDocument", "newDocument", "listDocuments", "getDocument")

@@ -1388,6 +1388,91 @@ def _inventory(doc):
     return {"solids": solids, "volume_mm3": round(volume, 6), "surfaces": surfaces}
 
 
+_INVENTORY_LINES = 40
+
+
+def base_inventory(doc):
+    """
+    The part a Body starts from, in words: bounding box, planes, cylinders told apart as holes or bosses, and other surfaces. None where no Body has a BaseFeature.
+
+    The harness reads it so Design never touches a FreeCAD API; a section past `_INVENTORY_LINES` entries is cut, largest planes first.
+    """
+    base = next((obj.BaseFeature for obj in doc.Objects
+                 if obj.TypeId == "PartDesign::Body" and obj.BaseFeature is not None), None)
+    if base is None or _measurable(base) is None:
+        return None
+    shape = base.Shape
+    bound = shape.optimalBoundingBox(False)
+    planes, cylinders, others = {}, {}, {}
+    for face in shape.Faces:
+        surface = face.Surface
+        kind = surface.__class__.__name__
+        if kind == "Plane":
+            axis = _along(surface.Axis)
+            key = (axis, round(sum(a * b for a, b in zip(axis, surface.Position)), 4))
+            planes[key] = planes.get(key, 0.0) + face.Area
+        elif kind == "Cylinder":
+            key = (_concave(face, surface), round(surface.Radius * 2, 4), _along(surface.Axis))
+            centre = surface.Center
+            reach = sum(a * b for a, b in zip(key[2], centre))
+            seat = tuple(round(c - reach * a + 0.0, 4) for c, a in zip(centre, key[2]))
+            cylinders.setdefault(key, set()).add(seat)
+        else:
+            family, _ = _family(surface)
+            others[family] = others.get(family, 0) + 1
+
+    lines = ["The part before the edit, in mm:",
+             "bounding box: %s x %s x %s mm (x %s..%s, y %s..%s, z %s..%s)" % (
+                 _g(bound.XLength), _g(bound.YLength), _g(bound.ZLength),
+                 _g(bound.XMin), _g(bound.XMax), _g(bound.YMin), _g(bound.YMax),
+                 _g(bound.ZMin), _g(bound.ZMax)),
+             "volume: %s mm3, solids: %d" % (_g(shape.Volume), len(shape.Solids))]
+    lines += _cut(["plane %s (area %s mm2)" % (_plane_at(axis, offset), _g(area))
+                   for (axis, offset), area in sorted(planes.items(), key=lambda item: -item[1])], "planes")
+    lines += _cut(["%s diameter %s, axis %s, %d at %s" % (
+                       "hole" if concave else "boss", _g(diameter), _vector(axis),
+                       len(seats), ", ".join(_vector(seat) for seat in sorted(seats)[:6]))
+                   for (concave, diameter, axis), seats in sorted(cylinders.items())],
+                  "cylinders")
+    lines += _cut(["%s, diameter %s, axis %s, x%d" % (kind, _g(diameter), _vector(axis), count)
+                   if diameter is not None else "%s x%d" % (kind, count)
+                   for (kind, diameter, axis), count in sorted(others.items(), key=str)],
+                  "other surfaces")
+    return "\n".join(lines)
+
+
+def _g(value):
+    return "%.6g" % value
+
+
+def _vector(values):
+    return "(%s)" % ", ".join(_g(value + 0.0) for value in values)
+
+
+def _plane_at(axis, offset):
+    named = {(1.0, 0.0, 0.0): "x", (0.0, 1.0, 0.0): "y", (0.0, 0.0, 1.0): "z"}.get(axis)
+    if named:
+        return "%s = %s" % (named, _g(offset))
+    return "normal %s at offset %s" % (_vector(axis), _g(offset))
+
+
+def _concave(face, surface):
+    """Whether the material lies outside this cylinder face, so it is a hole and not a boss."""
+    u0, u1, v0, v1 = face.ParameterRange
+    u, v = (u0 + u1) / 2, (v0 + v1) / 2
+    radial = face.valueAt(u, v) - surface.Center
+    along = radial.dot(surface.Axis)
+    radial = radial - surface.Axis * along
+    return face.normalAt(u, v).dot(radial) < 0
+
+
+def _cut(entries, title):
+    shown = entries[:_INVENTORY_LINES]
+    if len(entries) > len(shown):
+        shown.append("... and %d more" % (len(entries) - len(shown)))
+    return ["%s:" % title] + ["  " + entry for entry in shown] if entries else []
+
+
 def _family(surface):
     """Which family of surfaces this face belongs to, and where along it it sits."""
     kind = surface.__class__.__name__
@@ -1544,6 +1629,14 @@ def _register_document(registry, active, dispatch=_direct):
         if len(doc.Objects) > _SNAPSHOT_LIMIT:
             result["truncated"] = "showing %d of %d objects" % (_SNAPSHOT_LIMIT, len(doc.Objects))
         return result
+
+    @registry.tool(
+        "base_inventory",
+        "The part an editing run starts from, in words, or none. Driven by the loop "
+        "to brief Design, never by a phase.",
+    )
+    def base_inventory_tool():
+        return {"inventory": base_inventory(active())}
 
     @registry.tool(
         "overall_size",

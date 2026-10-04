@@ -232,8 +232,9 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     if the_part_path and not attachments:
         part = Part(part_file.read(the_part_path))
     else:
+        base = tools.call("base_inventory")["inventory"]
         part = Part(_describe_the_part(intent, llm, events, budgets, ask, cancelled,
-                                       attachments))
+                                       attachments, base))
         written = events.last(PART)
         progress.the_part_path = written.data["path"] if written else ""
 
