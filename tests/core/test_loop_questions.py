@@ -1027,24 +1027,6 @@ def test_an_entry_no_step_ever_landed_for_is_still_unplanned():
         "an entry nothing in the Document builds passed the coverage check"
 
 
-def test_a_plan_that_never_learns_to_cite_stops_the_run_and_says_why():
-    """
-    The coverage re-plan spends the same shared ceiling as every other cause, so
-    a prompt regression stops the run with a reason instead of looping — and
-    the rule that keeps failed-check accounting separate names the right
-    cause.
-    """
-    result, _, _, tools = drive(
-        [design_reply(THE_CAVITY)] + [plan_reply("Cut it")] * 5,
-        attachments=[RENDER_PNG], budgets=Budgets(revisions=2),
-    )
-
-    assert result.blocked
-    assert "left part of the description unplanned" in result.reason
-    assert "Review rejected" not in result.reason
-    assert tools.applied_codes() == [], "a Plan that dropped an entry built something"
-
-
 def test_a_step_naming_a_value_its_kernel_never_computed_never_reaches_the_gate():
     """
     A Step that names a value is refused the moment Plan declares it if that

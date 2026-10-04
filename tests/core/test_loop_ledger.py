@@ -1074,7 +1074,7 @@ def test_a_revision_is_shown_the_plan_it_is_revising():
     assert "the_plan_you_wrote" in revised, \
         "Plan was asked to rewrite a Plan it was not shown"
     assert revised["the_plan_you_wrote"][0].startswith("Pad the length")
-    assert "every Step you already wrote" in revised["what_went_wrong_last_time"]
+    assert "every other Step unchanged" in revised["what_went_wrong_last_time"]
 
 
 def test_the_first_plan_of_a_run_is_not_a_revision_of_anything():
