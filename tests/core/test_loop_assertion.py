@@ -1425,7 +1425,7 @@ def test_a_description_that_succeeded_survives_a_reconcile_that_raises(monkeypat
 
     monkeypatch.setattr(loop_describe, "_first_pass",
                         lambda intent, llm, events, attachments, cancelled, readings=1,
-                        record_conflicts=True: (A_PART, "", True))
+                        record_conflicts=True, base=None: (A_PART, "", True))
 
     def _blows_up(*args, **kwargs):
         raise RuntimeError("the reconcile blew up")

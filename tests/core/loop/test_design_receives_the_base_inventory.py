@@ -3,16 +3,19 @@ Level 1 -- an editing run hands Design the text inventory of the base beside
 the edit sentence; Design is never given a Document or a FreeCAD call.
 """
 import ast
+import sys
 
 import pytest
 
 from core.events import EventStream
 from core.loop import design as design_module
 from core.loop import describe as describe_module
-from core.loop import run as run_module
+import core.loop.run  # noqa: F401
 from core.loop.budgets import Budgets
 from core.loop.results import Stopped
 from core.tools import ToolRegistry
+
+run_module = sys.modules["core.loop.run"]
 
 INVENTORY = "bbox 434.8 x 274.0 x 91.6 mm; Cone d=279 axis Z; 32 holes d=12"
 

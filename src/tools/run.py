@@ -38,6 +38,31 @@ def client_for(provider, model_id, effort):
     return client_from_settings(model_id, effort)
 
 
+def base_document(step_path):
+    """
+    A saved Document whose one Body has *step_path*'s solid as its BaseFeature,
+    so an edit adds features to that Body and `export_step` writes the Body alone,
+    never the imported solid beside it.
+    """
+    import tempfile
+
+    import FreeCAD
+    import Import
+
+    doc = FreeCAD.newDocument("Edit")
+    Import.insert(step_path, doc.Name)
+    base = next(obj for obj in doc.Objects
+                if getattr(obj, "Shape", None) is not None and obj.Shape.Solids)
+    body = doc.addObject("PartDesign::Body", "Body")
+    body.BaseFeature = base
+    doc.recompute()
+    handle, path = tempfile.mkstemp(prefix="fcc-edit-", suffix=".FCStd")
+    os.close(handle)
+    doc.saveAs(path)
+    FreeCAD.closeDocument(doc.Name)
+    return path
+
+
 NO_SOLID_EXIT = 3
 
 
@@ -84,6 +109,8 @@ def main():
                         help="The append-only model's own A/B toggle: 'off' drops the "
                              "conflict record at the Gate, everything else about the run "
                              "unchanged")
+    parser.add_argument("--base-step", default=None,
+                        help="An editing run: the part to edit, the BaseFeature of the Document's Body")
     args = parser.parse_args()
 
     for lib in ("/Applications/FreeCAD.app/Contents/Resources/lib",):
@@ -99,8 +126,11 @@ def main():
     from core.loop.budgets import Budgets
 
     llm = client_for(args.provider, args.model, args.effort) if args.model else None
-    client = Client(llm=llm, confirm=lambda kinds: args.allow_user_objects is True)
+    seed = base_document(args.base_step) if args.base_step else None
+    client = Client(document=seed, llm=llm, confirm=lambda kinds: args.allow_user_objects is True)
     client.events.log_to(args.log)
+    if seed:
+        client.kernel.check("pass", document=seed)
 
     spent = {"usd": 0.0}
 

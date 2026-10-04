@@ -141,8 +141,16 @@ def _the_groups(attachments):
     return groups
 
 
+def _body(intent, base):
+    """What Design is asked about: the intent, and the base part's inventory where the run edits one."""
+    if not base:
+        return {"intent": intent}
+    return {"intent": intent, "the_base_part": base,
+            "describe": "the part as it is after the intent is applied to the_base_part"}
+
+
 def _asked_about_a_group(label, views, intent, llm, events, attachments, readings=1,
-                         record_conflicts=True):
+                         record_conflicts=True, base=None):
     """One page-sized group's Design turn, read *readings* times and merged
     into one group-local model — a dimension digit at the provider's pixel
     cap is a stochastic read, so repeating the turn and merging catches a
@@ -152,7 +160,7 @@ def _asked_about_a_group(label, views, intent, llm, events, attachments, reading
     view this group never sees."""
     grown, question = {}, ""
     for _ in range(max(1, readings)):
-        this, asked = design({"intent": intent}, llm, events, attachments, views=views,
+        this, asked = design(_body(intent, base), llm, events, attachments, views=views,
                              phase="%s: %s" % (DESIGN_PHASE, label), keep_printed=True)
         grown = merge(grown, this, record_conflicts)
         question = question or asked
@@ -160,7 +168,7 @@ def _asked_about_a_group(label, views, intent, llm, events, attachments, reading
 
 
 def _first_pass(intent, llm, events, attachments, cancelled, readings=1,
-                record_conflicts=True):
+                record_conflicts=True, base=None):
     """
     The Design phase's opening move: one call per page-sized group of views,
     each read *readings* times and merged as it lands, since grow-only and
@@ -170,7 +178,7 @@ def _first_pass(intent, llm, events, attachments, cancelled, readings=1,
     """
     groups = _the_groups(attachments)
     if not groups:
-        the_part, question = design({"intent": intent}, llm, events, attachments)
+        the_part, question = design(_body(intent, base), llm, events, attachments)
         return the_part, question, False
 
     if cancelled():
@@ -181,7 +189,7 @@ def _first_pass(intent, llm, events, attachments, cancelled, readings=1,
     with ThreadPoolExecutor(max_workers=min(len(groups), _A_GROUP_CONCURRENCY)) as pool:
         futures = [(label, pool.submit(_asked_about_a_group, label, views, intent,
                                        copy.copy(llm), events, attachments, readings,
-                                       record_conflicts))
+                                       record_conflicts, base))
                   for label, views in groups]
         for label, future in futures:
             try:

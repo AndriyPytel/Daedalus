@@ -346,6 +346,9 @@ class FakeTools:
             return dict(SNAPSHOT, objects=[{"name": name} for name in self.created],
                         object_count=len(self.created))
 
+        registry.tool("base_inventory", "The base part, in words.")(
+            lambda: {"inventory": None})
+
         @registry.tool("overall_size", "How big the part came out.")
         def overall_size():
             self.calls.append(("overall_size", {}))

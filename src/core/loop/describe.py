@@ -114,14 +114,14 @@ def _settle_it(question):
             "they can correct.")
 
 
-def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments):
+def _describe_the_part(intent, llm, events, budgets, ask, cancelled, attachments, base=None):
     """
     The part as Design has it, before anything is planned. A first-pass
     question goes back to the sheet once before it goes to a person, and
     only what the sheet cannot settle reaches the Gate unanswered.
     """
     the_part, question, grouped = _first_pass(intent, llm, events, attachments, cancelled,
-                                               budgets.readings, budgets.record_conflicts)
+                                               budgets.readings, budgets.record_conflicts, base)
     the_part = merge({}, the_part, budgets.record_conflicts)
 
     if question:
