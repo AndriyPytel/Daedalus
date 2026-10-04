@@ -55,6 +55,7 @@ from core.loop.execute import (
     _MAY_START_AGAIN,
     _SHAPES_THE_PART,
     _SKIPPED_A_STEP,
+    _THICKNESS_FAILED,
     _TURN_BUDGET_SPENT,
     _TURN_BUDGET_SPENT_REHEARSED,
     _WHAT_NOW,
@@ -492,6 +493,9 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                 refused = "Execute has found it out of date again."
             else:
                 cause, feedback = _Revisions.UNBUILDABLE, outcome["handback"]
+                if _THICKNESS_FAILED in feedback:
+                    alternative = next(d for p, d, _ in _FAILED_THIS_WAY if p == _THICKNESS_FAILED)
+                    feedback = "%s\n\nAlternative: %s" % (feedback, alternative)
                 refused = outcome["handback"]
 
             planned = rewrite(cause, refused, feedback, outcome["tried"],
