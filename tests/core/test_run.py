@@ -32,3 +32,50 @@ def test_the_subscription_is_still_answered_by_its_own_client(
         the_settings_never_reach_the_user_s_freecad):
     assert isinstance(run.client_for("Claude (subscription)", "opus", "medium"),
                       ClaudeCodeClient)
+
+
+class _FakeClient:
+    def __init__(self, solid):
+        self.solid = solid
+        self.exported = []
+        self.saved = []
+
+    def has_solid(self):
+        return self.solid
+
+    def export_step(self, path):
+        self.exported.append(path)
+
+    def save(self, path):
+        self.saved.append(path)
+
+
+class _Result:
+    def __init__(self, ok):
+        self.ok = ok
+
+
+def test_a_run_with_no_solid_writes_no_step_and_exits_with_its_own_code(tmp_path):
+    client = _FakeClient(solid=False)
+
+    code = run.finish(client, _Result(ok=True), str(tmp_path / "made.step"))
+
+    assert client.exported == []
+    assert code == run.NO_SOLID_EXIT
+    assert code not in (0, 1)
+
+
+def test_a_failed_run_with_a_solid_still_exports_it_and_exits_1(tmp_path):
+    client = _FakeClient(solid=True)
+    path = str(tmp_path / "made.step")
+
+    assert run.finish(client, _Result(ok=False), path) == 1
+    assert client.exported == [path]
+
+
+def test_a_passing_run_with_a_solid_exports_it_and_exits_0(tmp_path):
+    client = _FakeClient(solid=True)
+    path = str(tmp_path / "made.step")
+
+    assert run.finish(client, _Result(ok=True), path) == 0
+    assert client.exported == [path]

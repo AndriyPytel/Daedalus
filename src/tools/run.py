@@ -38,6 +38,27 @@ def client_for(provider, model_id, effort):
     return client_from_settings(model_id, effort)
 
 
+NO_SOLID_EXIT = 3
+
+
+def finish(client, result, save):
+    """
+    Write *save* and give the process exit code: 0 for a passing run, 1 for a failed one.
+
+    A Document with no solid writes nothing, since an empty STEP is a file a
+    scorer reads as a candidate, and exits `NO_SOLID_EXIT` whatever the verdict was.
+    """
+    if not client.has_solid():
+        return NO_SOLID_EXIT
+    if save:
+        if save.lower().endswith((".step", ".stp")):
+            client.export_step(save)
+        else:
+            client.save(save)
+        print("saved         :", save)
+    return 0 if result.ok else 1
+
+
 def main():
     """
     One run, headless.
@@ -101,15 +122,9 @@ def main():
     print("spent         : $%.2f" % spent["usd"])
     print("event log     :", args.log)
 
-    if args.save:
-        if args.save.lower().endswith((".step", ".stp")):
-            client.export_step(args.save)
-        else:
-            client.save(args.save)
-        print("saved         :", args.save)
-
+    code = finish(client, result, args.save)
     client.close()
-    return 0 if result.ok else 1
+    return code
 
 
 if __name__ == "__main__":

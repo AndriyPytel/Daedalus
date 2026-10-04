@@ -420,6 +420,7 @@ def test_sweep_suffixes_the_arm_onto_the_task_label(tmp_path):
                      conflicts=None):
         spawned.append((label, log, conflicts))
         open(log, "w").close()
+        open(log[: -len(".jsonl")] + ".step", "w").write("ISO-10303-21;")
         return FakeProcess()
 
     lane.run_one, real_run_one = fake_run_one, lane.run_one
@@ -546,6 +547,7 @@ def test_sweep_resumes_by_skipping_a_run_state_already_marks_done(tmp_path, monk
     def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
         spawned.append(label)
         open(log, "w").close()
+        open(log[: -len(".jsonl")] + ".step", "w").write("ISO-10303-21;")
         return FakeProcess()
 
     monkeypatch.setattr(lane, "run_one", fake_run_one)
@@ -631,3 +633,106 @@ def test_an_explicit_budget_overrides_the_pinned_default(monkeypatch, tmp_path):
     lane.main()
 
     assert captured["budget_usd"] == 55.0
+
+
+def _quota_log(path, resets_at=1791057600):
+    _write_events(path, [(1.0, "blocked", {
+        "reason": "opus refused the request: the subscription's seven-day limit is spent, "
+                  "and it resets at 23:00. Wait for it, or run this Intent on a provider with a key.",
+        "provider_said": json.dumps({"status": "rejected", "resetsAt": resets_at,
+                                     "rateLimitType": "seven_day"}),
+        "tried": []})])
+
+
+def test_a_quota_refusal_is_not_retried_and_stops_the_sweep_with_its_reset_time(
+        tmp_path, monkeypatch, capsys):
+    out = str(tmp_path)
+    spawned = []
+
+    class FakeProcess:
+        returncode = 1
+
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+        spawned.append(label)
+        _quota_log(log)
+        return FakeProcess()
+
+    monkeypatch.setattr(lane, "run_one", fake_run_one)
+    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
+
+    stopped = lane.sweep([("126", "a.pdf"), ("142", "b.pdf")], ["opus"], "medium", None,
+                         "Build it.", out, 1800, 3, False, "Claude (subscription)", None)
+
+    assert spawned == ["126"]
+    assert stopped
+    assert "resets at 23:00" in capsys.readouterr().out
+    with open(os.path.join(out, "state.json"), encoding="utf-8") as handle:
+        run = json.load(handle)["runs"]["126/opus"]
+    assert run["status"] == "quota"
+
+
+def test_a_quota_stopped_run_is_run_again_by_resume(tmp_path, monkeypatch):
+    out = str(tmp_path)
+    os.makedirs(os.path.join(out, "opus"))
+    state = {"runs": {"126/opus": {"label": "126", "model": "opus", "log": "x.jsonl",
+                                   "status": "quota"}}}
+    with open(os.path.join(out, "state.json"), "w", encoding="utf-8") as handle:
+        json.dump(state, handle)
+    spawned = []
+
+    class FakeProcess:
+        returncode = 1
+
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+        spawned.append(label)
+        open(log, "w").close()
+        return FakeProcess()
+
+    monkeypatch.setattr(lane, "run_one", fake_run_one)
+    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
+
+    lane.sweep([("126", "a.pdf")], ["opus"], "medium", None, "Build it.", out, 1800, 1, True,
+               "Claude (subscription)", None)
+
+    assert spawned == ["126"]
+
+
+def test_an_ordinary_refusal_is_still_retried(tmp_path, monkeypatch):
+    out = str(tmp_path)
+    spawned = []
+
+    class FakeProcess:
+        returncode = 1
+
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+        spawned.append(label)
+        _write_events(log, [(1.0, "blocked", {"reason": "opus refused the request: you are "
+                                                        "being rate limited", "tried": []})])
+        return FakeProcess()
+
+    monkeypatch.setattr(lane, "run_one", fake_run_one)
+    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
+
+    assert not lane.sweep([("126", "a.pdf")], ["opus"], "medium", None, "Build it.", out, 1800,
+                          3, False, "Claude (subscription)", None)
+    assert spawned == ["126"] * 3
+
+
+def test_a_run_that_exits_0_without_a_step_is_recorded_failed(tmp_path, monkeypatch):
+    out = str(tmp_path)
+
+    class FakeProcess:
+        returncode = 0
+
+    def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
+        open(log, "w").close()
+        return FakeProcess()
+
+    monkeypatch.setattr(lane, "run_one", fake_run_one)
+    monkeypatch.setattr(lane, "watch", lambda *a, **k: "exited")
+
+    lane.sweep([("126", "a.pdf")], ["opus"], "medium", None, "Build it.", out, 1800, 1, False,
+               "Claude (subscription)", None)
+
+    with open(os.path.join(out, "state.json"), encoding="utf-8") as handle:
+        assert json.load(handle)["runs"]["126/opus"]["status"] == "failed"

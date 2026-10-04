@@ -304,6 +304,12 @@ class Client:
 
         return export_step(self.document, path)
 
+    def has_solid(self):
+        """Whether this Client's Document holds a solid; a document without one has no STEP to write."""
+        from core.freecad_apply import has_solid
+
+        return has_solid(self.document)
+
     def close(self):
         """Let the kernel go and close the Document. A Client is not reused after this."""
         if self.kernel is not None:
