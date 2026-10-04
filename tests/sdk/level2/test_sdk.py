@@ -346,3 +346,14 @@ def test_a_fresh_document_is_created_through_dispatch_not_on_this_thread():
         assert marshalled, "the new Document was built without going through dispatch"
     finally:
         client.close()
+
+
+def test_a_client_has_a_solid_only_once_something_solid_was_modelled(kernel):
+    from sdk import Client
+
+    client = Client(kernel=kernel, llm=_a_box_run())
+    assert not client.has_solid()
+
+    assert client.send("Add a 10mm cube").ok
+    assert client.has_solid()
+    client.close()

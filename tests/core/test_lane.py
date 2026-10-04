@@ -420,6 +420,7 @@ def test_sweep_suffixes_the_arm_onto_the_task_label(tmp_path):
                      conflicts=None):
         spawned.append((label, log, conflicts))
         open(log, "w").close()
+        open(log[: -len(".jsonl")] + ".step", "w").write("ISO-10303-21;")
         return FakeProcess()
 
     lane.run_one, real_run_one = fake_run_one, lane.run_one
@@ -546,6 +547,7 @@ def test_sweep_resumes_by_skipping_a_run_state_already_marks_done(tmp_path, monk
     def fake_run_one(label, sheet, model, effort, budget_usd, log, intent, provider):
         spawned.append(label)
         open(log, "w").close()
+        open(log[: -len(".jsonl")] + ".step", "w").write("ISO-10303-21;")
         return FakeProcess()
 
     monkeypatch.setattr(lane, "run_one", fake_run_one)

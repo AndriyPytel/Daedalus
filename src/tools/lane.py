@@ -85,6 +85,27 @@ def watch(process, log, hang_seconds, run_seconds=None, poll_seconds=5,
     return "exited"
 
 
+QUOTA_PHRASES = ("limit is spent", "usage limit", "quota for this model is exhausted",
+                 "out of credit")
+QUOTA_EXIT = 75
+
+
+def quota_refusal(log):
+    """
+    The sentence of a provider's spent-quota refusal that ended the run in *log*, else `None`.
+
+    Such a run is recorded `quota` and not retried, and `sweep` stops and returns `True`. A rate limit that clears in a moment is not one.
+    """
+    from core.events import BLOCKED, replay
+
+    events, _truncated = replay(log)
+    for event in reversed(events):
+        if event.kind == BLOCKED:
+            reason = event.data.get("reason") or ""
+            return reason if any(phrase in reason for phrase in QUOTA_PHRASES) else None
+    return None
+
+
 def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
             python=sys.executable, conflicts=None):
     """
@@ -161,6 +182,11 @@ leaving `--budget-usd` unset and risking an unbounded overnight spend.
 """
 
 
+def _has_step(log):
+    step = log[: -len(".jsonl")] + ".step" if log.endswith(".jsonl") else log + ".step"
+    return os.path.isfile(step) and os.path.getsize(step) > 0
+
+
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
           resume, provider, run_seconds, conflicts=None, timestamp=None):
     """
@@ -189,6 +215,7 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
 
             stem = os.path.join(model_dir, arm_label)
             outcome = "hung"
+            refusal = None
             attempts = []
             log = None
             for attempt in range(1, retries + 1):
@@ -198,17 +225,26 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                 process = run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
                                   **kwargs)
                 outcome = watch(process, log, hang_seconds, run_seconds)
-                if outcome == "exited" and process.returncode == 0:
+                refusal = quota_refusal(log) if outcome == "exited" else None
+                if refusal:
+                    break
+                if outcome == "exited" and process.returncode == 0 and _has_step(log):
                     break
                 print("%s attempt %d: %s (exit %s)"
                       % (key, attempt, outcome, process.returncode), flush=True)
 
+            succeeded = outcome == "exited" and process.returncode == 0 and _has_step(log)
             state["runs"][key] = {"label": arm_label, "model": model, "log": log,
                                   "attempts": attempts,
-                                  "status": "done" if outcome == "exited"
-                                  and process.returncode == 0 else "failed"}
+                                  "status": "quota" if refusal
+                                  else "done" if succeeded else "failed"}
             save_state(state_path, state)
             print("%s: %s" % (key, state["runs"][key]["status"]), flush=True)
+            if refusal:
+                print("QUOTA SPENT, sweep stopped; --resume after the reset. %s" % refusal,
+                      flush=True)
+                return True
+    return False
 
 
 def status(out):
@@ -520,10 +556,10 @@ def main():
             raise SystemExit("--status, --report, or --model and --task, each at least once")
 
     os.makedirs(args.out, exist_ok=True)
-    sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,
-         args.out, args.hang_seconds, args.retries, args.resume, args.provider,
-         args.run_seconds, args.conflicts)
-    return 0
+    stopped = sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,
+                    args.out, args.hang_seconds, args.retries, args.resume, args.provider,
+                    args.run_seconds, args.conflicts)
+    return QUOTA_EXIT if stopped else 0
 
 
 if __name__ == "__main__":

@@ -1229,6 +1229,12 @@ def export_step(document, path):
     return path
 
 
+def has_solid(document):
+    """Whether *document* holds modelled geometry with a solid, the only thing worth exporting."""
+    return any(not obj.InList and _measurable(obj) is not None and obj.Shape.Solids
+               for obj in document.Objects)
+
+
 def _overall_size(doc):
     """
     How big the modelled part is, `[x, y, z]` in mm, or None if nothing is.
