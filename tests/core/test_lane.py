@@ -608,7 +608,7 @@ def test_compare_marks_a_score_difference_smaller_than_the_floor_unmeasurable(tm
 def test_pinned_defaults_the_budget_ceiling_above_the_run_a_30_dollar_cap_cut_off(monkeypatch, tmp_path):
     captured = {}
 
-    def fake_sweep(tasks, models, effort, budget_usd, *rest):
+    def fake_sweep(tasks, models, effort, budget_usd, *rest, **kwargs):
         captured["budget_usd"] = budget_usd
 
     monkeypatch.setattr(lane, "sweep", fake_sweep)
@@ -622,7 +622,7 @@ def test_pinned_defaults_the_budget_ceiling_above_the_run_a_30_dollar_cap_cut_of
 def test_an_explicit_budget_overrides_the_pinned_default(monkeypatch, tmp_path):
     captured = {}
 
-    def fake_sweep(tasks, models, effort, budget_usd, *rest):
+    def fake_sweep(tasks, models, effort, budget_usd, *rest, **kwargs):
         captured["budget_usd"] = budget_usd
 
     monkeypatch.setattr(lane, "sweep", fake_sweep)
