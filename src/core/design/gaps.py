@@ -155,7 +155,7 @@ def _which_datum_takes_over(model):
     return taken_over
 
 
-_A_PAGE = re.compile(r"\bpage\s+(\d+)", re.IGNORECASE)
+_A_PAGE = re.compile(r"\bpage\s+(\d+)(?![\d.]*\d|\.\d|\s*(?:mm|cm|deg|\xb0))", re.IGNORECASE)
 
 _A_REVISION_MARK = re.compile(r"\b(?:revisions?|rev|phase\s*\d+)\b", re.IGNORECASE)
 

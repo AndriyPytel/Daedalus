@@ -62,3 +62,10 @@ def test_the_value_the_replaced_feature_lost_is_still_a_criterion():
 
     assert [entry["about"] for entry in entries(document)
             if entry["flag"] == "assumed"] == ["features \u2192 hole-b \u2192 depth"]
+
+
+def test_a_number_after_the_word_page_with_a_decimal_or_unit_is_not_a_page():
+    """Fixture 138 reads `page 1.5 mm` in a callout: not page 1, and not a second page."""
+    said = _the_part(["VIEW A, on page 1", "VIEW B, page 1.5 mm, Phase 2 revision"])
+
+    assert _depth(said)["mm"] == 12 and "was" not in _depth(said)
