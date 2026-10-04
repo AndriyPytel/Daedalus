@@ -29,6 +29,7 @@ OLD_CHECKS = {
     "a Body left in more than one piece": "_bodies_in_pieces",
     "a Body with an invalid Shape": "_bodies_with_invalid_shape",
     "a Body with an inverted solid": "_bodies_with_inverted_solid",
+    "a Body whose mesh is not manifold": "_bodies_with_non_manifold_mesh",
 }
 
 
