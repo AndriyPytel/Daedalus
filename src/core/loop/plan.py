@@ -80,6 +80,8 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     request = {"intent": intent, "document": snapshot}
     if history:
         request["already_built"] = list(history)
+        if undo_depth is not None:
+            request["undo_depth"] = undo_depth
     elif revising:
         request["the_plan_you_wrote"] = list(revising)
     if change_set is not None:
@@ -215,19 +217,31 @@ def _acceptance_of(the_part):
     return [entry["says"] for entry in entries(the_part)]
 
 
+_BOOKKEEPING = ("plane", "edges", "position", "angle")
+
+
+def _a_feature_and_its_leaf(address):
+    parts = _as_written(address).split(" \u2192 ")
+    return (tuple(parts[:2]), parts[2]) if parts[0] == "features" and len(parts) > 2 else (None, None)
+
+
 def _unconsumed(the_part, satisfies, standing=()):
     """
     The entries of the description that no Step of the Plan accounts for.
 
-    The mechanical catch for a Plan that dropped a dimension no rule noticed.
-    Only what the drawing fixes — `read` or `derived` — counts: a Plan may
-    not be refused for failing to build a number nobody supplied.
+    Only what the drawing fixes -- `read` or `derived` -- counts. A Step citing
+    a feature's main value, any address but plane, edges, position or angle,
+    covers that feature's bookkeeping addresses.
     """
     cited = {_as_written(entry) for entry in list(satisfies) + list(standing)}
+    cited_features = {feature for feature, leaf in map(_a_feature_and_its_leaf, cited)
+                      if feature and leaf not in _BOOKKEEPING}
     return [entry["about"] for entry in entries(the_part)
             if entry["flag"] in ("read", "derived")
             and not any(said == entry["about"] or said.startswith(entry["about"] + ":")
-                        for said in cited)]
+                        for said in cited)
+            and not (_a_feature_and_its_leaf(entry["about"])[0] in cited_features
+                     and _a_feature_and_its_leaf(entry["about"])[1] in _BOOKKEEPING)]
 
 
 def _rollback_field(raw, applied, undo_depth=None) -> tuple:
@@ -286,28 +300,22 @@ def _op_off_the_list(unbuildable) -> str:
 
 def _plan_the_rest(unconsumed, history=False) -> str:
     """
-    What Plan is told about the entries it left to nobody.
+    What Plan is told about the entries it left to nobody: a patch, not a rewrite.
 
-    Before anything is applied, Plan's own Plan is what it corrects
-    (`the_plan_you_wrote`); once Steps have landed, they are History and
-    only the continuation is Plan's to write, so the instruction differs
-    only in what it asks for back.
+    Plan may add the entry to the `satisfies` of an existing Step or add a Step
+    at the end of the Plan, and changes nothing else; a full rewrite once swapped
+    one half of the part for the other four times over. Once Steps have landed
+    they are History and the patch goes to the continuation.
     """
-    said = ("No Step of your Plan cited these entries of the description, so nothing in "
+    where = "the continuation" if history else "your Plan in `the_plan_you_wrote`"
+    return ("No Step of your Plan cited these entries of the description, so nothing in "
             "the Plan builds them:\n"
             + "\n".join("- " + entry for entry in unconsumed)
-            + "\nPlan them, and name each one in the `satisfies` of the Step that "
-              "satisfies it, written exactly as it is above.\n")
-    if history:
-        return (said + "`already_built` is History and not yours to touch. Add Steps to "
-                "the continuation that cover the entries listed above, beside whatever "
-                "continuation Steps you already wrote.")
-    return (said + "Your Plan is in `the_plan_you_wrote`. Send it back with these Steps "
-            "added — every Step you already wrote, unchanged, and the new ones beside "
-            "them. A Plan of only the entries listed here drops the Steps that built the "
-            "rest, and the same check then names those instead: a recorded run swapped "
-            "one half of the part for the other four times over and spent the whole "
-            "revision budget without running a single Step.")
+            + "\nThis is a patch. Either name each entry, written exactly as above, in the "
+              "`satisfies` of an existing Step, or add a Step for it at the end of the Plan. "
+              "Send back %s with every other Step unchanged and in the same order."
+            % where
+            + (" `already_built` is History and not yours to touch." if history else ""))
 
 
 def _value_undefined(value_errors) -> str:

@@ -856,9 +856,8 @@ def test_block_reason_names_mechanical_ceiling_when_hit():
     """
     result, events, _, _ = drive([
         design_reply(A_PART),
-        plan_reply("v1"),
-        plan_reply("v2"),
-        plan_reply("v3"),
+        *[plan_reply({"do": "v%d" % n, "values": ["ghost"]}, satisfies=everything(A_PART))
+          for n in (1, 2, 3)],
     ], attachments=[RENDER_PNG], budgets=Budgets(revisions=5, mechanical_revisions=2))
 
     assert result.blocked

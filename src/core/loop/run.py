@@ -284,23 +284,25 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     auto_approve = settings.instance().get_auto_approve_plan()
 
     last_complaint = []
+    patched = set()
+    plan_unmet = []
+    rollback_patched = [False]
 
-    def rewrite(cause, refused, feedback, tried, reason=None, step=None):
+    def rewrite(cause, refused, feedback, tried, reason=None, step=None, patch=False):
         """
         Rewrite the Plan for *cause*, or stop because the budget is spent.
 
-        Seven unrelated things replan the same way: spend one unit of the
-        ceiling *step* caused if the cause is attributable to one Step, plan
-        again from a fresh Snapshot, and say why on the stream — only the
-        cause, sentence and what was tried differ. The Plan being rewritten
-        goes with the complaint: without it, a revision wrote from the
-        complaint alone, which names only what was wrong.
+        Seven unrelated things replan the same way: spend one unit of the ceiling
+        *step* caused, plan again from a fresh Snapshot with the Plan being rewritten
+        beside the complaint, and say why on the stream. A *patch* spends no revision
+        and its callers bound it.
         """
-        if revisions.exhausted(budgets, steps, cause, step=step):
+        if not patch and revisions.exhausted(budgets, steps, cause, step=step):
             raise _OutOfRevisions(
                 revisions.block_reason(budgets, steps, cause, refused, progress.applied,
                                        step=step), tried)
-        revisions.spend(cause, step=step)
+        if not patch:
+            revisions.spend(cause, step=step)
         last_complaint[:] = [reason or feedback]
         if progress.applied:
             revised = replan(feedback, history=list(last_pass.steps[:progress.applied]))
@@ -329,11 +331,14 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
             continue
 
         if planned.bad_rollback:
+            free = not rollback_patched[0]
+            rollback_patched[0] = True
             planned = rewrite(_Revisions.OP_REFUSED,
                               "The Plan's rollback field could not be used.",
                               _bad_rollback(planned.bad_rollback), progress.tried,
-                              reason=planned.bad_rollback)
+                              reason=planned.bad_rollback, patch=free)
             continue
+        rollback_patched[0] = False
 
         satisfied_so_far = progress.satisfied
         if rollback:
@@ -343,13 +348,22 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                           else ())}
             satisfied_so_far = [entry for entry in progress.satisfied
                                if entry not in dropped_cites]
-        unconsumed = _unconsumed(part.the_part, planned.satisfies, satisfied_so_far)
+        unconsumed = [entry for entry in
+                      _unconsumed(part.the_part, planned.satisfies, satisfied_so_far)
+                      if entry not in plan_unmet]
+        for entry in unconsumed:
+            if entry in patched:
+                plan_unmet.append(entry)
+        unconsumed = [entry for entry in unconsumed if entry not in plan_unmet]
+        progress.unmet = list(dict.fromkeys(list(progress.unmet) + plan_unmet))
         if unconsumed:
+            patched.update(unconsumed)
             planned = rewrite(_Revisions.UNCOVERED,
                               "The Plan still leaves part of the description unplanned.",
                               _plan_the_rest(unconsumed, history=bool(last_pass.steps)),
                               progress.tried,
-                              reason="no Step accounted for " + ", ".join(unconsumed))
+                              reason="no Step accounted for " + ", ".join(unconsumed),
+                              patch=True)
             continue
 
         value_errors = list(planned.value_errors)
@@ -513,7 +527,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                 geometry_baseline.clear()
                 geometry_baseline.update(checked.geometry)
         progress.unmet = (list(checked.unmet) if checked is not None else []) \
-            + list(not_reached)
+            + list(not_reached) + plan_unmet
         if checked is not None and checked.failed:
             feedback = _why_the_checks_failed(checked.traceback)
             answer = decided(feedback, applied, unmet=checked.unmet)
