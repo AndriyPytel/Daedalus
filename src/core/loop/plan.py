@@ -65,7 +65,7 @@ class Plan:
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set=None,
          unanswered=(), revising=(), history=(), looking=(), looked=(), tried="",
-         supervisor=None, kernel=None, undo_depth=None, must_decide=False):
+         supervisor=None, kernel=None, undo_depth=None, must_decide=False, base=None):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot. Plan
     never sees the picture; it is handed the part Design describes, one
@@ -79,6 +79,8 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
     `rollback` may name.
     """
     request = {"intent": intent, "document": snapshot}
+    if base:
+        request["the_base_part"] = base
     if history:
         request["already_built"] = list(history)
         if undo_depth is not None:
@@ -457,7 +459,7 @@ def _round_after_the_cuts(early, steps):
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
                                revising=(), history=(), ledger=None, supervisor=None,
-                               kernel=None):
+                               kernel=None, base=None):
     """
     Plan, letting it ask for what the description did not carry, and the
     run waits. A question goes to the drawing first; unanswered, Design
@@ -481,7 +483,8 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                        looked=asking.looked_up,
                        tried=ledger.render() if ledger else "", supervisor=supervisor,
                        undo_depth=undo_depth, kernel=kernel,
-                       must_decide=nobody_answered > budgets.unanswered_questions)
+                       must_decide=nobody_answered > budgets.unanswered_questions,
+                       base=base)
         change_set = None
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))

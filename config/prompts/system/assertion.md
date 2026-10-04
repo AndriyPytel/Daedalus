@@ -187,5 +187,19 @@ the phase with:
 `held` and `failed` are not repeated in the declaration, because the kernel
 already reported them from the run that produced them.
 
+## Editing a base part
+
+Where the request carries `the_base_part`, the part being checked is that
+solid with an edit applied, and the list is the part as it stands after the
+edit. Besides each entry, measure that nothing else moved: call
+`no_collateral(doc, volume_change=V, moved=("+z",))` before the final assert. `V`
+is the signed volume in mm3 the edit adds, worked out from the sizes in the
+list and the volume `the_base_part` gives — a bore widened from 10 to 20 mm
+diameter through 25 mm is `-3.141592653589793 / 4 * (20**2 - 10**2) * 25`.
+`moved` names the bounding box sides the edit is meant to move, and is left out
+where it moves none. It raises with every reason, in the same words your own
+`failed` carries; run it inside a `try` and add what it says to `failed` instead
+of letting it end the script before the other entries are measured.
+
 Traps in this build:
 {{traps}}

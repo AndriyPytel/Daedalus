@@ -62,7 +62,7 @@ def test_plan_request_carries_the_base_only_when_there_is_one(monkeypatch):
 
     def fake_run_phase(kind, working_dir, sources, llm, task, **kwargs):
         tasks.append(json.loads(task))
-        return {"steps": []}, None, []
+        return {"question": "which?"}, None, []
 
     monkeypatch.setattr(plan_module, "run_phase", fake_run_phase)
     plan_module.plan("edit", {}, ScriptedLLMClient([]), EventStream(), base=BASE)

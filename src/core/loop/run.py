@@ -229,10 +229,10 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 
     kernel = kernel or Kernel()
 
+    base = tools.call("base_inventory")["inventory"]
     if the_part_path and not attachments:
         part = Part(part_file.read(the_part_path))
     else:
-        base = tools.call("base_inventory")["inventory"]
         part = Part(_describe_the_part(intent, llm, events, budgets, ask, cancelled,
                                        attachments, base))
         written = events.last(PART)
@@ -248,7 +248,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         planned, part.the_part = _plan_once_it_knows_enough(
             intent, tools.call("snapshot"), llm, events, budgets, part.the_part,
             cancelled, asking, tools, feedback, attachments, revising, history, ledger,
-            supervisor, kernel=kernel)
+            supervisor, kernel=kernel, base=base)
         return planned
 
     def decided(why, applied, unmet=()):
@@ -503,7 +503,8 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                                 start=carried, ops=full_ops, kernel=kernel,
                                 exploration=exploration,
                                 design=distilled(part.the_part) if part.the_part else None,
-                                supervisor=supervisor, plan_values=dict(frozen_values))
+                                supervisor=supervisor, plan_values=dict(frozen_values),
+                                base=base)
         for offset in range(outcome["applied_here"] - carried):
             history_log.append({"step": carried + offset + 1, "text": continuation[offset],
                                "rolled_back": None})
@@ -550,7 +551,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
         acceptance = [entry for entry in checking if entry not in not_reached]
         checked = assertion(acceptance, described, tools, llm, events, budgets,
                             cancelled, after_a_retry=outcome.get("retried"),
-                            description=part.the_part, supervisor=supervisor)
+                            description=part.the_part, supervisor=supervisor, base=base)
         if checked is not None and checked.geometry:
             regressed = _geometry_regressions(geometry_baseline, checked.geometry,
                                               outcome.get("retried_names"))
@@ -620,7 +621,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
 def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progress,
                   as_described="", looks=None, entries=(), cites=(), ledger=None,
                   start=0, ops=(), kernel=None, exploration=None, design=None,
-                  supervisor=None, plan_values=None):
+                  supervisor=None, plan_values=None, base=None):
     """
     One pass over the Plan: written by one Execute phase, applied one Step at a
     time. `budgets.attempts_per_step` bounds one Step; a spent Step hands back
@@ -648,7 +649,8 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
     written = execute(steps, tools, llm, events, start, budgets=budgets,
                       as_described=as_described, looks=looks, entries=entries,
                       ledger=ledger, kernel=kernel, ops=ops, exploration=probe,
-                      design=design, supervisor=supervisor, plan_values=plan_values)
+                      design=design, supervisor=supervisor, plan_values=plan_values,
+                      base=base)
     if probed_step is not None:
         exploration[probed_step] = probe["turns"]
 
@@ -771,7 +773,7 @@ def _work_through(steps, intent, tools, llm, events, budgets, cancelled, progres
         probe, probed_step = _step_exploration(exploration, steps, index)
         written = execute(steps, tools, llm, events, index, attempts, budgets, as_described,
                           looks, entries, ledger, kernel=kernel, ops=ops, exploration=probe,
-                          supervisor=supervisor)
+                          supervisor=supervisor, base=base)
         if probed_step is not None:
             exploration[probed_step] = probe["turns"]
 

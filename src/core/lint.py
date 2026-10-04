@@ -461,7 +461,7 @@ def _counted_selections(tree) -> set:
         if (isinstance(node, ast.Assign) and len(node.targets) == 1
                 and isinstance(node.targets[0], ast.Name)
                 and isinstance(node.value, ast.Call)
-                and _pick_edges_counts_its_own(node.value)):
+                and _picker_counts_its_own(node.value)):
             counted.add(node.targets[0].id)
 
     comprehension_assigns = [node for node in ast.walk(tree)
@@ -525,13 +525,13 @@ def _boundbox_guard(test, boundbox_names: set):
     return None
 
 
-def _pick_edges_counts_its_own(call) -> bool:
+def _picker_counts_its_own(call) -> bool:
     """
-    Whether *call* is `pick_edges(shape, predicate, expect)` with *expect*
-    an int literal, keyword or positional -- `pick_edges` raises on the
+    Whether *call* is `pick_edges` or `pick_faces` `(shape, predicate, expect)` with *expect*
+    an int literal, keyword or positional -- both raise on the
     count itself, so a selection from it needs no guard the lint has to see.
     """
-    if not (isinstance(call.func, ast.Name) and call.func.id == "pick_edges"):
+    if not (isinstance(call.func, ast.Name) and call.func.id in ("pick_edges", "pick_faces")):
         return False
     if len(call.args) >= 3 and isinstance(call.args[2], ast.Constant) and isinstance(call.args[2].value, int):
         return True
