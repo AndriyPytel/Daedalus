@@ -62,3 +62,26 @@ def test_the_loop_reads_the_inventory_through_a_tool_not_a_freecad_import(tmp_pa
         assert "40 x 30 x 10 mm" in tools.call("base_inventory")["inventory"]
     finally:
         FreeCAD.closeDocument(doc.Name)
+
+
+def test_the_bounding_box_is_the_surface_s_and_not_the_tessellation_s(tmp_path):
+    import FreeCAD
+    import Part
+
+    from core.freecad_apply import base_inventory
+
+    doc = FreeCAD.newDocument("Curved")
+    feature = doc.addObject("Part::Feature", "Imported")
+    feature.Shape = Part.makeCylinder(25, 10)
+    feature.Shape.tessellate(0.5)
+    body = doc.addObject("PartDesign::Body", "Body")
+    body.BaseFeature = feature
+    doc.recompute()
+    try:
+        assert body.BaseFeature.Shape.BoundBox.YLength < 50 - 1e-3
+        text = base_inventory(doc)
+    finally:
+        FreeCAD.closeDocument(doc.Name)
+
+    assert "50 x 50 x 10 mm" in text
+    assert "x -25..25" in text
