@@ -17,6 +17,7 @@ import datetime
 import glob
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -107,13 +108,12 @@ def quota_refusal(log):
 
 
 def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
-            python=sys.executable, conflicts=None):
+            python=sys.executable, conflicts=None, base_step=None, attach=()):
     """
     One run of one sheet, as a subprocess of `tools/run.py`.
 
-    A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone,
-    which is what a part named by a standard rather than drawn on a page is.
-    *conflicts* is `tools/run.py --conflicts`, unset runs its default ("on").
+    A task with no sheet — `--task bolt-nut=` — is a run of the Intent alone.
+    *conflicts* is `tools/run.py --conflicts`; an editing run names *base_step* and the renders in *attach*.
     """
     save = log[: -len(".jsonl")] + ".step" if log.endswith(".jsonl") else log + ".step"
     cmd = [python, os.path.join(ROOT, "tools", "run.py"),
@@ -121,10 +121,14 @@ def run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
           "--provider", provider, "--effort", effort, "--log", log, "--save", save]
     if sheet:
         cmd += ["--attach", sheet]
+    if attach:
+        cmd += ["--attach"] + list(attach)
     if budget_usd is not None:
         cmd += ["--budget-usd", str(budget_usd)]
     if conflicts is not None:
         cmd += ["--conflicts", conflicts]
+    if base_step:
+        cmd += ["--base-step", base_step]
     return subprocess.Popen(cmd)
 
 
@@ -182,13 +186,77 @@ leaving `--budget-usd` unset and risking an unbounded overnight spend.
 """
 
 
+RENDER_VIEWS = ("front", "right", "top", "iso")
+VOLUME_RATIO = (0.2, 5.0)
+
+
+def _part():
+    for lib in ("/Applications/FreeCAD.app/Contents/Resources/lib",):
+        if os.path.isdir(lib) and lib not in sys.path:
+            sys.path.insert(0, lib)
+    import FreeCAD  # noqa: F401
+    import Part
+
+    return Part
+
+
+def step_problem(path):
+    """
+    The reason the official gate would refuse the STEP at *path*, else `None`.
+
+    Refused: no solid, more than one solid, an OCC `isValid()` failure, and the mesh gate
+    `core.manifold` mirrors.
+    """
+    shape = _part().read(path)
+    from core import manifold
+
+    if not shape.Solids:
+        return "no solid"
+    if len(shape.Solids) > 1:
+        return "%d solids" % len(shape.Solids)
+    if not shape.isValid():
+        return "not valid"
+    return manifold.check_fc(shape)
+
+
+def guard_edit(edit, base):
+    """
+    Why the edited STEP *edit* must not ship, else `None`.
+
+    It must pass `step_problem` and keep its volume within `VOLUME_RATIO` of *base*'s; real edits
+    moved volume by -15% and +9%, so only an absurd change is a failed edit.
+    """
+    problem = step_problem(edit)
+    if problem:
+        return problem
+    Part = _part()
+    before = Part.read(base).Volume
+    ratio = Part.read(edit).Volume / before if before else 1.0
+    low, high = VOLUME_RATIO
+    return None if low <= ratio <= high else "volume ratio %.3f" % ratio
+
+
+def _ship_edit(log, fixture, output):
+    """Write *output*: the run's edited STEP if it passes the guard, else a copy of the input; return the fallback reason."""
+    base = os.path.join(fixture, "input.step")
+    step = log[: -len(".jsonl")] + ".step" if log and log.endswith(".jsonl") else None
+    if step and _has_step(log):
+        reason = guard_edit(step, base)
+        source = base if reason else step
+    else:
+        reason, source = "no solid", base
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    shutil.copyfile(source, output)
+    return reason
+
+
 def _has_step(log):
     step = log[: -len(".jsonl")] + ".step" if log.endswith(".jsonl") else log + ".step"
     return os.path.isfile(step) and os.path.getsize(step) > 0
 
 
 def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
-          resume, provider, run_seconds, conflicts=None, timestamp=None):
+          resume, provider, run_seconds, conflicts=None, timestamp=None, edits=None):
     """
     *conflicts* ("on"/"off"/`None`) is the append-only model's own A/B arm:
     set, it suffixes every task's label the way `logs/ab-rlm-agentic`
@@ -197,8 +265,12 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
     log and, from `run_one`'s own naming, STEP, so a retry's save never
     lands on the same path as any other attempt's. *timestamp* is
     injectable so a test can make attempts distinguishable without a real
-    clock.
+    clock, and *edits* maps a label to its editing fixture folder, whose run ends in
+    `<model>/<label>/output.step`: the edit, or a copy of `input.step`.
     """
+    from core.prompts import read_prompt
+
+    edits = edits or {}
     timestamp = timestamp or _attempt_timestamp
     state_path = os.path.join(out, "state.json")
     state = load_state(state_path) if resume else {"runs": {}}
@@ -218,11 +290,19 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
             refusal = None
             attempts = []
             log = None
+            fixture = edits.get(label)
+            run_intent = intent
             for attempt in range(1, retries + 1):
                 log = _unique_stem(stem, timestamp()) + ".jsonl"
                 attempts.append(log)
                 kwargs = {"conflicts": conflicts} if conflicts is not None else {}
-                process = run_one(label, sheet, model, effort, budget_usd, log, intent, provider,
+                if fixture:
+                    with open(os.path.join(fixture, "edit_description.txt"), encoding="utf-8") as handle:
+                        run_intent = read_prompt("edit_task_intent.md").strip().format(desc=handle.read().strip())
+                    kwargs["base_step"] = os.path.join(fixture, "input.step")
+                    kwargs["attach"] = [os.path.join(fixture, "renders", view + ".png")
+                                        for view in RENDER_VIEWS]
+                process = run_one(label, sheet, model, effort, budget_usd, log, run_intent, provider,
                                   **kwargs)
                 outcome = watch(process, log, hang_seconds, run_seconds)
                 refusal = quota_refusal(log) if outcome == "exited" else None
@@ -238,6 +318,13 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                                   "attempts": attempts,
                                   "status": "quota" if refusal
                                   else "done" if succeeded else "failed"}
+            if fixture and not refusal:
+                output = os.path.join(model_dir, label, "output.step")
+                state["runs"][key]["fallback"] = _ship_edit(log, fixture, output)
+                state["runs"][key]["input_invalid"] = step_problem(os.path.join(fixture, "input.step"))
+                if state["runs"][key]["input_invalid"]:
+                    print("INPUT INVALID %s: %s" % (label, state["runs"][key]["input_invalid"]),
+                          flush=True)
             save_state(state_path, state)
             print("%s: %s" % (key, state["runs"][key]["status"]), flush=True)
             if refusal:
@@ -494,6 +581,9 @@ def main():
                         help="Repeatable; each model sweeps every --task")
     parser.add_argument("--task", action="append", default=[],
                         help="label=/path/to/sheet.pdf, repeatable; an empty path attaches nothing")
+    parser.add_argument("--edit-task", action="append", default=[],
+                        help="id=/path/to/fixture, repeatable; edits the folder's input.step "
+                             "per edit_description.txt and writes <model>/<id>/output.step")
     parser.add_argument("--intent", default="Build the Phase 1 model from this drawing.")
     parser.add_argument("--provider", default="Claude (subscription)",
                         help="Which provider sells every --model of this sweep")
@@ -552,13 +642,15 @@ def main():
         tasks = baseline_tasks()
     else:
         tasks = [t.split("=", 1) for t in args.task]
-        if not tasks or not args.model:
+        if not tasks and not args.edit_task or not args.model:
             raise SystemExit("--status, --report, or --model and --task, each at least once")
 
+    edits = dict(t.split("=", 1) for t in args.edit_task)
+    tasks = list(tasks) + [(label, "") for label in edits]
     os.makedirs(args.out, exist_ok=True)
     stopped = sweep(tasks, args.model, args.effort, args.budget_usd, args.intent,
                     args.out, args.hang_seconds, args.retries, args.resume, args.provider,
-                    args.run_seconds, args.conflicts)
+                    args.run_seconds, args.conflicts, edits=edits)
     return QUOTA_EXIT if stopped else 0
 
 
