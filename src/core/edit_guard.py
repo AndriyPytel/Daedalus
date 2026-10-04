@@ -18,11 +18,11 @@ def measured(shape):
             "bbox": (box.XMin, box.YMin, box.ZMin, box.XMax, box.YMax, box.ZMax)}
 
 
-def collateral(base, built, volume_change=None, moved=()):
+def collateral(base, built, volume_change=None, moved=None):
     """
     Why *built* is not the *base* part edited as asked, one sentence per reason; empty where it is.
     *volume_change* is the signed mm3 the edit should add; within 5% of it plus 0.1% of the base volume holds, and where it is not given the volume may only lose half or gain a whole base.
-    *moved* names the bounding box sides ('+z', '-x', ...) the edit may move, beyond 0.5 mm.
+    *moved* names the bounding box sides ('+z', '-x', ...) the edit may move, beyond 0.5 mm; None skips the box check.
     """
     reasons = []
     if built["solids"] != 1:
@@ -38,7 +38,7 @@ def collateral(base, built, volume_change=None, moved=()):
     elif not _UNASKED_LOSS * base["volume"] <= built["volume"] <= _UNASKED_GAIN * base["volume"]:
         reasons.append("the volume went from %.1f to %.1f mm3, more than an edit moves"
                        % (base["volume"], built["volume"]))
-    for side, was, now in zip(_SIDES, base["bbox"], built["bbox"]):
+    for side, was, now in zip(_SIDES, base["bbox"], built["bbox"]) if moved is not None else ():
         if abs(now - was) > _BOX_MM and side not in moved:
             reasons.append("the bounding box moved on %s by %.2f mm and the edit does not ask for it"
                            % (side, now - was))

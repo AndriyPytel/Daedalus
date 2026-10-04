@@ -196,8 +196,8 @@ edit. Besides each entry, measure that nothing else moved: call
 is the signed volume in mm3 the edit adds, worked out from the sizes in the
 list and the volume `the_base_part` gives — a bore widened from 10 to 20 mm
 diameter through 25 mm is `-3.141592653589793 / 4 * (20**2 - 10**2) * 25`.
-`moved` names the bounding box sides the edit is meant to move, and is left out
-where it moves none. It raises with every reason, in the same words your own
+`moved` names the bounding box sides the edit is meant to move; pass `moved=()`
+where it moves none, and leave it out to skip the box check. It raises with every reason, in the same words your own
 `failed` carries; run it inside a `try` and add what it says to `failed` instead
 of letting it end the script before the other entries are measured.
 

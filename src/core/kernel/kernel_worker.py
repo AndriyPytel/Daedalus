@@ -303,9 +303,9 @@ def cylinder_face(diameter, axis=None, tol=0.01):
     return predicate
 
 
-def no_collateral(doc, volume_change=None, moved=()):
+def no_collateral(doc, volume_change=None, moved=None):
     """
-    Raises an AssertionError naming every way the Body's shape is not its BaseFeature edited as asked: more than one solid, invalid, a volume change other than *volume_change* mm3, a bounding box side outside *moved* that moved.
+    Raises an AssertionError naming every way the Body's shape is not its BaseFeature edited as asked: more than one solid, invalid, a volume change other than *volume_change* mm3, a bounding box side outside *moved* that moved, checked only when *moved* is given.
     Does nothing where no Body has a BaseFeature, so a run that edits nothing is unaffected.
     """
     from core.edit_guard import collateral, measured
