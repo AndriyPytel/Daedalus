@@ -37,7 +37,7 @@ def test_a_turn_budget_exhaustion_names_itself_with_the_count_it_reached(tmp_pat
 
     fired = stream.of(TURN_BUDGET_EXHAUSTED)
     assert len(fired) == 1
-    assert fired[0].data == {"phase": pc.EXECUTE, "turns": 2, "budget": 1}
+    assert fired[0].data == {"phase": pc.EXECUTE, "turns": 2, "budget": 1, "scope": "run"}
 
 
 def test_a_second_continuation_on_the_same_exhausted_supervisor_fires_no_second_event(tmp_path):

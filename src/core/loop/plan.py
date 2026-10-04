@@ -24,7 +24,7 @@ from core.loop.execute import (
     _look,
     _lookable,
 )
-from core.loop.gate import _DECIDE, _a_question_for_the_build
+from core.loop.gate import _DECIDE, _DECIDE_AND_ASSUME, _a_question_for_the_build
 from core.loop.prompt import PLAN_PHASE, _pictures, prompt
 from core.kernel.kernel_worker import RESERVED_STEP_NAMES
 
@@ -64,7 +64,7 @@ class Plan:
 
 def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set=None,
          unanswered=(), revising=(), history=(), looking=(), looked=(), tried="",
-         supervisor=None, kernel=None, undo_depth=None):
+         supervisor=None, kernel=None, undo_depth=None, must_decide=False):
     """
     Produce an ordered list of Steps from the Intent and a Snapshot. Plan
     never sees the picture; it is handed the part Design describes, one
@@ -96,7 +96,7 @@ def plan(intent, snapshot, llm, events, feedback=None, the_part=None, change_set
         request["already_failed_this_way"] = tried
     if unanswered:
         request["nobody_answered"] = {"the_questions": list(unanswered),
-                                      "what_to_do": _DECIDE}
+                                      "what_to_do": _DECIDE_AND_ASSUME if must_decide else _DECIDE}
     if looking:
         request["tools_you_may_look_with"] = list(looking)
         request["what_to_do_now"] = _LOOK_IT_UP
@@ -386,6 +386,7 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
     refused before it ever ends the run.
     """
     grown, for_the_build, change_set = the_part, False, None
+    nobody_answered = 0
     undo_depth = tools.call("undo_depth")["depth"] if history else None
     while True:
         if cancelled():
@@ -396,7 +397,8 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                        looking=_lookable(tools) if for_the_build else (),
                        looked=asking.looked_up,
                        tried=ledger.render() if ledger else "", supervisor=supervisor,
-                       undo_depth=undo_depth, kernel=kernel)
+                       undo_depth=undo_depth, kernel=kernel,
+                       must_decide=nobody_answered > budgets.unanswered_questions)
         change_set = None
         if planned.look:
             asking.looked_up.append(_look(tools, planned.look, events))
@@ -449,6 +451,12 @@ def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                 continue
             grown = before
 
-        events.emit(ANSWER, text=_DECIDE, by="nobody")
+        nobody_answered += 1
+        if nobody_answered > budgets.unanswered_questions + 1:
+            raise PhaseError("Plan kept asking after it was told to decide and write "
+                             "`assumed`: %s" % planned.question)
+        events.emit(ANSWER, by="nobody",
+                    text=_DECIDE_AND_ASSUME if nobody_answered > budgets.unanswered_questions
+                    else _DECIDE)
         if planned.question not in asking.unanswered:
             asking.unanswered.append(planned.question)

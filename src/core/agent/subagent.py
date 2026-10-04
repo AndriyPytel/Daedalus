@@ -17,6 +17,9 @@ MB_PER_KERNEL = 100
 
 BUDGET_EXHAUSTED = "budget-exhausted"
 
+STEP_TURNS = 3
+"""Turns every Step is owed out of the run's pool, whatever the Steps before it spent."""
+
 RESERVE = 3
 """Turns held back before `turn_budget`'s wall: room for one forced
 declaration and the one retry that follows a refused Step, so `run_phase`
@@ -66,12 +69,40 @@ class SessionTreeSupervisor:
         self.active_kernels = 0
         self.refusals = []
         self._exhaustion_told = False
+        self.step_budget = None
+        self.step_turns = 0
+        self._step_exhaustion_told = False
 
     @property
-    def outcome(self):
+    def run_outcome(self):
         if self.turns > self.turn_budget or self.tokens > self.token_budget:
             return BUDGET_EXHAUSTED
         return None
+
+    @property
+    def outcome(self):
+        if self.run_outcome or (self.step_budget is not None
+                                and self.step_turns > self.step_budget):
+            return BUDGET_EXHAUSTED
+        return None
+
+    def begin_step(self, remaining):
+        """
+        Give the Step now being written its own turns: twice its fair share of
+        what the pool still holds, but never so many that each of the
+        `remaining - 1` Steps after it has fewer than `STEP_TURNS` left.
+        Called again as each Step lands, so what it did not spend goes back.
+        """
+        left = self.turn_budget - self.turns - RESERVE
+        others = max(remaining - 1, 0)
+        fair = left // max(remaining, 1)
+        self.step_budget = max(STEP_TURNS, min(2 * fair, left - STEP_TURNS * others))
+        self.step_turns = 0
+        self._step_exhaustion_told = False
+
+    def end_step(self):
+        self.step_budget = None
+        self.step_turns = 0
 
     def reserved(self):
         """
@@ -92,16 +123,20 @@ class SessionTreeSupervisor:
         every phase continuation, so its ceiling firing is one event, not
         one per continuation that asks after it already has.
         """
-        if self.outcome != BUDGET_EXHAUSTED or self._exhaustion_told:
-            return None
-        self._exhaustion_told = True
-        return {"turns": self.turns, "budget": self.turn_budget}
+        if self.run_outcome == BUDGET_EXHAUSTED and not self._exhaustion_told:
+            self._exhaustion_told = True
+            return {"turns": self.turns, "budget": self.turn_budget, "scope": "run"}
+        if self.run_outcome is None and self.outcome == BUDGET_EXHAUSTED \
+                and not self._step_exhaustion_told:
+            self._step_exhaustion_told = True
+            return {"turns": self.step_turns, "budget": self.step_budget, "scope": "step"}
+        return None
 
     def spawn(self, depth):
         if depth >= 1:
             self.refusals.append({"reason": "depth", "depth": depth})
             return None
-        if self.outcome == BUDGET_EXHAUSTED:
+        if self.run_outcome == BUDGET_EXHAUSTED:
             self.refusals.append({"reason": self.outcome, "depth": depth})
             return None
         if self.active_kernels >= self.concurrency:
@@ -116,6 +151,7 @@ class SessionTreeSupervisor:
 
     def record_turn(self):
         self.turns += 1
+        self.step_turns += 1
 
     def record_tokens(self, count):
         self.tokens += count

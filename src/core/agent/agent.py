@@ -114,6 +114,13 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
     exploration = {} if exploration is None else exploration
     since_declaration = exploration.get("turns", 0)
     declaration_demanded = False
+    plan_length = len(sources.get("plan") or ()) if phase == pc.EXECUTE else 0
+
+    def own_turns():
+        if supervisor is not None and plan_length:
+            supervisor.begin_step(max(plan_length - len(delivered_steps), 1))
+
+    own_turns()
     try:
         text = _say(session, llm, task, phase=phase, stream=stream)
         while True:
@@ -330,6 +337,7 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                         declarations.append(declaration)
                         if message["step"] is not None:
                             delivered_steps.add(message["step"])
+                            own_turns()
                         delivered_step = message["step"]
                         declared_failure = None
                         last_landed_checkpoint = checkpoint
@@ -374,6 +382,8 @@ def run_phase(phase, working_dir, sources, llm, task, document=_NO_DOCUMENT,
                             % phase)
             text = _say(session, llm, prompt("contract_correction"), phase=phase, stream=stream)
     finally:
+        if supervisor is not None:
+            supervisor.end_step()
         exploration["turns"] = since_declaration
         if kernel is None and working_kernel is not None:
             working_kernel.kill()

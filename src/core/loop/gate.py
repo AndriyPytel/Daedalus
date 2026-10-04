@@ -71,6 +71,11 @@ _DECIDE = ("Nobody is asked for a value, and Design could not settle it either -
            "if the part cannot be built without it.")
 
 
+_DECIDE_AND_ASSUME = ("Nobody will answer another question. Decide every open value yourself, "
+                   "give each one you choose the flag `assumed` and a `because` saying "
+                   "what you settled it off, and plan. Do not ask again.")
+
+
 _ABOUT_THE_BUILD = ("material", "materials", "uuid", "uuids", "card", "cards", "density",
                     "type", "types", "property", "properties", "enumeration", "spelling",
                     "spellings", "installed")
