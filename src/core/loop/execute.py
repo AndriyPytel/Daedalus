@@ -144,7 +144,7 @@ class Written:
 
 def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_described="",
             looks=None, entries=(), ledger=None, supervisor=None, kernel=None, ops=(),
-            exploration=None, design=None, plan_values=None):
+            exploration=None, design=None, plan_values=None, base=None):
     """
     Run every Step from `start` to the end of the Plan as one agent phase,
     against one kernel held open for the whole call. `Written` comes from
@@ -161,6 +161,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
     request = {"steps": [{"step": number, "do": prose}
                          for number, prose in enumerate(steps[start:], start=start + 1)],
                "document": tools.call("snapshot")}
+    if base:
+        request["the_base_part"] = base
     if as_described:
         request["what_the_part_is"] = as_described
     if entries:

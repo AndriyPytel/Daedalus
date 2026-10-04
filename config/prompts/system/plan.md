@@ -425,5 +425,17 @@ A revision that rolls part of the History back adds `"rollback": {"to": 3,
 Never declare both `steps` and `question`: a question is not a Plan with a
 caveat.
 
+## Editing a base part
+
+Where the request carries `the_base_part`, the Document's Body already starts
+from that solid, as its BaseFeature: this Plan edits a part and does not build
+one. Never rebuild what `the_base_part` lists — no new base pad, no copy of a
+face that is there. Each Step is one change the Intent asks for, made with a Pad,
+Pocket, Hole or Fillet on the Body, with its numbers: "pocket the central bore
+out to 40 mm diameter, 25 mm deep from the top plane". Name a face or a bore by
+what `the_base_part` says of it — its normal, the plane it lies in, its
+diameter and axis — and say how many there are. Everything the Intent does not
+mention stays as it is: no Step moves, trims or refills anything else.
+
 Traps in this build:
 {{traps}}

@@ -247,6 +247,78 @@ def pick_edges(shape, predicate, expect):
     return names
 
 
+def pick_faces(shape, predicate, expect):
+    """
+    The face names of *shape* where *predicate* -- a function from one
+    `Part.Face` to True/False -- answers True, or a `RuntimeError` naming
+    the faces it found when their count is not *expect*. The lint treats
+    a name assigned from this call as counted, the same as `pick_edges`.
+    """
+    if not callable(predicate):
+        raise TypeError(
+            "pick_faces wants a predicate over Shape.Faces, a function from one "
+            "Face to True/False -- got %r" % (predicate,))
+    names = ["Face%d" % at for at, face in enumerate(shape.Faces, start=1) if predicate(face)]
+    if len(names) != expect:
+        raise RuntimeError(
+            "pick_faces wanted %d faces, found %d: %s" % (expect, len(names), names))
+    return names
+
+
+def _along(axis):
+    return {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}[axis]
+
+
+def plane_face(axis, at, tol=0.01):
+    """
+    A predicate for `pick_faces`: a planar face whose normal runs along global
+    *axis* ('x', 'y' or 'z') and which lies at coordinate *at* on it.
+    """
+    direction = _along(axis)
+
+    def predicate(face):
+        surface = face.Surface
+        if surface.__class__.__name__ != "Plane":
+            return False
+        normal = surface.Axis
+        parallel = abs(abs(sum(a * b for a, b in zip(direction, normal))) - 1) < 1e-6
+        return parallel and abs(sum(a * b for a, b in zip(direction, surface.Position)) - at) <= tol
+
+    return predicate
+
+
+def cylinder_face(diameter, axis=None, tol=0.01):
+    """
+    A predicate for `pick_faces`: a cylindrical face of this *diameter*, with
+    its axis along global *axis* ('x', 'y' or 'z') where one is given.
+    """
+    def predicate(face):
+        surface = face.Surface
+        if surface.__class__.__name__ != "Cylinder" or abs(surface.Radius * 2 - diameter) > tol:
+            return False
+        if axis is None:
+            return True
+        return abs(abs(sum(a * b for a, b in zip(_along(axis), surface.Axis))) - 1) < 1e-6
+
+    return predicate
+
+
+def no_collateral(doc, volume_change=None, moved=None):
+    """
+    Raises an AssertionError naming every way the Body's shape is not its BaseFeature edited as asked: more than one solid, invalid, a volume change other than *volume_change* mm3, a bounding box side outside *moved* that moved, checked only when *moved* is given.
+    Does nothing where no Body has a BaseFeature, so a run that edits nothing is unaffected.
+    """
+    from core.edit_guard import collateral, measured
+
+    body = next((obj for obj in doc.Objects
+                 if obj.TypeId == "PartDesign::Body" and obj.BaseFeature is not None), None)
+    if body is None:
+        return
+    reasons = collateral(measured(body.BaseFeature.Shape), measured(body.Shape),
+                         volume_change, moved)
+    assert not reasons, "these did not hold: no collateral change. " + "; ".join(reasons)
+
+
 def bbox(shape):
     """
     *shape*'s bounding box computed from its exact geometry, not from
@@ -335,6 +407,8 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False):
     namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__",
                  "edges_between": edges_between, "edges_by_concavity": edges_by_concavity,
                  "built_ok": built_ok, "pick_edges": pick_edges, "bbox": bbox,
+                 "pick_faces": pick_faces, "plane_face": plane_face,
+                 "cylinder_face": cylinder_face, "no_collateral": no_collateral,
                  "by_label": by_label, "sketch_at": sketch_at}
     if design is not None:
         namespace["design"] = _step_design(design)
@@ -352,7 +426,8 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False):
 
 RESERVED_STEP_NAMES = frozenset(
     {"App", "FreeCAD", "doc", "__name__", "edges_between", "edges_by_concavity",
-     "built_ok", "pick_edges", "bbox", "by_label", "sketch_at", "design", "names", "plan_values"}
+     "built_ok", "pick_edges", "bbox", "by_label", "sketch_at", "design", "names", "plan_values",
+     "pick_faces", "plane_face", "cylinder_face", "no_collateral"}
     | set(STEP_MODULES))
 
 

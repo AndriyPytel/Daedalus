@@ -200,7 +200,7 @@ def _consulted_design(description, events):
 
 
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
-              after_a_retry=(), supervisor=None, kernel=None, description=None):
+              after_a_retry=(), supervisor=None, kernel=None, description=None, base=None):
     """
     Writes and runs acceptance checks against the finished Document,
     read-only, once per run, given `description` -- Design's own prose,
@@ -213,6 +213,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     budgets = budgets or Budgets()
     request = {"acceptance": list(acceptance),
                "the_document_as_it_now_stands": described}
+    if base:
+        request["the_base_part"] = base
     if after_a_retry:
         request["entries_a_retry_touched"] = list(after_a_retry)
 
@@ -220,7 +222,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
     fixed = [(the_envelope_measured(acceptance), "the envelope"),
              (SELF_INTERSECTION_CHECK, "no solid self-intersects"),
-             (the_topology_measured(description), "the topology")]
+             (the_topology_measured(description), "the topology"),
+             ("no_collateral(doc)" if base else "", "no collateral change")]
     fixed_checks = [code for code, _ in fixed if code]
     fixed_confirmed = []
     if fixed_checks:

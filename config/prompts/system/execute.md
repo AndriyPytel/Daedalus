@@ -395,5 +395,22 @@ against what the Step says: position, direction. Where a landed Step is wrong,
 reply with `{"fix": N, "label": "...", "code": "..."}` for it before you write
 the next Step. A fix edits what Step N built and is not a new Step.
 
+## Editing a base part
+
+Where the request carries `the_base_part`, the Body's BaseFeature is the part
+being edited: never rebuild it, and add features to the Body only. Pad, Pocket,
+Hole and Fillet on the Body do the edit. Select a face with `pick_faces(shape,
+predicate, expect)`, and build the predicate with `plane_face('z', 10)` — a
+planar face whose normal runs along that global axis and which lies at that
+coordinate — or `cylinder_face(40, 'y')`, a cylindrical face of that diameter
+with its axis along that axis. State the count the Step names in `expect`: a
+selection that finds a different number fails the Step, where a guess at a face
+would edit the wrong one and report success. A Step that finds nothing to change
+has not edited anything. Take the sizes and positions from `the_base_part`, and
+leave everything the Step does not name untouched. To widen a bore, pocket the
+difference between the new and old radius from the plane the bore opens on; to
+move a face along its normal, pad or pocket the slab between the old and new
+position on that face's own plane.
+
 Traps in this build:
 {{traps}}
