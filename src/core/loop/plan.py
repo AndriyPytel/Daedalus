@@ -371,6 +371,11 @@ def _one_direction_per_step(mixed):
         for at, field, said in mixed)
 
 
+def _fillet_before_a_cut(steps, ops):
+    """Not yet written."""
+    return []
+
+
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
                                revising=(), history=(), ledger=None, supervisor=None,
