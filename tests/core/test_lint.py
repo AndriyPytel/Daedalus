@@ -943,3 +943,22 @@ def test_counts_indices_and_a_right_angle_pass_lint_too():
     for code in ("pad.Length = 0", "pad.Length = 1", "revolve.Angle = 90",
                 "revolve.Angle = 360"):
         assert lint(code).ok, lint(code).report()
+
+
+def test_a_selection_from_pick_faces_with_expect_is_counted():
+    code = (
+        "held = pick_faces(base.Shape, plane_face('z', 10), expect=1)\n"
+        "sk.AttachmentSupport = (base, held)\n"
+        "fillet.Base = (base, held)\n"
+    )
+
+    assert lint(code).ok, lint(code).report()
+
+
+def test_a_pick_faces_call_without_expect_is_uncounted():
+    code = (
+        "held = pick_faces(base.Shape, plane_face('z', 10))\n"
+        "fillet.Base = (base, held)\n"
+    )
+
+    assert not lint(code).ok
