@@ -255,7 +255,7 @@ def test_the_build_order_doctrine_names_base_additions_subtractions_then_dressup
     assert "it is the last Step of any Plan" in plan_system
     assert "A dress-up Step is planned against the solid the Steps before it leave" \
         in plan_system
-    assert "A round is planned early only where a later Step must inherit it" in plan_system
+    assert "Three more orders are not early rounds" in plan_system
 
     assert "computed off `Shape.Faces`" in execute_system
     assert "before the boolean that invalidates it, never after" in execute_system

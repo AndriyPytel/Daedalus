@@ -194,8 +194,7 @@ the Pad would build as one solid.
 
 **A part is planned base, then addition, then subtraction, then a shell or
 its holes, and a fillet or a chamfer only once every one of those stands —
-except the one case below, where a later feature would cut the fillet's own
-edge into pieces.** Each of those Steps is a boolean — a Pad added to the
+except the two cases named in the paragraph on early rounds below.** Each of those Steps is a boolean — a Pad added to the
 solid, a Pocket or a Hole cut out of it, a Shell hollowing it — and a
 boolean does not add to the
 Shape the Steps before it built: it replaces it, so a reference Execute worked
@@ -214,13 +213,19 @@ That is common CAD practice — later features cut earlier fillets, and
 PartDesign stores a fillet's edges by name, so a fillet planned early is a
 fillet a later Step can invalidate.
 
-**A fillet is planned directly after the feature that makes its edge only
-when a later feature would cut that edge into pieces.** An R10 fillet on the
-edge a base pad makes, planned before the lugs that later cut that edge into
-twelve pieces, rounds the edge whole; planned last, it rounds twelve pieces
-of an edge nobody described as twelve. That is the one exception to
-fillets-last, and it applies only where a later feature splits the edge —
-never as the general rule.
+**A fillet or a chamfer is planned before a Pocket, a Hole, a pattern or a
+Thickness in two cases only, and the Step says which.** The first: a later
+feature would cut that edge into pieces. An R10 fillet on the edge a base pad
+makes, planned before the lugs that later cut that edge into twelve pieces,
+rounds the edge whole; planned last, it rounds twelve pieces of an edge nobody
+described as twelve. The Step names the later feature and the number of
+pieces — a single Pocket or Hole that touches one arc of the loop is not
+enough. The second: the Design says the inside corners are rounded, the fillet
+is on edges a Thickness inherits, and the Step says so. A Thickness does not
+excuse a Pocket or a Hole planned after the fillet; each needs the first
+case. Neither is the general rule: the Plan of fixture 125 put an R5 before
+its notch and its shell on both reasons at once, the fillet failed on every
+selection, and the shell, the groove and the holes behind it never ran.
 
 **An edge count a Step states is written as approximate, not as a fact.**
 A circle Design counted as one edge comes into the Body as two arcs, so a
@@ -249,8 +254,7 @@ main design work of the solid before applying fillets and chamfers, or edges
 change names and the filleted edges become invalid; its advice for a stable
 model is to use dress-ups as late in the feature tree as possible. A round
 planned in the middle of the shape is a round the Steps after it move out from
-under — outside the one exception already named, where a later feature would
-cut the round's own edge into pieces.
+under — outside the two cases named in the paragraph on early rounds.
 
 **A dress-up Step is planned against the solid the Steps before it leave, not
 against the feature it was read off.** Every shape Step earlier in the Plan has
@@ -279,14 +283,14 @@ those 3 runs, got the invalid body, and spent 24 minutes and 17 calls probing
 faces and edges — 42% of the run's time and cost, and it ran out of budget
 before the 3 it had found was ever written back into the Step.
 
-**A round is planned early only where a later Step must inherit it.** A wall of
-constant thickness taken off a rounded solid is rounded before it is thinned, a
-draft goes on before the rounds that sit on the drafted face, a pattern that has
-to repeat a rounded feature carries the round with it, and a full round that is
-the shape itself is not a dress-up at all — it is built where the shape is, as
-the paragraph on full rounds says. Where two rounds meet, the larger radius is planned
-first. Outside those, a dress-up Step standing anywhere but after every Step
-that touches the metal it sits on is a Step in the wrong place.
+**Three more orders are not early rounds.** A draft goes on before the rounds
+that sit on the drafted face, a pattern that has to repeat a rounded feature
+carries the round with it, and a full round that is the shape itself is not a
+dress-up at all — it is built where the shape is, as the paragraph on full
+rounds says. Where two rounds meet, the larger radius is planned first. Outside
+those and the two cases named in the paragraph on early rounds, a dress-up Step
+standing anywhere but after every Step that touches the metal it sits on is a
+Step in the wrong place.
 
 **A full round is built, never filleted to.** A round whose radius is half the
 thickness it crosses meets itself: at that radius the face between its two

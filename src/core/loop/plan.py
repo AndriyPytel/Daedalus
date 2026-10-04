@@ -371,6 +371,64 @@ def _one_direction_per_step(mixed):
         for at, field, said in mixed)
 
 
+_NUMBER = r"(?:\d+|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
+_PIECES = re.compile(r"\b%s\s+(?:pieces|segments|parts)\b|\binto\s+%s\b" % (_NUMBER, _NUMBER), re.I)
+_A_LATER_FEATURE = re.compile(r"\b(?:pocket|hole|groove|thread|notch|slot|cut|bore|pattern|lug|boss)", re.I)
+_INHERITED_INSIDE = re.compile(r"(?=.*\binherit)(?=.*\b(?:inside|inner|internal)\b)", re.I | re.S)
+
+
+def _kind_of_step(prose, op):
+    first = prose.split(None, 1)[0] if prose.strip() else ""
+    word = re.sub(r"[^a-z]", "", (op or first).lower())
+    if word in ("fillet", "chamfer", "draft"):
+        return word
+    if word in ("pocket", "hole", "thickness") or "pattern" in word or word == "multitransform":
+        return "thickness" if word == "thickness" else "cut"
+    return None
+
+
+def _fillet_before_a_cut(steps, ops):
+    """
+    The Fillet, Chamfer or Draft Steps planned before a Pocket, Hole, pattern or Thickness Step
+    without saying why, as `{"at", "step", "later"}` with `at` 1-based.
+
+    A reason is the later feature and the number of pieces it cuts the edge into, or, for a
+    Thickness alone, that the round is on the inside corners and the wall inherits it. A Draft
+    followed by a Fillet or Chamfer is the draft-before-the-rounds order and is not refused.
+    """
+    kinds = [_kind_of_step(step, op) for step, op in zip(steps, list(ops) + [None] * len(steps))]
+    found = []
+    for at, kind in enumerate(kinds):
+        if kind not in ("fillet", "chamfer", "draft"):
+            continue
+        later = [kinds[after] for after in range(at + 1, len(kinds)) if kinds[after] in ("cut", "thickness")]
+        if not later:
+            continue
+        if kind == "draft" and any(k in ("fillet", "chamfer") for k in kinds[at + 1:]):
+            continue
+        prose = steps[at]
+        if _PIECES.search(prose) and _A_LATER_FEATURE.search(prose):
+            continue
+        if set(later) == {"thickness"} and _INHERITED_INSIDE.search(prose):
+            continue
+        first = next(after for after in range(at + 1, len(kinds)) if kinds[after] in ("cut", "thickness"))
+        found.append({"at": at + 1, "step": prose, "later": first + 1})
+    return found
+
+
+def _round_after_the_cuts(early, steps):
+    """What Plan is told about a round planned before a cut: a patch naming only that Step."""
+    return ("\n".join("- Step %d (%s) comes before Step %d (%s)."
+                      % (item["at"], item["step"], item["later"], steps[item["later"] - 1])
+                      for item in early)
+            + "\nA fillet, chamfer or draft is planned after every Pocket, Hole, pattern and "
+              "Thickness unless the Step says why it cannot be: it names the later feature and "
+              "the number of pieces that feature cuts the edge into, or, before a Thickness, it "
+              "says the round is on the inside corners and the wall inherits it. This is a patch. "
+              "Either move each Step above to the end of the Plan, or add that reason to it, "
+              "and send back the Plan with every other Step unchanged and in the same order.")
+
+
 def _plan_once_it_knows_enough(intent, snapshot, llm, events, budgets, the_part,
                                cancelled, asking, tools, feedback=None, attachments=(),
                                revising=(), history=(), ledger=None, supervisor=None,
