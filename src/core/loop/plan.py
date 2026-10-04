@@ -5,11 +5,12 @@ from dataclasses import dataclass, field
 
 from core.design.core import UNDER
 from core.design.merge import (
+    _the_number,
     diff,
     merge,
 )
 from core.design.report import render
-from core.design.gaps import entries
+from core.design.gaps import _TO_BE_READ_AGAIN, _each_value, entries
 from core.events import ANSWER, CHANGE_SET, DESIGN, QUESTION
 
 from core.loop.budgets import PhaseError
@@ -296,6 +297,30 @@ def _op_off_the_list(unbuildable) -> str:
             + ".\nRewrite the Step(s) named above with one of them, or with a `question` "
               "if the part genuinely needs none of them. Send back every Step you already "
               "wrote that was kept, unchanged, beside the rewritten one(s).")
+
+
+def _cited_without_a_number(the_part, cites):
+    """
+    The addresses a Step cites whose value Design left without its number.
+
+    Execute reads `design[...]['mm']`, so a Step built on one dies with a
+    KeyError far from the cause; a value waiting to be read again, or one
+    displaced under `was` with a magnitude, carries no `mm` or `deg`.
+    """
+    cited = {_as_written(entry).partition(": ")[0] for step in cites for entry in step}
+    return [at for at, node in _each_value(the_part, "")
+            if at in cited and not {"mm", "deg"} & set(node)
+            and (node.get("value") == _TO_BE_READ_AGAIN
+                 or _the_number(str(node.get("was") or "")))]
+
+
+def _no_number_to_build_on(addresses) -> str:
+    """What Plan is told about a Step citing an address that has no number: a patch, not a rewrite."""
+    return ("These addresses of the description have no number, so no Step can build on them:\n"
+            + "\n".join("- " + address for address in addresses)
+            + "\nThis is a patch. Take each address out of the `satisfies` and the prose of "
+              "every Step citing it, or write the Step with a number you decide and say it is "
+              "assumed. Send back your Plan with every other Step unchanged and in the same order.")
 
 
 def _plan_the_rest(unconsumed, history=False) -> str:
