@@ -193,7 +193,7 @@ def test_exhaustion_reason_fires_once_no_matter_how_many_times_asked():
     supervisor.record_turn()
 
     first = supervisor.exhaustion_reason()
-    assert first == {"turns": 3, "budget": 2}
+    assert first == {"turns": 3, "budget": 2, "scope": "run"}
     assert supervisor.exhaustion_reason() is None
 
     supervisor.record_turn()

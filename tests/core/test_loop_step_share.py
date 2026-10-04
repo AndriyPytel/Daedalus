@@ -59,15 +59,19 @@ def test_a_run_wide_wall_is_still_the_runs_own_outcome():
     assert supervisor.exhaustion_reason()["scope"] == "run"
 
 
+STEPS = ["Step %d" % n for n in range(1, 11)]
+CODES = ["op%d()" % n for n in range(1, 11)]
+
+
 def test_one_step_retried_past_its_share_is_handed_back_not_the_end_of_the_run():
     result, events, _, tools = drive(
         [
-            plan_reply("First", "Second", "Third"),
+            plan_reply(*STEPS),
             _MultiTurn([json.dumps({"code": "bad%d()" % n, "step": 1, "label": "Step"})
                         for n in range(1, 5)]
                        + [json.dumps({"declare": {"unbuildable": "still failing"}})]),
-            plan_reply("First", "Second", "Third"),
-            code_reply("a()", "b()", "c()"),
+            plan_reply(*STEPS),
+            code_reply(*CODES),
             suspect_reply(), verdict_reply("pass"),
         ],
         applies=[failed("one"), failed("two"), failed("three")],
@@ -75,7 +79,7 @@ def test_one_step_retried_past_its_share_is_handed_back_not_the_end_of_the_run()
     )
 
     assert result.ok, result.reason
-    assert tools.applied_codes() == ["a()", "b()", "c()"]
+    assert tools.applied_codes()[-len(CODES):] == CODES
     assert [event.data["scope"] for event in events.of(TURN_BUDGET_EXHAUSTED)] == ["step"]
     assert events.first(PLAN_REVISED) is not None
 

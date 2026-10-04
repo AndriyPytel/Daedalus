@@ -278,7 +278,7 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
             )
 
         reply = declared if isinstance(declared, dict) else {}
-        forced = bool(reply.pop(_FORCED_BY_BUDGET, False))
+        forced = bool(reply.pop(_FORCED_BY_BUDGET, False)) and bool(supervisor.run_outcome or supervisor.reserved())
         rehearsals = {number: len(attempts) for number, attempts in tried.items()
                       if isinstance(number, int)}
 
