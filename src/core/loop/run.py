@@ -81,6 +81,8 @@ from core.loop.gate import (
 from core.loop.plan import (
     _as_written,
     _bad_rollback,
+    _fillet_before_a_cut,
+    _round_after_the_cuts,
     _value_undefined,
     _op_off_the_list,
     _plan_once_it_knows_enough,
@@ -287,6 +289,7 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
     last_complaint = []
     patched = set()
     plan_unmet = []
+    rounds_patched = set()
     rollback_patched = [False]
 
     def rewrite(cause, refused, feedback, tried, reason=None, step=None, patch=False):
@@ -364,6 +367,24 @@ def _run(intent, llm, tools, events, budgets, cancelled, gate, progress, attachm
                               _plan_the_rest(unconsumed, history=bool(last_pass.steps)),
                               progress.tried,
                               reason="no Step accounted for " + ", ".join(unconsumed),
+                              patch=True)
+            continue
+
+        early = []
+        for item in _fillet_before_a_cut(planned.steps, planned.ops):
+            unmet_round = "round planned before a cut: " + item["step"]
+            if item["step"] in rounds_patched:
+                if unmet_round not in plan_unmet:
+                    plan_unmet.append(unmet_round)
+            elif unmet_round not in plan_unmet:
+                early.append(item)
+        progress.unmet = list(dict.fromkeys(list(progress.unmet) + plan_unmet))
+        if early:
+            rounds_patched.update(item["step"] for item in early)
+            planned = rewrite(_Revisions.OP_REFUSED,
+                              "A fillet, chamfer or draft is planned before a cut with no reason.",
+                              _round_after_the_cuts(early, planned.steps), progress.tried,
+                              reason="round before a cut: " + "; ".join(item["step"] for item in early),
                               patch=True)
             continue
 

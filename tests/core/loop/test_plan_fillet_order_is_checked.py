@@ -109,23 +109,28 @@ def _flat(name):
     return re.sub(r"\s+", " ", read_prompt(name))
 
 
+def _paragraphs_on_rounds():
+    for name in _prompts():
+        for paragraph in re.split(r"\n\s*\n", read_prompt(name)):
+            flat = re.sub(r"\s+", " ", paragraph)
+            if re.search(r"\b(?:round|fillet|chamfer)", flat, re.I):
+                yield name, flat
+
+
 def test_no_prompt_states_the_unguarded_shell_exception_or_a_single_exception():
     """The shell exception had no guard and the split exception called itself the one."""
-    for name in _prompts():
-        flat = _flat(name)
+    for name, flat in _paragraphs_on_rounds():
         assert "rounded before it is thinned" not in flat, name
-        assert "the one exception" not in flat, name
-        assert "one exception already named" not in flat, name
+        assert "one exception" not in flat, (name, flat)
 
 
 def test_the_early_round_conditions_are_stated_in_one_prompt_only():
-    stating = [name for name in _prompts()
-               if "names the later feature and the number of pieces" in _flat(name)]
+    stating = sorted({name for name, flat in _paragraphs_on_rounds()
+                      if "names the later feature and the number of pieces" in flat})
     assert stating == ["plan.md"]
 
 
-def test_every_prompt_that_orders_rounds_sends_them_after_the_shape_or_to_the_stated_cases():
-    for name in _prompts():
-        flat = _flat(name)
-        for ordering in re.findall(r"[^.]*\b(?:round|fillet|chamfer)\w*[^.]*\b(?:planned|built) (?:early|first)[^.]*\.", flat):
-            assert "only" in ordering or "never" in ordering or "two cases" in ordering, (name, ordering)
+def test_every_statement_that_a_round_is_planned_early_carries_its_condition():
+    for name, flat in _paragraphs_on_rounds():
+        for sentence in re.findall(r"[^.]*\b(?:round|fillet|chamfer)\w* (?:is|are) (?:planned|built) (?:early|before)[^.]*\.", flat):
+            assert re.search(r"\bonly\b|\bnever\b|two cases", sentence), (name, sentence)

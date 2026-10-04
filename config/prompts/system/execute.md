@@ -228,7 +228,9 @@ for the difference — "the rib's side faces split the boss-to-plate circle, so
 the Step's count of one edge finds two arcs". Where you go on to prescribe the
 surgery you would rather the Plan had done, you are planning, and the Plan is
 written against rules you are not shown: a round or a chamfer is built after the
-shape is finished, because a feature added later renames the edges it sits on.
+shape is finished, because a feature added later renames the edges it sits on,
+unless the Step itself states the reason the Plan was told to accept for an
+early round.
 `logs/sessions/0de34f88d1274dcebb02ac67e0e52fb0.jsonl` handed back a fillet Step
 with "or order the boss-to-plate fillet before the rib", which is the one fix
 that trades a Step now for every Step after it. What the geometry is, is yours
