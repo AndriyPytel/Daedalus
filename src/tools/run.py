@@ -67,7 +67,34 @@ def parser():
                              "its own route; oneshot is one call executed once")
     parser.add_argument("--max-turns", type=int, default=60,
                         help="The agent arm's turn ceiling")
+    parser.add_argument("--base-step", default=None,
+                        help="An editing run: the part to edit, the BaseFeature of the Document's Body")
     return parser
+
+
+def base_document(step_path):
+    """
+    A saved Document whose one Body has *step_path*'s solid as its BaseFeature,
+    so an edit adds features to that Body and `export_step` writes the Body alone,
+    never the imported solid beside it.
+    """
+    import tempfile
+
+    import FreeCAD
+    import Import
+
+    doc = FreeCAD.newDocument("Edit")
+    Import.insert(step_path, doc.Name)
+    base = next(obj for obj in doc.Objects
+                if getattr(obj, "Shape", None) is not None and obj.Shape.Solids)
+    body = doc.addObject("PartDesign::Body", "Body")
+    body.BaseFeature = base
+    doc.recompute()
+    handle, path = tempfile.mkstemp(prefix="fcc-edit-", suffix=".FCStd")
+    os.close(handle)
+    doc.saveAs(path)
+    FreeCAD.closeDocument(doc.Name)
+    return path
 
 
 def header(args):
@@ -116,8 +143,11 @@ def main():
 
     write_header(args.log, args)
     llm = client_for(args.provider, args.model, args.effort) if args.model else None
-    client = Client(llm=llm, confirm=lambda kinds: args.allow_user_objects is True)
+    seed = base_document(args.base_step) if args.base_step else None
+    client = Client(document=seed, llm=llm, confirm=lambda kinds: args.allow_user_objects is True)
     client.events.log_to(args.log)
+    if seed and args.arm == "agent":
+        client.kernel.check("pass", document=seed)
 
     spent = {"usd": 0.0}
 
