@@ -1402,7 +1402,7 @@ def base_inventory(doc):
     if base is None or _measurable(base) is None:
         return None
     shape = base.Shape
-    bound = shape.BoundBox
+    bound = shape.optimalBoundingBox(False)
     planes, cylinders, others = {}, {}, {}
     for face in shape.Faces:
         surface = face.Surface
