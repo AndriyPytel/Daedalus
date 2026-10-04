@@ -36,7 +36,7 @@ def test_without_a_volume_asked_a_gross_loss_fails():
 
 def test_the_box_moves_only_where_asked():
     taller = built(volume=11000.0, bbox=(0, 0, 0, 40, 30, 11))
-    assert any("bounding box" in why for why in collateral(BASE, taller, volume_change=1000.0))
+    assert any("bounding box" in why for why in collateral(BASE, taller, volume_change=1000.0, moved=()))
     assert collateral(BASE, taller, volume_change=1000.0, moved=("+z",)) == []
 
 
@@ -56,3 +56,9 @@ def test_measured_reads_a_shape():
 
     assert measured(Box()) == {"solids": 1, "valid": True, "volume": 5.0,
                                "bbox": (0, 0, 0, 1, 2, 3)}
+
+
+def test_the_fixed_check_leaves_the_box_alone():
+    box = {"solids": 1, "valid": True, "volume": 150000.0, "bbox": (0, 0, 0, 100, 50, 30)}
+    taller = dict(box, volume=200000.0 * 0.9 + 20000.0, bbox=(0, 0, 0, 100, 50, 40))
+    assert collateral(box, taller) == []
