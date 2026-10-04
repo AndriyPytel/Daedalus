@@ -302,6 +302,8 @@ def execute(steps, tools, llm, events, start=0, attempts=(), budgets=None, as_de
 
 _SKIPPED_A_STEP = "skipped a Step it could have written"
 
+_THICKNESS_FAILED = "Failed to make thick solid"
+
 
 def _classified_failures():
     """
@@ -423,6 +425,13 @@ def _classified_failures():
          "deleting them, or leave the Step out and say why it cannot be done — "
          "deleting the same objects again asks the same refused question again.",
          "deleted objects the user created instead of the run's own"),
+        (_THICKNESS_FAILED,
+         "the shell could not be built, and asking for it again fails the same way. Build the "
+         "same wall by another construction. For an open shell, sketch the inner profile "
+         "offset by the wall thickness and pocket it to the depth minus the floor. For a loft "
+         "or sweep, build an inner body the same way from offset profiles and remove it with a "
+         "Boolean cut.",
+         "Thickness could not make a solid, so the wall was never built"),
         (_RAN_OUT_OF_ROOM,
          "the same reply is running out of room at roughly the same point twice. Write "
          "shorter code per Step this time — no restated Step prose, no comments, "
