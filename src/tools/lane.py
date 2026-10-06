@@ -13,7 +13,6 @@ log; `--report` prints the fuller Markdown document `report()` builds over
 the same logs, one summary row per model and one detail row per run.
 """
 import argparse
-import datetime
 import glob
 import json
 import os
@@ -30,7 +29,10 @@ REASON_WIDTH = 60
 
 
 def _attempt_timestamp():
-    return datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    """FreeCAD's own init binds `datetime` to the class in `__main__`, which is this module when it runs as a script."""
+    from datetime import datetime as clock
+
+    return clock.now().strftime("%Y%m%d-%H%M%S-%f")
 
 
 def _unique_stem(stem, stamp):

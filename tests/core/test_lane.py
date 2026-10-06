@@ -736,3 +736,13 @@ def test_a_run_that_exits_0_without_a_step_is_recorded_failed(tmp_path, monkeypa
 
     with open(os.path.join(out, "state.json"), encoding="utf-8") as handle:
         assert json.load(handle)["runs"]["126/opus"]["status"] == "failed"
+
+
+def test_an_attempt_timestamp_survives_freecad_binding_datetime_to_the_class_in_main(monkeypatch):
+    """FreeCAD's own init runs `from datetime import datetime` in `__main__`, which is the lane when it runs as a script."""
+    import datetime
+    import re
+
+    monkeypatch.setattr(lane, "datetime", datetime.datetime, raising=False)
+
+    assert re.fullmatch(r"\d{8}-\d{6}-\d{6}", lane._attempt_timestamp())
