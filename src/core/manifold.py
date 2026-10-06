@@ -5,6 +5,7 @@ thickness. Runs on `OCC.Core` shapes inside FreeCAD's interpreter; `check_fc` an
 FreeCAD `Part.Shape`s.
 """
 import os
+import shutil
 import tempfile
 
 import numpy as np
@@ -13,6 +14,7 @@ from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
 from OCC.Core.BRepBndLib import brepbndlib
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeVertex
+from OCC.Core.BRepCheck import BRepCheck_Analyzer
 from OCC.Core.BRepExtrema import BRepExtrema_DistShapeShape
 from OCC.Core.BRepGProp import brepgprop
 from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
@@ -21,6 +23,9 @@ from OCC.Core.BRepTools import breptools
 from OCC.Core.Bnd import Bnd_Box
 from OCC.Core.GProp import GProp_GProps
 from OCC.Core.GeomAbs import GeomAbs_Cylinder, GeomAbs_Plane
+from OCC.Core.IFSelect import IFSelect_RetDone
+from OCC.Core.Interface import Interface_Static
+from OCC.Core.STEPControl import STEPControl_AsIs, STEPControl_Reader, STEPControl_Writer
 from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_REVERSED, TopAbs_VERTEX
 from OCC.Core.TopExp import TopExp_Explorer, topexp
 from OCC.Core.TopLoc import TopLoc_Location
@@ -34,6 +39,7 @@ DEFLECTION_LADDER = (1, 4, 16, 32)
 CONTACT_TOLERANCE = 0.02
 CLEARANCE = 0.01
 MAX_VOLUME_CHANGE = 0.005
+STEP_PRECISION_MODES = (1, -1)
 
 
 class Finding:
@@ -384,3 +390,43 @@ def repair_fc(fc_shape):
         return fc_shape, None
     repaired, _change, note = repair(shape, finding)
     return (to_freecad(repaired) if repaired is not None else fc_shape), note
+
+
+def _reads_back(path):
+    reader = STEPControl_Reader()
+    if reader.ReadFile(path) != IFSelect_RetDone:
+        return False
+    reader.TransferRoots()
+    shape = reader.OneShape()
+    return BRepCheck_Analyzer(shape).IsValid() and check(shape) is None
+
+
+def _write(shape, path, mode):
+    Interface_Static.SetIVal("write.precision.mode", mode)
+    try:
+        writer = STEPControl_Writer()
+        writer.Transfer(shape, STEPControl_AsIs)
+        writer.Write(path)
+    finally:
+        Interface_Static.SetIVal("write.precision.mode", 0)
+
+
+def rewrite_step(fc_shape, path):
+    """
+    The note on how the STEP at *path* was rewritten, or None when it reads back valid and manifold as written.
+    Writing a file declares one uncertainty for the whole shape, and an imported solid with loose edge tolerances
+    can lose a face's triangulation on reading it back; each of `STEP_PRECISION_MODES` declares another, and the
+    first file that reads back clean is kept, the one written first where none does.
+    """
+    if _reads_back(path):
+        return None
+    shape = from_freecad(fc_shape)
+    first = path + ".first"
+    shutil.copyfile(path, first)
+    for mode in STEP_PRECISION_MODES:
+        _write(shape, path, mode)
+        if _reads_back(path):
+            os.remove(first)
+            return "rewritten in STEP precision mode %d, the file as first written did not read back clean" % mode
+    os.replace(first, path)
+    return "no STEP precision mode reads back clean, the file goes out as first written"
