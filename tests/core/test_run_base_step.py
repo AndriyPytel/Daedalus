@@ -70,3 +70,20 @@ def test_a_run_that_edits_nothing_exports_the_base_once(tmp_path):
     exported = Part.read(out)
     assert len(exported.Solids) == 1
     assert abs(exported.Volume - volume) < 1e-3
+
+
+def test_an_invalid_base_is_repaired_before_it_becomes_the_base_feature(tmp_path, capsys):
+    import FreeCAD
+    from tests.core.level2.test_base_repair_level2 import _cube_with_a_needle
+
+    step = str(tmp_path / "input.step")
+    _cube_with_a_needle(0).exportStep(step)
+
+    doc = FreeCAD.openDocument(run.base_document(step))
+    try:
+        shape = doc.getObject("Body").Shape
+        assert shape.isValid()
+        assert abs(shape.Volume - 1000) < 1
+    finally:
+        FreeCAD.closeDocument(doc.Name)
+    assert "base repair" in capsys.readouterr().out

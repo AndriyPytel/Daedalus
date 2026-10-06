@@ -10,26 +10,31 @@ import tempfile
 
 import numpy as np
 from OCC.Core.BRep import BRep_Builder, BRep_Tool
-from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+from OCC.Core.BRepAdaptor import BRepAdaptor_Curve, BRepAdaptor_Surface
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut, BRepAlgoAPI_Fuse
 from OCC.Core.BRepBndLib import brepbndlib
-from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeVertex
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeSolid, BRepBuilderAPI_MakeVertex, BRepBuilderAPI_Sewing
 from OCC.Core.BRepCheck import BRepCheck_Analyzer
 from OCC.Core.BRepExtrema import BRepExtrema_DistShapeShape
 from OCC.Core.BRepGProp import brepgprop
 from OCC.Core.BRepMesh import BRepMesh_IncrementalMesh
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCylinder
-from OCC.Core.BRepTools import breptools
+from OCC.Core.BRepTools import BRepTools_ReShape, BRepTools_WireExplorer, breptools
 from OCC.Core.Bnd import Bnd_Box
 from OCC.Core.GProp import GProp_GProps
-from OCC.Core.GeomAbs import GeomAbs_Cylinder, GeomAbs_Plane
+from OCC.Core.Geom import Geom_TrimmedCurve
+from OCC.Core.GeomAbs import GeomAbs_Cylinder, GeomAbs_Line, GeomAbs_Plane
+from OCC.Core.GeomConvert import GeomConvert_CompCurveToBSplineCurve, geomconvert
+from OCC.Core.GeomFill import GeomFill_BSplineCurves, GeomFill_CurvedStyle
 from OCC.Core.IFSelect import IFSelect_RetDone
 from OCC.Core.Interface import Interface_Static
+from OCC.Core.ShapeAnalysis import ShapeAnalysis_FreeBounds
+from OCC.Core.ShapeFix import ShapeFix_Face, ShapeFix_Solid
 from OCC.Core.STEPControl import STEPControl_AsIs, STEPControl_Reader, STEPControl_Writer
-from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_REVERSED, TopAbs_VERTEX
+from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_REVERSED, TopAbs_SHELL, TopAbs_SOLID, TopAbs_VERTEX, TopAbs_WIRE
 from OCC.Core.TopExp import TopExp_Explorer, topexp
 from OCC.Core.TopLoc import TopLoc_Location
-from OCC.Core.TopTools import TopTools_IndexedMapOfShape
+from OCC.Core.TopTools import TopTools_IndexedDataMapOfShapeListOfShape, TopTools_IndexedMapOfShape, TopTools_ListIteratorOfListOfShape
 from OCC.Core.TopoDS import TopoDS_Shape, topods
 from OCC.Core.gp import gp_Ax2, gp_Pnt, gp_Vec
 from scipy.sparse import coo_matrix
@@ -40,6 +45,11 @@ CONTACT_TOLERANCE = 0.02
 CLEARANCE = 0.01
 MAX_VOLUME_CHANGE = 0.005
 STEP_PRECISION_MODES = (1, -1)
+MIN_FACE_AREA = 1e-6
+SEWING_TOLERANCE = 0.1
+FACE_PRECISION = 1e-3
+CUSP_FLATNESS = 1e-5
+PATCH_SIDES = 4
 
 
 class Finding:
@@ -430,3 +440,230 @@ def rewrite_step(fc_shape, path):
             return "rewritten in STEP precision mode %d, the file as first written did not read back clean" % mode
     os.replace(first, path)
     return "no STEP precision mode reads back clean, the file goes out as first written"
+
+
+def _area(face):
+    props = GProp_GProps()
+    brepgprop.SurfaceProperties(face, props)
+    return abs(props.Mass())
+
+
+def _faces(shape):
+    found = _indexed(shape, TopAbs_FACE)
+    return [topods.Face(found.FindKey(i)) for i in range(1, found.Size() + 1)]
+
+
+def _bad_faces(shape):
+    """
+    The faces to drop: those OCC calls invalid, those with no triangulation at the finest rung of the
+    ladder, and those under 1e-6 mm2. Larger slivers mesh fine and sewing absorbs them, while refilling every one leaves new faces no mesh resolves.
+    """
+    analyzer = BRepCheck_Analyzer(shape)
+    breptools.Clean(shape)
+    BRepMesh_IncrementalMesh(shape, _deflection(shape) / DEFLECTION_LADDER[-1], False, 0.5, False)
+    return [face for face in _faces(shape)
+            if not analyzer.IsValid(face) or BRep_Tool.Triangulation(face, TopLoc_Location()) is None
+            or _area(face) < MIN_FACE_AREA]
+
+
+def _straightened(shape, faces):
+    """
+    *shape* with each edge of *faces* that is a curve flat to 1e-5 of its length replaced by the straight edge
+    between its vertices. Two faces meeting along such an edge at a zero angle are a cusp OCC cannot orient.
+    """
+    ancestors = TopTools_IndexedDataMapOfShapeListOfShape()
+    topexp.MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, ancestors)
+    reshape = BRepTools_ReShape()
+    touched = []
+    for face in faces:
+        for edge in (topods.Edge(e) for e in _members(face, TopAbs_EDGE)):
+            if BRepAdaptor_Curve(edge).GetType() == GeomAbs_Line:
+                continue
+            props = GProp_GProps()
+            brepgprop.LinearProperties(edge, props)
+            first, last = topexp.FirstVertex(edge, True), topexp.LastVertex(edge, True)
+            if props.Mass() - BRep_Tool.Pnt(first).Distance(BRep_Tool.Pnt(last)) < CUSP_FLATNESS * props.Mass():
+                reshape.Replace(edge, BRepBuilderAPI_MakeEdge(first, last).Edge().Oriented(edge.Orientation()))
+                walker = TopTools_ListIteratorOfListOfShape(ancestors.FindFromKey(edge))
+                while walker.More():
+                    if not any(walker.Value().IsSame(seen) for seen in touched):
+                        touched.append(topods.Face(walker.Value()))
+                    walker.Next()
+    if not touched:
+        return shape
+    rebuilt = BRepTools_ReShape()
+    for face in touched:
+        moved = reshape.Apply(face)
+        rebuilt.Replace(moved, _fixed(moved))
+    return rebuilt.Apply(reshape.Apply(shape))
+
+
+def _members(shape, kind):
+    found = _indexed(shape, kind)
+    return [found.FindKey(i) for i in range(1, found.Size() + 1)]
+
+
+def _closed_wires(shape):
+    wires = ShapeAnalysis_FreeBounds(shape, SEWING_TOLERANCE, False, False).GetClosedWires()
+    found = []
+    explorer = TopExp_Explorer(wires, TopAbs_WIRE)
+    while explorer.More():
+        found.append(topods.Wire(explorer.Current()))
+        explorer.Next()
+    return found
+
+
+def _fixed(face):
+    fixer = ShapeFix_Face(face)
+    fixer.SetPrecision(FACE_PRECISION)
+    fixer.SetMaxTolerance(SEWING_TOLERANCE)
+    fixer.Perform()
+    return fixer.Result()
+
+
+def _sound(face, base):
+    if not BRepCheck_Analyzer(face).IsValid():
+        return False
+    for divisor in DEFLECTION_LADDER:
+        BRepMesh_IncrementalMesh(face, base / divisor, False, 0.5, False)
+        if BRep_Tool.Triangulation(face, TopLoc_Location()) is None:
+            return False
+    return True
+
+
+def _curves(wire):
+    """The wire's edges as B-spline curves chained head to tail, in wire order."""
+    chained = []
+    walk = BRepTools_WireExplorer(wire)
+    while walk.More():
+        edge = walk.Current()
+        walk.Next()
+        curve, first, last = BRep_Tool.Curve(edge)
+        spline = geomconvert.CurveToBSplineCurve(Geom_TrimmedCurve(curve, first, last))
+        if edge.Orientation() == TopAbs_REVERSED:
+            spline.Reverse()
+        if chained and spline.StartPoint().Distance(chained[-1].EndPoint()) > spline.EndPoint().Distance(chained[-1].EndPoint()):
+            spline.Reverse()
+        chained.append(spline)
+    return chained
+
+
+def _turn(before, after):
+    tail, head = gp_Pnt(), gp_Pnt()
+    out, into = gp_Vec(), gp_Vec()
+    before.D1(before.LastParameter(), tail, out)
+    after.D1(after.FirstParameter(), head, into)
+    return out.Angle(into) if out.Magnitude() and into.Magnitude() else 0.0
+
+
+def _patch(wire):
+    """
+    A Coons patch over *wire*, whose four sharpest turns are its corners. The surface a hole was cut out of
+    can be the very thing no mesh resolves, so it is not used again.
+    """
+    curves = _curves(wire)
+    count = len(curves)
+    if count < PATCH_SIDES:
+        raise ValueError("a wire of %d edge(s) has no four sides" % count)
+    turns = [_turn(curves[i], curves[(i + 1) % count]) for i in range(count)]
+    corners = sorted(sorted(range(count), key=lambda i: -turns[i])[:PATCH_SIDES])
+    sides = []
+    for k in range(PATCH_SIDES):
+        joined = GeomConvert_CompCurveToBSplineCurve(curves[(corners[k] + 1) % count])
+        index = (corners[k] + 1) % count
+        while index != corners[(k + 1) % PATCH_SIDES]:
+            index = (index + 1) % count
+            if not joined.Add(curves[index], SEWING_TOLERANCE, False, False, 0):
+                raise ValueError("a side of the patch does not join")
+        sides.append(joined.BSplineCurve())
+    surface = GeomFill_BSplineCurves(*sides, GeomFill_CurvedStyle).Surface()
+    return _fixed(BRepBuilderAPI_MakeFace(surface, wire, False).Face())
+
+
+def _refill(wire, dropped, base):
+    """
+    A face on *wire*: on the surface of the largest dropped face among those nearest to it, else a Coons patch
+    where that face is invalid or does not mesh at every rung of the ladder.
+    """
+    distances = []
+    for face in dropped:
+        distance = BRepExtrema_DistShapeShape(wire, face)
+        distance.Perform()
+        distances.append(distance.Value())
+    nearest = [face for face, value in zip(dropped, distances) if value <= min(distances) + SEWING_TOLERANCE]
+    donor = max(nearest, key=_area)
+    face = _fixed(BRepBuilderAPI_MakeFace(BRep_Tool.Surface(donor), wire, False).Face())
+    if _sound(face, base):
+        return face
+    try:
+        return _patch(wire)
+    except ValueError:
+        return face
+
+
+def _sewn(faces):
+    sewing = BRepBuilderAPI_Sewing(SEWING_TOLERANCE, True, True, True, False)
+    for face in faces:
+        sewing.Add(face)
+    sewing.Perform()
+    return sewing.SewedShape()
+
+
+def _rebuilt(shape, dropped):
+    kept = [face for face in _faces(shape) if not any(face.IsSame(gone) for gone in dropped)]
+    sewn = _sewn(kept)
+    base = _deflection(shape)
+    refills = [_refill(wire, dropped, base) for wire in _closed_wires(sewn)]
+    closed = _sewn(_faces(sewn) + refills)
+    shells = _indexed(closed, TopAbs_SHELL)
+    if shells.Size() != 1:
+        return None
+    fixer = ShapeFix_Solid(BRepBuilderAPI_MakeSolid(topods.Shell(shells.FindKey(1))).Solid())
+    fixer.Perform()
+    return fixer.Solid()
+
+
+def _survives_step(shape):
+    handle, path = tempfile.mkstemp(suffix=".step")
+    os.close(handle)
+    try:
+        for mode in (0,) + STEP_PRECISION_MODES:
+            _write(shape, path, mode)
+            if _reads_back(path):
+                return True
+        return False
+    finally:
+        os.remove(path)
+
+
+def repair_base(fc_shape):
+    """
+    `(shape, note)`: *fc_shape* itself and None when OCC calls it valid and it passes the gate, else the solid
+    rebuilt without its bad faces: cusp edges straightened, the rest sewn, each hole refilled. The original and
+    the reason come back where the rebuild is not one valid, manifold solid that survives a STEP round trip within 0.5% of the volume.
+    """
+    if not fc_shape.Solids:
+        return fc_shape, None
+    shape = from_freecad(fc_shape)
+    if BRepCheck_Analyzer(shape).IsValid() and check(shape) is None:
+        return fc_shape, None
+    original = abs(_volume(shape))
+    shape = _straightened(shape, _bad_faces(shape))
+    dropped = _bad_faces(shape)
+    try:
+        rebuilt = _rebuilt(shape, dropped) if dropped else shape
+    except (RuntimeError, ValueError) as failed:
+        return fc_shape, "rebuilding without %d face(s) failed: %s" % (len(dropped), failed)
+    if rebuilt is None:
+        return fc_shape, "rebuilding without %d face(s) did not close one shell" % len(dropped)
+    change = (abs(_volume(rebuilt)) - original) / original if original else 1.0
+    if _indexed(rebuilt, TopAbs_SOLID).Size() != 1 or not BRepCheck_Analyzer(rebuilt).IsValid():
+        return fc_shape, "rebuilding without %d face(s) gave no valid solid" % len(dropped)
+    if check(rebuilt) is not None:
+        return fc_shape, "rebuilding without %d face(s) still fails the mesh gate" % len(dropped)
+    if not _survives_step(rebuilt):
+        return fc_shape, "rebuilding without %d face(s) does not survive a STEP round trip" % len(dropped)
+    if abs(change) >= MAX_VOLUME_CHANGE:
+        return fc_shape, "rebuilding without %d face(s) would change the volume by %.4f%%" % (len(dropped), 100 * change)
+    return to_freecad(rebuilt), "dropped %d face%s and refilled the holes, volume %+.4f%%" % (
+        len(dropped), "" if len(dropped) == 1 else "s", 100 * change)

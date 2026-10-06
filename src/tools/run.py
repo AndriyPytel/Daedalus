@@ -53,6 +53,13 @@ def base_document(step_path):
     Import.insert(step_path, doc.Name)
     base = next(obj for obj in doc.Objects
                 if getattr(obj, "Shape", None) is not None and obj.Shape.Solids)
+    from core.manifold import repair_base
+
+    repaired, note = repair_base(base.Shape)
+    if note:
+        print("base repair   :", note)
+    if repaired is not base.Shape:
+        base.Shape = repaired
     body = doc.addObject("PartDesign::Body", "Body")
     body.BaseFeature = base
     doc.recompute()
