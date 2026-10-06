@@ -411,6 +411,8 @@ leave everything the Step does not name untouched. To widen a bore, pocket the
 difference between the new and old radius from the plane the bore opens on; to
 move a face along its normal, pad or pocket the slab between the old and new
 position on that face's own plane.
+Set `Refine = False` on every feature you add: refine merges faces across the
+whole imported solid and can leave the Body invalid.
 
 Traps in this build:
 {{traps}}
