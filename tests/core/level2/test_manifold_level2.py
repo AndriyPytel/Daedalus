@@ -161,3 +161,54 @@ def test_export_step_says_so_when_it_refuses_a_repair(tmp_path):
         FreeCAD.closeDocument(doc.Name)
 
     assert reread.Volume == pytest.approx(_hole_tangent_to_both_sides().Volume, rel=1e-9)
+
+
+def _record_writes(monkeypatch, clean_modes):
+    from core import manifold
+
+    written = []
+    write = manifold._write
+
+    def recording(shape, path, mode):
+        written.append(mode)
+        write(shape, path, mode)
+
+    monkeypatch.setattr(manifold, "_write", recording)
+    monkeypatch.setattr(manifold, "_reads_back", lambda path: bool(written) and written[-1] in clean_modes)
+    return written
+
+
+def _export_box(tmp_path, name):
+    import FreeCAD
+
+    from core.freecad_apply import export_step
+
+    doc = FreeCAD.newDocument(name)
+    try:
+        doc.addObject("Part::Feature", "Plate").Shape = _box_with_a_hole()
+        doc.recompute()
+        path = export_step(doc, str(tmp_path / "plate.step"))
+        return Part.read(path)
+    finally:
+        FreeCAD.closeDocument(doc.Name)
+
+
+def test_a_step_that_does_not_read_back_clean_is_rewritten_in_the_first_precision_mode_that_does(
+        tmp_path, monkeypatch):
+    written = _record_writes(monkeypatch, clean_modes=(-1,))
+
+    with pytest.warns(UserWarning, match="precision mode -1"):
+        reread = _export_box(tmp_path, "precision_ladder")
+
+    assert written == [1, -1]
+    assert reread.Volume == pytest.approx(_box_with_a_hole().Volume, rel=1e-6)
+
+
+def test_a_step_no_precision_mode_reads_back_clean_goes_out_as_first_written(tmp_path, monkeypatch):
+    written = _record_writes(monkeypatch, clean_modes=())
+
+    with pytest.warns(UserWarning, match="no STEP precision mode"):
+        reread = _export_box(tmp_path, "precision_none")
+
+    assert written == [1, -1]
+    assert reread.Volume == pytest.approx(_box_with_a_hole().Volume, rel=1e-9)

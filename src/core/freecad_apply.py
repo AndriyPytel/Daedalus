@@ -1226,7 +1226,7 @@ def export_step(document, path):
 
     import Part
 
-    from core.manifold import repair_fc
+    from core.manifold import repair_fc, rewrite_step
 
     objects = [obj for obj in document.Objects
                if not obj.InList and _measurable(obj) is not None]
@@ -1240,6 +1240,9 @@ def export_step(document, path):
         Part.export(objects, path)
     else:
         Part.Compound(shapes).exportStep(path)
+    note = rewrite_step(Part.Compound(shapes), path)
+    if note:
+        warnings.warn(note)
     return path
 
 
