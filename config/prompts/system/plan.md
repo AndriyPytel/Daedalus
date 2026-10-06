@@ -437,5 +437,15 @@ what `the_base_part` says of it — its normal, the plane it lies in, its
 diameter and axis — and say how many there are. Everything the Intent does not
 mention stays as it is: no Step moves, trims or refills anything else.
 
+A fuse, cut or common Step builds that one boolean and nothing else; each of
+its tools is an earlier Step of its own — a box is an `additive-primitive` in a
+second Body, a part of the base clipped to a zone is a `common` Step of that box
+and the BaseFeature. Leave Refine off on every feature: refine merges faces
+across the whole imported solid and can leave it invalid, and a seam where a new
+feature meets the base part is not a defect. A Pad or Pocket grows from its
+sketch plane one way only, so put the sketch on the boundary of the material it
+adds or removes; give its length as a number unless `the_base_part` shows the
+up-to face lies wholly on one side of that plane.
+
 Traps in this build:
 {{traps}}
