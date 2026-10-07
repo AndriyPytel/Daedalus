@@ -18,7 +18,7 @@ from service.owner import current_owner
 from test_service_events import frames, server  # noqa: F401
 from test_service_postgres import _admin_url, conn, database_url, repo  # noqa: F401
 from test_service_runs import api, final, start  # noqa: F401
-from test_service_worker_channel import HOST, ROOT, _ssh, alive, until
+from test_service_worker_channel import FAKE, HOST, ROOT, _ssh, alive, until
 
 
 def state(api, run_id):
@@ -219,3 +219,24 @@ def test_a_real_owned_object_confirm_is_refused_unless_the_run_overrides_it(real
         until(lambda: state(api, allowed["id"]) in ended, seconds=420)
     assert texts(database_url, refused["id"], "answer")[0].startswith("You refused to let it delete UserBox")
     assert texts(database_url, allowed["id"], "answer")[0].startswith("You allowed it to delete UserBox")
+
+
+def test_a_cancelled_interactive_run_still_carries_its_attachment_and_flags_and_leaves_its_blobs(tmp_path, database_url, monkeypatch, repo, conn):
+    from test_service_blobs import row
+    owner = repo.create_user()
+    monkeypatch.setenv(db.URL_VARIABLE, database_url)
+    monkeypatch.setenv("DAEDALUS_BLOB_ROOT", str(tmp_path / "blobs"))
+    monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(FAKE))
+    app.dependency_overrides[current_owner] = lambda: owner
+    try:
+        with TestClient(app) as api:
+            blob = api.post("/v1/blobs", params={"name": "drawing.png"}, content=b"\x89PNG-bytes").json()
+            run = start(api, "carry", attachments=[blob["id"]], interactive=True, confirm=True).json()
+            until(lambda: state(api, run["id"]) == "running" and kinds(database_url, run["id"]))
+            assert api.post("/v1/runs/%s:cancel" % run["id"]).status_code == 202
+            until(lambda: state(api, run["id"]) == "cancelled")
+    finally:
+        app.dependency_overrides.clear()
+    carried = [payload for kind, payload in kinds(database_url, run["id"]) if kind == "carried"][0]
+    assert carried == {"files": [{"name": "drawing.png", "sha256": blob["sha256"]}], "interactive": True, "confirm": True}
+    assert row(conn, run["id"], "step") is not None and row(conn, run["id"], "checkpoint") is not None
