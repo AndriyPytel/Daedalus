@@ -73,18 +73,19 @@ def base_document(step_path):
 NO_SOLID_EXIT = 3
 
 
-def finish(client, result, save):
+def finish(client, result, save, only=None):
     """
     Write *save* and give the process exit code: 0 for a passing run, 1 for a failed one.
 
     A Document with no solid writes nothing, since an empty STEP is a file a
     scorer reads as a candidate, and exits `NO_SOLID_EXIT` whatever the verdict was.
+    *only* names the one object a STEP carries, which an edit run sets to its Body.
     """
     if not client.has_solid():
         return NO_SOLID_EXIT
     if save:
         if save.lower().endswith((".step", ".stp")):
-            client.export_step(save)
+            client.export_step(save, only) if only else client.export_step(save)
         else:
             client.save(save)
         print("saved         :", save)
@@ -159,7 +160,7 @@ def main():
     print("spent         : $%.2f" % spent["usd"])
     print("event log     :", args.log)
 
-    code = finish(client, result, args.save)
+    code = finish(client, result, args.save, "Body" if args.base_step else None)
     client.close()
     return code
 
