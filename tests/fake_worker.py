@@ -1,0 +1,44 @@
+"""
+A stand-in for `service.worker` that speaks the channel with no FreeCAD, steered by the prompt it is sent.
+
+`hello` emits two events and finishes, `hang` starts a child process, reports its pid and never ends, `cut` writes half
+an event line and exits, `bye` exits at once. End of input ends the process unless the prompt was `hang`.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+
+
+def put(**message):
+    sys.stdout.write(json.dumps(message) + "\n")
+    sys.stdout.flush()
+
+
+def main():
+    put(op="ready")
+    for line in sys.stdin:
+        prompt = json.loads(line)["prompt"]
+        if prompt == "hello":
+            put(op="event", kind="intent", at=1.0, data={"prompt": prompt})
+            put(op="event", kind="completed", at=2.0, data={"summary": "done"})
+            put(op="done")
+        elif prompt == "hang":
+            child = subprocess.Popen(["sleep", "300"])
+            put(op="event", kind="intent", at=1.0, data={"pid": os.getpid(), "child": child.pid})
+            while True:
+                time.sleep(1)
+        elif prompt == "cut":
+            put(op="event", kind="intent", at=1.0, data={})
+            sys.stdout.write('{"op": "event", "kind": "thou')
+            sys.stdout.flush()
+            os._exit(0)
+        elif prompt == "boom":
+            put(op="error", message="provider refused")
+        elif prompt == "bye":
+            os._exit(3)
+
+
+if __name__ == "__main__":
+    main()
