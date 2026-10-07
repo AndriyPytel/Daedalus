@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from service import app
+from service.app import app
 
 
 def test_health_under_v1_returns_200():

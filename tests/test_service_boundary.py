@@ -10,8 +10,19 @@ import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICE = os.path.join(ROOT, "src", "service")
-ENGINE_ROOTS = {"FreeCAD", "FreeCADGui", "Part", "PySide", "PySide2", "PySide6", "core", "tools", "sdk", "Mod", "bridge", "ui"}
+MOD = os.path.join(ROOT, "Mod")
+OUTSIDE_THE_TREE = {"FreeCAD", "FreeCADGui", "Part", "PySide", "PySide2", "PySide6"}
 WORKER = "worker.py"
+
+
+def _top_names(base):
+    return {os.path.splitext(name)[0] for name in os.listdir(base)
+            if (name.endswith(".py") or os.path.isdir(os.path.join(base, name)))
+            and not name.startswith(("_", "."))}
+
+
+def engine_roots():
+    return (_top_names(os.path.join(ROOT, "src")) - {"service"}) | _top_names(MOD) | {"Mod"} | OUTSIDE_THE_TREE
 
 
 def service_modules():
@@ -24,16 +35,24 @@ def service_modules():
 
 def violations(source, role):
     found = []
+    roots = engine_roots()
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
             pairs = [(alias.name, None) for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            pairs = [(node.module, [alias.name for alias in node.names])]
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.level:
+                module = "service." + module if module else "service"
+            pairs = [(module, [alias.name for alias in node.names])]
         else:
             continue
         for module, names in pairs:
             top = module.split(".")[0]
-            if top not in ENGINE_ROOTS:
+            if role == "gateway" and (module == "service.worker" or module.startswith("service.worker.")
+                                      or (module == "service" and "worker" in names)):
+                found.append("service.worker")
+                continue
+            if top not in roots:
                 continue
             if role == "worker" and module == "sdk" and names == ["Client"]:
                 continue
@@ -77,3 +96,26 @@ def test_the_worker_may_import_the_client_and_nothing_else_of_the_engine():
 
 def test_a_nested_worker_py_is_a_gateway_module():
     assert role_of(os.path.join(SERVICE, "sub", WORKER)) == "gateway"
+
+
+def test_a_gateway_module_importing_the_worker_is_caught():
+    for line in ("from service import worker", "import service.worker", "from service.worker import Client",
+                 "from . import worker", "from .worker import Client"):
+        assert violations(line, "gateway"), line
+    assert violations("from service.app import app", "gateway") == []
+
+
+def test_the_engine_roots_cover_every_top_level_name_under_src_and_mod():
+    roots = engine_roots()
+    for base in ("src", "Mod"):
+        for name in os.listdir(os.path.join(ROOT, base)):
+            stem = os.path.splitext(name)[0]
+            if stem in ("service", "__pycache__") or stem.startswith((".", "_")):
+                continue
+            assert stem in roots, stem
+
+
+def test_the_package_init_imports_nothing():
+    with open(os.path.join(SERVICE, "__init__.py"), encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+    assert [n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))] == []
