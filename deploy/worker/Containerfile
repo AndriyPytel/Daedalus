@@ -16,7 +16,7 @@ ENV PATH=/opt/freecad/bin:$PATH \
     PYTHONPATH=/opt/freecad/lib:/app/src \
     FREECAD_CMD=/opt/freecad/bin/freecadcmd \
     PYTHONDONTWRITEBYTECODE=1
-RUN python -m pip install --no-cache-dir --root-user-action=ignore httpx==0.28.1
+RUN python -m pip install --no-cache-dir --root-user-action=ignore httpx==0.28.1 litellm==1.104.0 pymupdf==1.28.2
 COPY src /app/src
 COPY config /app/config
 COPY deploy /app/deploy

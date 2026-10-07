@@ -4,15 +4,15 @@ Headless FreeCAD 1.1.4 and `sdk.Client` on Linux x86_64, for a Session on the ho
 
 Build from the repository root (the context needs `src`, `config` and `deploy`):
 
-    podman build -t dae-496-worker -f deploy/worker/Containerfile .
-    podman run --rm dae-496-worker python /app/deploy/worker/smoke.py /tmp/smoke.step
+    podman build -t daedalus-worker -f deploy/worker/Containerfile .
+    podman run --rm daedalus-worker python /app/deploy/worker/smoke.py /tmp/smoke.step
 
 ## What is in it
 
 - `debian:trixie-slim` with no GUI, Qt, X11 or OpenGL package installed.
 - The official `FreeCAD_1.1.4-Linux-x86_64-py311.AppImage`, pinned by sha256 and extracted at build time, so nothing
   needs FUSE at run time. `freecadcmd` and the bundled Python 3.11 both import `FreeCAD` with no display.
-- `httpx`, the one package `sdk` imports that the AppImage Python lacks. Everything else `sdk` imports is bundled.
+- `httpx`, `litellm` and `pymupdf`, which the AppImage Python lacks; `numpy`, `Pillow` and `PyYAML` are bundled. `tests/test_worker_image.py` imports every module `REQUIRED_PACKAGES` names, read from the source.
 - `FREECAD_CMD` points the Client's kernel at the extracted `freecadcmd`.
 
 ## FreeCADGui: disabled, not served by Xvfb
