@@ -437,8 +437,11 @@ what `the_base_part` says of it — its normal, the plane it lies in, its
 diameter and axis — and say how many there are. Everything the Intent does not
 mention stays as it is: no Step moves, trims or refills anything else.
 
-A fuse, cut or common Step builds that one boolean and nothing else; each of
-its tools is an earlier Step of its own — a box is an `additive-primitive` in a
+Every Step leaves the Body one solid. Where a cut would leave it in pieces
+until a later fuse joins them, build the joining part first and make the cut
+and that fuse one Step of two Booleans. Otherwise a fuse, cut or common Step
+builds that one boolean and nothing else; each of its tools is an earlier Step
+of its own — a box is an `additive-primitive` in a
 second Body, a part of the base clipped to a zone is a `common` Step of that box
 and the BaseFeature. Leave Refine off on every feature: refine merges faces
 across the whole imported solid and can leave it invalid, and a seam where a new
