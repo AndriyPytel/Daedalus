@@ -1,7 +1,7 @@
 """
 The gateway side of the worker channel: a `Worker` spawns one configured argv per Session and stores its events through `Repository`, so each notifies, and a `cost` event adds its `usd` to the Run.
-A `blob` line is written through the `BlobStore` against the active Run, a line cut short or not JSON is dropped, and a worker that exits with a Run active fails that Run only.
-`send` runs the Run the API made or makes one and hands the worker the bytes of the attachments it names; when the worker ends its process group is killed.
+A `blob` line is stored against the active Run, a worker that exits with a Run active fails that Run only, and `send` hands the worker the bytes of the attachments it names.
+`cancel` stops a Run, killing the process group after `CANCEL_TIMEOUT`, and a `question` from an `interactive` Run holds it in `needs-answer` until `answer`.
 """
 import base64
 import json
@@ -16,8 +16,9 @@ from service import db
 from service.blobs import store_result
 from service.repository import Repository
 
-TERMINAL = ("completed", "blocked", "budget_exhausted", "stopped", "aborted", "failed")
+TERMINAL = ("completed", "blocked", "budget_exhausted", "stopped", "aborted", "failed", "cancelled")
 READY_TIMEOUT = 60.0
+CANCEL_TIMEOUT = 30.0
 
 
 class Worker:
@@ -36,6 +37,8 @@ class Worker:
         self._lock = threading.Lock()
         self._run_id = None
         self._last_kind = None
+        self._interactive = False
+        self._cancelling = False
 
     @property
     def pid(self):
@@ -57,7 +60,7 @@ class Worker:
             self.stop(timeout=0)
             raise RuntimeError("the worker %r did not become ready" % self._argv)
 
-    def send(self, prompt, run_id=None, attachments=()):
+    def send(self, prompt, run_id=None, attachments=(), interactive=False, confirm=False):
         files = [self._attachment(blob_id) for blob_id in attachments]
         with self._lock:
             if not self.alive:
@@ -68,12 +71,36 @@ class Worker:
                 run_id = self._repo.create_run(self.owner_id, self.session_id, prompt)["id"]
             self._repo.update_run(self.owner_id, run_id, state="running")
             self._run_id, self._last_kind = run_id, None
+            self._interactive, self._cancelling = interactive, False
+        self._write(op="send", prompt=prompt, attachments=files, interactive=interactive, confirm=confirm)
+        return run_id
+
+    def cancel(self, run_id):
+        with self._lock:
+            if self._run_id != run_id:
+                raise LookupError(run_id)
+            self._cancelling = True
+        self._write(op="cancel")
+        timer = threading.Timer(CANCEL_TIMEOUT, self._force_cancel, (run_id,))
+        timer.daemon = True
+        timer.start()
+
+    def answer(self, text):
+        self._write(op="answer", text=text)
+
+    def _write(self, **message):
         try:
-            self._process.stdin.write((json.dumps({"op": "send", "prompt": prompt, "attachments": files}) + "\n").encode())
+            self._process.stdin.write((json.dumps(message) + "\n").encode())
             self._process.stdin.flush()
         except OSError:
             pass  # except-pass-allowed: the reader sees the worker's end and fails the Run
-        return run_id
+
+    def _force_cancel(self, run_id):
+        with self._lock:
+            if self._run_id != run_id:
+                return
+            self._finish("cancelled", "cancelled", {"reason": "the worker did not stop in time and was killed"})
+        self._kill_group()
 
     def _attachment(self, blob_id):
         row = self._repo.get_blob(self.owner_id, blob_id)
@@ -134,6 +161,8 @@ class Worker:
                 usd = (message.get("data") or {}).get("usd")
                 if message["kind"] == "cost" and isinstance(usd, (int, float)) and not isinstance(usd, bool):
                     self._repo.add_run_cost(self.owner_id, self._run_id, usd)
+            elif op == "question" and self._run_id is not None and self._interactive:
+                self._repo.transition(self.owner_id, self._run_id, "needs-answer", "running")
             elif op == "blob" and self._run_id is not None and self._store is not None:
                 try:
                     data = base64.b64decode(message["content"], validate=True)
@@ -141,9 +170,12 @@ class Worker:
                 except (KeyError, TypeError, ValueError, OSError, psycopg.errors.UniqueViolation):
                     pass  # except-pass-allowed: a bad or repeated blob line is dropped like a malformed event line
             elif op == "done" and self._run_id is not None:
-                self._repo.update_run(self.owner_id, self._run_id,
-                                      state=self._last_kind if self._last_kind in TERMINAL else "completed")
-                self._run_id = None
+                if self._cancelling and self._last_kind in ("stopped", "budget_exhausted", "aborted"):
+                    self._finish("cancelled", "cancelled", {"reason": "cancelled by the client"})
+                else:
+                    self._repo.update_run(self.owner_id, self._run_id,
+                                          state=self._last_kind if self._last_kind in TERMINAL else "completed")
+                    self._run_id = None
             elif op == "error" and self._run_id is not None:
                 self._finish("error", "failed", {"message": str(message.get("message"))})
 
