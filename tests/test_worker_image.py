@@ -4,6 +4,7 @@ The worker image runs headless FreeCAD 1.1.4 and `sdk.Client` on Linux x86_64, b
 The server tests drive podman over ssh and skip when the server is unreachable. Every container, image and remote
 directory they create is prefixed `dae-496-`; containers are removed in a `finally`, the image is kept as a layer cache.
 """
+import ast
 import json
 import os
 import re
@@ -17,6 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKER_DIR = os.path.join(ROOT, "deploy", "worker")
 HOST = os.environ.get("DAE_SERVER", "andrii@192.168.0.150")
 IMAGE = "dae-496-worker"
+PRODUCT = "daedalus-worker"
 REMOTE = "dae-496-build"
 
 pytestmark = pytest.mark.timeout(2400)
@@ -131,3 +133,26 @@ def test_the_gui_paths_are_disabled_not_served_by_xvfb(smoke, image):
     assert done.stdout.strip() == "none"
     readme = _read("README.md")
     assert "Xvfb" in readme and "FreeCADGui" in readme and "disabled" in readme
+
+
+def required_modules():
+    with open(os.path.join(ROOT, "src", "core", "dependency_manager.py"), encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and node.targets[0].id == "REQUIRED_PACKAGES":
+            return sorted(ast.literal_eval(node.value).values())
+    raise AssertionError("REQUIRED_PACKAGES not found")
+
+
+def test_every_required_package_imports_in_the_image(image):
+    modules = required_modules()
+    assert len(modules) >= 5
+    script = "; ".join("import %s" % module for module in modules) + "; print('ALLIMPORTED')"
+    done = run(image, "python -c %s" % shlex.quote(script), "dae-496-deps")
+    assert "ALLIMPORTED" in done.stdout
+
+
+def test_the_product_image_is_not_named_after_the_ticket():
+    readme = _read("README.md")
+    assert PRODUCT in readme and "dae-496" not in readme
+    assert "dae-496" not in _read("Containerfile")
