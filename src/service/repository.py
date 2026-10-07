@@ -1,5 +1,5 @@
 """
-Every read and write of users, preferences, Sessions, Runs and events, each scoped by `owner_id`.
+Every read and write of users, preferences, Sessions, Runs, events and blob rows, each scoped by `owner_id`.
 
 A row of another owner is as absent as a missing one: reads return nothing and writes raise `LookupError`. Events have
 no update or delete here, and the database refuses them too; an append notifies channel `events` with the row id only.
@@ -78,3 +78,19 @@ class Repository:
     def list_events(self, owner_id, run_id, after=0):
         return self._all("SELECT * FROM events WHERE owner_id = %s AND run_id = %s AND seq > %s ORDER BY seq",
                          (owner_id, run_id, after))
+
+    def create_blob(self, owner_id, key, sha256, size, kind, session_id=None, run_id=None, name=None, blob_id=None):
+        return self._one(
+            "INSERT INTO blobs (id, owner_id, key, sha256, size, kind, name, session_id, run_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
+            (blob_id or new_id("blob"), owner_id, key, sha256, size, kind, name or key.rsplit("/", 1)[-1], session_id, run_id))
+
+    def get_blob(self, owner_id, blob_id):
+        return self._one("SELECT * FROM blobs WHERE owner_id = %s AND id = %s", (owner_id, blob_id))
+
+    def get_run_blob(self, owner_id, run_id, kind):
+        return self._one("SELECT * FROM blobs WHERE owner_id = %s AND run_id = %s AND kind = %s", (owner_id, run_id, kind))
+
+    def count_session_blobs(self, owner_id, session_id, kind):
+        return self._one("SELECT count(*) AS n FROM blobs WHERE owner_id = %s AND session_id = %s AND kind = %s",
+                         (owner_id, session_id, kind))["n"]

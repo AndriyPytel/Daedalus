@@ -7,9 +7,7 @@ with a scripted LLM in the worker image on the home server over ssh, and skips w
 """
 import hashlib
 import json
-import os
 import subprocess
-import sys
 
 import pytest
 from fastapi.testclient import TestClient

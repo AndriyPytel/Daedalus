@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from service import db
 from service.api import router
+from service.blobs_api import router as blobs_router
 
 
 @asynccontextmanager
@@ -25,3 +26,4 @@ async def lifespan(app):
 
 app = FastAPI(title="Daedalus", version="1", lifespan=lifespan)
 app.include_router(router, prefix="/v1")
+app.include_router(blobs_router, prefix="/v1")
