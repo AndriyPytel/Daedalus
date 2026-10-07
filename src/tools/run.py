@@ -29,7 +29,7 @@ def client_for(provider, model_id, effort):
 
     `core.model_registry` is filled by the panel's own fetch, which never runs
     here, so the provider is named on the command line and recorded before
-    `client_from_settings` is asked to resolve it.
+    `client_from_settings` is asked to resolve it. The service worker solves the same problem through `sdk.remember_model`.
     """
     from core import model_registry
     from core.llm.factory import client_from_settings

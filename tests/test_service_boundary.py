@@ -1,5 +1,5 @@
 """
-The gateway process holds no FreeCAD and no engine, and the worker reaches the engine through `sdk.Client` alone.
+The gateway process holds no FreeCAD and no engine, and the worker reaches the engine through the public names `sdk.py` defines itself.
 
 The module list is walked from `src/service/`, so a new file is covered without editing this test, and a second
 assertion proves the walk equals the files on disk. `violations` is pure over source text so the rule itself is tested.
@@ -13,6 +13,19 @@ SERVICE = os.path.join(ROOT, "src", "service")
 MOD = os.path.join(ROOT, "Mod")
 OUTSIDE_THE_TREE = {"FreeCAD", "FreeCADGui", "Part", "PySide", "PySide2", "PySide6"}
 WORKER = "worker.py"
+SDK = os.path.join(ROOT, "src", "sdk.py")
+
+
+def sdk_public_names():
+    with open(SDK, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+    names = set()
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            names.update(target.id for target in node.targets if isinstance(target, ast.Name))
+    return {name for name in names if not name.startswith("_")}
 
 
 def _top_names(base):
@@ -54,7 +67,7 @@ def violations(source, role):
                 continue
             if top not in roots:
                 continue
-            if role == "worker" and module == "sdk" and names == ["Client"]:
+            if role == "worker" and module == "sdk" and names and set(names) <= sdk_public_names():
                 continue
             found.append(module)
     return found
@@ -88,10 +101,17 @@ def test_a_gateway_module_importing_freecad_or_sdk_is_caught():
         assert violations(line, "gateway"), line
 
 
-def test_the_worker_may_import_the_client_and_nothing_else_of_the_engine():
-    assert violations("from sdk import Client", "worker") == []
-    for line in ("import sdk", "from sdk import Client, Other", "from core.loop import execute", "import FreeCAD", "from tools import lane"):
+def test_the_worker_may_import_what_sdk_defines_publicly_and_nothing_else_of_the_engine():
+    assert violations("from sdk import Client, set_api_keys, remember_model", "worker") == []
+    for line in ("import sdk", "from sdk import Client, Other", "from sdk import run", "from sdk import _settings",
+                 "from core.loop import execute", "import FreeCAD", "from tools import lane"):
         assert violations(line, "worker"), line
+
+
+def test_the_public_names_are_the_ones_sdk_defines_and_not_the_ones_it_imports():
+    names = sdk_public_names()
+    assert {"Client", "set_api_keys", "set_base_urls", "set_role_table", "get_model_entry", "remember_model"} <= names
+    assert not names & {"run", "Session", "events", "route", "Kernel"}
 
 
 def test_a_nested_worker_py_is_a_gateway_module():

@@ -1,7 +1,6 @@
 """
-The gateway side of the worker channel: a `Worker` spawns one configured argv per Session and stores its events through `Repository`, so each notifies, and a `cost` event adds its `usd` to the Run.
-A `blob` line is stored against the active Run, a worker that exits with a Run active fails that Run only, and `send` hands the worker the bytes of the attachments it names.
-`cancel` stops a Run, killing the process group after `CANCEL_TIMEOUT`, and a `question` from an `interactive` Run holds it in `needs-answer` until `answer`.
+The gateway side of the worker channel: a `Worker` spawns one argv per Session without the bearer token in its environment, stores its events through `Repository` and a `blob` line through the `BlobStore`, and fails the active Run if the worker exits.
+`send` hands the worker the bytes of the attachments it names and the resolved settings, `cancel` kills the process group after `CANCEL_TIMEOUT`, and a `question` from an `interactive` Run holds it in `needs-answer` until `answer`.
 """
 import base64
 import json
@@ -14,6 +13,7 @@ import psycopg.errors
 
 from service import db
 from service.blobs import store_result
+from service.owner import TOKEN_VARIABLE
 from service.repository import Repository
 
 TERMINAL = ("completed", "blocked", "budget_exhausted", "stopped", "aborted", "failed", "cancelled")
@@ -51,8 +51,9 @@ class Worker:
     def start(self):
         self._conn = db.connect(self._url)
         self._repo = Repository(self._conn)
+        environment = {name: value for name, value in os.environ.items() if name != TOKEN_VARIABLE}
         self._process = subprocess.Popen(self._argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                         start_new_session=True)
+                                         start_new_session=True, env=environment)
         self._reader = threading.Thread(target=self._read, daemon=True)
         self._reader.start()
         threading.Thread(target=self._reap, daemon=True).start()
@@ -60,7 +61,7 @@ class Worker:
             self.stop(timeout=0)
             raise RuntimeError("the worker %r did not become ready" % self._argv)
 
-    def send(self, prompt, run_id=None, attachments=(), interactive=False, confirm=False):
+    def send(self, prompt, run_id=None, attachments=(), interactive=False, confirm=False, settings=None):
         files = [self._attachment(blob_id) for blob_id in attachments]
         with self._lock:
             if not self.alive:
@@ -72,7 +73,8 @@ class Worker:
             self._repo.update_run(self.owner_id, run_id, state="running")
             self._run_id, self._last_kind = run_id, None
             self._interactive, self._cancelling = interactive, False
-        self._write(op="send", prompt=prompt, attachments=files, interactive=interactive, confirm=confirm)
+        self._write(op="send", prompt=prompt, attachments=files, interactive=interactive, confirm=confirm,
+                    settings=settings or {})
         return run_id
 
     def cancel(self, run_id):

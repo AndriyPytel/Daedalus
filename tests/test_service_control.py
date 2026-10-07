@@ -17,7 +17,7 @@ from service.app import app
 from service.owner import current_owner
 from test_service_events import frames, server  # noqa: F401
 from test_service_postgres import _admin_url, conn, database_url, repo  # noqa: F401
-from test_service_runs import api, final, start  # noqa: F401
+from test_service_runs import AUTH, TOKEN, api, final, start  # noqa: F401
 from test_service_worker_channel import FAKE, HOST, ROOT, _ssh, alive, until
 
 
@@ -67,19 +67,19 @@ def test_cancelling_a_run_in_a_final_state_or_an_unknown_one_is_refused_with_pro
 
 
 def test_an_interactive_run_waits_in_needs_answer_shows_its_question_in_the_stream_and_continues_after_answer(server, database_url):
-    run = httpx.post(server + "/v1/runs", json={"prompt": "asks", "interactive": True}).json()
+    run = httpx.post(server + "/v1/runs", json={"prompt": "asks", "interactive": True}, headers=AUTH).json()
     assert run["interactive"] is True
-    until(lambda: httpx.get("%s/v1/runs/%s" % (server, run["id"])).json()["state"] == "needs-answer")
+    until(lambda: httpx.get("%s/v1/runs/%s" % (server, run["id"]), headers=AUTH).json()["state"] == "needs-answer")
     seen = []
-    with httpx.stream("GET", "%s/v1/runs/%s/events" % (server, run["id"]), timeout=30) as response:
+    with httpx.stream("GET", "%s/v1/runs/%s/events" % (server, run["id"]), headers=AUTH, timeout=30) as response:
         for frame in frames(response.iter_lines()):
             seen.append(frame)
             if frame["event"] == "question":
                 break
     assert json.loads(seen[-1]["data"]) == {"text": "solid or hollow?"}
-    answered = httpx.post("%s/v1/runs/%s:answer" % (server, run["id"]), json={"answer": "solid"})
+    answered = httpx.post("%s/v1/runs/%s:answer" % (server, run["id"]), json={"answer": "solid"}, headers=AUTH)
     assert answered.status_code == 202
-    until(lambda: httpx.get("%s/v1/runs/%s" % (server, run["id"])).json()["state"] == "completed")
+    until(lambda: httpx.get("%s/v1/runs/%s" % (server, run["id"]), headers=AUTH).json()["state"] == "completed")
     answers = [payload for kind, payload in kinds(database_url, run["id"]) if kind == "answer"]
     assert answers == [{"text": "solid", "by": "user"}]
 
@@ -163,7 +163,8 @@ def real(worker_image, database_url, monkeypatch):
                 "python deploy/worker/scripted_worker.py" % (name, script, delay, worker_image)]
         monkeypatch.setenv(db.URL_VARIABLE, database_url)
         monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(argv))
-        return TestClient(app)
+        monkeypatch.setenv("DAEDALUS_TOKEN", TOKEN)
+        return TestClient(app, headers=AUTH)
 
     yield launch
     for name in names:
@@ -179,7 +180,7 @@ def test_a_real_interactive_run_waits_for_the_answer_and_builds_the_cube_after_i
         run = start(api, "Add a 10mm cube", interactive=True).json()
         until(lambda: state(api, run["id"]) == "needs-answer", seconds=420)
         assert texts(database_url, run["id"], "question") == ["solid or hollow?"]
-        assert api.post("/v1/runs/%s:answer" % run["id"], json={"answer": "solid"}).status_code == 202
+        assert api.post("/v1/runs/%s:answer" % run["id"], json={"answer": "solid"}, headers=AUTH).status_code == 202
         until(lambda: state(api, run["id"]) in ("completed", "failed", "blocked"), seconds=420)
         assert state(api, run["id"]) == "completed"
     assert texts(database_url, run["id"], "answer")[0] == "solid"
@@ -227,9 +228,10 @@ def test_a_cancelled_interactive_run_still_carries_its_attachment_and_flags_and_
     monkeypatch.setenv(db.URL_VARIABLE, database_url)
     monkeypatch.setenv("DAEDALUS_BLOB_ROOT", str(tmp_path / "blobs"))
     monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(FAKE))
+    monkeypatch.setenv("DAEDALUS_TOKEN", TOKEN)
     app.dependency_overrides[current_owner] = lambda: owner
     try:
-        with TestClient(app) as api:
+        with TestClient(app, headers=AUTH) as api:
             blob = api.post("/v1/blobs", params={"name": "drawing.png"}, content=b"\x89PNG-bytes").json()
             run = start(api, "carry", attachments=[blob["id"]], interactive=True, confirm=True).json()
             until(lambda: state(api, run["id"]) == "running" and kinds(database_url, run["id"]))

@@ -2,7 +2,7 @@
 A stand-in for `service.worker` that speaks the channel with no FreeCAD, steered by the prompt it is sent.
 
 `make` emits an event, a STEP and an FCStd blob and finishes, `attachments` reports the name and sha256 of each attachment it received, `hello` emits two events and finishes, `priced` does the same with a `cost` event of 0.25 USD between them, `hang` starts a child process, reports its pid and never ends, `cut` writes half
-an event line and exits, `bye` exits at once, `gated:<path>` emits five events, waits for the file `<path>` to exist, then emits five more and finishes. End of input ends the process unless the prompt was `hang`.
+an event line and exits, `bye` exits at once, `settings` reports the settings of the send and whether the token variable reached it, `gated:<path>` emits five events, waits for the file `<path>` to exist, then emits five more and finishes. End of input ends the process unless the prompt was `hang`.
 `flags` reports the `interactive` and `confirm` it was sent, `slow` steps until a `cancel` line arrives then reports `stopped`, `asks` puts a question when sent `interactive` and waits for the `answer` line, `nags` puts a question whatever it was sent, and `carry` reports its attachments and flags, then on `cancel` emits its blobs and stops.
 """
 import base64
@@ -101,6 +101,10 @@ def main():
             for step in range(5, 10):
                 put(op="event", kind="step", at=float(step), data={"n": step})
             put(op="event", kind="completed", at=10.0, data={"summary": "done"})
+            put(op="done")
+        elif prompt == "settings":
+            put(op="event", kind="settings", at=1.0,
+                data={"settings": request.get("settings"), "token_leaked": "DAEDALUS_TOKEN" in os.environ})
             put(op="done")
         elif prompt == "boom":
             put(op="error", message="provider refused")

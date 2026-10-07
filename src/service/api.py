@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from service import db, events
 from service.owner import current_owner
+from service.preferences import Preferences, given, resolve
 from service.problem import Problem
 from service.repository import Repository, RunActive, SessionClosed
 from service.supervisor import TERMINAL
@@ -30,8 +31,9 @@ class NewRun(BaseModel):
     prompt: str = Field(min_length=1)
     attachments: List[str] = []
     session_id: Optional[str] = None
-    interactive: bool = False
-    confirm: bool = False
+    overrides: Optional[Preferences] = None
+    interactive: Optional[bool] = None
+    confirm: Optional[bool] = None
 
 
 class Answer(BaseModel):
@@ -105,11 +107,15 @@ def health():
 @router.post("/runs", response_model=Run, status_code=202)
 def start_run(request: Request, body: NewRun, owner: str = Depends(current_owner), repo: Repository = Depends(repository),
               key: Optional[str] = Header(None, alias="Idempotency-Key")):
+    asked = given(body.overrides) if body.overrides else {}
+    asked.update({name: value for name, value in (("interactive", body.interactive), ("confirm", body.confirm)) if value is not None})
+    settings = resolve(repo.list_preferences(owner), asked)
     for blob_id in body.attachments:
         if repo.get_blob(owner, blob_id) is None:
             raise Problem(404, "no such blob: %s" % blob_id)
     try:
-        run, created = repo.start_run(owner, body.prompt, body.attachments, body.session_id, key, body.interactive, body.confirm)
+        run, created = repo.start_run(owner, body.prompt, body.attachments, body.session_id, key,
+                                      settings["interactive"], settings["confirm"])
     except LookupError:
         raise Problem(404, "no such Session: %s" % body.session_id)
     except SessionClosed:
@@ -120,7 +126,8 @@ def start_run(request: Request, body: NewRun, owner: str = Depends(current_owner
         if run["prompt"] != body.prompt or body.session_id not in (None, run["session_id"]):
             raise Problem(409, "the Idempotency-Key %s was used for a different request" % key)
         return run
-    request.app.state.pool.submit(owner, run["session_id"], run["id"], run["prompt"], run["attachments"], run["interactive"], run["confirm"])
+    request.app.state.pool.submit(owner, run["session_id"], run["id"], run["prompt"], run["attachments"],
+                                  settings["interactive"], settings["confirm"], settings)
     return run
 
 

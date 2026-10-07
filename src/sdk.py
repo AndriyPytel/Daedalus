@@ -135,6 +135,13 @@ def fetch_models(provider, api_key, base_url=None):
     return model_catalog.fetch(provider, api_key, base_url=base_url)
 
 
+def remember_model(model_id, provider):
+    """Name *provider* as the one that reports *model_id*, as the panel's fetch does, for a process that runs no panel."""
+    from core import model_registry
+
+    model_registry.remember(model_id, provider, model_id)
+
+
 def get_model_entry(model_id):
     """The last-known ``{id, display, provider}`` for *model_id*, or ``None``."""
     from core import model_registry
