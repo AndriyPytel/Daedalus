@@ -12,6 +12,8 @@ from fastapi import FastAPI
 
 from service import db, problem
 from service.api import router
+from service.blobs_api import ROOT_VARIABLE, router as blobs_router
+from service.blobstore import LocalBlobStore
 from service.pool import WorkerPool
 
 WORKER_ARGV = "DAEDALUS_WORKER_ARGV"
@@ -26,7 +28,8 @@ async def lifespan(app):
     argv = json.loads(os.environ.get(WORKER_ARGV, "null")) or [sys.executable, "-m", "service.worker"]
     with db.connect(url) as conn:
         db.migrate(conn)
-        app.state.pool = WorkerPool(argv, url)
+        root = os.environ.get(ROOT_VARIABLE)
+        app.state.pool = WorkerPool(argv, url, LocalBlobStore(root) if root else None)
         try:
             yield
         finally:
@@ -36,3 +39,4 @@ async def lifespan(app):
 app = FastAPI(title="Daedalus", version="1", lifespan=lifespan)
 problem.install(app)
 app.include_router(router, prefix="/v1")
+app.include_router(blobs_router, prefix="/v1")

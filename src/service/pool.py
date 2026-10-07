@@ -13,7 +13,8 @@ from service.supervisor import Worker
 
 
 class WorkerPool:
-    def __init__(self, argv, database_url):
+    def __init__(self, argv, database_url, blob_store=None):
+        self._store = blob_store
         self._argv = list(argv)
         self._url = database_url
         self._workers = {}
@@ -21,8 +22,8 @@ class WorkerPool:
         self._cancelled = set()
         self._locks = defaultdict(threading.Lock)
 
-    def submit(self, owner_id, session_id, run_id, prompt, interactive=False, confirm=False):
-        threading.Thread(target=self._launch, args=(owner_id, session_id, run_id, prompt, interactive, confirm),
+    def submit(self, owner_id, session_id, run_id, prompt, attachments=(), interactive=False, confirm=False):
+        threading.Thread(target=self._launch, args=(owner_id, session_id, run_id, prompt, attachments, interactive, confirm),
                          daemon=True).start()
 
     def cancel(self, owner_id, session_id, run_id):
@@ -53,18 +54,18 @@ class WorkerPool:
         for session_id in list(self._workers):
             self.close(session_id)
 
-    def _launch(self, owner_id, session_id, run_id, prompt, interactive, confirm):
+    def _launch(self, owner_id, session_id, run_id, prompt, attachments, interactive, confirm):
         try:
             with self._locks[session_id]:
                 if session_id in self._closed:
                     raise RuntimeError("the Session was closed")
                 worker = self._workers.get(session_id)
                 if worker is None or not worker.alive:
-                    worker = Worker(self._argv, self._url, owner_id, session_id)
+                    worker = Worker(self._argv, self._url, owner_id, session_id, blob_store=self._store)
                     worker.start()
                     self._workers[session_id] = worker
                 if run_id not in self._cancelled:
-                    worker.send(prompt, run_id, interactive, confirm)
+                    worker.send(prompt, run_id, attachments, interactive, confirm)
         except Exception as error:
             with db.connect(self._url) as conn:
                 Repository(conn).fail_run(owner_id, run_id, "%s: %s" % (type(error).__name__, error))

@@ -1,15 +1,20 @@
 """
 The gateway side of the worker channel: a `Worker` spawns one configured argv per Session and stores its events through `Repository`, so each notifies, and a `cost` event adds its `usd` to the Run.
-A worker that exits with a Run active fails that Run only, `cancel` asks the worker to stop and kills its process group after `CANCEL_TIMEOUT` so the Run ends `cancelled` either way, and a `question` from a Run sent `interactive` moves it to `needs-answer` until `answer`.
-When the worker ends, by itself or by `stop`, its process group is killed.
+A `blob` line is written through the `BlobStore` against the active Run, and a worker that exits with a Run active fails that Run only.
+`send` runs the Run the API made or makes one and hands the worker the bytes of the attachments it names; `cancel` stops it, killing the process group after `CANCEL_TIMEOUT`.
+A `question` from an `interactive` Run moves it to `needs-answer` until `answer`; when the worker ends its process group is killed.
 """
+import base64
 import json
 import os
 import signal
 import subprocess
 import threading
 
+import psycopg.errors
+
 from service import db
+from service.blobs import store_result
 from service.repository import Repository
 
 TERMINAL = ("completed", "blocked", "budget_exhausted", "stopped", "aborted", "failed", "cancelled")
@@ -18,7 +23,8 @@ CANCEL_TIMEOUT = 30.0
 
 
 class Worker:
-    def __init__(self, argv, database_url, owner_id, session_id, ready_timeout=READY_TIMEOUT):
+    def __init__(self, argv, database_url, owner_id, session_id, ready_timeout=READY_TIMEOUT, blob_store=None):
+        self._store = blob_store
         self._argv = list(argv)
         self._url = database_url
         self.owner_id = owner_id
@@ -55,7 +61,8 @@ class Worker:
             self.stop(timeout=0)
             raise RuntimeError("the worker %r did not become ready" % self._argv)
 
-    def send(self, prompt, run_id=None, interactive=False, confirm=False):
+    def send(self, prompt, run_id=None, attachments=(), interactive=False, confirm=False):
+        files = [self._attachment(blob_id) for blob_id in attachments]
         with self._lock:
             if not self.alive:
                 raise RuntimeError("the worker has exited")
@@ -66,7 +73,7 @@ class Worker:
             self._repo.update_run(self.owner_id, run_id, state="running")
             self._run_id, self._last_kind = run_id, None
             self._interactive, self._cancelling = interactive, False
-        self._write(op="send", prompt=prompt, interactive=interactive, confirm=confirm)
+        self._write(op="send", prompt=prompt, attachments=files, interactive=interactive, confirm=confirm)
         return run_id
 
     def cancel(self, run_id):
@@ -95,6 +102,12 @@ class Worker:
                 return
             self._finish("cancelled", "cancelled", {"reason": "the worker did not stop in time and was killed"})
         self._kill_group()
+
+    def _attachment(self, blob_id):
+        row = self._repo.get_blob(self.owner_id, blob_id)
+        if row is None:
+            raise LookupError(blob_id)
+        return {"name": row["name"], "content": base64.b64encode(self._store.get(row["key"])).decode()}
 
     def stop(self, timeout=5.0):
         if self._process is None:
@@ -151,6 +164,12 @@ class Worker:
                     self._repo.add_run_cost(self.owner_id, self._run_id, usd)
             elif op == "question" and self._run_id is not None and self._interactive:
                 self._repo.transition(self.owner_id, self._run_id, "needs-answer", "running")
+            elif op == "blob" and self._run_id is not None and self._store is not None:
+                try:
+                    data = base64.b64decode(message["content"], validate=True)
+                    store_result(self._repo, self._store, self.owner_id, self.session_id, self._run_id, message["kind"], data)
+                except (KeyError, TypeError, ValueError, OSError, psycopg.errors.UniqueViolation):
+                    pass  # except-pass-allowed: a bad or repeated blob line is dropped like a malformed event line
             elif op == "done" and self._run_id is not None:
                 if self._cancelling and self._last_kind in ("stopped", "budget_exhausted", "aborted"):
                     self._finish("cancelled", "cancelled", {"reason": "cancelled by the client"})

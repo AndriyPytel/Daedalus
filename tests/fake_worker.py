@@ -1,10 +1,12 @@
 """
 A stand-in for `service.worker` that speaks the channel with no FreeCAD, steered by the prompt it is sent.
 
-`hello` emits two events and finishes, `priced` does the same with a `cost` event of 0.25 USD between them, `hang` starts a child process, reports its pid and never ends, `cut` writes half
+`make` emits an event, a STEP and an FCStd blob and finishes, `attachments` reports the name and sha256 of each attachment it received, `hello` emits two events and finishes, `priced` does the same with a `cost` event of 0.25 USD between them, `hang` starts a child process, reports its pid and never ends, `cut` writes half
 an event line and exits, `bye` exits at once, `gated:<path>` emits five events, waits for the file `<path>` to exist, then emits five more and finishes. End of input ends the process unless the prompt was `hang`.
 `flags` reports the `interactive` and `confirm` it was sent, `slow` steps until a `cancel` line arrives then reports `stopped`, `asks` puts a question when sent `interactive` and waits for the `answer` line, and `nags` puts a question whatever it was sent.
 """
+import base64
+import hashlib
 import json
 import os
 import subprocess
@@ -27,10 +29,10 @@ def await_op(name):
 def main():
     put(op="ready")
     for line in sys.stdin:
-        sent = json.loads(line)
-        prompt = sent["prompt"]
+        request = json.loads(line)
+        prompt = request["prompt"]
         if prompt == "flags":
-            put(op="event", kind="flags", at=1.0, data={"interactive": sent.get("interactive"), "confirm": sent.get("confirm")})
+            put(op="event", kind="flags", at=1.0, data={"interactive": request.get("interactive"), "confirm": request.get("confirm")})
             put(op="done")
         elif prompt == "slow":
             put(op="event", kind="step", at=1.0, data={"n": 1})
@@ -39,7 +41,7 @@ def main():
             put(op="done")
         elif prompt == "asks":
             put(op="event", kind="question", at=1.0, data={"text": "solid or hollow?"})
-            if sent.get("interactive"):
+            if request.get("interactive"):
                 put(op="question", text="solid or hollow?")
                 answer = await_op("answer")["text"]
                 put(op="event", kind="answer", at=2.0, data={"text": answer, "by": "user"})
@@ -50,6 +52,19 @@ def main():
         elif prompt == "nags":
             put(op="question", text="anything?")
             put(op="event", kind="completed", at=3.0, data={})
+            put(op="done")
+        elif prompt == "make":
+            put(op="event", kind="intent", at=1.0, data={"prompt": prompt})
+            put(op="blob", kind="step", name="model.step", content=base64.b64encode(
+                b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n").decode())
+            put(op="blob", kind="checkpoint", name="model.FCStd", content=base64.b64encode(
+                b"PK\x03\x04" + bytes(range(256)) * 20).decode())
+            put(op="event", kind="completed", at=2.0, data={"summary": "done"})
+            put(op="done")
+        elif prompt == "attachments":
+            got = [{"name": item["name"], "sha256": hashlib.sha256(base64.b64decode(item["content"])).hexdigest()}
+                   for item in request["attachments"]]
+            put(op="event", kind="received", at=1.0, data={"files": got})
             put(op="done")
         elif prompt == "hello":
             put(op="event", kind="intent", at=1.0, data={"prompt": prompt})
