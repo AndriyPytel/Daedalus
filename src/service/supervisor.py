@@ -1,8 +1,7 @@
 """
 The gateway side of the worker channel: a `Worker` spawns one configured argv per Session and stores its events through `Repository`, so each notifies, and a `cost` event adds its `usd` to the Run.
-A `blob` line is written through the `BlobStore` against the active Run, and a worker that exits with a Run active fails that Run only.
-`send` runs the Run the API made or makes one and hands the worker the bytes of the attachments it names; `cancel` stops it, killing the process group after `CANCEL_TIMEOUT`.
-A `question` from an `interactive` Run moves it to `needs-answer` until `answer`; when the worker ends its process group is killed.
+A `blob` line is stored against the active Run, a worker that exits with a Run active fails that Run only, and `send` hands the worker the bytes of the attachments it names.
+`cancel` stops a Run, killing the process group after `CANCEL_TIMEOUT`, and a `question` from an `interactive` Run holds it in `needs-answer` until `answer`.
 """
 import base64
 import json
