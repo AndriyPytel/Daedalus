@@ -5,9 +5,12 @@ The gateway tests run the app over `tests/fake_worker.py` against a real Postgre
 The real-worker tests run `deploy/worker/scripted_worker.py` in the `dae-501-worker` image on the home server and skip when it is unreachable.
 """
 import json
+import subprocess
 import threading
 
 import httpx
+import pytest
+from fastapi.testclient import TestClient
 
 from service import db, supervisor
 from service.app import app
@@ -15,7 +18,7 @@ from service.owner import current_owner
 from test_service_events import frames, server  # noqa: F401
 from test_service_postgres import _admin_url, conn, database_url, repo  # noqa: F401
 from test_service_runs import api, final, start  # noqa: F401
-from test_service_worker_channel import alive, until
+from test_service_worker_channel import HOST, ROOT, _ssh, alive, until
 
 
 def state(api, run_id):
@@ -125,3 +128,94 @@ def test_a_run_is_not_interactive_and_does_not_confirm_unless_it_says_so(api, da
     assert sent[plain["id"]] == {"interactive": False, "confirm": False}
     assert sent[both["id"]] == {"interactive": True, "confirm": True}
     assert api.get("/v1/runs/%s" % both["id"]).json()["confirm"] is True
+
+
+IMAGE = "dae-501-worker"
+REMOTE = "dae-501-build"
+
+
+@pytest.fixture(scope="module")
+def worker_image():
+    probe = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", HOST, "podman --version"],
+                           capture_output=True, text=True)
+    if probe.returncode != 0:
+        pytest.skip("home server %s unreachable over ssh: %s" % (HOST, probe.stderr.strip()[-200:]))
+    _ssh("rm -rf ~/%s/ctx && mkdir -p ~/%s/ctx" % (REMOTE, REMOTE))
+    tar = subprocess.Popen(["tar", "--exclude=__pycache__", "-cf", "-", "-C", ROOT, "src", "config", "deploy"],
+                           stdout=subprocess.PIPE)
+    sent = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST, "tar -xf - -C ~/%s/ctx" % REMOTE],
+                          stdin=tar.stdout, capture_output=True)
+    tar.stdout.close()
+    assert tar.wait() == 0 and sent.returncode == 0, sent.stderr
+    _ssh("cd ~/%s/ctx && podman build -t %s -f deploy/worker/Containerfile ." % (REMOTE, IMAGE), timeout=2400)
+    return IMAGE
+
+
+@pytest.fixture
+def real(worker_image, database_url, monkeypatch):
+    names = []
+
+    def launch(script, delay=0):
+        name = "dae-501-%s-%d" % (script, len(names))
+        _ssh("podman rm -f %s >/dev/null 2>&1" % name, check=False)
+        names.append(name)
+        argv = ["ssh", "-o", "BatchMode=yes", HOST, "podman run -i --rm --name %s -e DAE_SCRIPT=%s -e DAE_DELAY=%s %s "
+                "python deploy/worker/scripted_worker.py" % (name, script, delay, worker_image)]
+        monkeypatch.setenv(db.URL_VARIABLE, database_url)
+        monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(argv))
+        return TestClient(app)
+
+    yield launch
+    for name in names:
+        _ssh("podman rm -f %s >/dev/null 2>&1" % name, check=False)
+
+
+def texts(database_url, run_id, kind):
+    return [payload.get("text") for seen, payload in kinds(database_url, run_id) if seen == kind]
+
+
+def test_a_real_interactive_run_waits_for_the_answer_and_builds_the_cube_after_it(real, database_url):
+    with real("ask") as api:
+        run = start(api, "Add a 10mm cube", interactive=True).json()
+        until(lambda: state(api, run["id"]) == "needs-answer", seconds=420)
+        assert texts(database_url, run["id"], "question") == ["solid or hollow?"]
+        assert api.post("/v1/runs/%s:answer" % run["id"], json={"answer": "solid"}).status_code == 202
+        until(lambda: state(api, run["id"]) in ("completed", "failed", "blocked"), seconds=420)
+        assert state(api, run["id"]) == "completed"
+    assert texts(database_url, run["id"], "answer")[0] == "solid"
+    assert "applied" in [kind for kind, _ in kinds(database_url, run["id"])]
+
+
+def test_a_real_non_interactive_run_decides_alone_and_never_enters_needs_answer(real, database_url):
+    seen = set()
+    with real("ask") as api:
+        run = start(api, "Add a 10mm cube").json()
+        until(lambda: seen.add(state(api, run["id"])) or state(api, run["id"]) in ("completed", "failed", "blocked"), seconds=420)
+        assert state(api, run["id"]) == "completed"
+    assert "needs-answer" not in seen
+    with db.connect(database_url) as check:
+        answers = [row[0] for row in check.execute("SELECT payload FROM events WHERE run_id = %s AND type = 'answer'", (run["id"],))]
+    assert answers and answers[0]["by"] == "nobody"
+
+
+def test_a_real_run_cancelled_mid_run_ends_cancelled_by_the_worker_itself(real, database_url):
+    with real("cube", delay=4) as api:
+        run = start(api, "Add a 10mm cube").json()
+        until(lambda: kinds(database_url, run["id"]), seconds=420)
+        assert api.post("/v1/runs/%s:cancel" % run["id"]).status_code == 202
+        until(lambda: state(api, run["id"]) == "cancelled", seconds=120)
+    seen = kinds(database_url, run["id"])
+    assert seen[-1] == ("cancelled", {"reason": "cancelled by the client"}), seen[-3:]
+    assert "applied" not in [kind for kind, _ in seen]
+
+
+def test_a_real_owned_object_confirm_is_refused_unless_the_run_overrides_it(real, database_url):
+    ended = ("completed", "failed", "blocked", "stopped", "budget_exhausted")
+    with real("delete") as api:
+        refused = start(api, "Remove the box").json()
+        until(lambda: state(api, refused["id"]) in ended, seconds=420)
+    with real("delete") as api:
+        allowed = start(api, "Remove the box", confirm=True).json()
+        until(lambda: state(api, allowed["id"]) in ended, seconds=420)
+    assert texts(database_url, refused["id"], "answer")[0].startswith("You refused to let it delete UserBox")
+    assert texts(database_url, allowed["id"], "answer")[0].startswith("You allowed it to delete UserBox")

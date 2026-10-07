@@ -1,7 +1,7 @@
 """
 Every read and write of users, preferences, Sessions, Runs and events, each scoped by `owner_id`.
 
-A row of another owner is as absent as a missing one: reads return nothing and writes raise `LookupError`, events have no update or delete, and an append notifies channel `events` with the row id only and a Run's state change notifies channel `runs` with its id.
+A row of another owner is as absent as a missing one: reads return nothing and writes raise `LookupError`, events have no update or delete, and an append notifies channel `events` with the row id only and a Run's state change notifies channel `runs` with its id; `transition` moves a Run only from the states named, so a late answer cannot overwrite a final state.
 `start_run` makes the Session and the Run in one transaction and returns the Run an `Idempotency-Key` already made; lists page by id, which is creation order.
 """
 import psycopg.errors
@@ -66,7 +66,7 @@ class Repository:
     def ensure_user(self, user_id):
         self._conn.execute("INSERT INTO users (id) VALUES (%s) ON CONFLICT DO NOTHING", (user_id,))
 
-    def create_run(self, owner_id, session_id, prompt="", attachments=(), key=None):
+    def create_run(self, owner_id, session_id, prompt="", attachments=(), key=None, interactive=False, confirm=False):
         session = self.get_session(owner_id, session_id)
         if session is None:
             raise LookupError(session_id)
@@ -74,15 +74,15 @@ class Repository:
             raise SessionClosed(session_id)
         try:
             return self._one(
-                "INSERT INTO runs (id, owner_id, session_id, prompt, attachments, idempotency_key) "
-                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING *",
-                (new_id("run"), owner_id, session_id, prompt, Jsonb(list(attachments)), key))
+                "INSERT INTO runs (id, owner_id, session_id, prompt, attachments, idempotency_key, interactive, confirm) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
+                (new_id("run"), owner_id, session_id, prompt, Jsonb(list(attachments)), key, interactive, confirm))
         except psycopg.errors.UniqueViolation as error:
             if error.diag.constraint_name == "runs_one_active":
                 raise RunActive(session_id) from error
             raise
 
-    def start_run(self, owner_id, prompt, attachments=(), session_id=None, key=None):
+    def start_run(self, owner_id, prompt, attachments=(), session_id=None, key=None, interactive=False, confirm=False):
         self.ensure_user(owner_id)
         if key is not None:
             replay = self.get_run_by_key(owner_id, key)
@@ -92,7 +92,7 @@ class Repository:
             with self._conn.transaction():
                 if session_id is None:
                     session_id = self.create_session(owner_id)["id"]
-                return self.create_run(owner_id, session_id, prompt, attachments, key), True
+                return self.create_run(owner_id, session_id, prompt, attachments, key, interactive, confirm), True
         except psycopg.errors.UniqueViolation:
             return self.get_run_by_key(owner_id, key), False
 
@@ -123,6 +123,13 @@ class Repository:
         if row is None:
             raise LookupError(run_id)
         self._notify_run(run_id)
+        return row
+
+    def transition(self, owner_id, run_id, to, *frm):
+        row = self._one("UPDATE runs SET state = %s WHERE owner_id = %s AND id = %s AND state = ANY(%s) RETURNING *",
+                        (to, owner_id, run_id, list(frm)))
+        if row is not None:
+            self._notify_run(run_id)
         return row
 
     def _notify_run(self, run_id):

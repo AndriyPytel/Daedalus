@@ -1,6 +1,6 @@
 """
 The gateway side of the worker channel: a `Worker` spawns one configured argv per Session and stores its events through `Repository`, so each notifies, and a `cost` event adds its `usd` to the Run.
-A line without its newline or that is not JSON is dropped, a worker that exits with a Run active fails that Run only, and `send` runs the Run the API made or makes one.
+A worker that exits with a Run active fails that Run only, `cancel` asks the worker to stop and kills its process group after `CANCEL_TIMEOUT` so the Run ends `cancelled` either way, and a `question` from a Run sent `interactive` moves it to `needs-answer` until `answer`.
 When the worker ends, by itself or by `stop`, its process group is killed.
 """
 import json
@@ -12,8 +12,9 @@ import threading
 from service import db
 from service.repository import Repository
 
-TERMINAL = ("completed", "blocked", "budget_exhausted", "stopped", "aborted", "failed")
+TERMINAL = ("completed", "blocked", "budget_exhausted", "stopped", "aborted", "failed", "cancelled")
 READY_TIMEOUT = 60.0
+CANCEL_TIMEOUT = 30.0
 
 
 class Worker:
@@ -31,6 +32,8 @@ class Worker:
         self._lock = threading.Lock()
         self._run_id = None
         self._last_kind = None
+        self._interactive = False
+        self._cancelling = False
 
     @property
     def pid(self):
@@ -52,7 +55,7 @@ class Worker:
             self.stop(timeout=0)
             raise RuntimeError("the worker %r did not become ready" % self._argv)
 
-    def send(self, prompt, run_id=None):
+    def send(self, prompt, run_id=None, interactive=False, confirm=False):
         with self._lock:
             if not self.alive:
                 raise RuntimeError("the worker has exited")
@@ -62,12 +65,36 @@ class Worker:
                 run_id = self._repo.create_run(self.owner_id, self.session_id, prompt)["id"]
             self._repo.update_run(self.owner_id, run_id, state="running")
             self._run_id, self._last_kind = run_id, None
+            self._interactive, self._cancelling = interactive, False
+        self._write(op="send", prompt=prompt, interactive=interactive, confirm=confirm)
+        return run_id
+
+    def cancel(self, run_id):
+        with self._lock:
+            if self._run_id != run_id:
+                raise LookupError(run_id)
+            self._cancelling = True
+        self._write(op="cancel")
+        timer = threading.Timer(CANCEL_TIMEOUT, self._force_cancel, (run_id,))
+        timer.daemon = True
+        timer.start()
+
+    def answer(self, text):
+        self._write(op="answer", text=text)
+
+    def _write(self, **message):
         try:
-            self._process.stdin.write((json.dumps({"op": "send", "prompt": prompt}) + "\n").encode())
+            self._process.stdin.write((json.dumps(message) + "\n").encode())
             self._process.stdin.flush()
         except OSError:
             pass  # except-pass-allowed: the reader sees the worker's end and fails the Run
-        return run_id
+
+    def _force_cancel(self, run_id):
+        with self._lock:
+            if self._run_id != run_id:
+                return
+            self._finish("cancelled", "cancelled", {"reason": "the worker did not stop in time and was killed"})
+        self._kill_group()
 
     def stop(self, timeout=5.0):
         if self._process is None:
@@ -122,10 +149,15 @@ class Worker:
                 usd = (message.get("data") or {}).get("usd")
                 if message["kind"] == "cost" and isinstance(usd, (int, float)) and not isinstance(usd, bool):
                     self._repo.add_run_cost(self.owner_id, self._run_id, usd)
+            elif op == "question" and self._run_id is not None and self._interactive:
+                self._repo.transition(self.owner_id, self._run_id, "needs-answer", "running")
             elif op == "done" and self._run_id is not None:
-                self._repo.update_run(self.owner_id, self._run_id,
-                                      state=self._last_kind if self._last_kind in TERMINAL else "completed")
-                self._run_id = None
+                if self._cancelling and self._last_kind in ("stopped", "budget_exhausted", "aborted"):
+                    self._finish("cancelled", "cancelled", {"reason": "cancelled by the client"})
+                else:
+                    self._repo.update_run(self.owner_id, self._run_id,
+                                          state=self._last_kind if self._last_kind in TERMINAL else "completed")
+                    self._run_id = None
             elif op == "error" and self._run_id is not None:
                 self._finish("error", "failed", {"message": str(message.get("message"))})
 
