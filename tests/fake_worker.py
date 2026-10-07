@@ -2,7 +2,7 @@
 A stand-in for `service.worker` that speaks the channel with no FreeCAD, steered by the prompt it is sent.
 
 `hello` emits two events and finishes, `priced` does the same with a `cost` event of 0.25 USD between them, `hang` starts a child process, reports its pid and never ends, `cut` writes half
-an event line and exits, `bye` exits at once. End of input ends the process unless the prompt was `hang`.
+an event line and exits, `bye` exits at once, `gated:<path>` emits five events, waits for the file `<path>` to exist, then emits five more and finishes. End of input ends the process unless the prompt was `hang`.
 """
 import json
 import os
@@ -38,6 +38,15 @@ def main():
             sys.stdout.write('{"op": "event", "kind": "thou')
             sys.stdout.flush()
             os._exit(0)
+        elif prompt.startswith("gated:"):
+            for step in range(5):
+                put(op="event", kind="step", at=float(step), data={"n": step})
+            while not os.path.exists(prompt[len("gated:"):]):
+                time.sleep(0.02)
+            for step in range(5, 10):
+                put(op="event", kind="step", at=float(step), data={"n": step})
+            put(op="event", kind="completed", at=10.0, data={"summary": "done"})
+            put(op="done")
         elif prompt == "boom":
             put(op="error", message="provider refused")
         elif prompt == "bye":
