@@ -77,23 +77,15 @@ assert all(abs(a - b) <= %s for a, b in zip(built, asked)), (
 """
 
 
-def the_topology_measured(description):
+def the_topology_measured(description, base=None):
     """
-    Betti numbers of the finished Document's tessellated shape, checked
-    against b0 == 1 -- the one closed positive-volume body every
-    description assumes, with no flag needed to say so -- and, only where
-    at least one feature carries the closed `goes_through` flag, against
-    b1 == the count of features whose flag is true. A model that never
-    writes the flag on any feature has established nothing -- the same as
-    before the flag existed -- so nothing is appended rather than
-    defaulting every unflagged feature to "not through". The free-text
-    `topology` field is never read here: it stays the human-readable
-    description of what a feature runs into, not what this check counts.
+    Betti numbers of the finished Document checked against b0 == 1 and, where at least one feature carries the `goes_through` flag, b1 == the count of features whose flag is true; unflagged features add nothing and the prose `topology` field is never read.
+    With a *base* part only b0 is checked: Design describes the features an edit changes, never the whole part, so its through count is not the part's.
     """
     features = [feature for feature in (description or {}).get("features") or ()
                if isinstance(feature, dict)]
     through_check = ""
-    if any("goes_through" in feature for feature in features):
+    if not base and any("goes_through" in feature for feature in features):
         expected = sum(1 for feature in features if feature.get("goes_through") is True)
         through_check = _THROUGH_FEATURE_CHECK % (expected, expected)
     return _TOPOLOGY_CHECK % through_check
@@ -222,7 +214,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
     fixed = [(the_envelope_measured(acceptance), "the envelope"),
              (SELF_INTERSECTION_CHECK, "no solid self-intersects"),
-             (the_topology_measured(description), "the topology"),
+             (the_topology_measured(description, base), "the topology"),
              ("no_collateral(doc)" if base else "", "no collateral change")]
     fixed_checks = [code for code, _ in fixed if code]
     fixed_confirmed = []

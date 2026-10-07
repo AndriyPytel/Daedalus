@@ -1489,3 +1489,13 @@ def test_a_revision_that_adds_nothing_keeps_the_built_steps_and_says_what_still_
     assert result.steps_applied == 1
     assert "no Steps" not in result.reason
     assert "The box is 20mm, not 10mm." in result.reason
+
+
+def test_an_edit_checks_one_body_and_not_the_through_count_of_the_edited_features_alone():
+    """Design describes only what an edit changes, so its through count is not the base part's."""
+    from core.loop.assertion import the_topology_measured
+
+    code = the_topology_measured(A_PART, base={"faces": 586})
+
+    assert "b0 == 1" in code
+    assert "b1 ==" not in code
