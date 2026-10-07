@@ -71,8 +71,14 @@ def _ensure_on_path():
 
 
 def summarise(doc):
+    """
+    The name, label and TypeId of every object. A PartDesign::Boolean also
+    carries its `Type` (Fuse, Cut or Common) as `boolean_type`, because that
+    property, not the TypeId, says which operation it performs.
+    """
     return [
-        {"name": o.Name, "label": o.Label, "type": o.TypeId}
+        {"name": o.Name, "label": o.Label, "type": o.TypeId,
+         **({"boolean_type": o.Type} if o.TypeId == "PartDesign::Boolean" else {})}
         for o in doc.Objects
     ]
 
