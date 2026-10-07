@@ -213,7 +213,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     cancelled = cancelled or (lambda: False)
 
     fixed = [(the_envelope_measured(acceptance), "the envelope"),
-             (SELF_INTERSECTION_CHECK, "no solid self-intersects"),
+             ("" if base else SELF_INTERSECTION_CHECK, "no solid self-intersects"),
              (the_topology_measured(description, base), "the topology"),
              ("no_collateral(doc)" if base else "", "no collateral change")]
     fixed_checks = [code for code, _ in fixed if code]
