@@ -43,7 +43,7 @@ def generation_fixtures(manifest_path=DEFAULT_MANIFEST):
 
 
 def editing_fixtures(manifest_path=DEFAULT_MANIFEST):
-    """The 32 CADGenBench editing-task fixture ids, which this repo never attempts."""
+    """The 32 CADGenBench editing-task fixture ids."""
     with open(manifest_path, encoding="utf-8") as handle:
         return json.load(handle)["editing_fixtures"]
 
@@ -85,15 +85,14 @@ def _print_plan(plan, run_dir):
 
 
 def write_bundle(run_dir, fixtures, out_path, submitter=None, submission_name=None,
-                 agent_url=None, notes=None, agree=False, empty=()):
+                 agent_url=None, notes=None, agree=False):
     """Write the submission zip for *fixtures* found under *run_dir* to *out_path*.
 
     Every fixture in *fixtures* gets a folder entry in the zip whether or not
     a candidate was found for it, matching the "no directory disappears"
     contract `cadgenbench.baseline.package._discover_fixture_entries` relies
     on; a fixture with no entry at all is what fails the Space's exact
-    fixture-set check, not a fixture recorded as missing. *empty* ids get a
-    folder and nothing else: fixtures the run never attempted.
+    fixture-set check, not a fixture recorded as missing.
     """
     plan = plan_bundle(run_dir, fixtures)
     _print_plan(plan, run_dir)
@@ -115,8 +114,6 @@ def write_bundle(run_dir, fixtures, out_path, submitter=None, submission_name=No
                 name = os.path.basename(entry["candidate"])
                 name = name if name in CANDIDATE_NAMES else "output.step"
                 zf.write(entry["candidate"], arcname="%s/%s" % (entry["fixture"], name))
-        for fixture in empty:
-            zf.writestr("%s/" % fixture, "")
 
     missing = [entry["fixture"] for entry in plan if entry["status"] == "missing"]
     report = {
@@ -179,11 +176,10 @@ def main():
 
     if args.command == "bundle":
         out = args.out or (os.path.normpath(args.run_dir) + ".zip")
-        fixtures = generation_fixtures(args.manifest)
+        fixtures = generation_fixtures(args.manifest) + editing_fixtures(args.manifest)
         write_bundle(args.run_dir, fixtures, out, submitter=args.submitter,
                     submission_name=args.submission_name, agent_url=args.agent_url,
-                    notes=args.notes, agree=args.agree,
-                    empty=editing_fixtures(args.manifest))
+                    notes=args.notes, agree=args.agree)
         return 0
 
     record = record_milestone(args.path, args.milestone, args.local_score,
