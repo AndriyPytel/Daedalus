@@ -243,22 +243,15 @@ def _shippable_base(fixture, folder):
     base = os.path.join(fixture, "input.step")
     if not step_problem(base):
         return base
-    from core.freecad_apply import export_step
-    from core.manifold import repair_base
+    from core.manifold import repair_base, rewrite_step
 
     shape = _part().read(base)
     repaired, _note = repair_base(shape)
     if repaired is shape:
         return base
-    import FreeCAD
-
-    doc = FreeCAD.newDocument("RepairedBase")
-    try:
-        doc.addObject("Part::Feature", "Base").Shape = repaired
-        doc.recompute()
-        path = export_step(doc, os.path.join(folder, "input.repaired.step"))
-    finally:
-        FreeCAD.closeDocument(doc.Name)
+    path = os.path.join(folder, "input.repaired.step")
+    repaired.exportStep(path)
+    rewrite_step(repaired, path)
     return base if step_problem(path) else path
 
 
