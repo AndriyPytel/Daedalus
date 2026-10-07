@@ -3,6 +3,7 @@ A stand-in for `service.worker` that speaks the channel with no FreeCAD, steered
 
 `hello` emits two events and finishes, `priced` does the same with a `cost` event of 0.25 USD between them, `hang` starts a child process, reports its pid and never ends, `cut` writes half
 an event line and exits, `bye` exits at once, `gated:<path>` emits five events, waits for the file `<path>` to exist, then emits five more and finishes. End of input ends the process unless the prompt was `hang`.
+`flags` reports the `interactive` and `confirm` it was sent, `slow` steps until a `cancel` line arrives then reports `stopped`, `asks` puts a question when sent `interactive` and waits for the `answer` line, and `nags` puts a question whatever it was sent.
 """
 import json
 import os
@@ -16,11 +17,41 @@ def put(**message):
     sys.stdout.flush()
 
 
+def await_op(name):
+    for line in sys.stdin:
+        message = json.loads(line)
+        if message["op"] == name:
+            return message
+
+
 def main():
     put(op="ready")
     for line in sys.stdin:
-        prompt = json.loads(line)["prompt"]
-        if prompt == "hello":
+        sent = json.loads(line)
+        prompt = sent["prompt"]
+        if prompt == "flags":
+            put(op="event", kind="flags", at=1.0, data={"interactive": sent.get("interactive"), "confirm": sent.get("confirm")})
+            put(op="done")
+        elif prompt == "slow":
+            put(op="event", kind="step", at=1.0, data={"n": 1})
+            await_op("cancel")
+            put(op="event", kind="stopped", at=2.0, data={"reason": "cancelled"})
+            put(op="done")
+        elif prompt == "asks":
+            put(op="event", kind="question", at=1.0, data={"text": "solid or hollow?"})
+            if sent.get("interactive"):
+                put(op="question", text="solid or hollow?")
+                answer = await_op("answer")["text"]
+                put(op="event", kind="answer", at=2.0, data={"text": answer, "by": "user"})
+            else:
+                put(op="event", kind="answer", at=2.0, data={"text": "", "by": "nobody"})
+            put(op="event", kind="completed", at=3.0, data={})
+            put(op="done")
+        elif prompt == "nags":
+            put(op="question", text="anything?")
+            put(op="event", kind="completed", at=3.0, data={})
+            put(op="done")
+        elif prompt == "hello":
             put(op="event", kind="intent", at=1.0, data={"prompt": prompt})
             put(op="event", kind="completed", at=2.0, data={"summary": "done"})
             put(op="done")
