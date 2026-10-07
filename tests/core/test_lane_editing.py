@@ -174,6 +174,37 @@ def test_an_invalid_input_is_reported_in_the_state_and_on_the_console(
     assert "INPUT INVALID 101" in capsys.readouterr().out
 
 
+def _cube_with_a_needle():
+    """A 10 mm cube whose top face is split by a needle triangle of zero height, which OCC calls invalid."""
+    import FreeCAD
+    import Part
+
+    def polygon(points):
+        return Part.Face(Part.makePolygon([FreeCAD.Vector(*p) for p in points + [points[0]]]))
+
+    faces = [polygon([(0, 0, 0), (0, 10, 0), (10, 10, 0), (10, 0, 0)]),
+             polygon([(0, 0, 0), (10, 0, 0), (10, 0, 10), (0, 0, 10)]),
+             polygon([(10, 0, 0), (10, 10, 0), (10, 10, 10), (10, 0, 10)]),
+             polygon([(10, 10, 0), (0, 10, 0), (0, 10, 10), (10, 10, 10)]),
+             polygon([(0, 10, 0), (0, 0, 0), (0, 0, 10), (0, 10, 10)]),
+             polygon([(0, 0, 10), (5, 0, 10), (10, 0, 10), (10, 10, 10), (0, 10, 10)]),
+             polygon([(0, 0, 10), (10, 0, 10), (5, 0, 10)])]
+    return Part.Solid(Part.Shell(faces))
+
+
+def test_an_invalid_input_the_base_repair_mends_is_shipped_repaired_when_the_edit_fails(
+        tmp_path, monkeypatch, capsys):
+    folder = _fixture(tmp_path)
+    _step(os.path.join(folder, "input.step"), _cube_with_a_needle())
+    assert lane.step_problem(os.path.join(folder, "input.step"))
+
+    output, run, _spawned = _sweep(tmp_path, monkeypatch, folder, None, returncode=3)
+
+    assert lane.step_problem(output) is None
+    assert run["input_invalid"] is None
+    assert "INPUT INVALID" not in capsys.readouterr().out
+
+
 def test_edit_task_pairs_an_id_with_its_fixture_folder(monkeypatch, tmp_path):
     folder = _fixture(tmp_path)
     seen = {}
