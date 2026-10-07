@@ -1,7 +1,7 @@
 """
 The gateway side of the worker channel: a `Worker` spawns one configured argv per Session and stores its events through `Repository`, so each notifies, and a `cost` event adds its `usd` to the Run.
 A `blob` line is written through the `BlobStore` against the active Run, a line cut short or not JSON is dropped, and a worker that exits with a Run active fails that Run only.
-`send` runs the Run the API made or makes one and hands the worker the bytes of the attachments it names; when the worker ends its process group is killed.
+`send` runs the Run the API made or makes one and hands the worker the bytes of the attachments it names; when the worker ends its process group is killed, and the bearer token is not in its environment.
 """
 import base64
 import json
@@ -14,6 +14,7 @@ import psycopg.errors
 
 from service import db
 from service.blobs import store_result
+from service.owner import TOKEN_VARIABLE
 from service.repository import Repository
 
 TERMINAL = ("completed", "blocked", "budget_exhausted", "stopped", "aborted", "failed")
@@ -48,8 +49,9 @@ class Worker:
     def start(self):
         self._conn = db.connect(self._url)
         self._repo = Repository(self._conn)
+        environment = {name: value for name, value in os.environ.items() if name != TOKEN_VARIABLE}
         self._process = subprocess.Popen(self._argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                         start_new_session=True)
+                                         start_new_session=True, env=environment)
         self._reader = threading.Thread(target=self._read, daemon=True)
         self._reader.start()
         threading.Thread(target=self._reap, daemon=True).start()
@@ -57,7 +59,7 @@ class Worker:
             self.stop(timeout=0)
             raise RuntimeError("the worker %r did not become ready" % self._argv)
 
-    def send(self, prompt, run_id=None, attachments=()):
+    def send(self, prompt, run_id=None, attachments=(), settings=None):
         files = [self._attachment(blob_id) for blob_id in attachments]
         with self._lock:
             if not self.alive:
@@ -69,7 +71,7 @@ class Worker:
             self._repo.update_run(self.owner_id, run_id, state="running")
             self._run_id, self._last_kind = run_id, None
         try:
-            self._process.stdin.write((json.dumps({"op": "send", "prompt": prompt, "attachments": files}) + "\n").encode())
+            self._process.stdin.write((json.dumps({"op": "send", "prompt": prompt, "attachments": files, "settings": settings or {}}) + "\n").encode())
             self._process.stdin.flush()
         except OSError:
             pass  # except-pass-allowed: the reader sees the worker's end and fails the Run

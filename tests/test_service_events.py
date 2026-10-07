@@ -17,7 +17,7 @@ from service import db
 from service.app import app
 from service.owner import current_owner
 from test_service_postgres import _admin_url, conn, database_url, repo  # noqa: F401
-from test_service_runs import FINAL, final, start
+from test_service_runs import AUTH, FINAL, TOKEN, final, start
 from test_service_worker_channel import FAKE, until
 
 
@@ -25,6 +25,7 @@ from test_service_worker_channel import FAKE, until
 def server(database_url, monkeypatch):
     monkeypatch.setenv(db.URL_VARIABLE, database_url)
     monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(FAKE))
+    monkeypatch.setenv("DAEDALUS_TOKEN", TOKEN)
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     uv = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
@@ -37,7 +38,7 @@ def server(database_url, monkeypatch):
 
 
 def post(base, prompt, **body):
-    return httpx.post(base + "/v1/runs", json={"prompt": prompt, **body}).json()
+    return httpx.post(base + "/v1/runs", json={"prompt": prompt, **body}, headers=AUTH).json()
 
 
 def frames(lines):
@@ -55,7 +56,7 @@ def frames(lines):
 
 
 def read(base, run_id, last=None, stop_after=None):
-    headers = {"Last-Event-ID": str(last)} if last is not None else {}
+    headers = {**AUTH, **({"Last-Event-ID": str(last)} if last is not None else {})}
     got = []
     with httpx.stream("GET", "%s/v1/runs/%s/events" % (base, run_id), headers=headers, timeout=30) as response:
         assert response.status_code == 200
@@ -74,7 +75,7 @@ def stored(database_url, run_id):
 
 def test_streaming_a_finished_run_returns_all_its_events_in_order_then_closes(server, database_url):
     run = post(server, "priced")
-    until(lambda: httpx.get("%s/v1/runs/%s" % (server, run["id"])).json()["state"] in FINAL)
+    until(lambda: httpx.get("%s/v1/runs/%s" % (server, run["id"]), headers=AUTH).json()["state"] in FINAL)
     got = read(server, run["id"])
     ids = [int(frame["id"]) for frame in got]
     assert ids == stored(database_url, run["id"]) and len(ids) == 2
@@ -110,7 +111,7 @@ def test_a_resume_after_the_last_event_returns_nothing_and_closes(server, databa
 
 
 def test_events_written_while_a_stream_replays_arrive_once_and_in_order(server, database_url, repo):
-    owner = current_owner()
+    owner = "usr_owner"
     repo.ensure_user(owner)
     run = repo.create_run(owner, repo.create_session(owner)["id"])
     repo.update_run(owner, run["id"], state="running")
@@ -144,7 +145,7 @@ def test_a_closed_client_leaves_no_connection_behind(server, database_url, tmp_p
     run = post(server, "gated:%s" % gate)
     until(lambda: len(stored(database_url, run["id"])) == 5)
     baseline = connections()
-    clients = [httpx.stream("GET", "%s/v1/runs/%s/events" % (server, run["id"]), timeout=30) for _ in range(5)]
+    clients = [httpx.stream("GET", "%s/v1/runs/%s/events" % (server, run["id"]), headers=AUTH, timeout=30) for _ in range(5)]
     responses = [client.__enter__() for client in clients]
     lines = [response.iter_lines() for response in responses]
     for line in lines:
@@ -154,19 +155,19 @@ def test_a_closed_client_leaves_no_connection_behind(server, database_url, tmp_p
         client.__exit__(None, None, None)
     until(lambda: connections() == baseline)
     gate.write_text("go")
-    final_run = until(lambda: (lambda r: r if r["state"] in FINAL else None)(httpx.get("%s/v1/runs/%s" % (server, run["id"])).json()))
+    final_run = until(lambda: (lambda r: r if r["state"] in FINAL else None)(httpx.get("%s/v1/runs/%s" % (server, run["id"]), headers=AUTH).json()))
     assert final_run["state"] == "completed"
     until(lambda: connections() == baseline)
 
 
 def test_an_unknown_or_foreign_run_is_not_found_as_problem_json(server, repo):
     mine = post(server, "hello")
-    until(lambda: httpx.get("%s/v1/runs/%s" % (server, mine["id"])).json()["state"] in FINAL)
-    assert httpx.get("%s/v1/runs/%s/events" % (server, mine["id"])).status_code == 200
+    until(lambda: httpx.get("%s/v1/runs/%s" % (server, mine["id"]), headers=AUTH).json()["state"] in FINAL)
+    assert httpx.get("%s/v1/runs/%s/events" % (server, mine["id"]), headers=AUTH).status_code == 200
     app.dependency_overrides[current_owner] = lambda: repo.create_user()
     try:
         for run_id in ("run_missing", mine["id"]):
-            refused = httpx.get("%s/v1/runs/%s/events" % (server, run_id))
+            refused = httpx.get("%s/v1/runs/%s/events" % (server, run_id), headers=AUTH)
             assert refused.status_code == 404 and refused.headers["content-type"] == "application/problem+json"
     finally:
         app.dependency_overrides.clear()
@@ -174,5 +175,5 @@ def test_an_unknown_or_foreign_run_is_not_found_as_problem_json(server, repo):
 
 def test_a_last_event_id_that_is_not_a_number_is_a_problem_json(server):
     run = post(server, "hello")
-    refused = httpx.get("%s/v1/runs/%s/events" % (server, run["id"]), headers={"Last-Event-ID": "abc"})
+    refused = httpx.get("%s/v1/runs/%s/events" % (server, run["id"]), headers={**AUTH, "Last-Event-ID": "abc"})
     assert refused.status_code == 400 and refused.headers["content-type"] == "application/problem+json"

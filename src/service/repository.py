@@ -42,6 +42,9 @@ class Repository:
             "ON CONFLICT (owner_id, key) DO UPDATE SET value = EXCLUDED.value",
             (owner_id, key, Jsonb(value)))
 
+    def delete_preference(self, owner_id, key):
+        self._conn.execute("DELETE FROM preferences WHERE owner_id = %s AND key = %s", (owner_id, key))
+
     def list_preferences(self, owner_id):
         rows = self._all("SELECT key, value FROM preferences WHERE owner_id = %s", (owner_id,))
         return {row["key"]: row["value"] for row in rows}

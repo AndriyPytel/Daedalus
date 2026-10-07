@@ -15,6 +15,7 @@ from service.api import router
 from service.blobs_api import ROOT_VARIABLE, router as blobs_router
 from service.blobstore import LocalBlobStore
 from service.pool import WorkerPool
+from service.preferences_api import router as preferences_router
 
 WORKER_ARGV = "DAEDALUS_WORKER_ARGV"
 
@@ -40,3 +41,4 @@ app = FastAPI(title="Daedalus", version="1", lifespan=lifespan)
 problem.install(app)
 app.include_router(router, prefix="/v1")
 app.include_router(blobs_router, prefix="/v1")
+app.include_router(preferences_router, prefix="/v1")

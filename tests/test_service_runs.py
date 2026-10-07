@@ -21,6 +21,8 @@ from test_service_worker_channel import FAKE, HOST, ROOT, _ssh, until
 
 IMAGE = "dae-499-worker"
 REMOTE = "dae-499-build"
+TOKEN = "t" * 40
+AUTH = {"Authorization": "Bearer " + TOKEN}
 FINAL = ("completed", "blocked", "budget_exhausted", "stopped", "aborted", "failed")
 
 
@@ -28,7 +30,8 @@ FINAL = ("completed", "blocked", "budget_exhausted", "stopped", "aborted", "fail
 def api(database_url, monkeypatch):
     monkeypatch.setenv(db.URL_VARIABLE, database_url)
     monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(FAKE))
-    with TestClient(app) as client:
+    monkeypatch.setenv("DAEDALUS_TOKEN", TOKEN)
+    with TestClient(app, headers=AUTH) as client:
         yield client
 
 
@@ -149,7 +152,8 @@ def test_deleting_a_session_closes_it_stops_its_worker_and_refuses_new_runs(api)
 def test_a_run_whose_worker_cannot_start_is_failed_not_left_queued(database_url, monkeypatch):
     monkeypatch.setenv(db.URL_VARIABLE, database_url)
     monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps([sys.executable, "-c", "import sys; sys.exit(7)"]))
-    with TestClient(app) as api:
+    monkeypatch.setenv("DAEDALUS_TOKEN", TOKEN)
+    with TestClient(app, headers=AUTH) as api:
         run = start(api, "hello").json()
         assert final(api, run["id"])["state"] == "failed"
 
@@ -191,8 +195,9 @@ def test_a_first_build_runs_end_to_end_through_the_worker_in_the_image(worker_im
             "podman run -i --rm --name %s %s python deploy/worker/scripted_worker.py" % (name, worker_image)]
     monkeypatch.setenv(db.URL_VARIABLE, database_url)
     monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(argv))
+    monkeypatch.setenv("DAEDALUS_TOKEN", TOKEN)
     try:
-        with TestClient(app) as api:
+        with TestClient(app, headers=AUTH) as api:
             run = start(api, "Add a 10mm cube").json()
             done = until(lambda: (lambda r: r if r["state"] in FINAL else None)(api.get("/v1/runs/%s" % run["id"]).json()),
                          seconds=420)

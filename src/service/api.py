@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from service import db, events
 from service.owner import current_owner
+from service.preferences import Preferences, given, resolve
 from service.problem import Problem
 from service.repository import Repository, RunActive, SessionClosed
 
@@ -28,6 +29,7 @@ class NewRun(BaseModel):
     prompt: str = Field(min_length=1)
     attachments: List[str] = []
     session_id: Optional[str] = None
+    overrides: Optional[Preferences] = None
 
 
 class Run(BaseModel):
@@ -110,7 +112,8 @@ def start_run(request: Request, body: NewRun, owner: str = Depends(current_owner
         if run["prompt"] != body.prompt or body.session_id not in (None, run["session_id"]):
             raise Problem(409, "the Idempotency-Key %s was used for a different request" % key)
         return run
-    request.app.state.pool.submit(owner, run["session_id"], run["id"], run["prompt"], run["attachments"])
+    settings = resolve(repo.list_preferences(owner), given(body.overrides) if body.overrides else None)
+    request.app.state.pool.submit(owner, run["session_id"], run["id"], run["prompt"], run["attachments"], settings)
     return run
 
 

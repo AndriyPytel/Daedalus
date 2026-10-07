@@ -13,19 +13,19 @@ MEDIA_TYPE = "application/problem+json"
 
 
 class Problem(Exception):
-    def __init__(self, status, detail, **extra):
-        self.status, self.detail, self.extra = status, detail, extra
+    def __init__(self, status, detail, headers=None, **extra):
+        self.status, self.detail, self.headers, self.extra = status, detail, headers, extra
 
 
-def _response(status, detail, **extra):
+def _response(status, detail, headers=None, **extra):
     body = {"type": "about:blank", "title": http.HTTPStatus(status).phrase, "status": status, "detail": detail, **extra}
-    return JSONResponse(body, status_code=status, media_type=MEDIA_TYPE)
+    return JSONResponse(body, status_code=status, media_type=MEDIA_TYPE, headers=headers)
 
 
 def install(app):
     @app.exception_handler(Problem)
     async def problem(request: Request, error: Problem):
-        return _response(error.status, error.detail, **error.extra)
+        return _response(error.status, error.detail, error.headers, **error.extra)
 
     @app.exception_handler(HTTPException)
     async def http_error(request: Request, error: HTTPException):

@@ -6,7 +6,6 @@ The route list is read from the app, so a route added later is covered without e
 import re
 
 import pytest
-from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 
 from service import owner as owner_module
@@ -24,9 +23,8 @@ def client(monkeypatch):
 
 
 def routes():
-    return [(method, re.sub(r"\{[^}]+\}", "x", route.path))
-            for route in app.routes if isinstance(route, APIRoute) and route.path.startswith("/v1")
-            for method in sorted(route.methods)]
+    return [(method.upper(), re.sub(r"\{[^}]+\}", "x", path))
+            for path, item in app.openapi()["paths"].items() if path.startswith("/v1") for method in sorted(item)]
 
 
 def refused(response):
@@ -102,7 +100,7 @@ def test_tokens_are_compared_in_constant_time(monkeypatch):
 
 
 def test_a_token_with_non_ascii_text_is_refused_not_a_server_error(client):
-    refused(client.get("/v1/runs", headers={"Authorization": "Bearer t\u00e9"}))
+    refused(client.get("/v1/runs", headers={"Authorization": "Bearer t\u00e9".encode("latin-1")}))
 
 
 def test_a_gateway_with_no_token_configured_answers_503_problem_json_and_never_lets_a_request_in(monkeypatch):

@@ -111,7 +111,7 @@ def test_a_provider_key_or_base_url_in_a_per_run_override_is_422_and_starts_no_r
 
 
 def test_a_malformed_preference_is_422(api):
-    for body in ({"budget_usd": -1}, {"budget_usd": "lots"}, {"interactive": "yes"}, {"effort": 3}, {"default_model": "m"}):
+    for body in ({"budget_usd": -1}, {"budget_usd": "lots"}, {"interactive": "maybe"}, {"effort": 3}, {"default_model": "m"}):
         assert api.patch("/v1/users/usr_alice/preferences", json=body).status_code == 422, body
 
 

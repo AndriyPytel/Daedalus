@@ -20,8 +20,9 @@ class WorkerPool:
         self._closed = set()
         self._locks = defaultdict(threading.Lock)
 
-    def submit(self, owner_id, session_id, run_id, prompt, attachments=()):
-        threading.Thread(target=self._launch, args=(owner_id, session_id, run_id, prompt, attachments), daemon=True).start()
+    def submit(self, owner_id, session_id, run_id, prompt, attachments=(), settings=None):
+        threading.Thread(target=self._launch, args=(owner_id, session_id, run_id, prompt, attachments, settings),
+                         daemon=True).start()
 
     def close(self, session_id):
         self._closed.add(session_id)
@@ -34,7 +35,7 @@ class WorkerPool:
         for session_id in list(self._workers):
             self.close(session_id)
 
-    def _launch(self, owner_id, session_id, run_id, prompt, attachments):
+    def _launch(self, owner_id, session_id, run_id, prompt, attachments, settings):
         try:
             with self._locks[session_id]:
                 if session_id in self._closed:
@@ -44,7 +45,7 @@ class WorkerPool:
                     worker = Worker(self._argv, self._url, owner_id, session_id, blob_store=self._store)
                     worker.start()
                     self._workers[session_id] = worker
-                worker.send(prompt, run_id, attachments)
+                worker.send(prompt, run_id, attachments, settings)
         except Exception as error:
             with db.connect(self._url) as conn:
                 Repository(conn).fail_run(owner_id, run_id, "%s: %s" % (type(error).__name__, error))
