@@ -1,7 +1,7 @@
 """
 Builds one 10 mm cube through `sdk.Client` on the real headless kernel, exports it as STEP, and prints one JSON line.
 
-The line also records what every `FreeCADGui` reader in `core.freecad_apply` answers with no display.
+Run as `python deploy/worker/smoke.py /tmp/smoke.step`; the line also records what every `FreeCADGui` reader in `core.freecad_apply` answers with no display.
 """
 import json
 import sys
