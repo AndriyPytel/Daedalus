@@ -50,10 +50,18 @@ def test_assertion_with_a_base_runs_the_collateral_check_and_shows_the_base(monk
     assert BASE in json.loads(seen["task"][0])["the_base_part"]
 
 
+def test_assertion_with_a_base_does_not_check_self_intersection(monkeypatch):
+    """The base carries its own self-intersections into every edit, and the check alone outlasts the kernel's 30 s on a 2000-face part."""
+    seen = _assert_with(monkeypatch, BASE)
+
+    assert not any("BOPAlgo_ArgumentAnalyzer" in code for code in seen["checks"])
+
+
 def test_assertion_without_a_base_is_as_it_was(monkeypatch):
     seen = _assert_with(monkeypatch, None)
 
     assert not any("no_collateral" in code for code in seen["checks"])
+    assert any("BOPAlgo_ArgumentAnalyzer" in code for code in seen["checks"])
     assert "the_base_part" not in json.loads(seen["task"][0])
 
 
