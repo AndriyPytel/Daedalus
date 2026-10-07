@@ -4,13 +4,20 @@ The gateway's Postgres access: a direct connection and the numbered `.sql` migra
 `migrate` applies each file not yet recorded in `schema_migrations`, in name order, under an advisory lock so two
 gateways starting together apply it once. Connections are direct, never pooled, because `LISTEN/NOTIFY` needs one.
 """
+import hashlib
 import os
 
 import psycopg
 
 URL_VARIABLE = "DAEDALUS_DATABASE_URL"
 MIGRATIONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "migrations")
-LOCK = 497
+
+
+def lock_key(name):
+    return int.from_bytes(hashlib.sha256(name.encode()).digest()[:8], "big", signed=True)
+
+
+LOCK = lock_key("daedalus.schema_migrations")
 
 
 def connect(url):
