@@ -87,3 +87,48 @@ def test_an_invalid_base_is_repaired_before_it_becomes_the_base_feature(tmp_path
     finally:
         FreeCAD.closeDocument(doc.Name)
     assert "base repair" in capsys.readouterr().out
+
+
+def _edit_client_with_a_helper_solid(step):
+    import FreeCAD
+    import Part
+
+    from sdk import NO_KERNEL, Client
+
+    client = Client(document=run.base_document(step), kernel=NO_KERNEL)
+    helper = client.document.addObject("Part::Feature", "LiftZoneClear")
+    helper.Shape = Part.makeBox(5, 5, 5, FreeCAD.Vector(100, 0, 0))
+    client.document.recompute()
+    return client
+
+
+def test_an_edit_run_exports_the_body_alone_not_the_helper_solid_beside_it(tmp_path):
+    import Part
+
+    step = str(tmp_path / "input.step")
+    volume = _plate_with_a_hole(step)
+    client = _edit_client_with_a_helper_solid(step)
+    out = str(tmp_path / "out.step")
+    try:
+        assert run.finish(client, type("R", (), {"ok": True})(), out, only="Body") == 0
+    finally:
+        client.close()
+
+    exported = Part.read(out)
+    assert len(exported.Solids) == 1
+    assert abs(exported.Volume - volume) < 1e-3
+
+
+def test_a_run_without_a_base_step_still_exports_every_top_level_object(tmp_path):
+    import Part
+
+    step = str(tmp_path / "input.step")
+    volume = _plate_with_a_hole(step)
+    client = _edit_client_with_a_helper_solid(step)
+    out = str(tmp_path / "out.step")
+    try:
+        assert run.finish(client, type("R", (), {"ok": True})(), out) == 0
+    finally:
+        client.close()
+
+    assert len(Part.read(out).Solids) == 2

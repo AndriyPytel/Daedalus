@@ -294,15 +294,15 @@ class Client:
         self.document.saveAs(path)
         return path
 
-    def export_step(self, path):
+    def export_step(self, path, only=None):
         """
         Write this Client's modelled geometry to *path* as STEP, and hand
         the path back -- `save` writes a Document; `saveAs` would otherwise
-        append `.FCStd` to a STEP-shaped name and leave no STEP behind.
+        append `.FCStd` to a STEP-shaped name and leave no STEP behind. *only* names the one object written.
         """
         from core.freecad_apply import export_step
 
-        return export_step(self.document, path)
+        return export_step(self.document, path, only)
 
     def has_solid(self):
         """Whether this Client's Document holds a solid; a document without one has no STEP to write."""
