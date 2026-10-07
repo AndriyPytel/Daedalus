@@ -1,7 +1,7 @@
 """
-The gateway side of the worker channel: a `Worker` spawns one configured argv per Session and stores its events through `Repository`, so each notifies.
+The gateway side of the worker channel: a `Worker` spawns one configured argv per Session and stores its events through `Repository`, so each notifies, and a `cost` event adds its `usd` to the Run.
 A `blob` line is written through the `BlobStore` against the active Run, a line cut short or not JSON is dropped, and a worker that exits with a Run active fails that Run only.
-`send` hands the worker the bytes of the attachments it names, and when the worker ends its process group is killed.
+`send` runs the Run the API made or makes one and hands the worker the bytes of the attachments it names; when the worker ends its process group is killed.
 """
 import base64
 import json
@@ -57,14 +57,15 @@ class Worker:
             self.stop(timeout=0)
             raise RuntimeError("the worker %r did not become ready" % self._argv)
 
-    def send(self, prompt, attachments=()):
+    def send(self, prompt, run_id=None, attachments=()):
         files = [self._attachment(blob_id) for blob_id in attachments]
         with self._lock:
             if not self.alive:
                 raise RuntimeError("the worker has exited")
             if self._run_id is not None:
                 raise RuntimeError("a Run is already active in this Session")
-            run_id = self._repo.create_run(self.owner_id, self.session_id)["id"]
+            if run_id is None:
+                run_id = self._repo.create_run(self.owner_id, self.session_id, prompt)["id"]
             self._repo.update_run(self.owner_id, run_id, state="running")
             self._run_id, self._last_kind = run_id, None
         try:
@@ -130,6 +131,9 @@ class Worker:
             elif op == "event" and self._run_id is not None and isinstance(message.get("kind"), str):
                 self._repo.append_event(self.owner_id, self._run_id, message["kind"], message.get("data") or {})
                 self._last_kind = message["kind"]
+                usd = (message.get("data") or {}).get("usd")
+                if message["kind"] == "cost" and isinstance(usd, (int, float)) and not isinstance(usd, bool):
+                    self._repo.add_run_cost(self.owner_id, self._run_id, usd)
             elif op == "blob" and self._run_id is not None and self._store is not None:
                 try:
                     data = base64.b64decode(message["content"], validate=True)

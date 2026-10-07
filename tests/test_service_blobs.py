@@ -38,6 +38,7 @@ def owners(repo):
 def api(database_url, tmp_path, monkeypatch, owners):
     monkeypatch.setenv(db.URL_VARIABLE, database_url)
     monkeypatch.setenv("DAEDALUS_BLOB_ROOT", str(tmp_path / "blobs"))
+    monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(FAKE))
     app.dependency_overrides[current_owner] = lambda: owners[0]
     with TestClient(app) as client:
         yield client
@@ -51,7 +52,7 @@ def run(database_url, repo, owners, tmp_path):
     worker.start()
 
     def send(prompt, attachments=()):
-        run_id = worker.send(prompt, attachments)
+        run_id = worker.send(prompt, attachments=attachments)
         until(lambda: repo.get_run(owners[0], run_id)["state"] in ("completed", "failed"))
         return run_id
 
@@ -102,7 +103,7 @@ def test_an_uploaded_attachment_reads_back_and_a_later_run_receives_it(api, run,
     assert api.get("/v1/blobs/%s" % blob["id"]).content == b"\x89PNG-bytes"
     run_id = run("attachments", [blob["id"]])
     received = conn.execute("SELECT payload FROM events WHERE run_id = %s AND type = 'received'", (run_id,)).fetchone()[0]
-    assert received == [{"name": "drawing.png", "sha256": blob["sha256"]}]
+    assert received == {"files": [{"name": "drawing.png", "sha256": blob["sha256"]}]}
 
 
 def test_another_owners_blob_returns_404_on_every_route(api, run, repo, owners, store):
@@ -122,9 +123,42 @@ def test_a_run_cannot_receive_another_owners_attachment(database_url, repo, owne
     worker.start()
     try:
         with pytest.raises(LookupError):
-            worker.send("attachments", [foreign["id"]])
+            worker.send("attachments", attachments=[foreign["id"]])
     finally:
         worker.stop(timeout=3)
+
+
+def test_an_uploaded_attachment_reaches_a_run_started_through_post_runs(api, conn):
+    blob = api.post("/v1/blobs", params={"name": "drawing.png"}, content=b"\x89PNG-bytes").json()
+    posted = api.post("/v1/runs", json={"prompt": "attachments", "attachments": [blob["id"]]})
+    assert posted.status_code == 202 and posted.json()["attachments"] == [blob["id"]]
+    until(lambda: api.get("/v1/runs/%s" % posted.json()["id"]).json()["state"] == "completed")
+    received = conn.execute("SELECT payload FROM events WHERE run_id = %s AND type = 'received'", (posted.json()["id"],)).fetchone()[0]
+    assert received == {"files": [{"name": "drawing.png", "sha256": blob["sha256"]}]}
+
+
+def test_a_run_naming_an_unknown_or_another_owners_blob_is_404_problem_json_at_post_time(api, owners, conn):
+    mine = api.post("/v1/blobs", params={"name": "a.png"}, content=b"x").json()
+    unknown = api.post("/v1/runs", json={"prompt": "hello", "attachments": ["blob_missing"]})
+    assert unknown.status_code == 404 and unknown.headers["content-type"].startswith("application/problem+json")
+    app.dependency_overrides[current_owner] = lambda: owners[1]
+    foreign = api.post("/v1/runs", json={"prompt": "hello", "attachments": [mine["id"]]})
+    assert foreign.status_code == 404
+    assert conn.execute("SELECT count(*) FROM runs").fetchone()[0] == 0
+
+
+def test_a_missing_blob_for_another_owner_is_problem_json(api, owners):
+    blob = api.post("/v1/blobs", params={"name": "a.png"}, content=b"x").json()
+    app.dependency_overrides[current_owner] = lambda: owners[1]
+    answer = api.get("/v1/blobs/%s" % blob["id"])
+    assert answer.status_code == 404
+    assert answer.headers["content-type"].startswith("application/problem+json") and answer.json()["status"] == 404
+
+
+def test_with_no_blob_root_configured_a_blob_route_answers_503_problem_json(api, monkeypatch):
+    monkeypatch.delenv("DAEDALUS_BLOB_ROOT")
+    answer = api.post("/v1/blobs", params={"name": "a.png"}, content=b"x")
+    assert answer.status_code == 503 and answer.headers["content-type"].startswith("application/problem+json")
 
 
 def test_the_openapi_document_lists_the_blob_routes(api):

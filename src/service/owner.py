@@ -1,12 +1,8 @@
 """
-The owner every request acts for: `current_owner` is the one FastAPI dependency routes take.
-
-It returns the single owner named by `DAEDALUS_OWNER_ID` until authentication replaces it.
+The one place the request's owner is decided: a single configured owner until the bearer token decides it.
 """
 import os
 
-OWNER_VARIABLE = "DAEDALUS_OWNER_ID"
-
 
 def current_owner():
-    return os.environ[OWNER_VARIABLE]
+    return os.environ.get("DAEDALUS_OWNER_ID", "usr_owner")

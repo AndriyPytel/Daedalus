@@ -5,14 +5,14 @@ The STEP and checkpoint of a Run are fetched by Run id.
 """
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 
-from service import db
 from service.blobs import store_upload
 from service.blobstore import LocalBlobStore
+from service.api import repository
 from service.owner import current_owner
-from service.repository import Repository
+from service.problem import Problem
 
 router = APIRouter()
 ROOT_VARIABLE = "DAEDALUS_BLOB_ROOT"
@@ -27,21 +27,19 @@ class Blob(BaseModel):
 
 
 def blob_store():
-    return LocalBlobStore(os.environ[ROOT_VARIABLE])
-
-
-def repository():
-    with db.connect(os.environ[db.URL_VARIABLE]) as conn:
-        yield Repository(conn)
+    root = os.environ.get(ROOT_VARIABLE)
+    if root is None:
+        raise Problem(503, "the gateway has no blob store configured")
+    return LocalBlobStore(root)
 
 
 def _content(row, store):
     if row is None:
-        raise HTTPException(404, "no such blob")
+        raise Problem(404, "no such blob")
     try:
         data = store.get(row["key"])
     except KeyError:
-        raise HTTPException(404, "no such blob") from None
+        raise Problem(404, "no such blob") from None
     return Response(data, media_type="application/octet-stream",
                     headers={"Content-Disposition": 'attachment; filename="%s"' % row["name"]})
 
