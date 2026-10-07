@@ -395,24 +395,27 @@ def _allocated_name_lookup(node: ast.Call, allocated: set):
     return None
 
 
+_BOOLEAN_OPS = {"Fuse": "fuse", "Cut": "cut", "Common": "common"}
+
+
 def op_typeid_mismatch(op, created, objects):
     """
-    Whether a Step's declared `op` does not match what it built, read off
-    the kernel's own report of its checkpoint's objects rather than parsed
-    out of the code, since the code already ran and what it built is a fact
-    to look up, not a guess. `objects` is the kernel's
-    `[{"name", "label", "type"}, ...]`; `created` is the names among them
-    this Step made. Only `PartDesign::`/`Part::` types are checked, `App::`
-    is out of scope, and `None` comes back where `op` is off the closed
-    36-verb list.
+    Whether a Step's declared `op` does not match what it built, read off the
+    kernel's report of its checkpoint's objects (`created` names the ones this
+    Step made) rather than parsed out of the code. Only `PartDesign::`/`Part::`
+    types are checked, and `None` comes back where `op` is off the closed verb
+    list. A PartDesign::Boolean matches only the op its `boolean_type` names.
     """
     if op not in OP_TYPEIDS:
         return None
     allowed = set(OP_TYPEIDS[op]) | _SCAFFOLD_TYPEIDS
     built = {entry.get("name"): entry.get("type") for entry in objects or ()}
+    booleans = {entry.get("name"): entry.get("boolean_type") for entry in objects or ()}
     for name in created or ():
         type_id = built.get(name)
         if not type_id or not type_id.startswith(("PartDesign::", "Part::")):
+            continue
+        if type_id == "PartDesign::Boolean" and _BOOLEAN_OPS.get(booleans.get(name)) == op:
             continue
         if type_id not in allowed:
             return type_id

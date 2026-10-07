@@ -191,15 +191,8 @@ R_SKETCH_INTERNAL = (
     "neither is a Tool a Step could be told to use"
 )
 
-R_BOOLEAN_AMBIGUOUS = (
-    "its geometric operation — Union, Cut or Intersection — is picked by a "
-    "`Type` property value, not by the TypeId, so no single-entry TypeId-keyed "
-    "table can place it under exactly one op without a lint check keyed off that "
-    "property; a Step wanting a body-level boolean already has fuse/cut/common "
-    "via Part::MultiFuse/Fuse/Cut/Common/MultiCommon outside the Body "
-    "(execute.md's documented Part::Feature carve-out), which has no such "
-    "ambiguity"
-)
+
+BOOLEAN_TYPEID = 'PartDesign::Boolean'
 
 
 EXCLUDED_TYPEIDS = {
@@ -256,7 +249,6 @@ EXCLUDED_TYPEIDS = {
     'Part::Torus': R_OUTSIDE_BODY_DUP,
     'Part::Vertex': R_NON_SOLID,
     'Part::Wedge': R_OUTSIDE_BODY_DUP,
-    'PartDesign::Boolean': R_BOOLEAN_AMBIGUOUS,
     'PartDesign::Box': R_LEGACY_PRIMITIVE,
     'PartDesign::Cone': R_LEGACY_PRIMITIVE,
     'PartDesign::Cylinder': R_LEGACY_PRIMITIVE,
@@ -289,7 +281,7 @@ EXCLUDED_TYPEIDS = {
 }
 
 def test_survey_owned_and_excluded_partition_the_134_surveyed_typeids_with_no_overlap():
-    owned = set(SURVEYED_TYPEID_TO_OP)
+    owned = set(SURVEYED_TYPEID_TO_OP) | {BOOLEAN_TYPEID}
     excluded = set(EXCLUDED_TYPEIDS)
 
     assert not (owned & excluded)
@@ -307,6 +299,7 @@ def test_every_op_the_survey_uses_is_one_of_the_36_read_from_language_md():
 def test_every_surveyed_owned_typeid_is_accepted_under_its_op_in_op_typeids():
     missing = [(typeid, op) for typeid, op in SURVEYED_TYPEID_TO_OP.items()
                if typeid not in OP_TYPEIDS.get(op, ())]
+
 
     assert not missing, missing
 
@@ -361,3 +354,40 @@ def test_pocket_op_still_refuses_a_typeid_neither_pocket_nor_hole_performs():
     created, objects = ["Pad001"], [{"name": "Pad001", "type": "Part::Extrusion"}]
 
     assert op_typeid_mismatch("hole", created, objects) == "Part::Extrusion"
+
+
+def _boolean(boolean_type):
+    return [{"name": "Boolean", "type": BOOLEAN_TYPEID, "boolean_type": boolean_type}]
+
+
+def test_partdesign_boolean_is_accepted_only_under_the_op_its_type_names():
+    from core.lint import op_typeid_mismatch
+
+    for boolean_type, op in (("Fuse", "fuse"), ("Cut", "cut"), ("Common", "common")):
+        assert op_typeid_mismatch(op, ["Boolean"], _boolean(boolean_type)) is None
+
+
+def test_partdesign_boolean_under_a_wrong_op_or_type_is_a_mismatch():
+    from core.lint import op_typeid_mismatch
+
+    assert op_typeid_mismatch("fuse", ["Boolean"], _boolean("Cut")) == BOOLEAN_TYPEID
+    assert op_typeid_mismatch("cut", ["Boolean"], _boolean("Fuse")) == BOOLEAN_TYPEID
+    assert op_typeid_mismatch("pad", ["Boolean"], _boolean("Fuse")) == BOOLEAN_TYPEID
+    assert op_typeid_mismatch("fuse", ["Boolean"], [{"name": "Boolean", "type": BOOLEAN_TYPEID}]) == BOOLEAN_TYPEID
+
+
+def test_kernel_summary_carries_the_type_of_a_partdesign_boolean():
+    from core.kernel.kernel_worker import summarise
+
+    class Obj:
+        def __init__(self, type_id, **props):
+            self.Name = self.Label = "o"
+            self.TypeId = type_id
+            self.__dict__.update(props)
+
+    class Doc:
+        Objects = [Obj(BOOLEAN_TYPEID, Type="Cut"), Obj("Part::Cut")]
+
+    first, second = summarise(Doc)
+    assert first["boolean_type"] == "Cut"
+    assert "boolean_type" not in second
