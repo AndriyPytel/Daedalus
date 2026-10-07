@@ -95,6 +95,9 @@ def health():
 @router.post("/runs", response_model=Run, status_code=202)
 def start_run(request: Request, body: NewRun, owner: str = Depends(current_owner), repo: Repository = Depends(repository),
               key: Optional[str] = Header(None, alias="Idempotency-Key")):
+    for blob_id in body.attachments:
+        if repo.get_blob(owner, blob_id) is None:
+            raise Problem(404, "no such blob: %s" % blob_id)
     try:
         run, created = repo.start_run(owner, body.prompt, body.attachments, body.session_id, key)
     except LookupError:
@@ -107,7 +110,7 @@ def start_run(request: Request, body: NewRun, owner: str = Depends(current_owner
         if run["prompt"] != body.prompt or body.session_id not in (None, run["session_id"]):
             raise Problem(409, "the Idempotency-Key %s was used for a different request" % key)
         return run
-    request.app.state.pool.submit(owner, run["session_id"], run["id"], run["prompt"])
+    request.app.state.pool.submit(owner, run["session_id"], run["id"], run["prompt"], run["attachments"])
     return run
 
 

@@ -1,15 +1,19 @@
 """
 The gateway side of the worker channel: a `Worker` spawns one configured argv per Session and stores its events through `Repository`, so each notifies, and a `cost` event adds its `usd` to the Run.
-A line without its newline or that is not JSON is dropped, a worker that exits with a Run active fails that Run only, and `send` runs the Run the API made or makes one.
-When the worker ends, by itself or by `stop`, its process group is killed.
+A `blob` line is written through the `BlobStore` against the active Run, a line cut short or not JSON is dropped, and a worker that exits with a Run active fails that Run only.
+`send` runs the Run the API made or makes one and hands the worker the bytes of the attachments it names; when the worker ends its process group is killed.
 """
+import base64
 import json
 import os
 import signal
 import subprocess
 import threading
 
+import psycopg.errors
+
 from service import db
+from service.blobs import store_result
 from service.repository import Repository
 
 TERMINAL = ("completed", "blocked", "budget_exhausted", "stopped", "aborted", "failed")
@@ -17,7 +21,8 @@ READY_TIMEOUT = 60.0
 
 
 class Worker:
-    def __init__(self, argv, database_url, owner_id, session_id, ready_timeout=READY_TIMEOUT):
+    def __init__(self, argv, database_url, owner_id, session_id, ready_timeout=READY_TIMEOUT, blob_store=None):
+        self._store = blob_store
         self._argv = list(argv)
         self._url = database_url
         self.owner_id = owner_id
@@ -52,7 +57,8 @@ class Worker:
             self.stop(timeout=0)
             raise RuntimeError("the worker %r did not become ready" % self._argv)
 
-    def send(self, prompt, run_id=None):
+    def send(self, prompt, run_id=None, attachments=()):
+        files = [self._attachment(blob_id) for blob_id in attachments]
         with self._lock:
             if not self.alive:
                 raise RuntimeError("the worker has exited")
@@ -63,11 +69,17 @@ class Worker:
             self._repo.update_run(self.owner_id, run_id, state="running")
             self._run_id, self._last_kind = run_id, None
         try:
-            self._process.stdin.write((json.dumps({"op": "send", "prompt": prompt}) + "\n").encode())
+            self._process.stdin.write((json.dumps({"op": "send", "prompt": prompt, "attachments": files}) + "\n").encode())
             self._process.stdin.flush()
         except OSError:
             pass  # except-pass-allowed: the reader sees the worker's end and fails the Run
         return run_id
+
+    def _attachment(self, blob_id):
+        row = self._repo.get_blob(self.owner_id, blob_id)
+        if row is None:
+            raise LookupError(blob_id)
+        return {"name": row["name"], "content": base64.b64encode(self._store.get(row["key"])).decode()}
 
     def stop(self, timeout=5.0):
         if self._process is None:
@@ -122,6 +134,12 @@ class Worker:
                 usd = (message.get("data") or {}).get("usd")
                 if message["kind"] == "cost" and isinstance(usd, (int, float)) and not isinstance(usd, bool):
                     self._repo.add_run_cost(self.owner_id, self._run_id, usd)
+            elif op == "blob" and self._run_id is not None and self._store is not None:
+                try:
+                    data = base64.b64decode(message["content"], validate=True)
+                    store_result(self._repo, self._store, self.owner_id, self.session_id, self._run_id, message["kind"], data)
+                except (KeyError, TypeError, ValueError, OSError, psycopg.errors.UniqueViolation):
+                    pass  # except-pass-allowed: a bad or repeated blob line is dropped like a malformed event line
             elif op == "done" and self._run_id is not None:
                 self._repo.update_run(self.owner_id, self._run_id,
                                       state=self._last_kind if self._last_kind in TERMINAL else "completed")
