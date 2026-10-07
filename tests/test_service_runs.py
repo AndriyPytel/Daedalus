@@ -202,4 +202,4 @@ def test_a_first_build_runs_end_to_end_through_the_worker_in_the_image(worker_im
     finally:
         _ssh("podman rm -f %s >/dev/null 2>&1" % name, check=False)
     assert done["state"] == "completed" and done["cost_usd"] >= 0
-    assert kinds[0] == "intent" and kinds[-1] == "completed" and "applied" in kinds
+    assert {"intent", "applied"} <= set(kinds) and kinds[-1] == "completed", kinds

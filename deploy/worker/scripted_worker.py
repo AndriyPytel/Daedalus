@@ -1,5 +1,5 @@
 """
-The worker entry for the end-to-end test: `service.worker` over a `ScriptedLLMClient` that builds one 10 mm cube, because the image holds no provider credentials.
+The worker entry for the end-to-end test, run as `python deploy/worker/scripted_worker.py`: `service.worker` over a `ScriptedLLMClient` that builds one 10 mm cube, because the image holds no provider credentials.
 """
 import functools
 import json
