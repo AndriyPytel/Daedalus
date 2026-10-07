@@ -1,7 +1,7 @@
 """
 Every read and write of users, preferences, Sessions, Runs, events and blob rows, each scoped by `owner_id`.
 
-A row of another owner is as absent as a missing one: reads return nothing and writes raise `LookupError`, events have no update or delete, and an append notifies channel `events` with the row id only.
+A row of another owner is as absent as a missing one: reads return nothing and writes raise `LookupError`, events have no update or delete, and an append notifies channel `events` with the row id only and a Run's state change notifies channel `runs` with its id.
 `start_run` makes the Session and the Run in one transaction and returns the Run an `Idempotency-Key` already made; lists page by id, which is creation order.
 """
 import psycopg.errors
@@ -103,6 +103,7 @@ class Repository:
         self.append_event(owner_id, run_id, "error", {"message": message})
         self._conn.execute("UPDATE runs SET state = 'failed' WHERE owner_id = %s AND id = %s "
                            "AND state IN ('queued', 'running')", (owner_id, run_id))
+        self._notify_run(run_id)
 
     def add_run_cost(self, owner_id, run_id, usd):
         self._conn.execute("UPDATE runs SET cost_usd = cost_usd + %s WHERE owner_id = %s AND id = %s",
@@ -121,7 +122,11 @@ class Repository:
             "WHERE owner_id = %s AND id = %s RETURNING *", (state, cost_usd, owner_id, run_id))
         if row is None:
             raise LookupError(run_id)
+        self._notify_run(run_id)
         return row
+
+    def _notify_run(self, run_id):
+        self._conn.execute("SELECT pg_notify('runs', %s)", (run_id,))
 
     def append_event(self, owner_id, run_id, type, payload):
         if self.get_run(owner_id, run_id) is None:

@@ -9,9 +9,10 @@ from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from service import db
+from service import db, events
 from service.owner import current_owner
 from service.problem import Problem
 from service.repository import Repository, RunActive, SessionClosed
@@ -61,11 +62,15 @@ class SessionList(BaseModel):
     has_more: bool
 
 
-def repository():
+def database_url():
     url = os.environ.get(db.URL_VARIABLE)
     if url is None:
         raise Problem(503, "the gateway has no database configured")
-    conn = db.connect(url)
+    return url
+
+
+def repository():
+    conn = db.connect(database_url())
     try:
         yield Repository(conn)
     finally:
@@ -121,6 +126,22 @@ def get_run(run_id: str, owner: str = Depends(current_owner), repo: Repository =
     if run is None:
         raise Problem(404, "no such Run: %s" % run_id)
     return run
+
+
+@router.get("/runs/{run_id}/events")
+def run_events(run_id: str, owner: str = Depends(current_owner), url: str = Depends(database_url),
+               last_event_id: Optional[str] = Header(None)):
+    after = 0
+    if last_event_id:
+        if not last_event_id.isdigit():
+            raise Problem(400, "Last-Event-ID %r is not an event id" % last_event_id)
+        after = int(last_event_id)
+    with db.connect(url) as conn:
+        found = Repository(conn).get_run(owner, run_id)
+    if found is None:
+        raise Problem(404, "no such Run: %s" % run_id)
+    return StreamingResponse(events.stream(url, owner, run_id, after),
+                             media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/sessions", response_model=SessionList)
