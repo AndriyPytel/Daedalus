@@ -1,7 +1,8 @@
 """
 The `/v1` routes, each a thin layer over the gateway.
 
-Resources are flat and named by id; a Run is asynchronous, so `POST /v1/runs` answers 202 with the Run and its state and cost are read with `GET`. Lists answer `{object: "list", data, next_cursor, has_more}` and take `limit` and `cursor`.
+Resources are flat and named by id; a Run is asynchronous, so `POST /v1/runs` answers 202 with the Run and its state and cost are read with `GET`.
+`POST /v1/runs/{id}:cancel` and `:answer` act on a Run, a wrong state being a 409 and another owner's Run a 404; lists answer `{object: "list", data, next_cursor, has_more}` and take `limit` and `cursor`.
 """
 import json
 import os
@@ -17,6 +18,7 @@ from service.owner import current_owner
 from service.preferences import Preferences, given, resolve
 from service.problem import Problem
 from service.repository import Repository, RunActive, SessionClosed
+from service.supervisor import TERMINAL
 
 router = APIRouter()
 
@@ -30,6 +32,12 @@ class NewRun(BaseModel):
     attachments: List[str] = []
     session_id: Optional[str] = None
     overrides: Optional[Preferences] = None
+    interactive: Optional[bool] = None
+    confirm: Optional[bool] = None
+
+
+class Answer(BaseModel):
+    answer: str = Field(min_length=1)
 
 
 class Run(BaseModel):
@@ -37,6 +45,8 @@ class Run(BaseModel):
     id: str
     session_id: str
     state: str
+    interactive: bool
+    confirm: bool
     cost_usd: float
     prompt: str
     attachments: list
@@ -97,11 +107,15 @@ def health():
 @router.post("/runs", response_model=Run, status_code=202)
 def start_run(request: Request, body: NewRun, owner: str = Depends(current_owner), repo: Repository = Depends(repository),
               key: Optional[str] = Header(None, alias="Idempotency-Key")):
+    asked = given(body.overrides) if body.overrides else {}
+    asked.update({name: value for name, value in (("interactive", body.interactive), ("confirm", body.confirm)) if value is not None})
+    settings = resolve(repo.list_preferences(owner), asked)
     for blob_id in body.attachments:
         if repo.get_blob(owner, blob_id) is None:
             raise Problem(404, "no such blob: %s" % blob_id)
     try:
-        run, created = repo.start_run(owner, body.prompt, body.attachments, body.session_id, key)
+        run, created = repo.start_run(owner, body.prompt, body.attachments, body.session_id, key,
+                                      settings["interactive"], settings["confirm"])
     except LookupError:
         raise Problem(404, "no such Session: %s" % body.session_id)
     except SessionClosed:
@@ -112,8 +126,8 @@ def start_run(request: Request, body: NewRun, owner: str = Depends(current_owner
         if run["prompt"] != body.prompt or body.session_id not in (None, run["session_id"]):
             raise Problem(409, "the Idempotency-Key %s was used for a different request" % key)
         return run
-    settings = resolve(repo.list_preferences(owner), given(body.overrides) if body.overrides else None)
-    request.app.state.pool.submit(owner, run["session_id"], run["id"], run["prompt"], run["attachments"], settings)
+    request.app.state.pool.submit(owner, run["session_id"], run["id"], run["prompt"], run["attachments"],
+                                  settings["interactive"], settings["confirm"], settings)
     return run
 
 
@@ -129,6 +143,33 @@ def get_run(run_id: str, owner: str = Depends(current_owner), repo: Repository =
     if run is None:
         raise Problem(404, "no such Run: %s" % run_id)
     return run
+
+
+@router.post("/runs/{run_id}:cancel", response_model=Run, status_code=202)
+def cancel_run(request: Request, run_id: str, owner: str = Depends(current_owner), repo: Repository = Depends(repository)):
+    run = repo.get_run(owner, run_id)
+    if run is None:
+        raise Problem(404, "no such Run: %s" % run_id)
+    if run["state"] in TERMINAL:
+        raise Problem(409, "the Run %s is already %s" % (run_id, run["state"]))
+    request.app.state.pool.cancel(owner, run["session_id"], run_id)
+    return repo.get_run(owner, run_id)
+
+
+@router.post("/runs/{run_id}:answer", response_model=Run, status_code=202)
+def answer_run(request: Request, run_id: str, body: Answer, owner: str = Depends(current_owner),
+               repo: Repository = Depends(repository)):
+    run = repo.get_run(owner, run_id)
+    if run is None:
+        raise Problem(404, "no such Run: %s" % run_id)
+    answered = repo.transition(owner, run_id, "running", "needs-answer")
+    if answered is None:
+        raise Problem(409, "the Run %s is %s, not needs-answer" % (run_id, run["state"]))
+    try:
+        request.app.state.pool.answer(run["session_id"], body.answer)
+    except RuntimeError as error:
+        raise Problem(409, str(error))
+    return answered
 
 
 @router.get("/runs/{run_id}/events")

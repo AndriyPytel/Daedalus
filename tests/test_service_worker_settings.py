@@ -86,3 +86,13 @@ def test_no_budget_is_never_exhausted():
     budget = worker.Budget(None)
     budget.watch(types.SimpleNamespace(kind="cost", data={"usd": 99.0}))
     assert budget.exhausted() is False
+
+
+def test_the_run_stops_when_it_is_cancelled_or_when_its_budget_is_spent():
+    budget = worker.Budget(1.0)
+    cancelled = types.SimpleNamespace(is_set=lambda: False)
+    stop = worker.stop_condition(cancelled, budget)
+    assert stop() is False
+    budget.watch(types.SimpleNamespace(kind="cost", data={"usd": 2.0}))
+    assert stop() is True
+    assert worker.stop_condition(types.SimpleNamespace(is_set=lambda: True), worker.Budget(None))() is True

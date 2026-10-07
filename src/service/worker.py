@@ -1,14 +1,15 @@
 """
-The worker process, launched as `python -m service.worker`: the only service module that reaches the engine, and only through the public names of `sdk`.
-
-It reads `send` lines (a prompt, base64 attachments and the resolved settings) from stdin and writes `ready`, `event`, `blob`, `done` and `error` lines to the real stdout, ending when stdin closes.
-After a send the Run's STEP, when the model has a solid, and its FCStd checkpoint go out as base64 `blob` lines; anything else the engine prints goes to stderr.
+The worker process, launched as `python -m service.worker`: the only service module that reaches the engine, and only through the public names of `sdk`; it reads `send` (a prompt, base64 attachments, `interactive`, `confirm` and the resolved settings), `cancel` and `answer` lines from stdin while a Run is in progress and writes `ready`, `event`, `question`, `blob`, `done` and `error` lines to the real stdout.
+A Run sent `interactive` asks through the channel and waits for its `answer`, any other decides alone, and an Owned Object `confirm` is refused unless the Run was sent `confirm`.
+After a send, cancelled or not, the STEP when the model has a solid and the FCStd checkpoint go out as `blob` lines, and anything else the engine prints goes to stderr.
 """
 import base64
 import json
 import os
+import queue
 import sys
 import tempfile
+import threading
 
 from sdk import (Client, remember_model, set_api_keys, set_auto_approve_plan, set_base_urls, set_default_model, set_effort,
                  set_naming_model, set_role_table)
@@ -42,6 +43,11 @@ class Budget:
         return self.limit is not None and self.spent >= self.limit
 
 
+def stop_condition(cancelled, budget):
+    """The callable that ends a Run: true once the Run is cancelled or its budget is spent."""
+    return lambda: cancelled.is_set() or budget.exhausted()
+
+
 def configure(environ):
     """Put the provider keys and base URLs the server gave this process into `sdk`, the only place the engine reads them."""
     keys = json.loads(environ.get("DAEDALUS_API_KEYS", "{}"))
@@ -67,21 +73,54 @@ def apply_settings(settings):
 
 def main():
     channel, sys.stdout = sys.stdout, sys.stderr
+    write = threading.Lock()
+    jobs, answers, cancelled, current = queue.Queue(), queue.Queue(), threading.Event(), {"confirm": False}
 
     def put(**message):
-        channel.write(json.dumps(message, default=str) + "\n")
-        channel.flush()
+        with write:
+            channel.write(json.dumps(message, default=str) + "\n")
+            channel.flush()
+
+    def ask(question):
+        put(op="question", text=question)
+        while not cancelled.is_set():
+            try:
+                return answers.get(timeout=0.2)
+            except queue.Empty:
+                continue
+        return ""
+
+    def listen():
+        for line in sys.stdin:
+            try:
+                message = json.loads(line)
+                op = message["op"]
+            except (ValueError, KeyError, TypeError):
+                continue
+            if op == "send":
+                jobs.put(message)
+            elif op == "cancel":
+                cancelled.set()
+            elif op == "answer":
+                answers.put(str(message.get("text", "")))
+        cancelled.set()
+        jobs.put(None)
 
     configure(os.environ)
-    client = Client()
+    client = Client(confirm=lambda kinds: current["confirm"])
     budget = Budget()
     client.watch(budget.watch)
     applied = None
     client.watch(lambda event: put(op="event", kind=event.kind, at=event.at, data=event.data))
     put(op="ready")
-    for line in sys.stdin:
-        request = json.loads(line)
-        settings = request.get("settings") or {}
+    threading.Thread(target=listen, daemon=True).start()
+    while True:
+        job = jobs.get()
+        if job is None:
+            break
+        answers.queue.clear()
+        current["confirm"] = job.get("confirm") is True
+        settings = job.get("settings") or {}
         apply_settings(settings)
         if applied is not None and settings != applied:
             client.llm = None
@@ -90,17 +129,20 @@ def main():
         with tempfile.TemporaryDirectory() as directory:
             try:
                 paths = []
-                for item in request.get("attachments", ()):
+                for item in job.get("attachments", ()):
                     paths.append(os.path.join(directory, item["name"]))
                     with open(paths[-1], "wb") as out:
                         out.write(base64.b64decode(item["content"]))
-                client.send(request["prompt"], attachments=paths, cancelled=budget.exhausted)
+                client.send(job["prompt"], attachments=paths,
+                            ask=ask if job.get("interactive") is True else (lambda question: ""),
+                            cancelled=stop_condition(cancelled, budget))
                 for kind, name, data in artifacts(client, directory):
                     put(op="blob", kind=kind, name=name, content=base64.b64encode(data).decode())
             except Exception as error:
                 put(op="error", message="%s: %s" % (type(error).__name__, error))
             else:
                 put(op="done")
+        cancelled.clear()
     client.close()
 
 

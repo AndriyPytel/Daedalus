@@ -136,3 +136,30 @@ def test_a_user_id_other_than_the_callers_is_404_problem_json_for_get_and_patch(
         refused = call()
         assert refused.status_code == 404 and refused.headers["content-type"] == "application/problem+json"
     assert repo.list_preferences(other) == {}
+
+
+def flags_of(api, **body):
+    run = api.post("/v1/runs", json={"prompt": "flags", **body}).json()
+    final(api, run["id"])
+    with db.connect(api.app.state.pool._url) as check:
+        sent = check.execute("SELECT payload FROM events WHERE run_id = %s AND type = 'flags'", (run["id"],)).fetchone()[0]
+    return run, sent
+
+
+def test_interactive_and_confirm_resolve_defaults_then_preferences_then_the_runs_own_field_and_the_worker_is_sent_the_result(api):
+    run, sent = flags_of(api)
+    assert (run["interactive"], run["confirm"]) == (False, False) and sent == {"interactive": False, "confirm": False}
+    api.patch("/v1/users/usr_alice/preferences", json={"interactive": True, "confirm": True})
+    run, sent = flags_of(api)
+    assert (run["interactive"], run["confirm"]) == (True, True) and sent == {"interactive": True, "confirm": True}
+    run, sent = flags_of(api, interactive=False)
+    assert (run["interactive"], run["confirm"]) == (False, True) and sent == {"interactive": False, "confirm": True}
+    run, sent = flags_of(api, overrides={"confirm": False})
+    assert (run["interactive"], run["confirm"]) == (True, False) and sent == {"interactive": True, "confirm": False}
+
+
+def test_the_run_stores_what_it_resolved_so_a_later_preference_change_does_not_rewrite_it(api):
+    api.patch("/v1/users/usr_alice/preferences", json={"interactive": True})
+    run, _ = flags_of(api)
+    api.patch("/v1/users/usr_alice/preferences", json={"interactive": False})
+    assert api.get("/v1/runs/%s" % run["id"]).json()["interactive"] is True
