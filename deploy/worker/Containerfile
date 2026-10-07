@@ -1,0 +1,24 @@
+FROM docker.io/library/debian:trixie-slim AS freecad
+ARG FREECAD_VERSION=1.1.4
+ARG APPIMAGE_SHA256=f6dc6ba676e5ac96a565ebc8d657232f94c6158e85b4352141bd1a46f6b43434
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+RUN curl -fsSL -o FreeCAD.AppImage "https://github.com/FreeCAD/FreeCAD/releases/download/${FREECAD_VERSION}/FreeCAD_${FREECAD_VERSION}-Linux-x86_64-py311.AppImage" \
+ && echo "${APPIMAGE_SHA256}  FreeCAD.AppImage" | sha256sum -c - \
+ && chmod +x FreeCAD.AppImage \
+ && ./FreeCAD.AppImage --appimage-extract >/dev/null \
+ && mv squashfs-root/usr /opt-freecad
+
+FROM docker.io/library/debian:trixie-slim
+COPY --from=freecad /opt-freecad /opt/freecad
+ENV PATH=/opt/freecad/bin:$PATH \
+    LD_LIBRARY_PATH=/opt/freecad/lib \
+    PYTHONPATH=/opt/freecad/lib:/app/src \
+    FREECAD_CMD=/opt/freecad/bin/freecadcmd \
+    PYTHONDONTWRITEBYTECODE=1
+RUN python -m pip install --no-cache-dir --root-user-action=ignore httpx==0.28.1
+COPY src /app/src
+COPY config /app/config
+COPY deploy /app/deploy
+WORKDIR /app
+CMD ["freecadcmd"]

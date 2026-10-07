@@ -56,7 +56,7 @@ def server():
 @pytest.fixture(scope="module")
 def image(server):
     ssh("rm -rf ~/%s/ctx && mkdir -p ~/%s/ctx" % (REMOTE, REMOTE))
-    tar = subprocess.Popen(["tar", "--exclude=__pycache__", "-cf", "-", "-C", ROOT, "src", "deploy"],
+    tar = subprocess.Popen(["tar", "--exclude=__pycache__", "-cf", "-", "-C", ROOT, "src", "config", "deploy"],
                            stdout=subprocess.PIPE)
     sent = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST, "tar -xf - -C ~/%s/ctx" % REMOTE],
                           stdin=tar.stdout, capture_output=True)
@@ -76,7 +76,7 @@ def run(image, args, name, extra=""):
 
 def test_the_containerfile_pins_the_official_appimage_by_version_and_sha256():
     text = _read("Containerfile")
-    assert "FreeCAD_1.1.4-Linux-x86_64-py311.AppImage" in text
+    assert "ARG FREECAD_VERSION=1.1.4" in text and "Linux-x86_64-py311.AppImage" in text
     assert re.search(r"\b[0-9a-f]{64}\b", text)
     assert "sha256sum" in text and "--appimage-extract" in text
 
