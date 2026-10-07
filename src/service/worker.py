@@ -5,8 +5,6 @@ After a send, cancelled or not, the STEP when the model has a solid and the FCSt
 """
 import base64
 import json
-import base64
-import json
 import os
 import queue
 import sys
