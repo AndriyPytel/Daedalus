@@ -142,6 +142,7 @@ class Repository:
                          (owner_id, run_id, after))
 
     def create_blob(self, owner_id, key, sha256, size, kind, session_id=None, run_id=None, name=None, blob_id=None):
+        self.ensure_user(owner_id)
         return self._one(
             "INSERT INTO blobs (id, owner_id, key, sha256, size, kind, name, session_id, run_id) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING *",
