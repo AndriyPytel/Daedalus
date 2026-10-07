@@ -184,3 +184,26 @@ def test_a_notify_carries_only_the_event_row_id_to_a_direct_connection(database_
     seq = repo.append_event(owner, run["id"], "tick", {"secret": "x"})
     thread.join(10)
     assert received == [str(seq)]
+
+
+def test_two_gateways_migrating_at_once_apply_each_file_once(database_url):
+    results = []
+
+    def start():
+        with db.connect(database_url) as connection:
+            results.append(db.migrate(connection))
+
+    threads = [threading.Thread(target=start) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(30)
+    applied = [version for result in results for version in result]
+    assert len(results) == 4
+    assert applied == sorted(set(applied)) and applied
+
+
+def test_the_migration_lock_key_is_derived_from_its_name():
+    assert db.LOCK == db.lock_key("daedalus.schema_migrations")
+    assert db.lock_key("a") != db.lock_key("b")
+    assert -(2 ** 63) <= db.LOCK < 2 ** 63
