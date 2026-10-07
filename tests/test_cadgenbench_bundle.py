@@ -119,18 +119,20 @@ def test_record_milestone_appends_one_line_per_call(tmp_path):
     assert len(path.read_text().splitlines()) == 2
 
 
-def test_bundle_writes_an_empty_folder_for_every_fixture_it_does_not_attempt(tmp_path):
+def test_the_bundle_carries_the_editing_outputs_beside_the_generation_ones(tmp_path, monkeypatch):
     run_dir = tmp_path / "run"
     _write_output(str(run_dir / "101" / "output.step"))
+    _write_output(str(run_dir / "201" / "output.step"))
     out_path = tmp_path / "submission.zip"
+    monkeypatch.setattr(bundle, "generation_fixtures", lambda path: ["101"])
+    monkeypatch.setattr(bundle, "editing_fixtures", lambda path: ["201", "202"])
+    monkeypatch.setattr(sys, "argv", ["bundle", "bundle", "--run-dir", str(run_dir),
+                                      "--out", str(out_path)])
 
-    report = bundle.write_bundle(str(run_dir), ["101"], str(out_path), empty=["201", "202"])
-
-    assert report["missing"] == []
+    assert bundle.main() == 0
     with zipfile.ZipFile(str(out_path)) as zf:
         names = set(zf.namelist())
-    assert {"201/", "202/"} <= names
-    assert not any(name.startswith("201/") and name != "201/" for name in names)
+    assert {"101/output.step", "201/output.step", "202/"} <= names
 
 
 def test_editing_fixtures_complete_the_81_the_space_checks():
