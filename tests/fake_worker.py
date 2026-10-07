@@ -1,7 +1,7 @@
 """
 A stand-in for `service.worker` that speaks the channel with no FreeCAD, steered by the prompt it is sent.
 
-`hello` emits two events and finishes, `hang` starts a child process, reports its pid and never ends, `cut` writes half
+`hello` emits two events and finishes, `priced` does the same with a `cost` event of 0.25 USD between them, `hang` starts a child process, reports its pid and never ends, `cut` writes half
 an event line and exits, `bye` exits at once. End of input ends the process unless the prompt was `hang`.
 """
 import json
@@ -22,6 +22,10 @@ def main():
         prompt = json.loads(line)["prompt"]
         if prompt == "hello":
             put(op="event", kind="intent", at=1.0, data={"prompt": prompt})
+            put(op="event", kind="completed", at=2.0, data={"summary": "done"})
+            put(op="done")
+        elif prompt == "priced":
+            put(op="event", kind="cost", at=1.0, data={"usd": 0.25})
             put(op="event", kind="completed", at=2.0, data={"summary": "done"})
             put(op="done")
         elif prompt == "hang":
