@@ -10,6 +10,8 @@ import signal
 import subprocess
 import threading
 
+import psycopg.errors
+
 from service import db
 from service.blobs import store_result
 from service.repository import Repository
@@ -132,8 +134,8 @@ class Worker:
                 try:
                     data = base64.b64decode(message["content"], validate=True)
                     store_result(self._repo, self._store, self.owner_id, self.session_id, self._run_id, message["kind"], data)
-                except (KeyError, TypeError, ValueError):
-                    pass  # except-pass-allowed: a malformed blob line is dropped like a malformed event line
+                except (KeyError, TypeError, ValueError, OSError, psycopg.errors.UniqueViolation):
+                    pass  # except-pass-allowed: a bad or repeated blob line is dropped like a malformed event line
             elif op == "done" and self._run_id is not None:
                 self._repo.update_run(self.owner_id, self._run_id,
                                       state=self._last_kind if self._last_kind in TERMINAL else "completed")
