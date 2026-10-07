@@ -135,26 +135,28 @@ def test_a_stream_ends_when_the_run_is_failed_by_the_gateway(server, database_ur
 
 
 def test_a_closed_client_leaves_no_connection_behind(server, database_url, tmp_path):
-    def sessions():
+    def connections():
         with db.connect(database_url) as probe:
             return probe.execute("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
-                                 "AND pid <> pg_backend_pid() AND query LIKE '%%LISTEN%%'").fetchone()[0]
+                                 "AND pid <> pg_backend_pid()").fetchone()[0]
 
     gate = tmp_path / "gate"
     run = post(server, "gated:%s" % gate)
     until(lambda: len(stored(database_url, run["id"])) == 5)
+    baseline = connections()
     clients = [httpx.stream("GET", "%s/v1/runs/%s/events" % (server, run["id"]), timeout=30) for _ in range(5)]
     responses = [client.__enter__() for client in clients]
-    for response in responses:
-        next(response.iter_lines())
-    until(lambda: sessions() == 5)
+    lines = [response.iter_lines() for response in responses]
+    for line in lines:
+        next(line)
+    until(lambda: connections() == baseline + 5)
     for client in clients:
         client.__exit__(None, None, None)
-    until(lambda: sessions() == 0)
+    until(lambda: connections() == baseline)
     gate.write_text("go")
     final_run = until(lambda: (lambda r: r if r["state"] in FINAL else None)(httpx.get("%s/v1/runs/%s" % (server, run["id"])).json()))
     assert final_run["state"] == "completed"
-    until(lambda: sessions() == 0)
+    until(lambda: connections() == baseline)
 
 
 def test_an_unknown_or_foreign_run_is_not_found_as_problem_json(server, repo):
