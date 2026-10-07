@@ -193,3 +193,10 @@ def test_the_checkpoint_the_worker_produces_is_an_fcstd_freecad_opens_and_the_st
     assert report["checkpoint_name"].endswith(".FCStd") and report["step_name"].endswith(".step")
     assert report["reopened_solids"] == 1
     assert report["step_header"] == "ISO-10303-21;"
+
+
+def test_the_first_upload_by_an_owner_with_no_users_row_is_201(api, conn):
+    app.dependency_overrides[current_owner] = lambda: "owner-fresh"
+    response = api.post("/v1/blobs", params={"name": "a.txt"}, content=b"x")
+    assert response.status_code == 201
+    assert conn.execute("SELECT count(*) FROM users WHERE id = 'owner-fresh'").fetchone()[0] == 1
