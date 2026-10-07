@@ -1,9 +1,7 @@
 """
-The worker process, launched as `python -m service.worker`: the only service module that reaches the engine, and only through `sdk.Client`.
-
-It reads `send` (a prompt, base64 attachments, `interactive`, `confirm`), `cancel` and `answer` lines from stdin while a Run is in progress and writes `ready`, `event`, `question`, `blob`, `done` and `error` lines to the real stdout.
+The worker process, launched as `python -m service.worker`: the only service module that reaches the engine, and only through `sdk.Client`; it reads `send` (a prompt, base64 attachments, `interactive`, `confirm`), `cancel` and `answer` lines from stdin while a Run is in progress and writes `ready`, `event`, `question`, `blob`, `done` and `error` lines to the real stdout.
 A Run sent `interactive` asks through the channel and waits for its `answer`, any other decides alone, and an Owned Object `confirm` is refused unless the Run was sent `confirm`.
-After a send, cancelled or not, the Run's STEP, when the model has a solid, and its FCStd checkpoint go out as base64 `blob` lines; anything else the engine prints goes to stderr.
+After a send, cancelled or not, the STEP when the model has a solid and the FCStd checkpoint go out as `blob` lines, and anything else the engine prints goes to stderr.
 """
 import base64
 import json
