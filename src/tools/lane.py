@@ -238,9 +238,32 @@ def guard_edit(edit, base):
     return None if low <= ratio <= high else "volume ratio %.3f" % ratio
 
 
-def _ship_edit(log, fixture, output):
-    """Write *output*: the run's edited STEP if it passes the guard, else a copy of the input; return the fallback reason."""
+def _shippable_base(fixture, folder):
+    """The fixture's `input.step`, or where it fails the official gate and `repair_base` mends it, that repair written into *folder*."""
     base = os.path.join(fixture, "input.step")
+    if not step_problem(base):
+        return base
+    from core.freecad_apply import export_step
+    from core.manifold import repair_base
+
+    shape = _part().read(base)
+    repaired, _note = repair_base(shape)
+    if repaired is shape:
+        return base
+    import FreeCAD
+
+    doc = FreeCAD.newDocument("RepairedBase")
+    try:
+        doc.addObject("Part::Feature", "Base").Shape = repaired
+        doc.recompute()
+        path = export_step(doc, os.path.join(folder, "input.repaired.step"))
+    finally:
+        FreeCAD.closeDocument(doc.Name)
+    return base if step_problem(path) else path
+
+
+def _ship_edit(log, base, output):
+    """Write *output*: the run's edited STEP if it passes the guard, else a copy of *base*; return the fallback reason."""
     step = log[: -len(".jsonl")] + ".step" if log and log.endswith(".jsonl") else None
     if step and _has_step(log):
         reason = guard_edit(step, base)
@@ -322,8 +345,10 @@ def sweep(tasks, models, effort, budget_usd, intent, out, hang_seconds, retries,
                                   else "done" if succeeded else "failed"}
             if fixture and not refusal:
                 output = os.path.join(model_dir, label, "output.step")
-                state["runs"][key]["fallback"] = _ship_edit(log, fixture, output)
-                state["runs"][key]["input_invalid"] = step_problem(os.path.join(fixture, "input.step"))
+                os.makedirs(os.path.dirname(output), exist_ok=True)
+                base = _shippable_base(fixture, os.path.dirname(output))
+                state["runs"][key]["fallback"] = _ship_edit(log, base, output)
+                state["runs"][key]["input_invalid"] = step_problem(base)
                 if state["runs"][key]["input_invalid"]:
                     print("INPUT INVALID %s: %s" % (label, state["runs"][key]["input_invalid"]),
                           flush=True)
