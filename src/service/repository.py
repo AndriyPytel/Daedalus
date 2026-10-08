@@ -60,11 +60,34 @@ class Repository:
                          (owner_id, after, limit))
 
     def close_session(self, owner_id, session_id):
-        row = self._one("UPDATE sessions SET closed_at = coalesce(closed_at, now()) WHERE owner_id = %s AND id = %s "
+        row = self._one("UPDATE sessions SET closed_at = coalesce(closed_at, now()), state = 'idle' WHERE owner_id = %s AND id = %s "
                         "RETURNING *", (owner_id, session_id))
         if row is None:
             raise LookupError(session_id)
         return row
+
+    def set_session_state(self, owner_id, session_id, state):
+        self._conn.execute("UPDATE sessions SET state = %s WHERE owner_id = %s AND id = %s", (state, owner_id, session_id))
+
+    def last_checkpoint(self, owner_id, session_id):
+        return self._one("SELECT * FROM blobs WHERE owner_id = %s AND session_id = %s AND kind = 'checkpoint' "
+                         "ORDER BY id DESC LIMIT 1", (owner_id, session_id))
+
+    def conversation(self, owner_id, session_id, before_run_id):
+        rows = self._all(
+            "SELECT r.prompt, e.payload->>'route' AS route FROM runs r "
+            "JOIN LATERAL (SELECT payload FROM events WHERE run_id = r.id AND type = 'routed' ORDER BY seq LIMIT 1) e ON true "
+            "WHERE r.owner_id = %s AND r.session_id = %s AND r.id < %s AND e.payload ? 'route' ORDER BY r.id",
+            (owner_id, session_id, before_run_id))
+        return [message for row in rows for message in ({"role": "user", "content": row["prompt"]},
+                                                         {"role": "assistant", "content": row["route"]})]
+
+    def fail_orphan_runs(self, message):
+        orphans = self._all("SELECT id, owner_id FROM runs WHERE state IN ('queued', 'running', 'needs-answer')")
+        for orphan in orphans:
+            self.fail_run(orphan["owner_id"], orphan["id"], message)
+        self._conn.execute("UPDATE sessions SET state = 'idle' WHERE state <> 'idle'")
+        return len(orphans)
 
     def ensure_user(self, user_id):
         self._conn.execute("INSERT INTO users (id) VALUES (%s) ON CONFLICT DO NOTHING", (user_id,))
@@ -105,7 +128,7 @@ class Repository:
     def fail_run(self, owner_id, run_id, message):
         self.append_event(owner_id, run_id, "error", {"message": message})
         self._conn.execute("UPDATE runs SET state = 'failed' WHERE owner_id = %s AND id = %s "
-                           "AND state IN ('queued', 'running')", (owner_id, run_id))
+                           "AND state IN ('queued', 'running', 'needs-answer')", (owner_id, run_id))
         self._notify_run(run_id)
 
     def add_run_cost(self, owner_id, run_id, usd):

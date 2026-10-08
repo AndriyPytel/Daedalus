@@ -29,6 +29,7 @@ def api(database_url, monkeypatch):
     monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(FAKE))
     monkeypatch.setenv("DAEDALUS_TOKEN", TOKEN)
     monkeypatch.setenv("DAEDALUS_OWNER_ID", "usr_alice")
+    monkeypatch.setenv("DAEDALUS_MAX_SESSIONS", "100")
     with TestClient(app, headers=HEADERS) as client:
         yield client
 

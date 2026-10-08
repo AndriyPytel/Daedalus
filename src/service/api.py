@@ -56,6 +56,7 @@ class Run(BaseModel):
 class Session(BaseModel):
     object: str = "session"
     id: str
+    state: str
     created_at: datetime
     closed_at: Optional[datetime]
 

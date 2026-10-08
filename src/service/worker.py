@@ -1,5 +1,5 @@
 """
-The worker process, launched as `python -m service.worker`: the only service module that reaches the engine, and only through the public names of `sdk`; it reads `send` (a prompt, base64 attachments, `interactive`, `confirm` and the resolved settings), `cancel` and `answer` lines from stdin while a Run is in progress and writes `ready`, `event`, `question`, `blob`, `done` and `error` lines to the real stdout.
+The worker process, launched as `python -m service.worker`: the only service module that reaches the engine, and only through the public names of `sdk`; it reads `send` (a prompt, base64 attachments, for its first send the `restore` of a replaced worker, `interactive`, `confirm` and the resolved settings), `cancel` and `answer` lines from stdin while a Run is in progress and writes `ready`, `event`, `question`, `blob`, `done` and `error` lines to the real stdout.
 A Run sent `interactive` asks through the channel and waits for its `answer`, any other decides alone, and an Owned Object `confirm` is refused unless the Run was sent `confirm`.
 After a send, cancelled or not, the STEP when the model has a solid and the FCStd checkpoint go out as `blob` lines, and anything else the engine prints goes to stderr.
 """
@@ -107,11 +107,21 @@ def main():
         jobs.put(None)
 
     configure(os.environ)
-    client = Client(confirm=lambda kinds: current["confirm"])
     budget = Budget()
-    client.watch(budget.watch)
-    applied = None
-    client.watch(lambda event: put(op="event", kind=event.kind, at=event.at, data=event.data))
+    client, applied = None, None
+
+    def open_client(restore, directory):
+        path = None
+        if restore.get("checkpoint"):
+            path = os.path.join(directory, "restored.FCStd")
+            with open(path, "wb") as out:
+                out.write(base64.b64decode(restore["checkpoint"]))
+        opened = Client(document=path, confirm=lambda kinds: current["confirm"])
+        opened.session.messages.extend(restore.get("history") or ())
+        opened.watch(budget.watch)
+        opened.watch(lambda event: put(op="event", kind=event.kind, at=event.at, data=event.data))
+        return opened
+
     put(op="ready")
     threading.Thread(target=listen, daemon=True).start()
     while True:
@@ -122,12 +132,14 @@ def main():
         current["confirm"] = job.get("confirm") is True
         settings = job.get("settings") or {}
         apply_settings(settings)
-        if applied is not None and settings != applied:
+        if client is not None and applied is not None and settings != applied:
             client.llm = None
         applied = settings
         budget.start(settings.get("budget_usd"))
         with tempfile.TemporaryDirectory() as directory:
             try:
+                if client is None:
+                    client = open_client(job.get("restore") or {}, directory)
                 paths = []
                 for item in job.get("attachments", ()):
                     paths.append(os.path.join(directory, item["name"]))
@@ -143,7 +155,8 @@ def main():
             else:
                 put(op="done")
         cancelled.clear()
-    client.close()
+    if client is not None:
+        client.close()
 
 
 if __name__ == "__main__":

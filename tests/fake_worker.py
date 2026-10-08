@@ -3,7 +3,7 @@ A stand-in for `service.worker` that speaks the channel with no FreeCAD, steered
 
 `make` emits an event, a STEP and an FCStd blob and finishes, `attachments` reports the name and sha256 of each attachment it received, `hello` emits two events and finishes, `priced` does the same with a `cost` event of 0.25 USD between them, `hang` starts a child process, reports its pid and never ends, `cut` writes half
 an event line and exits, `bye` exits at once, `settings` reports the settings of the send and whether the token variable reached it, `gated:<path>` emits five events, waits for the file `<path>` to exist, then emits five more and finishes. End of input ends the process unless the prompt was `hang`.
-`flags` reports the `interactive` and `confirm` it was sent, `slow` steps until a `cancel` line arrives then reports `stopped`, `asks` puts a question when sent `interactive` and waits for the `answer` line, `nags` puts a question whatever it was sent, and `carry` reports its attachments and flags, then on `cancel` emits its blobs and stops.
+`pid` reports the worker's pid, `routed` emits a `routed` event of route `design`, `restored` reports what a fresh worker was handed to restore (the sha256 of its checkpoint and its conversation) and `flags` reports the `interactive` and `confirm` it was sent, `slow` steps until a `cancel` line arrives then reports `stopped`, `asks` puts a question when sent `interactive` and waits for the `answer` line, `nags` puts a question whatever it was sent, and `carry` reports its attachments and flags, then on `cancel` emits its blobs and stops.
 """
 import base64
 import hashlib
@@ -33,6 +33,21 @@ def main():
         prompt = request["prompt"]
         if prompt == "flags":
             put(op="event", kind="flags", at=1.0, data={"interactive": request.get("interactive"), "confirm": request.get("confirm")})
+            put(op="done")
+        elif prompt == "pid":
+            put(op="event", kind="pid", at=1.0, data={"pid": os.getpid()})
+            put(op="done")
+        elif prompt == "routed":
+            put(op="event", kind="routed", at=1.0, data={"route": "design"})
+            put(op="blob", kind="checkpoint", name="model.FCStd", content=base64.b64encode(b"PK\x03\x04first").decode())
+            put(op="done")
+        elif prompt == "restored":
+            restore = request.get("restore")
+            checkpoint = restore and restore.get("checkpoint")
+            put(op="event", kind="restored", at=1.0, data={
+                "restore": restore is not None,
+                "sha256": checkpoint and hashlib.sha256(base64.b64decode(checkpoint)).hexdigest(),
+                "history": restore and restore.get("history")})
             put(op="done")
         elif prompt == "slow":
             put(op="event", kind="step", at=1.0, data={"n": 1})
