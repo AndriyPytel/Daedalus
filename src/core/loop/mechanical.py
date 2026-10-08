@@ -18,13 +18,15 @@ REASONS = {
     "second claim": "it claims more than one thing, and only the first is mechanical",
     "no base": "it speaks of an edit and there is no base part",
     "volume": "it asks a volume change another entry already set differently",
+    "approximate": "its value is written as approximate, and a number alone does not settle it",
     "other": "it is not one of the kinds a number settles",
 }
 
 _FLAG = r"(?:\s*\((?:read|derived|assumed|suspected)\))?"
 _SIZE_OF = {"diameter": "diameter", "inner_diameter": "diameter", "outer_diameter": "diameter", "radius": "radius"}
 _MARKS = {"diameter": ("", "\u00d8", "\u2300"), "radius": ("", "R")}
-_LEAD = re.compile(r"^(?:(?:about|approximately) |\u2248\s*)?(?P<mark>[\u00d8\u2300R]?)\s*(?P<number>\d+(?:\.\d+)?)\s*(?:mm)?(?![\d.])")
+_APPROXIMATE = re.compile(r"^(?:about|approximately) |^\u2248")
+_LEAD = re.compile(r"^(?P<mark>[\u00d8\u2300R]?)\s*(?P<number>\d+(?:\.\d+)?)\s*(?:mm)?(?![\d.])")
 _ENVELOPE_LEAD = re.compile(r"^(?P<number>\d+(?:\.\d+)?)\s*mm\b")
 _MARKED = re.compile(r"(?P<mark>[\u00d8\u2300R])\s*(?P<number>\d+(?:\.\d+)?)")
 _UNMARKED = re.compile(r"\d(?:\.\d+)?\s*mm\b")
@@ -115,6 +117,8 @@ def _axis_letter(prose, description, dimensions, nested=False):
 def _figures(value, node, kind):
     """([numbers], None) for a size, or (None, reason): Design's number when it holds one, else the number the value leads with, then each further marked number of the same kind."""
     marks = _MARKS[kind]
+    if _APPROXIMATE.match(value):
+        return None, "approximate"
     lead = _LEAD.match(value)
     rest = re.sub(r"\([^)]*\)", "", value[lead.end():] if lead else value)
     extra = list(_MARKED.finditer(rest))
@@ -189,6 +193,8 @@ class _Analysis:
         figure = _envelope_figure(value, _node(description, parts))
         if parts[1].split(" ")[0].lower() not in _SIDES:
             self.verdicts[entry] = "not a side"
+        elif _APPROXIMATE.match(value):
+            self.verdicts[entry] = "approximate"
         elif figure is None:
             self.verdicts[entry] = "no number"
         else:

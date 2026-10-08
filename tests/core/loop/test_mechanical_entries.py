@@ -5,7 +5,7 @@ from collections import Counter
 
 import pytest
 
-from core.loop.mechanical import REASONS, classified, covered_entries, the_collateral_measured, the_sizes_measured
+from core.loop.mechanical import REASONS, classified, covered_entries, envelope_figures, the_collateral_measured, the_sizes_measured
 
 _RECORDED = os.path.join(os.path.dirname(__file__), "fixtures", "recorded_acceptance.json")
 _SIX_KINDS = ("envelope", "diameter", "inner_diameter", "outer_diameter", "radius", "axis", "count")
@@ -37,7 +37,6 @@ def covered(entries, base=None, description=None):
     "features \u2192 boss-left \u2192 outer_diameter: \u00d8100 mm outer circle",
     "features \u2192 hole-left \u2192 diameter: 80 mm at its narrowest (100, 162 and 200 mm are on the same axis)",
     "features \u2192 fillet-outer \u2192 radius: 14 mm (was 18 mm)",
-    "features \u2192 hole-left \u2192 diameter: about 9.2 mm",
     "features \u2192 hole-centre \u2192 diameter: \u00d84 / \u00d86 / \u00d810 as listed in the_base_part",
     "features \u2192 fillet-inner \u2192 radius: R2 inside, R4 outside",
     "features \u2192 cutout-rear \u2192 radius: R173 and R170",
@@ -63,10 +62,32 @@ def test_an_entry_that_needs_a_guess_is_left_to_the_model(entry):
 def test_a_size_Design_holds_as_a_number_is_taken_from_it_and_prose_that_disagrees_is_left_alone():
     model = {"features": [{"id": "hole-a", "diameter": {"value": "twelve", "mm": 12.0, "flag": "read"}},
                           {"id": "hole-b", "diameter": {"value": "13 mm", "mm": 12.0, "flag": "read"}}]}
-    taken = "features \u2192 hole-a \u2192 diameter: about twelve"
+    taken = "features \u2192 hole-a \u2192 diameter: twelve"
     clash = "features \u2192 hole-b \u2192 diameter: 13 mm"
     assert covered([taken, clash], description=model) == [taken]
     assert "12.0" in the_sizes_measured([taken], model)
+
+
+@pytest.mark.parametrize("entry", [
+    "features \u2192 boss-centre \u2192 outer_diameter: about \u00d8110",
+    "features \u2192 boss-left \u2192 outer_diameter: about 92 mm",
+    "features \u2192 ear-left \u2192 radius: about R114",
+    "features \u2192 hole-left \u2192 diameter: about 9.2 mm",
+    "features \u2192 hole-left \u2192 diameter: approximately \u00d86",
+    "features \u2192 fillet-left \u2192 radius: \u2248 R3",
+    "envelope \u2192 length: about 120 mm",
+])
+def test_a_value_written_as_approximate_is_left_to_the_model_with_its_reason(entry):
+    assert covered([entry]) == []
+    assert classified([entry], _DATUMS, None) == {entry: REASONS["approximate"]}
+    assert the_sizes_measured([entry], _DATUMS) == ""
+    assert envelope_figures([entry]) == []
+
+
+def test_an_approximate_size_is_left_even_when_Design_holds_a_number_for_it():
+    model = {"features": [{"id": "hole-a", "diameter": {"value": "about 12 mm", "mm": 12.0, "flag": "read"}}]}
+    entry = "features \u2192 hole-a \u2192 diameter: about 12 mm"
+    assert covered([entry], description=model) == []
 
 
 def test_an_axis_and_a_count_ride_on_the_size_of_the_same_feature():
@@ -197,7 +218,7 @@ def test_every_recorded_entry_of_the_six_kinds_is_generated_or_says_why_it_needs
                 left[why] += 1
             assert why is None or why in REASONS.values(), (entry, why)
     assert sum(total.values()) == sum(1 for run in runs for entry in run["acceptance"] if _kind(entry) != "other")
-    assert dict(left) == {REASONS["no size"]: 26, REASONS["axis"]: 1, REASONS["no number"]: 2, REASONS["not a side"]: 2}
+    assert dict(left) == {REASONS["no size"]: 27, REASONS["approximate"]: 1, REASONS["axis"]: 1, REASONS["no number"]: 2, REASONS["not a side"]: 2}
     assert sum(generated.values()) == sum(total.values()) - sum(left.values())
 
 

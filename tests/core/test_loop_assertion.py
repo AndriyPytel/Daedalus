@@ -475,6 +475,22 @@ def test_a_self_intersecting_document_is_caught_before_a_provider_writes_checks(
         "a provider was asked to write checks for a Document already known to self-intersect"
 
 
+def test_a_failed_size_check_records_the_entries_and_not_the_source_line_echoed_above_them():
+    entries = ["features \u2192 fillet-bottom-outer \u2192 radius: R3", "features \u2192 fillet-top \u2192 radius: R2"]
+    traceback = ("Traceback (most recent call last):\n"
+                 "  File \"<step>\", line 41, in <module>\n"
+                 "    assert not sizes_failed, 'these did not hold: ' + '; '.join(sizes_failed)\n"
+                 "AssertionError: these did not hold: " + "; ".join(entries))
+    _, events, _, _ = drive([
+        design_reply(A_CUBE),
+        plan_reply("Only", satisfies=everything(A_CUBE)),
+        code_reply("box()"),
+        verdict_reply("pass"),
+    ], attachments=[RENDER_PNG], checks=[{"ok": False, "traceback": traceback}], decide=lambda why: "accept")
+
+    assert events.first(ASSERTION).data["unmet"] == entries
+
+
 def test_the_envelope_check_runs_against_the_document_and_can_fail_it():
     """A part of the wrong overall size fails before a provider is asked."""
     A_PART_WITH_AN_ENVELOPE = {

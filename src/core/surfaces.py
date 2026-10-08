@@ -59,7 +59,7 @@ class Faces:
 
     def _rounds(self):
         rounds = [("Cylinder", surface.Radius, _vector(surface.Axis)) for _, surface in self._of("Cylinder")]
-        rounds += [("Torus", surface.MinorRadius, _vector(surface.Axis)) for _, surface in self._of("Torus")]
+        rounds += [("Toroid", surface.MinorRadius, _vector(surface.Axis)) for _, surface in self._of("Toroid")]
         rounds += [("Sphere", surface.Radius, None) for _, surface in self._of("Sphere")]
         return rounds
 
@@ -76,7 +76,7 @@ class Faces:
             for size in feature["sizes"]:
                 diameter = size["kind"] == "diameter"
                 want, tol = (size["value"] / 2, LINEAR / 2) if diameter else (size["value"], LINEAR)
-                kinds = ("Cylinder",) if diameter else ("Cylinder", "Torus", "Sphere")
+                kinds = ("Cylinder",) if diameter else ("Cylinder", "Toroid", "Sphere")
                 found = [r for r in rounds if r[0] in kinds and abs(r[1] - want) <= tol]
                 if not found:
                     failed.append(size["entry"])

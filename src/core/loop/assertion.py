@@ -337,10 +337,10 @@ def _unmet_in(traceback):
     The acceptance entries a failed check named, one per entry.
     Fallback for a failure the worker's own `failed` list did not cover — the envelope check, or a script that raised outside assertion.md's shape.
 
-    The checks end in one assert listing every failed entry by semicolons, per that prompt's spec; no recompute means no entry list, and the caller falls back to the whole list.
+    The checks end in one assert listing every failed entry by semicolons, per that prompt's spec; only the `AssertionError` line is read, never the source line a traceback echoes above it.
     """
     for line in traceback.strip().splitlines():
-        if _DID_NOT_HOLD not in line:
+        if not line.startswith("AssertionError") or _DID_NOT_HOLD not in line:
             continue
         listed = line.split(_DID_NOT_HOLD, 1)[1]
         return [entry.strip() for entry in listed.split(";") if entry.strip()]

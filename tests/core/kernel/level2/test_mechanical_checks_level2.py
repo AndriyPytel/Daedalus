@@ -85,9 +85,17 @@ def test_a_part_that_breaks_an_entry_fails_naming_that_entry(worker, entries, br
         assert [e for i, e in enumerate(entries) if i != broken and e in result.traceback] == []
 
 
-def test_a_rounded_edge_meets_a_radius_entry_whether_it_is_a_cylinder_or_a_torus(worker):
+def test_a_rounded_straight_edge_meets_a_radius_entry(worker):
     _plate(worker, "plate = plate.makeFillet(1.5, [plate.Edges[0]])")
     assert worker.check(_generated(["features \u2192 round \u2192 radius: R1.5"])).ok
+
+
+def test_a_rounded_circular_edge_meets_a_radius_entry(worker):
+    rim = "plate = plate.makeFillet(1.5, [next(e for e in plate.Edges if e.Curve.__class__.__name__ == 'Circle' and abs(e.Curve.Radius - 3) < 1e-6 and e.Vertexes[0].Point.z > 5)])"
+    _plate(worker, rim)
+    assert worker.check("assert any(s.__class__.__name__ == 'Toroid' for s in (f.Surface for f in _faces.shape.Faces))").ok
+    result = worker.check(_generated(["features \u2192 round \u2192 radius: R1.5"]))
+    assert result.ok, result.traceback
 
 
 def test_the_generated_check_is_cheap_on_a_part_of_two_thousand_faces(worker):
