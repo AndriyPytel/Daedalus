@@ -64,6 +64,7 @@ from tests.loop_helpers import (
     read,
     settled,
     A_CUBE,
+    A_CUBE_WITH_A_WALL,
     A_PART,
     plan_reply,
     everything,
@@ -640,8 +641,8 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
     Assertion never change that.
     """
     _, events, _, _ = drive([
-        design_reply(A_CUBE),
-        plan_reply("Only", satisfies=everything(A_CUBE)),
+        design_reply(A_CUBE_WITH_A_WALL),
+        plan_reply("Only", satisfies=everything(A_CUBE_WITH_A_WALL)),
         code_reply("box()"),
         suspect_reply(),
         assertion_reply("assert True, 'the length'"),
@@ -1197,7 +1198,7 @@ def test_the_plan_gate_lists_a_design_settled_value_as_an_assumption():
         [design_reply(not_defined_length),
          question_reply("What is the length?"), design_reply(settled_length),
          plan_reply("Pad the profile 40 mm"), code_reply(code),
-         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+         suspect_reply(), verdict_reply("pass")],
         intent=GEAR)
 
     assert result.ok, result.reason
@@ -1230,7 +1231,7 @@ def test_a_run_nobody_answered_at_all_reaches_the_gate_rather_than_a_block():
         question_reply("q2"), design_reply({}), design_reply(),
         question_reply("q3"), design_reply(),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
-        code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        code_reply("pad()"), suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=2),
         ask=lambda q: asked.append(q) or "some answer")
 
@@ -1258,7 +1259,7 @@ def test_a_question_about_a_material_card_is_answered_from_the_tools():
         question_reply(A_MATERIAL_CARD),
         look_reply("materials", name="plain carbon steel"),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
-        code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        code_reply("pad()"), suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok, result.reason
@@ -1285,7 +1286,7 @@ def test_rereads_are_spent_only_on_questions_put_to_the_drawing():
         question_reply("Where is the O8 hole?"),
         design_reply({"datums": [{"name": "the left end face", "is": "the flat face"}]}),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
-        code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        code_reply("pad()"), suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
 
     assert result.ok, result.reason
@@ -1307,7 +1308,7 @@ def test_rereads_counts_re_reads_of_the_drawing_and_nothing_else():
         question_reply("q2"), design_reply(),
         question_reply("q3"), design_reply(),
         plan_reply("Pad the profile", satisfies=everything(SETTLED)),
-        code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        code_reply("pad()"), suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1))
 
     assert result.ok, result.reason

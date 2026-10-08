@@ -60,7 +60,7 @@ from tests.loop_helpers import (
     RENDER_PNG,
     read,
     settled,
-    A_CUBE,
+    A_CUBE_WITH_A_HOLE,
     A_DATUM,
     A_PART,
     plan_reply,
@@ -95,8 +95,8 @@ def test_each_phase_sends_the_prompt_from_its_config_file(turn, phase):
     something to read; every later phase shifts by one with it.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
-        plan_reply("Add a box", satisfies=everything(A_CUBE)),
+        design_reply(A_CUBE_WITH_A_HOLE),
+        plan_reply("Add a box", satisfies=everything(A_CUBE_WITH_A_HOLE)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(),
         assertion_reply("assert True, 'the length'"),
@@ -165,8 +165,8 @@ def test_design_is_told_the_outer_contour_is_a_feature():
     box that passed every check.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
-        plan_reply("Add a box", satisfies=everything(A_CUBE)),
+        design_reply(A_CUBE_WITH_A_HOLE),
+        plan_reply("Add a box", satisfies=everything(A_CUBE_WITH_A_HOLE)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(),
         assertion_reply("assert True, 'the length'"),
@@ -187,8 +187,8 @@ def test_assertion_is_told_what_a_fillet_does_to_the_surface_it_replaced():
     as unmet and spent a Plan revision on geometry that was already right.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
-        plan_reply("Add a box", satisfies=everything(A_CUBE)),
+        design_reply(A_CUBE_WITH_A_HOLE),
+        plan_reply("Add a box", satisfies=everything(A_CUBE_WITH_A_HOLE)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(),
         assertion_reply("assert True, 'the length'"),
@@ -271,8 +271,8 @@ def test_design_is_told_a_chamfer_names_the_two_surfaces_it_joins():
     way the outer-contour rule does.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
-        plan_reply("Add a box", satisfies=everything(A_CUBE)),
+        design_reply(A_CUBE_WITH_A_HOLE),
+        plan_reply("Add a box", satisfies=everything(A_CUBE_WITH_A_HOLE)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(),
         assertion_reply("assert True, 'the length'"),
@@ -526,8 +526,8 @@ def test_the_datum_and_the_flag_reach_the_checks_without_anyone_rewriting_them()
     the entries it is handed are.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
-        plan_reply("Add a box", satisfies=everything(A_CUBE)),
+        design_reply(A_CUBE_WITH_A_HOLE),
+        plan_reply("Add a box", satisfies=everything(A_CUBE_WITH_A_HOLE)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(),
         assertion_reply("assert True, 'the length'"),

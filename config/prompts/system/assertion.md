@@ -172,6 +172,28 @@ If your own code failed last time, the traceback is in
 the part: fix the check. Nothing about the model has changed since you last
 looked at it.
 
+The list you are given is only what code could not settle. Plain diameters,
+radii, counts, axes and the three overall sizes were already measured before
+you were asked, and are not in it. Write **one line per entry**, not a
+program: these are in scope, and each costs no more than a call.
+
+    face_at('-x')                 the largest planar face at the part's extreme: '+x', '-x', '+y', '-y', '+z', '-z'
+    face_at('the left end face')  a datum of `design` whose description names one plane
+    cylinder(40, 'y')             the one cylindrical face of that diameter along that axis ('z' and the rest alike)
+    cylinder(6, 'z', expect=4)    a list of four such faces
+    distance(a, b)                plane to parallel plane, cylinder axis to parallel plane, axis to parallel axis
+
+A position entry is then one line:
+
+    d = distance(cylinder(40, 'y'), face_at('-x'))
+    (held if abs(d - 25) <= 0.5 else failed).append("the entry as given")
+
+Each raises with what it did find when it cannot answer. `face_at` says
+'ambiguous' when a datum names planes that each have a face, and refuses a datum
+that is an axis: use `cylinder` and `distance` for those. An entry it cannot
+answer is `uncovered`, not approximated. The faces are sorted once per check, so
+none of them times out on a large body.
+
 ## How you work
 
 Run your check with `{"code": "..."}`; you see back whatever it printed, any

@@ -64,6 +64,7 @@ from tests.loop_helpers import (
     read,
     settled,
     A_CUBE,
+    A_CUBE_WITH_A_HOLE,
     A_DATUM,
     A_PART,
     plan_reply,
@@ -257,12 +258,22 @@ def test_the_three_overall_sizes_are_checked_before_anybody_writes_a_check():
     assert "these did not hold: the envelope" in code
 
 
-def test_an_envelope_of_anything_but_three_plain_sizes_is_not_measured_here():
+def test_an_envelope_with_no_size_in_it_is_not_measured_here():
     from core.loop.assertion import the_envelope_measured
 
-    assert the_envelope_measured(A_CLAMP_ENVELOPE[:2]) == ""
     assert the_envelope_measured(
-        ["envelope → length: as long as the arm reaches (assumed)"]) == ""
+        ["envelope \u2192 length: as long as the arm reaches (assumed)"]) == ""
+
+
+def test_an_envelope_of_two_or_four_sizes_is_measured_by_membership_in_the_boxs_sides():
+    from core.loop.assertion import the_envelope_measured
+
+    two = the_envelope_measured(A_CLAMP_ENVELOPE[:2])
+    four = the_envelope_measured(A_CLAMP_ENVELOPE + ["envelope \u2192 width: 30 mm"])
+
+    assert "measure.box" in two and "measure.box" in four
+    assert "[30.0, 30.0, 108.0]" not in four
+    assert "in built" in four
 
 
 def test_the_topology_check_always_asks_for_one_solid_body():
@@ -516,9 +527,10 @@ def test_a_step_that_only_passed_on_the_retry_is_named_to_the_checks():
 
 
 def test_a_step_that_landed_first_time_names_nothing_to_the_checks():
+    a_cube_with_a_hole = A_CUBE_WITH_A_HOLE
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
-        plan_reply("Only", satisfies=everything(A_CUBE)),
+        design_reply(a_cube_with_a_hole),
+        plan_reply("Only", satisfies=everything(a_cube_with_a_hole)),
         code_reply("box()"),
         suspect_reply(),
         assertion_reply("assert True, 'the length'"),

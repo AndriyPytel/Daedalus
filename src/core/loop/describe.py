@@ -82,8 +82,6 @@ _RAN_OUT_OF_ROOM = "ran out of room before finishing this reply"
 _A_SIZE = re.compile(r"(-?\d+(?:\.\d+)?)\s*mm")
 
 
-_TRUE_TO = 0.5
-
 
 def _answered(question, ask, events):
     """Put a question to the person and say on the stream what came back."""

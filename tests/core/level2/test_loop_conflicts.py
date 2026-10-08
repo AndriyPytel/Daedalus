@@ -703,7 +703,7 @@ def test_the_entry_the_unbuilt_step_satisfied_comes_back_unmet_with_the_reason()
     assert said["entries"] == [THE_MATERIAL]
     assert said["why"] == NO_CARD
     assert said["description"].startswith("Assign plain carbon steel to the Body")
-    assert _turns_of(llm, "assertion")[0]["acceptance"] == [THE_LENGTH], \
+    assert _turns_of(llm, "assertion") == [], \
         "the checks were asked to measure a Step that was never built"
 
 def test_a_rejected_review_carries_the_unbuilt_step_s_entry_on_the_auto_answer(clean_auto_approve):
@@ -727,7 +727,6 @@ def test_a_rejected_review_carries_the_unbuilt_step_s_entry_on_the_auto_answer(c
         json.dumps({"declare": {"steps": [{"step": 1, "label": "Pad"}],
                     "unbuildable": NO_CARD}}),
         suspect_reply(),
-        assertion_reply(CHECKS),
         verdict_reply("fail", reason="the pad reads shallow"),
     ], attachments=[RENDER_PNG], budgets=Budgets(review_cycles=0))
 

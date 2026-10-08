@@ -2,7 +2,6 @@
 import json
 from dataclasses import dataclass, field
 
-from core.design.core import UNDER
 from core.events import ASSERTION, CONSULT_DESIGN, CONSULT_DESIGN_ANSWERED, TOOL_CALL, TOOL_RESULT
 
 import tempfile
@@ -12,9 +11,10 @@ from core.agent import phase_contract as pc
 from core.agent.subagent import SessionTreeSupervisor
 from core.kernel import Kernel
 from core.loop.budgets import Budgets
-from core.loop.describe import _A_SIZE, _TRUE_TO
 from core.loop.document import copied
-from core.loop.execute import _DID_NOT_HOLD, _MODEL_IS_INVALID, _addressed
+from core.loop.mechanical import covered_entries, envelope_figures, the_collateral_measured, the_sizes_measured
+from core.surfaces import LINEAR
+from core.loop.execute import _DID_NOT_HOLD, _MODEL_IS_INVALID
 from core.loop.prompt import ASSERTION_PHASE, prompt
 from core.prompts import read_prompt
 from core.loop.results import Stopped
@@ -39,32 +39,22 @@ class Checked:
     geometry: dict = field(default_factory=dict)
 
 
-def the_envelope_measured(acceptance):
+def the_envelope_measured(acceptance, description=None):
     """
-    The check nobody had to write: the part's three overall sizes, sorted
-    against sorted so it never has to know which way the part was built.
+    The check nobody had to write: the part's overall sizes against the sides of its exact box, within `LINEAR` since the box still lands inside the true extreme on a curved face.
+    Exactly three sizes are sorted against the sorted sides, so it never guesses orientation from geometry; any other number each has to be one of the sides, since `width` and `depth front to rear` often say one size twice.
     Measured: a lug built 25mm tall for 30 drawn passed Preflight.
-    `_TRUE_TO` is 0.5mm, since the exact box still lands
-    inside the true extreme on a curved face; guessing orientation from
-    geometry was rejected.
     """
-    sizes = []
-    for address, value in _addressed(acceptance).items():
-        if address.startswith("envelope" + UNDER):
-            found = _A_SIZE.findall(value)
-            if len(found) == 1:
-                sizes.append(float(found[0]))
-    if len(sizes) != 3:
+    sizes = sorted(figure for _, figure in envelope_figures(acceptance, description))
+    if not sizes:
         return ""
-    return _ENVELOPE_CHECK % (sorted(sizes), _TRUE_TO, sorted(sizes), _TRUE_TO)
+    if len(sizes) == 3:
+        return _ENVELOPE_CHECK % (sizes, LINEAR, sizes, LINEAR)
+    return _ENVELOPE_MEMBERS_CHECK % (sorted(set(sizes)), LINEAR, LINEAR)
 
 
 _ENVELOPE_CHECK = """
-solids = [o for o in doc.Objects if getattr(o, 'Shape', None) is not None
-          and o.Shape.Solids and not o.Shape.isNull()
-          and getattr(o.getParentGeoFeatureGroup(), 'TypeId', '') != 'PartDesign::Body']
-assert solids, 'the acceptance names an envelope and the Document has no solid'
-shape = max(solids, key=lambda o: measure.volume(o.Shape)).Shape
+shape = _faces.shape
 box = measure.box(shape)
 built = sorted([box.XLength, box.YLength, box.ZLength])
 asked = %s
@@ -74,6 +64,19 @@ assert all(abs(a - b) <= %s for a, b in zip(built, asked)), (
     'measures ' + ' x '.join('%%.2f' %% one for one in built) + ' mm, which is more '
     'than %s mm out. The sizes are sorted, so this says nothing about which way '
     'round it was built - only that it is not that part.')
+"""
+
+
+_ENVELOPE_MEMBERS_CHECK = """
+shape = _faces.shape
+box = measure.box(shape)
+built = sorted([box.XLength, box.YLength, box.ZLength])
+asked = %s
+missing = [a for a in asked if not any(abs(a - b) <= %s for b in built)]
+assert not missing, (
+    'these did not hold: the envelope. The part measures '
+    + ' x '.join('%%.2f' %% one for one in built) + ' mm and no side is within %s mm of '
+    + ', '.join('%%.2f' %% one for one in missing) + ' mm.')
 """
 
 
@@ -93,11 +96,7 @@ def the_topology_measured(description, base=None):
 
 _TOPOLOGY_CHECK = """
 from core.topology import betti_numbers
-solids = [o for o in doc.Objects if getattr(o, 'Shape', None) is not None
-          and o.Shape.Solids and not o.Shape.isNull()
-          and getattr(o.getParentGeoFeatureGroup(), 'TypeId', '') != 'PartDesign::Body']
-assert solids, 'the acceptance names topology and the Document has no solid'
-shape = max(solids, key=lambda o: measure.volume(o.Shape)).Shape
+shape = _faces.shape
 bbox = shape.BoundBox
 deflection = 0.001 * bbox.DiagonalLength
 points, facets = shape.tessellate(deflection)
@@ -193,10 +192,11 @@ def _consulted_design(description, events):
 
 def fixed_checks(acceptance, description, base):
     """The (script, name) pairs every finished Document is put through; a script is empty where it does not apply, and an edit of a *base* part skips the self-intersection scan."""
-    return [(the_envelope_measured(acceptance), "the envelope"),
+    return [(the_envelope_measured(acceptance, description), "the envelope"),
             ("" if base else SELF_INTERSECTION_CHECK, "no solid self-intersects"),
             (the_topology_measured(description, base), "the topology"),
-            ("no_collateral(doc)" if base else "", "no collateral change")]
+            (the_collateral_measured(acceptance, base), "no collateral change"),
+            (the_sizes_measured(acceptance, description), "the sizes, axes and counts")]
 
 
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
@@ -211,7 +211,9 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     solid, then ~0.7ms/solid marginal.
     """
     budgets = budgets or Budgets()
-    request = {"acceptance": list(acceptance),
+    covered = covered_entries(acceptance, description, base)
+    remaining = [entry for entry in acceptance if entry not in covered]
+    request = {"acceptance": remaining,
                "the_document_as_it_now_stands": described}
     if base:
         request["the_base_part"] = base
@@ -239,6 +241,11 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
     if not acceptance:
         return None
+
+    if not remaining:
+        events.emit(ASSERTION, ok=True, code="\n".join(scripts), confirmed=covered,
+                    uncovered=[], traceback="")
+        return Checked(confirmed=covered, geometry=result.get("geometry") or {})
 
     design_source = _consulted_design(description, events)
     attempts = []
@@ -279,8 +286,8 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
                 if result.get("ok"):
                     held = result.get("held")
-                    confirmed = list(held) if held is not None else \
-                        [entry for entry in acceptance if entry not in uncovered]
+                    confirmed = covered + (list(held) if held is not None else
+                                           [entry for entry in remaining if entry not in uncovered])
                     checked = Checked(confirmed=confirmed, uncovered=uncovered,
                                       geometry=result.get("geometry") or {})
                     events.emit(ASSERTION, ok=True, code=code, confirmed=confirmed,
@@ -290,10 +297,10 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                 traceback = result.get("traceback") or "The checks failed without saying why."
                 if _the_model_failed(traceback):
                     held = result.get("held")
-                    confirmed = list(held) if held is not None else []
+                    confirmed = covered + (list(held) if held is not None else [])
                     worker_failed = result.get("failed")
                     unmet = list(worker_failed) if worker_failed is not None else \
-                        (_unmet_in(traceback) or list(acceptance))
+                        (_unmet_in(traceback) or list(remaining))
                     events.emit(ASSERTION, ok=False, code=code, confirmed=confirmed,
                                 uncovered=uncovered, traceback=traceback, unmet=unmet)
                     return Checked(failed=True, confirmed=confirmed, traceback=traceback,
@@ -305,10 +312,10 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
         if kernel is None:
             working_kernel.kill()
 
-    events.emit(ASSERTION, ok=None, code="", confirmed=fixed_confirmed,
-                uncovered=list(acceptance),
+    events.emit(ASSERTION, ok=None, code="", confirmed=fixed_confirmed + covered,
+                uncovered=list(remaining),
                 traceback=attempts[-1]["traceback"] if attempts else "")
-    return Checked(confirmed=fixed_confirmed, uncovered=list(acceptance))
+    return Checked(confirmed=fixed_confirmed + covered, uncovered=list(remaining))
 
 
 def _unmet_in(traceback):

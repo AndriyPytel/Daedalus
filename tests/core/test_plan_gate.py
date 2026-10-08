@@ -618,7 +618,7 @@ def test_amending_over_a_decision_replans_without_asking_it_again():
                     "satisfies": ["features \u2192 outer-profile \u2192 radius"]}),
         plan_reply({"do": "Pad the R30 profile",
                     "satisfies": ["features \u2192 outer-profile \u2192 radius"]}),
-        code_reply("pad()"), suspect_reply(), assertion_reply("check()"), verdict_reply("pass"),
+        code_reply("pad()"), suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG]), tools=FakeTools().registry, events=events, gate=gate,
         attachments=[RENDER_PNG], ask=lambda question: asked.append(question) or "R30",
         kernel=StubKernel())

@@ -62,6 +62,7 @@ from tests.loop_helpers import (
     read,
     settled,
     A_CUBE,
+    A_CUBE_WITH_A_WALL,
     A_DATUM,
     A_PART,
     plan_reply,
@@ -676,8 +677,8 @@ def test_review_and_assertion_are_both_given_the_whole_description():
     a list of type names.
     """
     _, _, llm, _ = drive([
-        design_reply(A_CUBE),
-        plan_reply("Only", satisfies=everything(A_CUBE)),
+        design_reply(A_CUBE_WITH_A_WALL),
+        plan_reply("Only", satisfies=everything(A_CUBE_WITH_A_WALL)),
         code_reply("box()"),
         suspect_reply(),
         assertion_reply("assert True, 'the length'"),

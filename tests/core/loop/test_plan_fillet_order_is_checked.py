@@ -70,7 +70,7 @@ def test_a_pattern_counts_as_a_later_cut():
 
 def _drive(*plans, budgets=None):
     return drive([_design(), *plans, code_reply(*("a()" for _ in range(6))),
-                  suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+                  suspect_reply(), verdict_reply("pass")],
                  attachments=[RENDER_PNG], budgets=budgets or Budgets(mechanical_revisions=0))
 
 

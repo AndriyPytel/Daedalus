@@ -424,6 +424,13 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False):
                  "cylinder_face": cylinder_face,
                  "no_collateral": functools.partial(no_collateral, measures=measure),
                  "by_label": by_label, "sketch_at": sketch_at}
+    from core import surfaces
+
+    faces = surfaces.Faces(doc, measure)
+    namespace["_faces"] = faces
+    namespace["face_at"] = lambda datum: faces.face_at(namespace.get("design"), datum)
+    namespace["cylinder"] = faces.cylinder
+    namespace["distance"] = surfaces.distance
     if design is not None:
         namespace["design"] = _step_design(design)
     for module in STEP_MODULES:
@@ -441,7 +448,8 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False):
 RESERVED_STEP_NAMES = frozenset(
     {"App", "FreeCAD", "doc", "__name__", "edges_between", "edges_by_concavity",
      "built_ok", "pick_edges", "bbox", "by_label", "sketch_at", "design", "names", "plan_values",
-     "pick_faces", "plane_face", "cylinder_face", "no_collateral", "measure"}
+     "pick_faces", "plane_face", "cylinder_face", "no_collateral", "measure", "face_at", "cylinder",
+     "distance"}
     | set(STEP_MODULES))
 
 

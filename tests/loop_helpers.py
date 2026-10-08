@@ -138,6 +138,11 @@ def settled(value, because):
 
 A_CUBE = {"envelope": {"length": read("10 mm")}}
 
+A_CUBE_WITH_A_WALL = {"envelope": {"length": read("10 mm"), "thickness": read("2 mm")}}
+
+A_CUBE_WITH_A_HOLE = {**A_CUBE, "features": [{"id": "bore", "kind": "hole",
+                                              "position": {"the top face": read("2 mm")}}]}
+
 A_DATUM = {"datums": [{"name": "the left end face", "is": "the flat face at the left"}]}
 
 A_PART = {
@@ -929,9 +934,9 @@ A_BOX_FROM_WORDS = {
 
 
 def _a_run_with_no_drawing():
-    """A whole run over an Intent and nothing else, through to a verdict."""
+    """A whole run over an Intent and nothing else, through to a verdict; its three envelope sizes need no model-written check."""
     return drive([design_reply(A_BOX_FROM_WORDS), plan_reply("Pad a 10 mm box"),
-                  code_reply("box()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")])
+                  code_reply("box()"), suspect_reply(), verdict_reply("pass")])
 
 
 def a_refusal():
@@ -1012,7 +1017,7 @@ OFF_THE_SECTION = {"features": [
 ]}
 
 
-A_NUT = {"envelope": {"across the flats": read("13.0 mm"), "height": read("6.5 mm")}}
+A_NUT = {"envelope": {"across the flats": read("13.0 mm"), "thickness": read("6.5 mm")}}
 
 
 ACCEPTANCE = acceptance_of(A_NUT)
@@ -1105,12 +1110,12 @@ def _four_steps_applied_then_a_handback():
 SIX_FAILED = ('Traceback (most recent call last):\n'
               '  File "<step>", line 156, in <module>\n'
               'AssertionError: these did not hold: envelope \u2192 across the flats: '
-              '13.0 mm (read); envelope \u2192 height: 6.5 mm (read)\n')
+              '13.0 mm (read); envelope \u2192 thickness: 6.5 mm (read)\n')
 
 
 MIXED_TRACEBACK = ('Traceback (most recent call last):\n'
                    '  File "<step>", line 3, in <module>\n'
-                   "AssertionError: these did not hold: envelope \u2192 height: 6.5 mm "
+                   "AssertionError: these did not hold: envelope \u2192 thickness: 6.5 mm "
                    "(read)\n")
 
 
@@ -1366,7 +1371,6 @@ def a_run_that_cannot_assign_the_material(**kwargs):
         json.dumps({"declare": {"steps": [{"step": 1, "label": "Pad"}],
                     "unbuildable": NO_CARD}}),
         suspect_reply(),
-        assertion_reply(CHECKS),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG], **kwargs)
 

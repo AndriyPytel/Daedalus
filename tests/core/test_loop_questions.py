@@ -372,7 +372,7 @@ def test_a_suspicion_never_gates_but_reaches_assertions_acceptance_list():
     the very list Assertion measures, carrying `(suspected)` the way a Plan
     entry carries `(read)` or `(assumed)`.
     """
-    raised = "envelope → width: 40 mm"
+    raised = "features → nut → position → the top face: 3 mm"
     result, events, llm, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"),
         suspect_reply(raised), assertion_reply(CHECKS), verdict_reply("pass"))
@@ -760,7 +760,7 @@ def test_the_acceptance_is_the_descriptions_own_entries_and_not_plans_paraphrase
     shown = events.first(PLAN).data["acceptance"]
     assert shown == ["envelope → depth front to rear: 100 mm (read)",
                      "features → central-opening → position → the front face: 20 mm (read)"]
-    assert _turns_of(llm, "assertion")[0]["acceptance"] == shown
+    assert _turns_of(llm, "assertion")[0]["acceptance"] == shown[1:]
 
 
 def test_a_value_the_user_assumed_is_still_marked_assumed_in_the_acceptance():
@@ -952,7 +952,7 @@ def test_an_assumed_entry_is_not_something_a_plan_can_be_refused_over():
     result, events, _, _ = drive([
         design_reply(told),
         plan_reply("Pad it"), code_reply("pad()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok
@@ -1110,7 +1110,7 @@ def test_a_run_with_no_attachment_still_plans_and_still_shows_an_acceptance():
     result, events, _, tools = drive(
         [design_reply(told, question=MISSING), design_reply(), design_reply(),
          plan_reply("Pad it 150 mm", satisfies=everything(told)), code_reply("pad()"),
-         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+         suspect_reply(), verdict_reply("pass")],
         attachments=[RENDER_PNG], ask=lambda _: "150 mm long")
 
     assert result.ok
@@ -1135,7 +1135,7 @@ def test_the_entries_that_did_not_hold_come_out_on_the_result():
     )
 
     assert result.unmet == ["envelope \u2192 across the flats: 13.0 mm (read)",
-                            "envelope \u2192 height: 6.5 mm (read)"]
+                            "envelope \u2192 thickness: 6.5 mm (read)"]
 
 
 def test_a_result_the_user_took_as_it_is_still_says_what_is_wrong_with_it():
@@ -1153,7 +1153,7 @@ def test_a_result_the_user_took_as_it_is_still_says_what_is_wrong_with_it():
 
     assert result.ok, "the user took it, so the run passed"
     assert result.unmet == ["envelope \u2192 across the flats: 13.0 mm (read)",
-                            "envelope \u2192 height: 6.5 mm (read)"]
+                            "envelope \u2192 thickness: 6.5 mm (read)"]
 
 
 def test_a_run_whose_checks_passed_leaves_nothing_outstanding():
@@ -1188,7 +1188,7 @@ def test_the_assertion_event_names_the_entries_and_not_only_the_traceback():
 
     assert events.first(ASSERTION).data["unmet"] == [
         "envelope \u2192 across the flats: 13.0 mm (read)",
-        "envelope \u2192 height: 6.5 mm (read)"]
+        "envelope \u2192 thickness: 6.5 mm (read)"]
 
 
 

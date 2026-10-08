@@ -17,16 +17,21 @@ from tests.loop_helpers import (
     verdict_reply,
 )
 
+_A_POSITION = "features \u2192 hole-a \u2192 position \u2192 the left end face: 20 mm"
+
 _THE_RECORDED_ACCEPTANCE = [
     "envelope → length: 80 mm between the left end face and the right end face (read)",
     "envelope → depth front to rear: 30 mm between the front face and the rear face (read)",
     "envelope → height: 40 mm between the bottom of the lug and the top of the boss (read)",
+    _A_POSITION,
 ]
 
 _A_PART_WITH_AN_ENVELOPE = {
     "envelope": {"length between the ends": {"value": "108 mm", "flag": "read"},
                 "depth front to rear": {"value": "30 mm", "flag": "read"},
                 "height of the right lug": {"value": "30 mm", "flag": "read"}},
+    "features": [{"id": "hole-a", "kind": "hole",
+                  "position": {"the left end face": {"value": "20 mm", "flag": "read", "mm": 20}}}],
 }
 
 
@@ -50,7 +55,8 @@ def test_an_envelope_the_fixed_check_already_held_is_confirmed_even_when_the_mod
 
     assert "the envelope" in checked.confirmed, \
         "the fixed envelope check already held and must not be discarded"
-    assert checked.uncovered == _THE_RECORDED_ACCEPTANCE
+    assert checked.uncovered == [_A_POSITION]
+    assert set(_THE_RECORDED_ACCEPTANCE[:3]) <= set(checked.confirmed)
     reported = events.first(ASSERTION).data
     assert "the envelope" in reported["confirmed"]
 
