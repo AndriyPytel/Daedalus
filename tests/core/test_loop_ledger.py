@@ -693,7 +693,7 @@ def test_a_standing_approval_still_lets_the_user_be_asked_about_the_result():
     result, _, _, _ = driven_through(
         gate,
         [design_reply(A_NUT), planning_the_nut("Make it"), code_reply("make()"),
-         suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass")],
+         suspect_reply(), assertion_reply(), verdict_reply("pass")],
         checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED)],
         attachments=[RENDER_PNG],
         decide=lambda failure: decided.append(failure) or ACCEPT,
@@ -830,7 +830,7 @@ def test_a_part_whose_outside_nobody_carries_goes_back_to_the_drawing():
         [design_reply(said_in_passing), design_reply(the_contour),
          plan_reply("Pad the profile",
                     satisfies=everything(said_in_passing, the_contour)),
-         code_reply("box()"), suspect_reply(), assertion_reply("assert True, 'the length'"), verdict_reply("pass")],
+         code_reply("box()"), suspect_reply(), assertion_reply(), verdict_reply("pass")],
         attachments=[RENDER_PNG])
 
     assert result.ok, result.reason
@@ -869,7 +869,7 @@ def test_a_shape_the_drawing_will_not_say_is_settled_and_shown_at_the_gate():
         [design_reply(said_in_passing), design_reply({}), design_reply(settled),
          plan_reply("Pad the profile",
                     satisfies=everything(said_in_passing, settled)),
-         code_reply("pad()"), suspect_reply(), assertion_reply("assert True, 'the length'"), verdict_reply("pass")],
+         code_reply("pad()"), suspect_reply(), assertion_reply(), verdict_reply("pass")],
         attachments=[RENDER_PNG], ask=lambda question: asked.append(question) or "")
 
     assert result.ok, result.reason
@@ -1039,7 +1039,7 @@ def test_the_re_ask_of_a_phase_that_is_shown_pictures_keeps_the_pictures():
         plan_reply("Add a box", satisfies=everything(A_CUBE)),
         code_reply("box()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the length'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -1065,7 +1065,7 @@ def test_a_revision_is_shown_the_plan_it_is_revising():
         plan_reply("Pad the length", "Pad the width", satisfies=both),
         code_reply("box()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the length'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -1140,7 +1140,7 @@ def test_a_re_read_that_settles_nothing_no_longer_stops_the_run():
                    satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
         code_reply("pad()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the length'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 

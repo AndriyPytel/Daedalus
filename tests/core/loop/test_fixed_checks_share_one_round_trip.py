@@ -23,7 +23,7 @@ def test_the_two_fixed_checks_are_one_check_assertions_call(tmp_path):
                  "envelope \u2192 depth front to rear: 30 mm (read)",
                  "envelope \u2192 height of the right lug: 30 mm (read)",
                  "features \u2192 hole-a \u2192 position \u2192 the left end face: 20 mm"]
-    llm = ScriptedLLMClient([json.dumps({"declare": {"code": "assert True"}})])
+    llm = ScriptedLLMClient([json.dumps({"declare": {"checks": [{"entry": 0, "expr": "True"}]}})])
     events = EventStream()
 
     assertion(acceptance, {}, registry, llm, events)

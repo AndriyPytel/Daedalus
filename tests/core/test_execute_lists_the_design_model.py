@@ -20,7 +20,7 @@ def test_the_first_message_lists_every_feature_id_and_dimensional_number():
         plan_reply("Drill the hole", satisfies=everything(A_PART)),
         code_reply("doc.addObject('Part::Box', 'Box')"),
         suspect_reply(),
-        assertion_reply("assert True"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], applies=[{"status": "applied", "created": ["Box"], "description": {}}],
        intent="Drill a hole")

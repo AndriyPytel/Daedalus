@@ -431,6 +431,7 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False):
     namespace["face_at"] = lambda datum: faces.face_at(namespace.get("design"), datum)
     namespace["cylinder"] = faces.cylinder
     namespace["distance"] = surfaces.distance
+    namespace["check_each"] = check_each(namespace)
     if design is not None:
         namespace["design"] = _step_design(design)
     for module in STEP_MODULES:
@@ -449,7 +450,7 @@ RESERVED_STEP_NAMES = frozenset(
     {"App", "FreeCAD", "doc", "__name__", "edges_between", "edges_by_concavity",
      "built_ok", "pick_edges", "bbox", "by_label", "sketch_at", "design", "names", "plan_values",
      "pick_faces", "plane_face", "cylinder_face", "no_collateral", "measure", "face_at", "cylinder",
-     "distance"}
+     "distance", "check_each"}
     | set(STEP_MODULES))
 
 
@@ -1155,6 +1156,33 @@ def _measured(namespace):
             list(failed) if isinstance(failed, (list, tuple)) else None)
 
 
+def check_each(namespace):
+    """
+    The evaluator behind an expression check: `{entry: expression}` in, `(held, failed, defects)` out, each expression evaluated alone in *namespace*.
+    A raise, or a value that is not a bool, is a defect `[entry, error]` of that entry only.
+    """
+    def run(expressions):
+        held, failed, defects = [], [], []
+        for entry, expression in sorted(expressions.items()):
+            try:
+                verdict = eval(expression, namespace)
+            except Exception as exc:
+                defects.append([entry, type(exc).__name__ + ": " + str(exc)])
+                continue
+            if isinstance(verdict, bool):
+                (held if verdict else failed).append(entry)
+            else:
+                defects.append([entry, "the expression gave " + repr(verdict)[:80] + ", not True or False"])
+        return held, failed, defects
+    return run
+
+
+def _defects(namespace):
+    """The `defects` list an expression check leaves beside `held` and `failed`: `[entry, error]` pairs for the expressions that raised; `None` where the script never defined it."""
+    defects = namespace.get("defects")
+    return [list(pair) for pair in defects] if isinstance(defects, (list, tuple)) else None
+
+
 def register_step_source(code):
     """
     Put a Step's own source into `linecache` under the name `exec(compile(...))`
@@ -1371,6 +1399,9 @@ def _run_step_body(doc, namespace, touched, request):
         result["held"] = held
     if failed is not None:
         result["failed"] = failed
+    defects = _defects(namespace)
+    if defects is not None:
+        result["defects"] = defects
     render_path = request.get("render_path")
     if render_path:
         from core.kernel.preflight_render import render
@@ -1426,6 +1457,9 @@ def run_step(request):
             response["held"] = held
         if failed is not None:
             response["failed"] = failed
+        defects = _defects(namespace)
+        if defects is not None:
+            response["defects"] = defects
     except BaseException as exc:
         touched.diff(doc)
         response = {"ok": False,

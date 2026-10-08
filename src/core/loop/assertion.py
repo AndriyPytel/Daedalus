@@ -15,6 +15,7 @@ from core.loop.document import copied
 from core.loop.mechanical import covered_entries, envelope_figures, the_collateral_measured, the_sizes_measured
 from core.surfaces import LINEAR
 from core.loop.execute import _DID_NOT_HOLD, _MODEL_IS_INVALID
+from core.loop.expressions import answers_in, each_expression_evaluated
 from core.loop.prompt import ASSERTION_PHASE, prompt
 from core.prompts import read_prompt
 from core.loop.results import Stopped
@@ -25,10 +26,8 @@ class Checked:
     """
     What the Assertion phase made of the finished Document.
 
-    Constraint: `confirmed` is read back from the check script's own `held`
-    list, not inferred as everything not `uncovered`, so a run can carry both
-    a non-empty `confirmed` and a non-empty `unmet`. `geometry` is empty
-    wherever no `check_assertions` call ran.
+    Constraint: `confirmed` is read back from the check's own `held` list, so a run can carry both a non-empty `confirmed` and a non-empty `unmet`.
+    `defects` names the entries whose expression never gave True or False, and they are in `uncovered` too, never in `confirmed`.
     """
 
     failed: bool = False
@@ -36,6 +35,7 @@ class Checked:
     confirmed: list = field(default_factory=list)
     uncovered: list = field(default_factory=list)
     unmet: list = field(default_factory=list)
+    defects: list = field(default_factory=list)
     geometry: dict = field(default_factory=dict)
 
 
@@ -213,8 +213,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     budgets = budgets or Budgets()
     covered = covered_entries(acceptance, description, base)
     remaining = [entry for entry in acceptance if entry not in covered]
-    request = {"acceptance": remaining,
-               "the_document_as_it_now_stands": described}
+    request = {"the_document_as_it_now_stands": described}
     if base:
         request["the_base_part"] = base
     if after_a_retry:
@@ -225,6 +224,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     fixed = fixed_checks(acceptance, description, base)
     scripts = [code for code, _ in fixed if code]
     fixed_confirmed = []
+    geometry = {}
     if scripts:
         code = "\n".join(scripts)
         events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
@@ -238,6 +238,7 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
             return Checked(failed=True, traceback=traceback, unmet=unmet,
                            geometry=result.get("geometry") or {})
         fixed_confirmed = [name for code, name in fixed if code]
+        geometry = result.get("geometry") or {}
 
     if not acceptance:
         return None
@@ -245,18 +246,23 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
     if not remaining:
         events.emit(ASSERTION, ok=True, code="\n".join(scripts), confirmed=covered,
                     uncovered=[], traceback="")
-        return Checked(confirmed=covered, geometry=result.get("geometry") or {})
+        return Checked(confirmed=covered, geometry=geometry)
 
     design_source = _consulted_design(description, events)
-    attempts = []
+    held, failed, uncovered, defects = set(), set(), set(), {}
+    asked = list(range(len(remaining)))
+    expressions = {}
     working_kernel = kernel or _LazyKernel()
     try:
         with copied(tools) as document:
             for attempt in range(budgets.attempts_per_step):
                 if cancelled():
                     raise Stopped()
-                if attempts:
-                    request["your_failed_attempts_at_the_checks"] = list(attempts)
+                request["acceptance"] = [{"entry": entry, "text": remaining[entry]} for entry in asked]
+                if defects:
+                    request["your_checks_that_raised"] = [
+                        {"entry": entry, "expr": expressions.get(entry, ""), "error": error}
+                        for entry, error in sorted(defects.items())]
 
                 supervisor = supervisor or SessionTreeSupervisor()
                 task = json.dumps(request, indent=2, default=str)
@@ -272,50 +278,58 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
                     declared, session, declarations = run_phase(
                         pc.ASSERTION, working_dir, sources, llm, task, **run_kwargs)
 
-                reply = declared if isinstance(declared, dict) else {}
-                code = str(reply.get("code") or "").strip()
-                uncovered = [str(entry) for entry in (reply.get("uncovered") or ())]
-                if not code:
-                    attempts.append({"code": "", "traceback": "You replied with no code. "
-                                                              "Write the checks."})
-                    continue
-
-                events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
-                result = tools.call("check_assertions", {"code": code})
-                events.emit(TOOL_RESULT, name="check_assertions", result=result)
-
-                if result.get("ok"):
-                    held = result.get("held")
-                    confirmed = covered + (list(held) if held is not None else
-                                           [entry for entry in remaining if entry not in uncovered])
-                    checked = Checked(confirmed=confirmed, uncovered=uncovered,
-                                      geometry=result.get("geometry") or {})
-                    events.emit(ASSERTION, ok=True, code=code, confirmed=confirmed,
-                                uncovered=uncovered, traceback="")
-                    return checked
-
-                traceback = result.get("traceback") or "The checks failed without saying why."
-                if _the_model_failed(traceback):
-                    held = result.get("held")
-                    confirmed = covered + (list(held) if held is not None else [])
-                    worker_failed = result.get("failed")
-                    unmet = list(worker_failed) if worker_failed is not None else \
-                        (_unmet_in(traceback) or list(remaining))
-                    events.emit(ASSERTION, ok=False, code=code, confirmed=confirmed,
-                                uncovered=uncovered, traceback=traceback, unmet=unmet)
-                    return Checked(failed=True, confirmed=confirmed, traceback=traceback,
-                                   uncovered=uncovered, unmet=unmet,
-                                   geometry=result.get("geometry") or {})
-
-                attempts.append({"code": code, "traceback": traceback})
+                answered, left_out, unanswered = answers_in(declared, asked)
+                uncovered.update(left_out)
+                expressions.update(answered)
+                defects = {entry: "you gave no answer for this entry" for entry in unanswered}
+                if answered:
+                    code = each_expression_evaluated(answered)
+                    events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
+                    result = tools.call("check_assertions", {"code": code})
+                    events.emit(TOOL_RESULT, name="check_assertions", result=result)
+                    geometry = result.get("geometry") or geometry
+                    if not result.get("ok"):
+                        traceback = result.get("traceback") or "The checks failed without saying why."
+                        if _MODEL_IS_INVALID in traceback:
+                            return _failed_check(events, code, covered, held, failed, uncovered,
+                                                 remaining, traceback, geometry, list(remaining))
+                        defects.update({entry: traceback for entry in answered})
+                    else:
+                        failed.update(result.get("failed") or ())
+                        defects.update({entry: error for entry, error in result.get("defects") or ()})
+                        held.update(result["held"] if result.get("held") is not None else
+                                    [entry for entry in answered if entry not in failed and entry not in defects])
+                asked = sorted(defects)
+                if not asked:
+                    break
     finally:
         if kernel is None:
             working_kernel.kill()
 
-    events.emit(ASSERTION, ok=None, code="", confirmed=fixed_confirmed + covered,
-                uncovered=list(remaining),
-                traceback=attempts[-1]["traceback"] if attempts else "")
-    return Checked(confirmed=fixed_confirmed + covered, uncovered=list(remaining))
+    confirmed = covered + [remaining[entry] for entry in sorted(held)]
+    if asked:
+        confirmed = fixed_confirmed + confirmed
+    unanswerable = [remaining[entry] for entry in sorted(uncovered) + asked]
+    if failed:
+        return _failed_check(events, "", covered, held, failed, uncovered, remaining,
+                             _DID_NOT_HOLD + "; ".join(remaining[entry] for entry in sorted(failed)),
+                             geometry, [remaining[entry] for entry in sorted(failed)],
+                             unanswerable, [remaining[entry] for entry in asked])
+    nothing_judged = asked and not held and not uncovered
+    events.emit(ASSERTION, ok=None if nothing_judged else True, code="", confirmed=confirmed,
+                uncovered=unanswerable, traceback="", defects=[remaining[entry] for entry in asked])
+    return Checked(confirmed=confirmed, uncovered=unanswerable,
+                   defects=[remaining[entry] for entry in asked], geometry=geometry)
+
+
+def _failed_check(events, code, covered, held, failed, uncovered, remaining, traceback,
+                  geometry, unmet, unanswerable=(), defects=()):
+    confirmed = covered + [remaining[entry] for entry in sorted(held)]
+    events.emit(ASSERTION, ok=False, code=code, confirmed=confirmed, uncovered=list(unanswerable),
+                traceback=traceback, unmet=unmet, defects=list(defects))
+    return Checked(failed=True, confirmed=confirmed, traceback=traceback,
+                   uncovered=list(unanswerable), unmet=unmet, defects=list(defects),
+                   geometry=geometry)
 
 
 def _unmet_in(traceback):

@@ -380,6 +380,7 @@ class ApplyPipeline:
             discard(copy)
         return {"ok": bool(checked.ok), "traceback": checked.traceback or "",
                 "held": checked.held, "failed": checked.failed,
+                "defects": checked.defects,
                 "geometry": checked.geometry}
 
     def review_views(self):

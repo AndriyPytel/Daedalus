@@ -164,8 +164,7 @@ def scripted_model():
             {"step": number, "label": label} for number, (code, label) in enumerate(steps, start=1)
         ]}}),
         json.dumps({"declare": {"suspected": []}}),
-        json.dumps({"declare": {"code": "assert True, 'built to the read Design fields'",
-                                "uncovered": []}}),
+        json.dumps({"declare": {"checks": [{"entry": number, "expr": "True"} for number in range(32)]}}),
         json.dumps({"declare": {"verdict": "pass",
                     "reason": "A %gmm square padded to %gmm, top edges filleted, "
                               "drilled Ø%g." % (SQUARE, PAD_CHANGED, BORE)}}),

@@ -753,7 +753,7 @@ def test_a_step_that_changes_the_shape_is_still_handed_back_to_plan():
                    {"do": "Pocket a wider recess", "satisfies": [THE_MATERIAL]}),
         code_reply("pad()", "recess()"),
         suspect_reply(),
-        assertion_reply(CHECKS),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -836,7 +836,7 @@ def test_mechanical_revisions_do_not_consume_execution_budget():
         plan_reply("Step 1 without overconstraint", satisfies=everything(A_PART)),
         code_reply("step1_fixed()"),
         suspect_reply(),
-        assertion_reply("assert True"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(revisions=3, mechanical_revisions=2),
        applies=[failed("the sketch is overconstrained")])

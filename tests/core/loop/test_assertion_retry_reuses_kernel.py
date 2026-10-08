@@ -36,7 +36,7 @@ def _registry(copies, checks, document_path):
 
 def _drive_a_retrying_assertion(monkeypatch, tmp_path):
     """
-    One attempt fails on a script error (not a failed acceptance check), the
+    One attempt's expression raises (not a failed acceptance check), the
     second attempt's checks hold. Every attempt writes one exploratory `code`
     turn before it declares, so the kernel that turn runs against is booted,
     and the retry drives it a second time.
@@ -49,15 +49,16 @@ def _drive_a_retrying_assertion(monkeypatch, tmp_path):
     copies = []
     checks = [
         {"ok": True, "held": [], "geometry": {}},
-        {"ok": False, "traceback": "NameError: name 'Edge99' is not defined"},
-        {"ok": True, "held": ["length: 10 mm"], "geometry": {}},
+        {"ok": True, "held": [], "failed": [],
+         "defects": [[0, "NameError: name 'Edge99' is not defined"]], "geometry": {}},
+        {"ok": True, "held": [0], "failed": [], "defects": [], "geometry": {}},
     ]
     tools = _registry(copies, checks, str(document))
     llm = ScriptedLLMClient([
         json.dumps({"code": "print('looking, attempt 1')"}),
-        json.dumps({"declare": {"code": "assert doc.getObject('Edge99')"}}),
+        json.dumps({"declare": {"checks": [{"entry": 0, "expr": "doc.getObject('Edge99').Shape"}]}}),
         json.dumps({"code": "print('looking, attempt 2')"}),
-        json.dumps({"declare": {"code": "assert True"}}),
+        json.dumps({"declare": {"checks": [{"entry": 0, "expr": "True"}]}}),
     ])
     events = EventStream()
 
@@ -77,7 +78,7 @@ def test_the_failing_attempts_traceback_reaches_the_next_attempts_first_turn(mon
     _, _, llm = _drive_a_retrying_assertion(monkeypatch, tmp_path)
 
     second_attempt_task = json.loads(llm.calls[2][-1]["content"])
-    told = second_attempt_task["your_failed_attempts_at_the_checks"]
+    told = second_attempt_task["your_checks_that_raised"]
 
     assert len(told) == 1
-    assert "Edge99" in told[0]["traceback"]
+    assert "Edge99" in told[0]["error"]

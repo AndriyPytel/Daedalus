@@ -68,7 +68,7 @@ def test_the_phase_replays_under_the_measured_bound(a_box_with_three_fillets):
         "type": "object", "properties": {"code": {"type": "string"}},
     })(lambda code: calls.append("check_assertions") or _check(checks_worker, fixture_path, code))
 
-    llm = ScriptedLLMClient([json.dumps({"declare": {"code": "assert True"}})])
+    llm = ScriptedLLMClient([json.dumps({"declare": {"checks": [{"entry": 0, "expr": "True"}]}})])
     events = EventStream()
 
     checked = assertion(["the part is a box with rounded edges"], {}, registry, llm, events)
@@ -98,4 +98,5 @@ def _check(worker, fixture_path, code):
     finally:
         os.remove(copy)
     return {"ok": result.ok, "traceback": result.traceback,
-           "held": result.held, "failed": result.failed, "geometry": result.geometry}
+           "held": result.held, "failed": result.failed,
+           "defects": result.defects, "geometry": result.geometry}

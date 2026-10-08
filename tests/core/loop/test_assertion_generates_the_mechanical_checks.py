@@ -37,7 +37,7 @@ def _spy_on_the_model(monkeypatch):
 
     def fake_run_phase(kind, working_dir, sources, llm, task, **kwargs):
         asked.append(json.loads(task))
-        return {"code": "assert True"}, None, []
+        return {"checks": [{"entry": 0, "expr": "True"}]}, None, []
 
     monkeypatch.setattr(assertion_module, "run_phase", fake_run_phase)
     return asked
@@ -50,7 +50,7 @@ def test_the_model_is_asked_only_for_the_entries_the_generated_checks_did_not_co
     checked = assertion([_SIZE, _COUNT, _POSITION], {}, tools, ScriptedLLMClient([]), EventStream())
 
     assert len(asked) == 1
-    assert asked[0]["acceptance"] == [_POSITION]
+    assert [item["text"] for item in asked[0]["acceptance"]] == [_POSITION]
     assert "_faces.measured" in calls[0]
     assert _SIZE in checked.confirmed and _COUNT in checked.confirmed
 
@@ -83,12 +83,12 @@ def test_a_generated_check_that_fails_names_the_entry_and_stops_before_any_model
 
 
 def test_the_checks_the_model_writes_are_confirmed_beside_the_ones_code_wrote(monkeypatch, tmp_path):
-    tools, _ = _tools(tmp_path, lambda code: {"ok": True, "held": ["held by the model"], "geometry": {}})
+    tools, _ = _tools(tmp_path, lambda code: {"ok": True, "held": [0], "failed": [], "defects": [], "geometry": {}})
     _spy_on_the_model(monkeypatch)
 
     checked = assertion([_SIZE, _POSITION], {}, tools, ScriptedLLMClient([]), EventStream())
 
-    assert checked.confirmed == [_SIZE, "held by the model"]
+    assert checked.confirmed == [_SIZE, _POSITION]
 
 
 def test_an_explicit_volume_claim_reaches_no_collateral_with_its_arguments(monkeypatch, tmp_path):
@@ -109,13 +109,13 @@ def test_an_unchanged_entry_with_a_second_claim_still_reaches_the_model(monkeypa
 
     assertion([claim], {}, tools, ScriptedLLMClient([]), EventStream(), base={"volume": 1.0})
 
-    assert asked[0]["acceptance"] == [claim]
+    assert [item["text"] for item in asked[0]["acceptance"]] == [claim]
 
 
-def test_the_prompt_offers_the_helpers_and_asks_for_one_line_an_entry():
+def test_the_prompt_offers_the_helpers_and_asks_for_one_expression_an_entry():
     from core.loop.prompt import ASSERTION_PHASE, prompt
 
     text = prompt(ASSERTION_PHASE)
     for name in ("face_at", "distance", "cylinder"):
         assert name + "(" in text
-    assert "one line" in text
+    assert "one expression per entry" in text

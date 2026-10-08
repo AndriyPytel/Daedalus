@@ -11,13 +11,10 @@ exists at all, lives in Execute's own checkpoints, not anywhere this phase
 can see. Judge the
 Document as it finally stands, never how it got there.
 
-Write one block of Python that measures the result and ends in one assert,
-and run it with `{"code": "..."}` against your own read-only kernel — a
-throwaway copy of the Document, so nothing you do here can change it. Where
-your own code raises before it reaches the assert, that is a defect in the
-check, not in the part: read the traceback and write the check again: the
-Document does not change between attempts. Only once it runs clean do you
-end the phase.
+Answer with one short Python expression per entry of the list, never a script.
+Each expression is evaluated alone, in the namespace below, and must give `True` (the entry holds) or `False` (it does not). Where one raises, that is a defect in that one check and nothing else changes: you are sent back only that entry, with the error, and asked for it again. The Document does not change between attempts.
+
+You may look at the part first with `{"code": "..."}` against your own read-only kernel, a throwaway copy of the Document; keep it to a few lines and print only what you need. Then end the phase with the list.
 
 The list is not somebody's paraphrase of the drawing. It is the description of
 the part itself, entry by entry, each one addressed by where it sits on that
@@ -47,39 +44,14 @@ than reporting them covered.
 `recompute`, no deletion. You are reading a part, not building one. `doc`,
 `App`, `FreeCAD`, `Part`, `Sketcher` and `PartDesign` are in scope.
 
-Every entry of the list is measured, in the order the list gives them, into
-one of two lists — `held` for what it found true and `failed` for what it did
-not — and **one** assert at the very end names every entry that did not hold.
-The name of an entry is the entry itself:
+Every entry is answered, by number. The entry number is the `entry` field of the item you were sent; the answer is one item of `checks`:
 
-    held = []
-    failed = []
-    if abs(width - 13.0) <= 0.5:
-        held.append("13 mm across the flats")
-    else:
-        failed.append("13 mm across the flats")
-    ...
-    assert not failed, "these did not hold: " + "; ".join(failed)
+    {"declare": {"checks": [
+        {"entry": 0, "expr": "abs(distance(cylinder(40, 'y'), face_at('-x')) - 25) <= 0.5"},
+        {"entry": 1, "uncovered": "no face carries this value"}
+    ]}}
 
-`held` is read back after the script runs, whether the assert passes or not —
-it is what lets a mixed result say which entries held and which did not,
-rather than only the ones that failed. A run told only what failed cannot
-tell an entry that passed from an entry nobody looked at; `held` is what
-tells them apart.
-
-One assert per entry instead stops at the first that fails, and every entry
-under it goes unmeasured. A recorded run put the material third in the list,
-got it wrong, and never reached the forty geometric entries below: Plan was
-told the material was wrong, revised for the material, and sent back a part
-whose five bores had cut nothing at all. Every entry has to be measured before
-anything is reported, or the report is about whichever entry happened to be
-first.
-
-Name the entry, not the number that came out of it. A failure Plan cannot
-place is a failure it cannot fix. Where a measurement has to raise on its own
-rather than reach `failed`, raise the same way: a bare `assert` or a bare
-exception is a failure with no name, and Plan is left with an `AssertionError`
-and nothing about which entry it was.
+An entry with no item is sent back to you as unanswered.
 
 Measure off `Shape`, on a feature — never off a bounding box, and never by
 exporting a mesh. `Shape` carries everything an STL would and carries it
@@ -158,23 +130,16 @@ else. A recorded run demanded the literal words "plain carbon steel" of a
 build whose library has no such name, and reported a correctly steel part as
 unmet.
 
-Compute first, judge second, assert last. Work the measurements out into named
-values, then test those values into `failed`, so what is reported is what was
-measured rather than a single unreadable expression.
-
-An entry you cannot measure is **uncovered**, not approximated. Say so in
-`uncovered` and leave it out of `failed` entirely: Review still judges
+An entry you cannot measure is **uncovered**, not approximated. Answer it with
+`{"entry": n, "uncovered": "why"}` and never with an expression that measures something near it: Review still judges
 everything the checks do not cover, and a check that measures something
 adjacent is worse than no check at all — it passes on the wrong evidence.
 
-If your own code failed last time, the traceback is in
-`your_failed_attempts_at_the_checks`. That is a defect in the check, not in
-the part: fix the check. Nothing about the model has changed since you last
-looked at it.
+If `your_checks_that_raised` is given, those expressions raised: the error is a defect in the check, not in the part. Fix the expression; `acceptance` then holds only those entries.
 
 The list you are given is only what code could not settle. Plain diameters,
 radii, counts, axes and the three overall sizes were already measured before
-you were asked, and are not in it. Write **one line per entry**, not a
+you were asked, and are not in it. Write **one expression per entry**, not a
 program: these are in scope, and each costs no more than a call.
 
     face_at('-x')                 the largest planar face at the part's extreme: '+x', '-x', '+y', '-y', '+z', '-z'
@@ -183,10 +148,9 @@ program: these are in scope, and each costs no more than a call.
     cylinder(6, 'z', expect=4)    a list of four such faces
     distance(a, b)                plane to parallel plane, cylinder axis to parallel plane, axis to parallel axis
 
-A position entry is then one line:
+A position entry is then one expression:
 
-    d = distance(cylinder(40, 'y'), face_at('-x'))
-    (held if abs(d - 25) <= 0.5 else failed).append("the entry as given")
+    abs(distance(cylinder(40, 'y'), face_at('-x')) - 25) <= 0.5
 
 Each raises with what it did find when it cannot answer. `face_at` says
 'ambiguous' when a datum names planes that each have a face, and refuses a datum
@@ -196,32 +160,11 @@ none of them times out on a large body.
 
 ## How you work
 
-Run your check with `{"code": "..."}`; you see back whatever it printed, any
-exception and — because your script itself sets `held` and `failed` — the
-kernel reads those two lists straight back out of it, already split the way
-you wrote them. Fix and re-run the check as many times as it takes to get it
-running clean; only its own bugs cost you a turn. Once it runs clean, end
-the phase with:
-
-    {"declare": {"uncovered": ["..."]}}
-
-`uncovered` is optional and is omitted when every entry was measured;
-`held` and `failed` are not repeated in the declaration, because the kernel
-already reported them from the run that produced them.
+Run a look with `{"code": "..."}` if you need one; you see back what it printed or the exception. End the phase with the list of `checks` above, one item per entry sent, and nothing else.
 
 ## Editing a base part
 
-Where the request carries `the_base_part`, the part being checked is that
-solid with an edit applied, and the list is the part as it stands after the
-edit. Besides each entry, measure that nothing else moved: call
-`no_collateral(doc, volume_change=V, moved=("+z",))` before the final assert. `V`
-is the signed volume in mm3 the edit adds, worked out from the sizes in the
-list and the volume `the_base_part` gives — a bore widened from 10 to 20 mm
-diameter through 25 mm is `-3.141592653589793 / 4 * (20**2 - 10**2) * 25`.
-`moved` names the bounding box sides the edit is meant to move; pass `moved=()`
-where it moves none, and leave it out to skip the box check. It raises with every reason, in the same words your own
-`failed` carries; run it inside a `try` and add what it says to `failed` instead
-of letting it end the script before the other entries are measured.
+Where the request carries `the_base_part`, the part being checked is that solid with an edit applied, and the list is the part as it stands after the edit. That nothing else moved is already checked before you are asked, so do not answer for it.
 
 Traps in this build:
 {{traps}}

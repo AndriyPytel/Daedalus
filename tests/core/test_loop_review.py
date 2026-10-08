@@ -645,7 +645,7 @@ def test_the_event_stream_of_a_clean_run_with_acceptance():
         plan_reply("Only", satisfies=everything(A_CUBE_WITH_A_WALL)),
         code_reply("box()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the length'"),
+        assertion_reply(),
         verdict_reply("pass", "Good."),
     ], attachments=[RENDER_PNG])
 
@@ -1077,7 +1077,7 @@ def test_plan_can_ask_instead_of_planning():
          design_reply({"features": [{"id": "teeth",
                                      "module": dict(settled("2", "typical for this size"), mm=2)}]}),
          plan_reply("Sketch the blank", "Pad it"),
-         code_reply("a()", "b()"), suspect_reply(), assertion_reply("assert True"),
+         code_reply("a()", "b()"), suspect_reply(), assertion_reply(),
          verdict_reply("pass")],
         intent=GEAR)
 
@@ -1127,7 +1127,7 @@ def test_a_run_nobody_is_watching_gets_a_plan_settled_for_them():
          design_reply({"features": [{"id": "teeth",
                                      "module": dict(settled("2", "typical for this size"), mm=2)}]}),
          plan_reply("Sketch the blank"), code_reply("a()"),
-         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+         suspect_reply(), assertion_reply(), verdict_reply("pass")],
         intent=GEAR)
 
     assert result.ok
@@ -1168,7 +1168,7 @@ def test_a_settle_attempt_that_changes_nothing_falls_through_and_asks_no_more():
         [design_reply(module_already_settled),
          question_reply(MISSING), design_reply(module_already_settled),
          plan_reply("Sketch the blank"), code_reply("a()"),
-         suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+         suspect_reply(), assertion_reply(), verdict_reply("pass")],
         intent=GEAR)
 
     assert result.ok, result.reason
@@ -1335,7 +1335,7 @@ def test_a_question_about_the_drawing_goes_to_the_sheet_before_the_user():
         design_reply(OFF_THE_SECTION),
         plan_reply("Pocket both faces 20 mm",
                    satisfies=everything(A_PART, OFF_THE_SECTION)),
-        code_reply("a()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        code_reply("a()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "")
 
     assert result.ok
@@ -1372,7 +1372,7 @@ def test_a_value_already_described_is_not_overwritten_by_a_later_pass():
         design_reply({"features": [{"id": "hole-8-left",
                                     "position": {"the left end face": read("25 mm")}}]}),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     grown = events.last(DESIGN).data["model"]
@@ -1405,7 +1405,7 @@ def test_a_question_the_sheet_does_not_answer_is_settled_by_the_model():
         design_reply(),
         design_reply(a_tolerance),
         plan_reply("Sketch it", satisfies=everything(A_PART)),
-        code_reply("a()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        code_reply("a()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG],
         ask=lambda q: asked.append(q) or "±0.1 mm")
 
@@ -1427,7 +1427,7 @@ def test_a_drawing_that_keeps_answering_is_never_a_question_for_anybody():
         question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
         question_reply("q2"), design_reply({"datums": [{"name": "d2"}]}),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "an answer")
 
     assert result.ok, result.reason
@@ -1449,7 +1449,7 @@ def test_the_re_reads_have_a_ceiling_of_their_own():
         question_reply("q1"), design_reply({"datums": [{"name": "d1"}]}),
         question_reply("q2"), design_reply(),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(rereads=1),
         ask=lambda q: asked.append(q) or "an answer")
 
@@ -1476,7 +1476,7 @@ def test_a_question_raised_after_being_told_to_choose_still_reaches_the_sheet():
         question_reply("q1"), design_reply(), design_reply(),
         question_reply("q2"), design_reply(off_the_sheet),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda q: asked.append(q) or "")
 
     assert result.ok, "the second question killed the run: %s" % result.reason
@@ -1499,7 +1499,7 @@ def test_the_same_question_twice_is_listed_once_and_does_not_end_the_run():
         question_reply("q1"), design_reply(), design_reply(),
         question_reply("q1"), design_reply(), design_reply(),
         plan_reply("Sketch it", satisfies=everything(A_PART)), code_reply("a()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], ask=lambda _: "")
 
     assert result.ok, result.reason

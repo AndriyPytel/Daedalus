@@ -27,7 +27,7 @@ def _along(axis, letter):
 
 class Faces:
     """
-    The faces of the largest solid outside a Body, found once and sorted by surface type on first use; `measure` is the check call's `RememberedMeasures`.
+    The faces of the Body an edit is building, or else of the largest solid outside any Body, found once and sorted by surface type on first use; `measure` is the check call's `RememberedMeasures`.
     It must not outlive an edit to the Document.
     """
 
@@ -40,7 +40,9 @@ class Faces:
     @property
     def shape(self):
         if self._shape is None:
-            solids = [o for o in self._doc.Objects if getattr(o, "Shape", None) is not None
+            edited = [o for o in self._doc.Objects if o.TypeId == "PartDesign::Body" and o.BaseFeature is not None
+                      and not o.Shape.isNull() and o.Shape.Solids]
+            solids = edited or [o for o in self._doc.Objects if getattr(o, "Shape", None) is not None
                       and not o.Shape.isNull() and o.Shape.Solids
                       and getattr(o.getParentGeoFeatureGroup(), "TypeId", "") != "PartDesign::Body"]
             assert solids, "the Document has no solid to measure"

@@ -681,7 +681,7 @@ def test_review_and_assertion_are_both_given_the_whole_description():
         plan_reply("Only", satisfies=everything(A_CUBE_WITH_A_WALL)),
         code_reply("box()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the length'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -886,7 +886,7 @@ def test_plan_is_handed_the_document_and_not_everything_design_read():
         plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
         code_reply("clamp()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the clamp'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
 
@@ -959,7 +959,7 @@ def test_the_file_the_user_opens_is_the_document_the_run_was_planned_from():
         plan_reply("Only", satisfies=everything(A_PART)),
         code_reply("box()"),
         suspect_reply(),
-        assertion_reply("assert True"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -994,7 +994,7 @@ def test_a_value_corrected_in_the_file_is_the_one_the_run_is_planned_from(monkey
         plan_reply("Only", satisfies=everything(A_PART)),
         code_reply("box()"),
         suspect_reply(),
-        assertion_reply("assert True"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -1017,7 +1017,7 @@ def test_the_evidence_is_logged_beside_the_reading_distilled_out_of_it():
                    satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
         code_reply("pad()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the length'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -1046,7 +1046,7 @@ def test_two_entries_that_cannot_both_be_true_still_reach_the_gate():
         plan_reply("Drill it", satisfies=everything(THE_HOLE_THAT_CANNOT_BE_BOTH)),
         code_reply("drill()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the hole'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ])
 
@@ -1209,7 +1209,7 @@ def test_the_four_that_named_what_ended_the_run_stand_under_conflict():
         plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
         code_reply("clamp()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the clamp'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
 

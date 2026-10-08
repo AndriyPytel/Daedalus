@@ -159,7 +159,7 @@ def test_a_replan_does_not_refill_the_re_read_ceiling():
         plan_reply("Impossible", satisfies=everything(A_PART)), code_reply("nope()"),
         question_reply("q2"),
         plan_reply("Possible", satisfies=everything(A_PART)), code_reply("yes()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], applies=[failed("one")], attachments=[RENDER_PNG],
         budgets=Budgets(rereads=1, attempts_per_step=1),
         ask=lambda q: asked.append(q) or "an answer")
@@ -183,7 +183,7 @@ def test_a_replan_after_a_reread_is_handed_the_change_set_not_the_whole_part():
         plan_reply("Impossible", satisfies=everything(A_PART)), code_reply("nope()"),
         question_reply("q2"),
         plan_reply("Possible", satisfies=everything(A_PART)), code_reply("yes()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], applies=[failed("one")], attachments=[RENDER_PNG],
         budgets=Budgets(rereads=1, attempts_per_step=1))
 
@@ -204,7 +204,7 @@ def test_with_no_attachment_a_question_is_settled_by_design_itself():
 
     result, _, llm, _ = drive(
         [question_reply(MISSING), design_reply(GEAR_AS_TOLD), plan_reply("Sketch it"),
-         code_reply("a()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+         code_reply("a()"), suspect_reply(), assertion_reply(), verdict_reply("pass")],
         intent=GEAR, ask=lambda q: asked.append(q) or "module 2")
 
     assert result.ok, result.reason
@@ -321,7 +321,7 @@ def test_the_assertion_phase_runs_after_the_last_step_and_between_the_two_review
         planning_the_nut("Sketch it", "Pad it"),
         code_reply("sketch()", "pad()"),
         suspect_reply(),
-        assertion_reply(CHECKS),
+        assertion_reply(),
         verdict_reply("pass"),
     )
 
@@ -329,7 +329,7 @@ def test_the_assertion_phase_runs_after_the_last_step_and_between_the_two_review
             if name in ("apply_step", "check_assertions")] == [
         "apply_step", "apply_step", "check_assertions", "check_assertions"]
     checked = [args for name, args in tools.calls if name == "check_assertions"][-1]
-    assert checked["code"] == CHECKS.strip(), "the Tool ran something other than the checks"
+    assert "check_each({0: 'True', 1: 'True'})" in checked["code"], "the Tool ran something other than the entries' expressions"
 
     kinds = [e.kind for e in events]
     assert kinds.index(REVIEW_SUSPECTED) < kinds.index(ASSERTION) < kinds.index(REVIEW_VERDICT)
@@ -345,7 +345,7 @@ def test_review_suspecting_nothing_still_lets_assertion_gate_the_verdict():
     """
     passing, events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"),
-        suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"))
+        suspect_reply(), assertion_reply(), verdict_reply("pass"))
 
     assert passing.ok
     assert passing.unmet == []
@@ -354,8 +354,8 @@ def test_review_suspecting_nothing_still_lets_assertion_gate_the_verdict():
 
     failing, failing_events, _, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"),
-        suspect_reply(), assertion_reply(CHECKS),
-        checks=[assertion_failed(SIX_FAILED)],
+        suspect_reply(), assertion_reply(),
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)],
         decide=lambda failure: "accept",
     )
 
@@ -375,7 +375,7 @@ def test_a_suspicion_never_gates_but_reaches_assertions_acceptance_list():
     raised = "features → nut → position → the top face: 3 mm"
     result, events, llm, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"),
-        suspect_reply(raised), assertion_reply(CHECKS), verdict_reply("pass"))
+        suspect_reply(raised), assertion_reply(), verdict_reply("pass"))
 
     assert result.ok
     assert events.first(REVIEW_SUSPECTED).data["suspected"] == [raised + " (suspected)"]
@@ -389,9 +389,9 @@ def test_a_suspicion_never_gates_but_reaches_assertions_acceptance_list():
         "a suspicion sent the run back to Plan on its own")
 
     assertion_request = json.loads(llm.calls[-2][-1]["content"])
-    assert raised + " (suspected)" in assertion_request["acceptance"]
+    assert raised + " (suspected)" in [a["text"] for a in assertion_request["acceptance"]]
     for entry in ACCEPTANCE:
-        assert entry in assertion_request["acceptance"], (
+        assert entry in [a["text"] for a in assertion_request["acceptance"]], (
             "a suspected row must not replace the acceptance list, only extend it")
 
 
@@ -407,9 +407,9 @@ def test_a_refuted_suspicion_fails_assertion_and_replans_then_passes():
     raised = "thread → pitch: 1.25 mm"
     result, events, llm, _ = a_run_over_the_nut(
         planning_the_nut("Make it"), code_reply("make()"),
-        suspect_reply(raised), assertion_reply(CHECKS),
+        suspect_reply(raised), assertion_reply(),
         planning_the_nut("Make it 13 mm across the flats"), code_reply("fix()", first=2),
-        suspect_reply(), assertion_reply(CHECKS),
+        suspect_reply(), assertion_reply(),
         verdict_reply("pass"),
         checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED),
                 SELF_INTERSECTION_HELD, None])
@@ -422,7 +422,7 @@ def test_a_refuted_suspicion_fails_assertion_and_replans_then_passes():
     assert events.first(REVIEW_VERDICT).data["verdict"] == "pass"
 
     first_assertion_request = json.loads(llm.calls[5][-1]["content"])
-    assert raised + " (suspected)" in first_assertion_request["acceptance"]
+    assert raised + " (suspected)" in [a["text"] for a in first_assertion_request["acceptance"]]
 
 
 def test_an_empty_acceptance_list_costs_no_llm_call():
@@ -486,11 +486,11 @@ def test_failed_assertions_return_to_plan_and_never_to_execute():
         planning_the_nut("Make it"),
         code_reply("make()"),
         suspect_reply(),
-        assertion_reply(CHECKS),
+        assertion_reply(),
         planning_the_nut("Make it 13 mm across the flats"),
         code_reply("fix()"),
         suspect_reply(),
-        assertion_reply(CHECKS),
+        assertion_reply(),
         verdict_reply("pass"),
         checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED),
                 SELF_INTERSECTION_HELD, None])
@@ -498,8 +498,8 @@ def test_failed_assertions_return_to_plan_and_never_to_execute():
     to_plan = json.dumps(llm.calls[6])
     to_execute = json.dumps(llm.calls[7])
 
-    assert "13.0 mm across the flats" in to_plan
-    assert "AssertionError" in to_plan
+    assert "across the flats" in to_plan
+    assert "did not hold" in to_plan
     assert "AssertionError" not in to_execute, "the failed check reached Execute"
     assert events.first(PLAN_REVISED).data["steps"][0].startswith(
         "Make it 13 mm across the flats")
@@ -525,12 +525,12 @@ def test_a_feature_that_moved_without_a_retry_touching_it_fails_a_later_assertio
         planning_the_nut("Make it"),
         code_reply("make()"),
         suspect_reply(),
-        assertion_reply(CHECKS),
+        assertion_reply(),
         verdict_reply("fail", "wrong flank"),
         planning_the_nut("Make it again"),
         code_reply("fix()", first=2),
         suspect_reply(),
-        assertion_reply(CHECKS),
+        assertion_reply(),
         budgets=Budgets(revisions=1),
         checks=[
             SELF_INTERSECTION_HELD,
@@ -564,12 +564,12 @@ def test_a_feature_named_in_what_a_retry_touched_does_not_fail_a_later_assertion
         plan_reply("Pocket the split", satisfies=everything(A_SPLIT)),
         code_reply("split_through()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the split'"),
+        assertion_reply(),
         verdict_reply("fail", "still off"),
         plan_reply("Pocket the split again", satisfies=everything(A_SPLIT)),
         retried_code_reply("split_through_2()", "split_shortened()", step=2),
         suspect_reply(),
-        assertion_reply("assert True, 'the split'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ],
         budgets=Budgets(revisions=1),
@@ -596,7 +596,7 @@ def test_a_run_out_of_revisions_names_the_assertions_not_review():
     kept rejecting the result.
     """
     result, _, _, _ = a_run_over_the_nut(
-        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS)] * 5,
+        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply()] * 5,
         budgets=Budgets(revisions=2),
         checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED)] * 5,
     )
@@ -616,13 +616,13 @@ def test_review_is_told_the_facts_the_checks_confirmed():
         planning_the_nut("Make it"),
         code_reply("make()"),
         suspect_reply(),
-        assertion_reply(CHECKS, uncovered=[ACCEPTANCE[1]]),
+        assertion_reply(uncovered=[1]),
         verdict_reply("pass"),
         views=[RENDER_PNG] * 4)
 
     review_request = json.loads(llm.calls[-1][1]["content"][0]["text"].split("\n\n")[0])
 
-    assert review_request["facts_the_checks_confirmed"] == [ACCEPTANCE[0]]
+    assert ACCEPTANCE[0] in review_request["facts_the_checks_confirmed"]
     assert review_request["what_the_checks_could_not_cover"] == [ACCEPTANCE[1]]
     assert events.first(ASSERTION).data["uncovered"] == [ACCEPTANCE[1]]
 
@@ -644,7 +644,7 @@ def test_review_is_told_not_to_fail_on_a_suspicion_the_checks_never_confirmed():
         planning_the_nut("Make it"),
         code_reply("make()"),
         suspect_reply(),
-        assertion_reply(CHECKS, uncovered=[ACCEPTANCE[1]]),
+        assertion_reply(uncovered=[1]),
         verdict_reply("pass"),
         views=[RENDER_PNG] * 4)
 
@@ -666,10 +666,10 @@ def test_a_broken_check_is_rewritten_and_never_reaches_plan_as_geometry():
         planning_the_nut("Make it"),
         code_reply("make()"),
         suspect_reply(),
-        assertion_reply("bad_check()"),
-        assertion_reply(CHECKS),
+        assertion_reply(),
+        assertion_reply(),
         verdict_reply("pass"),
-        checks=[SELF_INTERSECTION_HELD, assertion_failed(CHECK_IS_BROKEN), None])
+        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": CHECK_IS_BROKEN}, None])
 
     assert result.ok
     assert events.first(PLAN_REVISED) is None, "a broken check sent Plan to rebuild"
@@ -688,11 +688,11 @@ def test_a_check_that_cannot_be_written_lets_review_judge_alone():
         planning_the_nut("Make it"),
         code_reply("make()"),
         suspect_reply(),
-        assertion_reply("bad_check()"),
-        assertion_reply("bad_check()"),
-        assertion_reply("bad_check()"),
+        assertion_reply(),
+        assertion_reply(),
+        assertion_reply(),
         verdict_reply("pass"),
-        checks=[SELF_INTERSECTION_HELD] + [assertion_failed(CHECK_IS_BROKEN)] * 3)
+        checks=[SELF_INTERSECTION_HELD] + [{"ok": False, "traceback": CHECK_IS_BROKEN}] * 3)
 
     assert result.ok
     assert events.first(PLAN_REVISED) is None
@@ -712,12 +712,12 @@ def test_stop_during_the_checks_does_not_wait_out_three_provider_calls():
         planning_the_nut("Make it"),
         *code_reply("make()"),
         suspect_reply(),
-        assertion_reply("bad_check()"),
-        assertion_reply("bad_check()"),
-        assertion_reply("bad_check()"),
+        assertion_reply(),
+        assertion_reply(),
+        assertion_reply(),
         verdict_reply("pass"),
     ])
-    tools = FakeTools(checks=[assertion_failed(CHECK_IS_BROKEN)] * 3)
+    tools = FakeTools(checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": CHECK_IS_BROKEN}] * 3)
     events = EventStream()
 
     def cancelled():
@@ -754,13 +754,13 @@ def test_the_acceptance_is_the_descriptions_own_entries_and_not_plans_paraphrase
         plan_reply("Pad the blank", "Cut the central opening",
                    satisfies=everything(THE_CAVITY)),
         code_reply("pad()", "cut()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     shown = events.first(PLAN).data["acceptance"]
     assert shown == ["envelope → depth front to rear: 100 mm (read)",
                      "features → central-opening → position → the front face: 20 mm (read)"]
-    assert _turns_of(llm, "assertion")[0]["acceptance"] == shown[1:]
+    assert [a["text"] for a in _turns_of(llm, "assertion")[0]["acceptance"]] == shown[1:]
 
 
 def test_a_value_the_user_assumed_is_still_marked_assumed_in_the_acceptance():
@@ -773,7 +773,7 @@ def test_a_value_the_user_assumed_is_still_marked_assumed_in_the_acceptance():
     _, events, _, _ = drive([
         design_reply(told),
         plan_reply("Pad it 150 mm"), code_reply("pad()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.first(PLAN).data["acceptance"] == ["envelope → length: 150 mm (assumed)"]
@@ -792,7 +792,7 @@ def test_a_step_says_at_the_gate_which_part_of_the_part_it_is_for():
                    {"do": "Cut the central opening, both faces",
                     "satisfies": [CAVITY_POCKET]}),
         code_reply("pad()", "cut()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.first(PLAN).data["steps"] == [
@@ -813,7 +813,7 @@ def test_a_plan_that_leaves_a_read_entry_unconsumed_is_planned_again():
         plan_reply({"do": "Cut the central opening", "satisfies": [CAVITY_POCKET]}),
         plan_reply({"do": "Pad the blank 100 mm front to rear",
                     "satisfies": [CAVITY_DEPTH, CAVITY_POCKET]}),
-        code_reply("pad()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        code_reply("pad()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok
@@ -832,7 +832,7 @@ def test_a_plan_that_leaves_nothing_unconsumed_is_never_replanned():
         design_reply(THE_CAVITY),
         plan_reply({"do": "Pad the blank and cut the opening",
                     "satisfies": [CAVITY_DEPTH, CAVITY_POCKET]}),
-        code_reply("build()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        code_reply("build()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.first(PLAN_REVISED) is None
@@ -850,7 +850,7 @@ def test_a_plan_citing_the_whole_line_it_was_handed_has_cited_the_entry():
         plan_reply({"do": "Pad the blank and cut the opening",
                     "satisfies": [CAVITY_DEPTH + ": 100 mm (read)",
                                   CAVITY_POCKET + ": 20 mm (read)"]}),
-        code_reply("build()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        code_reply("build()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.first(PLAN_REVISED) is None
@@ -872,7 +872,7 @@ def test_a_step_carries_the_address_it_cites_and_not_the_paragraph_behind_it():
         plan_reply({"do": "Pad the blank and cut the opening",
                     "satisfies": [CAVITY_DEPTH + ": 100 mm (read)",
                                   CAVITY_POCKET + ": 20 mm (read)"]}),
-        code_reply("build()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        code_reply("build()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     step = events.first(PLAN).data["steps"][0]
@@ -905,7 +905,7 @@ def test_one_entry_may_feed_several_steps():
                    {"do": "Cut the opening 100 mm deep, front to rear",
                     "satisfies": [CAVITY_DEPTH, CAVITY_POCKET]}),
         code_reply("pad()", "cut()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert events.first(PLAN_REVISED) is None
@@ -933,7 +933,7 @@ def test_no_step_has_to_build_a_feature_the_later_page_replaced():
         design_reply(superseded),
         plan_reply({"do": "Pad the arm at 45°",
                     "satisfies": ["features → angled-arm → position → the ring axis"]}),
-        code_reply("arm()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        code_reply("arm()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert result.ok
@@ -1018,7 +1018,7 @@ def test_an_entry_no_step_ever_landed_for_is_still_unplanned():
         plan_reply({"do": "Pad part 4", "satisfies": [BUILT[3]]},
                    {"do": "Bore the central hole", "satisfies": list(LEFT_TO_BUILD)}),
         code_reply("part4()", "bore()", first=4),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(revisions=5))
 
     assert result.ok
@@ -1129,7 +1129,7 @@ def test_the_entries_that_did_not_hold_come_out_on_the_result():
     The second run then rebuilt on top of six entries that were already wrong.
     """
     result, _, _, _ = a_run_over_the_nut(
-        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass")] * 5,
+        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass")] * 5,
         budgets=Budgets(revisions=1),
         checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)] * 5,
     )
@@ -1146,7 +1146,7 @@ def test_a_result_the_user_took_as_it_is_still_says_what_is_wrong_with_it():
     from core.loop import ACCEPT
 
     result, _, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)],
         decide=lambda failure: ACCEPT,
     )
@@ -1158,7 +1158,7 @@ def test_a_result_the_user_took_as_it_is_still_says_what_is_wrong_with_it():
 
 def test_a_run_whose_checks_passed_leaves_nothing_outstanding():
     result, _, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"))
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"))
 
     assert result.ok
     assert result.unmet == []
@@ -1170,7 +1170,7 @@ def test_a_run_stopped_partway_still_reports_what_was_wrong():
     ran out of revisions is exactly the run whose Document nobody fixed.
     """
     result, _, _, _ = a_run_over_the_nut(
-        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS)] * 5,
+        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply()] * 5,
         budgets=Budgets(revisions=1),
         checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)] * 5,
     )
@@ -1181,7 +1181,7 @@ def test_a_run_stopped_partway_still_reports_what_was_wrong():
 
 def test_the_assertion_event_names_the_entries_and_not_only_the_traceback():
     _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)],
         decide=lambda failure: "accept",
     )
@@ -1202,9 +1202,9 @@ def test_a_mixed_result_reports_both_what_held_and_what_did_not():
     rather than the failure branch's old hardcoded `confirmed=[]`.
     """
     _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         checks=[SELF_INTERSECTION_HELD,
-                assertion_mixed([ACCEPTANCE[0]], [ACCEPTANCE[1]], MIXED_TRACEBACK)],
+                assertion_mixed([0], [1])],
         decide=lambda failure: "accept",
     )
 
@@ -1222,37 +1222,14 @@ def test_a_passing_runs_confirmed_is_measured_not_inferred():
     `confirmed` and `unmet`, rather than inferred as held.
     """
     _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
-        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [ACCEPTANCE[0]]}],
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
+        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [0]}],
     )
 
     data = events.first(ASSERTION).data
-    assert data["confirmed"] == [ACCEPTANCE[0]]
+    assert ACCEPTANCE[0] in data["confirmed"]
     assert ACCEPTANCE[1] not in data["confirmed"]
     assert ACCEPTANCE[1] not in (data.get("unmet") or [])
-
-
-def test_a_check_that_measured_but_never_defined_held_still_reports_confirmed_empty():
-    """
-    A script written to the shape before this ticket — a single `failed` list
-    and no `held` — has nothing this phase can call `held`, so `confirmed`
-    falls back to today's `[]`. `unmet` is still read straight off the
-    worker's own `failed` rather than parsed from the traceback, which is
-    how it differs from `_unmet_in(ASSERT_FAILED)`'s wording of the same
-    entry.
-    """
-    _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(),
-        assertion_reply(CHECKS),
-        verdict_reply("pass"),
-        checks=[SELF_INTERSECTION_HELD,
-                {"ok": False, "traceback": ASSERT_FAILED, "failed": [ACCEPTANCE[0]]}],
-        decide=lambda failure: "accept",
-    )
-
-    data = events.first(ASSERTION).data
-    assert data["confirmed"] == []
-    assert data["unmet"] == [ACCEPTANCE[0]]
 
 
 def test_a_document_that_cannot_recompute_leaves_the_whole_list_outstanding():
@@ -1262,8 +1239,8 @@ def test_a_document_that_cannot_recompute_leaves_the_whole_list_outstanding():
               "Pocket (PartDesign::Pocket): Links go out of the allowed scope\n")
 
     result, _, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
-        checks=[SELF_INTERSECTION_HELD, assertion_failed(broken)],
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
+        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": broken}],
         decide=lambda failure: "accept",
     )
 
@@ -1274,7 +1251,7 @@ def test_what_the_user_decided_about_a_failed_result_is_on_the_stream():
     decided = []
 
     _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)],
         decide=lambda failure: decided.append(failure) or "accept",
     )
@@ -1292,7 +1269,7 @@ def test_starting_over_is_recorded_as_the_licence_it_is():
     from core.loop import START_OVER
 
     _, events, _, _ = a_run_over_the_nut(
-        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass")] * 5,
+        *[planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass")] * 5,
         budgets=Budgets(revisions=1),
         checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)] * 5,
         decide=lambda failure: START_OVER,
@@ -1308,7 +1285,7 @@ def test_nothing_is_asked_when_the_run_applied_nothing_to_lose():
         planning_the_nut("Make it"), code_reply("make()"), code_reply("make()"),
         code_reply("make()"),
         applies=[failed("one"), failed("two"), failed("three")],
-        checks=[assertion_failed(SIX_FAILED)],
+        checks=[SELF_INTERSECTION_HELD, assertion_failed(SIX_FAILED)],
         decide=lambda failure: asked.append(failure) or "accept",
     )
 
@@ -1321,7 +1298,7 @@ def test_a_run_that_inherits_a_failure_says_so_before_it_reads_the_drawing():
     from core.events import OUTSTANDING
 
     _, events, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         outstanding=STILL_WRONG)
 
     assert events.first(OUTSTANDING).data["entries"] == STILL_WRONG
@@ -1331,7 +1308,7 @@ def test_a_run_that_inherits_a_failure_says_so_before_it_reads_the_drawing():
 
 def test_the_first_plan_of_an_inheriting_run_is_told_what_is_wrong():
     _, _, llm, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         outstanding=STILL_WRONG)
 
     to_plan = json.dumps(llm.calls[1])
@@ -1350,25 +1327,25 @@ def test_an_inherited_failure_is_checked_again_at_the_end_of_the_new_run():
     inherited = ["features \u2192 bore-left \u2192 position: 25 mm (read)"]
 
     _, _, llm, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         outstanding=inherited)
 
     checked = json.loads(llm.calls[5][-1]["content"])
 
-    assert checked["acceptance"] == ACCEPTANCE + inherited
+    assert [a["text"] for a in checked["acceptance"]] == ACCEPTANCE + inherited
 
 
 def test_an_inherited_entry_the_new_run_already_lists_is_not_listed_twice():
     _, _, llm, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         outstanding=[ACCEPTANCE[0]])
 
-    assert json.loads(llm.calls[5][-1]["content"])["acceptance"] == ACCEPTANCE
+    assert [a["text"] for a in json.loads(llm.calls[5][-1]["content"])["acceptance"]] == ACCEPTANCE
 
 
 def test_an_inherited_failure_that_now_passes_is_no_longer_outstanding():
     result, _, _, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"),
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"),
         outstanding=STILL_WRONG)
 
     assert result.ok
@@ -1380,7 +1357,7 @@ def test_a_run_that_inherits_nothing_says_nothing_about_it():
     from core.events import OUTSTANDING
 
     _, events, llm, _ = a_run_over_the_nut(
-        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(CHECKS), verdict_reply("pass"))
+        planning_the_nut("Make it"), code_reply("make()"), suspect_reply(), assertion_reply(), verdict_reply("pass"))
 
     assert events.first(OUTSTANDING) is None
     assert "acceptance checks did not pass" not in json.dumps(llm.calls[1])
@@ -1408,7 +1385,7 @@ def test_design_settles_plans_questions_a_bounded_number_of_times_then_plan_deci
     for n in range(budgets.settles):
         replies += [question_reply(MISSING), design_reply(told(n))]
     replies += [question_reply(MISSING), plan_reply("Sketch it"), code_reply("a()"),
-                suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")]
+                suspect_reply(), assertion_reply(), verdict_reply("pass")]
 
     result, events, _, _ = drive(replies, intent=GEAR, budgets=budgets)
 

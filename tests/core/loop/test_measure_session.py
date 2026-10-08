@@ -231,11 +231,11 @@ def test_a_run_with_a_failed_assertion_that_passed_on_retry(tmp_path):
         planning_the_nut("Make it"),
         code_reply("make()"),
         suspect_reply(),
-        assertion_reply(CHECKS),
+        assertion_reply(),
         planning_the_nut("Make it 13 mm across the flats"),
         code_reply("fix()", first=2),
         suspect_reply(),
-        assertion_reply(CHECKS),
+        assertion_reply(),
         verdict_reply("pass"),
         checks=[SELF_INTERSECTION_HELD, assertion_failed(ASSERT_FAILED),
                 SELF_INTERSECTION_HELD, None])
@@ -249,7 +249,7 @@ def test_a_run_with_a_failed_assertion_that_passed_on_retry(tmp_path):
 
     result = measure(log_path)
 
-    assert result.assertion_fail_rate == 0.5
+    assert result.assertion_fail_rate == pytest.approx(1 / 3)
     assert result.review_fail_rate == 0.0
 
 

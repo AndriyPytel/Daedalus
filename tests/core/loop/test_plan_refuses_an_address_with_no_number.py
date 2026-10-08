@@ -37,7 +37,7 @@ def test_a_step_citing_a_numberless_address_gets_a_patch_naming_it_and_no_except
         design_reply(A_HOLE),
         plan_reply({"do": "Drill", "satisfies": [LENGTH, DEPTH]}),
         plan_reply({"do": "Drill", "satisfies": [LENGTH]}),
-        code_reply("a()"), suspect_reply(), assertion_reply("assert True"),
+        code_reply("a()"), suspect_reply(), assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG], budgets=Budgets(mechanical_revisions=0))
 

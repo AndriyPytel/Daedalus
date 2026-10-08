@@ -53,6 +53,7 @@ class KernelResult:
     modified: list = field(default_factory=list)
     held: list = None
     failed: list = None
+    defects: list = None
     stdout: str = ""
     geometry: dict = field(default_factory=dict)
     volume: dict = field(default_factory=dict)
@@ -75,12 +76,14 @@ class KernelResult:
         carries the measured lists too, not only the `ok` branch.
         """
         held, failed = response.get("held"), response.get("failed")
+        defects = response.get("defects")
         checkpoint = response.get("checkpoint")
         names = response.get("names") or {}
         plan_values = response.get("plan_values") or {}
         if not response.get("ok"):
             return cls(ok=False, traceback=response.get("traceback", "the kernel failed"),
-                       held=held, failed=failed, stdout=response.get("stdout", ""),
+                       held=held, failed=failed, defects=defects,
+                       stdout=response.get("stdout", ""),
                        volume=response.get("volume") or {},
                        checkpoint=checkpoint, names=names, plan_values=plan_values)
         return cls(ok=True,
@@ -89,7 +92,8 @@ class KernelResult:
                    created=response.get("created", []),
                    deleted=response.get("deleted", []),
                    modified=response.get("modified", []),
-                   held=held, failed=failed, stdout=response.get("stdout", ""),
+                   held=held, failed=failed, defects=defects,
+                   stdout=response.get("stdout", ""),
                    geometry=response.get("geometry") or {},
                    volume=response.get("volume") or {},
                    checkpoint=checkpoint, names=names,

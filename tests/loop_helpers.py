@@ -278,12 +278,11 @@ def retried_code_reply(*codes, step=1, label="Step", thinking=None):
     return turns
 
 
-def assertion_reply(code, uncovered=None):
-    """The Assertion phase's turn: the checks it wrote, and what it could not check."""
-    reply = {"code": code}
-    if uncovered is not None:
-        reply["uncovered"] = list(uncovered)
-    return json.dumps({"declare": reply})
+def assertion_reply(uncovered=()):
+    """The Assertion phase's turn: an expression for each of the first sixty-four entries it is sent, bar the numbered ones it could not check."""
+    checks = [{"entry": n, "uncovered": "cannot be measured"} if n in uncovered
+              else {"entry": n, "expr": "True"} for n in range(64)]
+    return json.dumps({"declare": {"checks": checks}})
 
 
 def obsolete_reply(reason):
@@ -654,7 +653,7 @@ def _the_clamp_as_it_was_read():
         plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
         code_reply("clamp()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the clamp'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
 
@@ -1037,16 +1036,15 @@ CHECKS = ("flats = [f for f in doc.Objects[0].Shape.Faces]\n"
           "assert abs(13.0 - across(flats)) < 1e-6, '13.0 mm across the flats'\n")
 
 
-def assertion_failed(traceback):
-    return {"ok": False, "traceback": traceback}
+def assertion_failed(entries):
+    """What the check tool answers when the expressions of these entry numbers came out False."""
+    return {"ok": True, "held": [], "failed": list(entries), "defects": []}
 
 
 SELF_INTERSECTION_HELD = {"ok": True}
 
 
-ASSERT_FAILED = ('Traceback (most recent call last):\n'
-                 '  File "<step>", line 2, in <module>\n'
-                 "AssertionError: 13.0 mm across the flats\n")
+ASSERT_FAILED = [0]
 
 
 CHECK_IS_BROKEN = ('Traceback (most recent call last):\n'
@@ -1103,14 +1101,11 @@ def _four_steps_applied_then_a_handback():
         plan_reply({"do": "Bore the central hole from the top face",
                     "satisfies": list(LEFT_TO_BUILD)}),
         code_reply("bore()", first=5),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ]
 
 
-SIX_FAILED = ('Traceback (most recent call last):\n'
-              '  File "<step>", line 156, in <module>\n'
-              'AssertionError: these did not hold: envelope \u2192 across the flats: '
-              '13.0 mm (read); envelope \u2192 thickness: 6.5 mm (read)\n')
+SIX_FAILED = [0, 1]
 
 
 MIXED_TRACEBACK = ('Traceback (most recent call last):\n'
@@ -1119,9 +1114,9 @@ MIXED_TRACEBACK = ('Traceback (most recent call last):\n'
                    "(read)\n")
 
 
-def assertion_mixed(confirmed, unmet, traceback):
-    """The worker's own reply for a check that measured some entries true, others not."""
-    return {"ok": False, "traceback": traceback, "held": list(confirmed), "failed": list(unmet)}
+def assertion_mixed(held, failed):
+    """The worker's own reply for expressions of which some came out True and others False."""
+    return {"ok": True, "held": list(held), "failed": list(failed), "defects": []}
 
 
 STILL_WRONG = ["envelope \u2192 across the flats: 13.0 mm (read)"]
@@ -1193,7 +1188,7 @@ _THE_AXIS_PUT_RIGHT = [
                 "satisfies": ["features → right-mounting-hole → axis"]}),
     code_reply("bore()", "pocket()"),
     suspect_reply(),
-    assertion_reply("assert True, 'the hole'"),
+    assertion_reply(),
     verdict_reply("pass"),
 ]
 
@@ -1279,7 +1274,7 @@ _THE_BORE_PUT_RIGHT = [
                satisfies=everything(THE_CLAMP_POINTED_AT_THE_WRONG_VIEW)),
     code_reply("bore()"),
     suspect_reply(),
-    assertion_reply("assert True, 'the bore'"),
+    assertion_reply(),
     verdict_reply("pass"),
 ]
 

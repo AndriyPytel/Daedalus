@@ -180,7 +180,7 @@ def test_the_gaps_the_gate_stands_over_are_the_gaps_plan_is_handed():
         plan_reply("Build the clamp", satisfies=acceptance_of(THE_2023_CLAMP)),
         code_reply("clamp()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the clamp'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], budgets=Budgets(rereads=0), intent="Build the 2023 pipe clamp")
 
@@ -236,7 +236,7 @@ def test_a_plan_citing_the_document_it_was_handed_leaves_nothing_unplanned():
                    satisfies=acceptance_of(A_BORE_AND_THE_EVIDENCE_FOR_IT)),
         code_reply("bore()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the bore'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -517,7 +517,7 @@ def test_a_step_that_only_passed_on_the_retry_is_named_to_the_checks():
         plan_reply("Pocket the split", satisfies=everything(A_SPLIT)),
         retried_code_reply("split_through()", "split_shortened()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the split'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], applies=[failed("this Step left a Body in more than one piece"), None],
         attachments=[RENDER_PNG])
@@ -533,7 +533,7 @@ def test_a_step_that_landed_first_time_names_nothing_to_the_checks():
         plan_reply("Only", satisfies=everything(a_cube_with_a_hole)),
         code_reply("box()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the length'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -551,7 +551,7 @@ def test_execute_is_handed_every_entry_against_the_value_it_resolves_to():
         plan_reply("Sketch the profile", satisfies=everything(A_PART)),
         code_reply("sketch()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the length'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -580,7 +580,7 @@ def test_a_step_citing_two_planes_is_sent_back_before_it_is_ever_built():
         _one_plane_each(),
         code_reply("profile()", "lug()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the outline'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -593,7 +593,7 @@ def test_a_step_citing_two_planes_is_sent_back_before_it_is_ever_built():
 
 def test_a_plan_that_keeps_mixing_them_is_not_sent_back_for_ever():
     drive([design_reply(THE_CLAMP_OUTLINE)] + [_both_planes_in_one_step()] * 4
-          + [code_reply("profile()"), suspect_reply(), assertion_reply("assert True, 'the outline'"), verdict_reply("pass")],
+          + [code_reply("profile()"), suspect_reply(), assertion_reply(), verdict_reply("pass")],
           attachments=[RENDER_PNG], budgets=Budgets(revisions=2))
 
 
@@ -606,7 +606,7 @@ def test_a_step_whose_citations_agree_is_planned_once():
         plan_reply("Pad the outer profile", satisfies=everything(one_plane)),
         code_reply("profile()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the outline'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -657,7 +657,7 @@ def test_two_holes_that_disagree_and_nothing_to_settle_them_reach_the_gate():
                    satisfies=everything(THE_CLAMP_READ_OFF_ONE_VIEW)),
         code_reply("pad()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the length'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -676,7 +676,7 @@ def test_a_reading_whose_directions_agree_carries_on():
         plan_reply("Pocket the hole", satisfies=everything(THE_CLAMP_READ_PROPERLY)),
         code_reply("pocket()"),
         suspect_reply(),
-        assertion_reply("assert True, 'the hole'"),
+        assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
@@ -1086,7 +1086,7 @@ def test_the_description_is_an_event_of_its_own_standing_before_the_plan():
     """
     _, events, _, _ = drive([design_reply(A_PART),
                              plan_reply("Only", satisfies=everything(A_PART)),
-                             code_reply("box()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+                             code_reply("box()"), suspect_reply(), assertion_reply(), verdict_reply("pass")],
                             attachments=[RENDER_PNG])
 
     kinds = [event.kind for event in events]
@@ -1144,7 +1144,7 @@ def test_a_question_nobody_answered_is_settled_by_design_and_shown_at_the_gate()
     _, events, _, _ = drive(
         [design_reply(A_DATUM, question="How long, how wide and how tall is the box?"),
          design_reply(A_BOX_FROM_WORDS), plan_reply("Pad a 10 mm box"),
-         code_reply("box()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+         code_reply("box()"), suspect_reply(), assertion_reply(), verdict_reply("pass")],
         ask=lambda question: asked.append(question) or None)
 
     described = events.first(DESIGN).data["model"]
@@ -1211,7 +1211,7 @@ def test_the_description_is_carried_into_execute_as_text():
     """
     _, _, llm, _ = drive([design_reply(A_PART),
                           plan_reply("Only", satisfies=everything(A_PART)),
-                          code_reply("box()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+                          code_reply("box()"), suspect_reply(), assertion_reply(), verdict_reply("pass")],
                          attachments=[RENDER_PNG])
 
     asked = llm.calls[2][-1]["content"]
@@ -1226,7 +1226,7 @@ def test_the_description_reaches_plan_under_one_key():
     """
     _, _, llm, _ = drive([design_reply(A_PART),
                           plan_reply("Only", satisfies=everything(A_PART)),
-                          code_reply("box()"), suspect_reply(), assertion_reply("assert True"), verdict_reply("pass")],
+                          code_reply("box()"), suspect_reply(), assertion_reply(), verdict_reply("pass")],
                          attachments=[RENDER_PNG])
 
     request = json.loads(llm.calls[1][-1]["content"])
@@ -1249,9 +1249,9 @@ def test_a_revision_plans_from_the_same_description_and_does_not_read_again():
     _, events, llm, _ = drive([
         design_reply(A_PART),
         plan_reply("v1", satisfies=everything(A_PART)), code_reply("v1()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("fail", "not right"),
+        suspect_reply(), assertion_reply(), verdict_reply("fail", "not right"),
         plan_reply("v2", satisfies=everything(A_PART)), code_reply("v2()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     assert len(events.of(DESIGN)) == 1
@@ -1379,7 +1379,7 @@ def test_the_acceptance_list_rides_with_the_plan_it_belongs_to():
         design_reply(A_PART),
         plan_reply("Sketch the profile", "Pad it 10 mm", satisfies=everything(A_PART)),
         code_reply("sketch()", "pad()"),
-        suspect_reply(), assertion_reply("assert True"), verdict_reply("pass"),
+        suspect_reply(), assertion_reply(), verdict_reply("pass"),
     ], attachments=[RENDER_PNG])
 
     plan = events.first(PLAN)

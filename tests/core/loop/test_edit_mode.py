@@ -91,5 +91,5 @@ def test_each_edit_prompt_has_its_paragraph_keyed_on_the_base():
         text = read_prompt(name + ".md")
         assert "`the_base_part`" in text, name
     assert "pick_faces" in read_prompt("execute.md")
-    assert "no_collateral" in read_prompt("assertion.md")
+    assert "already checked" in read_prompt("assertion.md")
     assert "never rebuild" in read_prompt("plan.md").lower()

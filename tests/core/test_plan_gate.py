@@ -395,7 +395,7 @@ THE_NUT = {"envelope": {"across the flats": {"value": "13.0 mm", "flag": "assume
 
 def a_run_whose_checks_fail(*extra):
     return [design_reply(THE_NUT), plan_reply("Make it"),
-            code_reply("make()"), suspect_reply(), assertion_reply("check()")] + list(extra)
+            code_reply("make()"), suspect_reply(), assertion_reply()] + list(extra)
 
 
 def test_ok_finishes_the_run_without_a_revision():
@@ -404,7 +404,7 @@ def test_ok_finishes_the_run_without_a_revision():
 
     result, events, tools = drive_with(
         a_run_whose_checks_fail(), decide, attachments=[RENDER_PNG],
-        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}])
+        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []}])
 
     assert result.ok
     assert result.steps_applied == 1
@@ -424,7 +424,7 @@ def test_taking_a_failed_result_carries_the_failed_checks_on_the_answer():
 
     result, events, _ = drive_with(
         a_run_whose_checks_fail(), decide, attachments=[RENDER_PNG],
-        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}])
+        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []}])
 
     assert result.ok
     assert result.unmet
@@ -441,7 +441,7 @@ def test_accepting_does_not_spend_a_review_on_a_result_already_judged():
 
     result, _, _ = drive_with(
         a_run_whose_checks_fail(), decide, attachments=[RENDER_PNG],
-        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}])
+        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []}])
 
     assert result.ok
     assert "acceptance checks did not pass" in result.reason
@@ -462,7 +462,7 @@ def test_stopping_while_the_decision_is_open_is_recorded_as_stopped():
         return "released-by-abandon"
 
     llm = scripted(a_run_whose_checks_fail(), attachments=[RENDER_PNG])
-    tools = FakeTools(checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}])
+    tools = FakeTools(checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []}])
     result = run("Make a 10mm box", llm=llm, tools=tools.registry, events=EventStream(),
                  cancelled=lambda: bool(stopped), decide=presses_stop,
                  attachments=[RENDER_PNG], kernel=StubKernel())
@@ -479,9 +479,9 @@ def test_revise_replans_and_the_revision_goes_through_the_gate():
     result, events, tools = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Make it 13 mm"),
-            code_reply("fix()", first=2), suspect_reply(), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("fix()", first=2), suspect_reply(), assertion_reply(), verdict_reply("pass")),
         decide, gate=gate, attachments=[RENDER_PNG],
-        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
+        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []},
                 SELF_INTERSECTION_HELD, {"ok": True}])
 
     assert result.ok
@@ -502,9 +502,9 @@ def test_start_over_replans_with_an_explicit_permission_and_still_hits_the_gate(
     _, events, _ = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Start from nothing"),
-            code_reply("again()"), suspect_reply(), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("again()"), suspect_reply(), assertion_reply(), verdict_reply("pass")),
         decide, gate=gate, attachments=[RENDER_PNG],
-        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
+        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []},
                 SELF_INTERSECTION_HELD, {"ok": True}])
 
     assert gate.shown == [["Make it"], ["Start from nothing"]]
@@ -518,7 +518,7 @@ def test_the_decision_is_not_raised_when_nothing_was_applied():
     _, events, _ = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Try again"),
-            code_reply("again()"), suspect_reply(), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("again()"), suspect_reply(), assertion_reply(), verdict_reply("pass")),
         decide, applies=[failed("boom"), failed("boom"), failed("boom")],
         attachments=[RENDER_PNG], checks=[SELF_INTERSECTION_HELD, {"ok": True}])
 
@@ -765,10 +765,10 @@ def test_auto_mode_revises_a_failed_assertion_without_asking_anybody(monkeypatch
     result, events, tools = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Make it 13 mm"),
-            code_reply("fix()", first=2), suspect_reply(), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("fix()", first=2), suspect_reply(), assertion_reply(), verdict_reply("pass")),
         never_call_me, gate=Gate(Approval(APPROVE), Approval(APPROVE)),
         attachments=[RENDER_PNG],
-        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
+        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []},
                 SELF_INTERSECTION_HELD, {"ok": True}])
 
     assert result.ok
@@ -783,10 +783,10 @@ def test_auto_mode_marks_the_revision_answer_as_automatic_with_the_failed_checks
     _, events, _ = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Make it 13 mm"),
-            code_reply("fix()"), suspect_reply(), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("fix()"), suspect_reply(), assertion_reply(), verdict_reply("pass")),
         lambda failure: REVISE, gate=Gate(Approval(APPROVE), Approval(APPROVE)),
         attachments=[RENDER_PNG],
-        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
+        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []},
                 SELF_INTERSECTION_HELD, {"ok": True}])
 
     question = events.first(QUESTION)
@@ -810,9 +810,9 @@ def test_auto_mode_off_leaves_the_decision_events_unchanged(monkeypatch):
     _, events, _ = drive_with(
         a_run_whose_checks_fail(
             plan_reply("Make it 13 mm"),
-            code_reply("fix()"), suspect_reply(), assertion_reply("check()"), verdict_reply("pass")),
+            code_reply("fix()"), suspect_reply(), assertion_reply(), verdict_reply("pass")),
         decide, gate=Gate(Approval(APPROVE), Approval(APPROVE)), attachments=[RENDER_PNG],
-        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS},
+        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []},
                 SELF_INTERSECTION_HELD, {"ok": True}])
 
     question = events.first(QUESTION)
@@ -837,13 +837,13 @@ def test_auto_mode_composes_with_the_revision_budget_running_out(monkeypatch):
 
     result, events, _ = drive_with([
         design_reply(THE_NUT), plan_reply("Make it"),
-        code_reply("make()"), suspect_reply(), assertion_reply("check()"),
-        plan_reply("Make it v2"), code_reply("make2()", first=2), suspect_reply(), assertion_reply("check()"),
-        plan_reply("Make it v3"), code_reply("make3()", first=3), suspect_reply(), assertion_reply("check()"),
-        plan_reply("Make it v4"), code_reply("make4()", first=4), suspect_reply(), assertion_reply("check()"),
+        code_reply("make()"), suspect_reply(), assertion_reply(),
+        plan_reply("Make it v2"), code_reply("make2()", first=2), suspect_reply(), assertion_reply(),
+        plan_reply("Make it v3"), code_reply("make3()", first=3), suspect_reply(), assertion_reply(),
+        plan_reply("Make it v4"), code_reply("make4()", first=4), suspect_reply(), assertion_reply(),
     ], lambda failure: REVISE, gate=Gate(*[Approval(APPROVE) for _ in range(4)]),
         attachments=[RENDER_PNG],
-        checks=[SELF_INTERSECTION_HELD, {"ok": False, "traceback": FAILED_CHECKS}] * 4)
+        checks=[SELF_INTERSECTION_HELD, {"ok": True, "held": [], "failed": [0], "defects": []}] * 4)
 
     assert result.blocked
     assert not result.ok

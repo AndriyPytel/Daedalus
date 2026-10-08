@@ -47,7 +47,7 @@ def test_an_uncovered_address_is_patched_without_spending_a_mechanical_revision(
         plan_reply({"do": "Fillet", "satisfies": [LENGTH] + BOOKKEEPING}),
         plan_reply({"do": "Fillet", "satisfies": [LENGTH] + BOOKKEEPING},
                    {"do": "Fillet R4 mm", "satisfies": [RADIUS]}),
-        code_reply("a()", "b()"), suspect_reply(), assertion_reply("assert True"),
+        code_reply("a()", "b()"), suspect_reply(), assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[_png()], budgets=Budgets(mechanical_revisions=0))
 
@@ -63,7 +63,7 @@ def test_the_patch_is_asked_for_the_uncovered_addresses_only_and_as_an_addition(
         plan_reply({"do": "Fillet", "satisfies": [LENGTH] + BOOKKEEPING}),
         plan_reply({"do": "Fillet", "satisfies": [LENGTH] + BOOKKEEPING},
                    {"do": "Fillet R4 mm", "satisfies": [RADIUS]}),
-        code_reply("a()", "b()"), suspect_reply(), assertion_reply("assert True"),
+        code_reply("a()", "b()"), suspect_reply(), assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[_png()])
 
@@ -78,7 +78,7 @@ def test_an_address_still_uncovered_after_its_patch_ends_as_unmet_and_the_run_bu
     never = plan_reply({"do": "Fillet", "satisfies": [LENGTH] + BOOKKEEPING})
     result, events, _, tools = drive([
         _design(), never, never, never, never,
-        code_reply("a()"), suspect_reply(), assertion_reply("assert True"),
+        code_reply("a()"), suspect_reply(), assertion_reply(),
         verdict_reply("pass"),
     ], attachments=[_png()], budgets=Budgets(mechanical_revisions=0))
 
