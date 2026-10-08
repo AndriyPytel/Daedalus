@@ -39,6 +39,14 @@ def test_every_old_preflight_check_still_exists_as_a_function():
 
 
 def test_every_old_preflight_check_still_runs_after_a_step():
-    called = set(kernel_worker._run_step_body.__code__.co_names)
+    called, pending = set(), ["_run_step_body"]
+    while pending:
+        function = getattr(kernel_worker, pending.pop(), None)
+        if function is None or not hasattr(function, "__code__"):
+            continue
+        reached = set(function.__code__.co_names) - called
+        called |= reached
+        pending += [name for name in reached if getattr(getattr(kernel_worker, name, None), "__module__", None)
+                    == kernel_worker.__name__]
     dropped = {label: name for label, name in OLD_CHECKS.items() if name not in called}
-    assert not dropped, "check(s) no longer called from _run_step_body: %s" % dropped
+    assert not dropped, "check(s) no longer reached from _run_step_body: %s" % dropped

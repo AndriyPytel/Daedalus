@@ -201,3 +201,42 @@ def test_a_body_is_drawn_as_it_ends_and_not_as_each_feature_stood(doc):
     triangles, _ = _tessellated(doc)
 
     assert len(triangles) == len(body.Shape.tessellate(0.2)[1])
+
+
+def test_the_source_a_body_edits_is_not_drawn_beside_the_body(doc):
+    """A Body whose BaseFeature is a Part::Feature already holds that shape once; tessellating both doubles the render's cost."""
+    import Part
+
+    source = doc.addObject("Part::Feature", "Source")
+    source.Shape = Part.makeBox(40, 40, 40)
+    body = doc.addObject("PartDesign::Body", "Body")
+    body.BaseFeature = source
+    doc.recompute()
+    assert not body.Shape.isNull() and not source.Shape.isNull()
+
+    from core.kernel.preflight_render import _tessellated
+
+    triangles, _ = _tessellated(doc)
+
+    assert len(triangles) == len(body.Shape.tessellate(0.2)[1])
+
+
+def test_the_batched_rasteriser_draws_the_pixels_the_triangle_by_triangle_one_did(doc, tmp_path, monkeypatch):
+    """The depth test is per pixel, so the batch must agree with the single-triangle fill on every pixel, edges included."""
+    from core.kernel import preflight_render
+
+    _padded_body(doc)
+    batched = _rendered(doc, tmp_path, "batched")
+
+    def one_by_one(pixels, depth, size):
+        width, height = size
+        zbuffer = np.full((height, width), -np.inf)
+        owner = np.full((height, width), -1, dtype=np.int64)
+        for index in range(len(pixels)):
+            preflight_render._fill_triangle(zbuffer, owner, index, pixels[index], depth[index])
+        return zbuffer, owner
+
+    monkeypatch.setattr(preflight_render, "_rasterize", one_by_one)
+    single = _rendered(doc, tmp_path, "single")
+
+    assert (batched != single).any(axis=2).sum() == 0

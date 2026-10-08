@@ -44,7 +44,7 @@ def the_envelope_measured(acceptance):
     The check nobody had to write: the part's three overall sizes, sorted
     against sorted so it never has to know which way the part was built.
     Measured: a lug built 25mm tall for 30 drawn passed Preflight.
-    `_TRUE_TO` is 0.5mm, since `optimalBoundingBox(False)` still lands
+    `_TRUE_TO` is 0.5mm, since the exact box still lands
     inside the true extreme on a curved face; guessing orientation from
     geometry was rejected.
     """
@@ -64,8 +64,8 @@ solids = [o for o in doc.Objects if getattr(o, 'Shape', None) is not None
           and o.Shape.Solids and not o.Shape.isNull()
           and getattr(o.getParentGeoFeatureGroup(), 'TypeId', '') != 'PartDesign::Body']
 assert solids, 'the acceptance names an envelope and the Document has no solid'
-shape = max(solids, key=lambda o: o.Shape.Volume).Shape
-box = shape.optimalBoundingBox(False)
+shape = max(solids, key=lambda o: measure.volume(o.Shape)).Shape
+box = measure.box(shape)
 built = sorted([box.XLength, box.YLength, box.ZLength])
 asked = %s
 assert all(abs(a - b) <= %s for a, b in zip(built, asked)), (
@@ -97,7 +97,7 @@ solids = [o for o in doc.Objects if getattr(o, 'Shape', None) is not None
           and o.Shape.Solids and not o.Shape.isNull()
           and getattr(o.getParentGeoFeatureGroup(), 'TypeId', '') != 'PartDesign::Body']
 assert solids, 'the acceptance names topology and the Document has no solid'
-shape = max(solids, key=lambda o: o.Shape.Volume).Shape
+shape = max(solids, key=lambda o: measure.volume(o.Shape)).Shape
 bbox = shape.BoundBox
 deflection = 0.001 * bbox.DiagonalLength
 points, facets = shape.tessellate(deflection)
@@ -191,6 +191,14 @@ def _consulted_design(description, events):
     return description
 
 
+def fixed_checks(acceptance, description, base):
+    """The (script, name) pairs every finished Document is put through; a script is empty where it does not apply, and an edit of a *base* part skips the self-intersection scan."""
+    return [(the_envelope_measured(acceptance), "the envelope"),
+            ("" if base else SELF_INTERSECTION_CHECK, "no solid self-intersects"),
+            (the_topology_measured(description, base), "the topology"),
+            ("no_collateral(doc)" if base else "", "no collateral change")]
+
+
 def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled=None,
               after_a_retry=(), supervisor=None, kernel=None, description=None, base=None):
     """
@@ -212,14 +220,11 @@ def assertion(acceptance, described, tools, llm, events, budgets=None, cancelled
 
     cancelled = cancelled or (lambda: False)
 
-    fixed = [(the_envelope_measured(acceptance), "the envelope"),
-             ("" if base else SELF_INTERSECTION_CHECK, "no solid self-intersects"),
-             (the_topology_measured(description, base), "the topology"),
-             ("no_collateral(doc)" if base else "", "no collateral change")]
-    fixed_checks = [code for code, _ in fixed if code]
+    fixed = fixed_checks(acceptance, description, base)
+    scripts = [code for code, _ in fixed if code]
     fixed_confirmed = []
-    if fixed_checks:
-        code = "\n".join(fixed_checks)
+    if scripts:
+        code = "\n".join(scripts)
         events.emit(TOOL_CALL, name="check_assertions", arguments={"code": code})
         result = tools.call("check_assertions", {"code": code})
         events.emit(TOOL_RESULT, name="check_assertions", result=result)

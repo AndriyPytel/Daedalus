@@ -375,7 +375,7 @@ class ApplyPipeline:
 
         copy = self._dispatch(lambda: copy_of(doc))
         try:
-            checked = self.worker.check(code, document=copy, ephemeral=True)
+            checked = self.worker.check(code, document=copy, ephemeral=True, geometry=True)
         finally:
             discard(copy)
         return {"ok": bool(checked.ok), "traceback": checked.traceback or "",

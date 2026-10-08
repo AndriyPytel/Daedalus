@@ -252,7 +252,7 @@ def test_the_three_overall_sizes_are_checked_before_anybody_writes_a_check():
 
     code = the_envelope_measured(A_CLAMP_ENVELOPE)
 
-    assert "optimalBoundingBox" in code
+    assert "measure.box" in code
     assert "[30.0, 30.0, 108.0]" in code
     assert "these did not hold: the envelope" in code
 
@@ -483,7 +483,7 @@ def test_the_envelope_check_runs_against_the_document_and_can_fail_it():
         decide=lambda why: "accept")
 
     ran = [args["code"] for name, args in tools.calls if name == "check_assertions"]
-    assert "optimalBoundingBox" in ran[0], "the envelope was not measured first"
+    assert "measure.box" in ran[0], "the envelope was not measured first"
     assert events.first(ASSERTION).data["unmet"], "nothing was reported unmet"
     assert events.first(ASSERTION).data["confirmed"] == [], \
         "the envelope check measures nothing to confirm"

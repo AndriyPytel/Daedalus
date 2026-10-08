@@ -28,10 +28,10 @@ def test_the_two_fixed_checks_are_one_check_assertions_call(tmp_path):
     assertion(acceptance, {}, registry, llm, events)
 
     fixed_check_calls = [code for code in calls
-                         if "optimalBoundingBox" in code or "BOPAlgo_SelfIntersect" in code]
+                         if "measure.box" in code or "BOPAlgo_SelfIntersect" in code]
     assert len(fixed_check_calls) == 1, \
         "the envelope and self-intersection checks cost %d round trips" % len(fixed_check_calls)
-    assert "optimalBoundingBox" in fixed_check_calls[0]
+    assert "measure.box" in fixed_check_calls[0]
     assert "BOPAlgo_SelfIntersect" in fixed_check_calls[0]
     assert len([e for e in events if e.kind == TOOL_CALL
                and e.data["name"] == "check_assertions"]) == 2, \

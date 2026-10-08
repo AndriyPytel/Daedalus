@@ -13,15 +13,17 @@ yet, while handing it a `document` is always a fresh handoff. Nothing
 here imports FreeCAD: the parent is the addon's process, and the only
 FreeCAD in play is the child's.
 """
+import glob
 import json
 import os
 import queue
+import shutil
 import subprocess
 import tempfile
 import threading
 from dataclasses import dataclass, field
 
-from core.kernel.kernel_worker import SENTINEL
+from core.kernel.kernel_worker import SCRATCH, SENTINEL
 
 DEFAULT_TIMEOUT = 30.0
 STARTUP_TIMEOUT = 60.0
@@ -96,6 +98,27 @@ class KernelResult:
                    plan_values=plan_values)
 
 
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def _sweep_orphans(own):
+    """
+    Remove the scratch directories whose owning process is dead, which neither it nor its worker was left to remove.
+    A directory's name carries its owner's pid; *own* and every directory of a live process stay.
+    """
+    for path in glob.glob(os.path.join(tempfile.gettempdir(), "kernel_checkpoint_*_*")):
+        owner = os.path.basename(path).split("_")[2]
+        if path != own and owner.isdigit() and not _alive(int(owner)):
+            shutil.rmtree(path, ignore_errors=True)
+
+
 def find_freecadcmd():
     """Locate the headless FreeCAD binary, or raise saying how to point at it."""
     explicit = os.environ.get("FREECAD_CMD")
@@ -131,6 +154,7 @@ class Kernel:
         self._stderr = None
         self._draining = None
         self._checkpoint = None
+        self._scratch = None
         self._needs_resume = False
         self._design = None
         self._plan_values = {}
@@ -159,6 +183,9 @@ class Kernel:
         """
         if self.alive:
             return
+        if self._scratch is None:
+            self._scratch = tempfile.mkdtemp(prefix="kernel_checkpoint_%d_" % os.getpid())
+            _sweep_orphans(self._scratch)
         self._process = subprocess.Popen(
             [self._freecadcmd, _WORKER],
             stdin=subprocess.PIPE,
@@ -168,7 +195,7 @@ class Kernel:
             encoding="utf-8",
             errors="replace",
             bufsize=1,
-            env=dict(os.environ, PYTHONUNBUFFERED="1"),
+            env=dict(os.environ, PYTHONUNBUFFERED="1", **{SCRATCH: self._scratch}),
         )
         self._lines = queue.Queue()
         self._stderr = []
@@ -179,10 +206,18 @@ class Kernel:
 
         ready = self._await_response(STARTUP_TIMEOUT)
         if ready is None or not ready.get("ready"):
-            self.kill()
+            self._stop()
             raise RuntimeError("The kernel did not come up: " + self._stderr_text())
 
     def kill(self):
+        """End the kernel for good: stop the process and remove the checkpoints it left, whether or not it still ran."""
+        self._stop()
+        if self._scratch is not None:
+            shutil.rmtree(self._scratch, ignore_errors=True)
+        self._scratch = None
+        self._checkpoint = None
+
+    def _stop(self):
         if self._process is None:
             return
         try:
@@ -202,7 +237,7 @@ class Kernel:
         `_needs_resume` marks the replacement as blank, for `check()` to
         resume from checkpoint rather than continue onto it.
         """
-        self.kill()
+        self._stop()
         self._needs_resume = True
         try:
             self.start()
@@ -218,7 +253,7 @@ class Kernel:
 
     def check(self, code, document=_CONTINUE, render_path=None, timeout=None, names=None,
               ephemeral=False, design=None, exploring=False, plan_values=None,
-              capture_values=False, builds=False):
+              capture_values=False, builds=False, geometry=False):
         """
         Run *code* as one Step in the kernel. `document` not given
         continues the kernel's own session, resuming on the last
@@ -231,7 +266,8 @@ class Kernel:
         the last checkpoint with the result naming what was undone where it
         creates, deletes or modifies an object. *capture_values* marks a
         Plan-phase call whose own top-level numbers fold into *plan_values*
-        rather than only reading it, *builds* marks a Step or a fix that fails
+        rather than only reading it, *geometry* asks for the geometry snapshot a Step that changes nothing
+        otherwise skips, *builds* marks a Step or a fix that fails
         where it changes nothing in the Document, and the return is always a
         KernelResult, never a raise for anything the code did.
         """
@@ -272,6 +308,8 @@ class Kernel:
             request["capture_values"] = True
         if builds:
             request["builds"] = True
+        if geometry:
+            request["geometry"] = True
         response, why = self._ask(request, timeout or self.timeout, "the Step")
         if response is None:
             return KernelResult(ok=False, traceback=why)

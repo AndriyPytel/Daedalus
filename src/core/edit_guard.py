@@ -8,13 +8,89 @@ _UNASKED_LOSS = 0.5
 _UNASKED_GAIN = 2.0
 
 
-def measured(shape):
+class Measures:
+    """
+    Reads a shape's volume, validity and exact bounding box straight off the shape.
+    """
+
+    def volume(self, shape):
+        return shape.Volume
+
+    def valid(self, shape):
+        return bool(shape.isValid())
+
+    def box(self, shape):
+        return shape.optimalBoundingBox(False)
+
+
+class RememberedMeasures(Measures):
+    """
+    `Measures` that answer each question once per shape, for one check call.
+    The shapes are held and matched with `isSame`, so it must not outlive an edit to them; the box is found by measuring exactly only the faces whose loose box reaches past the box found so far.
+    """
+
+    def __init__(self):
+        self._known = []
+
+    def _of(self, shape):
+        for held, known in self._known:
+            if held.isSame(shape):
+                return known
+        known = {}
+        self._known.append((shape, known))
+        return known
+
+    def _once(self, shape, key, compute):
+        known = self._of(shape)
+        if key not in known:
+            known[key] = compute(shape)
+        return known[key]
+
+    def volume(self, shape):
+        return self._once(shape, "volume", super().volume)
+
+    def valid(self, shape):
+        return self._once(shape, "valid", super().valid)
+
+    def box(self, shape):
+        return self._once(shape, "box", _exact_box)
+
+
+def _exact_box(shape):
+    """The box `shape.optimalBoundingBox(False)` returns, as a FreeCAD BoundBox, found from the few faces that reach it."""
+    import FreeCAD
+    import numpy as np
+
+    faces = shape.Faces
+    loose = np.array([(b.XMin, b.YMin, b.ZMin, b.XMax, b.YMax, b.ZMax)
+                      for b in (face.BoundBox for face in shape.copy().Faces)])
+    found = None
+    measured_faces = np.zeros(len(faces), dtype=bool)
+    while True:
+        if found is None:
+            index = int(np.argmax(loose[:, 3] - loose[:, 0]))
+        else:
+            overhang = (np.maximum(found[:3] - loose[:, :3], 0).sum(1)
+                        + np.maximum(loose[:, 3:] - found[3:], 0).sum(1))
+            overhang[measured_faces] = 0
+            index = int(np.argmax(overhang))
+            if overhang[index] <= 0:
+                break
+        box = faces[index].optimalBoundingBox(False)
+        measured_faces[index] = True
+        exact = np.array((box.XMin, box.YMin, box.ZMin, box.XMax, box.YMax, box.ZMax))
+        found = exact if found is None else np.r_[np.minimum(found[:3], exact[:3]),
+                                                  np.maximum(found[3:], exact[3:])]
+    return FreeCAD.BoundBox(*found)
+
+
+def measured(shape, measures=Measures()):
     """
     The four numbers the guard compares, read off one Part shape: solid count, validity, volume and the exact bounding box.
     The box ignores tessellation padding, the same as Assertion's envelope check.
     """
-    box = shape.optimalBoundingBox(False)
-    return {"solids": len(shape.Solids), "valid": bool(shape.isValid()), "volume": shape.Volume,
+    box = measures.box(shape)
+    return {"solids": len(shape.Solids), "valid": measures.valid(shape), "volume": measures.volume(shape),
             "bbox": (box.XMin, box.YMin, box.ZMin, box.XMax, box.YMax, box.ZMax)}
 
 

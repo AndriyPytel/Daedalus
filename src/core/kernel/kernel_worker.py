@@ -16,12 +16,15 @@ traceback.
 import contextlib
 import copy
 import difflib
+import functools
 import io
 import json
 import linecache
 import os
+import shutil
 import sys
 import tempfile
+import time
 import traceback
 
 SENTINEL = "@@KERNEL@@"
@@ -309,18 +312,19 @@ def cylinder_face(diameter, axis=None, tol=0.01):
     return predicate
 
 
-def no_collateral(doc, volume_change=None, moved=None):
+def no_collateral(doc, volume_change=None, moved=None, measures=None):
     """
     Raises an AssertionError naming every way the Body's shape is not its BaseFeature edited as asked: more than one solid, invalid, a volume change other than *volume_change* mm3, a bounding box side outside *moved* that moved, checked only when *moved* is given.
     Does nothing where no Body has a BaseFeature, so a run that edits nothing is unaffected.
     """
-    from core.edit_guard import collateral, measured
+    from core.edit_guard import Measures, collateral, measured
 
     body = next((obj for obj in doc.Objects
                  if obj.TypeId == "PartDesign::Body" and obj.BaseFeature is not None), None)
     if body is None:
         return
-    reasons = collateral(measured(body.BaseFeature.Shape), measured(body.Shape),
+    measures = measures or Measures()
+    reasons = collateral(measured(body.BaseFeature.Shape, measures), measured(body.Shape, measures),
                          volume_change, moved)
     assert not reasons, "these did not hold: no collateral change. " + "; ".join(reasons)
 
@@ -408,13 +412,17 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False):
     """
     import FreeCAD
 
+    from core.edit_guard import RememberedMeasures
+
     sys.modules["App"] = FreeCAD
 
-    namespace = {"App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__",
+    measure = RememberedMeasures()
+    namespace = {"measure": measure, "App": FreeCAD, "FreeCAD": FreeCAD, "doc": doc, "__name__": "__step__",
                  "edges_between": edges_between, "edges_by_concavity": edges_by_concavity,
                  "built_ok": built_ok, "pick_edges": pick_edges, "bbox": bbox,
                  "pick_faces": pick_faces, "plane_face": plane_face,
-                 "cylinder_face": cylinder_face, "no_collateral": no_collateral,
+                 "cylinder_face": cylinder_face,
+                 "no_collateral": functools.partial(no_collateral, measures=measure),
                  "by_label": by_label, "sketch_at": sketch_at}
     if design is not None:
         namespace["design"] = _step_design(design)
@@ -433,7 +441,7 @@ def step_namespace(doc, design=None, plan_values=None, capture_values=False):
 RESERVED_STEP_NAMES = frozenset(
     {"App", "FreeCAD", "doc", "__name__", "edges_between", "edges_by_concavity",
      "built_ok", "pick_edges", "bbox", "by_label", "sketch_at", "design", "names", "plan_values",
-     "pick_faces", "plane_face", "cylinder_face", "no_collateral"}
+     "pick_faces", "plane_face", "cylinder_face", "no_collateral", "measure"}
     | set(STEP_MODULES))
 
 
@@ -1191,15 +1199,25 @@ def _recompute_scope(doc, touched):
     return scope
 
 
+SCRATCH = "KERNEL_SCRATCH"
+
 _SESSION = {"doc": None, "checkpoint": None, "names": {}, "design": None,
-            "plan_values": {}}
+            "plan_values": {}, "scratch": None}
+
+
+def _scratch():
+    """
+    The directory this process keeps its checkpoint in: the one its parent made and will remove,
+    or one of its own that it removes on the way out.
+    """
+    if _SESSION.get("scratch") is None:
+        _SESSION["scratch"] = os.environ.get(SCRATCH) or tempfile.mkdtemp(prefix="kernel_checkpoint_%d_" % os.getpid())
+    return _SESSION["scratch"]
 
 
 def _checkpoint_path():
     if _SESSION["checkpoint"] is None:
-        handle, path = tempfile.mkstemp(prefix="kernel_checkpoint_", suffix=".FCStd")
-        os.close(handle)
-        _SESSION["checkpoint"] = path
+        _SESSION["checkpoint"] = os.path.join(_scratch(), "checkpoint.FCStd")
     return _SESSION["checkpoint"]
 
 
@@ -1231,6 +1249,10 @@ def _reload_checkpoint():
                        else FreeCAD.newDocument("Kernel"))
 
 
+def _checkpoint_exists():
+    return _SESSION["checkpoint"] is not None and os.path.exists(_SESSION["checkpoint"])
+
+
 def _save_checkpoint(doc):
     """
     `saveCopy` is a silent no-op when the destination equals `doc.FileName`
@@ -1239,34 +1261,16 @@ def _save_checkpoint(doc):
     and `os.replace` is atomic, so a reader never sees a half-written file.
     """
     path = _checkpoint_path()
-    handle, tmp_path = tempfile.mkstemp(
-        prefix="kernel_checkpoint_", suffix=".FCStd", dir=os.path.dirname(path))
-    os.close(handle)
+    tmp_path = os.path.join(os.path.dirname(path), "saving.FCStd")
     doc.saveCopy(tmp_path)
     os.replace(tmp_path, path)
 
 
-def _run_step_body(doc, namespace, touched, request):
+def _raise_if_broken(doc, touched):
     """
-    Execute a Step's code against *doc* and the checks that make it wrong.
-
-    Raises on any failure -- an `AssertionError` from the code itself, or a
-    `RuntimeError` from a check below -- for `run_step` to catch and
-    translate into a checkpoint reload. Returns the success payload.
+    Raise on whatever a Step left wrong in *doc*: objects in error, idle features, unwired features, a Body in pieces, invalid, inverted or not manifold.
+    A Step that changed nothing in a Document it did not open cannot have left any of it, and these scans cost seconds on a big part.
     """
-    register_step_source(request["code"])
-    exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
-    touched.diff(doc)
-
-    _raise_if_mixed_concavity(doc)
-
-    if touched.touched():
-        scope = _recompute_scope(doc, touched)
-        if scope is None:
-            doc.recompute()
-        else:
-            doc.recompute(scope)
-
     failures = _objects_left_in_error(doc)
     if failures:
         raise RuntimeError("recompute left these objects in error:\n" + "\n".join(failures))
@@ -1318,15 +1322,41 @@ def _run_step_body(doc, namespace, touched, request):
               "every consumer runs -- move the cylinder or change its radius so the faces "
               "overlap or leave a gap.")
 
+
+def _run_step_body(doc, namespace, touched, request):
+    """
+    Execute a Step's code against *doc* and the checks that make it wrong.
+
+    Raises on any failure -- an `AssertionError` from the code itself, or a
+    `RuntimeError` from a check below -- for `run_step` to catch and
+    translate into a checkpoint reload. Returns the success payload.
+    """
+    register_step_source(request["code"])
+    exec(compile(request["code"], "<step>", "exec"), namespace)  # noqa: S102
+    touched.diff(doc)
+
+    _raise_if_mixed_concavity(doc)
+
+    if touched.touched():
+        scope = _recompute_scope(doc, touched)
+        if scope is None:
+            doc.recompute()
+        else:
+            doc.recompute(scope)
+
+    if touched.touched() or "document" in request:
+        _raise_if_broken(doc, touched)
+
+    changed = touched.touched() or "document" in request
     result = {
         "ok": True,
         "objects": summarise(doc),
         "created": sorted(touched.created),
         "deleted": sorted(touched.deleted),
         "modified": sorted(touched.modified()),
-        "geometry": _geometry_snapshot(doc),
+        "geometry": _geometry_snapshot(doc) if changed or request.get("geometry") else {},
         "volume": _volume_moved(doc, touched.created),
-        "signature": signature_of(doc),
+        "signature": signature_of(doc) if changed else {},
     }
     held, failed = _measured(namespace)
     if held is not None:
@@ -1413,7 +1443,7 @@ def run_step(request):
             _reload_checkpoint()
             response["rolled_back"] = sorted(touched.created | touched.deleted | touched.modified())
         else:
-            if not ephemeral:
+            if not ephemeral and (touched.touched() or not _checkpoint_exists()):
                 _save_checkpoint(doc)
             _SESSION["names"] = names
     else:
@@ -1443,6 +1473,17 @@ def reading(request):
 _ASKED_FOR = {"step": run_step, "reading": reading}
 
 
+def _parent_is_gone(parent):
+    """
+    Whether *parent* has exited, given a second to be reparented away from.
+    A parent that only closed this process's stdin to restart it still owns, and resumes from, the checkpoint.
+    """
+    deadline = time.monotonic() + 1.0
+    while os.getppid() == parent and time.monotonic() < deadline:
+        time.sleep(0.05)
+    return os.getppid() != parent
+
+
 def serve(stdin=None, respond=respond):
     """
     Read requests off stdin until it closes, and answer each one.
@@ -1454,22 +1495,28 @@ def serve(stdin=None, respond=respond):
     """
     _ensure_on_path()
     _isolate_protocol_stream()
+    parent = os.getppid()
+    _SESSION["scratch"] = os.environ.get(SCRATCH)
     stdin = stdin or sys.stdin
     respond({"ready": True, "pid": os.getpid()})
 
-    for line in stdin:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            request = json.loads(line)
-        except ValueError as exc:
-            respond({"ok": False, "traceback": "malformed request: " + str(exc)})
-            continue
-        try:
-            respond(_ASKED_FOR[request.get("do") or "step"](request))
-        except BaseException as exc:
-            respond({"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)})
+    try:
+        for line in stdin:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                request = json.loads(line)
+            except ValueError as exc:
+                respond({"ok": False, "traceback": "malformed request: " + str(exc)})
+                continue
+            try:
+                respond(_ASKED_FOR[request.get("do") or "step"](request))
+            except BaseException as exc:
+                respond({"ok": False, "traceback": trimmed_traceback(exc) + introspect(exc)})
+    finally:
+        if _SESSION.get("scratch") and (SCRATCH not in os.environ or _parent_is_gone(parent)):
+            shutil.rmtree(_SESSION["scratch"], ignore_errors=True)
 
 
 if __name__ in ("__main__", "kernel_worker"):

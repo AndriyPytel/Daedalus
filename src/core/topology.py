@@ -60,30 +60,31 @@ def _euler_characteristic(vertices, triangles):
 
 
 def _triangle_components(vertices, triangles):
+    """
+    Triangles grouped by the connected piece of mesh they belong to.
+
+    Labels are pulled down edge by edge and compressed until none moves, in whole-array passes,
+    because a mesh of a million triangles is too many for a Python call per triangle.
+    """
     n_v = len(vertices)
-    parent = list(range(n_v))
-
-    def find(x):
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(x, y):
-        rx, ry = find(x), find(y)
-        if rx != ry:
-            parent[rx] = ry
-
-    tris_list = triangles.tolist()
-    for a, b, c in tris_list:
-        union(a, b)
-        union(b, c)
-
-    groups = {}
-    for tri in tris_list:
-        root = find(tri[0])
-        groups.setdefault(root, []).append(tri)
-    return [np.asarray(g, dtype=np.int64) for g in groups.values()]
+    label = np.arange(n_v)
+    ends = np.concatenate([triangles[:, [0, 1]], triangles[:, [1, 2]]])
+    low, high = ends[:, 0], ends[:, 1]
+    while True:
+        a, b = label[low], label[high]
+        apart = a != b
+        if not apart.any():
+            break
+        np.minimum.at(label, np.maximum(a, b)[apart], np.minimum(a, b)[apart])
+        while True:
+            jumped = label[label]
+            if (jumped == label).all():
+                break
+            label = jumped
+    owner = label[triangles[:, 0]]
+    order = np.argsort(owner, kind="stable")
+    starts = np.flatnonzero(np.diff(owner[order])) + 1
+    return [np.asarray(group, dtype=np.int64) for group in np.split(triangles[order], starts)]
 
 
 def _component_aabb(vertices, tris):
