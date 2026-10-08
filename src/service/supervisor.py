@@ -1,6 +1,6 @@
 """
 The gateway side of the worker channel: a `Worker` spawns one argv per Session without the bearer token in its environment, stores its events through `Repository` and a `blob` line through the `BlobStore`, and fails the active Run if the worker exits.
-`send` hands the worker the bytes of the attachments it names and the resolved settings, `cancel` kills the process group after `CANCEL_TIMEOUT`, and a `question` from an `interactive` Run holds it in `needs-answer` until `answer`.
+`send` hands the worker the bytes of the attachments it names, the resolved settings and, for a worker that replaces a stopped one, what to `restore`, `cancel` kills the process group after `CANCEL_TIMEOUT`, and a `question` from an `interactive` Run holds it in `needs-answer` until `answer`.
 """
 import base64
 import json
@@ -8,6 +8,7 @@ import os
 import signal
 import subprocess
 import threading
+import time
 
 import psycopg.errors
 
@@ -39,6 +40,7 @@ class Worker:
         self._last_kind = None
         self._interactive = False
         self._cancelling = False
+        self._idle_since = time.monotonic()
 
     @property
     def pid(self):
@@ -47,6 +49,11 @@ class Worker:
     @property
     def alive(self):
         return self._process is not None and self._process.poll() is None
+
+    @property
+    def idle_for(self):
+        with self._lock:
+            return None if self._run_id is not None else time.monotonic() - self._idle_since
 
     def start(self):
         self._conn = db.connect(self._url)
@@ -61,7 +68,7 @@ class Worker:
             self.stop(timeout=0)
             raise RuntimeError("the worker %r did not become ready" % self._argv)
 
-    def send(self, prompt, run_id=None, attachments=(), interactive=False, confirm=False, settings=None):
+    def send(self, prompt, run_id=None, attachments=(), interactive=False, confirm=False, settings=None, restore=None):
         files = [self._attachment(blob_id) for blob_id in attachments]
         with self._lock:
             if not self.alive:
@@ -74,7 +81,7 @@ class Worker:
             self._run_id, self._last_kind = run_id, None
             self._interactive, self._cancelling = interactive, False
         self._write(op="send", prompt=prompt, attachments=files, interactive=interactive, confirm=confirm,
-                    settings=settings or {})
+                    settings=settings or {}, **({"restore": restore} if restore else {}))
         return run_id
 
     def cancel(self, run_id):
@@ -177,11 +184,11 @@ class Worker:
                 else:
                     self._repo.update_run(self.owner_id, self._run_id,
                                           state=self._last_kind if self._last_kind in TERMINAL else "completed")
-                    self._run_id = None
+                    self._run_id, self._idle_since = None, time.monotonic()
             elif op == "error" and self._run_id is not None:
                 self._finish("error", "failed", {"message": str(message.get("message"))})
 
     def _finish(self, kind, state, payload):
         self._repo.append_event(self.owner_id, self._run_id, kind, payload)
         self._repo.update_run(self.owner_id, self._run_id, state=state)
-        self._run_id = None
+        self._run_id, self._idle_since = None, time.monotonic()

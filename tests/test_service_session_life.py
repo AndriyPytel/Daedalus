@@ -7,6 +7,7 @@ The respawn tests with the scripted worker on the real kernel skip when FreeCAD 
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
 
@@ -20,13 +21,14 @@ from service.blobstore import LocalBlobStore
 from service.repository import Repository
 from test_service_postgres import _admin_url, conn, database_url, repo  # noqa: F401
 from test_service_runs import AUTH, FINAL, TOKEN, final, start
-from test_service_worker_channel import FAKE, alive, until
+from test_service_worker_channel import FAKE, HOST, ROOT, _ssh, alive, until
 
 TTL = "1.5"
 
 
 @pytest.fixture
-def api(database_url, monkeypatch):
+def api(database_url, monkeypatch, tmp_path):
+    monkeypatch.setenv(ROOT_VARIABLE, str(tmp_path / "blobs"))
     monkeypatch.setenv(db.URL_VARIABLE, database_url)
     monkeypatch.setenv("DAEDALUS_WORKER_ARGV", json.dumps(FAKE))
     monkeypatch.setenv("DAEDALUS_TOKEN", TOKEN)
@@ -50,7 +52,7 @@ def test_a_third_session_beyond_max_sessions_is_queued_and_starts_when_a_slot_fr
     first, second = (start(api, "pid").json() for _ in range(2))
     final(api, first["id"]), final(api, second["id"])
     third = start(api, "pid").json()
-    assert session_state(api, third["session_id"]) == "queued"
+    until(lambda: session_state(api, third["session_id"]) == "queued")
     assert api.get("/v1/runs/%s" % third["id"]).json()["state"] == "queued"
     assert final(api, third["id"])["state"] == "completed"
     assert session_state(api, third["session_id"]) == "active"
@@ -123,7 +125,8 @@ def test_a_gateway_start_fails_the_runs_no_worker_is_left_to_finish_and_frees_th
     with db.connect(database_url) as setup:
         db.migrate(setup)
         repo = Repository(setup)
-        owner = repo.create_user()
+        owner = "usr_owner"
+        repo.ensure_user(owner)
         stuck = []
         for state in ("queued", "running", "needs-answer"):
             session = repo.create_session(owner)
@@ -205,20 +208,59 @@ def respawn_through(argv, database_url, monkeypatch, tmp_path):
     return first, second, blobs
 
 
+def assert_edited_with_history(first, second, before, after, tmp_path, calls):
+    assert volumes_of(before, tmp_path) == {"Box": pytest.approx(1000.0)}
+    assert volumes_of(after, tmp_path)["Box"] == pytest.approx(2000.0)
+    workers = list(dict.fromkeys(call["worker"] for call in calls))
+    assert len(workers) == 2
+    sent = [call for call in calls if call["worker"] == workers[1]][0]["messages"]
+    assert sent == [{"role": "user", "content": "Add a 10mm cube"}, {"role": "assistant", "content": "design"},
+                    {"role": "user", "content": "Make the box 20mm long"}]
+
+
 def test_a_second_run_after_the_ttl_edits_the_model_and_still_holds_the_first_runs_geometry(database_url, monkeypatch, tmp_path):
     real_kernel()
     monkeypatch.setenv("DAE_SCRIPT", "cube")
     monkeypatch.setenv("DAE_CALLS", str(tmp_path / "calls.jsonl"))
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join(p for p in sys.path if p))
     first, second, (before, after) = respawn_through(SCRIPTED, database_url, monkeypatch, tmp_path)
-    first_parts = volumes_of(before, tmp_path)
-    second_parts = volumes_of(after, tmp_path)
-    assert first_parts == {"Box": pytest.approx(1000.0)}
-    assert second_parts["Box"] == pytest.approx(2000.0)
     calls = [json.loads(line) for line in open(tmp_path / "calls.jsonl")]
-    workers = list(dict.fromkeys(call["pid"] for call in calls))
-    assert len(workers) == 2
-    second_run_first_call = [call for call in calls if call["pid"] == workers[1]][0]["messages"]
-    assert {"role": "user", "content": "Add a 10mm cube"} in second_run_first_call
-    assert {"role": "assistant", "content": "design"} in second_run_first_call
-    assert second_run_first_call[-1] == {"role": "user", "content": "Make the box 20mm long"}
+    assert_edited_with_history(first, second, before, after, tmp_path, calls)
+
+
+def test_the_same_respawn_in_the_worker_image_on_the_home_server(worker_image, database_url, monkeypatch, tmp_path):
+    real_kernel()
+    remote = "~/dae-504-calls"
+    _ssh("rm -rf %s && mkdir -p %s" % (remote, remote))
+    name = "dae-504-respawn"
+    argv = ["ssh", "-o", "BatchMode=yes", HOST,
+            "podman run -i --rm --name %s -e DAE_CALLS=/calls/calls.jsonl -v %s:/calls %s python deploy/worker/scripted_worker.py"
+            % (name, remote, worker_image)]
+    try:
+        first, second, (before, after) = respawn_through(argv, database_url, monkeypatch, tmp_path)
+        calls = [json.loads(line) for line in _ssh("cat %s/calls.jsonl" % remote).stdout.splitlines()]
+    finally:
+        _ssh("podman rm -f %s >/dev/null 2>&1; rm -rf %s" % (name, remote), check=False)
+    assert_edited_with_history(first, second, before, after, tmp_path, calls)
+    assert not _ssh("podman ps -q --filter name=%s" % name).stdout.strip()
+
+
+IMAGE = "dae-504-worker"
+REMOTE = "dae-504-build"
+
+
+@pytest.fixture(scope="module")
+def worker_image():
+    probe = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", HOST, "podman --version"],
+                           capture_output=True, text=True)
+    if probe.returncode != 0:
+        pytest.skip("home server %s unreachable over ssh: %s" % (HOST, probe.stderr.strip()[-200:]))
+    _ssh("rm -rf ~/%s/ctx && mkdir -p ~/%s/ctx" % (REMOTE, REMOTE))
+    tar = subprocess.Popen(["tar", "--exclude=__pycache__", "-cf", "-", "-C", ROOT, "src", "config", "deploy"],
+                           stdout=subprocess.PIPE)
+    sent = subprocess.run(["ssh", "-o", "BatchMode=yes", HOST, "tar -xf - -C ~/%s/ctx" % REMOTE],
+                          stdin=tar.stdout, capture_output=True)
+    tar.stdout.close()
+    assert tar.wait() == 0 and sent.returncode == 0, sent.stderr
+    _ssh("cd ~/%s/ctx && podman build -t %s -f deploy/worker/Containerfile ." % (REMOTE, IMAGE), timeout=2400)
+    return IMAGE
