@@ -64,6 +64,7 @@ def base_document(step_path):
     doc.recompute()
     handle, path = tempfile.mkstemp(prefix="fcc-edit-", suffix=".FCStd")
     os.close(handle)
+    os.remove(path)
     doc.saveAs(path)
     FreeCAD.closeDocument(doc.Name)
     return path

@@ -431,5 +431,6 @@ def copy_of(document):
     """
     handle, path = tempfile.mkstemp(prefix="kernel_", suffix=".FCStd")
     os.close(handle)
+    os.remove(path)
     document.saveCopy(path)
     return path
