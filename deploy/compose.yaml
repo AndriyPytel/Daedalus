@@ -1,0 +1,85 @@
+name: daedalus
+
+services:
+  postgres:
+    image: docker.io/library/postgres:17
+    environment:
+      POSTGRES_USER: daedalus
+      POSTGRES_DB: daedalus
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "daedalus"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  worker-host:
+    build:
+      context: ..
+      dockerfile: deploy/worker/Containerfile
+    command: ["python", "-m", "service.workerhost"]
+    environment:
+      DAEDALUS_HOST_PORT: "7000"
+    secrets:
+      - source: daedalus-claude-token
+        target: CLAUDE_CODE_OAUTH_TOKEN
+        type: env
+    healthcheck:
+      test: ["CMD", "python", "-m", "service.workerhost", "--check"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/gateway/Containerfile
+    depends_on:
+      - postgres
+      - worker-host
+    ports:
+      - "127.0.0.1:${DAEDALUS_PORT:-8505}:8000"
+      - "100.90.228.80:${DAEDALUS_PORT:-8505}:8000"
+    environment:
+      DAEDALUS_DATABASE_URL: postgresql://daedalus@postgres/daedalus
+      DAEDALUS_WORKER_ARGV: '["python", "-m", "service.relay", "worker-host:7000"]'
+      DAEDALUS_BLOB_ROOT: /var/lib/daedalus/blobs
+      DAEDALUS_DEFAULTS: >-
+        {"default_model": {"provider": "Claude (subscription)", "model": "haiku"},
+        "naming_model": {"provider": "Claude (subscription)", "model": "haiku"},
+        "role_table": [
+        {"role": "orchestrator", "provider": "Claude (subscription)", "model": "haiku"},
+        {"role": "design", "provider": "Claude (subscription)", "model": "haiku"},
+        {"role": "plan", "provider": "Claude (subscription)", "model": "haiku"},
+        {"role": "execute", "provider": "Claude (subscription)", "model": "haiku"},
+        {"role": "assertion", "provider": "Claude (subscription)", "model": "haiku"},
+        {"role": "review", "provider": "Claude (subscription)", "model": "haiku"},
+        {"role": "sub-agent worker", "provider": "Claude (subscription)", "model": "haiku"}
+        ]}
+    secrets:
+      - source: daedalus-token
+        target: DAEDALUS_TOKEN
+        type: env
+    volumes:
+      - blobs:/var/lib/daedalus/blobs
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://127.0.0.1:8000/v1/health', timeout=3)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: on-failure
+
+volumes:
+  pgdata:
+  blobs:
+
+secrets:
+  daedalus-token:
+    external: true
+  daedalus-claude-token:
+    external: true

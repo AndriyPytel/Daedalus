@@ -9,14 +9,24 @@ RUN curl -fsSL -o FreeCAD.AppImage "https://github.com/FreeCAD/FreeCAD/releases/
  && ./FreeCAD.AppImage --appimage-extract >/dev/null \
  && mv squashfs-root/usr /opt-freecad
 
+FROM docker.io/library/debian:trixie-slim AS claude
+ARG CLAUDE_VERSION=2.1.289
+ARG CLAUDE_SHA256=a186b99e4a9c88366cd49df2f7dad56c61fc306ef0140b19ee64b7c42a8d1348
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL -o /claude "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/linux-x64/claude" \
+ && echo "${CLAUDE_SHA256}  /claude" | sha256sum -c - \
+ && chmod +x /claude
+
 FROM docker.io/library/debian:trixie-slim
 COPY --from=freecad /opt-freecad /opt/freecad
 ENV PATH=/opt/freecad/bin:$PATH \
     LD_LIBRARY_PATH=/opt/freecad/lib \
     PYTHONPATH=/opt/freecad/lib:/app/src \
     FREECAD_CMD=/opt/freecad/bin/freecadcmd \
-    PYTHONDONTWRITEBYTECODE=1
+    PYTHONDONTWRITEBYTECODE=1 \
+    DISABLE_AUTOUPDATER=1
 RUN python -m pip install --no-cache-dir --root-user-action=ignore httpx==0.28.1 litellm==1.104.0 pymupdf==1.28.2
+COPY --from=claude /claude /usr/local/bin/claude
 COPY src /app/src
 COPY config /app/config
 COPY deploy /app/deploy

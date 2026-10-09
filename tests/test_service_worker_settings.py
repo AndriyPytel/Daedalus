@@ -96,3 +96,10 @@ def test_the_run_stops_when_it_is_cancelled_or_when_its_budget_is_spent():
     budget.watch(types.SimpleNamespace(kind="cost", data={"usd": 2.0}))
     assert stop() is True
     assert worker.stop_condition(types.SimpleNamespace(is_set=lambda: True), worker.Budget(None))() is True
+
+
+def test_the_claude_subscription_provider_needs_no_key_in_a_worker(restored):
+    from core import settings
+    sdk.set_api_keys([])
+    worker.apply_settings({"default_model": {"provider": "Claude (subscription)", "model": "haiku"}})
+    assert settings.instance().get_llm_credentials("haiku")[:2] == ("Claude (subscription)", "haiku")
